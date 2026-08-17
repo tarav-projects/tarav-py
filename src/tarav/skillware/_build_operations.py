@@ -59,9 +59,26 @@ class BuildEntry:
 
 
 @dataclass(frozen=True)
+class BuildRefusal:
+    """One target the build declined to write over.
+
+    The engine compares a hash against the lock and knows nothing about what
+    changed or why — the same knowledge a `git` refusal has. It reports that
+    the output carries content the source does not account for, and leaves the
+    judgment of what that content is worth to the caller.
+    """
+
+    target: Path
+    src: Path
+    target_sha256: str
+    lock_sha256: str
+
+
+@dataclass(frozen=True)
 class BuildReport:
     entries: tuple[BuildEntry, ...]
     findings: tuple[SkwFinding, ...]
+    refusals: tuple[BuildRefusal, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -132,6 +149,8 @@ AGENTS_MD_TEXT = """\
 - the package's skw-managed files are compiled from `src/**/*.skw.md` — NEVER edit those targets by hand
 - to change managed content: edit the src file, then run `tarav skw build --skill <package-root>`
 - to inspect drift (read-only): `tarav skw check --skill <package-root>`
+- build refuses, per file, to write over a target whose content differs from the lock —
+  preserve that content in src, or `--discard-hand-edits <target>` to destroy it
 - `lock.json` and this `AGENTS.md` are engine-owned and overwritten on every build
 - for the full skw discipline, load the `tarav-skillware` skill
 """
@@ -190,7 +209,92 @@ def _match_locked_derived(
     return matches[0] if len(matches) == 1 else None
 
 
-def build_skill(skill_root: Path) -> BuildReport:
+def _resolve_discards(
+    skillware: Skillware,
+    src_files: list[Path],
+    discard_hand_edits: tuple[str, ...],
+) -> set[str]:
+    """Validate `--discard-hand-edits` values against the managed targets.
+
+    A path that names no managed target is a typo, and silently ignoring it
+    would leave the caller believing they authorized a rebuild that never
+    happened. A named target that turns out not to be hand-edited is a no-op,
+    so passing the flag habitually stays harmless.
+    """
+    known = {str(skillware.target_rel(src_rel)) for src_rel in src_files}
+    unknown = sorted(set(discard_hand_edits) - known)
+    if unknown:
+        raise SkillwareError(
+            "--discard-hand-edits names no managed target: "
+            + ", ".join(unknown)
+            + "\nmanaged targets: "
+            + ", ".join(sorted(known))
+        )
+    return set(discard_hand_edits)
+
+
+def _hand_edit_refusal(
+    skillware: Skillware,
+    src_rel: Path,
+    target_rel: Path,
+    old_lock: dict,
+    expected_text: str,
+) -> BuildRefusal | None:
+    """`check_skill`'s `hand-edited` condition, decided the same way it decides it.
+
+    Two tests, both required. A target equal to what src compiles to is
+    accounted for whatever the lock says — a lock written by an older engine is
+    stale bookkeeping, not lost content, and refusing on it alone turns the
+    guard into noise the caller learns to flag past. A target that differs from
+    the compile but still matches its lock is merely out of date
+    (`stale-build`) and rebuilds normally. Only a target that matches neither
+    holds content nothing accounts for.
+
+    A target with no locked `output_sha256` has no baseline at all and is never
+    refused.
+    """
+    locked = old_lock.get("files", {}).get(str(target_rel))
+    if locked is None:
+        return None
+    lock_sha = locked.get("output_sha256")
+    target_path = skillware.skill_root / target_rel
+    if lock_sha is None or not target_path.is_file():
+        return None
+    target_text = target_path.read_text(encoding="utf-8")
+    if target_text == expected_text:
+        return None
+    target_sha = hashlib.sha256(target_text.encode("utf-8")).hexdigest()
+    if target_sha == lock_sha:
+        return None
+    return BuildRefusal(
+        target=target_rel,
+        src=src_rel,
+        target_sha256=target_sha,
+        lock_sha256=lock_sha,
+    )
+
+
+def build_skill(
+    skill_root: Path,
+    *,
+    discard_hand_edits: tuple[str, ...] = (),
+) -> BuildReport:
+    """Compile every src file, refusing any target the source cannot account for.
+
+    A target that matches neither what src compiles to nor the `output_sha256`
+    the lock recorded for it holds content that did not come from src. The
+    build declines that one file — its siblings still compile — until the
+    caller names it in `discard_hand_edits`, which rebuilds it from src and
+    destroys the difference. The guard needs a locked baseline, so a target
+    with no lock entry (the first build after adoption) is written normally.
+
+    A refused file carries its previous lock entry forward. The lock is rebuilt
+    from scratch each run, so dropping that entry would leave the next build
+    with no baseline and it would clobber the file silently — the exact failure
+    this guard exists to prevent. Its src is left unrefreshed for the same
+    reason: refusing the target while rewriting its source half-applies the
+    build.
+    """
     skillware = load_skillware(skill_root)
     old_lock = _read_lock(skillware)
     lock: dict = {
@@ -200,9 +304,36 @@ def build_skill(skill_root: Path) -> BuildReport:
     }
     entries: list[BuildEntry] = []
     findings: list[SkwFinding] = []
+    refusals: list[BuildRefusal] = []
 
-    for src_rel in skillware.src_files():
+    src_files = skillware.src_files()
+    discarded = _resolve_discards(skillware, src_files, discard_hand_edits)
+
+    for src_rel in src_files:
         expansion = expand_file(skillware, src_rel)
+        target_rel = expansion.target_rel
+
+        refusal = (
+            None
+            if str(target_rel) in discarded
+            else _hand_edit_refusal(
+                skillware,
+                src_rel,
+                target_rel,
+                old_lock,
+                "\n".join(expansion.fresh_lines) + "\n",
+            )
+        )
+        if refusal is not None:
+            refusals.append(refusal)
+            locked = old_lock.get("files", {}).get(str(target_rel))
+            if locked is not None:
+                lock["files"][str(target_rel)] = locked
+            entries.append(
+                BuildEntry(target=target_rel, action="refused", src_refreshed=False)
+            )
+            continue
+
         findings.extend(
             SkwFinding(f.line, f"{src_rel}: {f.message}") for f in expansion.findings
         )
@@ -253,7 +384,11 @@ def build_skill(skill_root: Path) -> BuildReport:
         json.dumps(lock, indent=2) + "\n", encoding="utf-8"
     )
     (skillware.build_root / AGENTS_NAME).write_text(AGENTS_MD_TEXT, encoding="utf-8")
-    return BuildReport(entries=tuple(entries), findings=tuple(findings))
+    return BuildReport(
+        entries=tuple(entries),
+        findings=tuple(findings),
+        refusals=tuple(refusals),
+    )
 
 
 def _legacy_callout_pois(

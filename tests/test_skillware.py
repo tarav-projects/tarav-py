@@ -196,6 +196,130 @@ def test_check_stale_build_on_src_edit(tmp_path: Path) -> None:
     assert _entry(check, "references/mod.md").status == "stale-build"
 
 
+# --- the hand-edit guard ------------------------------------------------------
+
+
+def _hand_edit(skill: Path, target: str) -> Path:
+    path = skill / target
+    path.write_text(path.read_text(encoding="utf-8") + "\nrogue edit\n", encoding="utf-8")
+    return path
+
+
+def _locked_sha(skill: Path, target: str) -> str:
+    lock = json.loads(
+        (skill / ".skillware" / "lock.json").read_text(encoding="utf-8")
+    )
+    return lock["files"][target]["output_sha256"]
+
+
+def test_build_refuses_to_overwrite_a_hand_edited_target(tmp_path: Path) -> None:
+    """The destroyed-work case: a build must not silently clobber the target."""
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    target = _hand_edit(skill, "references/mod.md")
+
+    report = build_skill(skill)
+
+    assert "rogue edit" in target.read_text(encoding="utf-8")
+    assert _entry(report, "references/mod.md").action == "refused"
+    assert [str(r.target) for r in report.refusals] == ["references/mod.md"]
+    refusal = report.refusals[0]
+    assert str(refusal.src) == "references/mod.skw.md"
+    assert refusal.target_sha256 != refusal.lock_sha256
+    # the guard is per file: siblings still build
+    assert all(
+        entry.action != "refused"
+        for entry in report.entries
+        if str(entry.target) != "references/mod.md"
+    )
+
+
+def test_a_refused_target_keeps_its_lock_entry(tmp_path: Path) -> None:
+    """Dropping the entry would leave the next build with no baseline."""
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    locked = _locked_sha(skill, "references/mod.md")
+    target = _hand_edit(skill, "references/mod.md")
+
+    build_skill(skill)
+    assert _locked_sha(skill, "references/mod.md") == locked
+
+    again = build_skill(skill)
+    assert _entry(again, "references/mod.md").action == "refused"
+    assert "rogue edit" in target.read_text(encoding="utf-8")
+
+
+def test_discard_hand_edits_rebuilds_the_named_target(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    target = _hand_edit(skill, "references/mod.md")
+
+    report = build_skill(skill, discard_hand_edits=("references/mod.md",))
+
+    assert not report.refusals
+    assert target.read_text(encoding="utf-8") == MOD_COMPILED
+
+
+def test_discard_hand_edits_is_per_target(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    _hand_edit(skill, "references/mod.md")
+    lib = _hand_edit(skill, "references/lib.md")
+
+    report = build_skill(skill, discard_hand_edits=("references/mod.md",))
+
+    assert [str(r.target) for r in report.refusals] == ["references/lib.md"]
+    assert "rogue edit" in lib.read_text(encoding="utf-8")
+    assert "rogue edit" not in (skill / "references" / "mod.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_discard_hand_edits_rejects_an_unknown_target(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    with pytest.raises(SkillwareError) as excinfo:
+        build_skill(skill, discard_hand_edits=("references/nope.md",))
+    assert "references/nope.md" in str(excinfo.value)
+
+
+def test_a_stale_lock_is_not_refused(tmp_path: Path) -> None:
+    """The target equals what src compiles to; only the lock is out of date.
+
+    Found in `tarav-md/skills/tarav-pkg`, whose `SKILL.md` lock hash predates
+    an engine change. Refusing on the lock alone would flag a file src fully
+    accounts for — the noise that teaches a caller to reach past the guard.
+    """
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    lock_path = skill / ".skillware" / "lock.json"
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    lock["files"]["references/mod.md"]["output_sha256"] = "0" * 64
+    lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+
+    report = build_skill(skill)
+
+    assert not report.refusals
+    assert _entry(report, "references/mod.md").action == "unchanged"
+    assert _locked_sha(skill, "references/mod.md") != "0" * 64
+
+
+def test_a_stale_build_is_not_refused(tmp_path: Path) -> None:
+    """On-disk still matches the lock: out of date, not modified."""
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        src.read_text(encoding="utf-8").replace("Intro prose.", "Intro prose, revised."),
+        encoding="utf-8",
+    )
+
+    report = build_skill(skill)
+
+    assert not report.refusals
+    assert _entry(report, "references/mod.md").action == "built"
+
+
 def test_copy_drift_and_derived_stale_on_dep_edit(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     build_skill(skill)

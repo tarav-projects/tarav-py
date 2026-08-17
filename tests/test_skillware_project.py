@@ -546,6 +546,46 @@ def test_cli_build_check_status(
         )
 
 
+def test_cli_build_refuses_and_reports_a_hand_edited_target(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = _write_skill(tmp_path)
+    _cmd_skillware_build(argparse.Namespace(skill=str(skill), json=True))
+    capsys.readouterr()
+    target = skill / "references" / "mod.md"
+    target.write_text(
+        target.read_text(encoding="utf-8") + "\nrogue\n", encoding="utf-8"
+    )
+
+    args = argparse.Namespace(skill=str(skill), json=True, discard_hand_edits=[])
+    assert _cmd_skillware_build(args) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert [r["target"] for r in payload["refusals"]] == ["references/mod.md"]
+    assert payload["refusals"][0]["src"] == "references/mod.skw.md"
+    assert (
+        payload["refusals"][0]["target_sha256"]
+        != payload["refusals"][0]["lock_sha256"]
+    )
+
+    # the text form names the target, its src, and the escape
+    text_args = argparse.Namespace(
+        skill=str(skill), json=False, discard_hand_edits=[]
+    )
+    assert _cmd_skillware_build(text_args) == 1
+    out = capsys.readouterr().out
+    assert "references/mod.md has changes not present in its source" in out
+    assert "src/references/mod.skw.md" in out
+    assert "--discard-hand-edits references/mod.md" in out
+
+    discard = argparse.Namespace(
+        skill=str(skill), json=True, discard_hand_edits=["references/mod.md"]
+    )
+    assert _cmd_skillware_build(discard) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["refusals"] == []
+    assert "rogue" not in target.read_text(encoding="utf-8")
+
+
 def test_build_stamps_agents_md(tmp_path: Path) -> None:
     from tarav.skillware.build import AGENTS_MD_TEXT
 

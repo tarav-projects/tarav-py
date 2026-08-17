@@ -63,7 +63,9 @@ POI_LEGEND = {
     ),
     "hand-edited": (
         "the compiled target was edited by hand",
-        "judgment call: move the content into src, or rebuild over it",
+        "judgment call: move the content into src, or rebuild over it — "
+        "build refuses this target until one of the two happens "
+        "(tarav skw build --discard-hand-edits <target>)",
     ),
     "copy-drift": (
         "a copy body no longer equals its target's expansion",
@@ -149,8 +151,9 @@ def _load(args: argparse.Namespace):
 
 def _cmd_skillware_build(args: argparse.Namespace) -> int:
     _load(args)
+    discard = tuple(getattr(args, "discard_hand_edits", None) or ())
     try:
-        report = build_skill(Path(args.skill))
+        report = build_skill(Path(args.skill), discard_hand_edits=discard)
     except SkillwareError as exc:
         raise CliError(str(exc)) from exc
     payload = {
@@ -168,8 +171,17 @@ def _cmd_skillware_build(args: argparse.Namespace) -> int:
             {"line": finding.line, "message": finding.message}
             for finding in report.findings
         ],
+        "refusals": [
+            {
+                "target": str(refusal.target),
+                "src": str(refusal.src),
+                "target_sha256": refusal.target_sha256,
+                "lock_sha256": refusal.lock_sha256,
+            }
+            for refusal in report.refusals
+        ],
     }
-    exit_code = 1 if report.findings else 0
+    exit_code = 1 if report.findings or report.refusals else 0
     if args.json:
         print(json.dumps(payload, indent=2))
         return exit_code
@@ -179,12 +191,32 @@ def _cmd_skillware_build(args: argparse.Namespace) -> int:
         print(f"- [{entry.action}] {entry.target}{refreshed}")
     for finding in report.findings:
         print(f"- [finding] {finding.message}")
+    for refusal in report.refusals:
+        print(_render_refusal(refusal))
     print(
         f"Summary: {len(report.entries)} file(s), "
         f"{sum(1 for e in report.entries if e.action == 'built')} built, "
+        f"{len(report.refusals)} refused, "
         f"{len(report.findings)} finding(s)."
     )
     return exit_code
+
+
+def _render_refusal(refusal) -> str:
+    """State the condition and name both files; suggest, never prescribe.
+
+    The engine compared a hash to the lock. It does not know whether the
+    difference is work worth keeping or a stale artifact, so the message says
+    only what it observed and leaves both routes open.
+    """
+    return (
+        f"error: {refusal.target} has changes not present in its source\n"
+        f"       src/{refusal.src}\n"
+        f"       target hash {refusal.target_sha256[:4]}…  "
+        f"lock hash {refusal.lock_sha256[:4]}…\n"
+        f"       hint: preserve them in src, or "
+        f"--discard-hand-edits {refusal.target} to rebuild from src"
+    )
 
 
 def _edition_history_project_pois(
@@ -986,6 +1018,17 @@ def register_skillware_commands(
             ),
         )
         sub.add_argument("--json", action="store_true", help="Emit the report as JSON.")
+        if name == "build":
+            sub.add_argument(
+                "--discard-hand-edits",
+                action="append",
+                default=[],
+                metavar="TARGET",
+                help=(
+                    "Rebuild this target from src, destroying content the src "
+                    "does not account for; repeatable, one target per use."
+                ),
+            )
         if name == "check":
             add_check_selection_args(sub, unit="POI kind")
         if name == "bless":

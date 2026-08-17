@@ -10,7 +10,8 @@ per file, to write over a target whose on-disk content differs from the
 `output_sha256` the lock recorded for it, and give the caller one explicit,
 per-target escape: `--discard-hand-edits <target>` (repeatable).
 
-**Status.** Designed; execution pending.
+**Status.** Executed. All four slices landed; 2015 tests pass, project POI count
+unchanged at 33, changes uncommitted for review.
 
 **Source context.** Chat of 2026-08-17 while working on `g70203-pkg`. Two
 compiled surfaces in that package (`references/ingest.md`,
@@ -145,12 +146,56 @@ Run `tarav skw check` over the packages registered on this machine and count
 `hand-edited` targets. If the condition is common in normal operation the guard
 becomes noise; report the count rather than adjusting the design silently.
 
+**Result.** 21 packages under `~/projects`, 96 managed targets: **2**
+hand-edited, **0** stale-build, both in `tarav-md/skills/tarav-pkg`
+(`references/index-retrofit.md`, `references/index-retrofit-worker.md`).
+Nothing routinely writes to a compiled surface after a build, so the guard is
+safe to make strict — and the survey immediately found two more instances of
+the failure class it exists to prevent.
+
+### Slice 5 — backport `tarav-pkg` (added during execution)
+
+Both surfaces carried a coherent revision that existed nowhere else: the
+amendment-versus-successor distinction for support edges, `Index.Line.Anchor`
+terminology replacing "trailing support reference", the v2 dossier model, and
+`ambiguous` anchor-occurrence standing holding a packet. 12 hunks, applied to
+src by aligning each against the fresh compile and requiring a unique match.
+
+Both targets then rebuilt **byte-identical** — `[unchanged]`, which is the
+proof the backport was exact rather than approximate. One consequence
+surfaced: the recovered text mentions `Index.Line.Anchor`, which resolves in
+the depot but was undeclared, so `--from Index.Line.Anchor` joined the
+dependency block. `tarav skw check --skill .` is now 0 POIs across all three
+files.
+
 ## Impl.Log
 
 - [PS] the escape flag is deliberately not implemented as a bare bulk form even
   though every other repeated flag in this CLI (`--unlock`) allows a bare
   accumulate. The user asked for the conservative shape explicitly; if a bulk
   form is ever missed, that is evidence to add later, not now.
+- [DC] **the first predicate was wrong and the backport exposed it.** Refusing
+  on `on-disk != lock` alone flagged `tarav-pkg/SKILL.md`, a file identical to
+  what src compiles to whose lock hash predates an engine change. Stale
+  bookkeeping is not lost content, and a guard that fires on it is the noise
+  that teaches a caller to reach past it — the exact objection raised against
+  the design before it was built. The predicate is now `check_skill`'s
+  `hand-edited` exactly: differs from the fresh compile **and** from the lock.
+  This also reordered `build_skill`'s loop, since the guard now needs the
+  expansion before it can decide.
+- [CT] the guard therefore runs after `expand_file` but before the src refresh
+  and the target write, so a refused file still has nothing written on its
+  behalf.
+- [DC] the four inline `#` comments the first pass wrote into
+  `_build_operations.py` each raised a `non-skw-annotation` POI — this project's
+  strict code policy admits no bare comments. Both facts were maintenance
+  relevant, so they moved into the enclosing docstrings rather than being
+  deleted; project POI count returned to its 33 baseline.
+- [CT] the target hash is computed as `read_text(encoding="utf-8").encode(...)`,
+  matching `check_skill` exactly rather than hashing raw bytes. Raw bytes would
+  be stricter — text mode folds CRLF to LF, so a line-ending-only change slips
+  past both — but a build refusing what `check` calls clean would be a
+  condition with no diagnostic anywhere.
 - [PS] refusing when the target exists with no lock entry was considered and
   rejected: it would break the adopt path, whose first build necessarily writes
   over a hand-owned file. That leaves one uncovered case — a target deleted from
