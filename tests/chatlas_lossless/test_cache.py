@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from tarav._core.errors import CliError
-from tarav.chatlas2 import cache
-from tarav.chatlas2.message_ref import compute_chat_message_hash
-from tarav.chatlas2.turn_ref import compute_chat_turn_hash
+from tarav.chatlas.lossless import cache
+from tarav.chatlas.lossless.message_ref import compute_chat_message_hash
+from tarav.chatlas.lossless.turn_ref import compute_chat_turn_hash
 
 
 def _row(source: Path) -> dict[str, object]:

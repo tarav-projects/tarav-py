@@ -158,7 +158,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
         raise AssertionError("default Normal Model access must reuse a fresh cache")
 
     monkeypatch.setattr(
-        "tarav.chatlas2.cache.build_normal_model_from_row",
+        "tarav.chatlas.lossless.cache.build_normal_model_from_row",
         refuse_cached_normalization,
     )
     reused = _run_json_command(
@@ -403,7 +403,7 @@ def test_chatlas2_cache_cli_and_bounded_message_reads_reuse_materialization(
         raise AssertionError("a fresh message read must not normalize")
 
     monkeypatch.setattr(
-        "tarav.chatlas2.cache.build_normal_model_from_row",
+        "tarav.chatlas.lossless.cache.build_normal_model_from_row",
         refuse_normalization,
     )
     found = _run_json_command(

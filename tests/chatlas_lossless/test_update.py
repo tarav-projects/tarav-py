@@ -74,7 +74,7 @@ def _write_fresh_codex_session(
 def test_update_scope_uses_exact_native_session_and_selected_provider(
     tmp_path: Path,
 ) -> None:
-    from tarav.chatlas2.update import chatlas2_update_scope
+    from tarav.chatlas.lossless.update import chatlas2_update_scope
 
     scope = chatlas2_update_scope(
         _args(
@@ -92,7 +92,7 @@ def test_update_scope_uses_exact_native_session_and_selected_provider(
 def test_update_scope_resolves_known_identity_to_native_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tarav.chatlas2 import update
+    from tarav.chatlas.lossless import update
 
     monkeypatch.setattr(
         update,
@@ -112,7 +112,7 @@ def test_update_scope_resolves_known_identity_to_native_session(
 def test_update_scope_unknown_identity_falls_back_to_supported_provider_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tarav.chatlas2 import update
+    from tarav.chatlas.lossless import update
 
     def missing(**_kwargs: object) -> dict[str, object]:
         raise CliError("not indexed")
@@ -129,7 +129,7 @@ def test_update_runs_the_shared_delta_pipeline_once(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from tarav.chatlas2 import update
+    from tarav.chatlas.lossless import update
 
     calls: list[dict[str, object]] = []
     monkeypatch.setattr(
@@ -163,7 +163,7 @@ def test_cli_update_precedes_leaf_command_and_preserves_json_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from tarav.chatlas2 import commands, update
+    from tarav.chatlas.lossless import commands, update
 
     events: list[str] = []
 
@@ -206,7 +206,7 @@ def test_cli_update_failure_prevents_leaf_command(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from tarav.chatlas2 import commands
+    from tarav.chatlas.lossless import commands
 
     queried = False
 

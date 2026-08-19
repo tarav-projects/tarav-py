@@ -7,19 +7,19 @@ from pathlib import Path
 import pytest
 
 from tarav._core.errors import CliError
-from tarav.chatlas2.anchory import (
+from tarav.chatlas.lossless.anchory import (
     CHATLAS2_NAMESPACE,
     build_line_anchor_dossier,
     chatlas2_anchory_depot,
     ensure_chatlas2_namespace,
 )
-from tarav.chatlas2.chat_index import (
+from tarav.chatlas.lossless.chat_index import (
     apply_chat_index_capture_plan,
     chat_index_surface_path,
     surface_state,
     validate_chat_index_capture_plan,
 )
-from tarav.chatlas2.chat_index_plan import (
+from tarav.chatlas.lossless.chat_index_plan import (
     CAPTURE_PLAN_SCHEMA,
     parse_capture_plan,
 )

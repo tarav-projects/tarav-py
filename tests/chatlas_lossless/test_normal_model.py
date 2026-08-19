@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.chatlas2 import normal_model
+from tarav.chatlas.lossless import normal_model
 
 
 class _Reader:

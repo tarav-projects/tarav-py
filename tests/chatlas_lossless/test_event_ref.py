@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from inspect import signature
 
-from tarav.chatlas2.event_ref import (
+from tarav.chatlas.lossless.event_ref import (
     compute_event_address,
     compute_event_hash,
     event_ref,

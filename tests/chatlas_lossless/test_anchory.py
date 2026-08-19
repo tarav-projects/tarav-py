@@ -8,8 +8,8 @@ import weakref
 import pytest
 
 from tarav._core.errors import CliError
-from tarav.chatlas2 import anchory
-from tarav.chatlas2.anchory import (
+from tarav.chatlas.lossless import anchory
+from tarav.chatlas.lossless.anchory import (
     CHATLAS2_MESSAGE_SUPPORT_SCHEMA,
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1,
@@ -27,8 +27,8 @@ from tarav.index_model import (
     INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
     index_line_anchor_triplet_hash,
 )
-from tarav.chatlas2.message_ref import compute_chat_message_hash
-from tarav.chatlas2.messages import chat_message_support_member
+from tarav.chatlas.lossless.message_ref import compute_chat_message_hash
+from tarav.chatlas.lossless.messages import chat_message_support_member
 
 
 def _model() -> dict[str, object]:

@@ -1,13 +1,13 @@
 # $kw: --from Capture --note [CT] chat normalization is unchanged by the new model, so the existing Chatlas2 supplies it
-"""Chat evidence — a thin layer over `tarav.chatlas2`.
+"""Chat evidence — a thin layer over `tarav.chatlas.lossless`.
 
 Almost nothing here is new. Normalization, provider drift handling, the git-backed archive,
-and stable message addressing already exist in `tarav.chatlas2` and the new model does not touch any
+and stable message addressing already exist in `tarav.chatlas.lossless` and the new model does not touch any
 of them, so they are **used**, not reimplemented:
 
 - `tarav chatlas` is already the git-backed archive, which is what the chat manifest's
   git-backing criterion requires;
-- `tarav.chatlas2.build_normal_model` normalizes a session across both providers;
+- `tarav.chatlas.lossless.build_normal_model` normalizes a session across both providers;
 - each normalized message already carries a `message_address` — a stable coordinate derived
   from event identity rather than from position, so it survives a machine change *and*
   further appends to a live session.
@@ -21,8 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from tarav.chatlas2.messages import chat_message_at, list_chat_messages
-from tarav.chatlas2.pipeline import build_normal_model
+from tarav.chatlas.lossless.messages import chat_message_at, list_chat_messages
+from tarav.chatlas.lossless.pipeline import build_normal_model
 
 from .authority import ManifestRegistry
 from .config import Geography, TaravIndexError

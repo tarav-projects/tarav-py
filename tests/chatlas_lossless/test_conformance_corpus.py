@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.chatlas2.corpus import check_corpus, load_script_spec, verify_corpus
+from tarav.chatlas.lossless.corpus import check_corpus, load_script_spec, verify_corpus
 
 
 CORPUS = Path(__file__).parent / "conformance"

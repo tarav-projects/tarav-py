@@ -4,15 +4,15 @@ from copy import deepcopy
 import json
 from pathlib import Path
 
-from tarav.chatlas2.codex import (
+from tarav.chatlas.lossless.codex import (
     CODEX_RAW_MODEL_VERSION,
     CodexRawModelVersioner,
     CodexRawNormalizer,
 )
-from tarav.chatlas2.event_ref import event_ref, resolve_event_ref
-from tarav.chatlas2.message_ref import resolve_chat_message_ref
-from tarav.chatlas2.pipeline import build_normal_model_from_row
-from tarav.chatlas2.turn_ref import chat_turn_ref, resolve_chat_turn_ref
+from tarav.chatlas.lossless.event_ref import event_ref, resolve_event_ref
+from tarav.chatlas.lossless.message_ref import resolve_chat_message_ref
+from tarav.chatlas.lossless.pipeline import build_normal_model_from_row
+from tarav.chatlas.lossless.turn_ref import chat_turn_ref, resolve_chat_turn_ref
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:

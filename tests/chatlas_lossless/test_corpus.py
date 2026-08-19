@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from tarav._core.errors import CliError
-from tarav.chatlas2.anonymizer import anonymize_text
-from tarav.chatlas2.corpus import (
+from tarav.chatlas.lossless.anonymizer import anonymize_text
+from tarav.chatlas.lossless.corpus import (
     _model_signature,
     _validate_checked_model,
     load_capture_records,
@@ -18,8 +18,8 @@ from tarav.chatlas2.corpus import (
     register_candidate,
     verify_corpus,
 )
-from tarav.chatlas2.message_ref import compute_chat_message_hash
-from tarav.chatlas2.pipeline import build_normal_model_from_row
+from tarav.chatlas.lossless.message_ref import compute_chat_message_hash
+from tarav.chatlas.lossless.pipeline import build_normal_model_from_row
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:

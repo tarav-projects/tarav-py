@@ -4,8 +4,8 @@ from copy import deepcopy
 
 import pytest
 
-from tarav.chatlas2.message_ref import compute_chat_message_hash
-from tarav.chatlas2.messages import (
+from tarav.chatlas.lossless.message_ref import compute_chat_message_hash
+from tarav.chatlas.lossless.messages import (
     chat_message_at,
     chat_message_neighborhood,
     chat_message_support_member,

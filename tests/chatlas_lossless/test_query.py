@@ -14,7 +14,7 @@ def test_session_query_reuses_index_selection_and_projects_compact_rows(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from tarav.chatlas2 import query
+    from tarav.chatlas.lossless import query
 
     captured: dict[str, object] = {}
 
@@ -89,7 +89,7 @@ def test_session_query_reuses_index_selection_and_projects_compact_rows(
 
 
 def test_session_query_rejects_unsupported_provider() -> None:
-    from tarav.chatlas2.query import query_sessions
+    from tarav.chatlas.lossless.query import query_sessions
 
     with pytest.raises(ValueError, match="supports only"):
         query_sessions(providers=("copilot-cli",))
@@ -99,7 +99,7 @@ def test_session_query_cli_exposes_metadata_selectors(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from tarav.chatlas2 import commands
+    from tarav.chatlas.lossless import commands
 
     captured: dict[str, object] = {}
 
@@ -186,7 +186,7 @@ def _address(value: str) -> str:
 def test_single_session_chat_query_verifies_message_predicates_and_refs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tarav.chatlas2 import query
+    from tarav.chatlas.lossless import query
 
     identity = "a" * 64
     session = {
@@ -269,7 +269,7 @@ def test_single_session_chat_query_verifies_message_predicates_and_refs(
 def test_single_session_chat_query_sorts_then_limits_verified_matches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tarav.chatlas2 import query
+    from tarav.chatlas.lossless import query
 
     identity = "a" * 64
     monkeypatch.setattr(
@@ -318,7 +318,7 @@ def test_single_session_chat_query_sorts_then_limits_verified_matches(
 def test_chat_query_pages_verified_matches_after_sorting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tarav.chatlas2 import query
+    from tarav.chatlas.lossless import query
 
     identity = "a" * 64
     monkeypatch.setattr(
@@ -374,7 +374,7 @@ def test_chat_query_cli_exposes_single_session_message_query(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from tarav.chatlas2 import commands
+    from tarav.chatlas.lossless import commands
 
     captured: dict[str, object] = {}
 
@@ -427,7 +427,7 @@ def test_chat_query_composes_session_set_and_reports_incomplete_coverage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from tarav._core.errors import CliError
-    from tarav.chatlas2 import query
+    from tarav.chatlas.lossless import query
 
     identities = ("a" * 64, "b" * 64, "c" * 64)
     sessions = [
@@ -504,7 +504,7 @@ def test_chat_query_rejects_invalid_predicates(
     kwargs: dict[str, object],
     message: str,
 ) -> None:
-    from tarav.chatlas2.query import query_chat_messages
+    from tarav.chatlas.lossless.query import query_chat_messages
 
     with pytest.raises(ValueError, match=message):
         query_chat_messages(**kwargs)

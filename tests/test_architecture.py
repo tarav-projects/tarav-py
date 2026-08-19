@@ -128,14 +128,39 @@ def test_subsystem_import_graph_is_acyclic() -> None:
     assert _strongly_connected_components(graph) == ()
 
 
-def test_chatlas2_dependency_points_only_toward_chatlas() -> None:
-    imports = _top_level_import_graph()
-    assert "chatlas" in imports["chatlas2"]
-    assert "chatlas2" not in imports["chatlas"]
+def test_the_lossless_layer_sits_on_chatlas_and_not_the_other_way() -> None:
+    """`chatlas/lossless/` is the loss-preserving layer, not a second chatlas.
+
+    It reads the archive, the session index, paths, and providers that
+    `chatlas/` owns. Nothing outside `lossless/` may import back into it, or the
+    layering is a circle and the storage side starts depending on the model
+    built from it.
+    """
+
+    lossless = PACKAGE_ROOT / "chatlas" / "lossless"
+    reaches_down = False
+    for path in (PACKAGE_ROOT / "chatlas").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        modules = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        }
+        inside = lossless in path.parents
+        if inside:
+            reaches_down |= any(
+                m.startswith("tarav.chatlas.") and not m.startswith("tarav.chatlas.lossless")
+                for m in modules
+            )
+        else:
+            assert not any(m.startswith("tarav.chatlas.lossless") for m in modules), path
+            assert "from .lossless" not in source, path
+    assert reaches_down, "the lossless layer should be using what chatlas owns"
 
 
 def test_chatlas2_text_anonymizer_has_no_model_or_provider_dependency() -> None:
-    path = PACKAGE_ROOT / "chatlas2" / "anonymizer.py"
+    path = PACKAGE_ROOT / "chatlas" / "lossless" / "anonymizer.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imported = {
         node.module
