@@ -329,7 +329,11 @@ def cmd_index_revise(args: argparse.Namespace) -> int:
 
     # The one mutation that changes a record without touching a note, so it points at
     # the edit rather than leaving the agent to find it.
-    note = resolve_scope_surface(successor.scope, geo.project_root)
+    # The predecessor's label is on the surface being edited, so it names which file
+    # answers to this chapter when more than one does.
+    note = resolve_scope_surface(
+        successor.scope, geo.project_root, contains=previous.line.label
+    )
     if note is not None:
         rel = note.relative_to(geo.project_root) if note.is_relative_to(geo.project_root) else note
         print("  surface   replace  " + previous.line.render())

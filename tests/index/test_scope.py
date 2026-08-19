@@ -104,3 +104,34 @@ class TestHomeAgnosticResolution:
 
     def test_a_chapter_in_no_home_resolves_to_nothing(self, project_root):
         assert resolve_scope_surface(parse_scope("d/design#C"), project_root) is None
+
+
+class TestSurfaceDisambiguation:
+    def test_contains_picks_the_file_holding_the_line(self, tmp_path):
+        """Several files can answer to one chapter name.
+
+        `100-design.md` and `900-design.md` are both the `design` chapter, so
+        globbing alone points a revision at whichever sorts first. The label of a
+        line known to be on the surface is what distinguishes them.
+        """
+        from tarav.index.scope import block_scope, resolve_scope_surface
+
+        chapters = tmp_path / "skills" / "pkg" / "homes" / "ceo" / "chapters"
+        chapters.mkdir(parents=True)
+        (chapters / "100-design.md").write_text("- [DF] other ^d20260819-1u\n")
+        (chapters / "900-design.md").write_text("- [DF] wanted ^d20260819-2u\n")
+
+        scope = block_scope("pkg", "design", "Concept")
+        assert resolve_scope_surface(scope, tmp_path).name == "100-design.md"
+        found = resolve_scope_surface(scope, tmp_path, contains="^d20260819-2u")
+        assert found.name == "900-design.md"
+
+    def test_an_unmatched_label_falls_back_to_the_first(self, tmp_path):
+        from tarav.index.scope import block_scope, resolve_scope_surface
+
+        chapters = tmp_path / "skills" / "pkg" / "homes" / "ceo" / "chapters"
+        chapters.mkdir(parents=True)
+        (chapters / "100-design.md").write_text("- [DF] other ^d20260819-1u\n")
+        scope = block_scope("pkg", "design", "Concept")
+        found = resolve_scope_surface(scope, tmp_path, contains="^nope-0u")
+        assert found.name == "100-design.md"

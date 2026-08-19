@@ -595,3 +595,28 @@ class TestDevLane:
             "Index.Linter/Gate.Contradicted",
             "Index.Linter/Gate.Unverifiable",
         }
+
+
+class TestSupersededPlacement:
+    def test_a_superseded_member_is_not_reported_unplaced(self, geo, project_root):
+        """A revision replaces the predecessor's wording on the surface.
+
+        The predecessor is therefore absent by construction. Reporting it would
+        make every revision leave a permanent finding behind, and the absence is
+        already readable through the trace.
+        """
+        store = IndexStore(geo)
+        first = store.put(
+            _entry(body="the first wording", support=[SupportRef("chat", "s1", "m1")])
+            .relabel("^d20260819-1u")
+        )
+        store.put(first.successor("DF", "the second wording").relabel("^d20260819-2u"))
+        _surface(project_root, "- [DF] the second wording ^d20260819-2u")
+        assert "Index.Linter/Record.Unplaced" not in _classes(lint(geo))
+
+    def test_an_unsucceeded_record_off_every_surface_still_reports(self, geo, project_root):
+        IndexStore(geo).put(
+            _entry(body="orphan", support=[SupportRef("chat", "s1", "m1")])
+            .relabel("^d20260819-3u")
+        )
+        assert "Index.Linter/Record.Unplaced" in _classes(lint(geo))

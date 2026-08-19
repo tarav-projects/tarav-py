@@ -487,15 +487,27 @@ def _check_review_covers_support(ctx: LintContext) -> list[Finding]:
 def _check_record_placed(ctx: LintContext) -> list[Finding]:
     """An entry on no surface is invisible to every reader of the index.
 
-    Unless its home carries no `Index.Notes` at all, in which case the serialized side is the
-    whole of that home and there is nothing for the entry to be missing from.
+    Two entries are exempt. One whose home carries no `Index.Notes` at all -- the serialized
+    side is the whole of that home, so there is nothing to be missing from. And one that has
+    been superseded within its trace: a revision *replaces* the predecessor's wording on the
+    surface, so a superseded member is absent by construction, and reporting it would make
+    every revision leave a permanent finding behind.
+
+    Being off the surface is still readable: the successor is what `materialization-standing`
+    holds to the surface, and the trace is what carries the history.
     """
 
+    superseded = {
+        member.equivalence.predecessor
+        for trace in ctx.traces().values()
+        for member in trace.members
+        if member.equivalence is not None
+    }
     on_surface = {line.label for _, line in ctx.all_surface_lines() if line.label}
     findings: list[Finding] = []
     for record in ctx.records:
         label = record.line.label
-        if not label or label in on_surface:
+        if not label or label in on_surface or record.id in superseded:
             continue
         home = scope_home(record.scope, ctx.root)
         if home is not None and not ctx.homes.carries_notes(home):

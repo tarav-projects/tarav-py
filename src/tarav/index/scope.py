@@ -114,7 +114,9 @@ def annotation_scope(file: str, region: str | None = None) -> LineScope:
     return parse_scope(f"@{file}" + (f"/{region}" if region else ""))
 
 
-def resolve_scope_surface(scope: LineScope, root: Path) -> Path | None:
+def resolve_scope_surface(
+    scope: LineScope, root: Path, *, contains: str | None = None
+) -> Path | None:
     """The surface file a scope lives on, or ``None`` when it cannot be located.
 
     A block resolves through the depot's home layout; an annotation resolves directly to its
@@ -123,6 +125,11 @@ def resolve_scope_surface(scope: LineScope, root: Path) -> Path | None:
     A `Block.Path` names a depot and a chapter, never a home — homes are a geography of the
     same depot, and no home is the SSOT. So every home is searched, and a chapter that exists
     in one of them resolves.
+
+    ``contains`` disambiguates when several files answer to the same chapter — `100-design.md`
+    and `900-design.md` both are the ``design`` chapter. Pass the label of a line known to be
+    on the surface and the file holding it wins; without it the first match is returned, which
+    is right only when there is one.
     """
 
     if scope.kind is ScopeKind.ANNOTATION:
@@ -133,7 +140,16 @@ def resolve_scope_surface(scope: LineScope, root: Path) -> Path | None:
 
     homes = root / "skills" / scope.depot / "homes"
     matches = sorted(homes.glob(f"*/chapters/*-{scope.chapter}.md"))
-    return matches[0] if matches else None
+    if not matches:
+        return None
+    if contains:
+        for candidate in matches:
+            try:
+                if contains in candidate.read_text("utf-8"):
+                    return candidate
+            except OSError:
+                continue
+    return matches[0]
 
 
 __all__ = [
