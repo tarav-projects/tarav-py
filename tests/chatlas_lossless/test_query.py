@@ -111,7 +111,7 @@ def test_session_query_cli_exposes_metadata_selectors(
     assert (
         main(
             [
-                "chatlas2",
+                "chatlas",
                 "sessions",
                 "query",
                 "--provider",
@@ -386,7 +386,7 @@ def test_chat_query_cli_exposes_single_session_message_query(
     assert (
         main(
             [
-                "chatlas2",
+                "chatlas",
                 "chat",
                 "query",
                 "--uri",

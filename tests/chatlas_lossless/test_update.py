@@ -181,7 +181,7 @@ def test_cli_update_precedes_leaf_command_and_preserves_json_stdout(
     assert (
         main(
             [
-                "chatlas2",
+                "chatlas",
                 "--update",
                 "sessions",
                 "query",
@@ -221,7 +221,7 @@ def test_cli_update_failure_prevents_leaf_command(
     monkeypatch.setattr(commands, "update_chatlas2", fail_update)
     monkeypatch.setattr(commands, "query_sessions", query)
 
-    assert main(["chatlas2", "--update", "sessions", "query"]) == 1
+    assert main(["chatlas", "--update", "sessions", "query"]) == 1
 
     captured = capsys.readouterr()
     assert queried is False
@@ -248,7 +248,7 @@ def test_cli_update_ingests_fresh_session_before_chat_query(
         chatlas={"sources": [{"provider": "codex", "home": str(codex_home)}]}
     )
     query = [
-        "chatlas2",
+        "chatlas",
         "chat",
         "query",
         "--provider",
@@ -262,7 +262,7 @@ def test_cli_update_ingests_fresh_session_before_chat_query(
     stale = json.loads(capsys.readouterr().out)
     assert stale["returned_message_count"] == 0
 
-    assert main(["chatlas2", "--update", *query[1:]]) == 0
+    assert main(["chatlas", "--update", *query[1:]]) == 0
     fresh = json.loads(capsys.readouterr().out)
     assert fresh["returned_message_count"] == 1
     assert fresh["messages"][0]["session"]["session_id"] == session_id

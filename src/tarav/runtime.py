@@ -43,7 +43,6 @@ class TaravRuntime:
         from tarav.bloberia.commands import register_bloberia_commands
         from tarav.canvas import register_canvas_commands
         from tarav.chatlas import register_chatlas_commands
-        from tarav.chatlas.lossless import register_chatlas2_commands
         from tarav.chatlas.anchory import (
             resolve_event_support_set_record,
             validate_chatlas_anchory_amendment,
@@ -103,7 +102,6 @@ class TaravRuntime:
         register_system_commands(subparsers)
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
-        register_chatlas2_commands(subparsers)
         register_surface_commands(subparsers)
         _register_future_commands(subparsers)
         _register_stdlib_commands(

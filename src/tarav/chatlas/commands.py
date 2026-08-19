@@ -6,7 +6,7 @@ from pathlib import Path
 
 from tarav.agent.providers import canonical_provider_families
 from tarav.chatlas.anchory_batch import ANCHOR_BATCH_SCHEMA
-from tarav.chatlas.chat_index_plan import MODES
+from tarav.chatlas.lossless.commands import add_lossless_commands
 from tarav.chatlas.gc import DEFAULT_OLDER_THAN
 from tarav.chatlas.output import add_chatlas_output_arguments_to_leaves
 from tarav.chatlas.touch_heuristics import (
@@ -66,9 +66,6 @@ from ._command_support import (
     _cmd_chatlas_chat_index_source,
     _cmd_chatlas_chat_index_tail,
     _cmd_chatlas_chat_index_audit,
-    _cmd_chatlas_chat_index_scaffold,
-    _cmd_chatlas_chat_index_validate,
-    _cmd_chatlas_chat_index_apply,
     _cmd_chatlas_project_index_audit,
     _cmd_chatlas_project_index_reconcile,
     _cmd_chatlas_products_get,
@@ -720,8 +717,8 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     raw_export_parser.set_defaults(handler=_cmd_chatlas_raw_export)
 
     anchory_parser = chatlas_subparsers.add_parser(
-        "anchory",
-        help="Chatlas application of the Anchory subsystem.",
+        "session-anchory",
+        help="Anchory over the Chatlas.Session.Model: turn-addressed dossiers.",
     )
     anchory_subparsers = anchory_parser.add_subparsers(dest="anchory_command")
     anchory_preview_parser = anchory_subparsers.add_parser(
@@ -936,8 +933,8 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     anchory_stats_parser.set_defaults(handler=_cmd_chatlas_anchory_stats)
 
     views_parser = chatlas_subparsers.add_parser(
-        "views",
-        help="Apply named disposable projections to one Chatlas session model.",
+        "session-views",
+        help="Named disposable projections over the Chatlas.Session.Model.",
     )
     views_subparsers = views_parser.add_subparsers(
         dest="chatlas_views_command",
@@ -1199,52 +1196,10 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     chat_index_audit_parser.set_defaults(handler=_cmd_chatlas_chat_index_audit)
 
-    chat_index_scaffold_parser = chat_index_subparsers.add_parser(
-        "scaffold",
-        help="Write transient Capture.Plan working input for one session.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_scaffold_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_scaffold_parser.add_argument(
-        "--stage",
-        required=True,
-        help="Empty directory receiving plan.json and evidence.json.",
-    )
-    chat_index_scaffold_parser.add_argument(
-        "--mode",
-        choices=MODES,
-        default=None,
-        help=(
-            "Operation mode; detected from the existing surface unless legacy "
-            "replacement is being requested explicitly."
-        ),
-    )
-    chat_index_scaffold_parser.set_defaults(handler=_cmd_chatlas_chat_index_scaffold)
-
-    chat_index_validate_parser = chat_index_subparsers.add_parser(
-        "validate",
-        help="Prove a Capture.Plan renders, without writing anchors or surfaces.",
-    )
-    chat_index_validate_parser.add_argument(
-        "--plan",
-        required=True,
-        help="Path to the authored plan.json.",
-    )
-    chat_index_validate_parser.set_defaults(handler=_cmd_chatlas_chat_index_validate)
-
-    chat_index_apply_parser = chat_index_subparsers.add_parser(
-        "apply",
-        help="Ground, render, audit, and install one Capture.Plan.",
-    )
-    chat_index_apply_parser.add_argument(
-        "--plan",
-        required=True,
-        help="Path to the authored plan.json.",
-    )
-    chat_index_apply_parser.set_defaults(handler=_cmd_chatlas_chat_index_apply)
+    # scaffold / validate / apply are registered by the lossless layer. The two
+    # capture-plan pipelines did the same three things against two normalizations;
+    # the loss-preserving one is the design that stays. The read verbs above have
+    # no counterpart there and are untouched.
 
     products_parser = chatlas_subparsers.add_parser(
         "products",
@@ -1403,6 +1358,15 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_chatlas_query_selector_arguments(run_produce_parser)
     run_produce_parser.set_defaults(handler=_cmd_chatlas_products_run_produce)
 
+    add_lossless_commands(
+        chatlas_subparsers,
+        chatlas_parser,
+        existing={"turns": turns_subparsers, "chat-index": chat_index_subparsers},
+    )
+
+    # Last, over the whole tree: one output contract for every leaf, whichever
+    # layer registered it. Two --json flags meaning slightly different things was
+    # the package split showing through the CLI.
     add_chatlas_output_arguments_to_leaves(chatlas_parser)
 
 

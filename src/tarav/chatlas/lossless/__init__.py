@@ -1,7 +1,7 @@
 # $kw: ^chatlas2-package --from Normalization.Pipeline::Chatlas.Session.Model --from Dependency.Profile.Split --from Event.Ref --note [CT] Chatlas2 is an isolated experimental namespace that may reuse current Chatlas without creating a reverse dependency --supp ^c20260814-12u ^c20260814-13u ^c20260814-14u ^c20260815-39u ^d20260816-22u
 from __future__ import annotations
 
-from .commands import register_chatlas2_commands
+from .commands import add_lossless_commands
 from .anchory import (
     CHATLAS2_ANCHOR_BATCH_SCHEMA,
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
@@ -114,7 +114,7 @@ __all__ = [
     "project_view",
     "query_chat_messages",
     "query_sessions",
-    "register_chatlas2_commands",
+    "add_lossless_commands",
     "scaffold_chat_index_capture_plan",
     "resolve_chat_message_ref",
     "resolve_chat_turn_ref",

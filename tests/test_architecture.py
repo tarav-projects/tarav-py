@@ -153,7 +153,10 @@ def test_the_lossless_layer_sits_on_chatlas_and_not_the_other_way() -> None:
                 m.startswith("tarav.chatlas.") and not m.startswith("tarav.chatlas.lossless")
                 for m in modules
             )
-        else:
+        elif path.name != "commands.py":
+            # commands.py is the composition point: it builds the one `tarav chatlas`
+            # group and hands its subparsers to the layer. Everything else in
+            # chatlas/ must stay below the layer, not reach up into it.
             assert not any(m.startswith("tarav.chatlas.lossless") for m in modules), path
             assert "from .lossless" not in source, path
     assert reaches_down, "the lossless layer should be using what chatlas owns"

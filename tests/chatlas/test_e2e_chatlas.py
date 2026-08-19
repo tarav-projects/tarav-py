@@ -423,7 +423,7 @@ def test_chatlas_index_update_query_export_and_raw_paths(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
@@ -922,7 +922,7 @@ def test_codex_custom_tool_raw_input_survives_normalization(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
@@ -1027,13 +1027,13 @@ def test_chatlas_selector_errors_are_reported(
     assert exc_info.value.code == 2
     assert "invalid choice: 'export'" in capsys.readouterr().err
 
-    assert main(["chatlas", "views", "get", "--json"]) == 1
+    assert main(["chatlas", "session-views", "get", "--json"]) == 1
     assert (
         "chatlas views get requires at least one index query selector option"
         in capsys.readouterr().err
     )
 
-    assert main(["chatlas", "views", "get", "--view", "zip-transcript", "--json"]) == 1
+    assert main(["chatlas", "session-views", "get", "--view", "zip-transcript", "--json"]) == 1
     assert (
         "requires at least one index query selector option" in capsys.readouterr().err
     )

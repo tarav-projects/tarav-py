@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from tarav._core.errors import CliError
+from tarav.chatlas.output import CHATLAS_OUTPUT_JSON
 from tarav.chatlas.index_query import select_one_chatlas_index_row
 from tarav.chatlas.providers import supported_chatlas_provider_families
 from tarav.chatlas.time_interface import normalize_cli_timestamp
@@ -51,10 +52,15 @@ from .update import chatlas2_update_scope, update_chatlas2
 from .views import list_views, project_view, view_names
 
 
-def _cmd_chatlas2(args: argparse.Namespace) -> int:
+def _cmd_lossless(args: argparse.Namespace) -> int:
     operation = getattr(args, "chatlas2_operation", None)
     if operation is None:
         raise CliError("Chatlas2 command is missing its operation")
+    # One output contract for the whole group. These bodies were written against a
+    # boolean `--json`; the shared contract spells the same choice as a mode. The
+    # translation lives here, at the one place the layer is entered, rather than in
+    # twenty-two command bodies.
+    args.json = getattr(args, "output", None) == CHATLAS_OUTPUT_JSON
     if args.update:
         scope = chatlas2_update_scope(args)
         try:
@@ -334,7 +340,6 @@ def _add_cache_selector(parser: argparse.ArgumentParser) -> None:
     selector.add_argument("--session-id")
     selector.add_argument("--identity-hash")
     parser.add_argument("--chatlas-root")
-    parser.add_argument("--json", action="store_true")
 
 
 def _anchory_root(args: argparse.Namespace) -> Path | None:
@@ -505,12 +510,26 @@ def _cmd_corpus_check(args: argparse.Namespace) -> int:
     return 0 if payload["status"] == "ok" else 1
 
 
-def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "chatlas2",
-        help="Experimental loss-preserving chat normalization.",
-    )
-    parser.add_argument(
+def add_lossless_commands(
+    commands: argparse._SubParsersAction,
+    group: argparse.ArgumentParser,
+    *,
+    existing: dict[str, argparse._SubParsersAction] | None = None,
+) -> None:
+    """Add the loss-preserving commands to the one `tarav chatlas` group.
+
+    ``commands`` is that group's existing subparsers action, so these land beside
+    the archive and index commands rather than in a namespace of their own. There
+    is one chat subsystem; the split was a package boundary, not a user-facing one.
+
+    ``--update`` goes on the group because it is a precondition on reading, not an
+    operation: refresh the archive and the Session.Index, then run whatever was
+    asked for.
+    """
+
+    existing = existing or {}
+
+    group.add_argument(
         "--update",
         action="store_true",
         help=(
@@ -518,8 +537,6 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
             "before running the selected command."
         ),
     )
-    parser.set_defaults(handler=_cmd_chatlas2)
-    commands = parser.add_subparsers(dest="chatlas2_command", required=True)
     normalize = commands.add_parser(
         "normalize",
         help="Normalize one archived supported session into the Chatlas2 model.",
@@ -545,12 +562,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Force normalization and replace the compact cache.",
     )
     normalize.add_argument("--chatlas-root")
-    normalize.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the complete Chatlas2 Normal Model as JSON.",
-    )
-    normalize.set_defaults(chatlas2_operation=_cmd_normalize)
+    normalize.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_normalize)
 
     sessions = commands.add_parser(
         "sessions",
@@ -579,8 +591,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     session_query.add_argument("--limit", type=_non_negative_int, default=50)
     session_query.add_argument("--chatlas-root")
-    session_query.add_argument("--json", action="store_true")
-    session_query.set_defaults(chatlas2_operation=_cmd_sessions_query)
+    session_query.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_sessions_query)
 
     chat = commands.add_parser(
         "chat",
@@ -624,8 +635,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     chat_query.add_argument("--limit", type=_non_negative_int, default=50)
     chat_query.add_argument("--chatlas-root")
-    chat_query.add_argument("--json", action="store_true")
-    chat_query.set_defaults(chatlas2_operation=_cmd_chat_query)
+    chat_query.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_chat_query)
 
     cache = commands.add_parser(
         "cache",
@@ -636,12 +646,12 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         "status", help="Inspect cache freshness without normalizing."
     )
     _add_cache_selector(cache_status)
-    cache_status.set_defaults(chatlas2_operation=_cmd_cache_status)
+    cache_status.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_cache_status)
     cache_build = cache_commands.add_parser(
         "build", help="Explicitly normalize and replace one session cache."
     )
     _add_cache_selector(cache_build)
-    cache_build.set_defaults(chatlas2_operation=_cmd_cache_build)
+    cache_build.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_cache_build)
 
     messages = commands.add_parser(
         "messages",
@@ -654,27 +664,35 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         "list", help="List projected messages in chronological order."
     )
     _add_message_selector(message_list)
-    message_list.set_defaults(chatlas2_operation=_cmd_messages_list)
+    message_list.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_messages_list)
     message_find = message_commands.add_parser(
         "find", help="Find projected messages by provider-neutral primary text."
     )
     _add_message_selector(message_find)
-    message_find.add_argument("--text", required=True, help="Text to locate.")
+    # `--contains`, not `--text`: the shared output contract owns `--text` as a
+    # rendering mode, and a data argument may not shadow it. `chat query` already
+    # spells the same idea this way.
+    message_find.add_argument(
+        "--contains", required=True, dest="text", help="Text to locate."
+    )
     message_find.add_argument(
         "--exact", action="store_true", help="Require complete text equality."
     )
-    message_find.set_defaults(chatlas2_operation=_cmd_messages_find)
+    message_find.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_messages_find)
 
-    turns = commands.add_parser(
+    # `turns` and `chat-index` already exist on the group with disjoint verbs --
+    # Event.Pattern queries there, compact reads here; inspection there, writes
+    # here. Two groups spelled the same would have been the split all over again,
+    # so these join the existing ones instead of shadowing them.
+    turn_commands = existing.get("turns") or commands.add_parser(
         "turns",
         help="Inspect compact Chat.Turn groupings and hydrate them on demand.",
-    )
-    turn_commands = turns.add_subparsers(dest="chatlas2_turns_command", required=True)
+    ).add_subparsers(dest="chatlas2_turns_command", required=True)
     turn_list = turn_commands.add_parser(
         "list", help="List compact turns in chronological order."
     )
     _add_message_selector(turn_list)
-    turn_list.set_defaults(chatlas2_operation=_cmd_turns_list)
+    turn_list.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_turns_list)
     turn_get = turn_commands.add_parser(
         "get", help="Get one turn by turn address or containing message address."
     )
@@ -686,16 +704,12 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     turn_target_selector.add_argument("--message-address")
     turn_get.add_argument("--hydrate", action="store_true")
     turn_get.add_argument("--chatlas-root")
-    turn_get.add_argument("--json", action="store_true")
-    turn_get.set_defaults(chatlas2_operation=_cmd_turns_get)
+    turn_get.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_turns_get)
 
-    chat_index = commands.add_parser(
+    chat_index_commands = existing.get("chat-index") or commands.add_parser(
         "chat-index",
         help="Backpropagate landed Hugentic lines into Chat.Index HEAD and tape.",
-    )
-    chat_index_commands = chat_index.add_subparsers(
-        dest="chatlas2_chat_index_command", required=True
-    )
+    ).add_subparsers(dest="chatlas2_chat_index_command", required=True)
     chat_index_scaffold = chat_index_commands.add_parser(
         "scaffold", help="Create one real-time Capture.Plan envelope."
     )
@@ -706,8 +720,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     chat_index_selector.add_argument("--identity-hash")
     chat_index_scaffold.add_argument("--stage", required=True)
     chat_index_scaffold.add_argument("--chatlas-root")
-    chat_index_scaffold.add_argument("--json", action="store_true")
-    chat_index_scaffold.set_defaults(chatlas2_operation=_cmd_chat_index_scaffold)
+    chat_index_scaffold.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_chat_index_scaffold)
     for name, handler, help_text in (
         (
             "validate",
@@ -723,8 +736,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         command = chat_index_commands.add_parser(name, help=help_text)
         command.add_argument("--plan", required=True)
         command.add_argument("--chatlas-root")
-        command.add_argument("--json", action="store_true")
-        command.set_defaults(chatlas2_operation=handler)
+        command.set_defaults(handler=_cmd_lossless, chatlas2_operation=handler)
 
     views = commands.add_parser(
         "views",
@@ -734,8 +746,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     view_list = view_commands.add_parser(
         "list", help="List the implemented Chatlas2 views."
     )
-    view_list.add_argument("--json", action="store_true")
-    view_list.set_defaults(chatlas2_operation=_cmd_views_list)
+    view_list.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_views_list)
     view_get = view_commands.add_parser(
         "get", help="Read one view for one exact session."
     )
@@ -745,8 +756,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     view_get.add_argument("--view", choices=view_names(), default="full")
     view_get.add_argument("--limit", type=_non_negative_int)
     view_get.add_argument("--chatlas-root")
-    view_get.add_argument("--json", action="store_true")
-    view_get.set_defaults(chatlas2_operation=_cmd_views_get)
+    view_get.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_views_get)
 
     anchory = commands.add_parser(
         "anchory",
@@ -779,7 +789,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         command.add_argument("--issue", dest="issues", action="append", default=[])
         command.add_argument("--radius", type=int, default=4)
         command.add_argument("--chatlas-root")
-        command.set_defaults(chatlas2_operation=handler)
+        command.set_defaults(handler=_cmd_lossless, chatlas2_operation=handler)
     message_support = anchory_commands.add_parser(
         "support", help="Mint a generic user-message support anchor."
     )
@@ -794,14 +804,14 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         command.add_argument("--member", dest="members", action="append", required=True)
         command.add_argument("--radius", type=int, default=4)
         command.add_argument("--chatlas-root")
-        command.set_defaults(chatlas2_operation=handler)
+        command.set_defaults(handler=_cmd_lossless, chatlas2_operation=handler)
     anchory_resolve = anchory_commands.add_parser(
         "resolve", help="Resolve a Chatlas2 line dossier."
     )
     anchory_resolve.add_argument("anchor")
     anchory_resolve.add_argument("--radius", type=int, default=4)
     anchory_resolve.add_argument("--chatlas-root")
-    anchory_resolve.set_defaults(chatlas2_operation=_cmd_anchory_resolve)
+    anchory_resolve.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_anchory_resolve)
     anchory_batch = anchory_commands.add_parser(
         "batch", help="Preview or register a Chatlas2 line-dossier batch."
     )
@@ -819,7 +829,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
             help=f"Path to a {CHATLAS2_ANCHOR_BATCH_SCHEMA} JSON document.",
         )
         command.add_argument("--chatlas-root")
-        command.set_defaults(chatlas2_operation=handler)
+        command.set_defaults(handler=_cmd_lossless, chatlas2_operation=handler)
 
     corpus = commands.add_parser(
         "corpus",
@@ -859,8 +869,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         action="append",
         help="Observed feature; repeat for multiple features.",
     )
-    prepare.add_argument("--json", action="store_true", help="Print JSON output.")
-    prepare.set_defaults(chatlas2_operation=_cmd_corpus_prepare)
+    prepare.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_corpus_prepare)
 
     register = ingest_commands.add_parser(
         "register",
@@ -868,29 +877,25 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     register.add_argument("--corpus", required=True, help="Target corpus directory.")
     register.add_argument("--candidate", required=True, help="Prepared candidate JSON.")
-    register.add_argument("--json", action="store_true", help="Print JSON output.")
-    register.set_defaults(chatlas2_operation=_cmd_corpus_register)
+    register.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_corpus_register)
 
     list_command = corpus_commands.add_parser("list", help="List registered captures.")
     list_command.add_argument("--corpus", required=True, help="Corpus directory.")
-    list_command.add_argument("--json", action="store_true", help="Print JSON output.")
-    list_command.set_defaults(chatlas2_operation=_cmd_corpus_list)
+    list_command.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_corpus_list)
 
     verify = corpus_commands.add_parser(
         "verify",
         help="Verify registry and artifact integrity.",
     )
     verify.add_argument("--corpus", required=True, help="Corpus directory.")
-    verify.add_argument("--json", action="store_true", help="Print JSON output.")
-    verify.set_defaults(chatlas2_operation=_cmd_corpus_verify)
+    verify.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_corpus_verify)
 
     check = corpus_commands.add_parser(
         "check",
         help="Normalize every supported capture and check its script contract.",
     )
     check.add_argument("--corpus", required=True, help="Corpus directory.")
-    check.add_argument("--json", action="store_true", help="Print JSON output.")
-    check.set_defaults(chatlas2_operation=_cmd_corpus_check)
+    check.set_defaults(handler=_cmd_lossless, chatlas2_operation=_cmd_corpus_check)
 
 
 def _add_message_selector(parser: argparse.ArgumentParser) -> None:
@@ -900,7 +905,6 @@ def _add_message_selector(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--side", choices=("user", "agent"))
     parser.add_argument("--chatlas-root")
     parser.add_argument("--limit", type=_non_negative_int)
-    parser.add_argument("--json", action="store_true")
 
 
-__all__ = ["register_chatlas2_commands"]
+__all__ = ["add_lossless_commands"]

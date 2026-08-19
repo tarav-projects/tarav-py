@@ -123,7 +123,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     assert main(["chatlas", "index", "update", "--provider", "codex", "--json"]) == 0
     capsys.readouterr()
 
-    assert main(["chatlas2", "normalize", "--session-id", session_id, "--json"]) == 0
+    assert main(["chatlas", "normalize", "--session-id", session_id, "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["class"] == "tarav.chatlas2.normal_model"
@@ -138,13 +138,13 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     assert payload["metadata"]["commit"]
 
     cached = _run_json_command(
-        ["chatlas2", "cache", "status", "--session-id", session_id, "--json"]
+        ["chatlas", "cache", "status", "--session-id", session_id, "--json"]
     )
     assert cached["standing"] == "FRESH"
 
     refreshed = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "normalize",
             "--session-id",
             session_id,
@@ -162,14 +162,14 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
         refuse_cached_normalization,
     )
     reused = _run_json_command(
-        ["chatlas2", "normalize", "--session-id", session_id, "--json"]
+        ["chatlas", "normalize", "--session-id", session_id, "--json"]
     )
     assert reused == payload
 
     assert (
         main(
             [
-                "chatlas2",
+                "chatlas",
                 "normalize",
                 "--session-id",
                 session_id,
@@ -188,14 +188,14 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     assert (
         main(
             [
-                "chatlas2",
+                "chatlas",
                 "messages",
                 "find",
                 "--session-id",
                 session_id,
                 "--side",
                 "user",
-                "--text",
+                "--contains",
                 "second question",
                 "--exact",
                 "--json",
@@ -211,7 +211,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     assert (
         main(
             [
-                "chatlas2",
+                "chatlas",
                 "anchory",
                 "preview",
                 "--member",
@@ -225,7 +225,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     assert json.loads(capsys.readouterr().out)["action"] == "mint"
 
     register_args = [
-        "chatlas2",
+        "chatlas",
         "anchory",
         "register",
         "--member",
@@ -241,7 +241,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     assert repeated["action"] == "reused"
     assert repeated["anchor"] == first["anchor"]
 
-    assert main(["chatlas2", "anchory", "resolve", first["anchor"]]) == 0
+    assert main(["chatlas", "anchory", "resolve", first["anchor"]]) == 0
     resolved = json.loads(capsys.readouterr().out)
     assert resolved["members"][0]["standing"] == "MATCHED"
     assert resolved["members"][0]["text"] == "second question"
@@ -267,7 +267,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
         ),
         encoding="utf-8",
     )
-    batch_prefix = ["chatlas2", "anchory", "batch"]
+    batch_prefix = ["chatlas", "anchory", "batch"]
     assert main([*batch_prefix, "preview", "--input", str(batch)]) == 0
     assert json.loads(capsys.readouterr().out)["mint_count"] == 2
     assert main([*batch_prefix, "register", "--input", str(batch)]) == 0
@@ -281,7 +281,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     stage = tmp_path / "chat-index-stage"
     scaffolded = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "chat-index",
             "scaffold",
             "--session-id",
@@ -306,7 +306,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
 
     validated = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "chat-index",
             "validate",
             "--plan",
@@ -317,7 +317,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     assert validated["horizon"]["turn_ref"]["turn_address"]
     applied = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "chat-index",
             "apply",
             "--plan",
@@ -332,7 +332,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     )
     repeated = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "chat-index",
             "apply",
             "--plan",
@@ -368,13 +368,13 @@ def test_chatlas2_cache_cli_and_bounded_message_reads_reuse_materialization(
     _run_json_command(["chatlas", "index", "update", "--provider", "codex", "--json"])
 
     missing = _run_json_command(
-        ["chatlas2", "cache", "status", "--session-id", session_id, "--json"]
+        ["chatlas", "cache", "status", "--session-id", session_id, "--json"]
     )
     assert missing["standing"] == "MISSING"
 
     bounded = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "messages",
             "list",
             "--session-id",
@@ -390,12 +390,12 @@ def test_chatlas2_cache_cli_and_bounded_message_reads_reuse_materialization(
     assert bounded["messages"][0]["message"]["text"] == "first question"
 
     fresh = _run_json_command(
-        ["chatlas2", "cache", "status", "--session-id", session_id, "--json"]
+        ["chatlas", "cache", "status", "--session-id", session_id, "--json"]
     )
     assert fresh["standing"] == "FRESH"
     assert Path(fresh["path"]).is_dir()
     rebuilt = _run_json_command(
-        ["chatlas2", "cache", "build", "--session-id", session_id, "--json"]
+        ["chatlas", "cache", "build", "--session-id", session_id, "--json"]
     )
     assert rebuilt["standing"] == "FRESH"
 
@@ -408,14 +408,14 @@ def test_chatlas2_cache_cli_and_bounded_message_reads_reuse_materialization(
     )
     found = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "messages",
             "find",
             "--session-id",
             session_id,
             "--side",
             "user",
-            "--text",
+            "--contains",
             "question",
             "--limit",
             "1",
@@ -449,7 +449,7 @@ def test_chatlas2_views_list_and_get_initial_cache_backed_projections(
     )
     _run_json_command(["chatlas", "index", "update", "--provider", "codex", "--json"])
 
-    listed = _run_json_command(["chatlas2", "views", "list", "--json"])
+    listed = _run_json_command(["chatlas", "views", "list", "--json"])
     assert [(view["name"], view["collection"]) for view in listed["views"]] == [
         ("full", "normal_model"),
         ("transcript", "chat_messages"),
@@ -458,7 +458,7 @@ def test_chatlas2_views_list_and_get_initial_cache_backed_projections(
     ]
 
     full = _run_json_command(
-        ["chatlas2", "views", "get", "--session-id", session_id, "--json"]
+        ["chatlas", "views", "get", "--session-id", session_id, "--json"]
     )
     assert full["class"] == "tarav.chatlas2.normal_model"
     assert full["session"]["session_id"] == session_id
@@ -466,7 +466,7 @@ def test_chatlas2_views_list_and_get_initial_cache_backed_projections(
 
     transcript = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "views",
             "get",
             "--session-id",
@@ -489,7 +489,7 @@ def test_chatlas2_views_list_and_get_initial_cache_backed_projections(
 
     user = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "views",
             "get",
             "--session-id",
@@ -508,7 +508,7 @@ def test_chatlas2_views_list_and_get_initial_cache_backed_projections(
 
     events = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "views",
             "get",
             "--session-id",
@@ -528,7 +528,7 @@ def test_chatlas2_views_list_and_get_initial_cache_backed_projections(
         assert (
             main(
                 [
-                    "chatlas2",
+                    "chatlas",
                     "views",
                     "get",
                     "--session-id",
@@ -565,7 +565,7 @@ def test_chatlas2_turns_list_lookup_and_hydrate(
 
     listed = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "turns",
             "list",
             "--session-id",
@@ -583,7 +583,7 @@ def test_chatlas2_turns_list_lookup_and_hydrate(
 
     compact = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "turns",
             "get",
             "--session-id",
@@ -597,7 +597,7 @@ def test_chatlas2_turns_list_lookup_and_hydrate(
 
     hydrated = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "turns",
             "get",
             "--session-id",
@@ -636,7 +636,7 @@ def test_direct_raw_normalization_does_not_create_an_ordinary_cache(
 
     normalized = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "normalize",
             "--session-id",
             session_id,
@@ -646,7 +646,7 @@ def test_direct_raw_normalization_does_not_create_an_ordinary_cache(
     )
     assert normalized["raw"]
     status = _run_json_command(
-        ["chatlas2", "cache", "status", "--session-id", session_id, "--json"]
+        ["chatlas", "cache", "status", "--session-id", session_id, "--json"]
     )
     assert status["standing"] == "MISSING"
 
@@ -675,14 +675,14 @@ def test_chatlas2_e2e_prints_one_index_line_grounded_on_a_user_message(
 
     found = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "messages",
             "find",
             "--session-id",
             session_id,
             "--side",
             "user",
-            "--text",
+            "--contains",
             "Ground one design statement on this user message.",
             "--exact",
             "--json",
@@ -693,7 +693,7 @@ def test_chatlas2_e2e_prints_one_index_line_grounded_on_a_user_message(
     line = "- [DF] One design statement is grounded on user evidence."
     registered = _run_json_command(
         [
-            "chatlas2",
+            "chatlas",
             "anchory",
             "register",
             "--member",
@@ -707,7 +707,7 @@ def test_chatlas2_e2e_prints_one_index_line_grounded_on_a_user_message(
     assert anchor == "d20260815-0u"
 
     resolved = _run_json_command(
-        ["chatlas2", "anchory", "resolve", anchor, "--radius", "0"]
+        ["chatlas", "anchory", "resolve", anchor, "--radius", "0"]
     )
     assert resolved["members"][0]["standing"] == "MATCHED"
     assert resolved["members"][0]["side"] == "user"
@@ -749,7 +749,7 @@ def test_chatlas2_corpus_cli_prepares_registers_lists_and_verifies(
     assert (
         main(
             [
-                "chatlas2",
+                "chatlas",
                 "corpus",
                 "ingest",
                 "prepare",
@@ -779,7 +779,7 @@ def test_chatlas2_corpus_cli_prepares_registers_lists_and_verifies(
     assert (
         main(
             [
-                "chatlas2",
+                "chatlas",
                 "corpus",
                 "ingest",
                 "register",
@@ -793,10 +793,10 @@ def test_chatlas2_corpus_cli_prepares_registers_lists_and_verifies(
         == 0
     )
     assert json.loads(capsys.readouterr().out)["registered"] is True
-    assert main(["chatlas2", "corpus", "list", "--corpus", str(corpus), "--json"]) == 0
+    assert main(["chatlas", "corpus", "list", "--corpus", str(corpus), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["capture_count"] == 1
     assert (
-        main(["chatlas2", "corpus", "verify", "--corpus", str(corpus), "--json"]) == 0
+        main(["chatlas", "corpus", "verify", "--corpus", str(corpus), "--json"]) == 0
     )
     assert json.loads(capsys.readouterr().out) == {
         "artifact_count": 1,
@@ -804,7 +804,7 @@ def test_chatlas2_corpus_cli_prepares_registers_lists_and_verifies(
         "status": "ok",
     }
     _write_script_spec(corpus / "specifications" / "sample.json")
-    assert main(["chatlas2", "corpus", "check", "--corpus", str(corpus), "--json"]) == 0
+    assert main(["chatlas", "corpus", "check", "--corpus", str(corpus), "--json"]) == 0
     checked = json.loads(capsys.readouterr().out)
     assert checked["status"] == "ok"
     assert checked["passed_count"] == 1

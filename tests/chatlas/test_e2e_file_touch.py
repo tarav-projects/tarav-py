@@ -152,7 +152,7 @@ def test_chatlas_views_inline_file_write_selects_touching_events(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             sessions["writer"],
@@ -180,7 +180,7 @@ def test_chatlas_views_inline_file_touch_no_match_is_empty(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             sessions["mentioner"],
@@ -285,7 +285,7 @@ def test_chatlas_views_inline_tool_contains_selects_invocation_events(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             sessions["writer"],

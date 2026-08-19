@@ -48,7 +48,7 @@ def _fixture_event_sequence(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             session_id,
@@ -71,7 +71,7 @@ def _fixture_turn_ref(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             session_id,
@@ -126,7 +126,7 @@ def test_chatlas_anchory_resolve_returns_member_neighborhood(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "resolve",
                 anchor,
                 "--radius",
@@ -151,7 +151,7 @@ def test_chatlas_anchory_resolve_unresolvable_errors(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _selection_fixture(tmp_path, monkeypatch, capsys)
-    assert main(["chatlas", "anchory", "resolve", "c20990101-0u", "--json"]) == 1
+    assert main(["chatlas", "session-anchory", "resolve", "c20990101-0u", "--json"]) == 1
     err = capsys.readouterr().err
     assert "c20990101-0u" in err
 
@@ -203,7 +203,7 @@ def test_chatlas_anchory_stats_pretty_and_json_output(
         namespace=CHATLAS_NAMESPACE,
     )
 
-    assert main(["chatlas", "anchory", "stats"]) == 0
+    assert main(["chatlas", "session-anchory", "stats"]) == 0
     pretty = capsys.readouterr().out
     assert "Chatlas Anchory Support Sets" in pretty
     assert "Anchors: 2" in pretty
@@ -211,7 +211,7 @@ def test_chatlas_anchory_stats_pretty_and_json_output(
     assert "1 member" in pretty
     assert "2 members" in pretty
 
-    assert main(["chatlas", "anchory", "stats", "--json"]) == 0
+    assert main(["chatlas", "session-anchory", "stats", "--json"]) == 0
     assert captured_json(capsys) == {
         "anchor_count": 2,
         "support_turn_count": 3,
@@ -282,7 +282,7 @@ def test_chatlas_anchory_sessions_extracts_unique_sessions_from_sources(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "sessions",
                 "--source",
                 str(first),
@@ -349,7 +349,7 @@ def test_chatlas_anchory_preview_is_compact_and_non_mutating(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "preview",
                 "--member",
                 f"{identity_hash[:12]}:{turn_id}",
@@ -393,7 +393,7 @@ def test_chatlas_anchory_register_defaults_to_compact_output(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "register",
                 "--member",
                 f"{identity_hash}:{turn_id}",
@@ -426,7 +426,7 @@ def test_chatlas_anchory_register_binds_index_line_content(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "register",
                 "--member",
                 f"{identity_hash}:{turn_id}",
@@ -465,7 +465,7 @@ def test_chatlas_anchory_reattach_preserves_anchor_and_relationships(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "register",
                 "--member",
                 f"{identity_hash}:{turn_id}",
@@ -491,7 +491,7 @@ def test_chatlas_anchory_reattach_preserves_anchor_and_relationships(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "reattach",
                 "--depot",
                 str(index_depot),
@@ -517,7 +517,7 @@ def test_chatlas_anchory_reattach_preserves_anchor_and_relationships(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "reattach",
                 "--depot",
                 str(index_depot),
@@ -551,7 +551,7 @@ def test_chatlas_anchory_reattach_rejects_parser_observed_collision(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "reattach",
                 "--depot",
                 str(tmp_path / "index-depot"),
@@ -581,7 +581,7 @@ def test_chatlas_anchory_preview_context_escalates_to_neighborhood(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "preview",
                 "--member",
                 f"{identity_hash}:{turn_id}",
@@ -614,7 +614,7 @@ def test_chatlas_anchory_preview_reports_equivalent_anchor(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "register",
                 "--member",
                 member_ref,
@@ -631,7 +631,7 @@ def test_chatlas_anchory_preview_reports_equivalent_anchor(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "preview",
                 "--member",
                 member_ref,
@@ -658,7 +658,7 @@ def test_chatlas_anchory_register_preserves_member_order(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "register",
                 "--member",
                 f"{identity_hash}:{beta}",
@@ -691,7 +691,7 @@ def test_chatlas_anchory_register_rejects_non_user_member(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "register",
                 "--member",
                 f"{identity_hash}:session",
@@ -723,7 +723,7 @@ def test_generic_support_equivalence_is_not_exact_line_equivalence(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "register",
                 "--member",
                 member_ref,
@@ -740,7 +740,7 @@ def test_generic_support_equivalence_is_not_exact_line_equivalence(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "preview",
                 "--member",
                 member_ref,
@@ -762,7 +762,7 @@ def test_generic_support_equivalence_is_not_exact_line_equivalence(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "register",
                 "--member",
                 member_ref,
@@ -781,7 +781,7 @@ def test_generic_support_equivalence_is_not_exact_line_equivalence(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "preview",
                 "--member",
                 member_ref,
@@ -804,7 +804,7 @@ def test_generic_support_equivalence_is_not_exact_line_equivalence(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "preview",
                 "--member",
                 member_ref,
@@ -870,7 +870,7 @@ def test_anchory_batch_previews_then_registers_idempotently(
 
     assert (
         main(
-            ["chatlas", "anchory", "batch", "preview", "--input", str(batch), "--json"]
+            ["chatlas", "session-anchory", "batch", "preview", "--input", str(batch), "--json"]
         )
         == 0
     )
@@ -889,7 +889,7 @@ def test_anchory_batch_previews_then_registers_idempotently(
 
     assert (
         main(
-            ["chatlas", "anchory", "batch", "register", "--input", str(batch), "--json"]
+            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
         )
         == 0
     )
@@ -908,7 +908,7 @@ def test_anchory_batch_previews_then_registers_idempotently(
 
     assert (
         main(
-            ["chatlas", "anchory", "batch", "register", "--input", str(batch), "--json"]
+            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
         )
         == 0
     )
@@ -952,7 +952,7 @@ def test_anchory_batch_refuses_before_writing_when_one_item_is_invalid(
 
     assert (
         main(
-            ["chatlas", "anchory", "batch", "register", "--input", str(batch), "--json"]
+            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
         )
         == 1
     )
@@ -992,7 +992,7 @@ def test_anchory_batch_rejects_duplicate_client_ids(
 
     assert (
         main(
-            ["chatlas", "anchory", "batch", "preview", "--input", str(batch), "--json"]
+            ["chatlas", "session-anchory", "batch", "preview", "--input", str(batch), "--json"]
         )
         == 1
     )
@@ -1028,7 +1028,7 @@ def test_anchory_batch_carries_independent_gates_predecessors_and_support_order(
     )
     assert (
         main(
-            ["chatlas", "anchory", "batch", "register", "--input", str(seed), "--json"]
+            ["chatlas", "session-anchory", "batch", "register", "--input", str(seed), "--json"]
         )
         == 0
     )
@@ -1068,7 +1068,7 @@ def test_anchory_batch_carries_independent_gates_predecessors_and_support_order(
     )
     assert (
         main(
-            ["chatlas", "anchory", "batch", "register", "--input", str(batch), "--json"]
+            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
         )
         == 0
     )
@@ -1088,7 +1088,7 @@ def test_anchory_batch_carries_independent_gates_predecessors_and_support_order(
 
     assert (
         main(
-            ["chatlas", "anchory", "batch", "register", "--input", str(batch), "--json"]
+            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
         )
         == 0
     )
@@ -1127,7 +1127,7 @@ def test_anchory_batch_retry_reuses_anchors_minted_by_an_earlier_run(
         main(
             [
                 "chatlas",
-                "anchory",
+                "session-anchory",
                 "batch",
                 "register",
                 "--input",
@@ -1142,7 +1142,7 @@ def test_anchory_batch_retry_reuses_anchors_minted_by_an_earlier_run(
     full = _batch_input(tmp_path / "full.json", identity_hash, alpha, beta)
     assert (
         main(
-            ["chatlas", "anchory", "batch", "register", "--input", str(full), "--json"]
+            ["chatlas", "session-anchory", "batch", "register", "--input", str(full), "--json"]
         )
         == 0
     )

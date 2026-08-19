@@ -44,7 +44,7 @@ def test_chatlas_views_are_named_disposable_projections(
     )
     capsys.readouterr()
 
-    assert main(["chatlas", "views", "list", "--json"]) == 0
+    assert main(["chatlas", "session-views", "list", "--json"]) == 0
     assert {"full", "transcript", "user", "replay", "events", "zip-transcript"} == {
         view["name"] for view in captured_json(capsys)["views"]
     }
@@ -53,7 +53,7 @@ def test_chatlas_views_are_named_disposable_projections(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--view",
                 "zip-transcript",
@@ -108,7 +108,7 @@ def test_chatlas_views_inline_ranges_zip_transcript_turns(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
@@ -167,7 +167,7 @@ def test_chatlas_views_inline_events_clears_non_event_payloads(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
@@ -226,7 +226,7 @@ def test_chatlas_views_inline_range_errors_are_reported(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
@@ -245,7 +245,7 @@ def test_chatlas_views_inline_range_errors_are_reported(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
@@ -292,7 +292,7 @@ def test_chatlas_views_inline_contains_filters_events(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             session_id,
@@ -316,7 +316,7 @@ def test_chatlas_views_inline_role_filters_message_events(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             session_id,
@@ -342,7 +342,7 @@ def test_chatlas_views_inline_around_orders_chronologically(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             session_id,
@@ -395,7 +395,7 @@ def test_chatlas_views_inline_radius_counts_filter_surviving_events(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             session_id,
@@ -424,7 +424,7 @@ def test_chatlas_views_inline_around_radius_window_is_chronological(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             session_id,
@@ -452,7 +452,7 @@ def test_chatlas_views_inline_selection_filters_compose(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             session_id,
@@ -478,7 +478,7 @@ def test_chatlas_views_inline_selection_empty_result_is_well_formed(
         capsys,
         [
             "chatlas",
-            "views",
+            "session-views",
             "get",
             "--session-id",
             session_id,
@@ -501,7 +501,7 @@ def test_chatlas_views_inline_explicit_full_with_selection_still_errors(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
@@ -527,7 +527,7 @@ def test_chatlas_views_inline_filter_slim_strips_plumbing(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
@@ -560,7 +560,7 @@ def test_chatlas_views_inline_filter_messages_keeps_only_message_events(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
@@ -588,7 +588,7 @@ def test_chatlas_views_inline_filter_turns_equals_messages_then_slim(
     session_id = _selection_fixture(tmp_path, monkeypatch, capsys)
     base = [
         "chatlas",
-        "views",
+        "session-views",
         "get",
         "--session-id",
         session_id,
@@ -612,7 +612,7 @@ def test_chatlas_views_inline_unknown_filter_errors_listing_names(
         main(
             [
                 "chatlas",
-                "views",
+                "session-views",
                 "get",
                 "--session-id",
                 session_id,
