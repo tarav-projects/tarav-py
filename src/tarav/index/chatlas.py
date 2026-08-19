@@ -86,10 +86,22 @@ def load_session(scopes: Geography, session_id: str) -> ChatSession:
         )
     manifest = registry.get(ARCHIVE_NAME)
 
-    try:
-        model = build_normal_model(session_id=session_id)
-    except Exception as exc:  # chatlas2 raises CliError subclasses we do not re-export
-        raise ChatError(f"cannot normalize session {session_id!r}: {exc}") from exc
+    # A `SupportRef` may name a session either way: the provider's session id, or the
+    # provider-neutral identity hash. The identity hash is the better coordinate to store
+    # -- it survives a provider changing how it names sessions -- so both resolve here
+    # rather than forcing the record to know which kind it holds.
+    model = None
+    errors: list[str] = []
+    for selector in ("session_id", "identity_hash"):
+        try:
+            model = build_normal_model(**{selector: session_id})
+            break
+        except Exception as exc:  # chatlas2 raises CliError subclasses we do not re-export
+            errors.append(f"{selector}: {exc}")
+    if model is None:
+        raise ChatError(
+            f"cannot normalize session {session_id!r}: " + "; ".join(errors)
+        )
 
     messages: list[ChatMessage] = []
     for raw in list_chat_messages(model):
