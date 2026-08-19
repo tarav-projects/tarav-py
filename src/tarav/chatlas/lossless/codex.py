@@ -99,7 +99,7 @@ class CodexRawNormalizer:
                 f"cannot normalize Chatlas2 Codex artifact {path}: {exc}"
             ) from exc
 
-        session_scope = _session_scope(records)
+        session_scopes = _session_scopes(records)
         response_message_keys = _response_message_keys(records)
         events: list[JsonObject] = []
         chat_messages: list[JsonObject] = []
@@ -116,6 +116,7 @@ class CodexRawNormalizer:
             message_text = (
                 _chat_message_text(record.value) if message_side is not None else None
             )
+            session_scope = session_scopes[record.record_index]
             event_address = compute_event_address(
                 provider="codex",
                 scope=session_scope,
@@ -222,20 +223,38 @@ def _read_records(path: Path) -> list[_RawRecord]:
     return records
 
 
-def _session_scope(records: list[_RawRecord]) -> str:
-    session_ids = {
-        payload["id"]
+def _session_scopes(records: list[_RawRecord]) -> dict[int, str]:
+    """The native session scope in effect at each record.
+
+    A resumed Codex session writes a second `session_meta` into the same artifact, so an
+    artifact is not the same thing as a native session. `Event.Address` needs a *stable*
+    provider-derived scope, not a unique one per file: taking the scope in effect at each
+    record keeps a resumption from merging two native sessions into one address space.
+
+    Records preceding the first `session_meta` take that first scope — they belong to the
+    session the artifact opens with. When an artifact carries exactly one scope, every
+    record receives it, which is what keeps existing addresses byte-identical.
+    """
+    declared: list[tuple[int, str]] = [
+        (record.record_index, payload["id"])
         for record in records
         if record.value.get("type") == "session_meta"
         and isinstance((payload := record.value.get("payload")), dict)
         and isinstance(payload.get("id"), str)
         and payload["id"]
-    }
-    if len(session_ids) != 1:
+    ]
+    if not declared:
         raise CliError(
-            "Chatlas2 Codex artifact must contain exactly one native session scope"
+            "Chatlas2 Codex artifact declares no native session scope"
         )
-    return next(iter(session_ids))
+    scopes: dict[int, str] = {}
+    current = declared[0][1]
+    remaining = list(declared)
+    for record in records:
+        while remaining and remaining[0][0] <= record.record_index:
+            current = remaining.pop(0)[1]
+        scopes[record.record_index] = current
+    return scopes
 
 
 def _event_origin(record: JsonObject) -> str:

@@ -9,7 +9,11 @@ from tarav.chatlas.lossless.codex import (
     CodexRawModelVersioner,
     CodexRawNormalizer,
 )
-from tarav.chatlas.lossless.event_ref import event_ref, resolve_event_ref
+from tarav.chatlas.lossless.event_ref import (
+    compute_event_address,
+    event_ref,
+    resolve_event_ref,
+)
 from tarav.chatlas.lossless.message_ref import resolve_chat_message_ref
 from tarav.chatlas.lossless.pipeline import build_normal_model_from_row
 from tarav.chatlas.lossless.turn_ref import chat_turn_ref, resolve_chat_turn_ref
@@ -542,3 +546,61 @@ def test_same_raw_record_at_a_different_position_is_retained(tmp_path: Path) -> 
 
     assert len(model["events"]) == 3
     assert len(model["annotations"]["chat_messages"]) == 2
+
+
+def _session_meta(timestamp: str, session_id: str) -> dict[str, object]:
+    return _record(timestamp, "session_meta", {"id": session_id})
+
+
+def test_a_resumed_codex_artifact_carries_one_scope_per_native_session(
+    tmp_path: Path,
+) -> None:
+    """A resumed Codex session writes several `session_meta` records into one artifact.
+
+    Refusing it costs the whole session, and `Event.Address` only needs a *stable*
+    provider-derived scope — not a unique one per file. Each record takes the scope in
+    effect at its position, so a resumption does not silently merge two native sessions
+    into one address space.
+    """
+    path = tmp_path / "resumed.jsonl"
+    _write_jsonl(
+        path,
+        [
+            _session_meta("2026-08-01T10:00:00.000Z", "native-a"),
+            _message("2026-08-01T10:00:01.000Z", "user", "first", message_id="m1"),
+            _session_meta("2026-08-01T11:00:00.000Z", "native-b"),
+            _message("2026-08-01T11:00:01.000Z", "user", "second", message_id="m2"),
+        ],
+    )
+
+    model = build_normal_model_from_row(_row(path))
+    messages = [event for event in model["events"] if event.get("content")]
+
+    assert [event["content"]["text"] for event in messages] == ["first", "second"]
+    assert messages[0]["event_address"] != messages[1]["event_address"]
+
+
+def test_a_single_scope_codex_artifact_keeps_its_exact_addresses(
+    tmp_path: Path,
+) -> None:
+    """The multi-scope change must not move an address that already exists.
+
+    Every session currently in the archive normalizes under one scope; if this
+    assertion ever fails, stored `Event.Ref`s across the whole depot go AMENDED.
+    """
+    records = [
+        _session_meta("2026-08-01T10:00:00.000Z", "native-a"),
+        _message("2026-08-01T10:00:01.000Z", "user", "hello", message_id="m1"),
+        _message("2026-08-01T10:00:02.000Z", "assistant", "hi", message_id="m2"),
+    ]
+    path = tmp_path / "single.jsonl"
+    _write_jsonl(path, records)
+
+    model = build_normal_model_from_row(_row(path))
+
+    assert [event["event_address"] for event in model["events"]] == [
+        compute_event_address(
+            provider="codex", scope="native-a", place={"record_index": index}
+        )
+        for index in (1, 2, 3)
+    ]
