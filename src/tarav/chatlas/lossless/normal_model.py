@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-normal-model-provider --from Normalization.Pipeline::Chatlas.Session.Model --note [CT] consumers request Normal Model content through one cache-transparent provider while direct raw-attached computation remains an explicit diagnostic path --supp ^d20260816-17u
+# $kw: ^chatlas2-normal-model-provider --from Normalization.Pipeline::Chatlas.Session.Model --note [CT] consumers request Normal Model content through one cache-transparent provider while direct raw-attached computation remains an explicit diagnostic path --supp ^c20260816-36u
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-event-ref --from Event.Ref --note [DC] Chatlas2 separates provider-derived event place from current normalized state and resolves stored assertions only against the supplied current tape --supp ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-40u ^c20260815-41u ^c20260815-42u ^c20260815-43u ^c20260815-44u ^c20260815-64u ^d20260816-0u
+# $kw: ^chatlas2-event-ref --from Event.Ref --note [DC] Chatlas2 separates provider-derived event place from current normalized state and resolves stored assertions only against the supplied current tape --supp ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-40u ^c20260815-41u ^c20260815-42u ^c20260815-43u ^c20260815-44u ^c20260815-64u ^c20260816-28u
 from __future__ import annotations
 
 from hashlib import sha256

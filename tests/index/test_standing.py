@@ -82,23 +82,23 @@ class TestIndexStanding:
     """HEAD is presence on a HEAD.Surface — positive, and tracked by git."""
 
     def test_a_line_on_a_head_surface_is_head(self):
-        line = _line().relabel("^d20260819-1u")
+        line = _line().relabel("^c20260819-19u")
         derived = standings([line], head_lines=_on(HEAD_SURFACE, line))
         assert derived[line.id].index is IndexStanding.HEAD
 
     def test_a_line_on_no_head_surface_is_tail(self):
-        line = _line().relabel("^d20260819-1u")
+        line = _line().relabel("^c20260819-19u")
         derived = standings([line], head_lines=_on(OTHER_SURFACE, line))
         assert derived[line.id].index is IndexStanding.TAIL
 
     def test_a_user_home_appendix_is_a_head_surface(self):
         """Depth, not lesser standing: a landed line stands wherever in the home it sits."""
-        line = _line().relabel("^d20260819-1u")
+        line = _line().relabel("^c20260819-19u")
         assert _on(APPENDIX_SURFACE, line) == {line.id}
 
     def test_taking_a_line_off_the_surface_demotes_it(self):
         """Demotion is an edit, not a field — and it shows up in a diff."""
-        line = _line().relabel("^d20260819-1u")
+        line = _line().relabel("^c20260819-19u")
         assert standings([line], head_lines=_on(HEAD_SURFACE, line))[line.id].index is (
             IndexStanding.HEAD
         )

@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-views --from Chatlas.Query.Surface --from Normalization.Pipeline::Chatlas.Session.Model --note [IMPL] Chatlas2 Views are disposable bounded read projections over canonical Normal Model content and own no normalization or cache policy --supp ^c20260816-23u ^d20260816-14u ^d20260816-17u
+# $kw: ^chatlas2-views --from Chatlas.Query.Surface --from Normalization.Pipeline::Chatlas.Session.Model --note [IMPL] Chatlas2 Views are disposable bounded read projections over canonical Normal Model content and own no normalization or cache policy --supp ^c20260816-23u ^c20260816-33u ^c20260816-36u
 from __future__ import annotations
 
 from copy import deepcopy

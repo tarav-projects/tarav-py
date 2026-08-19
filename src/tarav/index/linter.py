@@ -621,21 +621,6 @@ def _check_line_type_known(ctx: LintContext) -> list[Finding]:
     ]
 
 
-def _check_anchor_legacy_sigil(ctx: LintContext) -> list[Finding]:
-    """Legacy `^c…` anchors remain readable history but active workflows do not resolve them."""
-
-    return [
-        Finding(
-            "Index.Linter/Anchor.LegacySigil",
-            line.label or f"{line.scope.label}:{line.lineno}",
-            {"label": str(line.label)},
-            surface=surface,
-        )
-        for surface, line in ctx.all_surface_lines()
-        if line.label and line.label.startswith("^c")
-    ]
-
-
 def _check_trace_wellformed(ctx: LintContext) -> list[Finding]:
     """`Trace.HEAD` is derived, so a malformed chain surfaces instead of picking a winner."""
 
@@ -1064,11 +1049,6 @@ CATALOG: tuple[Check, ...] = (
         "anchor-collision", Tier.REPORTABLE, _check_anchor_collision, resolutions=(
         "relabel one of them — a label identifies exactly one line",
         "merge them, if they are the same line duplicated",
-    )),
-    Check(
-        "anchor-legacy-sigil", Tier.REPORTABLE, _check_anchor_legacy_sigil, resolutions=(
-        "re-mint the label under the active sigil",
-        "leave it — legacy anchors stay readable, just unresolved",
     )),
     Check(
         "line-drift", Tier.REPORTABLE, _check_line_drift, resolutions=(

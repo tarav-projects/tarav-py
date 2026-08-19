@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-query --from Chatlas.Query.Surface --from Chatlas.Session.Index --note [CT] Session.Query selects bounded lossless-capable chats through existing index mechanics while Chat.Query remains a separate Normal Model read --supp ^d20260816-42u
+# $kw: ^chatlas2-query --from Chatlas.Query.Surface --from Chatlas.Session.Index --note [CT] Session.Query selects bounded lossless-capable chats through existing index mechanics while Chat.Query remains a separate Normal Model read --supp ^c20260816-64u
 from __future__ import annotations
 
 from copy import deepcopy

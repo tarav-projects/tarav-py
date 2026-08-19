@@ -1,4 +1,4 @@
-# $kw: --from Chat.Index --from Chat.Index.Delta --from Chat.Index.HEAD --from Line.Home --note [IMPL] real-time capture projects exact landed lines to Chat HEAD first and then appends stable Chat.Turn.Ref receipts when their support has a provable local horizon --supp ^d20260816-39u
+# $kw: --from Chat.Index --from Chat.Index.Delta --from Chat.Index.HEAD --from Line.Home --note [IMPL] real-time capture projects exact landed lines to Chat HEAD first and then appends stable Chat.Turn.Ref receipts when their support has a provable local horizon --supp ^c20260816-60u
 from __future__ import annotations
 
 from copy import deepcopy

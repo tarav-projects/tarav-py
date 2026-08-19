@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-package --from Normalization.Pipeline::Chatlas.Session.Model --from Dependency.Profile.Split --from Event.Ref --note [CT] Chatlas2 is an isolated experimental namespace that may reuse current Chatlas without creating a reverse dependency --supp ^c20260814-12u ^c20260814-13u ^c20260814-14u ^c20260815-39u ^d20260816-22u
+# $kw: ^chatlas2-package --from Normalization.Pipeline::Chatlas.Session.Model --from Dependency.Profile.Split --from Event.Ref --note [CT] Chatlas2 is an isolated experimental namespace that may reuse current Chatlas without creating a reverse dependency --supp ^c20260814-12u ^c20260814-13u ^c20260814-14u ^c20260815-39u ^c20260816-42u
 from __future__ import annotations
 
 from .commands import add_lossless_commands

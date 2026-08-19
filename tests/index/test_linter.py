@@ -39,7 +39,7 @@ def _gate(token="tok"):
     return GateRef("chat", "s1", token, "user-turn", "agent-turn")
 
 
-def _landed(project_root, geo, body="fine", label="^d20260818-1u"):
+def _landed(project_root, geo, body="fine", label="^c20260818-1u"):
     """One line on a HEAD.Surface, with the gate that licensed it."""
 
     _surface(project_root, f"- [CT] {body} {label}")
@@ -68,15 +68,15 @@ class TestCatalog:
 
 class TestTheBar:
     def test_untyped_surface_line_is_reported(self, geo, project_root):
-        _surface(project_root, "- an untyped assertion ^d20260818-1u")
+        _surface(project_root, "- an untyped assertion ^c20260818-1u")
         assert "Index.Linter/Line.Untyped" in _classes(lint(geo))
 
     def test_unknown_line_type_is_reported(self, geo, project_root):
-        _surface(project_root, "- [ZZ] not a known code ^d20260818-1u")
+        _surface(project_root, "- [ZZ] not a known code ^c20260818-1u")
         assert "Index.Linter/Line.Type.Unknown" in _classes(lint(geo))
 
     def test_ungrounded_entry_is_debt_not_deletion(self, geo, project_root):
-        _surface(project_root, "- [CT] fine ^d20260818-1u")
+        _surface(project_root, "- [CT] fine ^c20260818-1u")
         store = IndexStore(geo)
         store.put(_entry(body="no support"))
         assert "Index.Linter/Line.Ungrounded" in _classes(lint(geo))
@@ -95,9 +95,9 @@ class TestScopeChecks:
         assert "Index.Linter/Scope.Unresolved" not in _classes(lint(geo))
 
     def test_scope_kind_mismatch_is_reported(self, geo, project_root):
-        _surface(project_root, "- [CT] block hosted ^d20260818-1u")
+        _surface(project_root, "- [CT] block hosted ^c20260818-1u")
         IndexStore(geo).put(
-            _entry(scope="@thing.py/C", body="block hosted").relabel("^d20260818-1u")
+            _entry(scope="@thing.py/C", body="block hosted").relabel("^c20260818-1u")
         )
         assert "Index.Linter/Scope.KindMismatch" in _classes(lint(geo))
 
@@ -120,10 +120,10 @@ class TestHeadSurface:
     """HEAD is presence on a declared surface; the gate is what licensed the presence."""
 
     def test_an_ungated_line_on_a_head_surface_is_reported(self, geo, project_root):
-        _surface(project_root, "- [CT] promoted by nobody ^d20260818-1u")
+        _surface(project_root, "- [CT] promoted by nobody ^c20260818-1u")
         IndexStore(geo).put(
             _entry(body="promoted by nobody", support=[SupportRef("chat", "s1", "m1")])
-            .relabel("^d20260818-1u")
+            .relabel("^c20260818-1u")
         )
         assert "Index.Linter/Landing.Unevidenced" in _classes(lint(geo))
 
@@ -135,10 +135,10 @@ class TestHeadSurface:
 
     def test_a_gated_trace_on_no_head_surface_is_reported(self, geo, project_root):
         """Approved and never landed, or quietly demoted — the gate outlives the edit."""
-        _surface(project_root, "- [CT] unrelated ^d20260818-2u")
+        _surface(project_root, "- [CT] unrelated ^c20260818-2u")
         IndexStore(geo).put(
             _entry(body="approved, never landed", support=[SupportRef("chat", "s1", "m1")])
-            .relabel("^d20260818-1u")
+            .relabel("^c20260818-1u")
             .with_landing(_gate())
         )
         assert "Index.Linter/Landing.Unhonored" in _classes(lint(geo))
@@ -146,10 +146,10 @@ class TestHeadSurface:
     def test_an_appendix_line_needs_a_landing_gate_like_any_other(self, geo, project_root):
         """All of a user home is HEAD. Appendix is depth, not weaker standing, so a line
         landed there answers for its gate exactly as a chapter line does."""
-        _surface(project_root, "- [CT] depth ^d20260818-1u", at=APPENDIX)
+        _surface(project_root, "- [CT] depth ^c20260818-1u", at=APPENDIX)
         IndexStore(geo).put(
             _entry(body="depth", support=[SupportRef("chat", "s1", "m1")])
-            .relabel("^d20260818-1u")
+            .relabel("^c20260818-1u")
         )
         assert "Index.Linter/Landing.Unevidenced" in _classes(lint(geo))
 
@@ -173,14 +173,14 @@ class TestHeadSurface:
         store = IndexStore(geo)
         first = store.put(
             _entry(body="the first wording", support=[SupportRef("chat", "s1", "m1")])
-            .relabel("^d20260818-1u")
+            .relabel("^c20260818-1u")
             .with_landing(_gate())
         )
-        store.put(first.successor("CT", "the second wording").relabel("^d20260818-2u"))
+        store.put(first.successor("CT", "the second wording").relabel("^c20260818-2u"))
         _surface(
             project_root,
-            "- [CT] the first wording ^d20260818-1u",
-            "- [CT] the second wording ^d20260818-2u",
+            "- [CT] the first wording ^c20260818-1u",
+            "- [CT] the second wording ^c20260818-2u",
         )
         assert "Index.Linter/Materialization.Standing" in _classes(lint(geo))
 
@@ -191,13 +191,13 @@ class TestSurfaceAndRecord:
         assert "Index.Linter/Line.Unanchored" in _classes(lint(geo))
 
     def test_surface_line_without_an_entry_is_reported(self, geo, project_root):
-        _surface(project_root, "- [CT] written by hand ^d20260818-9u")
+        _surface(project_root, "- [CT] written by hand ^c20260818-9u")
         assert "Index.Linter/Line.Unrecorded" in _classes(lint(geo))
 
     def test_drift_shows_both_sides_without_privileging_either(self, geo, project_root):
-        _surface(project_root, "- [CT] reworded on the surface ^d20260818-1u")
+        _surface(project_root, "- [CT] reworded on the surface ^c20260818-1u")
         IndexStore(geo).put(
-            _entry(body="the record still says this").relabel("^d20260818-1u")
+            _entry(body="the record still says this").relabel("^c20260818-1u")
         )
         finding = next(
             f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Drift"
@@ -208,27 +208,23 @@ class TestSurfaceAndRecord:
     def test_anchor_collision_is_reported(self, geo, project_root):
         _surface(
             project_root,
-            "- [CT] first ^d20260818-1u",
-            "- [DF] second, same anchor ^d20260818-1u",
+            "- [CT] first ^c20260818-1u",
+            "- [DF] second, same anchor ^c20260818-1u",
         )
         assert "Index.Linter/Anchor.Collision" in _classes(lint(geo))
 
-    def test_legacy_sigil_is_reported(self, geo, project_root):
-        _surface(project_root, "- [CT] legacy anchor ^c20260729-270u")
-        assert "Index.Linter/Anchor.LegacySigil" in _classes(lint(geo))
-
     def test_entry_materialized_nowhere_is_reported(self, geo, project_root):
-        _surface(project_root, "- [CT] unrelated ^d20260818-1u")
-        IndexStore(geo).put(_entry(body="orphan").relabel("^d20260818-7u"))
+        _surface(project_root, "- [CT] unrelated ^c20260818-1u")
+        IndexStore(geo).put(_entry(body="orphan").relabel("^c20260818-7u"))
         assert "Index.Linter/Record.Unplaced" in _classes(lint(geo))
 
 
 class TestSupport:
     def test_unreachable_support_names_the_archive(self, geo, project_root):
-        _surface(project_root, "- [CT] grounded ^d20260818-1u")
+        _surface(project_root, "- [CT] grounded ^c20260818-1u")
         IndexStore(geo).put(
             _entry(body="grounded", support=[SupportRef("chat", "absent-session", "a")])
-            .relabel("^d20260818-1u")
+            .relabel("^c20260818-1u")
         )
         report = lint(geo)
         finding = next(
@@ -244,7 +240,7 @@ class TestSupport:
 
 class TestBless:
     def test_a_blessed_finding_leaves_the_report(self, geo, project_root):
-        _surface(project_root, "- an untyped assertion ^d20260818-1u")
+        _surface(project_root, "- an untyped assertion ^c20260818-1u")
         finding = next(
             f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
         )
@@ -254,15 +250,15 @@ class TestBless:
         assert finding.identity in {f.identity for f in after.blessed}
 
     def test_blessing_one_finding_does_not_disable_the_check(self, geo, project_root):
-        _surface(project_root, "- first untyped ^d20260818-1u")
+        _surface(project_root, "- first untyped ^c20260818-1u")
         first = next(
             f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
         )
         bless(geo, first.identity, _gate())
         _surface(
             project_root,
-            "- first untyped ^d20260818-1u",
-            "- second untyped ^d20260818-2u",
+            "- first untyped ^c20260818-1u",
+            "- second untyped ^c20260818-2u",
         )
         assert "Index.Linter/Line.Untyped" in _classes(lint(geo))
 
@@ -272,7 +268,7 @@ class TestCleanRun:
         assert lint(geo).clean
 
     def test_the_report_counts_what_it_scanned(self, geo, project_root):
-        _surface(project_root, "- [CT] a ^d20260818-1u", "- [DF] b ^d20260818-2u")
+        _surface(project_root, "- [CT] a ^c20260818-1u", "- [DF] b ^c20260818-2u")
         report = lint(geo)
         assert report.surface_lines_checked == 2
         assert report.checks_run
@@ -318,7 +314,7 @@ class TestConvergence:
         store = IndexStore(geo)
         record = store.put(_entry(body="first wording", support=[SupportRef("chat", "s1", "m1")]))
         self._commit(project_root)
-        store.put(record.amend("CT", "a much better wording").relabel("^d20260818-9u"))
+        store.put(record.amend("CT", "a much better wording").relabel("^c20260818-9u"))
         assert "Index.Linter/Coverage.Shrank" not in _classes(lint(geo))
 
     def test_removing_an_ungrounded_line_keeps_coverage(self, geo, project_root):
@@ -370,7 +366,7 @@ class TestBlessingEvidence:
     def test_a_blessing_carries_its_gate(self, geo, project_root):
         from tarav.index.linter import read_blessings
 
-        _surface(project_root, "- an untyped assertion ^d20260818-1u")
+        _surface(project_root, "- an untyped assertion ^c20260818-1u")
         finding = lint(geo).findings[0]
         bless(geo, finding.identity, _gate())
         assert read_blessings(geo)[finding.identity].token == "tok"
@@ -382,7 +378,7 @@ class TestBlessingEvidence:
     def test_a_contradicted_gate_revokes_the_blessing(self, geo, project_root, chat):
         """An agent cannot silence its own finding with a file it writes itself."""
         chat("s1", [("agent-turn", "agent", "nothing"), ("user-turn", "user", "nothing")])
-        _surface(project_root, "- an untyped assertion ^d20260818-1u")
+        _surface(project_root, "- an untyped assertion ^c20260818-1u")
         finding = next(
             f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
         )
@@ -392,7 +388,7 @@ class TestBlessingEvidence:
         assert "Index.Linter/Blessing.Unevidenced" in _classes(after)
 
     def test_an_unverifiable_gate_still_silences(self, geo, project_root):
-        _surface(project_root, "- an untyped assertion ^d20260818-1u")
+        _surface(project_root, "- an untyped assertion ^c20260818-1u")
         finding = next(
             f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
         )
@@ -464,20 +460,20 @@ class TestSignalNotSemantics:
     """A finding is a typed signal of a declared computation, carrying no reading of it."""
 
     def test_findings_carry_operands_not_prose(self, geo, project_root):
-        _surface(project_root, "- an untyped assertion ^d20260818-1u")
+        _surface(project_root, "- an untyped assertion ^c20260818-1u")
         finding = lint(geo).findings[0]
         assert not hasattr(finding, "detail")
         assert finding.operands
 
     def test_a_finding_points_at_the_code_that_produced_it(self, geo, project_root):
-        _surface(project_root, "- an untyped assertion ^d20260818-1u")
+        _surface(project_root, "- an untyped assertion ^c20260818-1u")
         finding = next(
             f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
         )
         assert finding.source and finding.source.startswith("linter.py:")
 
     def test_findings_carry_an_evaluator(self, geo, project_root):
-        _surface(project_root, "- an untyped assertion ^d20260818-1u")
+        _surface(project_root, "- an untyped assertion ^c20260818-1u")
         assert str(lint(geo).findings[0].evaluator) == "code"
 
     def test_operands_do_not_change_a_finding_identity(self, geo, project_root):
@@ -588,7 +584,7 @@ class TestDevLane:
         store = IndexStore(geo)
         store.put(
             _entry(body="a gated line", support=[SupportRef("chat", "s1", "m1")])
-            .relabel("^d20260819-1u")
+            .relabel("^c20260819-19u")
             .with_landing(_gate(token="idx-edition:forged"))
         )
         report = lint(geo, dev=True)
@@ -610,15 +606,15 @@ class TestSupersededPlacement:
         store = IndexStore(geo)
         first = store.put(
             _entry(body="the first wording", support=[SupportRef("chat", "s1", "m1")])
-            .relabel("^d20260819-1u")
+            .relabel("^c20260819-19u")
         )
-        store.put(first.successor("DF", "the second wording").relabel("^d20260819-2u"))
-        _surface(project_root, "- [DF] the second wording ^d20260819-2u")
+        store.put(first.successor("DF", "the second wording").relabel("^c20260819-20u"))
+        _surface(project_root, "- [DF] the second wording ^c20260819-20u")
         assert "Index.Linter/Record.Unplaced" not in _classes(lint(geo))
 
     def test_an_unsucceeded_record_off_every_surface_still_reports(self, geo, project_root):
         IndexStore(geo).put(
             _entry(body="orphan", support=[SupportRef("chat", "s1", "m1")])
-            .relabel("^d20260819-3u")
+            .relabel("^c20260819-21u")
         )
         assert "Index.Linter/Record.Unplaced" in _classes(lint(geo))

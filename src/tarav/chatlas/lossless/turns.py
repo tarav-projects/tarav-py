@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-turns --from Event.Annotation --from Event.Ref --note [CT] resolved-origin event runs form shallow conservative Chat.Turn envelopes; unresolved events remain ungrouped --supp ^d20260816-22u ^d20260816-23u ^d20260816-24u ^d20260816-25u ^d20260816-26u ^d20260816-28u
+# $kw: ^chatlas2-turns --from Event.Annotation --from Event.Ref --note [CT] resolved-origin event runs form shallow conservative Chat.Turn envelopes; unresolved events remain ungrouped --supp ^c20260816-42u ^c20260816-43u ^c20260816-44u ^c20260816-45u ^c20260816-46u ^c20260816-48u
 from __future__ import annotations
 
 from copy import deepcopy

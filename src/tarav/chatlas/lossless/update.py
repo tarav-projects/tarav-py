@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-update --from Chatlas.Update.Pipeline --from Scan.Scope --from Raw.Archive --from Chatlas.Session.Index --note [CT] explicit Chatlas2 freshness performs one structural Provider.Home-to-archive/index delta pass before consumer reads and leaves Normal Model cache reconstruction to the canonical provider --supp ^d20260816-43u
+# $kw: ^chatlas2-update --from Chatlas.Update.Pipeline --from Scan.Scope --from Raw.Archive --from Chatlas.Session.Index --note [CT] explicit Chatlas2 freshness performs one structural Provider.Home-to-archive/index delta pass before consumer reads and leaves Normal Model cache reconstruction to the canonical provider --supp ^c20260816-65u
 from __future__ import annotations
 
 import argparse

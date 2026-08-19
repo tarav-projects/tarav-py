@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude direct normalization preserves a compact digest of each opaque native record for whole-turn drift while retaining conservative origin and loaded-context mapping --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u ^c20260816-20u ^d20260816-25u ^d20260816-27u
+# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude direct normalization preserves a compact digest of each opaque native record for whole-turn drift while retaining conservative origin and loaded-context mapping --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u ^c20260816-28u ^c20260816-39u ^c20260816-20u ^c20260816-45u ^c20260816-47u
 from __future__ import annotations
 
 from dataclasses import dataclass

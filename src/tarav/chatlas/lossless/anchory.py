@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-design-support --from Event.Annotation --from Index.Line.Anchor --from Anchory.System --note [IMPL] the first Chatlas2 consumer route grounds line dossiers in user Chat.Message.Ref assertions inside an isolated namespace and requests models through the canonical provider --supp ^c20260815-7u ^c20260815-40u ^c20260815-42u ^c20260815-46u ^d20260816-13u ^d20260816-17u
+# $kw: ^chatlas2-design-support --from Event.Annotation --from Index.Line.Anchor --from Anchory.System --note [IMPL] the first Chatlas2 consumer route grounds line dossiers in user Chat.Message.Ref assertions inside an isolated namespace and requests models through the canonical provider --supp ^c20260815-7u ^c20260815-40u ^c20260815-42u ^c20260815-46u ^c20260816-32u ^c20260816-36u
 from __future__ import annotations
 
 from copy import deepcopy

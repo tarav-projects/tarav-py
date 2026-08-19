@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-cli --from Chatlas.Query.Surface --from Usage.Surface --from Raw.Archive --note [CT] Chatlas2 exposes one-session normalization, compact reads, explicit grounding, hermetic corpus inspection, and one opt-in archive/index freshness preflight shared by every leaf command --supp ^c20260814-13u ^c20260814-15u ^c20260815-16u ^c20260815-31u ^c20260816-23u ^d20260816-1u ^d20260816-28u ^d20260816-31u ^d20260816-43u
+# $kw: ^chatlas2-cli --from Chatlas.Query.Surface --from Usage.Surface --from Raw.Archive --note [CT] Chatlas2 exposes one-session normalization, compact reads, explicit grounding, hermetic corpus inspection, and one opt-in archive/index freshness preflight shared by every leaf command --supp ^c20260814-13u ^c20260814-15u ^c20260815-16u ^c20260815-31u ^c20260816-23u ^c20260816-39u ^c20260816-48u ^c20260816-52u ^c20260816-65u
 from __future__ import annotations
 
 import argparse

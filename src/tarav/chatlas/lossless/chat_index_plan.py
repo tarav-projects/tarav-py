@@ -1,4 +1,4 @@
-# $kw: --from Chat.Index --from Chat.Index.Delta --from Chat.Index.HEAD --from Index.Line --note [IMPL] the Chatlas2 real-time plan batches exact already-landed line identities while dossiers retain support and predecessor semantics --supp ^d20260816-39u
+# $kw: --from Chat.Index --from Chat.Index.Delta --from Chat.Index.HEAD --from Index.Line --note [IMPL] the Chatlas2 real-time plan batches exact already-landed line identities while dossiers retain support and predecessor semantics --supp ^c20260816-60u
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -35,7 +35,10 @@ from ..config import Geography, TaravIndexError
 from ..scope import LineScope
 from .model import LineRecord
 
-LABEL_SIGIL = "d"
+#: One sigil across the system. `d` separated the new index's labels from the anchory
+#: anchors while the two label spaces were distinct; homogenizing the dossiers onto `c`
+#: removed that distinction, so a second sigil would name a difference that is gone.
+LABEL_SIGIL = "c"
 USER_TAG = "u"
 LABEL_RE = re.compile(r"^\^?(?P<sigil>[a-z])(?P<date>\d{8})-(?P<seq>\d+)(?P<tag>[a-z])$")
 

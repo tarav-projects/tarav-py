@@ -17,7 +17,7 @@ Every kernel line becomes a record. Two things it deliberately does not do:
   taken afterwards, line by line.
 
 Labels are preserved where they do not collide, because a legacy label is a true fact about
-where a line came from and `anchor-legacy-sigil` should be able to see it. A collision is
+where a line came from and stays readable as such. A collision is
 resolved by minting a fresh label, which costs nothing: the label is a public id and the
 record's identity does not follow it.
 """

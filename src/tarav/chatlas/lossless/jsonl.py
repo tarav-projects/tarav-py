@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-scan-decode-verify --from Raw.Archive --note [CT] JSONL candidate scans may over-select but never exclude a possible promised match; decoded objects remain authoritative --supp ^d20260816-32u ^d20260816-33u ^d20260816-34u ^d20260816-35u ^d20260816-36u
+# $kw: ^chatlas2-scan-decode-verify --from Raw.Archive --note [CT] JSONL candidate scans may over-select but never exclude a possible promised match; decoded objects remain authoritative --supp ^c20260816-53u ^c20260816-54u ^c20260816-55u ^c20260816-56u ^c20260816-57u
 from __future__ import annotations
 
 from dataclasses import dataclass

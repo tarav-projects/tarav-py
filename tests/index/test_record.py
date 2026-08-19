@@ -37,15 +37,15 @@ class TestCompleteRecord:
         assert record.scope.address == BLOCK
 
     def test_the_entry_carries_its_own_indexing(self):
-        record = _entry().relabel("^d20260818-1u")
-        assert record.line.label == "^d20260818-1u"
+        record = _entry().relabel("^c20260818-1u")
+        assert record.line.label == "^c20260818-1u"
         assert record.support
         assert record.grounded
 
     def test_nothing_is_derived_from_a_surface(self, geo):
         """A round-trip through storage preserves the whole entry, surfaces absent."""
         store = IndexStore(geo)
-        original = _entry().relabel("^d20260818-1u")
+        original = _entry().relabel("^c20260818-1u")
         store.put(original)
         loaded = store.get(original.id)
         assert loaded.line == original.line
@@ -60,7 +60,7 @@ class TestCompleteRecord:
 
 class TestAssertionHalf:
     def test_type_and_body_parse_off_a_kernel_line(self):
-        assert split_statement("- [CT] the model wins ^d20260818-3u") == (
+        assert split_statement("- [CT] the model wins ^c20260818-3u") == (
             "CT",
             "the model wins",
         )
@@ -87,26 +87,26 @@ class TestAssertionHalf:
 
 class TestLabelAndIdentity:
     def test_the_label_is_the_public_id_and_lives_under_line(self):
-        record = _entry().relabel("d20260818-1u")
-        assert record.line.label == "^d20260818-1u"
-        assert record.to_json()["line"]["label"] == "^d20260818-1u"
+        record = _entry().relabel("c20260818-1u")
+        assert record.line.label == "^c20260818-1u"
+        assert record.to_json()["line"]["label"] == "^c20260818-1u"
 
     def test_relabelling_does_not_move_the_internal_id(self):
-        record = _entry().relabel("^d20260818-1u")
-        assert record.relabel("^d20260819-4u").id == record.id
+        record = _entry().relabel("^c20260818-1u")
+        assert record.relabel("^c20260819-22u").id == record.id
 
     def test_the_rendered_line_is_type_body_label(self):
-        record = _entry("the record is complete").relabel("^d20260818-1u")
-        assert record.line.render() == "- [CT] the record is complete ^d20260818-1u"
+        record = _entry("the record is complete").relabel("^c20260818-1u")
+        assert record.line.render() == "- [CT] the record is complete ^c20260818-1u"
 
     def test_amend_fixes_in_place_and_keeps_the_label(self):
-        record = _entry("bad").relabel("^d20260818-1u")
+        record = _entry("bad").relabel("^c20260818-1u")
         amended = record.amend("CT", "fixed")
         assert amended.id == record.id
-        assert amended.line.label == "^d20260818-1u"
+        assert amended.line.label == "^c20260818-1u"
 
     def test_a_successor_is_a_new_line_in_the_same_trace(self):
-        first = _entry("v1").relabel("^d20260818-1u")
+        first = _entry("v1").relabel("^c20260818-1u")
         second = first.successor("CT", "v2")
         assert second.id != first.id
         assert second.trace == first.trace
@@ -116,8 +116,8 @@ class TestLabelAndIdentity:
 class TestUnifiedStore:
     def test_a_label_resolves_to_its_entry_without_a_second_store(self, geo):
         store = IndexStore(geo)
-        store.put(_entry().relabel("^d20260818-5u"))
-        assert store.by_label("d20260818-5u") is not None
+        store.put(_entry().relabel("^c20260818-5u"))
+        assert store.by_label("c20260818-5u") is not None
 
     def test_a_trace_gathers_its_members(self, geo):
         store = IndexStore(geo)

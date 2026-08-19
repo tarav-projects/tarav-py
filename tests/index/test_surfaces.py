@@ -19,8 +19,8 @@ CHAPTER = """> `Appendix.Discovery`: check `appendix/Concept.Name-appendix.md`
 
 ## Index.Line.Record
 
-- [DF] the record is the object describing the index entry ^d20260818-1u
-- [CT] the record is complete ^d20260818-2u
+- [DF] the record is the object describing the index entry ^c20260818-1u
+- [CT] the record is complete ^c20260818-2u
 
 ****
 
@@ -58,7 +58,7 @@ class TestBlockHostedLines:
         first = read_block_lines(_chapter(project_root), CHAPTER_SURFACE)[0]
         assert first.line_type == "DF"
         assert first.body == "the record is the object describing the index entry"
-        assert first.label == "^d20260818-1u"
+        assert first.label == "^c20260818-1u"
 
     def test_untyped_and_unanchored_lines_still_parse(self, project_root):
         lines = read_block_lines(_chapter(project_root), CHAPTER_SURFACE)
@@ -146,9 +146,9 @@ class TestSurfaceLineLabels:
 
         note = tmp_path / "100-design.md"
         note.write_text(
-            "# T\n\n****\n\n## Concept\n\n- [DF] a body ^d20260819-1u\n\n****\n",
+            "# T\n\n****\n\n## Concept\n\n- [DF] a body ^c20260819-19u\n\n****\n",
             encoding="utf-8",
         )
         lines = read_block_lines(note, "skills/pkg/homes/agent/chapters/100-design.md")
         assert not hasattr(lines[0], "anchor")
-        assert lines[0].labels == ("^d20260819-1u",)
+        assert lines[0].labels == ("^c20260819-19u",)

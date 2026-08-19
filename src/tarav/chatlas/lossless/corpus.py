@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-conformance-corpus --from Raw.Archive --from Chatlas.Session.Index --from Session.Event.Tape --from Event.Ref --note [CT] explicit corpus ingress preserves recognized anonymized specimens and validates chronological events, messages, turns, contexts, and their self-verifying refs --supp ^c20260815-29u ^c20260815-30u ^c20260815-31u ^c20260815-39u ^c20260815-42u ^d20260816-0u ^d20260816-22u ^d20260816-23u ^d20260816-26u ^d20260816-27u
+# $kw: ^chatlas2-conformance-corpus --from Raw.Archive --from Chatlas.Session.Index --from Session.Event.Tape --from Event.Ref --note [CT] explicit corpus ingress preserves recognized anonymized specimens and validates chronological events, messages, turns, contexts, and their self-verifying refs --supp ^c20260815-29u ^c20260815-30u ^c20260815-31u ^c20260815-39u ^c20260815-42u ^c20260816-28u ^c20260816-42u ^c20260816-43u ^c20260816-46u ^c20260816-47u
 from __future__ import annotations
 
 from dataclasses import dataclass

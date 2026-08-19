@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly derives conservative same-origin turns only after every recognized fragment has joined the lossless chronological event union --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u ^c20260815-59u ^c20260815-64u ^d20260816-0u ^d20260816-1u ^d20260816-22u ^d20260816-23u ^d20260816-24u ^d20260816-25u ^d20260816-26u ^d20260816-27u
+# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly derives conservative same-origin turns only after every recognized fragment has joined the lossless chronological event union --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u ^c20260815-59u ^c20260815-64u ^c20260816-28u ^c20260816-39u ^c20260816-42u ^c20260816-43u ^c20260816-44u ^c20260816-45u ^c20260816-46u ^c20260816-47u
 from __future__ import annotations
 
 from copy import deepcopy

@@ -118,12 +118,12 @@ class TestSurfaceDisambiguation:
 
         chapters = tmp_path / "skills" / "pkg" / "homes" / "ceo" / "chapters"
         chapters.mkdir(parents=True)
-        (chapters / "100-design.md").write_text("- [DF] other ^d20260819-1u\n")
-        (chapters / "900-design.md").write_text("- [DF] wanted ^d20260819-2u\n")
+        (chapters / "100-design.md").write_text("- [DF] other ^c20260819-19u\n")
+        (chapters / "900-design.md").write_text("- [DF] wanted ^c20260819-20u\n")
 
         scope = block_scope("pkg", "design", "Concept")
         assert resolve_scope_surface(scope, tmp_path).name == "100-design.md"
-        found = resolve_scope_surface(scope, tmp_path, contains="^d20260819-2u")
+        found = resolve_scope_surface(scope, tmp_path, contains="^c20260819-20u")
         assert found.name == "900-design.md"
 
     def test_an_unmatched_label_falls_back_to_the_first(self, tmp_path):
@@ -131,7 +131,7 @@ class TestSurfaceDisambiguation:
 
         chapters = tmp_path / "skills" / "pkg" / "homes" / "ceo" / "chapters"
         chapters.mkdir(parents=True)
-        (chapters / "100-design.md").write_text("- [DF] other ^d20260819-1u\n")
+        (chapters / "100-design.md").write_text("- [DF] other ^c20260819-19u\n")
         scope = block_scope("pkg", "design", "Concept")
         found = resolve_scope_surface(scope, tmp_path, contains="^nope-0u")
         assert found.name == "100-design.md"

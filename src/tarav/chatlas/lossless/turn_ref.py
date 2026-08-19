@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-turn-ref --from Event.Ref --note [DC] Chat.Turn separates a stable provider-derived place from whole-turn state, including opaque provider payload drift --supp ^d20260816-22u ^d20260816-27u
+# $kw: ^chatlas2-turn-ref --from Event.Ref --note [DC] Chat.Turn separates a stable provider-derived place from whole-turn state, including opaque provider payload drift --supp ^c20260816-42u ^c20260816-47u
 from __future__ import annotations
 
 from hashlib import sha256
