@@ -10,7 +10,6 @@ from typing import Any
 from tarav._core.errors import CliError
 from tarav._core.persistence import atomic_write_json
 from tarav._core.project import find_agentos_project_root
-from tarav.chatlas.index_check_model import LinterCheck, LinterFinding, allowed
 from tarav.index_model import canonical_index_line_statement, parse_depot
 
 from tarav.chatlas.anchory import (
@@ -299,38 +298,6 @@ def project_index_reconcile(
     }
 
 
-def project_index_coverage_check() -> LinterCheck:
-    def run(state: Any) -> list[LinterFinding]:
-        findings: list[LinterFinding] = []
-        for depot in state.config.depot_paths:
-            result = project_index_audit(depot)
-            for item in result["findings"]:
-                line = item.get("line")
-                findings.append(
-                    LinterFinding(
-                        severity="warning",
-                        code=str(item["code"]),
-                        message=str(item["message"]),
-                        path=str(item.get("path", depot)),
-                        line=line if isinstance(line, int) else None,
-                        details={
-                            key: value
-                            for key, value in item.items()
-                            if key not in {"code", "message", "path", "line"}
-                        },
-                    )
-                )
-        return findings
-
-    return LinterCheck(
-        code="Project.Chat.Coverage",
-        title="Project lines are represented by registered support Chat.Indexes",
-        gate=lambda _state: allowed(),
-        run=run,
-        poi_package_id="tarav-chatlas-pkg",
-    )
-
-
 def _project_lines(depot: Path) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     model = parse_depot(depot)
@@ -530,7 +497,6 @@ __all__ = [
     "PROJECT_INDEX_AUDIT_SCHEMA",
     "RECONCILIATION_CURSOR_SCHEMA",
     "project_index_audit",
-    "project_index_coverage_check",
     "project_index_reconcile",
     "project_support_chat_identities",
 ]

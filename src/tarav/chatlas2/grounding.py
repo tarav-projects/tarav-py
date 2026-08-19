@@ -214,36 +214,6 @@ def chatlas2_review_reference_resolver(
     return resolves
 
 
-def grounding_support_reference_resolver(
-    chatlas_root: Path | None = None,
-) -> Callable[[str], bool]:
-    from tarav.chatlas.index_checks import chatlas_support_reference_resolver
-
-    old = chatlas_support_reference_resolver(chatlas_root)
-    new = chatlas2_support_reference_resolver(chatlas_root)
-
-    def resolves(anchor: str) -> bool:
-        return new(anchor) if anchor.startswith("d") else old(anchor)
-
-    return resolves
-
-
-def grounding_review_reference_resolver(
-    chatlas_root: Path | None = None,
-) -> Callable[[str, str], bool]:
-    from tarav.chatlas.index_checks import chatlas_review_reference_resolver
-
-    old = chatlas_review_reference_resolver(chatlas_root)
-    new = chatlas2_review_reference_resolver(chatlas_root)
-
-    def resolves(anchor: str, line_text: str) -> bool:
-        return new(anchor, line_text) if anchor.startswith("d") else old(
-            anchor, line_text
-        )
-
-    return resolves
-
-
 def is_chatlas2_line_record(record: object) -> bool:
     return isinstance(record, dict) and record.get("schema") in {
         CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1,
@@ -254,8 +224,6 @@ def is_chatlas2_line_record(record: object) -> bool:
 __all__ = [
     "chatlas2_review_reference_resolver",
     "chatlas2_support_reference_resolver",
-    "grounding_review_reference_resolver",
-    "grounding_support_reference_resolver",
     "is_chatlas2_line_record",
     "parse_grounding_record",
     "resolve_message_member",
