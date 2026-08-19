@@ -13,7 +13,6 @@ full derivation — delta is an optimization, never a source of truth.
 from __future__ import annotations
 
 import json
-from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -53,28 +52,18 @@ from tarav.chatlas.normalization.session_model.source_refs import (
     source_ref_record_indices,
 )
 from tarav.chatlas.event_ref import event_ref
+from tarav.chatlas.trust_tier import (
+    TRUST_APPEND,
+    TRUST_REBUILD,
+    TRUST_TIERS,
+    TRUST_VERIFY,
+    current_trust_tier,
+    set_trust_tier,
+)
 
 DELTA_CHECKPOINT_SCHEMA = "chatlas.delta-checkpoint.v3"
 DELTA_CHECKPOINTS_DIRNAME = Path("cache") / "delta-checkpoints"
 
-TRUST_APPEND = "append"
-TRUST_VERIFY = "verify"
-TRUST_REBUILD = "rebuild"
-TRUST_TIERS = (TRUST_APPEND, TRUST_VERIFY, TRUST_REBUILD)
-
-_TRUST_CONTEXT: ContextVar[str] = ContextVar("chatlas_delta_trust", default=TRUST_VERIFY)
-
-
-def set_trust_tier(tier: str) -> None:
-    if tier not in TRUST_TIERS:
-        raise ValueError(
-            f"unsupported normalization trust tier: {tier} (choose from {', '.join(TRUST_TIERS)})"
-        )
-    _TRUST_CONTEXT.set(tier)
-
-
-def current_trust_tier() -> str:
-    return _TRUST_CONTEXT.get()
 
 
 def delta_checkpoint_path(

@@ -75,3 +75,24 @@ def test_event_ref_resolution_is_stateless_and_consumer_neutral() -> None:
         "standing": "MISSING",
         "event": None,
     }
+
+
+def test_a_stored_ref_survives_reordering_of_the_event_list() -> None:
+    """Carried from the retired Chatlas1 traceability suite (Impl.Req 514, Slice 5).
+
+    `Event.Address` is a place, not a position, so resolution must scan by address.
+    A positional lookup would pass every other test in this file and fail only here.
+    """
+    first = _event(text="alpha")
+    second = deepcopy(first)
+    second["event_address"] = compute_event_address(
+        provider="codex", scope="session-1", place={"record_index": 4}
+    )
+    second["content"] = {"text": "beta"}
+    second["event_hash"] = compute_event_hash(second)
+
+    stored_ref = event_ref(second)
+
+    assert resolve_event_ref([first, second], stored_ref)["standing"] == "MATCHED"
+    assert resolve_event_ref([second, first], stored_ref)["standing"] == "MATCHED"
+    assert resolve_event_ref([second, first], stored_ref)["event"] == second

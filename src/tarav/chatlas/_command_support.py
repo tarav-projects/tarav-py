@@ -54,7 +54,7 @@ from tarav.chatlas.index_stats import (
     format_chatlas_index_stats_markdown,
 )
 from tarav.chatlas.local import chatlas_local_status, chatlas_local_sync
-from tarav.chatlas.normalization.session_model.delta import set_trust_tier
+from tarav.chatlas.trust_tier import set_trust_tier
 from tarav.chatlas.ping import chatlas_ping
 from tarav.chatlas.provider_query import chatlas_provider_query
 from tarav.chatlas.query import chatlas_query, format_chatlas_query_text

@@ -6,7 +6,7 @@ from pathlib import Path
 from tarav.hooks import HookError, HookInvocation, HookRegistry
 
 from tarav.chatlas.core import chatlas_update
-from tarav.chatlas.normalization.session_model.delta import set_trust_tier
+from tarav.chatlas.trust_tier import set_trust_tier
 from tarav.chatlas.providers import supported_chatlas_provider_families
 
 
