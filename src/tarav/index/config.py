@@ -12,20 +12,27 @@ use the project and read its index. Grounding degrades; nothing else does.
 
 from __future__ import annotations
 
+from tarav._core.errors import CliError
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
 PROJECT_DIR_NAME = ".tarav"
-USER_DIR_ENV = "TARAV2_HOME"
-PROJECT_ROOT_ENV = "TARAV2_PROJECT"
+USER_DIR_ENV = "TARAV_INDEX_HOME"
+PROJECT_ROOT_ENV = "TARAV_INDEX_PROJECT"
 
 #: Markers that identify a project root when walking upward from the working directory.
 _PROJECT_MARKERS = (PROJECT_DIR_NAME, "AGENTS.md", ".git")
 
 
-class TaravIndexError(RuntimeError):
-    """Base error for every index operation."""
+class TaravIndexError(CliError):
+    """Base error for every index operation.
+
+    It is a `CliError` so the umbrella CLI reports it the way it reports every
+    other subsystem's failure: one line on stderr, exit 1. The index does not
+    get its own error convention just because it used to be its own program.
+    """
 
 
 class ScopeResolutionError(TaravIndexError):
@@ -75,7 +82,7 @@ class Geography:
 def find_project_root(start: Path | None = None) -> Path:
     """Walk upward from ``start`` until a project marker is found.
 
-    An explicit ``TARAV2_PROJECT`` always wins, so tests and tooling can bind a root
+    An explicit ``TARAV_INDEX_PROJECT`` always wins, so tests and tooling can bind a root
     without depending on the working directory.
     """
 

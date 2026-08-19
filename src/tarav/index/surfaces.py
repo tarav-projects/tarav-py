@@ -27,8 +27,7 @@ from .authority import (
     AGENT_HOME_NAME,
     DEFAULT_USER_HOME,
     HOMES_DIR_NAME,
-    assert_agent_writable,
-)
+    )
 from .config import Geography, TaravIndexError
 from .record.identity import split_statement
 from .record.store import normalize_label
@@ -350,9 +349,6 @@ class ProjectIndex:
                 encoding="utf-8",
             )
         return self.depot_root
-
-    def assert_writable(self) -> None:
-        assert_agent_writable(self.home_root)
 
 
 __all__ = [

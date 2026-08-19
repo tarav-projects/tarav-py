@@ -9,14 +9,20 @@ Two rules carry the model:
 
 1. **Git-backing is a qualification criterion.** A surface that cannot be git-backed cannot
    carry `Touch.Authority`. Every predicate therefore has one shape — which commits on this
-   repo/path qualify. Tarav1's Chatlas archive already satisfies this for chat.
+   repo/path qualify. The Chatlas archive already satisfies this for chat.
 
 2. **The commit's relation to the edition differs by surface type.** For a journal or vault
    the user authored the commit, so its git author attributes touch. For chat, capture
    commits on the user's behalf, so the attributable unit lives inside the content.
 
-The `homes/` guard is the other half: `homes/<user>/` carries user authority, and an agent
-write there is a violation detectable by **path alone**, with no line semantics involved.
+`homes/` is the other half, and it gates a surface rather than an author. Agents are the
+only writers of the index — a user home included. `homes/<user>/` is **User.Gated**: the
+write is licensed by a satisfied landing gate, and promotion *is* that gated write. So the
+violation is never "an agent touched this path"; it is a line standing on a `HEAD.Surface`
+with no gate licensing it, which `landing-evidenced` computes from the record, not the path.
+
+There is deliberately no path guard. One would reject the very write that promotion consists
+of, and it would check the operator instead of the evidence.
 """
 
 from __future__ import annotations
@@ -201,22 +207,6 @@ def home_owner(path: Path) -> str | None:
     return None
 
 
-def is_agent_writable(path: Path) -> bool:
-    owner = home_owner(path)
-    return owner is None or owner == AGENT_HOME_NAME
-
-
-def assert_agent_writable(path: Path) -> None:
-    """Raise unless an agent may write to ``path``."""
-
-    owner = home_owner(path)
-    if owner is not None and owner != AGENT_HOME_NAME:
-        raise AuthorityGuardError(
-            f"refusing agent write into homes/{owner}/: that home carries {owner} "
-            f"authority and only {owner} may mutate it ({path})"
-        )
-
-
 __all__ = [
     "AGENT_HOME_NAME",
     "BUILTIN_MANIFESTS",
@@ -229,7 +219,5 @@ __all__ = [
     "ManifestError",
     "ManifestRegistry",
     "TouchAuthorityManifest",
-    "assert_agent_writable",
     "home_owner",
-    "is_agent_writable",
 ]

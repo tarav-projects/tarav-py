@@ -132,13 +132,3 @@ class TestHomesLayout:
         assert (agent_home / ".tarav.index").exists()
         assert not (agent_home / "chapters").exists()
 
-    def test_a_user_home_is_not_agent_writable(self, project_root):
-        import pytest
-
-        from tarav.index.authority import AuthorityGuardError
-
-        with pytest.raises(AuthorityGuardError):
-            ProjectIndex(project_root, "tarav-pkg", home="ceo").assert_writable()
-
-    def test_the_agent_home_is_writable(self, project_root):
-        ProjectIndex(project_root, "tarav-pkg", home="agent").assert_writable()

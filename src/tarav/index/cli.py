@@ -581,6 +581,11 @@ def cmd_poi_explain(args: argparse.Namespace) -> int:
 # -- parser -------------------------------------------------------------------
 
 
+def _dispatch(args: argparse.Namespace) -> int:
+    """The umbrella CLI dispatches on `handler`; the index tree sets `func`."""
+    return args.func(args)
+
+
 def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     """Register the index command set under `tarav index`.
 
@@ -593,6 +598,7 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     index.add_argument("--project", help="project root override")
     index.add_argument("--json", action="store_true", help="emit JSON")
     index_sub = index.add_subparsers(dest="index_command", required=True)
+    index.set_defaults(handler=_dispatch)
 
     p = index_sub.add_parser("init", help="initialize the project tier and manifests")
     p.add_argument("--depot", help="also create this depot's layout")

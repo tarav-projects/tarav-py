@@ -4,14 +4,11 @@ import pytest
 
 from tarav.index.authority import (
     Attribution,
-    AuthorityGuardError,
     EditionRelation,
     ManifestError,
     ManifestRegistry,
     TouchAuthorityManifest,
-    assert_agent_writable,
     home_owner,
-    is_agent_writable,
 )
 
 
@@ -81,17 +78,13 @@ class TestHomesPathGuard:
     def test_path_outside_any_home_has_no_owner(self, tmp_path):
         assert home_owner(tmp_path / "skills" / "pkg" / "000-INDEX.md") is None
 
-    def test_agent_write_into_user_home_is_refused(self, tmp_path):
+    def test_a_user_home_is_named_but_not_walled_off(self, tmp_path):
+        """`home_owner` reports who governs a path; it licenses nothing.
+
+        A user home is User.Gated, not agent-forbidden: the agent is the only
+        writer of the index, and a landing gate is what licenses the write.
+        There is deliberately no path predicate, because one would refuse the
+        very write that promotion consists of.
+        """
         target = tmp_path / "homes" / "ceo" / "chapters" / "100-design.md"
-        assert not is_agent_writable(target)
-        with pytest.raises(AuthorityGuardError, match="refusing agent write"):
-            assert_agent_writable(target)
-
-    def test_agent_may_write_its_own_home(self, tmp_path):
-        target = tmp_path / "homes" / "agent" / ".tarav.index"
-        assert is_agent_writable(target)
-        assert_agent_writable(target)
-
-    def test_agent_may_write_outside_homes(self, tmp_path):
-        target = tmp_path / "skills" / "tarav-pkg" / "000-INDEX.md"
-        assert_agent_writable(target)
+        assert home_owner(target) == "ceo"
