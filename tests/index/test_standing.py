@@ -14,7 +14,8 @@ from tarav.index.surfaces import HeadSurfaces, SurfaceLine
 
 BLOCK = "d/design#C"
 HEAD_SURFACE = "skills/d/homes/ceo/chapters/100-design.md"
-OTHER_SURFACE = "skills/d/homes/ceo/appendix/900-depth.md"
+APPENDIX_SURFACE = "skills/d/homes/ceo/appendix/900-depth.md"
+OTHER_SURFACE = "skills/d/homes/agent/chapters/100-design.md"
 
 
 def _line(body="a claim", **kw):
@@ -90,9 +91,10 @@ class TestIndexStanding:
         derived = standings([line], head_lines=_on(OTHER_SURFACE, line))
         assert derived[line.id].index is IndexStanding.TAIL
 
-    def test_an_appendix_is_not_a_head_surface(self):
+    def test_a_user_home_appendix_is_a_head_surface(self):
+        """Depth, not lesser standing: a landed line stands wherever in the home it sits."""
         line = _line().relabel("^d20260819-1u")
-        assert _on(OTHER_SURFACE, line) == set()
+        assert _on(APPENDIX_SURFACE, line) == {line.id}
 
     def test_taking_a_line_off_the_surface_demotes_it(self):
         """Demotion is an edit, not a field — and it shows up in a diff."""

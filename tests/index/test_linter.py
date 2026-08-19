@@ -143,13 +143,15 @@ class TestHeadSurface:
         )
         assert "Index.Linter/Landing.Unhonored" in _classes(lint(geo))
 
-    def test_an_appendix_line_needs_no_landing_gate(self, geo, project_root):
+    def test_an_appendix_line_needs_a_landing_gate_like_any_other(self, geo, project_root):
+        """All of a user home is HEAD. Appendix is depth, not weaker standing, so a line
+        landed there answers for its gate exactly as a chapter line does."""
         _surface(project_root, "- [CT] depth ^d20260818-1u", at=APPENDIX)
         IndexStore(geo).put(
             _entry(body="depth", support=[SupportRef("chat", "s1", "m1")])
             .relabel("^d20260818-1u")
         )
-        assert "Index.Linter/Landing.Unevidenced" not in _classes(lint(geo))
+        assert "Index.Linter/Landing.Unevidenced" in _classes(lint(geo))
 
     def test_the_head_surface_set_is_declared_not_inferred(self, geo, project_root):
         from tarav.index.surfaces import load_head_surfaces, write_head_surfaces

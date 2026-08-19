@@ -43,8 +43,13 @@ HOMES_SCHEMA = "tarav.homes.v1"
 HEAD_SURFACES_FILE = "head-surfaces.json"
 HEAD_SURFACES_SCHEMA = "tarav.head-surfaces.v1"
 
-#: Chapters are the promoted surface; appendix is depth, not current design.
-DEFAULT_HEAD_PATTERNS: tuple[str, ...] = ("skills/*/homes/*/chapters/*.md",)
+#: A user home is promoted material throughout. Appendix is depth rather than current
+#: design, but depth someone landed there is still promoted — the folder says how deep a
+#: line reads, not whether it stands.
+DEFAULT_HEAD_PATTERNS: tuple[str, ...] = (
+    "skills/*/homes/*/chapters/*.md",
+    "skills/*/homes/*/appendix/*.md",
+)
 
 
 class SurfaceError(TaravIndexError):
