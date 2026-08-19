@@ -68,7 +68,7 @@ def chat_message_support_member(model: JsonObject, message: JsonObject) -> JsonO
     identity = session.get("identity_hash") if isinstance(session, dict) else None
     at = chat_message_at(model, message)
     if not isinstance(identity, str) or not identity:
-        raise ValueError("Chatlas2 Normal Model has no session identity_hash")
+        raise ValueError("lossless Normal Model has no session identity_hash")
     if at is None:
         raise ValueError("Chat.Message has no resolvable started_at")
     ref = chat_message_ref(message)

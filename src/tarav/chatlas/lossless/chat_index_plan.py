@@ -41,24 +41,24 @@ def parse_capture_plan(value: object) -> CapturePlan:
         "landed_lines",
         "status",
     }:
-        raise CliError("Chatlas2 Capture.Plan has an invalid top-level shape")
+        raise CliError("lossless Capture.Plan has an invalid top-level shape")
     if value.get("schema") != CAPTURE_PLAN_SCHEMA:
         raise CliError(
-            f"Chatlas2 Capture.Plan requires schema {CAPTURE_PLAN_SCHEMA!r}"
+            f"lossless Capture.Plan requires schema {CAPTURE_PLAN_SCHEMA!r}"
         )
     session = value.get("session")
     if not isinstance(session, dict) or not set(session).issubset(
         {"identity_hash", "session_id", "provider"}
     ):
-        raise CliError("Chatlas2 Capture.Plan session has an invalid shape")
+        raise CliError("lossless Capture.Plan session has an invalid shape")
     identity = session.get("identity_hash")
     if not isinstance(identity, str) or _IDENTITY.fullmatch(identity) is None:
-        raise CliError("Chatlas2 Capture.Plan requires a full session identity_hash")
+        raise CliError("lossless Capture.Plan requires a full session identity_hash")
     parsed_session = {key: str(item) for key, item in session.items()}
     base_surface = _parse_base_surface(value.get("base_surface"))
     raw_lines = value.get("landed_lines")
     if not isinstance(raw_lines, list):
-        raise CliError("Chatlas2 Capture.Plan landed_lines must be an array")
+        raise CliError("lossless Capture.Plan landed_lines must be an array")
     lines: list[CapturePlanLine] = []
     client_ids: set[str] = set()
     for index, raw in enumerate(raw_lines):
@@ -69,7 +69,7 @@ def parse_capture_plan(value: object) -> CapturePlan:
             "anchor",
         }:
             raise CliError(
-                f"Chatlas2 Capture.Plan landed line {index} has an invalid shape"
+                f"lossless Capture.Plan landed line {index} has an invalid shape"
             )
         client_id = raw.get("client_id")
         concept = raw.get("concept")
@@ -81,11 +81,11 @@ def parse_capture_plan(value: object) -> CapturePlan:
             or client_id in client_ids
         ):
             raise CliError(
-                f"Chatlas2 Capture.Plan landed line {index} has an invalid client_id"
+                f"lossless Capture.Plan landed line {index} has an invalid client_id"
             )
         if not isinstance(concept, str) or not concept.strip():
             raise CliError(
-                f"Chatlas2 Capture.Plan landed line {client_id!r} has no concept"
+                f"lossless Capture.Plan landed line {client_id!r} has no concept"
             )
         if (
             not isinstance(line_content, str)
@@ -93,21 +93,21 @@ def parse_capture_plan(value: object) -> CapturePlan:
             or not line_content.startswith("- [")
         ):
             raise CliError(
-                f"Chatlas2 Capture.Plan landed line {client_id!r} has invalid content"
+                f"lossless Capture.Plan landed line {client_id!r} has invalid content"
             )
         try:
             index_line_statement_parts(line_content)
         except ValueError as exc:
             raise CliError(
-                f"Chatlas2 Capture.Plan landed line {client_id!r} is not an Index.Line"
+                f"lossless Capture.Plan landed line {client_id!r} is not an Index.Line"
             ) from exc
         if any(token.startswith("^d") for token in line_content.split()):
             raise CliError(
-                f"Chatlas2 Capture.Plan landed line {client_id!r} content carries an anchor"
+                f"lossless Capture.Plan landed line {client_id!r} content carries an anchor"
             )
         if not isinstance(anchor, str) or _ANCHOR.fullmatch(anchor) is None:
             raise CliError(
-                f"Chatlas2 Capture.Plan landed line {client_id!r} has an invalid anchor"
+                f"lossless Capture.Plan landed line {client_id!r} has an invalid anchor"
             )
         client_ids.add(client_id)
         lines.append(
@@ -120,9 +120,9 @@ def parse_capture_plan(value: object) -> CapturePlan:
         )
     status = value.get("status")
     if status not in {"draft", "ready"}:
-        raise CliError("Chatlas2 Capture.Plan status must be 'draft' or 'ready'")
+        raise CliError("lossless Capture.Plan status must be 'draft' or 'ready'")
     if status == "ready" and not lines:
-        raise CliError("a ready Chatlas2 Capture.Plan requires landed lines")
+        raise CliError("a ready lossless Capture.Plan requires landed lines")
     return CapturePlan(
         session=parsed_session,
         base_surface=base_surface,
@@ -135,9 +135,9 @@ def load_capture_plan(path: Path) -> CapturePlan:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
-        raise CliError(f"cannot read Chatlas2 Capture.Plan {path}: {exc}") from exc
+        raise CliError(f"cannot read lossless Capture.Plan {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
-        raise CliError(f"invalid Chatlas2 Capture.Plan JSON: {path}") from exc
+        raise CliError(f"invalid lossless Capture.Plan JSON: {path}") from exc
     plan = parse_capture_plan(payload)
     return CapturePlan(
         session=plan.session,
@@ -170,18 +170,18 @@ def _parse_base_surface(value: object) -> dict[str, object] | None:
     if value is None:
         return None
     if not isinstance(value, dict) or set(value) != {"files", "fingerprint"}:
-        raise CliError("Chatlas2 Capture.Plan base_surface has an invalid shape")
+        raise CliError("lossless Capture.Plan base_surface has an invalid shape")
     files = value.get("files")
     fingerprint = value.get("fingerprint")
     if not isinstance(files, list) or not all(
         isinstance(item, str) and item for item in files
     ):
-        raise CliError("Chatlas2 Capture.Plan base_surface files are invalid")
+        raise CliError("lossless Capture.Plan base_surface files are invalid")
     if (
         not isinstance(fingerprint, str)
         or re.fullmatch(r"sha256:[0-9a-f]{64}", fingerprint) is None
     ):
-        raise CliError("Chatlas2 Capture.Plan base_surface fingerprint is invalid")
+        raise CliError("lossless Capture.Plan base_surface fingerprint is invalid")
     return {"files": list(files), "fingerprint": fingerprint}
 
 

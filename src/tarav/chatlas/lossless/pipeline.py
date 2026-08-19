@@ -50,7 +50,7 @@ def build_normal_model(
     include_raw: bool = False,
 ) -> JsonObject:
     row = select_one_chatlas_index_row(
-        command="chatlas2 normalize",
+        command="chatlas normalize",
         identity_hash=identity_hash,
         providers=("codex", "claude-code"),
         session_id=session_id,

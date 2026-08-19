@@ -10,7 +10,7 @@ from tarav._core.errors import CliError
 from tarav.chatlas.line_manifest import create_chatlas_line_relationship_projector
 from tarav.index_model import index_line_anchor_triplet_hash
 
-from .anchory import chatlas2_anchory_depot, parse_line_anchor_dossier
+from .anchory import lossless_anchory_depot, parse_line_anchor_dossier
 from .grounding import resolve_message_member
 from .messages import chat_message_neighborhood
 from .model import JsonObject
@@ -49,7 +49,7 @@ def _fingerprint(value: object) -> str:
     return f"sha256:{sha256(encoded.encode('utf-8')).hexdigest()}"
 
 
-def create_chatlas2_line_relationship_projector(
+def create_lossless_line_relationship_projector(
     *,
     chatlas_root: Path | None = None,
     relationships: tuple[str, ...] = RELATIONSHIPS,
@@ -62,12 +62,12 @@ def create_chatlas2_line_relationship_projector(
     selected = tuple(name for name in RELATIONSHIPS if name in relationships)
     unknown = set(relationships) - set(RELATIONSHIPS)
     if unknown:
-        raise CliError(f"unknown Chatlas2 line relationship(s): {sorted(unknown)!r}")
+        raise CliError(f"unknown lossless line relationship(s): {sorted(unknown)!r}")
     if verification not in {"stored", "sampled", "complete"}:
         raise CliError(f"unsupported Chatlas2 verification: {verification!r}")
     if sample_size < 1 or radius < 0:
         raise CliError("Chatlas2 manifest bounds must be non-negative and non-zero")
-    depot = chatlas2_anchory_depot(chatlas_root)
+    depot = lossless_anchory_depot(chatlas_root)
     load = model_loader or (
         lambda identity: provide_normal_model(
             identity_hash=identity, chatlas_root=chatlas_root
@@ -192,8 +192,8 @@ def create_grounding_line_relationship_projector(
     **kwargs,
 ) -> Callable[[str, str], JsonObject]:
     old = create_chatlas_line_relationship_projector(**kwargs)
-    new = create_chatlas2_line_relationship_projector(**kwargs)
-    depot = chatlas2_anchory_depot(kwargs.get("chatlas_root"))
+    new = create_lossless_line_relationship_projector(**kwargs)
+    depot = lossless_anchory_depot(kwargs.get("chatlas_root"))
 
     def project(anchor: str, line_source: str) -> JsonObject:
         resolution = depot.resolve(anchor)
@@ -206,6 +206,6 @@ def create_grounding_line_relationship_projector(
 
 
 __all__ = [
-    "create_chatlas2_line_relationship_projector",
+    "create_lossless_line_relationship_projector",
     "create_grounding_line_relationship_projector",
 ]

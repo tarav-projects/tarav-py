@@ -1,4 +1,4 @@
-# $kw: --from Chat.Message.Ref --from Index.Line.Anchor --note [IMPL] Hugentic grounding resolves consumer-owned relationships against current Chatlas2 message refs without extending the Normal Model --supp ^c20260816-27u
+# $kw: --from Chat.Message.Ref --from Index.Line.Anchor --note [IMPL] Hugentic grounding resolves consumer-owned relationships against current lossless message refs without extending the Normal Model --supp ^c20260816-27u
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -13,7 +13,7 @@ from .anchory import (
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1,
     CHATLAS2_MESSAGE_SUPPORT_SCHEMA,
-    chatlas2_anchory_depot,
+    lossless_anchory_depot,
     parse_line_anchor_dossier,
     parse_message_support_record,
 )
@@ -98,12 +98,12 @@ def support_record_resolves(
     return True
 
 
-def chatlas2_support_reference_resolver(
+def lossless_support_reference_resolver(
     chatlas_root: Path | None = None,
     *,
     model_loader: ModelLoader | None = None,
 ) -> Callable[[str], bool]:
-    depot = chatlas2_anchory_depot(chatlas_root)
+    depot = lossless_anchory_depot(chatlas_root)
     load = _loader(chatlas_root=chatlas_root, model_loader=model_loader)
     cached: dict[str, bool] = {}
 
@@ -116,7 +116,7 @@ def chatlas2_support_reference_resolver(
             result = (
                 isinstance(record, dict)
                 and record.get("app") == "chatlas2"
-                and is_chatlas2_line_record(record)
+                and is_lossless_line_record(record)
                 and support_record_resolves(record, loader=load)
             )
         except (CliError, OSError):
@@ -181,12 +181,12 @@ def tokenized_gate_failure(
     return None
 
 
-def chatlas2_review_reference_resolver(
+def lossless_review_reference_resolver(
     chatlas_root: Path | None = None,
     *,
     model_loader: ModelLoader | None = None,
 ) -> Callable[[str, str], bool]:
-    depot = chatlas2_anchory_depot(chatlas_root)
+    depot = lossless_anchory_depot(chatlas_root)
     load = _loader(chatlas_root=chatlas_root, model_loader=model_loader)
     cached: dict[tuple[str, str], bool] = {}
 
@@ -214,7 +214,7 @@ def chatlas2_review_reference_resolver(
     return resolves
 
 
-def is_chatlas2_line_record(record: object) -> bool:
+def is_lossless_line_record(record: object) -> bool:
     return isinstance(record, dict) and record.get("schema") in {
         CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1,
         CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
@@ -222,9 +222,9 @@ def is_chatlas2_line_record(record: object) -> bool:
 
 
 __all__ = [
-    "chatlas2_review_reference_resolver",
-    "chatlas2_support_reference_resolver",
-    "is_chatlas2_line_record",
+    "lossless_review_reference_resolver",
+    "lossless_support_reference_resolver",
+    "is_lossless_line_record",
     "parse_grounding_record",
     "resolve_message_member",
     "support_record_resolves",

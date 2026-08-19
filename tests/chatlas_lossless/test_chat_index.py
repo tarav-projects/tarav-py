@@ -10,8 +10,8 @@ from tarav._core.errors import CliError
 from tarav.chatlas.lossless.anchory import (
     CHATLAS2_NAMESPACE,
     build_line_anchor_dossier,
-    chatlas2_anchory_depot,
-    ensure_chatlas2_namespace,
+    lossless_anchory_depot,
+    ensure_lossless_namespace,
 )
 from tarav.chatlas.lossless.chat_index import (
     apply_chat_index_capture_plan,
@@ -154,8 +154,8 @@ def _register_line(
     members: list[dict[str, object]],
     predecessors: tuple[str, ...] = (),
 ) -> None:
-    depot = chatlas2_anchory_depot(root)
-    ensure_chatlas2_namespace(depot)
+    depot = lossless_anchory_depot(root)
+    ensure_lossless_namespace(depot)
     depot.register(
         build_line_anchor_dossier(
             anchor=anchor,

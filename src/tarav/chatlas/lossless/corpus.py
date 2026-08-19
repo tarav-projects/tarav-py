@@ -273,7 +273,7 @@ def load_capture_records(path: Path) -> list[JsonObject]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
-        raise CliError(f"cannot read Chatlas2 capture registry {path}: {exc}") from exc
+        raise CliError(f"cannot read lossless capture registry {path}: {exc}") from exc
     for line_number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
@@ -281,11 +281,11 @@ def load_capture_records(path: Path) -> list[JsonObject]:
             record = json.loads(line)
         except json.JSONDecodeError as exc:
             raise CliError(
-                f"invalid Chatlas2 capture registry JSON at line {line_number}: {exc.msg}"
+                f"invalid lossless capture registry JSON at line {line_number}: {exc.msg}"
             ) from exc
         if not isinstance(record, dict):
             raise CliError(
-                f"Chatlas2 capture registry line {line_number} is not an object"
+                f"lossless capture registry line {line_number} is not an object"
             )
         _validate_capture(record)
         capture_id = str(record["capture_id"])
@@ -441,7 +441,7 @@ def _validate_checked_model(model: JsonObject) -> None:
     if not isinstance(sources, list) or not isinstance(annotations, dict):
         raise CliError("normalized corpus capture has an invalid model envelope")
     if model.get("schema_version") != 6:
-        raise CliError("normalized corpus capture is not Chatlas2 Normal Model v6")
+        raise CliError("normalized corpus capture is not lossless Normal Model v6")
     timestamps = [event.get("started_at") for event in events]
     if not all(isinstance(timestamp, str) for timestamp in timestamps):
         raise CliError("normalized corpus event has no start timestamp")

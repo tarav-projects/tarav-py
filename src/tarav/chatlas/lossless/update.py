@@ -15,19 +15,19 @@ from .query import SUPPORTED_QUERY_PROVIDERS
 
 
 @dataclass(frozen=True, slots=True)
-class Chatlas2UpdateScope:
+class LosslessUpdateScope:
     providers: tuple[str, ...]
     session_ids: tuple[str, ...] = ()
     chatlas_root: Path | None = None
 
 
-def chatlas2_update_scope(args: argparse.Namespace) -> Chatlas2UpdateScope:
+def lossless_update_scope(args: argparse.Namespace) -> LosslessUpdateScope:
     providers = _selected_providers(getattr(args, "providers", None))
     chatlas_root_value = getattr(args, "chatlas_root", None)
     chatlas_root = Path(chatlas_root_value) if chatlas_root_value else None
     session_id = getattr(args, "session_id", None)
     if isinstance(session_id, str) and session_id:
-        return Chatlas2UpdateScope(
+        return LosslessUpdateScope(
             providers=providers,
             session_ids=(session_id,),
             chatlas_root=chatlas_root,
@@ -41,11 +41,11 @@ def chatlas2_update_scope(args: argparse.Namespace) -> Chatlas2UpdateScope:
         )
         if resolved is not None:
             return resolved
-    return Chatlas2UpdateScope(providers=providers, chatlas_root=chatlas_root)
+    return LosslessUpdateScope(providers=providers, chatlas_root=chatlas_root)
 
 
-def update_chatlas2(
-    scope: Chatlas2UpdateScope,
+def update_lossless(
+    scope: LosslessUpdateScope,
     *,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, object]:
@@ -74,10 +74,10 @@ def _resolve_identity_scope(
     *,
     providers: tuple[str, ...],
     chatlas_root: Path | None,
-) -> Chatlas2UpdateScope | None:
+) -> LosslessUpdateScope | None:
     try:
         row = select_one_chatlas_index_row(
-            command="chatlas2 --update",
+            command="chatlas --update",
             identity_hash=identity_hash,
             providers=providers,
             chatlas_root=chatlas_root,
@@ -90,7 +90,7 @@ def _resolve_identity_scope(
         return None
     if not isinstance(session_id, str) or not session_id:
         return None
-    return Chatlas2UpdateScope(
+    return LosslessUpdateScope(
         providers=(provider,),
         session_ids=(session_id,),
         chatlas_root=chatlas_root,
@@ -98,7 +98,7 @@ def _resolve_identity_scope(
 
 
 __all__ = [
-    "Chatlas2UpdateScope",
-    "chatlas2_update_scope",
-    "update_chatlas2",
+    "LosslessUpdateScope",
+    "lossless_update_scope",
+    "update_lossless",
 ]

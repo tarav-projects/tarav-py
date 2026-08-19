@@ -369,7 +369,7 @@ def open_normal_model_cache_from_row(
     status = normal_model_cache_status_from_row(row, chatlas_root=chatlas_root)
     if status["standing"] != "FRESH":
         raise CliError(
-            f"Chatlas2 Normal Model cache is not fresh: {status['standing']}"
+            f"lossless Normal Model cache is not fresh: {status['standing']}"
         )
     path = Path(str(status["path"]))
     return NormalModelCacheReader(path=path, metadata=_read_metadata(path))
@@ -416,7 +416,7 @@ def select_normal_model_cache_row(
     chatlas_root: Path | None = None,
 ) -> JsonObject:
     return select_one_chatlas_index_row(
-        command="chatlas2 cache",
+        command="chatlas cache",
         identity_hash=identity_hash,
         providers=("codex", "claude-code"),
         session_id=session_id,
@@ -619,7 +619,7 @@ def _try_read_metadata(path: Path) -> JsonObject | None:
 def _identity_hash(row: JsonObject) -> str:
     identity = row.get("identity_hash")
     if not isinstance(identity, str) or not identity:
-        raise CliError("Chatlas2 Normal Model cache requires session identity_hash")
+        raise CliError("lossless Normal Model cache requires session identity_hash")
     return identity
 
 

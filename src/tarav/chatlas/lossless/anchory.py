@@ -41,12 +41,12 @@ _ISSUE_ID = re.compile(r"Issue\.I[0-9]{4}")
 ModelLoader = Callable[[str], JsonObject]
 
 
-def chatlas2_anchory_depot(chatlas_root: Path | None = None) -> AnchoryDepot:
+def lossless_anchory_depot(chatlas_root: Path | None = None) -> AnchoryDepot:
     root = (chatlas_root or default_chatlas_root()).expanduser().resolve()
     return AnchoryDepot(root / "anchory")
 
 
-def ensure_chatlas2_namespace(depot: AnchoryDepot) -> None:
+def ensure_lossless_namespace(depot: AnchoryDepot) -> None:
     meta = depot.namespace_meta(CHATLAS2_NAMESPACE)
     if meta is None:
         depot.write_namespace_meta(
@@ -75,11 +75,11 @@ def format_support_member_ref(member: JsonObject) -> str:
 
 def parse_support_member_ref(value: str) -> JsonObject:
     if not isinstance(value, str):
-        raise CliError("Chatlas2 support member ref must be a string")
+        raise CliError("lossless support member ref must be a string")
     parts = value.rsplit(":", 2)
     if len(parts) != 3 or not all(parts):
         raise CliError(
-            "Chatlas2 support member must have the form "
+            "lossless support member must have the form "
             "<session>:<message-address>:<message-hash>"
         )
     session, address, digest = parts
@@ -96,15 +96,15 @@ def _parse_message_member(value: object) -> JsonObject:
         "at",
     }:
         raise CliError(
-            "Chatlas2 message member must contain exactly session, "
+            "lossless message member must contain exactly session, "
             "message_address, message_hash, and at"
         )
     session = value.get("session")
     at = value.get("at")
     if not isinstance(session, str) or not session:
-        raise CliError("Chatlas2 message member session must be non-empty")
+        raise CliError("lossless message member session must be non-empty")
     if not isinstance(at, str) or not at:
-        raise CliError("Chatlas2 message member at must be non-empty")
+        raise CliError("lossless message member at must be non-empty")
     return {
         "session": session,
         "message_address": _digest(value.get("message_address"), field="message_address"),
@@ -137,7 +137,7 @@ def _parse_member_list(raw: object, *, field: str) -> list[JsonObject]:
 
 def _parse_support_relationship(value: object) -> JsonObject:
     if not isinstance(value, dict) or set(value) != {"members"}:
-        raise CliError("Chatlas2 support relationship must contain only members")
+        raise CliError("lossless support relationship must contain only members")
     return {
         "members": _parse_member_list(
             value.get("members"), field="relationships.support.members"
@@ -147,7 +147,7 @@ def _parse_support_relationship(value: object) -> JsonObject:
 
 def _parse_gate_list(raw: object, *, kind: str) -> list[JsonObject]:
     if not isinstance(raw, list):
-        raise CliError(f"Chatlas2 line gate {kind} must be a list")
+        raise CliError(f"lossless line gate {kind} must be a list")
     parsed: list[JsonObject] = []
     seen: set[str] = set()
     required = {"approval"}
@@ -159,19 +159,19 @@ def _parse_gate_list(raw: object, *, kind: str) -> list[JsonObject]:
         if not isinstance(value, dict) or not required.issubset(value) or not set(
             value
         ).issubset(allowed):
-            raise CliError(f"Chatlas2 line gate {kind} item {index} has an invalid shape")
+            raise CliError(f"lossless line gate {kind} item {index} has an invalid shape")
         item: JsonObject = {}
         if kind == "tokenized_verbatim_approval":
             token = value.get("token")
             if not isinstance(token, str) or not token:
-                raise CliError(f"Chatlas2 line gate {kind} item {index} has no token")
+                raise CliError(f"lossless line gate {kind} item {index} has no token")
             item["token"] = token
         for position in ("proposal", "approval"):
             if position in value:
                 item[position] = _parse_message_member(value[position])
         key = json.dumps(item, sort_keys=True, separators=(",", ":"))
         if key in seen:
-            raise CliError(f"Chatlas2 line gate {kind} repeats item {index}")
+            raise CliError(f"lossless line gate {kind} repeats item {index}")
         seen.add(key)
         parsed.append(item)
     return parsed
@@ -183,7 +183,7 @@ def _parse_gates(value: object) -> JsonObject:
         "tokenized_verbatim_approval",
     }:
         raise CliError(
-            "Chatlas2 line dossier gates must contain semantic_approval and "
+            "lossless line dossier gates must contain semantic_approval and "
             "tokenized_verbatim_approval"
         )
     return {
@@ -203,7 +203,7 @@ def _parse_provenance(value: object) -> JsonObject:
         "issue_context",
     }:
         raise CliError(
-            "Chatlas2 line dossier provenance must contain predecessor_anchors "
+            "lossless line dossier provenance must contain predecessor_anchors "
             "and issue_context"
         )
     predecessors = value["predecessor_anchors"]
@@ -240,12 +240,12 @@ def parse_message_support_record(record: object) -> JsonObject:
         "schema",
         "relationships",
     }:
-        raise CliError("Chatlas2 message-support record has an invalid top-level shape")
+        raise CliError("lossless message-support record has an invalid top-level shape")
     if record.get("app") != "chatlas2" or record.get("schema") != CHATLAS2_MESSAGE_SUPPORT_SCHEMA:
-        raise CliError("Chatlas2 message-support record has an invalid app or schema")
+        raise CliError("lossless message-support record has an invalid app or schema")
     relationships = record.get("relationships")
     if not isinstance(relationships, dict) or set(relationships) != {"support"}:
-        raise CliError("Chatlas2 message-support relationships must contain only support")
+        raise CliError("lossless message-support relationships must contain only support")
     return {
         "app": "chatlas2",
         "schema": CHATLAS2_MESSAGE_SUPPORT_SCHEMA,
@@ -272,31 +272,31 @@ def parse_line_anchor_dossier(record: object) -> JsonObject:
         "attachment",
         "relationships",
     }:
-        raise CliError("Chatlas2 line dossier has an invalid top-level shape")
+        raise CliError("lossless line dossier has an invalid top-level shape")
     if record.get("app") != "chatlas2":
-        raise CliError("Chatlas2 line dossier must have app='chatlas2'")
+        raise CliError("lossless line dossier must have app='chatlas2'")
     schema = record.get("schema")
     if schema not in {
         CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1,
         CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
     }:
         raise CliError(
-            "Chatlas2 line dossier has an unsupported schema"
+            "lossless line dossier has an unsupported schema"
         )
     attachment = record.get("attachment")
     if not isinstance(attachment, dict) or set(attachment) != {
         "canonical_schema",
         "triplet_hash",
     }:
-        raise CliError("Chatlas2 line dossier attachment has an invalid shape")
+        raise CliError("lossless line dossier attachment has an invalid shape")
     if attachment.get("canonical_schema") != INDEX_LINE_ANCHOR_TRIPLET_SCHEMA:
-        raise CliError("Chatlas2 line dossier has an invalid canonical attachment schema")
+        raise CliError("lossless line dossier has an invalid canonical attachment schema")
     triplet_hash = attachment.get("triplet_hash")
     if not isinstance(triplet_hash, str) or _CONTENT_HASH.fullmatch(triplet_hash) is None:
-        raise CliError("Chatlas2 line dossier has an invalid triplet_hash")
+        raise CliError("lossless line dossier has an invalid triplet_hash")
     relationships = record.get("relationships")
     if not isinstance(relationships, dict):
-        raise CliError("Chatlas2 line dossier relationships must be an object")
+        raise CliError("lossless line dossier relationships must be an object")
     if schema == CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1:
         if set(relationships) != {"support"}:
             raise CliError("Chatlas2 v1 line dossier relationships are invalid")
@@ -305,7 +305,7 @@ def parse_line_anchor_dossier(record: object) -> JsonObject:
     else:
         if set(relationships) != {"support", "gates", "provenance"}:
             raise CliError(
-                "Chatlas2 line dossier relationships must contain support, gates, "
+                "lossless line dossier relationships must contain support, gates, "
                 "and provenance"
             )
         gates = _parse_gates(relationships["gates"])
@@ -448,13 +448,13 @@ def _prepare_gates(
     if not isinstance(gates, dict) or not set(gates).issubset(
         {"semantic_approval", "tokenized_verbatim_approval"}
     ):
-        raise CliError("Chatlas2 line gates have an invalid shape")
+        raise CliError("lossless line gates have an invalid shape")
     loader = _model_loader(chatlas_root=chatlas_root, model_loader=model_loader)
     prepared = _empty_gates()
     for kind in ("semantic_approval", "tokenized_verbatim_approval"):
         raw_items = gates.get(kind, [])
         if not isinstance(raw_items, list):
-            raise CliError(f"Chatlas2 line gate {kind} must be a list")
+            raise CliError(f"lossless line gate {kind} must be a list")
         for index, raw in enumerate(raw_items):
             required = {"approval"}
             allowed = {"proposal", "approval"}
@@ -467,13 +467,13 @@ def _prepare_gates(
                 or not set(raw).issubset(allowed)
             ):
                 raise CliError(
-                    f"Chatlas2 line gate {kind} item {index} has an invalid shape"
+                    f"lossless line gate {kind} item {index} has an invalid shape"
                 )
             item: JsonObject = {}
             if kind == "tokenized_verbatim_approval":
                 token = raw.get("token")
                 if not isinstance(token, str) or not token:
-                    raise CliError(f"Chatlas2 line gate {kind} item {index} has no token")
+                    raise CliError(f"lossless line gate {kind} item {index} has no token")
                 item["token"] = token
             proposal_position: int | None = None
             if "proposal" in raw:
@@ -496,11 +496,11 @@ def _prepare_gates(
             if proposal_position is not None:
                 if proposal["session"] != approval["session"]:
                     raise CliError(
-                        f"Chatlas2 line gate {kind} item {index} spans sessions"
+                        f"lossless line gate {kind} item {index} spans sessions"
                     )
                 if proposal_position >= approval_position:
                     raise CliError(
-                        f"Chatlas2 line gate {kind} item {index} approval must follow proposal"
+                        f"lossless line gate {kind} item {index} approval must follow proposal"
                     )
             prepared[kind].append(item)
     return _parse_gates(prepared)
@@ -541,7 +541,7 @@ def _equivalent_anchors(
     relationship_key = _relationship_key(record)
     support_matches: list[str] = []
     exact_matches: list[str] = []
-    depot = chatlas2_anchory_depot(chatlas_root)
+    depot = lossless_anchory_depot(chatlas_root)
     for entry in depot.query(namespace=CHATLAS2_NAMESPACE):
         try:
             stored = parse_line_anchor_dossier(entry.record)
@@ -645,7 +645,7 @@ def _message_support_equivalents(
 ) -> list[str]:
     key = _support_key(record)
     matches: list[str] = []
-    for entry in chatlas2_anchory_depot(chatlas_root).query(
+    for entry in lossless_anchory_depot(chatlas_root).query(
         namespace=CHATLAS2_NAMESPACE
     ):
         try:
@@ -657,7 +657,7 @@ def _message_support_equivalents(
     return sorted(matches)
 
 
-def chatlas2_message_support_preview(
+def lossless_message_support_preview(
     *,
     members: tuple[str, ...],
     chatlas_root: Path | None = None,
@@ -681,7 +681,7 @@ def chatlas2_message_support_preview(
     return payload
 
 
-def chatlas2_message_support_register(
+def lossless_message_support_register(
     *,
     members: tuple[str, ...],
     chatlas_root: Path | None = None,
@@ -693,13 +693,13 @@ def chatlas2_message_support_register(
     )
     record = build_message_support_record(members=prepared)
     equivalents = _message_support_equivalents(record, chatlas_root=chatlas_root)
-    depot = chatlas2_anchory_depot(chatlas_root)
-    ensure_chatlas2_namespace(depot)
+    depot = lossless_anchory_depot(chatlas_root)
+    ensure_lossless_namespace(depot)
     if equivalents:
         anchor = min(equivalents)
         resolution = depot.resolve(anchor, namespace=CHATLAS2_NAMESPACE)
         if resolution is None:
-            raise CliError(f"Chatlas2 anchor disappeared during registration: {anchor}")
+            raise CliError(f"lossless anchor disappeared during registration: {anchor}")
         record = dict(resolution.record)
         action = "reused"
     else:
@@ -723,7 +723,7 @@ def chatlas2_message_support_register(
     )
 
 
-def chatlas2_anchory_preview(
+def lossless_anchory_preview(
     *,
     members: tuple[str, ...],
     line_content: str,
@@ -768,7 +768,7 @@ def chatlas2_anchory_preview(
     return payload
 
 
-def chatlas2_anchory_register(
+def lossless_anchory_register(
     *,
     members: tuple[str, ...],
     line_content: str,
@@ -800,13 +800,13 @@ def chatlas2_anchory_register(
         line_content=line_content,
         chatlas_root=chatlas_root,
     )
-    depot = chatlas2_anchory_depot(chatlas_root)
-    ensure_chatlas2_namespace(depot)
+    depot = lossless_anchory_depot(chatlas_root)
+    ensure_lossless_namespace(depot)
     if exact:
         anchor = min(exact)
         resolution = depot.resolve(anchor, namespace=CHATLAS2_NAMESPACE)
         if resolution is None:
-            raise CliError(f"Chatlas2 anchor disappeared during registration: {anchor}")
+            raise CliError(f"lossless anchor disappeared during registration: {anchor}")
         record = dict(resolution.record)
         action = "reused"
     else:
@@ -838,17 +838,17 @@ def chatlas2_anchory_register(
     )
 
 
-def chatlas2_anchory_resolve(
+def lossless_anchory_resolve(
     anchor: str,
     *,
     chatlas_root: Path | None = None,
     model_loader: ModelLoader | None = None,
     radius: int = 4,
 ) -> JsonObject:
-    depot = chatlas2_anchory_depot(chatlas_root)
+    depot = lossless_anchory_depot(chatlas_root)
     resolution = depot.resolve(anchor, namespace=CHATLAS2_NAMESPACE)
     if resolution is None:
-        raise CliError(f"Chatlas2 anchor not found in depot {depot.root}: {anchor}")
+        raise CliError(f"lossless anchor not found in depot {depot.root}: {anchor}")
     return _project_record(
         dict(resolution.record),
         anchor=resolution.anchor,
@@ -917,7 +917,7 @@ def _batch_plan_key(item: JsonObject, record: JsonObject) -> tuple[object, ...]:
     )
 
 
-def chatlas2_anchory_batch_preview(
+def lossless_anchory_batch_preview(
     *,
     items: object,
     chatlas_root: Path | None = None,
@@ -972,7 +972,7 @@ def chatlas2_anchory_batch_preview(
     }
 
 
-def chatlas2_anchory_batch_register(
+def lossless_anchory_batch_register(
     *,
     items: object,
     chatlas_root: Path | None = None,
@@ -981,7 +981,7 @@ def chatlas2_anchory_batch_register(
     results: list[JsonObject] = []
     minted_count = reused_count = 0
     for item in _parse_batch_items(items):
-        result = chatlas2_anchory_register(
+        result = lossless_anchory_register(
             members=item["members"],
             line_content=str(item["line_content"]),
             gates=item["gates"],
@@ -1030,12 +1030,12 @@ def _parse_timestamp(value: str) -> datetime:
     try:
         return datetime.fromisoformat(normalized)
     except ValueError as exc:
-        raise CliError(f"Chatlas2 support member has invalid at: {value!r}") from exc
+        raise CliError(f"lossless support member has invalid at: {value!r}") from exc
 
 
 def _digest(value: object, *, field: str) -> str:
     if not isinstance(value, str) or _FULL_SHA256.fullmatch(value) is None:
-        raise CliError(f"Chatlas2 support member {field} must be a SHA-256 digest")
+        raise CliError(f"lossless support member {field} must be a SHA-256 digest")
     return value
 
 
@@ -1047,15 +1047,15 @@ __all__ = [
     "CHATLAS2_NAMESPACE",
     "build_line_anchor_dossier",
     "build_message_support_record",
-    "chatlas2_anchory_batch_preview",
-    "chatlas2_anchory_batch_register",
-    "chatlas2_anchory_depot",
-    "chatlas2_anchory_preview",
-    "chatlas2_anchory_register",
-    "chatlas2_anchory_resolve",
-    "chatlas2_message_support_preview",
-    "chatlas2_message_support_register",
-    "ensure_chatlas2_namespace",
+    "lossless_anchory_batch_preview",
+    "lossless_anchory_batch_register",
+    "lossless_anchory_depot",
+    "lossless_anchory_preview",
+    "lossless_anchory_register",
+    "lossless_anchory_resolve",
+    "lossless_message_support_preview",
+    "lossless_message_support_register",
+    "ensure_lossless_namespace",
     "format_support_member_ref",
     "load_anchor_batch",
     "parse_line_anchor_dossier",

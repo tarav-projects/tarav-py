@@ -18,7 +18,7 @@ from tarav.index_model import index_line_anchor_triplet_hash
 
 from .anchory import (
     CHATLAS2_NAMESPACE,
-    chatlas2_anchory_depot,
+    lossless_anchory_depot,
     parse_line_anchor_dossier,
 )
 from .chat_index_plan import (
@@ -84,7 +84,7 @@ def scaffold_chat_index_capture_plan(
     session = _reader_session(reader)
     stage = stage.expanduser().resolve()
     if stage.exists() and any(stage.iterdir()):
-        raise CliError(f"Chatlas2 Capture.Plan stage is not empty: {stage}")
+        raise CliError(f"lossless Capture.Plan stage is not empty: {stage}")
     stage.mkdir(parents=True, exist_ok=True)
     surface = chat_index_surface_path(
         session["identity_hash"], chatlas_root=chatlas_root
@@ -115,7 +115,7 @@ def validate_chat_index_capture_plan(
 ) -> dict[str, object]:
     capture_plan = _coerce_plan(plan)
     if capture_plan.status != "ready":
-        raise CliError("Chatlas2 Capture.Plan is draft; set status to 'ready'")
+        raise CliError("lossless Capture.Plan is draft; set status to 'ready'")
     identity = capture_plan.session["identity_hash"]
     load_reader = reader_loader or (
         lambda value: provide_normal_model_reader(
@@ -126,7 +126,7 @@ def validate_chat_index_capture_plan(
     target_reader = load_reader(identity)
     target_session = _reader_session(target_reader)
     if target_session["identity_hash"] != identity:
-        raise CliError("Chatlas2 Capture.Plan resolved a different target session")
+        raise CliError("lossless Capture.Plan resolved a different target session")
     turns = list(target_reader.iter_chat_turns())
     turn_positions = {
         str(turn.get("turn_address")): index for index, turn in enumerate(turns)
@@ -134,7 +134,7 @@ def validate_chat_index_capture_plan(
     prepared: list[dict[str, object]] = []
     gaps: list[dict[str, str]] = []
     readers: dict[str, object] = {identity: target_reader}
-    depot = chatlas2_anchory_depot(chatlas_root)
+    depot = lossless_anchory_depot(chatlas_root)
     for line in capture_plan.landed_lines:
         item = _prepare_line(
             line,
@@ -255,12 +255,12 @@ def _prepare_line(
 ) -> dict[str, object]:
     resolution = depot.resolve(line.anchor, namespace=CHATLAS2_NAMESPACE)
     if resolution is None:
-        raise CliError(f"Chatlas2 Capture.Plan anchor is missing: {line.anchor}")
+        raise CliError(f"lossless Capture.Plan anchor is missing: {line.anchor}")
     dossier = parse_line_anchor_dossier(resolution.record)
     expected = index_line_anchor_triplet_hash(line.line_content, line.anchor)
     if dossier["attachment"]["triplet_hash"] != expected:
         raise CliError(
-            f"Chatlas2 Capture.Plan anchor does not attach its exact line: {line.anchor}"
+            f"lossless Capture.Plan anchor does not attach its exact line: {line.anchor}"
         )
     members = dossier["relationships"]["support"]["members"]
     local_origins: list[dict[str, object]] = []

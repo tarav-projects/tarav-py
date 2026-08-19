@@ -74,9 +74,9 @@ def _write_fresh_codex_session(
 def test_update_scope_uses_exact_native_session_and_selected_provider(
     tmp_path: Path,
 ) -> None:
-    from tarav.chatlas.lossless.update import chatlas2_update_scope
+    from tarav.chatlas.lossless.update import lossless_update_scope
 
-    scope = chatlas2_update_scope(
+    scope = lossless_update_scope(
         _args(
             session_id="session-one",
             providers=["codex"],
@@ -103,7 +103,7 @@ def test_update_scope_resolves_known_identity_to_native_session(
         },
     )
 
-    scope = update.chatlas2_update_scope(_args(identity_hash="abc123"))
+    scope = update.lossless_update_scope(_args(identity_hash="abc123"))
 
     assert scope.providers == ("claude-code",)
     assert scope.session_ids == ("session-two",)
@@ -119,7 +119,7 @@ def test_update_scope_unknown_identity_falls_back_to_supported_provider_scan(
 
     monkeypatch.setattr(update, "select_one_chatlas_index_row", missing)
 
-    scope = update.chatlas2_update_scope(_args(identity_hash="unknown"))
+    scope = update.lossless_update_scope(_args(identity_hash="unknown"))
 
     assert scope.providers == ("codex", "claude-code")
     assert scope.session_ids == ()
@@ -140,13 +140,13 @@ def test_update_runs_the_shared_delta_pipeline_once(
     def progress(_message: str) -> None:
         return None
 
-    scope = update.Chatlas2UpdateScope(
+    scope = update.LosslessUpdateScope(
         providers=("codex",),
         session_ids=("session-one",),
         chatlas_root=tmp_path,
     )
 
-    result = update.update_chatlas2(scope, progress=progress)
+    result = update.update_lossless(scope, progress=progress)
 
     assert result == {"status": "ok"}
     assert calls == [
@@ -167,7 +167,7 @@ def test_cli_update_precedes_leaf_command_and_preserves_json_stdout(
 
     events: list[str] = []
 
-    def run_update(_scope: update.Chatlas2UpdateScope, **_kwargs: object) -> dict[str, object]:
+    def run_update(_scope: update.LosslessUpdateScope, **_kwargs: object) -> dict[str, object]:
         events.append("update")
         return {"status": "ok"}
 
@@ -175,7 +175,7 @@ def test_cli_update_precedes_leaf_command_and_preserves_json_stdout(
         events.append("query")
         return {"class": "tarav.chatlas2.session-query", "sessions": []}
 
-    monkeypatch.setattr(commands, "update_chatlas2", run_update)
+    monkeypatch.setattr(commands, "update_lossless", run_update)
     monkeypatch.setattr(commands, "query_sessions", query)
 
     assert (
@@ -218,7 +218,7 @@ def test_cli_update_failure_prevents_leaf_command(
         queried = True
         return {"sessions": []}
 
-    monkeypatch.setattr(commands, "update_chatlas2", fail_update)
+    monkeypatch.setattr(commands, "update_lossless", fail_update)
     monkeypatch.setattr(commands, "query_sessions", query)
 
     assert main(["chatlas", "--update", "sessions", "query"]) == 1
