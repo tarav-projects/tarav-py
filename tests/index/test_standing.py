@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from tarav.index2.gates import GateRef
-from tarav.index2.record import EquivalenceKind, LineRecord, SupportRef
-from tarav.index2.standing import (
+from tarav.index.gates import GateRef
+from tarav.index.record import EquivalenceKind, LineRecord, SupportRef
+from tarav.index.standing import (
     IndexStanding,
     ReviewSide,
     ReviewStanding,
@@ -10,7 +10,7 @@ from tarav.index2.standing import (
     lines_on_head_surfaces,
     standings,
 )
-from tarav.index2.surfaces import HeadSurfaces, SurfaceLine
+from tarav.index.surfaces import HeadSurfaces, SurfaceLine
 
 BLOCK = "d/design#C"
 HEAD_SURFACE = "skills/d/homes/ceo/chapters/100-design.md"
@@ -26,7 +26,7 @@ def _gate():
 
 
 def _surface_line(record):
-    from tarav.index2.scope import parse_scope
+    from tarav.index.scope import parse_scope
 
     return SurfaceLine(
         scope=parse_scope(BLOCK),

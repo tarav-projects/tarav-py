@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.index2.config import Geography
+from tarav.index.config import Geography
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def chat(monkeypatch):
     provider home, which is user-scoped and absent on any other machine.
     """
 
-    from tarav.index2.chatlas import ChatMessage, ChatSession
+    from tarav.index.chatlas import ChatMessage, ChatSession
 
     sessions: dict[str, ChatSession] = {}
 
@@ -58,12 +58,12 @@ def chat(monkeypatch):
         return session
 
     def fake_load(_geo, session_id):
-        from tarav.index2.chatlas import ChatError
+        from tarav.index.chatlas import ChatError
 
         if session_id not in sessions:
             raise ChatError(f"no archived session {session_id!r}")
         return sessions[session_id]
 
-    monkeypatch.setattr("tarav.index2.gates.load_session", fake_load)
-    monkeypatch.setattr("tarav.index2.linter.load_session", fake_load)
+    monkeypatch.setattr("tarav.index.gates.load_session", fake_load)
+    monkeypatch.setattr("tarav.index.linter.load_session", fake_load)
     return build

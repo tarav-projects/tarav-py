@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tarav.index2.gates import GateRef, GateVerdict, verify_gate
+from tarav.index.gates import GateRef, GateVerdict, verify_gate
 
 SESSION = "s1"
 TOKEN = "idx-edition:7d2f91c4"

@@ -1,685 +1,1368 @@
-# $kw: ^index-poi-linter --from POI.System --from POI.Linter --note [CT] Index findings adapt into the shared POI report at the public boundary ^c20260729-49u
+# $kw: --from POI.Linter --note [CT] agents edit surfaces with general primitives; the linter checks conformance
+# $kw: --from Convergent.Justification --note [DC] Check.default_on is held on one reason — a check may ship off when it is expensive or situational, though no catalog row does yet
+"""The tarav index linter.
+
+This is where the intelligence lives. Agents edit the markdown surfaces directly with
+ordinary file primitives — there is no landing API, no capture pipeline, no adopt command.
+Afterwards the linter runs as many checks as it can and reports POIs.
+
+Shaped after `tarav index linter`: a **check catalog** with selectors (`--check`, `--skip`,
+`--list-checks`), two tiers, and per-check default state. Growing the system means adding a
+row here, not adding a command.
+
+- `structural` — the surface could not be read; later checks cannot run meaningfully.
+- `reportable` — a finding that accumulates.
+
+The bar every retained line must reach is **typed** and **User.Touched grounded**. A line
+below the bar is work not yet done, not an error to reject; the Index is a `WIP.Surface`, so
+divergence is a signal to work and the linter never says which side is right.
+
+A POI can be accepted with `bless` — the acceptance is recorded per finding, so silencing one
+known case never weakens the check for every other.
+
+Three rules govern how checks are written here, and they all point the same way.
+
+**`DUMB.CODE.IS.BETTER`.** A check saves the agent computable operations; it never does the
+semantic work. Rules may overdetect, because an agent is on the other side and a false
+positive is code successfully handing something up the ladder. Asking an agent to find the
+error instead costs a semantic evaluation of *everything* — establishing that something is
+fine is as expensive as finding it broken — and still loses the cross-item relations a check
+computes in one pass.
+
+**No semantic value in the signal.** A finding names the computation and reports the values
+it compared. It does not describe what that means. Agents double-check from first principles,
+and they can only do that from operands rather than from a sentence about the operands.
+
+**The code is the documentation.** A prose description of a check is a stored copy of a
+computable fact with nothing asserting it still holds — `Untyped.Agent.State` about the
+checker. So a finding carries `file:line`, the docstring says *why* the constraint exists,
+the body says *what* is computed, and nothing says what is computed twice. That makes
+readability of a check body a contract rather than a preference.
+"""
+
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+import subprocess
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass, field, replace
+from enum import StrEnum
+from hashlib import sha256
 from pathlib import Path
-from typing import Any
 
-from tarav.poi import (
-    POICatalog,
-    POIReport,
-    build_poi_report,
-    check_registry as _core_check_registry,
-    check_selector as check_selector,
-    resolve_enabled_checks,
+from .chatlas import ChatError, load_session
+from .config import Geography, TaravIndexError
+from .gates import GateRef, GateVerdict, verify_gate
+from .record.model import EquivalenceKind, LineRecord
+from .record.store import IndexStore
+from .scope import resolve_scope_surface
+from .standing import (
+    Standing,
+    build_traces,
+    lines_on_head_surfaces,
+    standings,
 )
-from tarav.index_model import kernel_line_anchors, normalize_anchor
+from .surfaces import (
+    HeadSurfaces,
+    Homes,
+    SurfaceLine,
+    discover_surfaces,
+    load_head_surfaces,
+    load_homes,
+    read_surface,
+    resolve_surface_path,
+    scope_home,
+)
+from .verdict import Evaluator, GateResult, Status
 
-from ._linter_models import (
-    CheckResult,
-    CheckStatus,
-    ConceptBlock,
-    CoverageItem,
-    GateResult,
-    LinterCheck,
-    LinterCheckBinding,
-    LinterConfig,
-    LinterFinding,
-    LinterState,
-    LineSupportStanding,
-    RouterEntry,
-    Severity,
-    SurfaceKind,
-    SurfacePath,
-    allowed,
-    bind_floor_check,
-    blocked,
-    path_is_or_contains,
-    parsed_linter_kernel_lines,
+
+class Tier(StrEnum):
+    STRUCTURAL = "structural"
+    REPORTABLE = "reportable"
+
+
+class LintError(TaravIndexError):
+    """Raised when the lint run itself cannot proceed."""
+
+
+@dataclass(frozen=True, slots=True)
+class Finding:
+    """One typed signal of a well-declared computation.
+
+    Signals attention; prescribes no remedy; carries no reading of what it means. `operands`
+    holds the values the check compared, so the agent re-derives the semantics from the
+    evidence instead of from a sentence about the evidence.
+
+    `source` is the pointer that replaces a description — computed from the check function,
+    never written down, because a stored pointer would be the same defect one level up.
+    """
+
+    poi_class: str
+    subject: str
+    operands: dict[str, str] = field(default_factory=dict)
+    status: Status = Status.FAILED
+    evaluator: Evaluator = Evaluator.CODE
+    surface: str | None = None
+    tier: Tier = Tier.REPORTABLE
+    source: str | None = None
+
+    @property
+    def identity(self) -> str:
+        """Stable id for blessing.
+
+        Over the class, subject and surface only. Operands may change as the values drift
+        without the finding becoming a different one — otherwise a blessing would evaporate
+        the moment the thing it accepted moved slightly.
+        """
+
+        canonical = json.dumps(
+            [self.poi_class, self.subject, self.surface or ""],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        return sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+    def render(self) -> str:
+        where = f"  [{self.surface}]" if self.surface else ""
+        operands = "  ".join(f"{k}={v!r}" for k, v in self.operands.items())
+        return f"{self.poi_class}  {self.subject}  {operands}{where}"
+
+    @property
+    def blocked(self) -> bool:
+        return self.status is Status.BLOCKED
+
+
+@dataclass(slots=True)
+class LintContext:
+    """Everything the checks read, resolved once per run."""
+
+    geo: Geography
+    root: Path
+    store: IndexStore
+    head: HeadSurfaces = field(default_factory=HeadSurfaces)
+    homes: Homes = field(default_factory=Homes)
+    records: list[LineRecord] = field(default_factory=list)
+    standing: dict[str, Standing] = field(default_factory=dict)
+    surface_lines: dict[str, list[SurfaceLine]] = field(default_factory=dict)
+    head_lines: set[str] = field(default_factory=set)
+
+    def head_surface_lines(self) -> Iterator[tuple[str, SurfaceLine]]:
+        """Only the lines sitting on a declared `HEAD.Surface`."""
+
+        for surface, lines in self.surface_lines.items():
+            if not self.head.contains(surface):
+                continue
+            for line in lines:
+                yield surface, line
+
+    def by_label(self) -> dict[str, LineRecord]:
+        return {r.line.label: r for r in self.records if r.line.label}
+
+    def traces(self):
+        return build_traces(self.records)
+
+    def all_surface_lines(self) -> Iterator[tuple[str, SurfaceLine]]:
+        for surface, lines in self.surface_lines.items():
+            for line in lines:
+                yield surface, line
+
+
+CheckFn = Callable[[LintContext], list[Finding]]
+GateFn = Callable[[LintContext], GateResult]
+
+
+@dataclass(frozen=True, slots=True)
+class Check:
+    """One conformance check.
+
+    There is no ``title``. A prose description of what a check computes is a stored copy of a
+    computable fact with nothing asserting it still holds — so the description is the
+    implementation, and `source` points at it.
+
+    ``resolutions`` survive precisely because they are *not* derivable from the body: the
+    code computes that something fired, never what may legitimately be done about it. A POI
+    prescribes no remedy, so these are alternatives to choose between case by case.
+    """
+
+    name: str
+    tier: Tier
+    run: CheckFn
+    default_on: bool = True
+    resolutions: tuple[str, ...] = ()
+    gate: GateFn | None = None
+
+    def can_run(self, ctx: LintContext) -> GateResult:
+        """`GateResult`: a precondition the check cannot supply for itself."""
+
+        return self.gate(ctx) if self.gate else GateResult.ok()
+
+    @property
+    def source(self) -> str:
+        """`file:line` of the check body — computed, never written down."""
+
+        code = self.run.__code__
+        return f"{Path(code.co_filename).name}:{code.co_firstlineno}"
+
+    @property
+    def why(self) -> str:
+        """The docstring, which says why the constraint exists. The body says what."""
+
+        return (self.run.__doc__ or "").strip()
+
+
+# -- checks -------------------------------------------------------------------
+# Each returns findings; none mutates anything.
+
+
+def _check_surfaces_readable(ctx: LintContext) -> list[Finding]:
+    """Nothing downstream means anything if the surface did not parse, so this runs first."""
+
+    findings: list[Finding] = []
+    for surface in discover_surfaces(ctx.geo, ctx.root):
+        path = resolve_surface_path(surface, ctx.root)
+        try:
+            ctx.surface_lines[surface] = read_surface(path, surface)
+        except (OSError, ValueError) as exc:
+            findings.append(
+                Finding(
+                    "Index.Linter/Surface.Unreadable",
+                    surface,
+                    {"error": str(exc)},
+                    surface=surface,
+                    tier=Tier.STRUCTURAL,
+                )
+            )
+    return findings
+
+
+def _check_records_loadable(ctx: LintContext) -> list[Finding]:
+    """The records are the states being estimated; unreadable, there is nothing to estimate."""
+
+    try:
+        ctx.records = list(ctx.store.all())
+        ctx.head_lines = lines_on_head_surfaces(ctx.records, ctx.surface_lines, ctx.head)
+        ctx.standing = standings(ctx.records, head_lines=ctx.head_lines)
+    except (OSError, ValueError, KeyError) as exc:
+        return [
+            Finding(
+                "Index.Linter/Record.Unreadable",
+                str(ctx.store.directory),
+                {"error": str(exc)},
+                tier=Tier.STRUCTURAL,
+            )
+        ]
+    return []
+
+
+def _check_line_typed(ctx: LintContext) -> list[Finding]:
+    """Without the type there is no type, so nothing else about the line can be checked."""
+
+    return [
+        Finding(
+            "Index.Linter/Line.Untyped",
+            f"{line.scope.label}:{line.lineno}",
+            {"body": line.body},
+            surface=surface,
+        )
+        for surface, line in ctx.all_surface_lines()
+        if not line.typed
+    ]
+
+
+def _check_line_anchored(ctx: LintContext) -> list[Finding]:
+    """The label is the line's public id; without it nothing can point at this line."""
+
+    return [
+        Finding(
+            "Index.Linter/Line.Unanchored",
+            f"{line.scope.label}:{line.lineno}",
+            {"body": line.body},
+            surface=surface,
+        )
+        for surface, line in ctx.all_surface_lines()
+        if line.label is None
+    ]
+
+
+def _check_anchor_has_record(ctx: LintContext) -> list[Finding]:
+    """A surface line with no record indexes nothing — it is text that looks indexed."""
+
+    by_label = ctx.by_label()
+    return [
+        Finding(
+            "Index.Linter/Line.Unrecorded",
+            line.label,
+            {"body": line.body},
+            surface=surface,
+        )
+        for surface, line in ctx.all_surface_lines()
+        if line.label is not None and line.label not in by_label
+    ]
+
+
+def _check_anchor_collision(ctx: LintContext) -> list[Finding]:
+    """One label must name one line, or a pointer stops resolving to one thing."""
+
+    seen: dict[str, tuple[str, str]] = {}
+    findings: list[Finding] = []
+    for surface, line in ctx.all_surface_lines():
+        label = line.label
+        if label is None:
+            continue
+        previous = seen.get(label)
+        if previous is not None and previous[1] != line.body:
+            findings.append(
+                Finding(
+                    "Index.Linter/Anchor.Collision",
+                    label,
+                    {
+                        "here": line.body,
+                        "there": previous[1],
+                        "other_surface": previous[0],
+                    },
+                    surface=surface,
+                )
+            )
+        else:
+            seen[label] = (surface, line.body)
+    return findings
+
+
+def _check_line_drift(ctx: LintContext) -> list[Finding]:
+    """Neither side is presumed right — which one is wrong is the work, not the check's call."""
+
+    by_label = ctx.by_label()
+    findings: list[Finding] = []
+    for surface, line in ctx.all_surface_lines():
+        record = by_label.get(line.label or "")
+        if record is None:
+            continue
+        if line.body != record.line.body or line.line_type != record.line.type:
+            findings.append(
+                Finding(
+                    "Index.Linter/Line.Drift",
+                    record.id,
+                    {
+                        "surface": line.body,
+                        "record": record.line.body,
+                        "surface_type": str(line.line_type),
+                        "record_type": str(record.line.type),
+                    },
+                    surface=surface,
+                )
+            )
+    return findings
+
+
+def _check_record_grounded(ctx: LintContext) -> list[Finding]:
+    """The bar. An ungrounded entry carries `Index.Presumption`, which is debt, not error."""
+
+    return [
+        Finding("Index.Linter/Line.Ungrounded", record.id, {"support": "0"})
+        for record in ctx.records
+        if not record.support
+    ]
+
+
+class _SessionCache:
+    """One archive read per session. Plumbing, kept out of the checks that use it."""
+
+    def __init__(self, geo: Geography) -> None:
+        self._geo = geo
+        self._seen: dict[str, object | None] = {}
+
+    def get(self, session_id: str):
+        if session_id not in self._seen:
+            try:
+                self._seen[session_id] = load_session(self._geo, session_id)
+            except ChatError:
+                self._seen[session_id] = None
+        return self._seen[session_id]
+
+
+def _check_support_resolves(ctx: LintContext) -> list[Finding]:
+    """Support is the fundamental variable this system is least able to validate.
+
+    These assertions reach the *existence* and *qualification* of the cited turns. Whether
+    those turns actually support the claim is semantic, and belongs to a higher tier — so a
+    green result here must never be read as grounding being verified.
+
+    An absent archive reports `unknown`. It is user-scoped, so absence is normal, but normal
+    is not the same as checked.
+    """
+
+    findings: list[Finding] = []
+    archive = _SessionCache(ctx.geo)
+    for record in ctx.records:
+        for ref in record.support:
+            session = archive.get(ref.session_id)
+            if session is None:
+                findings.append(
+                    Finding(
+                        "Index.Linter/Support.Unreachable",
+                        record.id,
+                        {"archive": ref.archive, "session": ref.session_id},
+                        status=Status.BLOCKED,
+                    )
+                )
+                continue
+            message = session.message(ref.message_id)
+            if message is None:
+                findings.append(
+                    Finding(
+                        "Index.Linter/Support.Mismatch",
+                        record.id,
+                        {"message": ref.message_id, "session": ref.session_id},
+                    )
+                )
+            elif not message.carries_touch:
+                findings.append(
+                    Finding(
+                        "Index.Linter/Support.NotTouched",
+                        record.id,
+                        {"message": ref.message_id, "side": message.side},
+                    )
+                )
+    return findings
+
+
+def _check_review_covers_support(ctx: LintContext) -> list[Finding]:
+    """Review is the only validation support-selection ever gets, so it should have seen it.
+
+    The gate proves the user saw the *wording*. If the agent turn never showed which turns
+    the line claims as evidence, the user approved a sentence, not a grounding.
+
+    Deliberately coarse: it looks for the support address as a substring. Overdetects on a
+    turn that cited support some other way, which is the correct direction to be wrong in.
+    """
+
+    findings: list[Finding] = []
+    for record in ctx.records:
+        if record.review is None or not record.support:
+            continue
+        try:
+            session = load_session(ctx.geo, record.review.session_id)
+        except ChatError:
+            findings.append(
+                Finding(
+                    "Index.Linter/Review.SupportUnseen",
+                    record.id,
+                    {"session": record.review.session_id},
+                    status=Status.BLOCKED,
+                )
+            )
+            continue
+        turn = session.message(record.review.agent_turn_id)
+        if turn is None:
+            continue
+        missing = [r.message_id for r in record.support if r.message_id not in turn.text]
+        if missing:
+            findings.append(
+                Finding(
+                    "Index.Linter/Review.SupportUnseen",
+                    record.id,
+                    {"unshown": ",".join(m[:16] for m in missing)},
+                )
+            )
+    return findings
+
+
+def _check_record_placed(ctx: LintContext) -> list[Finding]:
+    """An entry on no surface is invisible to every reader of the index.
+
+    Unless its home carries no `Index.Notes` at all, in which case the serialized side is the
+    whole of that home and there is nothing for the entry to be missing from.
+    """
+
+    on_surface = {line.label for _, line in ctx.all_surface_lines() if line.label}
+    findings: list[Finding] = []
+    for record in ctx.records:
+        label = record.line.label
+        if not label or label in on_surface:
+            continue
+        home = scope_home(record.scope, ctx.root)
+        if home is not None and not ctx.homes.carries_notes(home):
+            continue
+        findings.append(
+            Finding("Index.Linter/Record.Unplaced", record.id, {"label": label})
+        )
+    return findings
+
+
+def _check_record_typed(ctx: LintContext) -> list[Finding]:
+    """Same bar as the surface line, applied to the record that claims to index it."""
+
+    return [
+        Finding("Index.Linter/Record.Untyped", record.id, {"body": record.line.body})
+        for record in ctx.records
+        if record.line.type is None
+    ]
+
+
+def _check_record_scoped(ctx: LintContext) -> list[Finding]:
+    """A line is an orthogonal part of something larger; unscoped, it evaluates to nothing."""
+
+    return [
+        Finding("Index.Linter/Record.Unscoped", record.id, {"scope": ""})
+        for record in ctx.records
+        if not record.scope.address
+    ]
+
+
+def _check_scope_resolves(ctx: LintContext) -> list[Finding]:
+    """One address space, two kinds — and both must reach something that exists.
+
+    Addressability is what lets documentation be pointers rather than descriptions, so an
+    address that resolves to nothing is worse than a missing one.
+    """
+
+    findings: list[Finding] = []
+    for record in ctx.records:
+        path = resolve_scope_surface(record.scope, ctx.root)
+        if path is None or not path.exists():
+            findings.append(
+                Finding(
+                    "Index.Linter/Scope.Unresolved",
+                    record.id,
+                    {"scope": record.scope.address, "kind": str(record.scope.kind)},
+                )
+            )
+    return findings
+
+
+def _check_review_closure(ctx: LintContext) -> list[Finding]:
+    """`Reviewed.Cite.Closure`: reviewed standing may not rest on nothing touched.
+
+    The agent/user split is derived from review evidence, so the closure rule bites here —
+    a reviewed trace carrying an ungrounded member is the reviewed side depending on the
+    unreviewed one.
+    """
+
+    findings: list[Finding] = []
+    for trace in ctx.traces().values():
+        if not trace.reviewed:
+            continue
+        for member in trace.members:
+            if member.support:
+                continue
+            findings.append(
+                Finding(
+                    "Index.Linter/Reviewed.Cite.Closure",
+                    member.id,
+                    {"trace": trace.id, "support": "0"},
+                )
+            )
+    return findings
+
+
+def _check_annotation_scope_kind(ctx: LintContext) -> list[Finding]:
+    """A line's host decides its scope kind, so a disagreement means one of them moved."""
+
+    findings: list[Finding] = []
+    by_label = ctx.by_label()
+    for surface, line in ctx.all_surface_lines():
+        record = by_label.get(line.label or "")
+        if record is None:
+            continue
+        if line.scope.kind is not record.scope.kind:
+            findings.append(
+                Finding(
+                    "Index.Linter/Scope.KindMismatch",
+                    record.id,
+                    {"surface": str(line.scope.kind), "record": str(record.scope.kind)},
+                    surface=surface,
+                )
+            )
+    return findings
+
+
+def _check_line_type_known(ctx: LintContext) -> list[Finding]:
+    """An unrecognized type selects no assertions, so the line is untyped in practice."""
+
+    known = {"DF", "DC", "CT", "RJ", "PR", "FR", "EX", "IMPL", "IS"}
+    return [
+        Finding(
+            "Index.Linter/Line.Type.Unknown",
+            f"{line.scope.label}:{line.lineno}",
+            {"type": str(line.line_type), "known": " ".join(sorted(known))},
+            surface=surface,
+        )
+        for surface, line in ctx.all_surface_lines()
+        if line.line_type is not None and line.line_type not in known
+    ]
+
+
+def _check_anchor_legacy_sigil(ctx: LintContext) -> list[Finding]:
+    """Legacy `^c…` anchors remain readable history but active workflows do not resolve them."""
+
+    return [
+        Finding(
+            "Index.Linter/Anchor.LegacySigil",
+            line.label or f"{line.scope.label}:{line.lineno}",
+            {"label": str(line.label)},
+            surface=surface,
+        )
+        for surface, line in ctx.all_surface_lines()
+        if line.label and line.label.startswith("^c")
+    ]
+
+
+def _check_trace_wellformed(ctx: LintContext) -> list[Finding]:
+    """`Trace.HEAD` is derived, so a malformed chain surfaces instead of picking a winner."""
+
+    findings: list[Finding] = []
+    for trace in ctx.traces().values():
+        heads = trace.heads()
+        if len(heads) > 1:
+            findings.append(
+                Finding(
+                    "Index.Linter/Trace.Forked",
+                    trace.id,
+                    {"heads": str(len(heads)), "ids": " ".join(m.id for m in heads)},
+                )
+            )
+        elif not heads:
+            findings.append(
+                Finding(
+                    "Index.Linter/Trace.Cycle",
+                    trace.id,
+                    {"members": str(len(trace.members)), "heads": "0"},
+                )
+            )
+    return findings
+
+
+def _check_equivalence_predecessor(ctx: LintContext) -> list[Finding]:
+    """The chain is what derives `Trace.HEAD`, so a broken link breaks the derivation."""
+
+    by_id = {r.id: r for r in ctx.records}
+    findings: list[Finding] = []
+    for record in ctx.records:
+        if record.equivalence is None:
+            continue
+        predecessor = by_id.get(record.equivalence.predecessor)
+        if predecessor is None:
+            findings.append(
+                Finding(
+                    "Index.Linter/Equivalence.PredecessorMissing",
+                    record.id,
+                    {"predecessor": record.equivalence.predecessor},
+                )
+            )
+        elif predecessor.trace != record.trace:
+            findings.append(
+                Finding(
+                    "Index.Linter/Equivalence.TraceMismatch",
+                    record.id,
+                    {"trace": record.trace, "predecessor_trace": predecessor.trace},
+                )
+            )
+    return findings
+
+
+def _check_equivalence_support_invariant(ctx: LintContext) -> list[Finding]:
+    """If the new wording needed new evidence, it is not the same claim.
+
+    One of the few cheap assertions guarding the review economy, which a same-trace change
+    can otherwise walk straight into.
+    """
+
+    by_id = {r.id: r for r in ctx.records}
+    findings: list[Finding] = []
+    for record in ctx.records:
+        if record.equivalence is None:
+            continue
+        predecessor = by_id.get(record.equivalence.predecessor)
+        if predecessor is None:
+            continue
+        if set(record.support) != set(predecessor.support):
+            findings.append(
+                Finding(
+                    "Index.Linter/Equivalence.SupportChanged",
+                    record.id,
+                    {
+                        "support": str(len(record.support)),
+                        "predecessor_support": str(len(predecessor.support)),
+                    },
+                )
+            )
+    return findings
+
+
+def _check_rename_verifiable(ctx: LintContext) -> list[Finding]:
+    """`rename` is the typed form of the equivalence claim, so it must survive its own test.
+
+    Coarse on purpose — word count only. A rename that changes shape is caught; a clever one
+    that does not is left to the agent, which is the right division of labour.
+    """
+
+    by_id = {r.id: r for r in ctx.records}
+    findings: list[Finding] = []
+    for record in ctx.records:
+        equivalence = record.equivalence
+        if equivalence is None or equivalence.kind is not EquivalenceKind.RENAME:
+            continue
+        predecessor = by_id.get(equivalence.predecessor)
+        if predecessor is None:
+            continue
+        before = predecessor.line.body.split()
+        after = record.line.body.split()
+        if len(before) != len(after):
+            findings.append(
+                Finding(
+                    "Index.Linter/Equivalence.NotARename",
+                    record.id,
+                    {"before_words": str(len(before)), "after_words": str(len(after))},
+                )
+            )
+    return findings
+
+
+def _check_rephrase_in_review_chain(ctx: LintContext) -> list[Finding]:
+    """A `rephrase` is `Untyped.Agent.State` on the path that grants reviewed standing.
+
+    `rename` and `rephrase` are the typed and untyped forms of one claim. Reviewed standing
+    reached only through renames is mechanically verified end to end; reached through a
+    rephrase it rests on an assertion nothing checks. Both currently print as `via_trace`,
+    and a reader should be able to tell them apart.
+    """
+
+    by_id = {r.id: r for r in ctx.records}
+    findings: list[Finding] = []
+    for record in ctx.records:
+        if record.review is not None:
+            continue
+        trace = ctx.traces().get(record.trace)
+        if trace is None or not trace.reviewed:
+            continue
+        cursor, hops = record, 0
+        while cursor.equivalence is not None and hops < 64:
+            if cursor.equivalence.kind is EquivalenceKind.REPHRASE:
+                findings.append(
+                    Finding(
+                        "Index.Linter/Review.ViaRephrase",
+                        record.id,
+                        {"trace": trace.id, "claimed_at": cursor.id},
+                        evaluator=Evaluator.AGENT,
+                    )
+                )
+                break
+            cursor = by_id.get(cursor.equivalence.predecessor) or cursor
+            hops += 1
+    return findings
+
+
+def _check_review_evidence_retained(ctx: LintContext) -> list[Finding]:
+    """The reviewed member is the review's only verifiable evidence; lose it and the claim
+    survives while its proof does not."""
+
+    findings: list[Finding] = []
+    for trace in ctx.traces().values():
+        if not trace.reviewed:
+            continue
+        for member in trace.review_members:
+            if member.review is None:
+                continue
+            if not member.line.body.strip():
+                findings.append(
+                    Finding(
+                        "Index.Linter/Review.EvidenceLost",
+                        trace.id,
+                        {"member": member.id, "body": ""},
+                    )
+                )
+    return findings
+
+
+def _check_gate_verifies(ctx: LintContext) -> list[Finding]:
+    """The gate is the only reason any assertion about a line is state, so this is the check
+    that makes the rest of the model mean something.
+
+    One check for both links, because review and landing are the same mechanism. An absent
+    archive reports `unknown`: it is user-scoped, so absence is the normal case elsewhere,
+    but a gate nobody could check is not a gate that held.
+    """
+
+    findings: list[Finding] = []
+    for record in ctx.records:
+        for kind, gate in (("review", record.review), ("landing", record.landing)):
+            if gate is None:
+                continue
+            check = verify_gate(ctx.geo, gate, record.line.body)
+            if check.verdict is GateVerdict.CONTRADICTED:
+                findings.append(
+                    Finding(
+                        "Index.Linter/Gate.Contradicted",
+                        record.id,
+                        {"gate": kind, "reason": check.detail, "token": gate.token},
+                    )
+                )
+            elif check.verdict is GateVerdict.UNVERIFIABLE:
+                findings.append(
+                    Finding(
+                        "Index.Linter/Gate.Unverifiable",
+                        record.id,
+                        {"gate": kind, "session": gate.session_id},
+                        status=Status.BLOCKED,
+                    )
+                )
+    return findings
+
+
+def _check_landing_evidenced(ctx: LintContext) -> list[Finding]:
+    """Presence says what is; the gate says what licensed it.
+
+    Presence without a gate is a promotion an agent granted on its own authority.
+    """
+
+    traces = ctx.traces()
+    findings: list[Finding] = []
+    for record in ctx.records:
+        if record.id not in ctx.head_lines:
+            continue
+        trace = traces.get(record.trace)
+        if trace is not None and trace.landed:
+            continue
+        findings.append(
+            Finding(
+                "Index.Linter/Landing.Unevidenced",
+                record.id,
+                {"trace": record.trace, "landing_gate": "none"},
+            )
+        )
+    return findings
+
+
+def _check_landing_honored(ctx: LintContext) -> list[Finding]:
+    """The gate outlives the surface edit, which is what makes a silent demotion visible.
+
+    Demotion itself stays ungated — it is a diff anyone can read — but it stops being silent.
+    """
+
+    findings: list[Finding] = []
+    for trace in ctx.traces().values():
+        if not trace.landed:
+            continue
+        if any(m.id in ctx.head_lines for m in trace.members):
+            continue
+        findings.append(
+            Finding(
+                "Index.Linter/Landing.Unhonored",
+                trace.id,
+                {"members": str(len(trace.members)), "on_head_surface": "0"},
+            )
+        )
+    return findings
+
+
+def _check_materialization_standing(ctx: LintContext) -> list[Finding]:
+    """The older wording should have left when its successor arrived."""
+
+    findings: list[Finding] = []
+    for record in ctx.records:
+        standing = ctx.standing.get(record.id)
+        if standing is None or standing.materializable:
+            continue
+        if record.id in ctx.head_lines:
+            findings.append(
+                Finding(
+                    "Index.Linter/Materialization.Standing",
+                    record.id,
+                    {"trace": record.trace, "is_trace_head": "false"},
+                )
+            )
+    return findings
+
+
+def _grounded_coverage(records: Iterable[LineRecord]) -> set[tuple[str, str, str]]:
+    """The Touched.Data currently covered by grounded lines."""
+
+    return {
+        (ref.archive, ref.session_id, ref.message_id)
+        for record in records
+        for ref in record.support
+    }
+
+
+def _coverage_at_git_head(geo: Geography) -> set[tuple[str, str, str]] | None:
+    """Grounded coverage as of the last commit, or ``None`` when git cannot say.
+
+    Degrades to silence rather than failing: an untracked project is a normal state, not a
+    defect.
+    """
+
+    index_dir = geo.index_dir
+    if not index_dir.exists():
+        return None
+
+    inside = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=index_dir, capture_output=True, text=True, check=False,
+    )
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        return None
+
+    toplevel = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=index_dir, capture_output=True, text=True, check=False,
+    )
+    if toplevel.returncode != 0:
+        return None
+    root = Path(toplevel.stdout.strip())
+
+    try:
+        relative = index_dir.resolve().relative_to(root.resolve())
+    except ValueError:
+        return None
+
+    listing = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", "HEAD", "--", str(relative)],
+        cwd=root, capture_output=True, text=True, check=False,
+    )
+    if listing.returncode != 0:
+        return None
+
+    coverage: set[tuple[str, str, str]] = set()
+    for name in listing.stdout.splitlines():
+        if not name.endswith(".json"):
+            continue
+        blob = subprocess.run(
+            ["git", "show", f"HEAD:{name}"],
+            cwd=root, capture_output=True, text=True, check=False,
+        )
+        if blob.returncode != 0:
+            continue
+        try:
+            payload = json.loads(blob.stdout)
+            record = LineRecord.from_json(payload)
+        except (ValueError, KeyError):
+            continue
+        coverage |= _grounded_coverage([record])
+    return coverage
+
+
+def _check_coverage_converges(ctx: LintContext) -> list[Finding]:
+    """The bytes of the index are free to move; its coverage of the Touched.Data is not.
+
+    There is no excuse mechanism. An index-side ledger of *why* a line went would be agent
+    prose about a deletion git already records with an author and a message.
+
+    An untracked project reports `unknown`, not clean: nothing was compared.
+    """
+
+    previous = _coverage_at_git_head(ctx.geo)
+    if previous is None:
+        return []
+
+    lost = previous - _grounded_coverage(ctx.records)
+    return [
+        Finding(
+            "Index.Linter/Coverage.Shrank",
+            f"{session}:{message[:16]}",
+            {"archive": archive, "session": session, "message": message},
+        )
+        for archive, session, message in sorted(lost)
+    ]
+
+
+def _gate_git_available(ctx: LintContext) -> GateResult:
+    if _coverage_at_git_head(ctx.geo) is None:
+        return GateResult.blocked("the project index is not tracked by git")
+    return GateResult.ok()
+
+
+#: The catalog. Growing the system means adding a row here.
+CATALOG: tuple[Check, ...] = (
+    Check(
+        "surfaces-readable", Tier.STRUCTURAL, _check_surfaces_readable,
+        resolutions=(
+            "repair the surface so it parses",
+            "remove it from discovery, if it is not an index surface",
+        ),
+    ),
+    Check(
+        "records-loadable", Tier.STRUCTURAL, _check_records_loadable,
+        resolutions=(
+            "repair the malformed entry",
+            "restore it from git, if the damage is recent",
+        ),
+    ),
+    Check(
+        "line-typed", Tier.REPORTABLE, _check_line_typed, resolutions=(
+        "type it — the Line.Type declares what to extract from the Touched.Data",
+        "delete it — an untyped line asserts nothing classifiable",
+    )),
+    Check(
+        "line-type-known", Tier.REPORTABLE, _check_line_type_known, resolutions=(
+        "correct the code to a known Line.Type",
+        "propose the new code, if the vocabulary is genuinely short",
+    )),
+    Check(
+        "line-anchored", Tier.REPORTABLE, _check_line_anchored, resolutions=(
+        "mint a label so readers can resolve the line",
+        "delete it — the line is scratch",
+    )),
+    Check(
+        "anchor-has-record", Tier.REPORTABLE, _check_anchor_has_record, resolutions=(
+        "write the record — the line exists but the index does not know it",
+        "remove the surface line, if it was a draft",
+    )),
+    Check(
+        "anchor-collision", Tier.REPORTABLE, _check_anchor_collision, resolutions=(
+        "relabel one of them — a label identifies exactly one line",
+        "merge them, if they are the same line duplicated",
+    )),
+    Check(
+        "anchor-legacy-sigil", Tier.REPORTABLE, _check_anchor_legacy_sigil, resolutions=(
+        "re-mint the label under the active sigil",
+        "leave it — legacy anchors stay readable, just unresolved",
+    )),
+    Check(
+        "line-drift", Tier.REPORTABLE, _check_line_drift, resolutions=(
+        "adopt the surface wording into the record",
+        "rewrite the surface from the record",
+        "leave it — the divergence may be work in progress",
+    )),
+    Check(
+        "record-typed", Tier.REPORTABLE, _check_record_typed, resolutions=(
+        "type the entry",
+        "delete it while it is still ungrounded",
+    )),
+    Check(
+        "record-scoped", Tier.REPORTABLE, _check_record_scoped, resolutions=(
+        "give it a scope — a line only means something inside one",
+    )),
+    Check(
+        "record-grounded", Tier.REPORTABLE, _check_record_grounded, resolutions=(
+        "ground it — find the support that was always there",
+        "delete it — it was scratch, and nothing is lost",
+        "keep it — useful orientation carrying Index.Presumption; grounding stays debt",
+    )),
+    Check(
+        "support-resolves", Tier.REPORTABLE, _check_support_resolves, resolutions=(
+        "fetch the archive it names",
+        "re-ground the line against evidence that still resolves",
+        "record the mis-grounding, if the support never supported the claim",
+    )),
+    Check(
+        "record-placed", Tier.REPORTABLE, _check_record_placed, resolutions=(
+        "materialize it on a surface",
+        "leave it record-only, if no surface needs it yet",
+    )),
+    Check(
+        "scope-resolves", Tier.REPORTABLE, _check_scope_resolves, resolutions=(
+        "create the surface the scope names",
+        "rescope the line to a surface that exists",
+    )),
+    Check(
+        "scope-kind", Tier.REPORTABLE, _check_annotation_scope_kind, resolutions=(
+        "correct whichever side names the wrong hosting kind",
+    )),
+    Check(
+        "review-closure", Tier.REPORTABLE, _check_review_closure, resolutions=(
+        "ground the user entry in its own right",
+        "move it to the agent index until it is reviewed",
+    )),
+    Check(
+        "trace-wellformed", Tier.REPORTABLE, _check_trace_wellformed, resolutions=(
+        "pick one successor — a fork means two claims, so split the trace",
+        "break the cycle by correcting a predecessor",
+    )),
+    Check(
+        "equivalence-predecessor", Tier.REPORTABLE, _check_equivalence_predecessor, resolutions=(
+        "point at a predecessor that exists in the same trace",
+        "start a new trace, if this is a different claim",
+    )),
+    Check(
+        "equivalence-support", Tier.REPORTABLE, _check_equivalence_support_invariant, resolutions=(
+        "start a new trace — new evidence means a new claim",
+        "restore the support, if the change really was cosmetic",
+    )),
+    Check(
+        "equivalence-rename", Tier.REPORTABLE, _check_rename_verifiable, resolutions=(
+        "downgrade the claim to a rephrase",
+        "start a new trace, if the meaning moved",
+    )),
+    Check(
+        "review-covers-support", Tier.REPORTABLE, _check_review_covers_support, resolutions=(
+        "show the support in the review turn and re-open the gate",
+        "accept it — the user saw the evidence some other way this check cannot read",
+        "drop the review claim if the grounding was never actually reviewed",
+    )),
+    Check(
+        "review-via-rephrase", Tier.REPORTABLE, _check_rephrase_in_review_chain, resolutions=(
+        "review the current wording directly, replacing the untyped claim with evidence",
+        "re-make the change as a rename, if it really was one",
+        "accept it — the rephrase holds, and now the reader can see that it was assumed",
+    )),
+    Check(
+        "review-evidence", Tier.REPORTABLE, _check_review_evidence_retained, resolutions=(
+        "restore the reviewed member — it is the review\u2019s only evidence",
+    )),
+    Check(
+        "gate-verifies", Tier.REPORTABLE, _check_gate_verifies, resolutions=(
+        "correct the turns the gate names",
+        "drop the gate — it cannot be verified, so it asserts nothing",
+        "re-open the gate; a real approval leaves a real turn",
+    )),
+    Check(
+        "landing-evidenced", Tier.REPORTABLE, _check_landing_evidenced, resolutions=(
+        "record the landing gate for the approval turn that licensed it",
+        "take the line off the HEAD.Surface until it is approved",
+        "narrow the HEAD.Surface declaration, if this surface is not current design",
+    )),
+    Check(
+        "landing-honored", Tier.REPORTABLE, _check_landing_honored, resolutions=(
+        "land the approved line onto a HEAD.Surface",
+        "accept the demotion — the gate records that it was once current design",
+        "read the diff that removed it, if the demotion was not intended",
+    )),
+    Check(
+        "materialization-standing", Tier.REPORTABLE, _check_materialization_standing, resolutions=(
+        "remove the superseded wording from the surface",
+        "reconsider the successor, if the older wording is the one that should stand",
+    )),
+    Check(
+        "coverage-converges", Tier.REPORTABLE, _check_coverage_converges,
+        gate=_gate_git_available,
+        resolutions=(
+            "restore the line — its coverage was real and is now missing",
+            "read the commit that removed it; git is the deletion record",
+            "accept the loss — the support never supported the claim",
+        ),
+    ),
 )
-from ._linter_parser_checks import (
-    ANCHOR_COLLISION,
-    ANCHOR_LEGACY_SIGIL,
-    ANCHOR_UNPREFIXED,
-    BLOCK_UNGROUNDED,
-    CHECK_ANCHOR_COLLISION,
-    CHECK_ANCHOR_LEGACY_SIGIL,
-    CHECK_ANCHOR_UNPREFIXED,
-    CHECK_BLOCK_UNGROUNDED,
-    CHECK_LINE_TYPES,
-    CHECK_LINE_UNLINKED,
-    CHECK_REVIEWED_CITE_CLOSURE,
-    CHECK_TYPE_STATEMENT_LEGACY_SIGIL,
-    LINE_TYPE_SYNTAX,
-    LINE_TYPE_UNKNOWN,
-    LINE_UNLINKED,
-    PARSER_CHECKS,
-    REVIEWED_CITE_CLOSURE,
-    SOURCE_AXIS_PLACEMENT,
-    TYPE_STATEMENT_LEGACY_SIGIL,
-)
-from ._linter_structure import (
-    APPENDIX_FILENAME_RE,
-    APPENDIX_INVALID_FILENAME,
-    APPENDIX_ORPHAN,
-    APPENDIX_PAGE_GAP,
-    APPENDIX_ROUTE_ANNOTATION_MISSING,
-    APPENDIX_ROUTE_ANNOTATION_STALE,
-    BLOCK_DUPLICATE_HEADING,
-    BLOCK_EMPTY_HEADING,
-    BLOCK_NO_HEADINGS,
-    BLOCK_PATH_RE,
-    BLOCK_SEPARATOR_OUTSIDE_SEMANTICS,
-    BLOCK_TOO_LONG,
-    BLOCK_UNANCHORED_SECTION,
-    BLOCK_UNCLOSED_CODE_FENCE,
-    CHECK_APPENDIX_FILENAMES,
-    CHECK_APPENDIX_ORPHANS,
-    CHECK_APPENDIX_ROUTE_ANNOTATIONS,
-    CHECK_BLOCK_SECTIONS,
-    CHECK_CONCEPT_DUPLICATES,
-    CHECK_CONCEPT_INVENTORY,
-    CHECK_CONFIG_SURFACES,
-    CHECK_DANGLING_MENTION,
-    CHECK_DEPOT_DEPENDENCIES,
-    CHECK_DISCOVER_FILES,
-    CHECK_INDEX_FILENAMES,
-    CHECK_MDBLOCKS_SYNTAX,
-    CHECK_ROUTER_COVERAGE,
-    CHECK_ROUTER_ENTRIES,
-    CHECK_ROUTER_PRESENCE,
-    CHECK_ROUTER_TARGETS,
-    CONFIG_NO_SURFACES,
-    CONCEPT_DUPLICATE,
-    CONCEPT_INVALID_HEADING,
-    CONCEPT_INVENTORY,
-    CONCEPT_INVENTORY_EMPTY,
-    DEPOT_COLLISION,
-    DEPOT_DANGLING_MENTION,
-    DEPOT_DEP_UNRESOLVED,
-    FILES_NONE,
-    INDEX_FILENAME_RE,
-    INDEX_INVALID_FILENAME,
-    MDBLOCKS_BLOCKING_CODES,
-    MDBLOCKS_CODE_MAP,
-    MDBLOCKS_SYNTAX,
-    ROUTER_EMPTY,
-    ROUTER_ENTRIES_EMPTY,
-    ROUTER_INVALID_CONCEPT,
-    ROUTER_LEGACY_NAME,
-    ROUTER_MISSING,
-    ROUTER_MISSING_ENTRY,
-    ROUTER_MISSING_FILE,
-    ROUTER_UNKNOWN_CONCEPT,
-    ROUTER_WRONG_FILE,
-    STRUCTURAL_CHECKS,
-    SURFACE_INVALID,
-    SURFACE_INVALID_BY_KIND,
-    SURFACE_MISSING_BY_KIND,
-    SURFACE_NOT_MARKDOWN_BY_KIND,
-)
-from .poi import finding_to_poi
+
+# $kw: --from Index.WIP.Surface --note [DF] the bar checks are the ones reporting work not yet done, as against an inconsistency between two things
+BAR_CHECKS = frozenset({"line-typed", "record-typed", "record-grounded", "scope-resolves"})
+
+
+@dataclass(frozen=True, slots=True)
+class CheckResult:
+    """One check's own verdict — `passed | failed | blocked`, per check."""
+
+    name: str
+    status: Status
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LintReport:
+    """An estimate, not a defect list.
+
+    `clean` is a claim about *errors*, and it is not the same claim as *verified*. A report
+    with no failures and eighteen blocked checks is a very different epistemic position from
+    one with no failures and everything checked, so the two are counted separately and
+    printed separately.
+    """
+
+    findings: tuple[Finding, ...]
+    blocked: tuple[Finding, ...]
+    blessed: tuple[Finding, ...]
+    results: tuple[CheckResult, ...]
+    records_checked: int
+    surface_lines_checked: int
+
+    @property
+    def checks_run(self) -> tuple[str, ...]:
+        return tuple(r.name for r in self.results)
+
+    @property
+    def clean(self) -> bool:
+        """No errors. Says nothing about how much was checked — read `verified` for that."""
+
+        return not self.findings
+
+    @property
+    def verified(self) -> bool:
+        """No errors *and* nothing blocked."""
+
+        return not self.findings and not self.blocked and not self.blocked_checks
+
+    @property
+    def blocked_checks(self) -> tuple[CheckResult, ...]:
+        return tuple(r for r in self.results if r.status is Status.BLOCKED)
+
+    def by_class(self) -> dict[str, list[Finding]]:
+        """Grouped by check — a concentration here reads as the system having drifted."""
+
+        grouped: dict[str, list[Finding]] = {}
+        for finding in self.findings:
+            grouped.setdefault(finding.poi_class, []).append(finding)
+        return grouped
+
+    def by_subject(self) -> dict[str, list[Finding]]:
+        """Grouped by state — a concentration here reads as one `Bad.State`.
+
+        The linter groups and stops. Which of the two readings applies is semantic, and that
+        is the agent's work.
+        """
+
+        grouped: dict[str, list[Finding]] = {}
+        for finding in self.findings:
+            grouped.setdefault(finding.subject, []).append(finding)
+        return grouped
+
+    def summary(self) -> str:
+        passed = sum(1 for r in self.results if r.status is Status.PASSED)
+        failed = sum(1 for r in self.results if r.status is Status.FAILED)
+        return (
+            f"{len(self.results)} check(s): {passed} passed, {failed} failed, "
+            f"{len(self.blocked_checks)} blocked   "
+            f"{len(self.findings)} error(s), {len(self.blocked)} unverifiable"
+        )
+
+
+def _blessings_path(geo: Geography) -> Path:
+    return geo.project_tier / "blessed.json"
+
+
+def read_blessings(geo: Geography) -> dict[str, GateRef]:
+    """The accepted POIs and the gate each one rests on."""
+
+    path = _blessings_path(geo)
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text("utf-8"))
+    return {
+        identity: GateRef.from_json(gate) for identity, gate in payload.items()
+    }
+
+
+def bless(geo: Geography, identity: str, gate: GateRef) -> None:
+    """Accept one exact POI, on the user's evidence.
+
+    A blessing is the one piece of state whose *purpose* is to stop the checker, so it is the
+    last place an unevidenced agent value could survive — an agent silencing its own findings
+    with a file it writes itself. It needs a gate for the same reason everything else does.
+
+    Silencing one known case still never weakens the check for any other.
+    """
+
+    blessings = read_blessings(geo)
+    blessings[identity] = gate
+    path = _blessings_path(geo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {k: v.to_json() for k, v in sorted(blessings.items())},
+            indent=1,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _blessing_holds(geo: Geography, gate: GateRef) -> bool:
+    """A blessing degrades like review: absent archive silences, contradiction revokes."""
+
+    return verify_gate(geo, gate).verdict is not GateVerdict.CONTRADICTED
+
+
+def select_checks(
+    check: list[str] | None = None, skip: list[str] | None = None
+) -> list[Check]:
+    names = {c.name for c in CATALOG}
+    for requested in (check or []) + (skip or []):
+        if requested not in names:
+            raise LintError(f"unknown check: {requested!r}")
+    selected = []
+    for entry in CATALOG:
+        enabled = entry.name in check if check else entry.default_on
+        if skip and entry.name in skip:
+            enabled = False
+        if enabled:
+            selected.append(entry)
+    return selected
+
+
+def lint(
+    geo: Geography,
+    *,
+    project_root: Path | None = None,
+    check: list[str] | None = None,
+    skip: list[str] | None = None,
+) -> LintReport:
+    """Run the selected checks and report what each one found — including what it could not."""
+
+    root = project_root or geo.project_root
+    ctx = LintContext(
+        geo=geo,
+        root=root,
+        store=IndexStore(geo),
+        head=load_head_surfaces(geo),
+        homes=load_homes(geo),
+    )
+
+    selected = select_checks(check, skip)
+    blessings = read_blessings(geo)
+    findings: list[Finding] = []
+    blocked: list[Finding] = []
+    blessed: list[Finding] = []
+    results: list[CheckResult] = []
+
+    for entry in selected:
+        allowed = entry.can_run(ctx)
+        if not allowed.allowed:
+            results.append(CheckResult(entry.name, Status.BLOCKED, allowed.reason))
+            continue
+
+        produced = [
+            replace(finding, source=entry.source) for finding in entry.run(ctx)
+        ]
+        errors: list[Finding] = []
+
+        for finding in produced:
+            if finding.blocked:
+                blocked.append(finding)
+                continue
+            gate = blessings.get(finding.identity)
+            if gate is None:
+                errors.append(finding)
+            elif _blessing_holds(geo, gate):
+                blessed.append(finding)
+            else:
+                errors.append(finding)
+                errors.append(
+                    Finding(
+                        "Index.Linter/Blessing.Unevidenced",
+                        finding.identity,
+                        {"check": entry.name, "gate": "contradicted"},
+                        source=entry.source,
+                    )
+                )
+
+        findings.extend(errors)
+        results.append(
+            CheckResult(entry.name, Status.FAILED if errors else Status.PASSED)
+        )
+
+        if entry.tier is Tier.STRUCTURAL and produced:
+            # A surface that will not parse makes later findings noise, not signal.
+            break
+
+    return LintReport(
+        findings=tuple(findings),
+        blocked=tuple(blocked),
+        blessed=tuple(blessed),
+        results=tuple(results),
+        records_checked=len(ctx.records),
+        surface_lines_checked=sum(len(v) for v in ctx.surface_lines.values()),
+    )
 
 
 __all__ = [
-    "ANCHOR_COLLISION",
-    "ANCHOR_LEGACY_SIGIL",
-    "ANCHOR_UNPREFIXED",
-    "APPENDIX_FILENAME_RE",
-    "APPENDIX_INVALID_FILENAME",
-    "APPENDIX_ORPHAN",
-    "APPENDIX_PAGE_GAP",
-    "APPENDIX_ROUTE_ANNOTATION_MISSING",
-    "APPENDIX_ROUTE_ANNOTATION_STALE",
-    "BLOCK_DUPLICATE_HEADING",
-    "BLOCK_EMPTY_HEADING",
-    "BLOCK_NO_HEADINGS",
-    "BLOCK_PATH_RE",
-    "BLOCK_SEPARATOR_OUTSIDE_SEMANTICS",
-    "BLOCK_TOO_LONG",
-    "BLOCK_UNANCHORED_SECTION",
-    "BLOCK_UNCLOSED_CODE_FENCE",
-    "BLOCK_UNGROUNDED",
-    "CHECKS",
-    "CHECK_ANCHOR_COLLISION",
-    "CHECK_ANCHOR_LEGACY_SIGIL",
-    "CHECK_ANCHOR_UNPREFIXED",
-    "CHECK_APPENDIX_FILENAMES",
-    "CHECK_APPENDIX_ORPHANS",
-    "CHECK_APPENDIX_ROUTE_ANNOTATIONS",
-    "CHECK_BLOCK_SECTIONS",
-    "CHECK_BLOCK_UNGROUNDED",
-    "CHECK_CONCEPT_DUPLICATES",
-    "CHECK_CONCEPT_INVENTORY",
-    "CHECK_CONFIG_SURFACES",
-    "CHECK_DANGLING_MENTION",
-    "CHECK_DEPOT_DEPENDENCIES",
-    "CHECK_DISCOVER_FILES",
-    "CHECK_INDEX_FILENAMES",
-    "CHECK_LINE_TYPES",
-    "CHECK_LINE_UNLINKED",
-    "CHECK_MDBLOCKS_SYNTAX",
-    "CHECK_REVIEWED_CITE_CLOSURE",
-    "CHECK_ROUTER_COVERAGE",
-    "CHECK_ROUTER_ENTRIES",
-    "CHECK_ROUTER_PRESENCE",
-    "CHECK_ROUTER_TARGETS",
-    "CHECK_TYPE_STATEMENT_LEGACY_SIGIL",
-    "CONFIG_NO_SURFACES",
-    "CONCEPT_DUPLICATE",
-    "CONCEPT_INVALID_HEADING",
-    "CONCEPT_INVENTORY",
-    "CONCEPT_INVENTORY_EMPTY",
+    "BAR_CHECKS",
+    "CATALOG",
+    "Check",
     "CheckResult",
-    "CheckStatus",
-    "ConceptBlock",
-    "CoverageItem",
-    "DEPOT_COLLISION",
-    "DEPOT_DANGLING_MENTION",
-    "DEPOT_DEP_UNRESOLVED",
-    "FILES_NONE",
-    "GateResult",
-    "INDEX_FILENAME_RE",
-    "INDEX_INVALID_FILENAME",
-    "LINE_TYPE_SYNTAX",
-    "LINE_TYPE_UNKNOWN",
-    "LINE_UNLINKED",
-    "LinterCheck",
-    "LinterCheckBinding",
-    "LinterConfig",
-    "LinterFinding",
-    "LinterState",
-    "LineSupportStanding",
-    "MDBLOCKS_BLOCKING_CODES",
-    "MDBLOCKS_CODE_MAP",
-    "MDBLOCKS_SYNTAX",
-    "REVIEWED_CITE_CLOSURE",
-    "ROUTER_EMPTY",
-    "ROUTER_ENTRIES_EMPTY",
-    "ROUTER_INVALID_CONCEPT",
-    "ROUTER_LEGACY_NAME",
-    "ROUTER_MISSING",
-    "ROUTER_MISSING_ENTRY",
-    "ROUTER_MISSING_FILE",
-    "ROUTER_UNKNOWN_CONCEPT",
-    "ROUTER_WRONG_FILE",
-    "RouterEntry",
-    "SOURCE_AXIS_PLACEMENT",
-    "SURFACE_INVALID",
-    "SURFACE_INVALID_BY_KIND",
-    "SURFACE_MISSING_BY_KIND",
-    "SURFACE_NOT_MARKDOWN_BY_KIND",
-    "Severity",
-    "SurfaceKind",
-    "SurfacePath",
-    "TYPE_STATEMENT_LEGACY_SIGIL",
-    "allowed",
-    "bind_floor_check",
-    "blocked",
-    "build_linter_config",
-    "build_linter_poi_report",
-    "check_registry",
-    "check_selector",
-    "parsed_linter_kernel_lines",
-    "render_linter_json",
-    "render_linter_text",
-    "resolve_enabled_checks",
-    "run_linter",
+    "Finding",
+    "LintError",
+    "LintReport",
+    "Tier",
+    "bless",
+    "lint",
+    "read_blessings",
+    "select_checks",
 ]
-
-
-CHECKS: tuple[LinterCheck, ...] = (*STRUCTURAL_CHECKS, *PARSER_CHECKS)
-
-
-def check_registry(checks: Sequence["LinterCheck"] = ()) -> list[dict[str, Any]]:
-    """Selector + metadata for each registered check (defaults to `CHECKS`)."""
-    selected = checks or CHECKS
-    rows = _core_check_registry(selected)
-    for row, check in zip(rows, selected, strict=True):
-        if check.binding.surface_kinds is not None:
-            row["surface_kinds"] = sorted(check.binding.surface_kinds)
-    return rows
-
-
-def build_linter_config(
-    *,
-    depot_paths: tuple[str, ...],
-    index_paths: tuple[str, ...],
-    appendix_paths: tuple[str, ...],
-    coverage: tuple[str, ...] = (),
-    scope_paths: tuple[str, ...] = (),
-    anchors: tuple[str, ...] = (),
-    warn_unlinked: bool = False,
-) -> tuple[LinterConfig, tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
-    resolved_root = Path.cwd().resolve()
-    resolved_depots = tuple(
-        _resolve_under_root(resolved_root, path) for path in depot_paths
-    )
-    resolved_coverage = _resolve_coverage(coverage, warn_unlinked=warn_unlinked)
-    resolved_scope_paths = tuple(
-        _resolve_under_root(resolved_root, path) for path in scope_paths
-    )
-    derived_index_paths: list[str] = list(index_paths)
-    derived_appendix_paths: list[str] = list(appendix_paths)
-    derived_agendix_paths: list[str] = []
-    derived_issues_paths: list[str] = []
-    for depot_path in resolved_depots:
-        if not depot_path.is_dir():
-            continue
-        for chapter_dir in sorted(
-            path for path in depot_path.iterdir() if path.is_dir()
-        ):
-            if chapter_dir.name in {"appendix", "agendix", "issues"}:
-                continue
-            if any(
-                (match := INDEX_FILENAME_RE.fullmatch(path.name)) is not None
-                and match.group("chapter") == chapter_dir.name
-                for path in chapter_dir.glob("*.md")
-            ):
-                derived_index_paths.append(
-                    _relativize_under_root(resolved_root, chapter_dir)
-                )
-        appendix_dir = depot_path / "appendix"
-        if appendix_dir.is_dir():
-            derived_appendix_paths.append(
-                _relativize_under_root(resolved_root, appendix_dir)
-            )
-        agendix_dir = depot_path / "agendix"
-        if agendix_dir.is_dir():
-            derived_agendix_paths.append(
-                _relativize_under_root(resolved_root, agendix_dir)
-            )
-        issues_dir = depot_path / "issues"
-        if issues_dir.is_dir():
-            derived_issues_paths.append(
-                _relativize_under_root(resolved_root, issues_dir)
-            )
-    return (
-        LinterConfig(
-            root=resolved_root,
-            depot_paths=resolved_depots,
-            index_paths=tuple(
-                _resolve_under_root(resolved_root, path) for path in derived_index_paths
-            ),
-            appendix_paths=tuple(
-                _resolve_under_root(resolved_root, path)
-                for path in derived_appendix_paths
-            ),
-            agendix_paths=tuple(
-                _resolve_under_root(resolved_root, path)
-                for path in derived_agendix_paths
-            ),
-            issues_paths=tuple(
-                _resolve_under_root(resolved_root, path)
-                for path in derived_issues_paths
-            ),
-            coverage=resolved_coverage,
-            scope_paths=resolved_scope_paths,
-            anchors=tuple(dict.fromkeys(normalize_anchor(anchor) for anchor in anchors)),
-        ),
-        depot_paths,
-        tuple(derived_index_paths),
-        tuple(derived_appendix_paths),
-    )
-
-
-def run_linter(
-    config: LinterConfig,
-    raw_depot_paths: tuple[str, ...],
-    raw_index_paths: tuple[str, ...],
-    raw_appendix_paths: tuple[str, ...],
-    *,
-    extra_checks: Sequence["LinterCheck"] = (),
-    include: Sequence[str] = (),
-    exclude: Sequence[str] = (),
-) -> LinterState:
-    state = LinterState(
-        config=config,
-        raw_depot_paths=raw_depot_paths,
-        raw_index_paths=raw_index_paths,
-        raw_appendix_paths=raw_appendix_paths,
-    )
-    enabled = resolve_enabled_checks(
-        (*CHECKS, *extra_checks), include=include, exclude=exclude
-    )
-    if config.anchors:
-        line_enabled: list[LinterCheck] = []
-        explicit = set(include)
-        for check in enabled:
-            if (
-                check.structural
-                or check.binding.surface_kinds is not None
-                or check_selector(check.code) in explicit
-            ):
-                line_enabled.append(check)
-            else:
-                state.anchor_scope_omitted_checks.append(check.code)
-        enabled = line_enabled
-    enabled = [
-        *(check for check in enabled if check.structural),
-        *(check for check in enabled if not check.structural),
-    ]
-    state.validate_anchor_selection()
-    for check in enabled:
-        gate = check.gate(state)
-        if not gate.allowed:
-            state.record_blocked(check, gate)
-            continue
-        state.record_check(check, check.run(state))
-    return state
-
-
-def build_linter_poi_report(
-    state: LinterState,
-    *,
-    catalog: POICatalog | None = None,
-) -> POIReport:
-    view = _scoped_view(state)
-    if catalog is None:
-        from tarav.poi.discovery import discover_poi_catalog
-
-        selected_catalog = discover_poi_catalog()
-    else:
-        selected_catalog = catalog
-    from tarav.wayfinder.index_blocks import create_index_wayfinder
-
-    return build_poi_report(
-        (
-            finding_to_poi(
-                finding,
-                selected_catalog,
-                package_id=state.finding_poi_package_ids.get(
-                    id(finding), "tarav-pkg"
-                ),
-            )
-            for finding in view["findings"]
-        ),
-        wayfinder=create_index_wayfinder(),
-    )
-
-
-def render_linter_json(
-    state: LinterState,
-    *,
-    catalog: POICatalog | None = None,
-    poi_report: POIReport | None = None,
-) -> str:
-    report = poi_report or build_linter_poi_report(state, catalog=catalog)
-    return json.dumps(_state_payload(state, report), indent=2)
-
-
-def render_linter_text(
-    state: LinterState,
-    *,
-    catalog: POICatalog | None = None,
-    poi_report: POIReport | None = None,
-    show_passed: bool = False,
-) -> str:
-    view = _scoped_view(state)
-    lines = ["Index linter"]
-    report = poi_report or build_linter_poi_report(state, catalog=catalog)
-    if report.groups:
-        lines.append("")
-        lines.extend(report.render_text().splitlines())
-
-    if show_passed:
-        passed_results = [
-            result for result in view["check_results"] if result.status == "passed"
-        ]
-        if passed_results:
-            lines.append("")
-            lines.append("Passed checks:")
-            for result in passed_results:
-                lines.append(f"- [OK] {result.code} - {result.title}")
-
-    blocked_results = [
-        result for result in view["check_results"] if result.status == "blocked"
-    ]
-    if blocked_results:
-        lines.append("")
-        lines.append("Blocked checks:")
-        for result in blocked_results:
-            suffix = ""
-            if result.blocked_by:
-                suffix = f" (blocked by: {', '.join(result.blocked_by)})"
-            lines.append(f"- {result.code}: {result.reason or 'blocked'}{suffix}")
-
-    coverage_payload = view["coverage"]
-    if coverage_payload:
-        lines.append("")
-        lines.append("Coverage:")
-        for name, meter in coverage_payload.items():
-            if name == "line":
-                lines.append(f"- line: {meter['linked']}/{meter['total']} linked")
-            elif name == "block":
-                lines.append(f"- block: {meter['grounded']}/{meter['total']} grounded")
-
-    summary = view["summary"]
-    lines.append("")
-    lines.append(
-        "Summary: "
-        f"{summary['error_count']} error(s), "
-        f"{summary['warning_count']} warning(s), "
-        f"{summary['blocked_count']} blocked check(s), "
-        f"{summary['passed_count']} passed check(s)."
-    )
-    return "\n".join(lines)
-
-
-def _resolve_under_root(root: Path, raw_path: str) -> Path:
-    candidate = Path(raw_path).expanduser()
-    resolved = (
-        candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
-    )
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise SystemExit(
-            f"error: path is outside the current working directory: {raw_path}"
-        ) from exc
-    return resolved
-
-
-def _relativize_under_root(root: Path, path: Path) -> str:
-    return path.relative_to(root).as_posix()
-
-
-def _state_payload(state: LinterState, poi_report: POIReport) -> dict[str, Any]:
-    view = _scoped_view(state)
-    config: dict[str, Any] = {
-        "depot": list(state.raw_depot_paths),
-        "index": list(state.raw_index_paths),
-        "appendix": list(state.raw_appendix_paths),
-    }
-    if state.config.coverage:
-        config["coverage"] = sorted(state.config.coverage)
-    if state.config.scope_paths:
-        config["scope"] = [state.rel_path(path) for path in state.config.scope_paths]
-    if state.config.anchors:
-        config["anchor"] = list(state.config.anchors)
-    poi_payload = poi_report.as_dict()
-    payload = {
-        "root": str(state.config.root),
-        "config": config,
-        "surfaces": [
-            {
-                "kind": surface.kind,
-                "path": surface.rel_path,
-                "valid": surface.valid,
-            }
-            for surface in state.surfaces
-        ],
-        "files": {kind: list(paths) for kind, paths in state.files_by_kind.items()},
-        "checks": [result.to_payload() for result in view["check_results"]],
-        "subjects": _line_subjects(state, view["findings"]),
-        "poi_classes": poi_payload["classes"],
-        "pois": poi_payload["instances"],
-        "summary": view["summary"],
-        "exit_code": 1 if view["summary"]["error_count"] else 0,
-    }
-    if view["coverage"]:
-        payload["coverage"] = view["coverage"]
-    if state.anchor_locators:
-        payload["anchor_locators"] = state.anchor_locators
-    if state.config.anchors:
-        payload["selection"] = {
-            "anchors": list(state.config.anchors),
-            "matched": list(state.config.anchors),
-            "line_count": len(state.parsed_kernel_lines()),
-            "omitted_depot_checks": state.anchor_scope_omitted_checks,
-        }
-    return payload
-
-
-def _line_subjects(
-    state: LinterState,
-    findings: list[LinterFinding],
-) -> list[dict[str, Any]]:
-    selected_keys = {
-        (finding.path, finding.line)
-        for finding in findings
-        if finding.line is not None
-    }
-    if state.config.anchors:
-        selected_keys.update(state.line_key(line) for _, line in state.parsed_kernel_lines())
-    subjects: list[dict[str, Any]] = []
-    for document in state.parsed_documents:
-        for line in document.kernel_lines():
-            path = state.rel_path(line.path) if line.path else "."
-            key = (path, line.start_line)
-            if key not in selected_keys:
-                continue
-            subjects.append(
-                {
-                    "kind": "Index.Line",
-                    "path": path,
-                    "line": line.start_line,
-                    "path_line": f"{path}:{line.start_line}",
-                    "anchors": list(kernel_line_anchors(line)),
-                }
-            )
-    return sorted(subjects, key=lambda item: (item["path"], item["line"]))
-
-
-def _resolve_coverage(
-    coverage: tuple[str, ...], *, warn_unlinked: bool
-) -> frozenset[str]:
-    resolved: set[str] = set()
-    for name in coverage:
-        if name == "all":
-            resolved.update(("line", "block"))
-            continue
-        if name not in {"line", "block"}:
-            raise SystemExit(f"error: unknown coverage meter: {name}")
-        resolved.add(name)
-    if warn_unlinked:
-        resolved.add("line")
-    return frozenset(resolved)
-
-
-def _scoped_view(state: LinterState) -> dict[str, Any]:
-    findings = [
-        finding for finding in state.findings if _finding_in_scope(state, finding)
-    ]
-    check_results = _scoped_check_results(state, findings)
-    summary = _summary_from(check_results, findings)
-    coverage = _scoped_coverage(state)
-    return {
-        "findings": findings,
-        "check_results": check_results,
-        "summary": summary,
-        "coverage": coverage,
-    }
-
-
-def _finding_in_scope(state: LinterState, finding: LinterFinding) -> bool:
-    if state.config.scope_paths and not _rel_path_in_scope(state, finding.path):
-        return False
-    if not state.config.anchors:
-        return True
-    if finding.line is None:
-        return False
-    selected = {state.line_key(line) for _, line in state.parsed_kernel_lines()}
-    return (finding.path, finding.line) in selected
-
-
-def _rel_path_in_scope(state: LinterState, rel_path: str) -> bool:
-    path = (state.config.root / rel_path).resolve()
-    return any(path_is_or_contains(scope, path) for scope in state.config.scope_paths)
-
-
-def _scoped_check_results(
-    state: LinterState,
-    findings: list[LinterFinding],
-) -> list[CheckResult]:
-    findings_by_check: dict[str, list[LinterFinding]] = {}
-    for finding in findings:
-        check_code = state.finding_check_codes.get(id(finding))
-        if check_code is None:
-            continue
-        findings_by_check.setdefault(check_code, []).append(finding)
-
-    results: list[CheckResult] = []
-    for result in state.check_results:
-        if result.status == "blocked":
-            results.append(result)
-            continue
-        check_findings = findings_by_check.get(result.code, [])
-        error_count = sum(
-            1 for finding in check_findings if finding.severity == "error"
-        )
-        warning_count = sum(
-            1 for finding in check_findings if finding.severity == "warning"
-        )
-        results.append(
-            CheckResult(
-                code=result.code,
-                title=result.title,
-                status="failed" if check_findings else "passed",
-                finding_count=len(check_findings),
-                error_count=error_count,
-                warning_count=warning_count,
-            )
-        )
-    return results
-
-
-def _summary_from(
-    check_results: list[CheckResult],
-    findings: list[LinterFinding],
-) -> dict[str, int]:
-    return {
-        "check_count": len(check_results),
-        "passed_count": sum(1 for result in check_results if result.status == "passed"),
-        "failed_count": sum(1 for result in check_results if result.status == "failed"),
-        "blocked_count": sum(
-            1 for result in check_results if result.status == "blocked"
-        ),
-        "finding_count": len(findings),
-        "error_count": sum(1 for finding in findings if finding.severity == "error"),
-        "warning_count": sum(
-            1 for finding in findings if finding.severity == "warning"
-        ),
-    }
-
-
-def _scoped_coverage(state: LinterState) -> dict[str, dict[str, int]]:
-    payload: dict[str, dict[str, int]] = {}
-    if "line" in state.config.coverage:
-        items = _coverage_items_in_scope(state, "line")
-        linked = sum(1 for item in items if item.covered)
-        payload["line"] = {"linked": linked, "total": len(items)}
-    if "block" in state.config.coverage:
-        items = _coverage_items_in_scope(state, "block")
-        grounded = sum(1 for item in items if item.covered)
-        payload["block"] = {"grounded": grounded, "total": len(items)}
-    return payload
-
-
-def _coverage_items_in_scope(state: LinterState, name: str) -> list[CoverageItem]:
-    return [
-        item
-        for item in state.coverage_items.get(name, [])
-        if not state.config.scope_paths or _rel_path_in_scope(state, item.path)
-    ]

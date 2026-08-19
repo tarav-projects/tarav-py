@@ -1,13 +1,10 @@
-# $kw: --from Agentos.Index.System
-"""Tarav Index — deterministic tooling for the index knowledge surface."""
+# $kw: --from Tarav.System
+"""The Hugentic index, rebuilt around Touched.Index.Record."""
 
-from .issues import IssueLine, IssueRecord, issue_inventory
-from .policy import IndexSurfacePolicy, surface_policy
+from __future__ import annotations
 
-__all__ = [
-    "IndexSurfacePolicy",
-    "IssueLine",
-    "IssueRecord",
-    "issue_inventory",
-    "surface_policy",
-]
+from .config import Geography, TaravIndexError, resolve_geography
+
+__version__ = "0.1.0"
+
+__all__ = ["Geography", "TaravIndexError", "__version__", "resolve_geography"]

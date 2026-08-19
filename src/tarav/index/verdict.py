@@ -17,7 +17,7 @@ Two-valued checking cannot distinguish `passed` from `blocked`, so it reports *c
 index nothing verified — the same defect the states themselves were being cured of, one level
 up.
 
-**The vocabulary is the old design's.** `tarav.index._linter_models` already carries
+**The vocabulary is the old design's.** `tarav.chatlas.index_check_model` already carries
 `CheckStatus = passed | failed | blocked` and a `GateResult` declaring why a check could not
 run, so this is not a new idea and does not get a new name. What this design changes is *where the
 verdict lives*: the old design blocked a whole check, this one also lets a single subject be blocked,

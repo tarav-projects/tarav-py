@@ -20,8 +20,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from tarav.index.model.nodes import BlockHeading, KernelLine
-from tarav.index.model.parser import parse_index_file
+from tarav.index_model.nodes import BlockHeading, KernelLine
+from tarav.index_model.parser import parse_index_file
 
 from .authority import (
     AGENT_HOME_NAME,

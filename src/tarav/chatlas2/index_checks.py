@@ -24,7 +24,7 @@ from tarav.chatlas.index_checks import (
     chatlas_anchor_line_drift_check,
     chatlas_grounding_provenance_check,
 )
-from tarav.index.linter import (
+from tarav.chatlas.index_check_model import (
     GateResult,
     LineSupportStanding,
     LinterCheck,

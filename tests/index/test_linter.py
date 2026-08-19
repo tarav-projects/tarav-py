@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from tarav.index2.gates import GateRef
-from tarav.index2.linter import CATALOG, LintError, bless, lint, select_checks
-from tarav.index2.record import IndexStore, LineRecord, SupportRef
+from tarav.index.gates import GateRef
+from tarav.index.linter import CATALOG, LintError, bless, lint, select_checks
+from tarav.index.record import IndexStore, LineRecord, SupportRef
 
 SURFACE = "skills/tarav-pkg/homes/ceo/chapters/100-design.md"
 APPENDIX = "skills/tarav-pkg/homes/ceo/appendix/900-depth.md"
@@ -152,7 +152,7 @@ class TestHeadSurface:
         assert "Index.Linter/Landing.Unevidenced" not in _classes(lint(geo))
 
     def test_the_head_surface_set_is_declared_not_inferred(self, geo, project_root):
-        from tarav.index2.surfaces import load_head_surfaces, write_head_surfaces
+        from tarav.index.surfaces import load_head_surfaces, write_head_surfaces
 
         write_head_surfaces(geo, ("skills/*/homes/*/appendix/*.md",))
         head = load_head_surfaces(geo)
@@ -160,7 +160,7 @@ class TestHeadSurface:
         assert not head.contains(SURFACE)
 
     def test_the_agent_home_is_never_a_head_surface(self, geo, project_root):
-        from tarav.index2.surfaces import HeadSurfaces, write_head_surfaces
+        from tarav.index.surfaces import HeadSurfaces, write_head_surfaces
 
         write_head_surfaces(geo, ("skills/*/homes/*/chapters/*.md",))
         head = HeadSurfaces(("skills/*/homes/*/chapters/*.md",))
@@ -366,7 +366,7 @@ class TestBlessingEvidence:
     """A blessing silences a check, so it is the last place to demand evidence."""
 
     def test_a_blessing_carries_its_gate(self, geo, project_root):
-        from tarav.index2.linter import read_blessings
+        from tarav.index.linter import read_blessings
 
         _surface(project_root, "- an untyped assertion ^d20260818-1u")
         finding = lint(geo).findings[0]
@@ -480,7 +480,7 @@ class TestSignalNotSemantics:
 
     def test_operands_do_not_change_a_finding_identity(self, geo, project_root):
         """A blessing must survive the value it accepted drifting slightly."""
-        from tarav.index2.linter import Finding
+        from tarav.index.linter import Finding
 
         a = Finding("X/Y", "ln_1", {"body": "one"})
         b = Finding("X/Y", "ln_1", {"body": "two"})
@@ -509,7 +509,7 @@ class TestCodeIsTheDocumentation:
 
 class TestRephraseChain:
     def test_a_rename_chain_carries_no_rephrase_signal(self, geo, project_root):
-        from tarav.index2.record import EquivalenceKind
+        from tarav.index.record import EquivalenceKind
 
         store = IndexStore(geo)
         first = store.put(

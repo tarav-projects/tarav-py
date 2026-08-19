@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from tarav.index2.scope import ScopeKind
-from tarav.index2.surfaces import (
+from tarav.index.scope import ScopeKind
+from tarav.index.surfaces import (
     ProjectIndex,
     discover_surfaces,
     read_annotation_lines,
@@ -135,7 +135,7 @@ class TestHomesLayout:
     def test_a_user_home_is_not_agent_writable(self, project_root):
         import pytest
 
-        from tarav.index2.authority import AuthorityGuardError
+        from tarav.index.authority import AuthorityGuardError
 
         with pytest.raises(AuthorityGuardError):
             ProjectIndex(project_root, "tarav-pkg", home="ceo").assert_writable()

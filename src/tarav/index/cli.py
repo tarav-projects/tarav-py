@@ -8,11 +8,9 @@ land, or adopt command — agents edit the markdown surfaces with ordinary file 
 The only writes here are the ones markdown editing genuinely cannot do by hand: minting an
 anchor, writing a record, and accepting a POI.
 
-    tarav index init
-    tarav index chatlas   session | messages
-    tarav index     blocks | lines | record | write | revise | trace | gate |
-                     remove | resolve | linter | bless
-    tarav index poi       explain
+    tarav index init | config | session | messages
+    tarav index blocks | lines | record | write | revise | trace | gate |
+                import | remove | resolve | linter | bless | explain
 """
 
 from __future__ import annotations
@@ -583,38 +581,37 @@ def cmd_poi_explain(args: argparse.Namespace) -> int:
 # -- parser -------------------------------------------------------------------
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="tarav index", description=__doc__)
-    parser.add_argument("--project", help="project root override")
-    parser.add_argument("--json", action="store_true", help="emit JSON")
-    sub = parser.add_subparsers(dest="command", required=True)
+def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
+    """Register the index command set under `tarav index`.
 
-    p = sub.add_parser("init", help="initialize the project tier and manifests")
+    One flat namespace: there is no `tarav index index`, and no `chatlas` or
+    `poi` group here — `tarav chatlas2` and `tarav poi` already own those.
+    """
+    index = subparsers.add_parser(
+        "index", help="Touched.Index entries, surfaces, and linting."
+    )
+    index.add_argument("--project", help="project root override")
+    index.add_argument("--json", action="store_true", help="emit JSON")
+    index_sub = index.add_subparsers(dest="index_command", required=True)
+
+    p = index_sub.add_parser("init", help="initialize the project tier and manifests")
     p.add_argument("--depot", help="also create this depot's layout")
     p.set_defaults(func=cmd_init)
 
-    p = sub.add_parser("config", help="show resolved geo")
+    p = index_sub.add_parser("config", help="show resolved geo")
     p.set_defaults(func=cmd_config)
 
-    # chatlas
-    chatlas = sub.add_parser("chatlas", help="chat evidence (via tarav Chatlas2)")
-    chatlas_sub = chatlas.add_subparsers(dest="chatlas_command", required=True)
-
-    p = chatlas_sub.add_parser("session", help="summarize one normalized session")
+    p = index_sub.add_parser("session", help="summarize one normalized chat session")
     p.add_argument("session")
     p.set_defaults(func=cmd_chatlas_session)
 
-    p = chatlas_sub.add_parser("messages", help="list messages with touch standing")
+    p = index_sub.add_parser("messages", help="list messages with touch standing")
     p.add_argument("session")
     p.add_argument("--touched", action="store_true", help="only qualifying editions")
     p.add_argument("--contains", help="substring filter")
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--width", type=int, default=90)
     p.set_defaults(func=cmd_chatlas_messages)
-
-    # index
-    index = sub.add_parser("index", help="index entries, surfaces, and linting")
-    index_sub = index.add_subparsers(dest="index_command", required=True)
 
     def _tier(parser_):
         parser_.add_argument(
@@ -707,24 +704,9 @@ def build_parser() -> argparse.ArgumentParser:
     _gate_args(p)
     p.set_defaults(func=cmd_index_bless)
 
-    # poi
-    poi = sub.add_parser("poi", help="POI class documentation")
-    poi_sub = poi.add_subparsers(dest="poi_command", required=True)
-    p = poi_sub.add_parser("explain", help="explain a check or POI class")
+    p = index_sub.add_parser("explain", help="explain a check or POI class")
     p.add_argument("poi_class")
     p.set_defaults(func=cmd_poi_explain)
 
-    return parser
 
-
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    try:
-        return args.func(args)
-    except TaravIndexError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+__all__ = ["register_index_commands"]

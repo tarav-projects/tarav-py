@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from tarav.index2.gates import GateRef
-from tarav.index2.record import (
+from tarav.index.gates import GateRef
+from tarav.index.record import (
     IndexStore,
     LineRecord,
     RecordStoreError,
@@ -13,10 +13,10 @@ from tarav.index2.record import (
     Tier,
     split_statement,
 )
-from tarav.index2.standing import ReviewSide, standings
+from tarav.index.standing import ReviewSide, standings
 
 BLOCK = "tarav-pkg/design#Index.Line.Record"
-ANNOTATION = "@src/tarav/index2/linter.py/Finding"
+ANNOTATION = "@src/tarav/index/linter.py/Finding"
 
 
 def _support(message_id="addr-1", session="s1"):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tarav.index2.scope import (
+from tarav.index.scope import (
     LineScope,
     ScopeError,
     ScopeKind,
@@ -33,9 +33,9 @@ class TestBlockPath:
 
 class TestLocatorName:
     def test_a_locator_scopes_an_annotation_attachment_point(self):
-        scope = parse_scope("@src/tarav/index2/linter.py/Finding")
+        scope = parse_scope("@src/tarav/index/linter.py/Finding")
         assert scope.kind is ScopeKind.ANNOTATION
-        assert scope.file == "src/tarav/index2/linter.py"
+        assert scope.file == "src/tarav/index/linter.py"
         assert scope.region == "Finding"
 
     def test_the_at_sigil_is_agent_maintained_and_may_be_omitted(self):

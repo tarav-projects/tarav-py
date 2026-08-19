@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tarav.index2.authority import (
+from tarav.index.authority import (
     Attribution,
     AuthorityGuardError,
     EditionRelation,

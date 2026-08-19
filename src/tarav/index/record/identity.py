@@ -13,7 +13,7 @@ lines by editing markdown rather than through a renderer.
 
 from __future__ import annotations
 
-from tarav.index.model.identity import index_line_statement_parts
+from tarav.index_model.identity import index_line_statement_parts
 
 
 def split_statement(source: str) -> tuple[str | None, str]:

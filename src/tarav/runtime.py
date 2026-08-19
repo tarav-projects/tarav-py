@@ -48,29 +48,12 @@ class TaravRuntime:
             resolve_event_support_set_record,
             validate_chatlas_anchory_amendment,
         )
-        from tarav.chatlas.line_manifest import materialize_index_line_manifest
-        from tarav.chatlas2.grounding import (
-            grounding_review_reference_resolver,
-            grounding_support_reference_resolver,
-        )
-        from tarav.chatlas2.index_checks import (
-            grounding_line_approval_check,
-            grounding_line_drift_check,
-            grounding_line_verbatim_gate_check,
-            grounding_provenance_check,
-        )
-        from tarav.chatlas2.line_manifest import (
-            create_grounding_line_relationship_projector,
-        )
-        from tarav.chatlas.project_index_reconciliation import (
-            project_index_coverage_check,
-        )
         from tarav.daemon import register_daemon_commands
         from tarav.daemon.client import submit_hook_invocation
         from tarav.daemon.log import report_hook_delivery_failure
         from tarav.forum import register_forum_commands
         from tarav.hooks import register_hook_commands
-        from tarav.index.commands import register_index_commands
+        from tarav.index.cli import register_index_commands
         from tarav.poi.discovery import discover_poi_catalog
         from tarav.wayfinder.index_blocks import create_index_wayfinder
         from tarav.stdlib.mdblocks.commands import register_mdblocks_commands
@@ -161,23 +144,7 @@ class TaravRuntime:
             subparsers,
             edition_history_support_resolver=resolve_event_support_set_record,
         )
-        register_index_commands(
-            subparsers,
-            extra_linter_checks=(
-                grounding_provenance_check(),
-                grounding_line_drift_check(),
-                grounding_line_approval_check(),
-                grounding_line_verbatim_gate_check(),
-                project_index_coverage_check(),
-            ),
-            support_reference_resolver=grounding_support_reference_resolver(),
-            review_reference_resolver=grounding_review_reference_resolver(),
-            line_manifest_relationship_projector_factory=(
-                create_grounding_line_relationship_projector
-            ),
-            line_manifest_materializer=materialize_index_line_manifest,
-            poi_catalog=poi_catalog,
-        )
+        register_index_commands(subparsers)
         register_mission_commands(subparsers)
 
 

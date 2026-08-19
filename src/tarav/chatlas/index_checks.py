@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from tarav._core.errors import CliError
-from tarav.index.linter import (
+from tarav.chatlas.index_check_model import (
     GateResult,
     LinterCheck,
     LinterFinding,

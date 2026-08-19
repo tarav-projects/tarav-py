@@ -8,7 +8,7 @@ one resolver, two address kinds.
 
 ```text
 tarav-pkg/design#Scope.Axis        Block.Path     → a Kernel.Block in a chapter
-@src/tarav/index2/linter.py/Finding       Locator.Name   → a Skw.Annotation attachment point
+@src/tarav/index/linter.py/Finding       Locator.Name   → a Skw.Annotation attachment point
 ```
 
 This is what makes "index lines attach to any skw annotation through the same mechanism as
