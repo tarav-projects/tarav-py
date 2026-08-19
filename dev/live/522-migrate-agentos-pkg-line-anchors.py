@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from tarav._core.errors import CliError
-from tarav.index.model import KernelLine, index_line_statement_parts, parse_depot
+from tarav.index_model import KernelLine, index_line_statement_parts, parse_depot
 from tarav.chatlas.anchory import (
     CHATLAS_LINE_ANCHOR_DOSSIER_SCHEMA,
     CHATLAS_NAMESPACE,

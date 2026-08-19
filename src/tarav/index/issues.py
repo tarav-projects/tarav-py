@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .model import BlockHeading, IndexDepotModel, KernelLine
+from tarav.index_model import BlockHeading, IndexDepotModel, KernelLine
 
 
 ISSUE_BLOCK_RE = re.compile(

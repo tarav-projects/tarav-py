@@ -8,7 +8,7 @@ import pytest
 
 from tarav._core.errors import CliError
 from tarav.index.commands import _cmd_blocks
-from tarav.index.model import block_grounding_stats, parse_depot
+from tarav.index_model import block_grounding_stats, parse_depot
 
 CHAPTER = """> router line
 

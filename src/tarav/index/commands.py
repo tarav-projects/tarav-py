@@ -244,8 +244,8 @@ def _cmd_blocks(args: argparse.Namespace) -> int:
 
     from tarav._core.errors import CliError
 
-    from .model import parse_depot
-    from .model.stats import block_grounding_stats
+    from tarav.index_model import parse_depot
+    from tarav.index_model.stats import block_grounding_stats
 
     support_resolver = getattr(args, "_support_reference_resolver", None)
     if support_resolver is None:
@@ -361,7 +361,7 @@ def _cmd_issues(args: argparse.Namespace) -> int:
     from tarav._core.errors import CliError
 
     from .issues import issue_inventory
-    from .model import parse_depot
+    from tarav.index_model import parse_depot
 
     support_resolver = getattr(args, "_support_reference_resolver", None)
     review_resolver = getattr(args, "_review_reference_resolver", None)

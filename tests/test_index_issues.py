@@ -4,7 +4,7 @@ from pathlib import Path
 
 from tarav.index.issues import issue_inventory
 from tarav.index.linter import build_linter_config, run_linter
-from tarav.index.model import parse_depot
+from tarav.index_model import parse_depot
 from tarav.index.policy import surface_policy
 
 

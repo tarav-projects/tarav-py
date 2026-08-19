@@ -76,6 +76,15 @@ def canonical_index_line_anchor_triplet(source: str, anchor: str) -> str:
     )
 
 
+LINE_MANIFEST_SCHEMA = "agentos.index-line-manifest.v3"
+"""Schema id of the index line manifest.
+
+It lives in the model kernel because both the index application that builds a
+manifest and the chatlas reader that materializes one must agree on it, and the
+kernel is the only zone both may import.
+"""
+
+
 def index_line_anchor_triplet_hash(source: str, anchor: str) -> str:
     canonical = canonical_index_line_anchor_triplet(source, anchor)
     digest = sha256(

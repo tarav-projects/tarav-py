@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from tarav._core.scan import DEFAULT_SCAN_EXCLUDES
-from tarav.index.model import (
+from tarav.index_model import (
     BlockHeading,
     Diagnostic,
     RouterEntry as ModelRouterEntry,
@@ -178,11 +178,11 @@ def _check_depot_dependencies(state: LinterState) -> list[LinterFinding]:
     available (`drift.index_dangling_mentions`) but not CLI-wired, pending the
     resolver-gap work documented on Impl.Req 700/701.
     """
-    from tarav.index.depot_deps import (
+    from tarav.skillware.index_depot_deps import (
         declared_dependency_names,
         resolve_dependency_depots,
     )
-    from tarav.index.drift import index_depot_collisions
+    from tarav.skillware.index_surfaces import index_depot_collisions
 
     findings: list[LinterFinding] = []
     for depot in state.config.depot_paths:
@@ -224,7 +224,7 @@ def _check_index_dangling_mentions(state: LinterState) -> list[LinterFinding]:
     placeholders, non-index skill-surface concepts) land (Impl.Req 700/701).
     Enable per run with `--check dangling-mention`.
     """
-    from tarav.index.drift import index_dangling_mentions
+    from tarav.skillware.index_surfaces import index_dangling_mentions
 
     findings: list[LinterFinding] = []
     for depot in state.config.depot_paths:
@@ -650,7 +650,7 @@ def _check_appendix_filenames(state: LinterState) -> list[LinterFinding]:
 
 def _check_issue_structure(state: LinterState) -> list[LinterFinding]:
     from tarav.index.issues import ISSUE_BLOCK_RE, ISSUE_FILENAME_RE
-    from tarav.index.model import KernelLine
+    from tarav.index_model import KernelLine
 
     findings: list[LinterFinding] = []
     _ensure_parsed_documents(state)

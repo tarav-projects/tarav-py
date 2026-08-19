@@ -23,7 +23,7 @@ from tarav.chatlas2.index_checks import grounding_provenance_check
 from tarav.chatlas2.message_ref import compute_chat_message_hash
 from tarav.chatlas2.messages import chat_message_support_member
 from tarav.index.linter import build_linter_config, run_linter
-from tarav.index.model import (
+from tarav.index_model import (
     INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
     index_line_anchor_triplet_hash,
 )

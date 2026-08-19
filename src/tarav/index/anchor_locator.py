@@ -11,7 +11,7 @@ from typing import Any, Literal
 from tarav._core.errors import CliError
 from tarav._core.persistence import atomic_write_text
 
-from .model import (
+from tarav.index_model import (
     IndexDepotModel,
     IndexDocument,
     KernelLine,

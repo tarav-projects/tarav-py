@@ -11,7 +11,7 @@ from typing import Callable
 from tarav._core.errors import CliError
 from tarav.anchory import AnchoryDepot
 from tarav.chatlas.paths import default_chatlas_root
-from tarav.index.model import (
+from tarav.index_model import (
     INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
     index_line_anchor_triplet_hash,
     index_line_statement_parts,

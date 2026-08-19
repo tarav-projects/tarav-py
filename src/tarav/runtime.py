@@ -71,8 +71,8 @@ class TaravRuntime:
         from tarav.forum import register_forum_commands
         from tarav.hooks import register_hook_commands
         from tarav.index.commands import register_index_commands
-        from tarav.index.poi_catalog import discover_poi_catalog
-        from tarav.index.wayfinder import create_index_wayfinder
+        from tarav.poi.discovery import discover_poi_catalog
+        from tarav.wayfinder.index_blocks import create_index_wayfinder
         from tarav.stdlib.mdblocks.commands import register_mdblocks_commands
         from tarav.mission import register_mission_commands
         from tarav.poi.commands import register_poi_commands

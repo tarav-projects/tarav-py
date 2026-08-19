@@ -12,8 +12,8 @@ from typing import Any, Literal
 
 from tarav._core.errors import CliError
 from tarav._core.persistence import atomic_write_text
-from tarav.index.line_manifest import LINE_MANIFEST_SCHEMA
-from tarav.index.model import index_line_anchor_triplet_hash
+from tarav.index_model import LINE_MANIFEST_SCHEMA
+from tarav.index_model import index_line_anchor_triplet_hash
 
 from ._payload_helpers import compact_text, dict_list, string_or_none
 from .anchory import (

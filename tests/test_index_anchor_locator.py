@@ -13,7 +13,7 @@ def test_locator_loads_only_fingerprinted_anchor_sources(tmp_path: Path) -> None
         load_index_anchor_locator_selection,
         materialize_index_anchor_locator,
     )
-    from tarav.index.model import parse_depot
+    from tarav.index_model import parse_depot
 
     depot = tmp_path / "depot"
     workspace = tmp_path / "workspace"
@@ -52,7 +52,7 @@ def test_locator_rejects_changed_source(tmp_path: Path) -> None:
         load_index_anchor_locator_selection,
         materialize_index_anchor_locator,
     )
-    from tarav.index.model import parse_depot
+    from tarav.index_model import parse_depot
 
     depot = tmp_path / "depot"
     workspace = tmp_path / "workspace"
@@ -80,7 +80,7 @@ def test_locator_preserves_ambiguous_occurrence_standing(tmp_path: Path) -> None
         index_anchor_locator_path,
         materialize_index_anchor_locator,
     )
-    from tarav.index.model import parse_depot
+    from tarav.index_model import parse_depot
     import json
 
     depot = tmp_path / "depot"

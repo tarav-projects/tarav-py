@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from tarav.index.model import BlockHeading, parse_depot
+from tarav.index_model import BlockHeading, parse_depot
 from tarav.poi import POICatalog, POICatalogError, POIClassRegistration
 from tarav.wayfinder import (
     PACKAGE_SKILL_ROOT_TYPE,

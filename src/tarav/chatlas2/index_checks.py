@@ -33,7 +33,7 @@ from tarav.index.linter import (
     bind_floor_check,
     parsed_linter_kernel_lines,
 )
-from tarav.index.model import (
+from tarav.index_model import (
     IndexDocument,
     canonical_index_line_body,
     index_line_anchor_triplet_hash,

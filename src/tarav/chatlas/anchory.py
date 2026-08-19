@@ -13,7 +13,7 @@ from typing import Any, Callable, Literal
 
 from tarav._core.errors import CliError
 from tarav.anchory import AnchoryDepot, scan_anchory_source
-from tarav.index.model import (
+from tarav.index_model import (
     INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
     group_index_line_anchor_occurrences,
     index_line_anchor_triplet_hash,

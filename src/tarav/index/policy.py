@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .model.nodes import IndexSurfaceKind
+from tarav.index_model.nodes import IndexSurfaceKind
 
 
 @dataclass(frozen=True)

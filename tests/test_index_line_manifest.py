@@ -153,7 +153,7 @@ def test_manifest_uses_verified_locator_without_full_depot_parse(
 ) -> None:
     from tarav.index.anchor_locator import materialize_index_anchor_locator
     from tarav.index.line_manifest import build_index_line_manifest
-    from tarav.index.model import parse_depot
+    from tarav.index_model import parse_depot
 
     depot = tmp_path / "depot"
     workspace = tmp_path / "workspace"
@@ -212,7 +212,7 @@ def test_manifest_marks_conflicting_anchor_occurrences_ambiguous(
 def test_manifest_falls_back_when_locator_source_changed(tmp_path: Path) -> None:
     from tarav.index.anchor_locator import materialize_index_anchor_locator
     from tarav.index.line_manifest import build_index_line_manifest
-    from tarav.index.model import parse_depot
+    from tarav.index_model import parse_depot
 
     depot = tmp_path / "depot"
     workspace = tmp_path / "workspace"

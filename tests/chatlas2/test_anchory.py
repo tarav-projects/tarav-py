@@ -23,7 +23,7 @@ from tarav.chatlas2.anchory import (
     chatlas2_anchory_resolve,
     format_support_member_ref,
 )
-from tarav.index.model import (
+from tarav.index_model import (
     INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
     index_line_anchor_triplet_hash,
 )

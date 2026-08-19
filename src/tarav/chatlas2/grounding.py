@@ -7,7 +7,7 @@ import unicodedata
 from pathlib import Path
 
 from tarav._core.errors import CliError
-from tarav.index.model import canonical_index_line_body
+from tarav.index_model import canonical_index_line_body
 
 from .anchory import (
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,

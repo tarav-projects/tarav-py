@@ -15,7 +15,6 @@ from tarav._core.project import (
     global_config_path,
     load_project_marker,
     load_global_config,
-    local_storage_paths,
     load_project_config,
     project_config_path,
     project_marker_path,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from tarav.index.model import (
+from tarav.index_model import (
     canonical_index_line_statement,
     index_line_anchor_triplet_hash,
 )

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.index.poi_catalog import discover_poi_catalog
-from tarav.index.wayfinder import (
+from tarav.poi.discovery import discover_poi_catalog
+from tarav.wayfinder.index_blocks import (
     create_index_wayfinder,
     resolve_index_block_reference,
 )

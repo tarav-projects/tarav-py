@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.index.wayfinder import create_index_wayfinder
+from tarav.wayfinder.index_blocks import create_index_wayfinder
 from tarav.poi import (
     POIInstance,
     POILinterReport,

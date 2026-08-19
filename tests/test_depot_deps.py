@@ -8,7 +8,7 @@ Slice 3 — directed, non-transitive visibility resolution.
 import json
 from pathlib import Path
 
-from tarav.index.depot_deps import (
+from tarav.skillware.index_depot_deps import (
     declared_dependency_names,
     load_depot_registry,
     resolve_dependency_depots,

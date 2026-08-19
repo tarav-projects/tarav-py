@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from tarav._core.errors import CliError
-from tarav.index.model import canonical_index_line_statement
-from tarav.index.model.identity import ANCHOR_RE, TYPE_BRACKET_RE
+from tarav.index_model import canonical_index_line_statement
+from tarav.index_model.identity import ANCHOR_RE, TYPE_BRACKET_RE
 
 from tarav.chatlas.chat_index import (
     chat_index_source_model,

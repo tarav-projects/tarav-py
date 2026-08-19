@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 from tarav._core.errors import CliError
-from tarav.index.model import index_line_statement_parts
+from tarav.index_model import index_line_statement_parts
 
 
 CAPTURE_PLAN_SCHEMA = "tarav.chatlas2.real-time-capture-plan.v1"

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.index.model import BlockHeading, IndexDocument, parse_depot
+from tarav.index_model import BlockHeading, IndexDocument, parse_depot
 from tarav.wayfinder.resolver import Wayfinder
 
 from tarav.wayfinder.model import (

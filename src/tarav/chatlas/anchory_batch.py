@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from tarav._core.errors import CliError
-from tarav.index.model import index_line_statement_parts
+from tarav.index_model import index_line_statement_parts
 
 from ._payload_helpers import parse_event_timestamp, string_or_none
 from .anchory import (

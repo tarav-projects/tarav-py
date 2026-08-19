@@ -10,7 +10,7 @@ deliberately out of scope (see the Impl.Req Impl.Log).
 
 from pathlib import Path
 
-from tarav.index.drift import (
+from tarav.skillware.index_surfaces import (
     IndexSurfaceProvider,
     index_dangling_mentions,
     index_depot_collisions,

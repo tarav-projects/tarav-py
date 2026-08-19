@@ -113,7 +113,7 @@ def test_native_surfaces_do_not_import_skillware() -> None:
     assert "skillware" not in imports["surfaces"]
     assert {
         "chatlas",
-        "index",
+        "index_model",
         "skillware",
         "stdlib",
     } <= {name for name, targets in imports.items() if "surfaces" in targets}

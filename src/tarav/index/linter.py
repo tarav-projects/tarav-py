@@ -14,7 +14,7 @@ from tarav.poi import (
     check_selector as check_selector,
     resolve_enabled_checks,
 )
-from tarav.index.model import kernel_line_anchors, normalize_anchor
+from tarav.index_model import kernel_line_anchors, normalize_anchor
 
 from ._linter_models import (
     CheckResult,
@@ -377,12 +377,12 @@ def build_linter_poi_report(
 ) -> POIReport:
     view = _scoped_view(state)
     if catalog is None:
-        from .poi_catalog import discover_poi_catalog
+        from tarav.poi.discovery import discover_poi_catalog
 
         selected_catalog = discover_poi_catalog()
     else:
         selected_catalog = catalog
-    from .wayfinder import create_index_wayfinder
+    from tarav.wayfinder.index_blocks import create_index_wayfinder
 
     return build_poi_report(
         (

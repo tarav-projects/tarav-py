@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from tarav.index.model import (
+from tarav.index_model import (
     BlockHeading,
     IndexDocument,
     KernelLine,

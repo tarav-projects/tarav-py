@@ -21,9 +21,9 @@ rules, Impl.Req 700/701 Impl.Log).
 
 from pathlib import Path
 
-from tarav.index.depot_deps import resolve_dependency_depots
-from tarav.index.model import parse_depot
-from tarav.index.model.nodes import BlockHeading, KernelLine, MetaLine, Node
+from tarav.skillware.index_depot_deps import resolve_dependency_depots
+from tarav.index_model import parse_depot
+from tarav.index_model.nodes import BlockHeading, KernelLine, MetaLine, Node
 from tarav.skw.network import (
     NetworkFinding,
     dangling_mention_findings,

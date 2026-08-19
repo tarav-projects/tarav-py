@@ -8,7 +8,7 @@ from typing import Literal
 
 from tarav._core.errors import CliError
 from tarav.chatlas.line_manifest import create_chatlas_line_relationship_projector
-from tarav.index.model import index_line_anchor_triplet_hash
+from tarav.index_model import index_line_anchor_triplet_hash
 
 from .anchory import chatlas2_anchory_depot, parse_line_anchor_dossier
 from .grounding import resolve_message_member

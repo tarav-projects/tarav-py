@@ -7,7 +7,7 @@ import pytest
 from tarav.anchory.poi import ANCHORY_POI_CLASSES
 from tarav.poi.adapters.bloberia import BLOBERIA_POI_CLASSES
 from tarav.index import _linter_parser_checks, _linter_structure
-from tarav.index.poi_catalog import discover_poi_catalog
+from tarav.poi.discovery import discover_poi_catalog
 from tarav.poi.adapters.mdblocks import MDBLOCKS_POI_CLASSES
 from tarav.skillware.poi import SKILLWARE_POI_CLASSES
 from tarav.wayfinder import WayfinderReferenceRoot, WayfinderRegistry

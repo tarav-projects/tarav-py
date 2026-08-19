@@ -461,7 +461,7 @@ def test_line_home_is_the_oldest_evidenced_materialization(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Home is chosen by where the chat put it, and the anchor agrees."""
-    from tarav.index.model import canonical_index_line_statement
+    from tarav.index_model import canonical_index_line_statement
 
     chatlas_root, row = _medium_session(tmp_path, monkeypatch, capsys)
     surface, fixture = _grounded_surface(chatlas_root, row)

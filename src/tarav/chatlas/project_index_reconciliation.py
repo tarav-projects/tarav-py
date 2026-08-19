@@ -11,7 +11,7 @@ from tarav._core.errors import CliError
 from tarav._core.persistence import atomic_write_json
 from tarav._core.project import find_agentos_project_root
 from tarav.index.linter import LinterCheck, LinterFinding, allowed
-from tarav.index.model import canonical_index_line_statement, parse_depot
+from tarav.index_model import canonical_index_line_statement, parse_depot
 
 from tarav.chatlas.anchory import (
     CHATLAS_LINE_ANCHOR_DOSSIER_SCHEMA,

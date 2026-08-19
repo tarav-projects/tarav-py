@@ -6,11 +6,11 @@ import re
 from typing import Any
 
 from tarav._core.errors import CliError
-from tarav.index.model import (
+from tarav.index_model import (
     canonical_index_line_statement,
     index_line_anchor_triplet_hash,
 )
-from tarav.index.model.identity import ANCHOR_RE
+from tarav.index_model.identity import ANCHOR_RE
 from tarav.surfaces.markdown import normalize_markdown
 
 from tarav.chatlas.anchory import (

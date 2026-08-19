@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.index.drift import IndexSurfaceProvider
+from tarav.skillware.index_surfaces import IndexSurfaceProvider
 
 from ._code_model import CodeDependencyResolver
 

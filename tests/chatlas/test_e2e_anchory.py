@@ -415,7 +415,7 @@ def test_chatlas_anchory_register_binds_index_line_content(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from tarav.index.model import index_line_anchor_triplet_hash
+    from tarav.index_model import index_line_anchor_triplet_hash
 
     session_id = _selection_fixture(tmp_path, monkeypatch, capsys)
     identity_hash = _fixture_identity_hash(capsys, session_id)
@@ -454,7 +454,7 @@ def test_chatlas_anchory_reattach_preserves_anchor_and_relationships(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from tarav.index.model import index_line_anchor_triplet_hash
+    from tarav.index_model import index_line_anchor_triplet_hash
 
     session_id = _selection_fixture(tmp_path, monkeypatch, capsys)
     identity_hash = _fixture_identity_hash(capsys, session_id)

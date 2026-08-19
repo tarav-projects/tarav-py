@@ -9,7 +9,7 @@ def _write(path: Path, text: str) -> None:
 
 
 def test_anchor_occurrence_groups_identical_materializations(tmp_path: Path) -> None:
-    from tarav.index.model import (
+    from tarav.index_model import (
         group_index_line_anchor_occurrences,
         parse_depot,
     )
@@ -38,7 +38,7 @@ def test_anchor_occurrence_groups_identical_materializations(tmp_path: Path) -> 
 
 
 def test_anchor_occurrence_groups_type_and_body_conflicts(tmp_path: Path) -> None:
-    from tarav.index.model import (
+    from tarav.index_model import (
         group_index_line_anchor_occurrences,
         parse_depot,
     )

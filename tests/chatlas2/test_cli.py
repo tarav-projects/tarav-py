@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from tarav.cli.cli import main
-from tarav.index.model import index_line_anchor_triplet_hash
+from tarav.index_model import index_line_anchor_triplet_hash
 from tarav.testing import TaravTestEnvironment
 
 

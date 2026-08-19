@@ -13,7 +13,7 @@ from tarav.index.linter import (
     render_linter_text,
     run_linter,
 )
-from tarav.index.poi_catalog import discover_poi_catalog
+from tarav.poi.discovery import discover_poi_catalog
 from tarav.testing import TaravTestEnvironment
 from tarav.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
 from tarav.cli.cli import main

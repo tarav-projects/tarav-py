@@ -255,7 +255,7 @@ def test_parse_support_set_record_requires_supported_shape() -> None:
 
 
 def test_line_anchor_dossier_binds_triplet_and_predecessors() -> None:
-    from tarav.index.model import index_line_anchor_triplet_hash
+    from tarav.index_model import index_line_anchor_triplet_hash
     from tarav.chatlas.anchory import (
         CHATLAS_LINE_ANCHOR_DOSSIER_SCHEMA,
         bind_support_set_to_index_line,
@@ -316,7 +316,7 @@ def test_line_anchor_dossier_rejects_invalid_attachment_and_predecessors() -> No
 
 
 def test_line_content_authoring_supports_an_untyped_index_line() -> None:
-    from tarav.index.model import index_line_anchor_triplet_hash
+    from tarav.index_model import index_line_anchor_triplet_hash
     from tarav.chatlas.anchory import build_line_anchor_dossier, build_line_relationships
 
     line_content = "- untyped line"

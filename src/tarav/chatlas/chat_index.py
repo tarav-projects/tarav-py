@@ -8,7 +8,7 @@ from typing import Any
 
 from tarav._core.errors import CliError
 from tarav.agent._cli_common import format_json_output
-from tarav.index.model import canonical_index_line_statement, index_line_statement_parts
+from tarav.index_model import canonical_index_line_statement, index_line_statement_parts
 
 from tarav.chatlas.event_query import chatlas_turns_query
 from tarav.chatlas.index_query import select_one_chatlas_index_row

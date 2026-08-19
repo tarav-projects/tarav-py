@@ -14,7 +14,7 @@ from filelock import FileLock, Timeout
 from tarav._core.errors import CliError
 from tarav._core.persistence import atomic_write_json
 from tarav.chatlas.paths import CHAT_INDEX_SURFACES_ROOT, default_chatlas_root
-from tarav.index.model import index_line_anchor_triplet_hash
+from tarav.index_model import index_line_anchor_triplet_hash
 
 from .anchory import (
     CHATLAS2_NAMESPACE,

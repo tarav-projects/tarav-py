@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from tarav._core.errors import CliError
-from tarav.index.model import index_line_anchor_triplet_hash
+from tarav.index_model import index_line_anchor_triplet_hash
 
 from tarav.chatlas.anchory import (
     LINE_BOUND_SCHEMAS,

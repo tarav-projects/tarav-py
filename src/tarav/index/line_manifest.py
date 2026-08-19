@@ -13,7 +13,8 @@ from typing import Any
 from tarav._core.errors import CliError
 
 from .anchor_locator import load_index_anchor_locator_selection
-from .model import (
+from tarav.index_model import (
+    LINE_MANIFEST_SCHEMA,
     BlockHeading,
     IndexDepotModel,
     KernelLine,
@@ -26,7 +27,6 @@ from .model import (
 )
 
 
-LINE_MANIFEST_SCHEMA = "agentos.index-line-manifest.v3"
 LineRelationshipProjector = Callable[[str, str], Mapping[str, object]]
 
 

@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tarav.index.model import BlockHeading, KernelLine, MetaLine, parse_depot
+from tarav.index_model import BlockHeading, KernelLine, MetaLine, parse_depot
 from tarav.surfaces.markdown import normalize_markdown
 from tarav.skillware.model import (
     SkwFinding,
