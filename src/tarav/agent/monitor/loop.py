@@ -603,7 +603,7 @@ def _monitor_top_rows(
         MonitorTextRow("Agent accounts monitor", indent=False),
         MonitorTextRow(f"Tick: {tick}", indent=False),
         MonitorMarqueeRow(
-            "Enter refresh | r toggle used/left | m materialize",
+            "Enter refresh | r toggle used/left | m materialize | a auto/manual",
             indent=False,
         ),
     ]

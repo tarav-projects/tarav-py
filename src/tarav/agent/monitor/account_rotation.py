@@ -3,11 +3,12 @@
 
 The framework-free heart of the account monitor workflow. `sweep_rotations` drives
 the lifecycle primitives (`capture_all_homes` → `rotate_all` → optionally
-`materialize_all`) across every provider with an auth-method. The auto workflow calls
-it with ``materialize=False`` (registry-only); the ``m`` keystroke calls
-`materialize_sweep` (``materialize=True``, writes homes). Rotation events are logged
-by the `rotate` primitive itself to the durable accounts-log; the TUI's "5 rows of a
-log" is rendered by `rotation_block_rows` from `read_recent_events`.
+`materialize_all`) across every provider with an auth-method. Its one caller is the
+workflow, which passes ``materialize=True`` on an ordinary tick in auto mode and on
+the ``m`` keystroke in either mode, and ``materialize=False`` for a manual-only tick.
+Rotation events are logged by the `rotate` primitive itself to the durable
+accounts-log; the TUI's "5 rows of a log" is rendered by `rotation_block_rows` from
+`read_recent_events`.
 """
 
 from __future__ import annotations
@@ -93,14 +94,6 @@ def sweep_rotations(*, materialize: bool) -> list[MonitorMaterializeResult]:
                 )
             continue
     return results
-
-
-def materialize_sweep() -> list[MonitorMaterializeResult]:
-    """The `m`-keystroke action: a full reconcile sweep (capture + rotate +
-    materialize, writes homes). Rotations land in the accounts-log via the
-    primitive; the TUI reads them back on the next render."""
-
-    return sweep_rotations(materialize=True)
 
 
 def set_materialize_state(
@@ -287,16 +280,29 @@ def _short(ref: object) -> str:
     return str(ref)[:12] if ref else "-"
 
 
-def rotation_block_rows(records: list[dict[str, object]]) -> list[MonitorTextRow]:
-    """Render accounts-log ``rotate`` records as TUI rows; placeholder when empty.
+def _rotation_mode_row(auto_materialize: bool) -> MonitorTextRow:
+    if auto_materialize:
+        return MonitorTextRow("mode: auto-materialize — a for manual-only")
+    return MonitorTextRow("mode: manual-only — m to materialize, a for auto")
 
-    ``records`` come from `accounts_log.read_recent_events` (already newest-first):
-    each is ``{recorded_at, provider, account, method, payload:{previous_active,
-    new_active}}``."""
 
+def rotation_block_rows(
+    records: list[dict[str, object]],
+    *,
+    auto_materialize: bool,
+) -> list[MonitorTextRow]:
+    """Render the current sweep mode plus accounts-log ``rotate`` records as TUI rows.
+
+    The mode belongs in a row rather than the block title because the monitor loop
+    rewrites that title from the workflow name and its alarm countdown on every
+    visible tick. ``records`` come from `accounts_log.read_recent_events` (already
+    newest-first): each is ``{recorded_at, provider, account, method,
+    payload:{previous_active, new_active}}``."""
+
+    rows: list[MonitorTextRow] = [_rotation_mode_row(auto_materialize)]
     if not records:
-        return [MonitorTextRow("(no rotations yet)")]
-    rows: list[MonitorTextRow] = []
+        rows.append(MonitorTextRow("(no rotations yet)"))
+        return rows
     for record in records:
         account = f"{record.get('account')}/{record.get('method')}"
         payload = record.get("payload")
@@ -310,7 +316,6 @@ def rotation_block_rows(records: list[dict[str, object]]) -> list[MonitorTextRow
 
 __all__ = [
     "sweep_rotations",
-    "materialize_sweep",
     "MonitorMaterializeResult",
     "ACCOUNT_MATERIALIZE_STATE_KEY",
     "ACCOUNT_MATERIALIZE_BLOCK_TITLE",

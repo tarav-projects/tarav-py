@@ -8,6 +8,7 @@ from typing import Literal
 MonitorUsageVariant = Literal["used", "left"]
 
 
+ACCOUNT_ROTATION_WORKFLOW = "account-rotation"
 AUTO_PRIME_ZERO_LIMITS_WORKFLOW = "auto-prime-zero-limits"
 LIMITS_TRACKING_WORKFLOW = "limits-tracking"
 AUTO_PRIME_TRIGGER_ZERO_USAGE = "zero_usage"
@@ -73,6 +74,7 @@ class MonitorWorkflowConfig:
     target_limit_ids: dict[str, tuple[str, ...]] = field(default_factory=dict)
     triggers: dict[str, tuple[str, ...]] = field(default_factory=dict)
     retry_cooldown_sec: float | None = None
+    auto_materialize: bool | None = None
     loaded_at: str | None = None
     config_fingerprint: str | None = None
 

@@ -9,7 +9,8 @@ Make materialization part of the ordinary periodic tick, default it on, and give
 the TUI a keystroke that toggles between the new **auto-materialize** mode and
 the previous **manual-only** mode for the life of the session.
 
-**Status.** Ready for implementation.
+**Status.** Executed. All five slices landed; 2024 tests pass, project POI count
+unchanged at its 33 baseline, changes uncommitted for review.
 
 **Source context.** Chat of 2026-08-17. The user asked for materialization to
 happen automatically as the `account-rotation` main tick, with an enable/disable
@@ -93,6 +94,8 @@ chat: the default when nothing is configured is **auto**, and the keypress is
 
 ### Slice 1 — auto-materialize on the periodic tick
 
+**Status.** Landed.
+
 `src/tarav/agent/monitor/workflows/account_rotation.py`,
 `src/tarav/agent/monitor/account_rotation.py`.
 
@@ -128,6 +131,8 @@ is now the mode it describes.
 
 ### Slice 2 — the toggle keystroke
 
+**Status.** Landed.
+
 `src/tarav/agent/monitor/clock.py`,
 `src/tarav/agent/monitor/workflows/account_rotation.py`,
 `src/tarav/agent/monitor/loop.py`,
@@ -152,6 +157,8 @@ tests/test_agent_monitor_loop_render.py`
    auto.
 
 ### Slice 3 — config entry
+
+**Status.** Landed.
 
 `src/tarav/agent/monitor/models.py`, `src/tarav/agent/monitor/config.py`,
 `src/tarav/agent/monitor/workflows/builder.py`,
@@ -181,6 +188,8 @@ tests/test_agent_account_rotation_monitor.py`
 
 ### Slice 4 — mode visibility
 
+**Status.** Landed.
+
 `src/tarav/agent/monitor/account_rotation.py`,
 `src/tarav/agent/monitor/workflows/account_rotation.py`.
 
@@ -198,6 +207,8 @@ tests/test_agent_account_rotation_monitor.py`
 
 ### Slice 5 — surfaces and full suite
 
+**Status.** Landed.
+
 - `tarav-py/AGENTS.md`: the logging section's monitor bullet
   (`AGENTS.md:316-319`) states the sweep is drive-only and rotation-only; correct
   it and state the auto/manual mode, its config key, and the `a` keystroke.
@@ -210,3 +221,24 @@ tests/test_agent_account_rotation_monitor.py`
 
 - [TS] execution was authorized by the `/tarav-hugentics --impl --dev --AUTO`
   invocation carrying both resolved defaults (auto; session-only)
+- [DC] **auto mode empties the `non-aligned homes` block by construction, and the
+  existing test suite proved it.** `test_workflow_shows_non_aligned_block_when_drift_present`
+  failed on the full run: its startup-alarm frame now materializes, so the drift
+  it seeds is reconciled before the block is written. This is correct behavior,
+  not a regression — drift reporting and drift repair on the same tick cannot
+  both be observed — so the test's shared `_render_frame` helper moved to
+  manual-only, the mode in which drift survives to be reported. The consequence
+  is user-visible enough to be worth stating in `AGENTS.md`: a standing entry in
+  that block now means materialization *could not* fix it.
+- [CT] collapsing the two sweep branches removed a latent double sweep: a
+  snapshot carrying both the periodic and the materialize alarm previously ran
+  `capture_all_homes` + `rotate_all` twice. That was reachable — pressing `m` on
+  the same tick the periodic alarm fires — and is now one sweep.
+- [PS] `ruff check src tests` reports one pre-existing `F401` in
+  `src/tarav/skills/routing.py:18` (`local_storage_paths` imported but unused).
+  It predates this work and is untouched by it; the touched surfaces lint clean.
+- [PS] the implementation was not exercised against live accounts. A real
+  `tarav agent accounts monitor --once` in the new default mode writes the
+  operator's actual provider homes, so the verification here is the behavior
+  suite plus an import-level check of the keystroke wiring. First real run is
+  the user's.

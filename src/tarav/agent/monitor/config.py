@@ -23,6 +23,7 @@ from tarav.agent.profile_scope import (
 )
 from tarav.agent.monitor.loop import MonitorLoop
 from tarav.agent.monitor.models import (
+    ACCOUNT_ROTATION_WORKFLOW,
     AUTO_PRIME_SUPPORTED_TRIGGERS,
     AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW,
     AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN,
@@ -78,10 +79,22 @@ def load_monitor_workflow_configs(
             if workflow_name not in {
                 LIMITS_TRACKING_WORKFLOW,
                 AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
+                ACCOUNT_ROTATION_WORKFLOW,
             }:
                 raise CliError(
                     f"unknown monitor workflow {workflow_name!r} at {entry.field_name('workflow')}"
                 )
+            if workflow_name == ACCOUNT_ROTATION_WORKFLOW:
+                configs.append(
+                    _account_rotation_config(
+                        raw_config,
+                        entry=entry,
+                        start_path=resolved_start_path,
+                        loaded_at=loaded_at,
+                        fingerprint=fingerprint,
+                    )
+                )
+                continue
             targets = _load_targets(raw_config, field_name=entry.field_name("targets"))
             if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW:
                 _validate_auto_prime_target_providers(
@@ -160,6 +173,50 @@ def build_monitor_loop(
             start_path=start_path
         ),
     )
+
+
+def _account_rotation_config(
+    raw_config: dict[str, object],
+    *,
+    entry,
+    start_path: Path,
+    loaded_at: str,
+    fingerprint: str,
+) -> MonitorWorkflowConfig:
+    """Decode an `account-rotation` entry.
+
+    The workflow sweeps every provider with an auth method rather than a declared
+    target list, so this entry carries no `targets` and never reaches
+    `_load_targets`, which requires a non-empty array."""
+
+    return MonitorWorkflowConfig(
+        name=ACCOUNT_ROTATION_WORKFLOW,
+        targets=(),
+        refresh_interval_sec=_positive_number_config(
+            raw_config,
+            key="refresh_interval_sec",
+            field_name=entry.field_name("refresh_interval_sec"),
+        ),
+        auto_materialize=_bool_config(
+            raw_config,
+            key="auto_materialize",
+            field_name=entry.field_name("auto_materialize"),
+            default=True,
+        ),
+        raw_config=dict(raw_config),
+        start_path=start_path,
+        loaded_at=loaded_at,
+        config_fingerprint=fingerprint,
+    )
+
+
+def _bool_config(
+    raw_config: dict[str, object], *, key: str, field_name: str, default: bool
+) -> bool:
+    value = raw_config.get(key, default)
+    if not isinstance(value, bool):
+        raise CliError(f"{field_name} must be true or false")
+    return value
 
 
 def _load_targets(

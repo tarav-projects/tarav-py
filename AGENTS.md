@@ -318,6 +318,14 @@ Seven separate JSONL/account record mechanisms exist; they are not yet unified.
    from this log via `read_recent_events`. The monitor sweep is drive-only and keeps
    no in-state ring; rotation logging lives in the `rotate` primitive.
 
+## Agent Accounts Monitor
+
+- `tarav agent accounts monitor` runs configured workflows on a tick clock; alarms in `agent/monitor/clock.py` are the only trigger surface, and each workflow gates its own work on its own alarm names.
+- The `account-rotation` workflow sweeps every provider with an auth method (`capture_all_homes` → `rotate_all` → `materialize_all`) through the single `sweep_rotations(materialize=...)` entry point. It has two modes: **auto-materialize** (default — the periodic tick writes homes) and **manual-only** (the tick stays registry-only and the `m` keystroke remains the sole home write). `m` materializes in both modes.
+- The mode is session state on the workflow instance. `agent.accounts.monitor` may carry an `{"workflow": "account-rotation", "auto_materialize": false, "refresh_interval_sec": N}` entry to set the startup mode — the entry takes no `targets`, and its absence means auto. The `a` keystroke toggles the mode for the run only; nothing is written back to the config document, which is fingerprinted and would report itself stale.
+- In auto mode the `non-aligned homes` block is normally empty by construction: the same tick that would report drift has already reconciled it. Persistent entries there mean materialization could not fix them.
+- TUI keys: `Enter` refresh, `r` used/left usage variant, `m` materialize now, `a` auto/manual toggle. Display-only alarms are excluded from the workflow lane by `_workflow_alarm_names`; the mode toggle is not display-only, because the workflow owns the flag.
+
 7. **Daemon operational log** — `src/agentos/daemon/log.py`.
    - File: `~/.agentos/daemon/log/YYYYMMDD.jsonl` (daily roll), schema v1.
    - Writers: hook delivery and daemon lifecycle/acceptance/dispatch/failure paths.

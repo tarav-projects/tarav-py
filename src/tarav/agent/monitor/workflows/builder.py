@@ -6,6 +6,7 @@ from __future__ import annotations
 from tarav._core.errors import CliError
 from tarav.agent.monitor.loop import MonitorWorkflow
 from tarav.agent.monitor.models import (
+    ACCOUNT_ROTATION_WORKFLOW,
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
     MonitorTarget,
@@ -27,6 +28,8 @@ def build_monitor_workflows(
         config for config in configs if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
     )
     for config in configs:
+        if config.name == ACCOUNT_ROTATION_WORKFLOW:
+            continue
         if config.name == LIMITS_TRACKING_WORKFLOW:
             if not any(
                 workflow.name == LIMITS_TRACKING_WORKFLOW for workflow in workflows
@@ -51,8 +54,29 @@ def build_monitor_workflows(
         raise CliError(f"unknown monitor workflow {config.name!r}")
 
 
-    workflows.append(AccountRotationWorkflow())
+    workflows.append(_build_account_rotation_workflow(configs))
     return tuple(workflows)
+
+
+def _build_account_rotation_workflow(
+    configs: tuple[MonitorWorkflowConfig, ...],
+) -> AccountRotationWorkflow:
+    """Always build the rotation workflow; configure it only when an entry exists.
+
+    Absent config means auto-materialize, so the workflow runs with no entry at
+    all. Several entries carry only a boolean and an interval between them, so the
+    first wins rather than earning a merge rule."""
+
+    for config in configs:
+        if config.name != ACCOUNT_ROTATION_WORKFLOW:
+            continue
+        return AccountRotationWorkflow(
+            auto_materialize=(
+                True if config.auto_materialize is None else config.auto_materialize
+            ),
+            refresh_interval_sec=config.refresh_interval_sec,
+        )
+    return AccountRotationWorkflow()
 
 
 def _merge_limits_tracking_configs(

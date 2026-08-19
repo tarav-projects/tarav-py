@@ -11,6 +11,7 @@ from tarav.agent.monitor.config import (
     load_monitor_workflow_configs,
 )
 from tarav.agent.monitor.models import (
+    ACCOUNT_ROTATION_WORKFLOW,
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     MonitorTarget,
     MonitorWorkflowConfig,
@@ -132,3 +133,69 @@ def test_auto_prime_partial_config_maps_merge_with_defaults() -> None:
         "codex": ("zero_usage",),
         "claude-code": ("zero_usage",),
     }
+
+
+def test_account_rotation_config_can_disable_auto_materialize(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = TaravTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    environment.write_global_config(
+        agent={
+            "accounts": {
+                "monitor": [
+                    {
+                        "workflow": ACCOUNT_ROTATION_WORKFLOW,
+                        "auto_materialize": False,
+                        "refresh_interval_sec": 120,
+                    }
+                ]
+            }
+        }
+    )
+
+    configs = load_monitor_workflow_configs(start_path=tmp_path)
+
+    assert configs[0].name == ACCOUNT_ROTATION_WORKFLOW
+    assert configs[0].targets == ()
+    workflow = next(
+        w
+        for w in monitor_workflows.build_monitor_workflows(configs)
+        if w.name == ACCOUNT_ROTATION_WORKFLOW
+    )
+    assert workflow.auto_materialize is False
+    assert workflow.refresh_interval_sec == 120
+
+
+def test_account_rotation_defaults_to_auto_materialize() -> None:
+    workflow = next(
+        w
+        for w in monitor_workflows.build_monitor_workflows(())
+        if w.name == ACCOUNT_ROTATION_WORKFLOW
+    )
+
+    assert workflow.auto_materialize is True
+
+
+def test_account_rotation_config_rejects_non_boolean_auto_materialize(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = TaravTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    environment.write_global_config(
+        agent={
+            "accounts": {
+                "monitor": [
+                    {
+                        "workflow": ACCOUNT_ROTATION_WORKFLOW,
+                        "auto_materialize": "no",
+                    }
+                ]
+            }
+        }
+    )
+
+    with pytest.raises(CliError, match="auto_materialize must be true or false"):
+        load_monitor_workflow_configs(start_path=tmp_path)

@@ -113,11 +113,13 @@ def test_non_aligned_block_rows_render_label_and_home(
 
 
 def _render_frame() -> object:
+    # manual-only: an auto-materialize tick reconciles the drift it would report,
+    # so the drift block is only observable in the mode that leaves homes alone
     from tarav.agent.monitor.clock import MONITOR_STARTUP_ALARM, MonitorClockSnapshot
     from tarav.agent.monitor.models import MonitorFrame, MonitorState
     from tarav.agent.monitor.workflows import AccountRotationWorkflow
 
-    wf = AccountRotationWorkflow()
+    wf = AccountRotationWorkflow(auto_materialize=False)
     state = MonitorState()
     frame = MonitorFrame()
     frame.prepare(tick=1)

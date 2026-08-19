@@ -115,6 +115,100 @@ def test_sweep_materialize_writes_home(
     assert json.loads((home / "auth.json").read_text()) == fresher_payload  # home reconciled
 
 
+def test_periodic_sweep_materializes_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    from tarav.agent import auth_registry as R
+    from tarav.agent.monitor.clock import ACCOUNT_ROTATION_PERIODIC_ALARM, MonitorClockSnapshot
+    from tarav.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.agent.monitor.workflows import AccountRotationWorkflow
+
+    stale_payload = _codex_payload(exp=1_000_000_000)
+    fresher_payload = _codex_payload(exp=2_000_000_000)
+    home = _home(tmp_path, stale_payload)
+    _profile(home_root, [home])
+    stale = _seed_capture(stale_payload)
+    fresher = _seed_capture(fresher_payload)
+    R.set_active("codex", "br", "file", stale)
+
+    wf = AccountRotationWorkflow()
+    state = MonitorState()
+    frame = MonitorFrame()
+    frame.prepare(tick=1)
+    snapshot = MonitorClockSnapshot(
+        tick=1, alarms={}, fired_alarm_names=(ACCOUNT_ROTATION_PERIODIC_ALARM,)
+    )
+
+    wf.loop(state, frame, snapshot)
+
+    assert R.active_ref("codex", "br", "file") == fresher
+    assert json.loads((home / "auth.json").read_text()) == fresher_payload
+    materialize_block = next(b for b in frame.blocks if b.title == "account-materialize")
+    assert "materialized: 1" in " ".join(r.text for r in materialize_block.rows)
+
+
+def test_manual_only_mode_periodic_sweep_leaves_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    from tarav.agent import auth_registry as R
+    from tarav.agent.monitor.clock import ACCOUNT_ROTATION_PERIODIC_ALARM, MonitorClockSnapshot
+    from tarav.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.agent.monitor.workflows import AccountRotationWorkflow
+
+    stale_payload = _codex_payload(exp=1_000_000_000)
+    home = _home(tmp_path, stale_payload)
+    _profile(home_root, [home])
+    stale = _seed_capture(stale_payload)
+    fresher = _seed_capture(_codex_payload(exp=2_000_000_000))
+    R.set_active("codex", "br", "file", stale)
+
+    wf = AccountRotationWorkflow(auto_materialize=False)
+    state = MonitorState()
+    frame = MonitorFrame()
+    frame.prepare(tick=1)
+    snapshot = MonitorClockSnapshot(
+        tick=1, alarms={}, fired_alarm_names=(ACCOUNT_ROTATION_PERIODIC_ALARM,)
+    )
+
+    wf.loop(state, frame, snapshot)
+
+    assert R.active_ref("codex", "br", "file") == fresher  # rotated
+    assert json.loads((home / "auth.json").read_text()) == stale_payload  # home untouched
+    assert not any(b.title == "account-materialize" for b in frame.blocks)
+
+
+def test_manual_only_mode_still_materializes_on_keystroke(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    from tarav.agent import auth_registry as R
+    from tarav.agent.monitor.clock import MONITOR_MATERIALIZE_ALARM, MonitorClockSnapshot
+    from tarav.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.agent.monitor.workflows import AccountRotationWorkflow
+
+    stale_payload = _codex_payload(exp=1_000_000_000)
+    fresher_payload = _codex_payload(exp=2_000_000_000)
+    home = _home(tmp_path, stale_payload)
+    _profile(home_root, [home])
+    stale = _seed_capture(stale_payload)
+    _seed_capture(fresher_payload)
+    R.set_active("codex", "br", "file", stale)
+
+    wf = AccountRotationWorkflow(auto_materialize=False)
+    state = MonitorState()
+    frame = MonitorFrame()
+    frame.prepare(tick=1)
+    snapshot = MonitorClockSnapshot(
+        tick=1, alarms={}, fired_alarm_names=(MONITOR_MATERIALIZE_ALARM,)
+    )
+
+    wf.loop(state, frame, snapshot)
+
+    assert json.loads((home / "auth.json").read_text()) == fresher_payload
+
+
 def test_workflow_loop_rotates_on_alarm_and_writes_block(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -131,7 +225,7 @@ def test_workflow_loop_rotates_on_alarm_and_writes_block(
     fresher = _seed_capture(_codex_payload(exp=2_000_000_000))
     R.set_active("codex", "br", "file", stale)
 
-    wf = AccountRotationWorkflow()
+    wf = AccountRotationWorkflow(auto_materialize=False)
     state = MonitorState()
     frame = MonitorFrame()
     frame.prepare(tick=1)
@@ -146,13 +240,13 @@ def test_workflow_loop_rotates_on_alarm_and_writes_block(
     assert "br/file" in row_text and fresher[:12] in row_text
 
 
-def test_materialize_sweep_writes_home_and_records(
+def test_materializing_sweep_writes_home_and_records(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
     from tarav.agent import auth_registry as R
     from tarav.agent.accounts_log import read_recent_events
-    from tarav.agent.monitor.account_rotation import materialize_sweep
+    from tarav.agent.monitor.account_rotation import sweep_rotations
 
     stale_payload = _codex_payload(exp=1_000_000_000)
     fresher_payload = _codex_payload(exp=2_000_000_000)
@@ -162,7 +256,7 @@ def test_materialize_sweep_writes_home_and_records(
     fresher = _seed_capture(fresher_payload)
     R.set_active("codex", "br", "file", stale)
 
-    materialize_sweep()
+    sweep_rotations(materialize=True)
 
     # the `m` action rotated the active AND reconciled the home (writes homes)
     assert R.active_ref("codex", "br", "file") == fresher
@@ -171,16 +265,16 @@ def test_materialize_sweep_writes_home_and_records(
     assert read_recent_events(event="rotate")[0]["payload"]["new_active"] == fresher
 
 
-def test_materialize_sweep_returns_skipped_results(
+def test_materializing_sweep_returns_skipped_results(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from tarav.agent.monitor.account_rotation import materialize_sweep
+    from tarav.agent.monitor.account_rotation import sweep_rotations
 
     home = _empty_home(tmp_path)
     _profile(home_root, [home])
 
-    results = materialize_sweep()
+    results = sweep_rotations(materialize=True)
 
     assert any(
         result.provider == "codex"
@@ -190,7 +284,7 @@ def test_materialize_sweep_returns_skipped_results(
     )
 
 
-def test_materialize_sweep_returns_provider_error_results(
+def test_materializing_sweep_returns_provider_error_results(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
@@ -203,7 +297,7 @@ def test_materialize_sweep_returns_provider_error_results(
 
     monkeypatch.setattr(account_rotation, "capture_all_homes", fail_capture)
 
-    results = account_rotation.materialize_sweep()
+    results = account_rotation.sweep_rotations(materialize=True)
 
     assert len(results) == 1
     assert results[0].provider == "codex"
@@ -300,12 +394,73 @@ def test_sweep_writes_no_monitor_log_rotation_line(
 def test_rotation_block_rows_empty_and_populated() -> None:
     from tarav.agent.monitor.account_rotation import rotation_block_rows
 
-    empty = rotation_block_rows([])
-    assert len(empty) == 1 and "no rotations" in empty[0].text.lower()
+    empty = rotation_block_rows([], auto_materialize=True)
+    assert len(empty) == 2 and "no rotations" in empty[1].text.lower()
 
     rows = rotation_block_rows([
         {"recorded_at": "t0", "provider": "codex", "account": "br", "method": "file",
          "payload": {"previous_active": "aaaaaaaaaaaa0000", "new_active": "bbbbbbbbbbbb1111"}},
-    ])
-    assert "codex" in rows[0].text and "br/file" in rows[0].text
-    assert "aaaaaaaaaaaa" in rows[0].text and "bbbbbbbbbbbb" in rows[0].text
+    ], auto_materialize=True)
+    assert "codex" in rows[1].text and "br/file" in rows[1].text
+    assert "aaaaaaaaaaaa" in rows[1].text and "bbbbbbbbbbbb" in rows[1].text
+
+
+def test_toggle_alarm_flips_mode_without_sweeping(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    from tarav.agent import auth_registry as R
+    from tarav.agent.monitor.clock import (
+        MONITOR_AUTO_MATERIALIZE_TOGGLE_ALARM,
+        MonitorClockSnapshot,
+    )
+    from tarav.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.agent.monitor.workflows import AccountRotationWorkflow
+
+    stale_payload = _codex_payload(exp=1_000_000_000)
+    home = _home(tmp_path, stale_payload)
+    _profile(home_root, [home])
+    stale = _seed_capture(stale_payload)
+    _seed_capture(_codex_payload(exp=2_000_000_000))
+    R.set_active("codex", "br", "file", stale)
+
+    wf = AccountRotationWorkflow()
+    state = MonitorState()
+    frame = MonitorFrame()
+    frame.prepare(tick=1)
+    snapshot = MonitorClockSnapshot(
+        tick=1, alarms={}, fired_alarm_names=(MONITOR_AUTO_MATERIALIZE_TOGGLE_ALARM,)
+    )
+
+    wf.loop(state, frame, snapshot)
+
+    assert wf.auto_materialize is False
+    # a toggle press sweeps nothing: neither the pointer nor the home moves
+    assert R.active_ref("codex", "br", "file") == stale
+    assert json.loads((home / "auth.json").read_text()) == stale_payload
+
+    frame.prepare(tick=2)
+    wf.loop(state, frame, MonitorClockSnapshot(
+        tick=2, alarms={}, fired_alarm_names=(MONITOR_AUTO_MATERIALIZE_TOGGLE_ALARM,)
+    ))
+
+    assert wf.auto_materialize is True
+
+
+def test_block_reports_current_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from tarav.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.agent.monitor.workflows import AccountRotationWorkflow
+
+    for auto_materialize, expected in ((True, "auto-materialize"), (False, "manual-only")):
+        wf = AccountRotationWorkflow(auto_materialize=auto_materialize)
+        frame = MonitorFrame()
+        frame.prepare(tick=1)
+
+        wf.setup(MonitorState(), frame)
+
+        block = next(b for b in frame.blocks if b.title == "account-rotation")
+        assert expected in block.rows[0].text
+        assert block.data["auto_materialize"] is auto_materialize
