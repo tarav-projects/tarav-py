@@ -80,7 +80,12 @@ def _run_json_command(argv: list[str]) -> dict[str, object]:
     output = StringIO()
     diagnostics = StringIO()
     with redirect_stdout(output), redirect_stderr(diagnostics):
-        assert main(argv) == 0
+        status = main(argv)
+    # A swallowed failure reports only "1 != 0"; the command already said why.
+    assert status == 0, (
+        f"{argv} exited {status}\n"
+        f"stdout: {output.getvalue()}\nstderr: {diagnostics.getvalue()}"
+    )
     payload = json.loads(output.getvalue())
     assert isinstance(payload, dict)
     return payload
@@ -704,7 +709,7 @@ def test_chatlas2_e2e_prints_one_index_line_grounded_on_a_user_message(
     )
     anchor = registered["anchor"]
     assert registered["action"] == "minted"
-    assert anchor == "d20260815-0u"
+    assert anchor == "c20260815-0u"
 
     resolved = _run_json_command(
         ["chatlas", "anchory", "resolve", anchor, "--radius", "0"]

@@ -35,7 +35,7 @@ from .turn_ref import chat_turn_ref
 HEAD_FILENAME = "HEAD.md"
 DELTA_DIRNAME = "deltas"
 LOCK_ROOT = Path("chatlas2") / "locks" / "chat-index"
-_ANCHOR_AT_END = re.compile(r"\^(?P<anchor>d[0-9]{8}-[0-9]+[a-z])\s*$")
+_ANCHOR_AT_END = re.compile(r"\^(?P<anchor>c[0-9]{8}-[0-9]+[a-z])\s*$")
 ReaderLoader = Callable[[str], object]
 
 

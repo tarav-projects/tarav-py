@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -26,11 +27,6 @@ from typing import Any
 
 from tarav.chatlas._payload_helpers import dict_list
 from tarav.chatlas.index_query import select_one_chatlas_index_row
-from tarav.chatlas.lossless.anchory import (
-    CHATLAS2_NAMESPACE,
-    ensure_lossless_namespace,
-    lossless_anchory_depot,
-)
 from tarav.chatlas.lossless.messages import list_chat_messages
 from tarav.chatlas.lossless.pipeline import build_normal_model
 from tarav.chatlas.lossless.turns import list_chat_turns
@@ -48,10 +44,39 @@ SKIP_PARTS = ("/.skw/", "_DEPRECATED", "/.git/")
 def legacy_store(chatlas_root: Path) -> dict[str, Any]:
     store: dict[str, Any] = {}
     for shard in sorted((chatlas_root / "anchory" / "chatlas").glob("*.json")):
+        if shard.name == "meta.json":  # namespace metadata, not records
+            continue
         payload = json.loads(shard.read_text("utf-8"))
         if isinstance(payload, dict):
             store.update(payload)
     return store
+
+
+def legacy_parts(record: dict[str, Any]) -> tuple[list, list, list, list]:
+    """Support, gates, predecessors and issue context, from either legacy generation.
+
+    The store holds two: 2,054 `chatlas.line-anchor-dossier.v1` records nesting everything
+    under `relationships`, and 1,612 older `chatlas.support-set.v3`-`v6` records with a flat
+    `members` list and no gates at all. `522` migrated only the anchors `tarav-pkg` cited,
+    so the older generation is still live wherever another surface cites it.
+    """
+    if "relationships" in record:
+        relationships = record.get("relationships") or {}
+        provenance = relationships.get("provenance") or {}
+        return (
+            (relationships.get("support") or {}).get("members") or [],
+            (relationships.get("gates") or {}).get("tokenized_verbatim_approval") or [],
+            provenance.get("predecessor_anchors") or [],
+            provenance.get("issue_context") or [],
+        )
+    # A support-set carries no gate. The migrated line therefore has no licensing
+    # evidence and must raise `landing-evidenced` rather than acquire an invented one.
+    return (
+        record.get("members") or [],
+        [],
+        record.get("predecessors") or [],
+        record.get("issue_context") or [],
+    )
 
 
 def referenced_anchors(store: dict[str, Any]) -> set[str]:
@@ -176,19 +201,19 @@ def main() -> int:
                 sessions[session] = None
         return sessions[session]
 
-    depot = lossless_anchory_depot(args.chatlas_root)
-    ensure_lossless_namespace(depot)
-
     tally: Counter[str] = Counter()
     findings: list[tuple[str, str, str]] = []
     converted: dict[str, Any] = {}
 
     for anchor in anchors:
         legacy = store[anchor]
-        relationships = legacy.get("relationships", {})
+        if not isinstance(legacy, dict):
+            tally["anchor:NOT_A_RECORD"] += 1
+            continue
+        legacy_members, legacy_gates, predecessors, issues = legacy_parts(legacy)
         members: list[dict[str, Any]] = []
         dropped = 0
-        for member in relationships.get("support", {}).get("members", []):
+        for member in legacy_members:
             join = joiner(member["session"])
             if join is None:
                 tally["support:SESSION_UNAVAILABLE"] += 1
@@ -203,7 +228,7 @@ def main() -> int:
                 members.append(coordinate)
 
         gates: list[dict[str, Any]] = []
-        for gate in relationships.get("gates", {}).get("tokenized_verbatim_approval", []) or []:
+        for gate in legacy_gates:
             sides: dict[str, Any] = {}
             for legacy_side, side in (("proposal_turn", "proposal"), ("approval_turn", "approval")):
                 ref = gate.get(legacy_side)
@@ -229,7 +254,6 @@ def main() -> int:
             findings.append((anchor, "anchor", "no member joined"))
             continue
 
-        provenance = relationships.get("provenance", {})
         converted[anchor] = {
             "app": "chatlas2",
             "schema": "tarav.chatlas2.line-anchor-dossier.v2",
@@ -241,8 +265,8 @@ def main() -> int:
                     "tokenized_verbatim_approval": gates,
                 },
                 "provenance": {
-                    "predecessor_anchors": list(provenance.get("predecessor_anchors", [])),
-                    "issue_context": list(provenance.get("issue_context", [])),
+                    "predecessor_anchors": list(predecessors),
+                    "issue_context": list(issues),
                 },
             },
         }
@@ -261,10 +285,40 @@ def main() -> int:
         print("\nreport only; pass --apply to write")
         return 0
 
-    for anchor, record in converted.items():
-        depot.write_record(CHATLAS2_NAMESPACE, anchor, record)
-    print(f"\nwrote {len(converted)} dossiers to the {CHATLAS2_NAMESPACE} namespace")
+    root = args.chatlas_root / "anchory"
+    written = _write_records(root / "chatlas", converted)
+    print(f"\nwrote {written} migrated dossiers into the chatlas namespace")
     return 0
+
+
+def _shard_of(anchor: str) -> str:
+    """Anchory shards by the key without its trailing tag letter."""
+    match = re.fullmatch(r"(?P<base>[a-z]\d{8}-\d+)[a-z]?", anchor)
+    key = match.group("base") if match else anchor
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:2]
+
+
+def _write_records(namespace_root: Path, records: dict[str, Any]) -> int:
+    """Write straight into the shard files.
+
+    A one-shot migration writes what the depot would write. Going through `register`
+    would mint new ids and `amend` cannot create, so neither expresses "this exact
+    record under this exact id". Git history is the safety net `527` names.
+    """
+    by_shard: dict[str, dict[str, Any]] = {}
+    for anchor, record in records.items():
+        by_shard.setdefault(_shard_of(anchor), {})[anchor] = record
+    written = 0
+    for shard, batch in by_shard.items():
+        path = namespace_root / f"{shard}.json"
+        existing = json.loads(path.read_text("utf-8")) if path.exists() else {}
+        existing.update(batch)
+        path.write_text(
+            json.dumps(existing, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        written += len(batch)
+    return written
 
 
 if __name__ == "__main__":

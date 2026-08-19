@@ -28,8 +28,13 @@ from .model import JsonObject
 from .normal_model import provide_normal_model
 
 
-CHATLAS2_NAMESPACE = "chatlas2"
-CHATLAS2_NAMESPACE_PREFIX = "d"
+#: One Anchory namespace holds every index-line dossier, under one label prefix.
+#: The `d` prefix existed only to keep the experimental system's anchors apart from the
+#: current ones while both stood. Once the legacy records carry the Chatlas2 model there
+#: is one kind of record, so a second prefix would name a distinction that no longer
+#: exists. Schema ids keep their `chatlas2` spelling: they name data already on disk.
+CHATLAS2_NAMESPACE = "chatlas"
+CHATLAS2_NAMESPACE_PREFIX = "c"
 CHATLAS2_MESSAGE_SUPPORT_SCHEMA = "tarav.chatlas2.message-support.v1"
 CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1 = "tarav.chatlas2.line-anchor-dossier.v1"
 CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA = "tarav.chatlas2.line-anchor-dossier.v2"
@@ -53,8 +58,8 @@ def ensure_lossless_namespace(depot: AnchoryDepot) -> None:
             CHATLAS2_NAMESPACE,
             prefix=CHATLAS2_NAMESPACE_PREFIX,
             intention=(
-                "Hugentic grounding records whose chat members are exact "
-                "Chatlas2 Chat.Message.Ref assertions"
+                "Index-line dossiers whose chat members are exact "
+                "Chat.Message.Ref assertions"
             ),
             semantics="tarav-chatlas-md/notes/live/527-chatlas2-normal-model-redesign-design-session.md",
         )

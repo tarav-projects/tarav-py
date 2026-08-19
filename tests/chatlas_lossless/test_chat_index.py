@@ -205,13 +205,13 @@ def test_apply_projects_head_and_batches_receipts_at_latest_support_turn(
     second = "- [CT] Second landed edition."
     _register_line(
         tmp_path,
-        anchor="d20260816-1u",
+        anchor="c20260816-1u",
         line=first,
         members=[_member(model, 0)],
     )
     _register_line(
         tmp_path,
-        anchor="d20260816-2u",
+        anchor="c20260816-2u",
         line=second,
         members=[_member(model, 1)],
     )
@@ -220,8 +220,8 @@ def test_apply_projects_head_and_batches_receipts_at_latest_support_turn(
         identity,
         base_surface=None,
         lines=[
-            ("Real.Time.Capture", first, "d20260816-1u"),
-            ("Index.HEAD.Backpropagation", second, "d20260816-2u"),
+            ("Real.Time.Capture", first, "c20260816-1u"),
+            ("Index.HEAD.Backpropagation", second, "c20260816-2u"),
         ],
     )
 
@@ -244,13 +244,13 @@ def test_apply_projects_head_and_batches_receipts_at_latest_support_turn(
     assert applied["changed"] is True
     surface = chat_index_surface_path(identity, chatlas_root=tmp_path)
     head = (surface / "HEAD.md").read_text(encoding="utf-8")
-    assert f"{first} ^d20260816-1u" in head
-    assert f"{second} ^d20260816-2u" in head
+    assert f"{first} ^c20260816-1u" in head
+    assert f"{second} ^c20260816-2u" in head
     deltas = list((surface / "deltas").glob("*.md"))
     assert len(deltas) == 1
     delta = deltas[0].read_text(encoding="utf-8")
-    assert f"{first} ^d20260816-1u" in delta
-    assert f"{second} ^d20260816-2u" in delta
+    assert f"{first} ^c20260816-1u" in delta
+    assert f"{second} ^c20260816-2u" in delta
     assert model["turns"][1]["turn_hash"] in delta
 
     repeated = apply_chat_index_capture_plan(
@@ -271,7 +271,7 @@ def test_new_landed_edition_replaces_head_predecessor_without_rewriting_tape(
     new = "- [DC] The new current edition."
     _register_line(
         tmp_path,
-        anchor="d20260816-3u",
+        anchor="c20260816-3u",
         line=old,
         members=[_member(model, 0)],
     )
@@ -279,7 +279,7 @@ def test_new_landed_edition_replaces_head_predecessor_without_rewriting_tape(
     first_plan = _plan(
         identity,
         base_surface=None,
-        lines=[("Edition", old, "d20260816-3u")],
+        lines=[("Edition", old, "c20260816-3u")],
     )
     apply_chat_index_capture_plan(
         first_plan,
@@ -290,15 +290,15 @@ def test_new_landed_edition_replaces_head_predecessor_without_rewriting_tape(
     old_deltas = {path.name: path.read_bytes() for path in (surface / "deltas").glob("*.md")}
     _register_line(
         tmp_path,
-        anchor="d20260816-4u",
+        anchor="c20260816-4u",
         line=new,
         members=[_member(model, 1)],
-        predecessors=("d20260816-3u",),
+        predecessors=("c20260816-3u",),
     )
     second_plan = _plan(
         identity,
         base_surface=surface_state(surface),
-        lines=[("Edition", new, "d20260816-4u")],
+        lines=[("Edition", new, "c20260816-4u")],
     )
 
     apply_chat_index_capture_plan(
@@ -308,8 +308,8 @@ def test_new_landed_edition_replaces_head_predecessor_without_rewriting_tape(
     )
 
     head = (surface / "HEAD.md").read_text(encoding="utf-8")
-    assert f"{old} ^d20260816-3u" not in head
-    assert f"{new} ^d20260816-4u" in head
+    assert f"{old} ^c20260816-3u" not in head
+    assert f"{new} ^c20260816-4u" in head
     for name, content in old_deltas.items():
         assert (surface / "deltas" / name).read_bytes() == content
 
@@ -324,7 +324,7 @@ def test_external_support_still_lands_on_head_and_reports_tape_gap(
     line = "- [DF] Current projection with external support."
     _register_line(
         tmp_path,
-        anchor="d20260816-5u",
+        anchor="c20260816-5u",
         line=line,
         members=[_member(external, 0)],
     )
@@ -332,7 +332,7 @@ def test_external_support_still_lands_on_head_and_reports_tape_gap(
     plan = _plan(
         identity,
         base_surface=None,
-        lines=[("External.Support", line, "d20260816-5u")],
+        lines=[("External.Support", line, "c20260816-5u")],
     )
 
     applied = apply_chat_index_capture_plan(
@@ -342,7 +342,7 @@ def test_external_support_still_lands_on_head_and_reports_tape_gap(
     )
 
     surface = chat_index_surface_path(identity, chatlas_root=tmp_path)
-    assert f"{line} ^d20260816-5u" in (surface / "HEAD.md").read_text(
+    assert f"{line} ^c20260816-5u" in (surface / "HEAD.md").read_text(
         encoding="utf-8"
     )
     assert not list((surface / "deltas").glob("*.md"))
@@ -360,14 +360,14 @@ def test_stale_base_refuses_unrelated_surface_change(tmp_path: Path) -> None:
     line = "- [DC] Planned edition."
     _register_line(
         tmp_path,
-        anchor="d20260816-6u",
+        anchor="c20260816-6u",
         line=line,
         members=[_member(model, 0)],
     )
     plan = _plan(
         identity,
         base_surface=None,
-        lines=[("Stale.Base", line, "d20260816-6u")],
+        lines=[("Stale.Base", line, "c20260816-6u")],
     )
     surface = chat_index_surface_path(identity, chatlas_root=tmp_path)
     surface.mkdir(parents=True)

@@ -14,6 +14,7 @@ from tarav.chatlas.lossless.anchory import (
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1,
     CHATLAS2_NAMESPACE,
+    CHATLAS2_NAMESPACE_PREFIX,
     lossless_anchory_depot,
     lossless_message_support_register,
     lossless_anchory_batch_preview,
@@ -145,7 +146,7 @@ def test_preview_register_resolve_and_repeat_are_idempotent(tmp_path: Path) -> N
     assert first["action"] == "minted"
     assert second["action"] == "reused"
     assert first["anchor"] == second["anchor"]
-    assert first["anchor"].startswith("d20260816-")
+    assert first["anchor"].startswith("c20260816-")
     assert first["record"]["schema"] == CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA
     assert first["namespace"] == CHATLAS2_NAMESPACE
 
@@ -164,7 +165,7 @@ def test_preview_register_resolve_and_repeat_are_idempotent(tmp_path: Path) -> N
 
 def test_v2_preview_can_scan_existing_v1_line_dossiers(tmp_path: Path) -> None:
     model = _model()
-    old_anchor = "d20260816-1u"
+    old_anchor = "c20260816-1u"
     old_line = "- [DF] Existing v1 line."
     lossless_anchory_depot(tmp_path).register(
         {
@@ -240,7 +241,7 @@ def test_rich_line_dossier_keeps_support_gates_and_provenance_independent(
                 }
             ]
         },
-        predecessors=("d20260816-1u",),
+        predecessors=("c20260816-1u",),
         issue_context=("Issue.I0001",),
         chatlas_root=tmp_path,
         model_loader=lambda _identity: model,
@@ -257,7 +258,7 @@ def test_rich_line_dossier_keeps_support_gates_and_provenance_independent(
         model["annotations"]["chat_messages"][2]["message_address"]
     )
     assert relationships["provenance"] == {
-        "predecessor_anchors": ["d20260816-1u"],
+        "predecessor_anchors": ["c20260816-1u"],
         "issue_context": ["Issue.I0001"],
     }
 
@@ -411,3 +412,26 @@ def test_multi_session_projection_releases_each_model_before_loading_next(
 
     assert preview["action"] == "mint"
     assert len(preview["members"]) == 2
+
+
+def test_no_module_hardcodes_an_anchor_prefix_that_disagrees_with_the_namespace() -> None:
+    """The label prefix is declared once; every pattern must read it, not restate it.
+
+    Homogenizing the namespaces onto `c` broke three modules that each spelled `d`
+    into their own regex. Two failed loudly. The third — the trailing-anchor pattern in
+    `chat_index` — matched nothing instead, so every line reported an anchor of `None`
+    and collided with the heading. A prefix restated in a regex is a copy of a constant
+    with nothing asserting the copy still agrees.
+    """
+    import re
+    from pathlib import Path
+
+    lossless = Path(anchory.__file__).parent
+    offenders: list[str] = []
+    pattern = re.compile(r"(?<![a-z0-9])([a-z])(?:\[0-9\]\{8\}|\\d\{8\})")
+    for module in sorted(lossless.glob("*.py")):
+        for number, line in enumerate(module.read_text("utf-8").splitlines(), 1):
+            for found in pattern.finditer(line):
+                if found.group(1) != CHATLAS2_NAMESPACE_PREFIX:
+                    offenders.append(f"{module.name}:{number} spells {found.group(1)!r}")
+    assert offenders == []
