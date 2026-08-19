@@ -35,8 +35,8 @@ def _entry(scope=BLOCK, body="fine", **kw):
     return LineRecord.create(scope, "CT", body, **kw)
 
 
-def _gate():
-    return GateRef("chat", "s1", "tok", "user-turn", "agent-turn")
+def _gate(token="tok"):
+    return GateRef("chat", "s1", token, "user-turn", "agent-turn")
 
 
 def _landed(project_root, geo, body="fine", label="^d20260818-1u"):
@@ -547,3 +547,51 @@ class TestReviewCoversSupport:
             _entry(body="fine", support=[SupportRef("chat", "s1", "m1")]).with_review(_gate())
         )
         assert "Index.Linter/Review.SupportUnseen" not in _classes(lint(geo))
+
+
+class TestDevLane:
+    def test_a_dev_check_never_runs_outside_the_dev_lane(self):
+        from tarav.index.linter import select_checks
+
+        names = {c.name for c in select_checks()}
+        assert "gate-verifies-dev" not in names
+        assert "gate-verifies" in names
+
+    def test_a_dev_check_cannot_be_summoned_by_name(self):
+        """Naming it is not consent. A relaxed check reachable from an ordinary
+        run is one that will eventually be reached by accident."""
+        from tarav.index.linter import select_checks
+
+        assert not select_checks(check=["gate-verifies-dev"])
+
+    def test_the_dev_check_displaces_the_one_it_stands_in_for(self):
+        from tarav.index.linter import select_checks
+
+        names = {c.name for c in select_checks(dev=True)}
+        assert "gate-verifies-dev" in names
+        assert "gate-verifies" not in names
+
+    def test_the_report_names_the_dev_checks_it_used(self, geo, project_root):
+        report = lint(geo, dev=True)
+        assert report.dev == ("gate-verifies-dev",)
+        assert report.is_dev
+        assert not lint(geo).is_dev
+
+    def test_the_dev_gate_relaxes_touch_and_nothing_else(self, geo, project_root):
+        """A forged token stays contradicted in the dev lane.
+
+        The dev gate drops only `carries_touch`. Token round-trip and verbatim
+        containment still hold, so a gate that did not happen is still caught.
+        """
+        store = IndexStore(geo)
+        store.put(
+            _entry(body="a gated line", support=[SupportRef("chat", "s1", "m1")])
+            .relabel("^d20260819-1u")
+            .with_landing(_gate(token="idx-edition:forged"))
+        )
+        report = lint(geo, dev=True)
+        raised = {f.poi_class for f in (*report.findings, *report.blocked)}
+        assert raised & {
+            "Index.Linter/Gate.Contradicted",
+            "Index.Linter/Gate.Unverifiable",
+        }

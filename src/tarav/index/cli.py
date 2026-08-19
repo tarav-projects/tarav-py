@@ -231,7 +231,8 @@ def cmd_index_lines(args: argparse.Namespace) -> int:
         for line in lines:
             total += 1
             type_part = f"[{line.line_type}]" if line.line_type else "[--]"
-            print(f"  {type_part} {line.body[:66]}  {line.anchor or ''}")
+            labels = " ".join(line.labels)
+            print(f"  {type_part} {line.body[:66]}  {labels}")
     print(f"\n{total} line(s)")
     return 0
 
@@ -458,11 +459,18 @@ def cmd_index_linter(args: argparse.Namespace) -> int:
     geo = _geo(args)
     if args.list_checks:
         for entry in CATALOG:
-            state = "on " if entry.default_on else "off"
+            state = "dev" if entry.dev else ("on " if entry.default_on else "off")
             print(f"{entry.name:26} [{state}] {entry.tier:11} {entry.source}")
         return 0
 
-    report = lint(geo, check=args.check, skip=args.skip)
+    dev = args.lane == "dev"
+    report = lint(geo, check=args.check, skip=args.skip, dev=dev)
+    if report.is_dev and not args.json:
+        print("DEV LANE — not a verdict about the project, a verdict about the machinery")
+        for name in report.dev:
+            entry = next(c for c in CATALOG if c.name == name)
+            print(f"  {name} stands in for {entry.replaces}  {entry.source}")
+        print()
     if args.json:
         _emit(
             {
@@ -475,6 +483,7 @@ def cmd_index_linter(args: argparse.Namespace) -> int:
                 "findings": [_finding_json(f) for f in report.findings],
                 "blocked": [_finding_json(f) for f in report.blocked],
                 "blessed": len(report.blessed),
+                "dev": list(report.dev),
             }
         )
         return 1 if report.findings else 0
@@ -700,6 +709,10 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_import)
 
     p = index_sub.add_parser("linter", help="run conformance checks")
+    p.add_argument(
+        "lane", nargs="?", choices=["dev"], default=None,
+        help="dev runs the dev lane: registered dev checks displace the ones they stand in for",
+    )
     p.add_argument("--check", action="append", help="run only this check; repeatable")
     p.add_argument("--skip", action="append", help="skip this check; repeatable")
     p.add_argument("--list-checks", action="store_true", help="print the check catalog")

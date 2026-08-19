@@ -132,3 +132,23 @@ class TestHomesLayout:
         assert (agent_home / ".tarav.index").exists()
         assert not (agent_home / "chapters").exists()
 
+
+
+class TestSurfaceLineLabels:
+    def test_a_surface_line_reports_its_labels_not_one_anchor(self, tmp_path):
+        """A line may carry several labels, so `SurfaceLine` has no `.anchor`.
+
+        `index lines` used to read `line.anchor` and crash on every populated
+        surface -- the field never existed. The plural is the model: one line,
+        zero or more labels.
+        """
+        from tarav.index.surfaces import read_block_lines
+
+        note = tmp_path / "100-design.md"
+        note.write_text(
+            "# T\n\n****\n\n## Concept\n\n- [DF] a body ^d20260819-1u\n\n****\n",
+            encoding="utf-8",
+        )
+        lines = read_block_lines(note, "skills/pkg/homes/agent/chapters/100-design.md")
+        assert not hasattr(lines[0], "anchor")
+        assert lines[0].labels == ("^d20260819-1u",)

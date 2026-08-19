@@ -83,11 +83,23 @@ class GateCheck:
         return self.verdict is GateVerdict.CONTRADICTED
 
 
-def verify_gate(geo: Geography, gate: GateRef, verbatim: str | None = None) -> GateCheck:
+def verify_gate(
+    geo: Geography,
+    gate: GateRef,
+    verbatim: str | None = None,
+    *,
+    require_touch: bool = True,
+) -> GateCheck:
     """Check one gate against the archive.
 
     ``verbatim`` is the text the agent turn must contain — the line the user was approving.
     Omit it for a gate whose subject is not a line, such as an accepted POI.
+
+    ``require_touch`` is the *only* thing the dev lane relaxes. Every other step is
+    identical: both turns must exist in the archive, both must carry the token, and the
+    line must appear verbatim in the agent turn. Dropping it lets a gate be opened by a
+    turn that does not qualify as `User.Touch`, which is what makes the chain runnable in
+    a test — and is exactly why a run that used it may never be read as a real verdict.
     """
 
     try:
@@ -103,7 +115,7 @@ def verify_gate(geo: Geography, gate: GateRef, verbatim: str | None = None) -> G
             GateVerdict.CONTRADICTED,
             f"user turn {gate.user_turn_id[:16]}… is not in the session",
         )
-    if not user_turn.carries_touch:
+    if require_touch and not user_turn.carries_touch:
         return GateCheck(
             GateVerdict.CONTRADICTED,
             "the turn named as the gate does not qualify as User.Touch",

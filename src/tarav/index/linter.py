@@ -190,6 +190,23 @@ class Check:
     default_on: bool = True
     resolutions: tuple[str, ...] = ()
     gate: GateFn | None = None
+    dev: bool = False
+    """Whether this check runs only under `tarav index linter dev`.
+
+    A dev check is an ordinary check on ordinary machinery -- same signature,
+    same findings, same verdict. All `dev` changes is *when it is selected*.
+    It exists to make a chain runnable before its evidence can exist: a gate
+    check that accepts an agent turn as the gate key, so the capture path can
+    be exercised without a real user in the loop.
+    """
+    replaces: str | None = None
+    """The check this one stands in for while the dev lane is running.
+
+    A dev check that merely *added* a finding would leave its strict counterpart
+    failing, and the run could never go green. Naming the counterpart drops it
+    for the duration, so the dev lane reports one verdict per constraint rather
+    than two contradictory ones.
+    """
 
     def can_run(self, ctx: LintContext) -> GateResult:
         """`GateResult`: a precondition the check cannot supply for itself."""
@@ -774,13 +791,11 @@ def _check_review_evidence_retained(ctx: LintContext) -> list[Finding]:
     return findings
 
 
-def _check_gate_verifies(ctx: LintContext) -> list[Finding]:
-    """The gate is the only reason any assertion about a line is state, so this is the check
-    that makes the rest of the model mean something.
+def _gate_findings(ctx: LintContext, *, require_touch: bool) -> list[Finding]:
+    """Shared body of `gate-verifies` and its dev counterpart.
 
-    One check for both links, because review and landing are the same mechanism. An absent
-    archive reports `unknown`: it is user-scoped, so absence is the normal case elsewhere,
-    but a gate nobody could check is not a gate that held.
+    One traversal for both links, because review and landing are the same mechanism.
+    `require_touch` is the single axis the two callers differ on.
     """
 
     findings: list[Finding] = []
@@ -788,7 +803,9 @@ def _check_gate_verifies(ctx: LintContext) -> list[Finding]:
         for kind, gate in (("review", record.review), ("landing", record.landing)):
             if gate is None:
                 continue
-            check = verify_gate(ctx.geo, gate, record.line.body)
+            check = verify_gate(
+                ctx.geo, gate, record.line.body, require_touch=require_touch
+            )
             if check.verdict is GateVerdict.CONTRADICTED:
                 findings.append(
                     Finding(
@@ -972,6 +989,30 @@ def _gate_git_available(ctx: LintContext) -> GateResult:
 
 
 #: The catalog. Growing the system means adding a row here.
+def _check_gate_verifies(ctx: LintContext) -> list[Finding]:
+    """The gate is the only reason any assertion about a line is state, so this is the check
+    that makes the rest of the model mean something.
+
+    One check for both links, because review and landing are the same mechanism. An absent
+    archive reports `unknown`: it is user-scoped, so absence is the normal case elsewhere,
+    but a gate nobody could check is not a gate that held.
+    """
+
+    return _gate_findings(ctx, require_touch=True)
+
+
+def _check_gate_verifies_dev(ctx: LintContext) -> list[Finding]:
+    """`gate-verifies` with the `User.Touch` requirement dropped, and nothing else.
+
+    Both turns must still exist, both must still carry the token, and the line must still
+    appear verbatim in the agent turn. What this permits is a gate opened by a turn that is
+    not a qualifying user turn — which is the one thing a test cannot manufacture honestly,
+    and the reason a `dev` run is stamped as such wherever its verdict is printed.
+    """
+
+    return _gate_findings(ctx, require_touch=False)
+
+
 CATALOG: tuple[Check, ...] = (
     Check(
         "surfaces-readable", Tier.STRUCTURAL, _check_surfaces_readable,
@@ -1106,6 +1147,12 @@ CATALOG: tuple[Check, ...] = (
         "re-open the gate; a real approval leaves a real turn",
     )),
     Check(
+        "gate-verifies-dev", Tier.REPORTABLE, _check_gate_verifies_dev,
+        dev=True, replaces="gate-verifies", resolutions=(
+        "correct the turns the gate names",
+        "re-run without `dev` once a real user turn exists",
+    )),
+    Check(
         "landing-evidenced", Tier.REPORTABLE, _check_landing_evidenced, resolutions=(
         "record the landing gate for the approval turn that licensed it",
         "take the line off the HEAD.Surface until it is approved",
@@ -1162,6 +1209,18 @@ class LintReport:
     results: tuple[CheckResult, ...]
     records_checked: int
     surface_lines_checked: int
+    dev: tuple[str, ...] = ()
+    """Names of the dev checks this run used, empty for an ordinary run.
+
+    A dev run is not a verdict about the project; it is a verdict about the
+    machinery. Carrying the names on the report means every printer and every
+    caller has to decide what to do about them, rather than a boolean nobody
+    reads.
+    """
+
+    @property
+    def is_dev(self) -> bool:
+        return bool(self.dev)
 
     @property
     def checks_run(self) -> tuple[str, ...]:
@@ -1261,14 +1320,33 @@ def _blessing_holds(geo: Geography, gate: GateRef) -> bool:
 
 
 def select_checks(
-    check: list[str] | None = None, skip: list[str] | None = None
+    check: list[str] | None = None,
+    skip: list[str] | None = None,
+    *,
+    dev: bool = False,
 ) -> list[Check]:
+    """The checks this run will execute.
+
+    Outside the dev lane a `dev` check is never selected, not even by name: a
+    relaxed check that can be summoned into an ordinary run is a relaxed check
+    that will eventually be summoned by accident. Inside it, each dev check
+    displaces the one it `replaces`, so a constraint is reported once.
+    """
+
     names = {c.name for c in CATALOG}
     for requested in (check or []) + (skip or []):
         if requested not in names:
             raise LintError(f"unknown check: {requested!r}")
+
+    displaced = {
+        entry.replaces for entry in CATALOG if dev and entry.dev and entry.replaces
+    }
     selected = []
     for entry in CATALOG:
+        if entry.dev and not dev:
+            continue
+        if entry.name in displaced:
+            continue
         enabled = entry.name in check if check else entry.default_on
         if skip and entry.name in skip:
             enabled = False
@@ -1283,6 +1361,7 @@ def lint(
     project_root: Path | None = None,
     check: list[str] | None = None,
     skip: list[str] | None = None,
+    dev: bool = False,
 ) -> LintReport:
     """Run the selected checks and report what each one found — including what it could not."""
 
@@ -1295,7 +1374,7 @@ def lint(
         homes=load_homes(geo),
     )
 
-    selected = select_checks(check, skip)
+    selected = select_checks(check, skip, dev=dev)
     blessings = read_blessings(geo)
     findings: list[Finding] = []
     blocked: list[Finding] = []
@@ -1349,6 +1428,7 @@ def lint(
         results=tuple(results),
         records_checked=len(ctx.records),
         surface_lines_checked=sum(len(v) for v in ctx.surface_lines.values()),
+        dev=tuple(e.name for e in selected if e.dev),
     )
 
 
