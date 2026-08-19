@@ -35,6 +35,10 @@ from tarav.chatlas.normalization.session_model import (
 )
 from tarav.chatlas.normalization.session_model.events import normal_turn_id
 from tarav.chatlas.normalization.session_model.messages import content_text
+from tarav.index_model import (
+    INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
+    index_line_anchor_triplet_hash,
+)
 
 ANCHOR_PATTERN = re.compile(r"\^(c\d{8}-\d+[a-z])")
 PROJECT_ROOT = Path("/Users/pereiro/projects/taravangian-project")
@@ -77,6 +81,31 @@ def legacy_parts(record: dict[str, Any]) -> tuple[list, list, list, list]:
         record.get("predecessors") or [],
         record.get("issue_context") or [],
     )
+
+
+def anchor_lines(store: dict[str, Any]) -> dict[str, str]:
+    """The surface line each anchor sits on, for anchors that need an attachment built.
+
+    An older `chatlas.support-set` record carries no attachment assertion — the triplet
+    postdates it. The assertion is not invented here: it is computed from the exact line
+    the anchor is written on, which is what `522` did when it introduced the triplet.
+    """
+    lines: dict[str, str] = {}
+    for pattern in ("*.md", "*.py"):
+        for path in PROJECT_ROOT.rglob(pattern):
+            text = str(path)
+            if any(part in text for part in SKIP_PARTS):
+                continue
+            try:
+                body = path.read_text("utf-8", errors="ignore")
+            except OSError:
+                continue
+            for line in body.splitlines():
+                stripped = line.rstrip()
+                for anchor in ANCHOR_PATTERN.findall(stripped):
+                    if anchor in store and stripped.endswith(f"^{anchor}"):
+                        lines.setdefault(anchor, stripped)
+    return lines
 
 
 def referenced_anchors(store: dict[str, Any]) -> set[str]:
@@ -186,6 +215,7 @@ def main() -> int:
 
     store = legacy_store(args.chatlas_root)
     anchors = sorted(referenced_anchors(store))
+    lines = anchor_lines(store)
     if args.limit:
         anchors = anchors[: args.limit]
     print(f"referenced anchors: {len(anchors)} of {len(store)} in store")
@@ -254,10 +284,22 @@ def main() -> int:
             findings.append((anchor, "anchor", "no member joined"))
             continue
 
+        attachment = legacy.get("attachment")
+        if not isinstance(attachment, dict) or not attachment.get("triplet_hash"):
+            source = lines.get(anchor)
+            if source is None:
+                tally["anchor:NO_ATTACHMENT"] += 1
+                findings.append((anchor, "attachment", "no surface line carries it"))
+                continue
+            attachment = {
+                "canonical_schema": INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
+                "triplet_hash": index_line_anchor_triplet_hash(source, anchor),
+            }
+            tally["anchor:ATTACHMENT_BUILT"] += 1
         converted[anchor] = {
             "app": "chatlas2",
             "schema": "tarav.chatlas2.line-anchor-dossier.v2",
-            "attachment": dict(legacy.get("attachment", {})),
+            "attachment": dict(attachment),
             "relationships": {
                 "support": {"members": members},
                 "gates": {
