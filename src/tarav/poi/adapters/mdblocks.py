@@ -8,35 +8,15 @@ from tarav.poi import (
     POILinterReport,
     POILocation,
     build_poi_report,
+    tarav_poi_class_reference,
 )
-from tarav.wayfinder import poi_class_reference
 from tarav.wayfinder import Wayfinder
 
 
-MDBLOCKS_POI_CLASSES = {
-    "no_headings": "Markdown.Block.Linter/Headings.None",
-    "unclosed_code_fence": "Markdown.Block.Linter/CodeFence.Unclosed",
-    "preamble_text_before_first_block": (
-        "Markdown.Block.Linter/Preamble.BeforeFirstBlock"
-    ),
-    "separator_outside_block_semantics": (
-        "Markdown.Block.Linter/Separator.OutsideBlockSemantics"
-    ),
-    "empty_heading_title": "Markdown.Block.Linter/Heading.Title.Empty",
-    "block_too_long": "Markdown.Block.Linter/Block.TooLong",
-    "duplicate_heading_title_same_level": (
-        "Markdown.Block.Linter/Heading.Title.DuplicateSameLevel"
-    ),
-}
-MDBLOCKS_POI_CODES = tuple(MDBLOCKS_POI_CLASSES)
-
-
-def mdblocks_issue_to_poi(issue: dict[str, Any]) -> POIInstance:
+def _mdblocks_poi(issue: dict[str, Any], class_name: str) -> POIInstance:
     evidence = dict(issue.get("details") or {})
     return POIInstance.create(
-        class_reference=poi_class_reference(
-            "tarav-pkg", MDBLOCKS_POI_CLASSES[str(issue["code"])]
-        ),
+        class_reference=tarav_poi_class_reference(class_name),
         target=POILocation(
             path=str(issue["path"]),
             line=int(issue["line"]) if issue.get("line") is not None else None,
@@ -45,6 +25,87 @@ def mdblocks_issue_to_poi(issue: dict[str, Any]) -> POIInstance:
         situation=str(issue["message"]),
         evidence=evidence,
     )
+
+
+# $kw: Markdown.Block.Linter/Headings.None
+# --note [DF] a scanned Markdown file contains no headings in the configured range
+# --note [CT] the existing validator reports this condition as a warning
+# --note [RJ] class-level interpretation is not yet established
+def _no_headings(issue: dict[str, Any]) -> POIInstance:
+    return _mdblocks_poi(issue, "Markdown.Block.Linter/Headings.None")
+
+
+# $kw: Markdown.Block.Linter/CodeFence.Unclosed
+# --note [DF] a scanned Markdown file appears to contain an unclosed fenced code block
+# --note [CT] the instance preserves the detected ending line
+# --note [RJ] class-level repair guidance is not yet established
+def _unclosed_code_fence(issue: dict[str, Any]) -> POIInstance:
+    return _mdblocks_poi(issue, "Markdown.Block.Linter/CodeFence.Unclosed")
+
+
+# $kw: Markdown.Block.Linter/Preamble.BeforeFirstBlock
+# --note [DF] a scanned Markdown file has nonempty text before its first block anchor
+# --note [CT] the existing validator reports the nonempty-line count as evidence
+# --note [RJ] class-level interpretation is not yet established
+def _preamble_before_first_block(issue: dict[str, Any]) -> POIInstance:
+    return _mdblocks_poi(
+        issue,
+        "Markdown.Block.Linter/Preamble.BeforeFirstBlock",
+    )
+
+
+# $kw: Markdown.Block.Linter/Separator.OutsideBlockSemantics
+# --note [DF] a `****` separator is not consumed as a block opening or closing boundary
+# --note [CT] the instance preserves the separator line and existing validator message
+# --note [RJ] class-level repair guidance is not yet established
+def _separator_outside_semantics(issue: dict[str, Any]) -> POIInstance:
+    return _mdblocks_poi(
+        issue,
+        "Markdown.Block.Linter/Separator.OutsideBlockSemantics",
+    )
+
+
+# $kw: Markdown.Block.Linter/Heading.Title.Empty
+# --note [DF] a block heading is empty after Markdown sanitization
+# --note [CT] the instance preserves the heading line
+# --note [RJ] class-level repair guidance is not yet established
+def _empty_heading_title(issue: dict[str, Any]) -> POIInstance:
+    return _mdblocks_poi(issue, "Markdown.Block.Linter/Heading.Title.Empty")
+
+
+# $kw: Markdown.Block.Linter/Block.TooLong
+# --note [DF] a separator-anchored Markdown block exceeds the existing hard line limit
+# --note [CT] the instance preserves line span, limit, and ending-line evidence
+# --note [RJ] this migration does not change the configured limit
+def _block_too_long(issue: dict[str, Any]) -> POIInstance:
+    return _mdblocks_poi(issue, "Markdown.Block.Linter/Block.TooLong")
+
+
+# $kw: Markdown.Block.Linter/Heading.Title.DuplicateSameLevel
+# --note [DF] a Markdown heading repeats an earlier title at the same level
+# --note [CT] the instance preserves the first and repeated heading locations
+# --note [RJ] class-level interpretation is not yet established
+def _duplicate_heading_title(issue: dict[str, Any]) -> POIInstance:
+    return _mdblocks_poi(
+        issue,
+        "Markdown.Block.Linter/Heading.Title.DuplicateSameLevel",
+    )
+
+
+CHECK_REGISTRY = {
+    "no_headings": _no_headings,
+    "unclosed_code_fence": _unclosed_code_fence,
+    "preamble_text_before_first_block": _preamble_before_first_block,
+    "separator_outside_block_semantics": _separator_outside_semantics,
+    "empty_heading_title": _empty_heading_title,
+    "block_too_long": _block_too_long,
+    "duplicate_heading_title_same_level": _duplicate_heading_title,
+}
+MDBLOCKS_POI_CODES = tuple(CHECK_REGISTRY)
+
+
+def mdblocks_issue_to_poi(issue: dict[str, Any]) -> POIInstance:
+    return CHECK_REGISTRY[str(issue["code"])](issue)
 
 
 def build_mdblocks_linter_report(
@@ -86,7 +147,7 @@ def build_mdblocks_linter_report(
 
 __all__ = [
     "MDBLOCKS_POI_CODES",
-    "MDBLOCKS_POI_CLASSES",
+    "CHECK_REGISTRY",
     "build_mdblocks_linter_report",
     "mdblocks_issue_to_poi",
 ]

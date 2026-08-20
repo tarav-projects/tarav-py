@@ -174,6 +174,7 @@ def test_skw_config_parses_typed_code_surfaces(tmp_path: Path) -> None:
                         "language": "python",
                         "include": ["src/**/*.py"],
                         "exclude": ["src/**/_generated.py"],
+                        "allow_points": ["file", "class", "function"],
                     }
                 ]
             }
@@ -186,6 +187,7 @@ def test_skw_config_parses_typed_code_surfaces(tmp_path: Path) -> None:
             language="python",
             include=("src/**/*.py",),
             exclude=("src/**/_generated.py",),
+            allow_points=("file", "class", "function"),
         ),
     )
 

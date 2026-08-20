@@ -167,7 +167,7 @@ def _resolve_index_block(
         )
 
     document, heading = matches[0]
-    target = _resolved_block_target(document, heading, registration.path)
+    target = resolved_index_block_target(document, heading, registration.path)
     trace.append(
         WayfinderTraceStep(
             stage="index.verify",
@@ -196,7 +196,7 @@ def _candidate(
     }
 
 
-def _resolved_block_target(
+def resolved_index_block_target(
     document: IndexDocument,
     heading: BlockHeading,
     root: Path,
@@ -254,4 +254,8 @@ def _poi(
     )
 
 
-__all__ = ["create_index_wayfinder", "resolve_index_block_reference"]
+__all__ = [
+    "create_index_wayfinder",
+    "resolve_index_block_reference",
+    "resolved_index_block_target",
+]

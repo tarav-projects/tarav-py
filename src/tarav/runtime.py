@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tarav.chatlas.hook_consumers import register_chatlas_hook_callbacks
@@ -53,8 +54,9 @@ class TaravRuntime:
         from tarav.forum import register_forum_commands
         from tarav.hooks import register_hook_commands
         from tarav.index.cli import register_index_commands
-        from tarav.poi.discovery import discover_poi_catalog
-        from tarav.wayfinder.index_blocks import create_index_wayfinder
+        from tarav.skillware._build_core import find_project_root
+        from tarav.skillware.managed_blocks import create_tarav_wayfinder
+        from tarav.skillware.related_surfaces import RelatedSurfaceResolver
         from tarav.stdlib.mdblocks.commands import register_mdblocks_commands
         from tarav.mission import register_mission_commands
         from tarav.poi.commands import register_poi_commands
@@ -75,8 +77,8 @@ class TaravRuntime:
         from tarav.wayfinder.commands import register_wayfinder_commands
         from tarav.workspaces.commands import register_workspace_commands
 
-        wayfinder = create_index_wayfinder()
-        poi_catalog = discover_poi_catalog()
+        project_root = find_project_root(Path(__file__))
+        wayfinder = create_tarav_wayfinder(project_root=project_root)
 
         register_agent_commands(subparsers)
         register_hook_commands(
@@ -135,8 +137,8 @@ class TaravRuntime:
         register_workspace_commands(subparsers)
         register_poi_commands(
             subparsers,
-            catalog=poi_catalog,
             wayfinder=wayfinder,
+            related_resolver=RelatedSurfaceResolver(wayfinder),
         )
         register_skillware_commands(
             subparsers,

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tarav.wayfinder.index_blocks import create_index_wayfinder
+from tarav.skillware.managed_blocks import create_tarav_wayfinder
 from tarav.poi.adapters.wayfinder import build_wayfinder_registry_linter_report
 from tarav.wayfinder import (
     InvalidWayfinderReference,
@@ -170,7 +171,9 @@ def test_resolution_pois_preserve_reference_trace_and_hints(
     assert missing_registration.trace[0].stage == "registry.lookup"
     payload = missing_registration.as_dict()["poi"]
     assert payload["class"]["address"] == "Wayfinder.Resolution.POI"
-    assert payload["class_sugar"] == ("index://tarav-pkg/Wayfinder.Resolution.POI")
+    assert payload["class_sugar"] == (
+        "block://e308d11f-d709-4f23-b8c7-f214e28b3f11/Wayfinder.Resolution.POI"
+    )
     assert payload["target"]["reference"] == reference.as_dict()
     assert payload["evidence"]["kind"] == "missing"
 
@@ -248,7 +251,7 @@ def test_registry_check_reports_stale_location(
     report = build_wayfinder_registry_linter_report(
         check,
         registry_path=str(registry.path),
-        wayfinder=create_index_wayfinder(registry),
+        wayfinder=create_tarav_wayfinder(registry),
     ).as_dict()
     assert report["pois"][0]["class"]["address"] == (
         "Wayfinder.Registry.Linter/Location.Stale"

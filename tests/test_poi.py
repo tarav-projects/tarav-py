@@ -302,7 +302,9 @@ def test_poi_explain_resolves_registered_code_and_reference_sugar(
         wayfinder=create_index_wayfinder(),
     )
 
-    args = parser.parse_args(["poi", "explain", "Example.Linter/Problem"])
+    args = parser.parse_args(
+        ["poi", "explain", "--class", "Example.Linter/Problem"]
+    )
     assert args.handler(args) == 0
     text = capsys.readouterr().out
     assert "index://example-pkg/Example.Linter/Problem" in text
@@ -312,6 +314,7 @@ def test_poi_explain_resolves_registered_code_and_reference_sugar(
         [
             "poi",
             "explain",
+            "--class",
             "index://example-pkg/Example.Linter/Problem",
             "--json",
         ]
@@ -338,7 +341,9 @@ def test_poi_explain_surfaces_resolution_poi(
         wayfinder=create_index_wayfinder(),
     )
 
-    args = parser.parse_args(["poi", "explain", "Example.Linter/Problem", "--json"])
+    args = parser.parse_args(
+        ["poi", "explain", "--class", "Example.Linter/Problem", "--json"]
+    )
 
     assert args.handler(args) == 1
     payload = json.loads(capsys.readouterr().out)

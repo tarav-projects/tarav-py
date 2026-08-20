@@ -4,7 +4,6 @@ from __future__ import annotations
 from copy import deepcopy
 from hashlib import sha256
 from pathlib import Path
-import re
 import shutil
 from typing import Callable
 from uuid import uuid4
@@ -12,6 +11,7 @@ from uuid import uuid4
 from filelock import FileLock, Timeout
 
 from tarav._core.errors import CliError
+from tarav.index_model.label import parse_citation, split_trailing_address
 from tarav._core.persistence import atomic_write_json
 from tarav.chatlas.paths import CHAT_INDEX_SURFACES_ROOT, default_chatlas_root
 from tarav.index_model import index_line_anchor_triplet_hash
@@ -35,7 +35,6 @@ from .turn_ref import chat_turn_ref
 HEAD_FILENAME = "HEAD.md"
 DELTA_DIRNAME = "deltas"
 LOCK_ROOT = Path("chatlas2") / "locks" / "chat-index"
-_ANCHOR_AT_END = re.compile(r"\^(?P<anchor>c[0-9]{8}-[0-9]+[a-z])\s*$")
 ReaderLoader = Callable[[str], object]
 
 
@@ -500,8 +499,15 @@ def _anchored_line(item: dict[str, object]) -> str:
 
 
 def _line_anchor(line: str) -> str | None:
-    match = _ANCHOR_AT_END.search(line)
-    return match.group("anchor") if match is not None else None
+    """The citation a chat-index line ends with, caretless, or `None`.
+
+    A locator name at the end is not an anchor here -- a chat index records which index line
+    a turn carries, and only a citation names one.
+    """
+
+    _text, address = split_trailing_address(line)
+    citation = parse_citation(address) if address is not None else None
+    return address.removeprefix("^") if citation is not None else None
 
 
 def _reader_session(reader: object) -> dict[str, str]:

@@ -842,7 +842,9 @@ def test_cli_check_uses_common_grouped_renderer(
     assert (
         sum(line == "Skillware.Linter/Derived.Stale" for line in out.splitlines()) == 1
     )
-    assert out.count("Documentation: index://tarav-pkg/") == 1
+    assert out.count(
+        "Documentation: block://e308d11f-d709-4f23-b8c7-f214e28b3f11/"
+    ) == 1
     row = next(line for line in out.splitlines() if "[ADVISORY]" in line)
     assert "references/mod.md" in row
     assert any(len(token.strip("[]")) == 10 for token in row.split())

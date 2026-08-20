@@ -1,4 +1,5 @@
 # $kw: ^skw-code-surfaces --from Skw.Backend --from Annotation.Point --from Non.Skw.Annotation --from POI.Linter --note [DF] shared selector and strict policy engine for configured code surfaces ^c20260811-66u
+# --note [DC] Skillware consumes neutral Python declarations and alone decides which declarations are legal annotation points ^c20260820-1u
 """Configured code-surface selection and language-neutral strict linting."""
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from ._code_model import (
     CodeBlessRecord,
     CodeCheckReport,
     CodeDependencyResolver,
+    CodeSurfaceModel,
     CodeSurfaceTarget,
 )
 from ._code_python import PythonCodeBackend
@@ -44,6 +46,12 @@ def expand_code_surfaces(
         if backend is None:
             raise SkillwareError(
                 f"unsupported skw code-surface language `{config.language}`"
+            )
+        unsupported_points = set(config.allow_points) - set(backend.point_kinds)
+        if unsupported_points:
+            raise SkillwareError(
+                f"skw `{config.language}` code surface has unsupported "
+                "allow_points: " + ", ".join(sorted(unsupported_points))
             )
 
         def _matches(pattern: str) -> tuple[Path, ...]:
@@ -89,7 +97,11 @@ def expand_code_surfaces(
                         "skw code surface selected more than once: "
                         f"{path.relative_to(project_root)}"
                     )
-                targets[path] = CodeSurfaceTarget(config.language, path)
+                targets[path] = CodeSurfaceTarget(
+                    config.language,
+                    path,
+                    config.allow_points,
+                )
                 local_targets.add(path)
                 selected_for_config += 1
         if not selected_for_config:
@@ -109,6 +121,40 @@ def _file_dependencies(source: SkwSource) -> tuple[str, ...]:
     return tuple(
         locator for block in blocks if block.line == 1 for locator in block.froms
     )
+
+
+def annotation_point(
+    model: CodeSurfaceModel,
+    block_line: int,
+) -> tuple[str, str] | None:
+    """Resolve one parsed annotation to its host-native Skillware point."""
+    if block_line == 1:
+        return "file", "file"
+    span = next(
+        (
+            machinery_span
+            for machinery_span in model.annotations.machinery_spans
+            if machinery_span[0] + 1 == block_line
+        ),
+        None,
+    )
+    if span is None:
+        return None
+    next_index = span[1]
+    while (
+        next_index < len(model.surface.lines)
+        and not model.surface.lines[next_index].text.strip()
+    ):
+        next_index += 1
+    candidates = [
+        point
+        for point in model.surface.host_points
+        if point.span.start_line == next_index + 1
+    ]
+    if len(candidates) != 1:
+        return None
+    point = candidates[0]
+    return point.kind, point.name
 
 
 def _project_lock(project_root: Path) -> dict:
@@ -225,17 +271,23 @@ def check_code_surfaces(
                                 f"design dependency `{locator}` does not resolve in the engaged Index depots",
                             )
                         )
-        pois.extend(
-            skillware_poi(
-                "illegal-attachment",
-                relative,
-                f"line {line}",
-                f"line {line}",
-                f"line {line}: Skw block attaches off the required file point",
+        for line in block_lines:
+            point = annotation_point(model, line)
+            if point is not None and point[0] in target.allow_points:
+                continue
+            observed = (
+                f"{point[0]} {point[1]}" if point is not None else "no host point"
             )
-            for line in block_lines
-            if line != 1
-        )
+            pois.append(
+                skillware_poi(
+                    "illegal-attachment",
+                    relative,
+                    f"line {line}",
+                    f"line {line}:{observed}",
+                    f"line {line}: Skw block attaches at {observed}, outside "
+                    f"the allow-set {target.allow_points}",
+                )
+            )
 
         machinery_lines = {
             line

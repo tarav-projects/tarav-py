@@ -1,5 +1,5 @@
 # $kw: --from POI.Linter --note [CT] agents edit surfaces with general primitives; the linter checks conformance
-# $kw: --from Convergent.Justification --note [DC] Check.default_on is held on one reason — a check may ship off when it is expensive or situational, though no catalog row does yet
+# --from Convergent.Justification --note [DC] Check.default_on is held on one reason — a check may ship off when it is expensive or situational, though no catalog row does yet
 """The tarav index linter.
 
 This is where the intelligence lives. Agents edit the markdown surfaces directly with
@@ -53,7 +53,7 @@ from pathlib import Path
 from tarav.index_model.nodes import BlockHeading, MetaLine
 from tarav.index_model.parser import parse_depot, parse_index_file
 
-from .chatlas import ChatError, load_session
+from .chatlas import ARCHIVE_NAME as CHAT_ARCHIVE, ChatError, load_session
 from .config import Geography, TaravIndexError
 from .gates import GateRef, GateVerdict, verify_gate
 from .record.model import EquivalenceKind, LineRecord
@@ -306,6 +306,62 @@ class Check:
 # Each returns findings; none mutates anything.
 
 
+# $kw: Index.Linter/Support.LegacyCoordinate --from POI.Linter
+def _support_legacy_coordinate_class() -> str:
+    return "Index.Linter/Support.LegacyCoordinate"
+
+
+# $kw: Index.Linter/Support.Unreachable --from POI.Linter
+def _support_unreachable_class() -> str:
+    return "Index.Linter/Support.Unreachable"
+
+
+# $kw: Index.Linter/Support.Mismatch --from POI.Linter
+def _support_mismatch_class() -> str:
+    return "Index.Linter/Support.Mismatch"
+
+
+# $kw: Index.Linter/Support.NotTouched --from POI.Linter
+def _support_not_touched_class() -> str:
+    return "Index.Linter/Support.NotTouched"
+
+
+# $kw: Index.Linter/Trace.Forked --from POI.Linter
+def _trace_forked_class() -> str:
+    return "Index.Linter/Trace.Forked"
+
+
+# $kw: Index.Linter/Trace.Cycle --from POI.Linter
+def _trace_cycle_class() -> str:
+    return "Index.Linter/Trace.Cycle"
+
+
+# $kw: Index.Linter/Equivalence.PredecessorMissing --from POI.Linter
+def _equivalence_predecessor_missing_class() -> str:
+    return "Index.Linter/Equivalence.PredecessorMissing"
+
+
+# $kw: Index.Linter/Equivalence.TraceMismatch --from POI.Linter
+def _equivalence_trace_mismatch_class() -> str:
+    return "Index.Linter/Equivalence.TraceMismatch"
+
+
+# $kw: Index.Linter/Gate.Contradicted --from POI.Linter
+def _gate_contradicted_class() -> str:
+    return "Index.Linter/Gate.Contradicted"
+
+
+# $kw: Index.Linter/Gate.Unverifiable --from POI.Linter
+def _gate_unverifiable_class() -> str:
+    return "Index.Linter/Gate.Unverifiable"
+
+
+# $kw: Index.Linter/Blessing.Unevidenced --from POI.Linter
+def _blessing_unevidenced_class() -> str:
+    return "Index.Linter/Blessing.Unevidenced"
+
+
+# $kw: Index.Linter/Surface.Unreadable --from POI.Linter
 def _check_surfaces_readable(ctx: LintContext) -> list[Finding]:
     """Nothing downstream means anything if the surface did not parse, so this runs first."""
 
@@ -327,6 +383,7 @@ def _check_surfaces_readable(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Alias.HasBlock --from POI.Linter
 def _check_alias_has_no_block(ctx: LintContext) -> list[Finding]:
     """An alias resolves to its canonical block; a second block creates two definitions."""
 
@@ -387,6 +444,7 @@ def _check_alias_has_no_block(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Record.Unreadable --from POI.Linter
 def _check_records_loadable(ctx: LintContext) -> list[Finding]:
     """The records are the states being estimated; unreadable, there is nothing to estimate."""
 
@@ -406,6 +464,7 @@ def _check_records_loadable(ctx: LintContext) -> list[Finding]:
     return []
 
 
+# $kw: Index.Linter/Line.Untyped --from POI.Linter
 def _check_line_typed(ctx: LintContext) -> list[Finding]:
     """Without the type there is no type, so nothing else about the line can be checked."""
 
@@ -421,6 +480,7 @@ def _check_line_typed(ctx: LintContext) -> list[Finding]:
     ]
 
 
+# $kw: Index.Linter/Line.Unanchored --from POI.Linter
 def _check_line_anchored(ctx: LintContext) -> list[Finding]:
     """The label is the line's public id; without it nothing can point at this line."""
 
@@ -436,6 +496,7 @@ def _check_line_anchored(ctx: LintContext) -> list[Finding]:
     ]
 
 
+# $kw: Index.Linter/Line.Unrecorded --from POI.Linter
 def _check_anchor_has_record(ctx: LintContext) -> list[Finding]:
     """A surface line with no record indexes nothing — it is text that looks indexed."""
 
@@ -452,34 +513,48 @@ def _check_anchor_has_record(ctx: LintContext) -> list[Finding]:
     ]
 
 
+# $kw: Index.Linter/Anchor.Collision --from POI.Linter
+# --note [DF] `Index.Linter/Anchor.Collision` is emitted when one anchor occurs on more than one distinct line projection (`Line.Type + Index.Line.Body`) ^c20260802-240u
+# --note [CT] evaluation compares occurrence projections while excluding trailing `Index.Line.Anchor` tokens ^c20260802-241u
+# --note [CT] repeated occurrences of one line projection may carry the same anchor without creating a collision ^c20260802-242u
+# --note [CT] the instance identifies the anchor, each distinct projection, and every observed location ^c20260802-243u
+# --note [DC] resolution restores one agreed line projection for the anchor across its retained occurrences ^c20260802-244u
+# --note [FR] the maintainer may correct or remove stale occurrences, coordinate their amendment and refresh the attachment assertion, or assign independent anchors when occurrences represent different line relationships ^c20260802-245u
+# --note [CT] an independently anchored projection has an independently validated relationship dossier; equivalent support members may be reused only when they support that projection ^c20260802-246u
+# --note [DC] the class is not blessable while occurrence disagreement makes anchor-based line selection ambiguous ^c20260802-247u
+# --note [RJ] `Anchory.Linter/Anchor.Duplicate` concerns duplicate registry keys rather than disagreement among Index occurrences ^c20260802-248u
 def _check_anchor_collision(ctx: LintContext) -> list[Finding]:
     """One label must name one line, or a pointer stops resolving to one thing."""
 
-    seen: dict[str, tuple[str, str]] = {}
+    seen: dict[str, tuple[str, str | None, str]] = {}
     findings: list[Finding] = []
     for surface, line in ctx.all_surface_lines():
         label = line.label
         if label is None:
             continue
         previous = seen.get(label)
-        if previous is not None and previous[1] != line.body:
+        projection = (line.line_type, line.body)
+        if previous is not None and previous[1:] != projection:
             findings.append(
                 Finding(
                     "Index.Linter/Anchor.Collision",
                     label,
                     {
                         "here": line.body,
-                        "there": previous[1],
+                        "here_type": str(line.line_type),
+                        "there": previous[2],
+                        "there_type": str(previous[1]),
                         "other_surface": previous[0],
                     },
                     surface=surface,
                 )
             )
         else:
-            seen[label] = (surface, line.body)
+            seen[label] = (surface, line.line_type, line.body)
     return findings
 
 
+# $kw: Index.Linter/Line.Drift --from POI.Linter
 def _check_line_drift(ctx: LintContext) -> list[Finding]:
     """Neither side is presumed right — which one is wrong is the work, not the check's call."""
 
@@ -507,6 +582,7 @@ def _check_line_drift(ctx: LintContext) -> list[Finding]:
 
 
 # $kw: --from Index.WIP.Surface --note [CT] an ungrounded line is work not yet done rather than a violation, because the index is a WIP.Surface ^c20260818-19u
+# $kw: Index.Linter/Line.Ungrounded --from POI.Linter
 def _check_record_grounded(ctx: LintContext) -> list[Finding]:
     """The bar. An ungrounded entry carries `Index.Presumption`, which is debt, not error."""
 
@@ -572,11 +648,27 @@ def _check_support_resolves(ctx: LintContext) -> list[Finding]:
     archive = _SessionCache(ctx.geo)
     for record in ctx.selected_records():
         for ref in record.support:
+            if ref.archive != CHAT_ARCHIVE:
+                # A coordinate this archive cannot address is not a mismatch. 5,755 refs
+                # carry Chatlas1 turn ids -- `turn-r1326`, or a provider uuid -- which
+                # Chatlas2 addresses by digest and cannot look up at all. Calling that
+                # `Support.Mismatch` asserted the evidence had changed; it has not been
+                # read. Reported as its own unverifiable state so the migration backlog is
+                # legible instead of hiding inside 38% of the corpus's findings.
+                findings.append(
+                    Finding(
+                        _support_legacy_coordinate_class(),
+                        record.id,
+                        {"archive": ref.archive, "coordinate": ref.message_id},
+                        status=Status.BLOCKED,
+                    )
+                )
+                continue
             session = archive.get(ref.session_id)
             if session is None:
                 findings.append(
                     Finding(
-                        "Index.Linter/Support.Unreachable",
+                        _support_unreachable_class(),
                         record.id,
                         {"archive": ref.archive, "session": ref.session_id},
                         status=Status.BLOCKED,
@@ -587,7 +679,7 @@ def _check_support_resolves(ctx: LintContext) -> list[Finding]:
             if message is None:
                 findings.append(
                     Finding(
-                        "Index.Linter/Support.Mismatch",
+                        _support_mismatch_class(),
                         record.id,
                         {"message": ref.message_id, "session": ref.session_id},
                     )
@@ -595,7 +687,7 @@ def _check_support_resolves(ctx: LintContext) -> list[Finding]:
             elif not message.carries_touch:
                 findings.append(
                     Finding(
-                        "Index.Linter/Support.NotTouched",
+                        _support_not_touched_class(),
                         record.id,
                         {"message": ref.message_id, "side": message.side},
                     )
@@ -603,6 +695,7 @@ def _check_support_resolves(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Review.SupportUnseen --from POI.Linter
 def _check_review_covers_support(ctx: LintContext) -> list[Finding]:
     """Review is the only validation support-selection ever gets, so it should have seen it.
 
@@ -648,6 +741,7 @@ def _check_review_covers_support(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Record.Unplaced --from POI.Linter
 def _check_record_placed(ctx: LintContext) -> list[Finding]:
     """An entry on no surface is invisible to every reader of the index.
 
@@ -682,6 +776,7 @@ def _check_record_placed(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Record.Untyped --from POI.Linter
 def _check_record_typed(ctx: LintContext) -> list[Finding]:
     """Same bar as the surface line, applied to the record that claims to index it."""
 
@@ -692,6 +787,7 @@ def _check_record_typed(ctx: LintContext) -> list[Finding]:
     ]
 
 
+# $kw: Index.Linter/Record.LabelCollision --from POI.Linter
 def _check_record_label_unique(ctx: LintContext) -> list[Finding]:
     """A public selector that resolves to several records selects nothing reliably."""
 
@@ -710,6 +806,7 @@ def _check_record_label_unique(ctx: LintContext) -> list[Finding]:
     ]
 
 
+# $kw: Index.Linter/Record.Unscoped --from POI.Linter
 def _check_record_scoped(ctx: LintContext) -> list[Finding]:
     """A line is an orthogonal part of something larger; unscoped, it evaluates to nothing."""
 
@@ -720,6 +817,7 @@ def _check_record_scoped(ctx: LintContext) -> list[Finding]:
     ]
 
 
+# $kw: Index.Linter/Scope.Unresolved --from POI.Linter
 def _check_scope_resolves(ctx: LintContext) -> list[Finding]:
     """One address space, two kinds — and both must reach something that exists.
 
@@ -741,6 +839,10 @@ def _check_scope_resolves(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Reviewed.Cite.Closure --from POI.Linter
+# --note [DF] emitted when a reviewed Index line cites a real block that remains in the unreviewed agendix
+# --note [CT] the existing policy requires promoting the target into the reviewed Index or dropping the citation
+# --note [RJ] this migration does not choose or perform either repair
 def _check_review_closure(ctx: LintContext) -> list[Finding]:
     """`Reviewed.Cite.Closure`: reviewed standing may not rest on nothing touched.
 
@@ -766,6 +868,7 @@ def _check_review_closure(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Scope.KindMismatch --from POI.Linter
 def _check_annotation_scope_kind(ctx: LintContext) -> list[Finding]:
     """A line's host decides its scope kind, so a disagreement means one of them moved."""
 
@@ -787,6 +890,7 @@ def _check_annotation_scope_kind(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Line.Type.Unknown --from POI.Linter
 def _check_line_type_known(ctx: LintContext) -> list[Finding]:
     """An unrecognized type selects no assertions, so the line is untyped in practice."""
 
@@ -812,7 +916,7 @@ def _check_trace_wellformed(ctx: LintContext) -> list[Finding]:
         if len(heads) > 1:
             findings.append(
                 Finding(
-                    "Index.Linter/Trace.Forked",
+                    _trace_forked_class(),
                     trace.id,
                     {"heads": str(len(heads)), "ids": " ".join(m.id for m in heads)},
                 )
@@ -820,7 +924,7 @@ def _check_trace_wellformed(ctx: LintContext) -> list[Finding]:
         elif not heads:
             findings.append(
                 Finding(
-                    "Index.Linter/Trace.Cycle",
+                    _trace_cycle_class(),
                     trace.id,
                     {"members": str(len(trace.members)), "heads": "0"},
                 )
@@ -840,7 +944,7 @@ def _check_equivalence_predecessor(ctx: LintContext) -> list[Finding]:
         if predecessor is None:
             findings.append(
                 Finding(
-                    "Index.Linter/Equivalence.PredecessorMissing",
+                    _equivalence_predecessor_missing_class(),
                     record.id,
                     {"predecessor": record.equivalence.predecessor},
                 )
@@ -848,7 +952,7 @@ def _check_equivalence_predecessor(ctx: LintContext) -> list[Finding]:
         elif predecessor.trace != record.trace:
             findings.append(
                 Finding(
-                    "Index.Linter/Equivalence.TraceMismatch",
+                    _equivalence_trace_mismatch_class(),
                     record.id,
                     {"trace": record.trace, "predecessor_trace": predecessor.trace},
                 )
@@ -857,6 +961,7 @@ def _check_equivalence_predecessor(ctx: LintContext) -> list[Finding]:
 
 
 # $kw: --from Typed.Agent.State --note [DC] the rephrase claim is agent-generated, so it sits beside a cheap inlined assertion that makes talking harder than being right ^c20260819-19u
+# $kw: Index.Linter/Equivalence.SupportChanged --from POI.Linter
 def _check_equivalence_support_invariant(ctx: LintContext) -> list[Finding]:
     """If the new wording needed new evidence, it is not the same claim.
 
@@ -886,6 +991,7 @@ def _check_equivalence_support_invariant(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Equivalence.NotARename --from POI.Linter
 def _check_rename_verifiable(ctx: LintContext) -> list[Finding]:
     """`rename` is the typed form of the equivalence claim, so it must survive its own test.
 
@@ -915,6 +1021,7 @@ def _check_rename_verifiable(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Review.ViaRephrase --from POI.Linter
 def _check_rephrase_in_review_chain(ctx: LintContext) -> list[Finding]:
     """A `rephrase` is `Untyped.Agent.State` on the path that grants reviewed standing.
 
@@ -949,6 +1056,7 @@ def _check_rephrase_in_review_chain(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Review.EvidenceLost --from POI.Linter
 def _check_review_evidence_retained(ctx: LintContext) -> list[Finding]:
     """The reviewed member is the review's only verifiable evidence; lose it and the claim
     survives while its proof does not."""
@@ -995,7 +1103,7 @@ def _gate_findings(ctx: LintContext, *, require_touch: bool) -> list[Finding]:
             if check.verdict is GateVerdict.CONTRADICTED:
                 findings.append(
                     Finding(
-                        "Index.Linter/Gate.Contradicted",
+                        _gate_contradicted_class(),
                         record.id,
                         {"gate": kind, "reason": check.detail, "token": gate.token},
                     )
@@ -1003,7 +1111,7 @@ def _gate_findings(ctx: LintContext, *, require_touch: bool) -> list[Finding]:
             elif check.verdict is GateVerdict.UNVERIFIABLE:
                 findings.append(
                     Finding(
-                        "Index.Linter/Gate.Unverifiable",
+                        _gate_unverifiable_class(),
                         record.id,
                         {"gate": kind, "session": gate.session_id},
                         status=Status.BLOCKED,
@@ -1013,6 +1121,7 @@ def _gate_findings(ctx: LintContext, *, require_touch: bool) -> list[Finding]:
 
 
 # $kw: --from Index.Head.Surface --note [DF] the approval turn is the gate, and approval there also means moving the line to the HEAD ^c20260819-16u
+# $kw: Index.Linter/Landing.Unevidenced --from POI.Linter
 def _check_landing_evidenced(ctx: LintContext) -> list[Finding]:
     """Presence says what is; the gate says what licensed it.
 
@@ -1037,6 +1146,7 @@ def _check_landing_evidenced(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Landing.Unhonored --from POI.Linter
 def _check_landing_honored(ctx: LintContext) -> list[Finding]:
     """The gate outlives the surface edit, which is what makes a silent demotion visible.
 
@@ -1059,6 +1169,7 @@ def _check_landing_honored(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: Index.Linter/Materialization.Standing --from POI.Linter
 def _check_materialization_standing(ctx: LintContext) -> list[Finding]:
     """The older wording should have left when its successor arrived."""
 
@@ -1166,6 +1277,7 @@ def _records_in(payload: object) -> list[LineRecord]:
 
 
 # $kw: --from Index.Removal --note [CT] deleted lines are tracked on git and not by the index, so what is conserved is coverage rather than a removals ledger ^c20260819-23u
+# $kw: Index.Linter/Coverage.Shrank --from POI.Linter
 def _check_coverage_converges(ctx: LintContext) -> list[Finding]:
     """The bytes of the index are free to move; its coverage of the Touched.Data is not.
 
@@ -1221,7 +1333,7 @@ def _check_gate_verifies_dev(ctx: LintContext) -> list[Finding]:
     return _gate_findings(ctx, require_touch=False)
 
 
-CATALOG: tuple[Check, ...] = (
+CHECK_REGISTRY: tuple[Check, ...] = (
     Check(
         "surfaces-readable", Tier.STRUCTURAL, _check_surfaces_readable,
         resolutions=(
@@ -1549,16 +1661,16 @@ def select_checks(
     displaces the one it `replaces`, so a constraint is reported once.
     """
 
-    names = {c.name for c in CATALOG}
+    names = {c.name for c in CHECK_REGISTRY}
     for requested in (check or []) + (skip or []):
         if requested not in names:
             raise LintError(f"unknown check: {requested!r}")
 
     displaced = {
-        entry.replaces for entry in CATALOG if dev and entry.dev and entry.replaces
+        entry.replaces for entry in CHECK_REGISTRY if dev and entry.dev and entry.replaces
     }
     selected = []
-    for entry in CATALOG:
+    for entry in CHECK_REGISTRY:
         if entry.dev and not dev:
             continue
         if targeted and not entry.record_scoped and entry.tier is not Tier.STRUCTURAL:
@@ -1642,7 +1754,7 @@ def lint(
                 errors.append(finding)
                 errors.append(
                     Finding(
-                        "Index.Linter/Blessing.Unevidenced",
+                        _blessing_unevidenced_class(),
                         finding.identity,
                         {"check": entry.name, "gate": "contradicted"},
                         source=entry.source,
@@ -1671,7 +1783,7 @@ def lint(
 
 __all__ = [
     "BAR_CHECKS",
-    "CATALOG",
+    "CHECK_REGISTRY",
     "Check",
     "CheckResult",
     "Finding",

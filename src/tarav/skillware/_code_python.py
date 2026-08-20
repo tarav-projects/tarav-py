@@ -13,6 +13,7 @@ from .model import parse_skw_model
 class PythonCodeBackend:
     name = "python"
     suffixes = (".py", ".pyi")
+    point_kinds = ("file", "class", "function")
 
     def model(self, text: str) -> CodeSurfaceModel:
         native = normalize_python(text)

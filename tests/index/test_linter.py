@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from tarav.index.gates import GateRef
-from tarav.index.linter import CATALOG, LintError, bless, lint, select_checks
+from tarav.index.linter import CHECK_REGISTRY, LintError, bless, lint, select_checks
 from tarav.index.record import IndexStore, LineRecord, SupportRef
 
 SURFACE = "skills/tarav-pkg/homes/ceo/chapters/100-design.md"
@@ -52,7 +52,7 @@ def _landed(project_root, geo, body="fine", label="^c20260818-1u"):
 
 class TestCatalog:
     def test_check_names_are_unique(self):
-        names = [c.name for c in CATALOG]
+        names = [c.name for c in CHECK_REGISTRY]
         assert len(names) == len(set(names))
 
     def test_selectors_narrow_the_run(self):
@@ -328,6 +328,16 @@ class TestSurfaceAndRecord:
         )
         assert "Index.Linter/Anchor.Collision" in _classes(lint(geo))
 
+    def test_anchor_collision_includes_line_type_in_projection(
+        self, geo, project_root
+    ):
+        _surface(
+            project_root,
+            "- [CT] same body ^c20260818-1u",
+            "- [DF] same body ^c20260818-1u",
+        )
+        assert "Index.Linter/Anchor.Collision" in _classes(lint(geo))
+
     def test_entry_materialized_nowhere_is_reported(self, geo, project_root):
         _surface(project_root, "- [CT] unrelated ^c20260818-1u")
         IndexStore(geo).put(_entry(body="orphan").relabel("^c20260818-7u"))
@@ -524,12 +534,12 @@ class TestBlessingEvidence:
 
 class TestResolutions:
     def test_every_check_documents_its_resolutions(self):
-        undocumented = [c.name for c in CATALOG if not c.resolutions]
+        undocumented = [c.name for c in CHECK_REGISTRY if not c.resolutions]
         assert undocumented == [], f"checks without resolutions: {undocumented}"
 
     def test_no_resolution_is_presented_as_the_fix(self):
         """A POI prescribes no remedy, so single-resolution checks are the exception."""
-        for check in CATALOG:
+        for check in CHECK_REGISTRY:
             if check.name in {"record-scoped", "scope-kind", "review-evidence"}:
                 continue
             assert len(check.resolutions) >= 2, check.name
@@ -615,19 +625,19 @@ class TestSignalNotSemantics:
 
 class TestCodeIsTheDocumentation:
     def test_no_check_carries_a_prose_title(self):
-        assert not any(hasattr(c, "title") for c in CATALOG)
+        assert not any(hasattr(c, "title") for c in CHECK_REGISTRY)
 
     def test_every_check_points_at_its_implementation(self):
-        for check in CATALOG:
+        for check in CHECK_REGISTRY:
             assert check.source.startswith("linter.py:"), check.name
 
     def test_every_check_says_why_it_exists(self):
-        undocumented = [c.name for c in CATALOG if not c.why]
+        undocumented = [c.name for c in CHECK_REGISTRY if not c.why]
         assert undocumented == [], f"checks with no rationale: {undocumented}"
 
     def test_the_docstring_is_not_a_restatement_of_the_name(self):
         """The docstring says why; the body says what. They must not be the same sentence."""
-        for check in CATALOG:
+        for check in CHECK_REGISTRY:
             words = set(check.name.replace("-", " ").split())
             first = set(check.why.split("\n")[0].lower().split())
             assert not words <= first, f"{check.name} docstring restates its own name"
@@ -765,14 +775,14 @@ def test_no_corpus_scoped_check_reports_a_finding_about_one_record() -> None:
     import inspect
     import re
 
-    from tarav.index.linter import CATALOG
+    from tarav.index.linter import CHECK_REGISTRY
 
     #: Subject expressions that name something other than a record. A trace, a surface, a
     #: label and a session are all legitimately corpus-scoped subjects.
     NOT_A_RECORD = ("trace.id", "str(ctx.store.directory)")
 
     gaps: list[str] = []
-    for check in CATALOG:
+    for check in CHECK_REGISTRY:
         if check.record_scoped:
             continue
         source = inspect.getsource(check.run)
@@ -797,8 +807,82 @@ def test_check_scope_follows_through_a_module_local_helper() -> None:
     `Gate.Contradicted` finding from targeted runs.
     """
 
-    from tarav.index.linter import CATALOG
+    from tarav.index.linter import CHECK_REGISTRY
 
-    by_name = {check.name: check for check in CATALOG}
+    by_name = {check.name: check for check in CHECK_REGISTRY}
     assert by_name["gate-verifies"].record_scoped
     assert by_name["gate-verifies-dev"].record_scoped
+
+
+def test_a_legacy_support_coordinate_is_unverifiable_rather_than_mismatched(
+    geo, chat, tmp_path
+) -> None:
+    """An address this archive cannot look up has not been checked, let alone contradicted.
+
+    5,755 of the corpus's support refs carry Chatlas1 turn ids — `turn-r1326`, or a provider
+    uuid — which Chatlas2 addresses by digest and cannot resolve at all. Reporting those as
+    `Support.Mismatch` claimed the evidence had *changed*, which is a stronger and different
+    statement than "not read", and it put 38% of the corpus's findings under a label that
+    invited repair of data that is fine.
+
+    `BLOCKED`, not `FAILED`, for the same reason `Support.Unreachable` is: the checker could
+    not run, and a check that could not run is not a check that passed or failed.
+    """
+
+    from tarav.index.linter import Status, lint
+    from tarav.index.record.model import LineRecord, SupportRef
+    from tarav.index.record.store import IndexStore
+    from tarav.index.scope import parse_scope
+
+    chat("s-1", [("m-1", "user", "the turn that grounds it")])
+    store = IndexStore(geo)
+    record = store.put(
+        LineRecord.create(
+            parse_scope("d/design#Concept"),
+            "DF",
+            "a line grounded on a legacy coordinate",
+            support=[
+                SupportRef(archive="chat-turn", session_id="s-1", message_id="turn-r1326")
+            ],
+        )
+    )
+
+    report = lint(geo, subjects=[record.id])
+    classes = {f.poi_class for f in (*report.findings, *report.blocked)}
+    assert "Index.Linter/Support.LegacyCoordinate" in classes
+    assert "Index.Linter/Support.Mismatch" not in classes
+
+    legacy = next(
+        f for f in report.blocked if f.poi_class == "Index.Linter/Support.LegacyCoordinate"
+    )
+    assert legacy.status is Status.BLOCKED
+    assert legacy.operands["coordinate"] == "turn-r1326"
+
+
+def test_a_message_coordinate_that_is_absent_is_still_a_mismatch(geo, chat) -> None:
+    """The new state must not swallow the old one.
+
+    A `chat` ref naming a message the session does not have is a real disagreement between
+    the record and the archive, and stays reported as one.
+    """
+
+    from tarav.index.linter import lint
+    from tarav.index.record.model import LineRecord, SupportRef
+    from tarav.index.record.store import IndexStore
+    from tarav.index.scope import parse_scope
+
+    chat("s-1", [("m-1", "user", "the turn that grounds it")])
+    store = IndexStore(geo)
+    record = store.put(
+        LineRecord.create(
+            parse_scope("d/design#Concept"),
+            "DF",
+            "a line citing a message that is not there",
+            support=[SupportRef(archive="chat", session_id="s-1", message_id="m-absent")],
+        )
+    )
+
+    report = lint(geo, subjects=[record.id])
+    classes = {f.poi_class for f in (*report.findings, *report.blocked)}
+    assert "Index.Linter/Support.Mismatch" in classes
+    assert "Index.Linter/Support.LegacyCoordinate" not in classes

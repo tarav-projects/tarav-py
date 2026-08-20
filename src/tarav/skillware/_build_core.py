@@ -122,6 +122,7 @@ class CodeSurfaceConfig:
     language: str
     include: tuple[str, ...]
     exclude: tuple[str, ...] = ()
+    allow_points: tuple[str, ...] = ("file",)
 
 
 @dataclass(frozen=True)
@@ -254,7 +255,12 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
                 raise SkillwareError(
                     f"skw.json `{label}` must be an object: {config_path}"
                 )
-            unknown = set(item) - {"language", "include", "exclude"}
+            unknown = set(item) - {
+                "language",
+                "include",
+                "exclude",
+                "allow_points",
+            }
             if unknown:
                 raise SkillwareError(
                     f"unknown skw.json `{label}` key(s) "
@@ -294,11 +300,29 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
                         )
                 return tuple(patterns)
 
+            raw_points = item.get("allow_points", ["file"])
+            if (
+                not isinstance(raw_points, list)
+                or not raw_points
+                or not all(
+                    isinstance(point, str)
+                    and re.fullmatch(r"[a-z][a-z0-9-]*", point)
+                    for point in raw_points
+                )
+                or len(raw_points) != len(set(raw_points))
+                or "file" not in raw_points
+            ):
+                raise SkillwareError(
+                    f"skw.json `{label}.allow_points` must be a unique non-empty "
+                    f"list of canonical names containing `file`: {config_path}"
+                )
+
             result.append(
                 CodeSurfaceConfig(
                     language=language,
                     include=_patterns("include", required=True),
                     exclude=_patterns("exclude", required=False),
+                    allow_points=tuple(raw_points),
                 )
             )
         return tuple(result)

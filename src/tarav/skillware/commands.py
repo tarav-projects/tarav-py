@@ -9,7 +9,7 @@ from pathlib import Path
 from tarav._core.errors import CliError
 from tarav._core.json_input import load_json_object_arg
 from tarav.bloberia.core import BloberiaDepot
-from tarav.wayfinder.index_blocks import create_index_wayfinder
+from tarav.skillware.managed_blocks import create_tarav_wayfinder
 from tarav.poi import (
     POILinterReport,
     add_check_selection_args,
@@ -41,105 +41,14 @@ from tarav.skillware.edition_history import (
     default_edition_history_depot,
 )
 from tarav.skillware.poi import (
+    CHECK_REGISTRY,
     edition_history_findings_to_pois,
     parser_diagnostics,
 )
 
 
 
-POI_LEGEND = {
-    "parse-error": (
-        "the surface is below its Parse.Floor — malformed machinery, an unclosed construct, or host scanner failure",
-        "fix the surface; parse errors gate the file's other checks and are never blessable",
-    ),
-    "unresolvable": (
-        "a --from target does not resolve at its address",
-        "fix the address or restore the target; never blessable",
-    ),
-    "never-built": ("src exists but no lock entry", "run: tarav skw build"),
-    "stale-build": (
-        "the on-disk target matches the lock but a recompile differs",
-        "run: tarav skw build",
-    ),
-    "hand-edited": (
-        "the compiled target was edited by hand",
-        "judgment call: move the content into src, or rebuild over it — "
-        "build refuses this target until one of the two happens "
-        "(tarav skw build --discard-hand-edits <target>)",
-    ),
-    "copy-drift": (
-        "a copy body no longer equals its target's expansion",
-        "mechanical: tarav skw build repairs it",
-    ),
-    "derived-stale": (
-        "a dependency changed since the derived body was written",
-        "re-derive the body in src, or accept explicitly: tarav skw bless --poi <hash>",
-    ),
-    "undeclared-dependency": (
-        "compiled text mentions a resolving Dotted.Name without declaring the dependency",
-        "declare it with $kw: --from <name>, or baseline current findings: tarav skw bless --kind undeclared-dependency --all",
-    ),
-    "unhonored-dependency": (
-        "a declared dependency is not mentioned in the compiled text",
-        "mention the dependency, remove the declaration, or bless the current finding",
-    ),
-    "dangling-dependency": (
-        "a declared --from no longer resolves in the configured depots",
-        "restore or repoint the target, or bless: tarav skw bless --kind dangling-dependency --all",
-    ),
-    "uncited-dependency": (
-        "a --cite target is not explicit in the compiled surface",
-        "cite the target visibly, change the dependency role, or bless the current finding",
-    ),
-    "context-assembly-bypass": (
-        "a surface depends on an assembly-covered source without loading its context assembly",
-        "add --dev-from <assembly-file>, or bless the intentional bypass",
-    ),
-    "malformed-note": (
-        "a --note/--supp is missing its [TYPE] act code or its ^anchor",
-        "add the missing [TYPE] and/or trailing ^anchor to the note in src",
-    ),
-    "address-mismatch": (
-        "a fenced element's name does not match the block's declared #address",
-        "rename the element or the address so they agree",
-    ),
-    "legacy-callout": (
-        "a v2 [!skw] callout survives outside a fence — inert prose to the parser",
-        "rewrite it in the $kw grammar",
-    ),
-    "non-skw-annotation": (
-        "a comment on a configured code surface is not a Skw.Annotation — an annotation leaking outside the language",
-        "wrap it as a skw annotation (# $kw: --note/--from …), delete it, or accept the exact occurrence: tarav skw bless --poi <hash>",
-    ),
-    "illegal-attachment": (
-        "a skw block attaches at a point outside the surface's allow-set (skw-code: only the line-1 file point is open)",
-        "move the block to the sanctioned line-1 file point",
-    ),
-    "missing-header": (
-        "a configured code file has no line-1 annotation — the required file point is empty",
-        "add the line-1 # $kw: header",
-    ),
-    "missing-edition-history": (
-        "a configured file has no valid edition/session association",
-        "inspect Git and Chatlas, then record a supported association",
-    ),
-    "invalid-edition-history-record": (
-        "an edition-history record violates the service schema",
-        "repair or replace the invalid Bloberia record",
-    ),
-    "duplicate-edition-session": (
-        "one file edition/session association is recorded more than once",
-        "remove the duplicate Bloberia record",
-    ),
-    "unresolvable-edition-support": (
-        "an edition/session support set cannot be resolved through Chatlas",
-        "repair the exact session/event support members",
-    ),
-    "unsupported-git-edition": (
-        "a Git edition has no resolvable edition/session association",
-        "recover candidate chats and record supported associations",
-    ),
-}
+SKW_CHECK_KINDS = tuple(CHECK_REGISTRY)
 
 
 def _load(args: argparse.Namespace):
@@ -313,7 +222,9 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
     linter_report = POILinterReport(
         poi_report=build_poi_report(
             all_pois,
-            wayfinder=create_index_wayfinder(),
+            wayfinder=create_tarav_wayfinder(
+                project_root=find_project_root(Path(__file__))
+            ),
         ),
         diagnostics=diagnostics,
         summary={
@@ -378,11 +289,11 @@ def _skw_check_kinds() -> tuple[_SkwCheckKind, ...]:
     return tuple(
         _SkwCheckKind(
             code=kind,
-            title=meaning,
+            title=kind,
             default_on=kind not in _SKW_DEFAULT_OFF_KINDS,
             structural=kind in _SKW_STRUCTURAL_KINDS,
         )
-        for kind, (meaning, _response) in POI_LEGEND.items()
+        for kind in SKW_CHECK_KINDS
     )
 
 
@@ -442,7 +353,9 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
     linter_report = POILinterReport(
         poi_report=build_poi_report(
             pois,
-            wayfinder=create_index_wayfinder(),
+            wayfinder=create_tarav_wayfinder(
+                project_root=find_project_root(Path(__file__))
+            ),
         ),
         diagnostics=diagnostics,
         summary={
@@ -782,7 +695,9 @@ def _cmd_edition_history_check(args: argparse.Namespace) -> int:
     linter_report = POILinterReport(
         poi_report=build_poi_report(
             pois,
-            wayfinder=create_index_wayfinder(),
+            wayfinder=create_tarav_wayfinder(
+                project_root=find_project_root(Path(__file__))
+            ),
         ),
         summary={
             "target_count": len(targets),

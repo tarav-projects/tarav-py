@@ -9,6 +9,7 @@ import re
 from typing import Callable
 
 from tarav._core.errors import CliError
+from tarav.index_model.label import is_citation
 from tarav.anchory import AnchoryDepot
 from tarav.chatlas.paths import default_chatlas_root
 from tarav.index_model import (
@@ -41,7 +42,6 @@ CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA = "tarav.chatlas2.line-anchor-dossier.v2"
 CHATLAS2_ANCHOR_BATCH_SCHEMA = "tarav.chatlas2.anchor-batch.v2"
 _FULL_SHA256 = re.compile(r"[0-9a-f]{64}")
 _CONTENT_HASH = re.compile(r"sha256:[0-9a-f]{64}")
-_ANCHOR_KEY = re.compile(r"[a-z][0-9]{8}-[0-9]+[a-z]")
 _ISSUE_ID = re.compile(r"Issue\.I[0-9]{4}")
 ModelLoader = Callable[[str], JsonObject]
 
@@ -215,7 +215,7 @@ def _parse_provenance(value: object) -> JsonObject:
     predecessors = value["predecessor_anchors"]
     issues = value["issue_context"]
     if not isinstance(predecessors, list) or not all(
-        isinstance(item, str) and _ANCHOR_KEY.fullmatch(item) for item in predecessors
+        isinstance(item, str) and is_citation(item) for item in predecessors
     ):
         raise CliError("Chatlas2 predecessor_anchors contains an invalid anchor")
     if len(predecessors) != len(set(predecessors)):

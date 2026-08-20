@@ -25,7 +25,7 @@ from .chatlas import load_session
 from .config import Geography, TaravIndexError, resolve_geography
 from .gates import GateRef
 from .importer import import_depot
-from .linter import BAR_CHECKS, CATALOG, bless, lint
+from .linter import BAR_CHECKS, CHECK_REGISTRY, bless, lint
 from .record.model import EquivalenceKind, LineRecord, SupportRef
 from .record.store import IndexStore
 from .scope import parse_scope, resolve_scope_surface
@@ -556,7 +556,7 @@ def _lint_subjects(geo: Geography, args: argparse.Namespace) -> set[str] | None:
 def cmd_index_linter(args: argparse.Namespace) -> int:
     geo = _geo(args)
     if args.list_checks:
-        for entry in CATALOG:
+        for entry in CHECK_REGISTRY:
             state = "dev" if entry.dev else ("on " if entry.default_on else "off")
             print(f"{entry.name:26} [{state}] {entry.tier:11} {entry.source}")
         return 0
@@ -567,7 +567,7 @@ def cmd_index_linter(args: argparse.Namespace) -> int:
     if report.is_dev and not args.json:
         print("DEV LANE — not a verdict about the project, a verdict about the machinery")
         for name in report.dev:
-            entry = next(c for c in CATALOG if c.name == name)
+            entry = next(c for c in CHECK_REGISTRY if c.name == name)
             print(f"  {name} stands in for {entry.replaces}  {entry.source}")
         print()
     if args.json:
@@ -662,7 +662,7 @@ def cmd_poi_explain(args: argparse.Namespace) -> int:
     needle = args.poi_class.lower()
     matches = [
         c
-        for c in CATALOG
+        for c in CHECK_REGISTRY
         if needle in c.name.lower() or needle in f"index.linter/{c.name}".lower()
     ]
     if not matches:

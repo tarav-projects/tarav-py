@@ -6,33 +6,54 @@ from tarav.poi import (
     POILinterReport,
     POILocation,
     build_poi_report,
+    tarav_poi_class_reference,
 )
-from tarav.wayfinder.model import poi_class_reference
 from tarav.wayfinder.resolver import Wayfinder
 from tarav.wayfinder.registry import WayfinderRegistryCheck, WayfinderRegistryFinding
 
 
 
-WAYFINDER_REGISTRY_POI_CLASSES = {
-    "invalid-registry": "Wayfinder.Registry.Linter/Registry.Invalid",
-    "stale-location": "Wayfinder.Registry.Linter/Location.Stale",
-}
-WAYFINDER_REGISTRY_POI_CODES = tuple(WAYFINDER_REGISTRY_POI_CLASSES)
-
-
-def registry_finding_to_poi(finding: WayfinderRegistryFinding) -> POIInstance:
+def _registry_poi(
+    finding: WayfinderRegistryFinding,
+    class_name: str,
+) -> POIInstance:
     evidence = {}
     if finding.root is not None:
         evidence["root"] = finding.root
     return POIInstance.create(
-        class_reference=poi_class_reference(
-            "tarav-pkg", WAYFINDER_REGISTRY_POI_CLASSES[finding.code]
-        ),
+        class_reference=tarav_poi_class_reference(class_name),
         target=POILocation(path=finding.path or "Wayfinder.Registry"),
         severity="error",
         situation=finding.message,
         evidence=evidence,
     )
+
+
+# $kw: Wayfinder.Registry.Linter/Registry.Invalid
+# --note [DF] the Wayfinder registry cannot be read under its existing schema
+# --note [CT] the instance preserves the registry path and existing parser message
+# --note [RJ] class-level repair guidance is not yet established
+def _invalid_registry(finding: WayfinderRegistryFinding) -> POIInstance:
+    return _registry_poi(finding, "Wayfinder.Registry.Linter/Registry.Invalid")
+
+
+# $kw: Wayfinder.Registry.Linter/Location.Stale
+# --note [DF] a remembered Wayfinder root location no longer verifies as its registered resource
+# --note [CT] the instance preserves the root identity, remembered path, and existing verification message
+# --note [RJ] the registry location is operational evidence rather than resource identity or authority
+def _stale_location(finding: WayfinderRegistryFinding) -> POIInstance:
+    return _registry_poi(finding, "Wayfinder.Registry.Linter/Location.Stale")
+
+
+CHECK_REGISTRY = {
+    "invalid-registry": _invalid_registry,
+    "stale-location": _stale_location,
+}
+WAYFINDER_REGISTRY_POI_CODES = tuple(CHECK_REGISTRY)
+
+
+def registry_finding_to_poi(finding: WayfinderRegistryFinding) -> POIInstance:
+    return CHECK_REGISTRY[finding.code](finding)
 
 
 def build_wayfinder_registry_linter_report(
@@ -60,7 +81,7 @@ def build_wayfinder_registry_linter_report(
 
 __all__ = [
     "WAYFINDER_REGISTRY_POI_CODES",
-    "WAYFINDER_REGISTRY_POI_CLASSES",
+    "CHECK_REGISTRY",
     "build_wayfinder_registry_linter_report",
     "registry_finding_to_poi",
 ]

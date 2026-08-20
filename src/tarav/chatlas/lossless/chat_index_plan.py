@@ -8,15 +8,11 @@ import re
 
 from tarav._core.errors import CliError
 from tarav.index_model import index_line_statement_parts
+from tarav.index_model.label import is_citation
 
 
 CAPTURE_PLAN_SCHEMA = "tarav.chatlas2.real-time-capture-plan.v1"
 PLAN_FILENAME = "plan.json"
-#: Anchors carry the `c` prefix of the one index-line namespace.
-_ANCHOR = re.compile(r"c[0-9]{8}-[0-9]+[a-z]")
-#: Any anchor sigil, whatever its prefix — this guards "the content must not already
-#: carry one", which is true of a foreign prefix as much as the current one.
-_ANY_ANCHOR_TOKEN = re.compile(r"\^[a-z][0-9]{8}-[0-9]+[a-z]?$")
 _IDENTITY = re.compile(r"[0-9a-f]{64}")
 
 
@@ -105,11 +101,11 @@ def parse_capture_plan(value: object) -> CapturePlan:
             raise CliError(
                 f"lossless Capture.Plan landed line {client_id!r} is not an Index.Line"
             ) from exc
-        if any(_ANY_ANCHOR_TOKEN.match(token) for token in line_content.split()):
+        if any(is_citation(token) for token in line_content.split()):
             raise CliError(
                 f"lossless Capture.Plan landed line {client_id!r} content carries an anchor"
             )
-        if not isinstance(anchor, str) or _ANCHOR.fullmatch(anchor) is None:
+        if not isinstance(anchor, str) or not is_citation(anchor):
             raise CliError(
                 f"lossless Capture.Plan landed line {client_id!r} has an invalid anchor"
             )

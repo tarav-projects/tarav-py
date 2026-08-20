@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
+from tarav.index_model.label import split_trailing_address
 from tarav.wayfinder import (
     Wayfinder,
     WayfinderReference,
@@ -16,7 +17,6 @@ from .model import POIInstance, reference_sugar
 
 
 _LINE_TYPE_RE = re.compile(r"^\[[A-Z]{2}\]\s+")
-_TRAILING_ANCHOR_RE = re.compile(r"\s+\^[A-Za-z0-9][A-Za-z0-9-]*$")
 
 
 @dataclass(frozen=True)
@@ -125,7 +125,7 @@ def _description_from(resolution: WayfinderResolutionResult) -> str | None:
         if line.startswith("- "):
             line = line[2:].strip()
         line = _LINE_TYPE_RE.sub("", line)
-        line = _TRAILING_ANCHOR_RE.sub("", line)
+        line, _address = split_trailing_address(line)
         return line.strip() or None
     return None
 

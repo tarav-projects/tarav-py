@@ -10,6 +10,7 @@ import re
 import sqlite3
 from typing import Any, Iterable, Literal, Mapping, Protocol
 
+from tarav.index_model.label import strip_trailing_addresses
 from tarav.chatlas._payload_helpers import (
     compact_text,
     parse_event_timestamp,
@@ -703,12 +704,11 @@ def _events_for_turn(
     ]
 
 
-_TRAILING_ANCHORS = re.compile(r"(?:\s+\^[A-Za-z0-9][^\s]*)+\s*$")
 _INDEX_LINE_PREFIX = re.compile(r"^\s*(?:[-*+]\s+)?(?:\[[A-Za-z]{2}\]\s*)?")
 
 
 def _verbatim_query_material(value: str) -> str:
-    without_anchors = _TRAILING_ANCHORS.sub("", value)
+    without_anchors = strip_trailing_addresses(value)
     return _INDEX_LINE_PREFIX.sub("", without_anchors)
 
 

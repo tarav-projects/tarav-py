@@ -19,7 +19,7 @@ directory without `.tarav`. Keep as is; discussed later.
 capture path a replacement, which is the precondition for retiring them — but the retirement
 itself rides with the v1 chatlas model in its own `Impl.Req`. Nothing is deleted here.
 
-**Status.** Slices 1–3 not started.
+**Status.** Slice 1 **done**. Slice 2 **partly done, premise corrected**. Slice 3 not started.
 
 **Source context.** Follows 737, which closed the provider boundary and made the Index CLI a
 selector surface. Continues the 641 migration.
@@ -79,7 +79,7 @@ today — a new edge into a much heavier package, for a regex.
 
 ## Execution.Plan
 
-### Slice 1 — one citation parser
+### Slice 1 — one citation parser — **done**
 
 **Do.** Create `src/tarav/index_model/label.py` owning both grammars and the classifier that
 tells them apart. Replace all six regexes with calls into it.
@@ -113,7 +113,7 @@ grammar were applied there alone, 93 locator-name anchors would stop parsing and
 become part of the note text. That is why the classifier accepts both kinds rather than the
 consolidation narrowing to citations.
 
-### Slice 2 — support references that know what they address
+### Slice 2 — support references that know what they address — **premise was wrong**
 
 **Do.**
 
@@ -177,6 +177,88 @@ assert a clean status after a preview rather than trusting the implementation.
 **Deviation trigger.** If equivalence detection over 3,993 records is too slow for an
 interactive capture loop, narrow with a bloberia query on the support coordinates before
 comparing bodies — do not weaken the comparison.
+
+### Slice 1 result
+
+**Nine copies, not six.** The architecture rule went RED naming three the design pass had
+missed, and widening its detector from `\d{8}` to `[0-9]{8}` as well found three more:
+
+```
+anchory/core.py:24                     chatlas/anchory.py:62
+chatlas/event_query.py:706             chatlas/lossless/anchory.py:44
+chatlas/lossless/chat_index.py:38      chatlas/lossless/chat_index_plan.py:16, :19
+index/record/store.py:44               index_model/parser.py:55
+poi/renderer.py:19                     skillware/model.py:99
+```
+
+All now route through `index_model/label.py`. `anchory/core.py:24` stays: it splits a trailing
+tag off *any* `*-N` key for sharding and never parses the citation grammar — a different job
+that happens to look similar.
+
+**What the consolidation had to preserve.** `ANCHOR_RE` requires the caret and
+`_ANCHOR_KEY_RE` forbids it, and both are right for their callers: scanning running text must
+not strip a bare `20260820-1`, while a stored Anchory key never carries one. So `label` exposes
+`CITATION_BODY` as a pattern string and composes both spellings from it — one grammar, two
+compositions, rather than one regex forced to serve both.
+
+`is_label` also kept its stricter contract. A label is a *complete* citation, sigil and tag
+present, because the store never mints a partial one; parsing still accepts partials, because
+the corpus holds them. That distinction now has a name — `Citation.is_complete` — instead of
+living in the difference between two regexes nobody compared.
+
+**Verified.** 2,127 tests pass. Classifying the whole corpus through the new module yields
+2,783 citations and 93 locator names with **nothing unclassified**, and `split_trailing_address`
+agrees with an independent scan on every one of the 2,876 lines. (2,783 rather than the design
+pass's 2,776: parallel agents landed seven more lines during the slice.)
+
+### Slice 2 result — the plan was wrong and the measurement said so
+
+**The premise.** "Dispatch on `archive` and the 5,755 turn-addressed refs resolve." They do
+not. Sampling 40 of them against the current archive: **0 resolve**, 39 miss, 1 session
+unreachable.
+
+**Why.** Their coordinates predate Chatlas2 entirely:
+
+| kind | count | example |
+|---|---|---|
+| Chatlas1 ordinal turn ids | 3,641 | `turn-r1326` |
+| provider-native uuids | 2,114 | `c5cd4ad4-476e-4baf-a657-b7c2621a3574` |
+
+Chatlas2 addresses turns by 64-hex digest. Neither shape is one. A further sample of 25 uuid
+refs found **0** appearing anywhere in the current Normal Model — expected, since Chatlas2
+excludes provider-native payloads by default. They survive only in the raw archive.
+
+So the 5,676 `Support.Mismatch` findings were honest that the refs do not resolve, and wrong
+about why: they asserted the evidence had **changed** when it has never been **read**.
+
+**What landed instead.** `Index.Linter/Support.LegacyCoordinate`, `BLOCKED` rather than
+`FAILED`, for the same reason `Support.Unreachable` is blocked — a check that could not run is
+not a check that failed. Measured on the live corpus:
+
+| | before | after |
+|---|---|---|
+| findings (failed) | 14,964 | **9,288** |
+| blocked | 79 | **5,755** |
+| `Support.Mismatch` | 5,676 | 0 |
+| `Support.LegacyCoordinate` | 0 | 5,755 |
+
+5,676 + 79 = 5,755 exactly: every previously-unreachable ref was a turn ref too. The `chat`
+path is untouched, and a test asserts a `chat` ref naming an absent message is still a
+`Support.Mismatch` — the new state must not swallow the old one.
+
+**Not done, and now correctly scoped.** The hash backfill (3,928 refs recoverable from
+`~/Documents/chatlas/anchory`) is still valid and independent. Mapping the 5,755 legacy
+coordinates onto Chatlas2 addresses is a raw-archive recovery job of the same kind as 642–645,
+not a linter change — it needs its own measurement pass before anyone writes to 59% of the
+corpus's support references.
+
+**Owed to the index, not written.** `Index.Linter/Support.LegacyCoordinate` needs a block in
+`tarav-pkg/poi/101-poi.md`. The index is frozen and that surface is gated, so this is a
+`Capture.Offer`, not a landing.
+
+### Slice 3 — not started
+
+Unchanged from the plan above. It depends on nothing slice 2 did or did not do.
 
 ## Impl.Log
 

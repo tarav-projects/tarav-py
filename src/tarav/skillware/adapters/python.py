@@ -7,7 +7,12 @@ import re
 
 from tarav.surfaces.python import PythonNormalModel
 
-from ..surface_model import SkwSurfaceAnnotation, SkwSurfaceLine, SkwSurfaceModel
+from ..surface_model import (
+    SkwHostPoint,
+    SkwSurfaceAnnotation,
+    SkwSurfaceLine,
+    SkwSurfaceModel,
+)
 
 
 _OPEN_RE = re.compile(r"^#\s*\$kw:\s?(.*)$")
@@ -27,10 +32,13 @@ def adapt_python_skw(
 ) -> SkwSurfaceModel:
     """Recognize Skillware only in tokenizer-confirmed full-line comments."""
 
+    text_lines = model.text.splitlines()
     comments = {
         comment.span.start_line: comment
         for comment in model.comments
-        if comment.span.start_column == 0
+        if not text_lines[comment.span.start_line - 1][
+            : comment.span.start_column
+        ].strip()
         and (machinery_lines is None or comment.span.start_line in machinery_lines)
     }
     lines = []
@@ -48,6 +56,14 @@ def adapt_python_skw(
     return SkwSurfaceModel(
         carrier="python",
         lines=tuple(lines),
+        host_points=tuple(
+            SkwHostPoint(
+                kind="class" if element.kind == "class" else "function",
+                name=element.qualified_name,
+                span=element.span,
+            )
+            for element in model.elements
+        ),
         annotations=tuple(
             SkwSurfaceAnnotation(
                 text=comment.text,

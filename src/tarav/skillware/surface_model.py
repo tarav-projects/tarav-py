@@ -19,6 +19,15 @@ class SkwSurfaceAnnotation:
 
 
 @dataclass(frozen=True)
+class SkwHostPoint:
+    """One host-native element Skillware may sanction for attachment."""
+
+    kind: str
+    name: str
+    span: SourceSpan
+
+
+@dataclass(frozen=True)
 class SkwSurfaceLine:
     """One source line with host syntax reduced to Skillware carrier facts."""
 
@@ -37,8 +46,14 @@ class SkwSurfaceModel:
     carrier: str
     lines: tuple[SkwSurfaceLine, ...]
     boundary_label: str = "boundary"
+    host_points: tuple[SkwHostPoint, ...] = ()
     annotations: tuple[SkwSurfaceAnnotation, ...] = ()
     diagnostics: tuple[SourceDiagnostic, ...] = ()
 
 
-__all__ = ["SkwSurfaceAnnotation", "SkwSurfaceLine", "SkwSurfaceModel"]
+__all__ = [
+    "SkwHostPoint",
+    "SkwSurfaceAnnotation",
+    "SkwSurfaceLine",
+    "SkwSurfaceModel",
+]

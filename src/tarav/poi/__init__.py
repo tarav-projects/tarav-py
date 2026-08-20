@@ -6,7 +6,14 @@ from .catalog import (
     POIClassRegistration,
     UnknownPOIClass,
 )
-from .model import POIInstance, POILocation, POISeverity, reference_sugar
+from .model import (
+    TARAV_PROJECT_ID,
+    POIInstance,
+    POILocation,
+    POISeverity,
+    reference_sugar,
+    tarav_poi_class_reference,
+)
 from .linter import (
     POIDiagnostic,
     POILinterReport,
@@ -33,6 +40,7 @@ __all__ = [
     "POISeverity",
     "UnknownPOIClass",
     "SelectableCheck",
+    "TARAV_PROJECT_ID",
     "add_check_selection_args",
     "build_poi_report",
     "check_registry",
@@ -40,4 +48,5 @@ __all__ = [
     "reference_sugar",
     "render_check_registry",
     "resolve_enabled_checks",
+    "tarav_poi_class_reference",
 ]

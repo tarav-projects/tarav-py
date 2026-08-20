@@ -20,6 +20,7 @@ GLOBAL_SCHEMA_VERSION = 1
 SCOPE_VALUES = ("project", "global", "auto")
 PROJECT_STORAGE_DIR_NAMES = ("indexes", "tmp", "state")
 GLOBAL_STORAGE_DIR_NAMES = ("indexes", "tmp", "cache")
+TARAV_PROJECT_ID = "e308d11f-d709-4f23-b8c7-f214e28b3f11"
 
 
 def tarav_home_dir() -> Path:

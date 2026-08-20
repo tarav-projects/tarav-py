@@ -5,11 +5,14 @@ from pathlib import Path
 from tarav.anchory import AnchoryDepot
 from tarav.anchory.poi import ANCHORY_POI_CODES, build_anchory_linter_report
 from tarav.bloberia.core import BloberiaDepot
-from tarav.wayfinder.index_blocks import create_index_wayfinder
+from tarav.skillware.managed_blocks import create_tarav_wayfinder
 from tarav.poi.adapters.bloberia import (
     BLOBERIA_POI_CODES,
+    bloberia_finding_to_poi,
     build_bloberia_linter_report,
 )
+from tarav.poi import build_poi_report
+from tarav.bloberia.core import BloberiaCheckFinding
 from tarav.poi.adapters.mdblocks import (
     MDBLOCKS_POI_CODES,
     build_mdblocks_linter_report,
@@ -50,7 +53,7 @@ def test_bloberia_check_adapts_existing_findings_to_common_pois(
     report = build_bloberia_linter_report(
         result,
         depot=depot.root,
-        wayfinder=create_index_wayfinder(),
+        wayfinder=create_tarav_wayfinder(),
     )
     payload = report.as_dict()
 
@@ -94,7 +97,7 @@ def test_mdblocks_report_preserves_counts_without_duplicate_issue_records(
 
     report = build_mdblocks_linter_report(
         payload,
-        wayfinder=create_index_wayfinder(),
+        wayfinder=create_tarav_wayfinder(),
     )
     result = report.as_dict()
 
@@ -105,3 +108,26 @@ def test_mdblocks_report_preserves_counts_without_duplicate_issue_records(
     assert result["summary"]["error_count"] == 1
     assert "issues" not in result
     assert "issues" not in result["domain"]["files"][0]
+
+
+def test_real_finding_resolves_to_its_annotated_check_without_catalog() -> None:
+    finding = BloberiaCheckFinding(
+        code="invalid-json",
+        path="records/bad.json",
+        message="invalid JSON",
+    )
+    instance = bloberia_finding_to_poi(finding)
+    report = build_poi_report(
+        (instance,),
+        wayfinder=create_tarav_wayfinder(
+            project_root=Path(__file__).resolve().parents[1]
+        ),
+    )
+
+    group = report.groups[0]
+    assert group.reference.type == "managed.block"
+    assert group.documentation.target["host"] == {
+        "kind": "function",
+        "name": "_invalid_json",
+    }
+    assert "def _invalid_json" in group.documentation.target["content"]

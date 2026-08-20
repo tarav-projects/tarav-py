@@ -30,7 +30,7 @@ def _payload(capsys: object) -> dict[str, object]:
     return json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
 
 
-def test_poi_explain_resolves_registered_index_class(
+def test_poi_explain_resolves_explicit_registered_index_class(
     tmp_path: Path,
     monkeypatch,
     capsys: object,
@@ -54,7 +54,17 @@ def test_poi_explain_resolves_registered_index_class(
     )
     capsys.readouterr()
 
-    assert main(["poi", "explain", "Index.Linter/Block.TooLong"]) == 0
+    assert (
+        main(
+            [
+                "poi",
+                "explain",
+                "--class",
+                "index://tarav-pkg/Index.Linter/Block.TooLong",
+            ]
+        )
+        == 0
+    )
     text = capsys.readouterr().out
     assert "index://tarav-pkg/Index.Linter/Block.TooLong" in text
     assert "exceeds the hard line limit" in text
@@ -64,6 +74,7 @@ def test_poi_explain_resolves_registered_index_class(
             [
                 "poi",
                 "explain",
+                "--class",
                 "index://tarav-pkg/Index.Linter/Block.TooLong",
                 "--json",
             ]
@@ -105,7 +116,8 @@ def test_poi_explain_resolves_chatlas_owned_class_from_its_package(
             [
                 "poi",
                 "explain",
-                "Index.Linter/Anchor.Chatlas.Tag",
+                "--class",
+                "index://tarav-chatlas-pkg/Index.Linter/Anchor.Chatlas.Tag",
                 "--json",
             ]
         )

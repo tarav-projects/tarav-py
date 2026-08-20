@@ -23,7 +23,6 @@ premise is that the index is human-paced and low-volume.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,6 +33,8 @@ from tarav.bloberia.core import TYPE_SHARDS, BloberiaDepot
 
 from ..config import Geography, TaravIndexError
 from ..scope import LineScope
+from tarav.index_model.label import CITATION_RE, parse_citation
+
 from .model import LineRecord
 
 #: One sigil across the system. `d` separated the new index's labels from the anchory
@@ -41,7 +42,9 @@ from .model import LineRecord
 #: removed that distinction, so a second sigil would name a difference that is gone.
 LABEL_SIGIL = "c"
 USER_TAG = "u"
-LABEL_RE = re.compile(r"^\^?(?P<sigil>[a-z])(?P<date>\d{8})-(?P<seq>\d+)(?P<tag>[a-z])$")
+#: A label is a *complete* citation: sigil and tag both present. Parsing lives in
+#: `index_model.label`; what the store adds is the requirement, not a second grammar.
+LABEL_RE = CITATION_RE
 
 
 class RecordStoreError(TaravIndexError):
@@ -53,7 +56,15 @@ def normalize_label(label: str) -> str:
 
 
 def is_label(token: str) -> bool:
-    return LABEL_RE.match(token) is not None
+    """Whether this token is a well-formed public label.
+
+    Stricter than `is_citation`: an untagged or unprefixed citation still resolves, but the
+    store never mints one, so accepting it here would let a partial key be treated as a
+    label the store could have produced.
+    """
+
+    citation = parse_citation(token)
+    return citation is not None and citation.is_complete
 
 
 class IndexStore:
@@ -195,9 +206,9 @@ class IndexStore:
             ):
                 label = (existing.get("line") or {}).get("label")
                 if isinstance(label, str) and label.startswith(prefix):
-                    match = LABEL_RE.match(label)
-                    if match:
-                        used.append(int(match.group("seq")))
+                    citation = parse_citation(label)
+                    if citation is not None:
+                        used.append(citation.seq)
 
             return self._put(
                 record.relabel(f"{prefix}{max(used, default=-1) + 1}{USER_TAG}")

@@ -14,6 +14,7 @@ from tarav.surfaces.markdown import (
     normalize_markdown,
 )
 
+from .label import CITATION_BODY
 from .nodes import (
     BlankLine,
     BlockHeading,
@@ -52,7 +53,8 @@ ROUTER_ENTRY_RE = re.compile(r"^-\s+`(?P<file>[^`]+\.md)`\s+[—-]\s+(?P<concept
 APPENDIX_ROUTE_ANNOTATION_RE = re.compile(r"\[\+(?P<count>[1-9][0-9]*)\]$")
 TYPE_BRACKET_RE = re.compile(r"^- \[(?P<source>AS:)?(?P<act>[A-Z]{2})\] ")
 TYPE_BRACKET_CANDIDATE_RE = re.compile(r"^- \[[^\]]+\]")
-ANCHOR_RE = re.compile(r"\^(?P<anchor>[a-z]?\d{8}-\d+[a-z]?)\b")
+#: Kept as a name because many modules import it; the grammar itself lives in `label`.
+ANCHOR_RE = re.compile(rf"\^(?P<anchor>{CITATION_BODY})\b")
 BACKTICK_RE = re.compile(r"`([^`]+)`")
 META_HEADING_RE = re.compile(r"^###\s+meta\s*$")
 

@@ -11,7 +11,12 @@
       "include": [
         "src/tarav/**/*.py"
       ],
-      "exclude": []
+      "exclude": [],
+      "allow_points": [
+        "file",
+        "class",
+        "function"
+      ]
     }
   ],
   "edition_history": {

@@ -22,6 +22,7 @@ class CodeSurfaceModel:
 class CodeLanguageBackend(Protocol):
     name: str
     suffixes: tuple[str, ...]
+    point_kinds: tuple[str, ...]
 
     def model(self, text: str) -> CodeSurfaceModel: ...
 
@@ -51,6 +52,7 @@ class CodeBackendRegistry:
 class CodeSurfaceTarget:
     language: str
     path: Path
+    allow_points: tuple[str, ...] = ("file",)
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-# $kw: ^poi-catalog-completeness --from POI.System --from POI.Linter --note [CT] catalog discovery and runtime completeness checks use package-owned poi chapters ^c20260729-49u
+# $kw: ^poi-catalog-completeness --from POI.System --from POI.Linter --note [CT] an optional catalog can provide explicit class registration and completeness checks without becoming required POI machinery ^c20260729-49u ^c20260820-2u
 from __future__ import annotations
 
 from dataclasses import dataclass

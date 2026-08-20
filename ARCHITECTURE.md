@@ -21,8 +21,9 @@ entrypoints (agentos.cli, agentos.daemon)
 - Domain foundations do not import runtime or CLI composition to obtain defaults.
 - `_core` contains dependency-free infrastructure with proven multiple consumers;
   it does not contain product policy.
-- `agentos.surfaces` contains deliberately small native source models and
-  normalizers. It knows host syntax but never imports downstream consumers.
+- `tarav.surfaces` contains deliberately small native source models and
+  normalizers. It knows host syntax and neutral declaration structure but
+  never imports downstream consumers or attachment policy.
 - `stdlib` contains reusable user-facing primitives matching the existing
   `agentos stdlib ...` CLI namespace.
 
@@ -54,8 +55,10 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
 
 - Hooks owns validation and sequential dispatch. Runtime injects Daemon delivery.
 - Wayfinder owns reference models, registry memory, and generic resolver dispatch.
-  Index owns the `index.block` resolver and POI catalog discovery; runtime injects
-  the composed resolver and catalog into commands and report adapters.
+  The `index.block` resolver reads parser-backed Markdown blocks. Skillware owns
+  the `managed.block` resolver because it reads configured surfaces through
+  native models and Skillware adapters; it never imports addressed modules.
+  Runtime injects both resolvers into commands and report adapters.
 - POI adapters live under `agentos.poi.adapters` when they bridge a producer
   domain to the common reporting model.
 - Skillware's `_code_model` and `_code_surfaces` modules own language-neutral
@@ -63,6 +66,12 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   produce host facts without Skillware knowledge; `agentos.skillware.adapters`
   maps those models into the common `SkwSurfaceModel`, and the shared parser
   consumes that model rather than raw host text.
+- Skillware's `related_surfaces` module traverses only explicit relationships
+  exposed by resolved managed blocks. Root/direct/reachable projections are
+  lazy, bounded, deterministic, cycle-safe, and retain partial diagnostics.
+- Tarav POI producers use stable project-rooted managed-block references. Their
+  canonical class blocks are annotations on producer code; the optional generic
+  `POI.Catalog` primitive is not part of Tarav's executable discovery path.
 - Markdown normalization is also consumed at parser boundaries by
   `agentos.stdlib.mdblocks`, `agentos.index.model`, and Chatlas Index-audit
   extraction. Separators, Index nodes, anchors, and lint policy remain in those

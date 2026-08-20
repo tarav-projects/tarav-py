@@ -51,6 +51,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
+from tarav.index_model.label import split_trailing_address
+
 from .surface_model import SkwSurfaceLine, SkwSurfaceModel
 
 RECIPE_BINDINGS = ("derived", "copy")
@@ -96,7 +98,6 @@ KNOWN_FLAGS = BINDING_FLAGS + ROLE_FLAGS + VALUE_FLAGS + BOOLEAN_FLAGS
 _ADDRESS_RE = re.compile(r"^[#^@]?[A-Za-z0-9_./#:^-]+$")
 _FLAG_RE = re.compile(rf"(?:^|\s)--({'|'.join(KNOWN_FLAGS)})(?=\s|$)")
 _NOTE_TYPE_RE = re.compile(r"^\[([A-Z]{2})\]\s*(.*)$")
-_TRAILING_ANCHOR_RE = re.compile(r"\s+(\^[A-Za-z0-9_-]+)\s*$")
 _RUNTIME_PACKAGE_RE = re.compile(r"^@<([a-z0-9][a-z0-9._-]*)>/(.+)$")
 
 
@@ -364,11 +365,8 @@ def _read_block(
 
 def _parse_note(flag: str, value: str, line: int, address: str | None) -> SkwNote:
     text = value
-    anchor: str | None = None
-    anchor_match = _TRAILING_ANCHOR_RE.search(text)
-    if anchor_match is not None:
-        anchor = anchor_match.group(1)
-        text = text[: anchor_match.start()].strip()
+    text, anchor = split_trailing_address(text)
+    text = text.strip()
     note_type: str | None = None
     if flag == "note":
         type_match = _NOTE_TYPE_RE.match(text)

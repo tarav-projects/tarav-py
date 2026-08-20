@@ -12,6 +12,7 @@ from statistics import fmean, pstdev
 from typing import Any, Callable, Literal
 
 from tarav._core.errors import CliError
+from tarav.index_model.label import is_citation
 from tarav.anchory import AnchoryDepot, scan_anchory_source
 from tarav.index_model import (
     INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
@@ -59,7 +60,6 @@ _PROVENANCE_FIELDS = {"predecessor_anchors", "issue_context"}
 _SEMANTIC_APPROVAL_FIELDS = {"approval_turn", "proposal_turn"}
 _TOKENIZED_APPROVAL_FIELDS = {"token", "proposal_turn", "approval_turn"}
 _CONTENT_HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-_ANCHOR_KEY_RE = re.compile(r"^[a-z]?\d{8}-\d+[a-z]?$", re.ASCII)
 _ISSUE_ID_RE = re.compile(r"^Issue\.I[0-9]{4}$")
 
 
@@ -660,7 +660,7 @@ def _parse_predecessor_anchors(raw: object) -> tuple[str, ...]:
         raise CliError("chatlas line anchor predecessor_anchors must be a list")
     predecessors: list[str] = []
     for index, value in enumerate(raw):
-        if not isinstance(value, str) or not _ANCHOR_KEY_RE.fullmatch(value):
+        if not isinstance(value, str) or not is_citation(value):
             raise CliError(
                 f"chatlas line support predecessor {index} is not an anchor key"
             )

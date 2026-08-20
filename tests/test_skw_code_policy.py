@@ -13,8 +13,13 @@ HEADER = (
 )
 
 
-def _project(root: Path, files: dict[str, str]) -> Path:
-    (root / ".tarav").mkdir()
+def _project(
+    root: Path,
+    files: dict[str, str],
+    *,
+    allow_points: tuple[str, ...] = ("file",),
+) -> Path:
+    (root / ".tarav").mkdir(parents=True)
     (root / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
     (root / ".skw").mkdir()
     (root / ".skw" / "skw.json").write_text(
@@ -22,7 +27,11 @@ def _project(root: Path, files: dict[str, str]) -> Path:
             {
                 "depots": ["depot"],
                 "code_surfaces": [
-                    {"language": "python", "include": ["src/**/*.py"]}
+                    {
+                        "language": "python",
+                        "include": ["src/**/*.py"],
+                        "allow_points": list(allow_points),
+                    }
                 ]
             }
         ),
@@ -137,6 +146,74 @@ def test_second_block_is_illegal_but_header_present(tmp_path: Path) -> None:
     report = check_project(project)
     assert not _kinds(report, "missing-header")
     assert [poi.key for poi in _kinds(report, "illegal-attachment")] == ["line 3"]
+
+
+def test_function_point_is_legal_only_when_skillware_policy_allows_it(
+    tmp_path: Path,
+) -> None:
+    code = (
+        HEADER
+        + "\n# $kw: ^check --note [DF] check docs ^c20260722-21u\n"
+        "def check():\n"
+        "    return None\n"
+    )
+    strict = _project(tmp_path / "strict", {"src/mod.py": code})
+    opened = _project(
+        tmp_path / "opened",
+        {"src/mod.py": code},
+        allow_points=("file", "function"),
+    )
+
+    assert [poi.key for poi in _kinds(check_project(strict), "illegal-attachment")] == [
+        "line 3"
+    ]
+    assert not _kinds(check_project(opened), "illegal-attachment")
+
+
+def test_decorated_class_and_nested_async_function_points_resolve(
+    tmp_path: Path,
+) -> None:
+    project = _project(
+        tmp_path,
+        {
+            "src/mod.py": (
+                HEADER
+                + "\n# $kw: ^outer --note [DF] outer docs ^c20260722-21u\n"
+                "@decorate\n"
+                "class Outer:\n"
+                "    # $kw: ^method --note [DF] method docs ^c20260722-21u\n"
+                "    async def method(\n"
+                "        self,\n"
+                "    ):\n"
+                "        return None\n"
+            )
+        },
+        allow_points=("file", "class", "function"),
+    )
+
+    assert not _kinds(check_project(project), "illegal-attachment")
+
+
+def test_function_annotation_separated_by_code_is_not_an_attachment(
+    tmp_path: Path,
+) -> None:
+    project = _project(
+        tmp_path,
+        {
+            "src/mod.py": (
+                HEADER
+                + "\n# $kw: ^detached --note [DF] docs ^c20260722-21u\n"
+                "value = 1\n"
+                "def check():\n"
+                "    return None\n"
+            )
+        },
+        allow_points=("file", "function"),
+    )
+
+    assert [poi.key for poi in _kinds(check_project(project), "illegal-attachment")] == [
+        "line 3"
+    ]
 
 
 def test_kw_inside_string_does_not_make_a_header(tmp_path: Path) -> None:

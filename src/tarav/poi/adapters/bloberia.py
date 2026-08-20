@@ -9,31 +9,45 @@ from tarav.poi import (
     POILinterReport,
     POILocation,
     build_poi_report,
+    tarav_poi_class_reference,
 )
-from tarav.wayfinder import poi_class_reference
 from tarav.wayfinder import Wayfinder
 
 
 
-#: One class, because the depot owns one invariant. `Record.Filename.Invalid`,
-#: `Record.Invalid` and `Identity.Mismatch` retired with the envelope they inspected:
-#: a store that stores cargo verbatim has no shape of its own left to violate.
-BLOBERIA_POI_CLASSES = {
-    "invalid-json": "Bloberia.Linter/Json.Invalid",
-}
-BLOBERIA_POI_CODES = tuple(BLOBERIA_POI_CLASSES)
-
-
-def bloberia_finding_to_poi(finding: BloberiaCheckFinding) -> POIInstance:
+def _bloberia_poi(
+    finding: BloberiaCheckFinding,
+    class_name: str,
+) -> POIInstance:
     return POIInstance.create(
-        class_reference=poi_class_reference(
-            "tarav-pkg", BLOBERIA_POI_CLASSES[finding.code]
-        ),
+        class_reference=tarav_poi_class_reference(class_name),
         target=POILocation(path=finding.path),
         severity="error",
         situation=finding.message,
         evidence={},
     )
+
+
+# $kw: Bloberia.Linter/Json.Invalid
+# --note [DF] a Bloberia record file cannot be read as JSON
+# --note [CT] the instance preserves the existing parser error and path
+# --note [RJ] class-level repair guidance is not yet established
+def _invalid_json(finding: BloberiaCheckFinding) -> POIInstance:
+    """Enforce the one invariant owned by a cargo-verbatim depot.
+
+    ``Record.Filename.Invalid``, ``Record.Invalid`` and ``Identity.Mismatch``
+    retired with the envelope they inspected: the store has no record shape of
+    its own left to violate.
+    """
+    return _bloberia_poi(finding, "Bloberia.Linter/Json.Invalid")
+
+
+CHECK_REGISTRY = {"invalid-json": _invalid_json}
+BLOBERIA_POI_CODES = tuple(CHECK_REGISTRY)
+
+
+def bloberia_finding_to_poi(finding: BloberiaCheckFinding) -> POIInstance:
+    return CHECK_REGISTRY[finding.code](finding)
 
 
 def build_bloberia_linter_report(
@@ -61,7 +75,7 @@ def build_bloberia_linter_report(
 
 __all__ = [
     "BLOBERIA_POI_CODES",
-    "BLOBERIA_POI_CLASSES",
+    "CHECK_REGISTRY",
     "bloberia_finding_to_poi",
     "build_bloberia_linter_report",
 ]

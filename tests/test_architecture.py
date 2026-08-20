@@ -219,3 +219,51 @@ def test_consumers_import_the_lossless_package_and_not_its_submodules() -> None:
         "import `tarav.chatlas.lossless` itself, not its submodules: "
         + "; ".join(sorted(offenders))
     )
+
+
+def test_the_caret_address_grammar_is_compiled_in_exactly_one_module() -> None:
+    """`^c20260820-0u` and `^package-driver-router` are parsed in one place.
+
+    Six ad-hoc regexes across five packages had drifted into two incompatible grammars: a
+    strict citation form and a permissive trailing-token form that also matched locator
+    names. Nothing reconciled them, so whether a token was a citation depended on which
+    module happened to look at it.
+
+    `index_model` is the kernel zone every consumer may import, and `index_model/label.py`
+    owns both grammars there. This asserts the seventh copy fails here instead of adding a
+    third opinion.
+    """
+
+    #: Fragments that only a caret-address pattern contains: an eight-digit date group, or a
+    #: character class hung directly off an escaped caret.
+    TELLS = (r"\d{8}", r"[0-9]{8}", r"\^[A-Za-z0-9", r"\^[a-z]")
+
+    offenders: list[str] = []
+    for path in PACKAGE_ROOT.rglob("*.py"):
+        if (PACKAGE_ROOT / "index_model") in path.parents:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            compiled = (
+                isinstance(func, ast.Attribute)
+                and func.attr == "compile"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "re"
+            )
+            if not compiled or not node.args:
+                continue
+            pattern = node.args[0]
+            if not isinstance(pattern, ast.Constant) or not isinstance(pattern.value, str):
+                continue
+            if any(tell in pattern.value for tell in TELLS):
+                offenders.append(
+                    f"{path.relative_to(PACKAGE_ROOT)}:{node.lineno}: {pattern.value}"
+                )
+
+    assert offenders == [], (
+        "the caret address grammar belongs to tarav.index_model.label; these compile their "
+        "own: " + "; ".join(sorted(offenders))
+    )

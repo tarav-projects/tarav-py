@@ -21,6 +21,24 @@ def test_python_adapter_classifies_host_annotations() -> None:
     assert parsed.dependencies[0].froms == ("Design.Retry",)
 
 
+def test_python_adapter_derives_host_points_from_neutral_elements() -> None:
+    surface = adapt_python_skw(
+        normalize_python(
+            "@decorator\n"
+            "class Outer:\n"
+            "    async def method(self):\n"
+            "        def nested():\n"
+            "            return None\n"
+        )
+    )
+
+    assert [(point.kind, point.name, point.span.start_line) for point in surface.host_points] == [
+        ("class", "Outer", 1),
+        ("function", "Outer.method", 3),
+        ("function", "Outer.method.nested", 4),
+    ]
+
+
 def test_markdown_adapter_maps_native_headings_and_fences() -> None:
     surface = adapt_markdown_skw(
         normalize_markdown(

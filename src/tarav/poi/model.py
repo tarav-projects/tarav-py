@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from urllib.parse import quote
 
-from tarav.wayfinder import WayfinderReference
+from tarav._core.project import TARAV_PROJECT_ID
+from tarav.wayfinder import WayfinderReference, managed_block_reference
 
 
 POISeverity = Literal["error", "warning", "advisory"]
@@ -99,11 +100,23 @@ class POIInstance:
 
 
 def reference_sugar(reference: WayfinderReference) -> str:
-    if reference.type != "index.block" or not isinstance(reference.address, str):
+    if not isinstance(reference.address, str):
         return reference.to_json()
-    package = quote(reference.root.id, safe="")
+    if reference.type == "index.block":
+        scheme = "index"
+    elif reference.type == "managed.block":
+        scheme = "block"
+    else:
+        return reference.to_json()
+    root = quote(reference.root.id, safe="")
     address = quote(reference.address, safe="/.")
-    return f"index://{package}/{address}"
+    return f"{scheme}://{root}/{address}"
+
+
+def tarav_poi_class_reference(class_name: str) -> WayfinderReference:
+    """Reference a Tarav-owned class at its canonical managed-code block."""
+
+    return managed_block_reference(TARAV_PROJECT_ID, class_name)
 
 
 def _normalize_json_object(value: dict[str, Any]) -> dict[str, Any]:
@@ -124,5 +137,7 @@ __all__ = [
     "POIInstance",
     "POILocation",
     "POISeverity",
+    "TARAV_PROJECT_ID",
     "reference_sugar",
+    "tarav_poi_class_reference",
 ]

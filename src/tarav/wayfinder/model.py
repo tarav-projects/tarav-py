@@ -6,12 +6,15 @@ import json
 from dataclasses import dataclass
 from urllib.parse import quote, unquote, urlsplit
 
+from tarav._core.project import TARAV_PROJECT_ID
 
 REFERENCE_SCHEMA = "tarav.wayfinder.reference.v1"
 REFERENCE_KEYS = frozenset({"schema", "type", "root", "address"})
 ROOT_KEYS = frozenset({"type", "id"})
 INDEX_BLOCK_TYPE = "index.block"
+MANAGED_BLOCK_TYPE = "managed.block"
 PACKAGE_SKILL_ROOT_TYPE = "package.skill"
+PROJECT_ROOT_TYPE = "agentos.project"
 
 
 class WayfinderError(RuntimeError):
@@ -130,6 +133,14 @@ class WayfinderResolutionResult:
         }
 
 
+# $kw: Wayfinder.Resolution.POI
+# --note [DF] a `Wayfinder.Resolution.POI` is a `POI.Instance` emitted when a `Wayfinder.Resolution` cannot establish one verified reachable result ^c20260729-288u
+# --note [CT] its `POI.Class` identifies the failed condition, including missing, ambiguous, stale, malformed, or unreachable resolution ^c20260729-112u
+# --note [CT] the instance carries the original reference, resolution context, resolver trace, registry candidates, and available relocation hints ^c20260729-147u
+# --note [PR] the POI gives agents enough mechanical evidence to investigate, relocate, register, and retry the requested resource ^c20260729-350u
+# --note [CT] the blocked operation retains its original `Wayfinder.Reference` so repair can retry without rewriting the requesting surface ^c20260729-143u
+# --note [CT] the bootstrap instance renders without requiring successful resolution of this documentation block
+# --note [RJ] failed mechanical resolution is not proof that the referenced resource does not exist ^c20260729-368u
 @dataclass(frozen=True)
 class WayfinderResolutionPOI:
     instance_id: str
@@ -142,13 +153,16 @@ class WayfinderResolutionPOI:
     candidates: tuple[dict[str, object], ...] = ()
 
     def as_dict(self) -> dict[str, object]:
-        class_reference = poi_class_reference("tarav-pkg", "Wayfinder.Resolution.POI")
+        class_reference = managed_block_reference(
+            TARAV_PROJECT_ID,
+            "Wayfinder.Resolution.POI",
+        )
         return {
             "status": "poi",
             "poi": {
                 "instance_id": self.instance_id,
                 "class": class_reference.as_dict(),
-                "class_sugar": _index_reference_sugar(class_reference),
+                "class_sugar": _reference_sugar(class_reference),
                 "target": {"reference": self.reference.as_dict()},
                 "severity": "error",
                 "situation": self.message,
@@ -173,6 +187,16 @@ def index_block_reference(package_id: str, block_path: str) -> WayfinderReferenc
     )
 
 
+def managed_block_reference(project_id: str, block_path: str) -> WayfinderReference:
+    _require_string(project_id, "project id")
+    _require_string(block_path, "managed block path")
+    return WayfinderReference(
+        type=MANAGED_BLOCK_TYPE,
+        root=WayfinderReferenceRoot(type=PROJECT_ROOT_TYPE, id=project_id),
+        address=block_path,
+    )
+
+
 def poi_class_reference(package_id: str, class_name: str) -> WayfinderReference:
     return index_block_reference(package_id, class_name)
 
@@ -182,16 +206,19 @@ def parse_reference(value: str) -> WayfinderReference:
     if stripped.startswith("{"):
         return WayfinderReference.from_json(stripped)
     parsed = urlsplit(stripped)
-    if parsed.scheme != "index" or not parsed.netloc:
+    if parsed.scheme not in {"index", "block"} or not parsed.netloc:
         raise InvalidWayfinderReference(
-            "reference sugar must be index://<package-id>/<block-path>"
+            "reference sugar must be index://<package-id>/<block-path> or "
+            "block://<project-id>/<block-path>"
         )
     if parsed.query or parsed.fragment:
         raise InvalidWayfinderReference(
-            "index reference sugar cannot carry query or fragment"
+            "reference sugar cannot carry query or fragment"
         )
     block_path = unquote(parsed.path.lstrip("/"))
-    return index_block_reference(unquote(parsed.netloc), block_path)
+    if parsed.scheme == "index":
+        return index_block_reference(unquote(parsed.netloc), block_path)
+    return managed_block_reference(unquote(parsed.netloc), block_path)
 
 
 def _index_reference_sugar(reference: WayfinderReference) -> str:
@@ -199,6 +226,17 @@ def _index_reference_sugar(reference: WayfinderReference) -> str:
         f"index://{quote(reference.root.id, safe='')}/"
         f"{quote(str(reference.address), safe='/.')}"
     )
+
+
+def _reference_sugar(reference: WayfinderReference) -> str:
+    if reference.type == INDEX_BLOCK_TYPE:
+        return _index_reference_sugar(reference)
+    if reference.type == MANAGED_BLOCK_TYPE:
+        return (
+            f"block://{quote(reference.root.id, safe='')}/"
+            f"{quote(str(reference.address), safe='/.')}"
+        )
+    return reference.to_json()
 
 
 def resolution_poi_id(
@@ -237,8 +275,10 @@ def _canonical_json(value: object) -> str:
 
 __all__ = [
     "INDEX_BLOCK_TYPE",
+    "MANAGED_BLOCK_TYPE",
     "InvalidWayfinderReference",
     "PACKAGE_SKILL_ROOT_TYPE",
+    "PROJECT_ROOT_TYPE",
     "REFERENCE_SCHEMA",
     "UnsupportedWayfinderReference",
     "WayfinderError",
@@ -248,6 +288,7 @@ __all__ = [
     "WayfinderResolutionResult",
     "WayfinderTraceStep",
     "index_block_reference",
+    "managed_block_reference",
     "parse_reference",
     "poi_class_reference",
 ]

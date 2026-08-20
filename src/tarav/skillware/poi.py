@@ -7,38 +7,15 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarav.poi import POIDiagnostic, POIInstance, POILocation
+from tarav.poi import (
+    POIDiagnostic,
+    POIInstance,
+    POILocation,
+    tarav_poi_class_reference,
+)
 from tarav.skw.network import NetworkFinding
-from tarav.wayfinder import poi_class_reference
 
 
-SKILLWARE_POI_CLASSES = {
-    "parse-error": "Skillware.Linter/Parse.Error",
-    "unresolvable": "Skillware.Linter/Unresolvable",
-    "never-built": "Skillware.Linter/Never.Built",
-    "stale-build": "Skillware.Linter/Stale.Build",
-    "hand-edited": "Skillware.Linter/Hand.Edited",
-    "copy-drift": "Skillware.Linter/Copy.Drift",
-    "derived-stale": "Skillware.Linter/Derived.Stale",
-    "undeclared-dependency": "Skillware.Linter/Dependency.Undeclared",
-    "unhonored-dependency": "Skillware.Linter/Dependency.Unhonored",
-    "dangling-dependency": "Skillware.Linter/Dependency.Dangling",
-    "uncited-dependency": "Skillware.Linter/Dependency.Uncited",
-    "context-assembly-bypass": "Skillware.Linter/Context.Assembly.Bypass",
-    "malformed-note": "Skillware.Linter/Note.Malformed",
-    "address-mismatch": "Skillware.Linter/Address.Mismatch",
-    "legacy-callout": "Skillware.Linter/Callout.Legacy",
-    "non-skw-annotation": "Skillware.Linter/Annotation.NonSkw",
-    "illegal-attachment": "Skillware.Linter/Attachment.Illegal",
-    "missing-header": "Skillware.Linter/Header.Missing",
-    "missing-edition-history": "Skillware.Linter/Edition.History.Missing",
-    "invalid-edition-history-record": (
-        "Skillware.Linter/Edition.History.Record.Invalid"
-    ),
-    "duplicate-edition-session": "Skillware.Linter/Edition.Session.Duplicate",
-    "unresolvable-edition-support": ("Skillware.Linter/Edition.Support.Unresolvable"),
-    "unsupported-git-edition": "Skillware.Linter/Git.Edition.Unsupported",
-}
 _LINE_DETAIL_RE = re.compile(r"^line (\d+):")
 
 
@@ -66,7 +43,8 @@ class SkillwarePOIInstance(POIInstance):
         return self.situation
 
 
-def skillware_poi(
+def _skillware_poi(
+    class_name: str,
     kind: str,
     target: Path,
     key: str | None,
@@ -78,7 +56,7 @@ def skillware_poi(
     identity = f"{target}|{kind}|{key}|{payload}"
     instance_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:10]
     return SkillwarePOIInstance.create(
-        class_reference=poi_class_reference("tarav-pkg", SKILLWARE_POI_CLASSES[kind]),
+        class_reference=tarav_poi_class_reference(class_name),
         target=POILocation(path=str(target)),
         severity=severity,  # type: ignore[arg-type]
         situation=detail,
@@ -89,6 +67,236 @@ def skillware_poi(
             **(evidence or {}),
         },
         instance_id=instance_id,
+    )
+
+
+def _bound_poi(class_name: str):
+    def emit(
+        kind: str,
+        target: Path,
+        key: str | None,
+        payload: str,
+        detail: str,
+        severity: str = "advisory",
+        evidence: dict[str, object] | None = None,
+    ) -> SkillwarePOIInstance:
+        return _skillware_poi(
+            class_name,
+            kind,
+            target,
+            key,
+            payload,
+            detail,
+            severity,
+            evidence,
+        )
+
+    return emit
+
+
+# $kw: Skillware.Linter/Parse.Error
+# --note [DF] the source is below the parse floor because machinery is malformed or a construct is unclosed
+# --note [CT] this compatibility POI is accompanied by a distinct `Closure.Parser` diagnostic
+# --note [PR] fix the source; parse errors gate that file's other checks and are not blessable
+def _parse_error(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Parse.Error")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Unresolvable
+# --note [DF] a `--from` target does not resolve at its declared address
+# --note [PR] fix the address or restore the target; this class is not blessable
+def _unresolvable(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Unresolvable")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Never.Built --note [DF] a source exists without a corresponding lock entry
+# --note [PR] run `agentos skw build`
+def _never_built(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Never.Built")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Stale.Build --note [DF] the on-disk target matches the lock while a fresh compilation differs
+# --note [PR] run `agentos skw build`
+def _stale_build(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Stale.Build")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Hand.Edited --note [DF] a compiled target was edited outside its source
+# --note [PR] move the intended content into the source or rebuild over the target
+def _hand_edited(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Hand.Edited")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Copy.Drift --note [DF] a copy body no longer equals the expansion of its target
+# --note [PR] run `agentos skw build`
+def _copy_drift(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Copy.Drift")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Derived.Stale --note [DF] a dependency changed since the derived body was written
+# --note [PR] re-derive the source body or explicitly bless the current instance
+def _derived_stale(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Derived.Stale")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Dependency.Undeclared
+# --note [DF] compiled text mentions a resolving dotted name without declaring its dependency
+# --note [PR] declare the dependency with `--from` or explicitly bless the current instance
+def _dependency_undeclared(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Dependency.Undeclared")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Dependency.Unhonored
+# --note [DF] a declared dependency is not mentioned in compiled text
+# --note [PR] mention the dependency, remove the declaration, or explicitly bless the instance
+def _dependency_unhonored(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Dependency.Unhonored")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Dependency.Dangling
+# --note [DF] a declared `--from` target no longer resolves in configured depots
+# --note [PR] restore or repoint the target, or explicitly bless the instance
+def _dependency_dangling(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Dependency.Dangling")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Dependency.Uncited
+# --note [DF] a `--cite` target is not explicit in the compiled surface
+# --note [PR] cite the target visibly, change its role, or explicitly bless the instance
+def _dependency_uncited(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Dependency.Uncited")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Context.Assembly.Bypass
+# --note [DF] a surface depends on assembly-covered source without loading its context assembly
+# --note [PR] add the required `--dev-from` or explicitly bless the intentional bypass
+def _context_assembly_bypass(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Context.Assembly.Bypass")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Note.Malformed
+# --note [DF] a `--note` or `--supp` lacks its act code or trailing anchor
+# --note [PR] add the missing type and support anchor in the source
+def _note_malformed(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Note.Malformed")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Address.Mismatch
+# --note [DF] a fenced element name differs from its declared address
+# --note [PR] align the element name and address
+def _address_mismatch(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Address.Mismatch")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Callout.Legacy
+# --note [DF] an inert legacy `[!skw]` callout remains outside a fence
+# --note [PR] rewrite it using current `$kw` grammar
+def _callout_legacy(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Callout.Legacy")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Annotation.NonSkw
+# --note [DF] a comment on a managed code surface is not represented as a `Skw.Annotation`
+# --note [PR] encode it as an annotation, remove it, or explicitly bless the instance
+def _annotation_non_skw(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Annotation.NonSkw")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Attachment.Illegal
+# --note [DF] a Skw block attaches outside the surface's sanctioned point set
+# --note [PR] move it to a sanctioned point or change the owning attachment policy
+def _attachment_illegal(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Attachment.Illegal")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Header.Missing
+# --note [DF] a managed code file lacks the required line-one annotation
+# --note [PR] add the line-one header or change the owning presence policy
+def _header_missing(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Header.Missing")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Edition.History.Missing
+# --note [DF] a configured file has no valid edition and session association
+# --note [PR] inspect Git and Chatlas, then record a supported association
+def _edition_history_missing(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Edition.History.Missing")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Edition.History.Record.Invalid
+# --note [DF] an edition-history record violates the existing service schema
+# --note [PR] repair or replace the invalid record
+def _edition_history_record_invalid(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Edition.History.Record.Invalid")(
+        *args, **kwargs
+    )
+
+
+# $kw: Skillware.Linter/Edition.Session.Duplicate
+# --note [DF] one file edition and session association is recorded more than once
+# --note [PR] remove the duplicate record
+def _edition_session_duplicate(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Edition.Session.Duplicate")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Edition.Support.Unresolvable
+# --note [DF] an edition and session support set cannot be resolved through Chatlas
+# --note [PR] repair the exact session and event support members
+def _edition_support_unresolvable(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Edition.Support.Unresolvable")(*args, **kwargs)
+
+
+# $kw: Skillware.Linter/Git.Edition.Unsupported
+# --note [DF] a Git edition has no resolvable edition and session association
+# --note [PR] recover candidate chats and record supported associations
+def _git_edition_unsupported(*args, **kwargs) -> SkillwarePOIInstance:
+    return _bound_poi("Skillware.Linter/Git.Edition.Unsupported")(*args, **kwargs)
+
+
+CHECK_REGISTRY = {
+    "parse-error": _parse_error,
+    "unresolvable": _unresolvable,
+    "never-built": _never_built,
+    "stale-build": _stale_build,
+    "hand-edited": _hand_edited,
+    "copy-drift": _copy_drift,
+    "derived-stale": _derived_stale,
+    "undeclared-dependency": _dependency_undeclared,
+    "unhonored-dependency": _dependency_unhonored,
+    "dangling-dependency": _dependency_dangling,
+    "uncited-dependency": _dependency_uncited,
+    "context-assembly-bypass": _context_assembly_bypass,
+    "malformed-note": _note_malformed,
+    "address-mismatch": _address_mismatch,
+    "legacy-callout": _callout_legacy,
+    "non-skw-annotation": _annotation_non_skw,
+    "illegal-attachment": _attachment_illegal,
+    "missing-header": _header_missing,
+    "missing-edition-history": _edition_history_missing,
+    "invalid-edition-history-record": _edition_history_record_invalid,
+    "duplicate-edition-session": _edition_session_duplicate,
+    "unresolvable-edition-support": _edition_support_unresolvable,
+    "unsupported-git-edition": _git_edition_unsupported,
+}
+
+
+def skillware_poi(
+    kind: str,
+    target: Path,
+    key: str | None,
+    payload: str,
+    detail: str,
+    severity: str = "advisory",
+    evidence: dict[str, object] | None = None,
+) -> SkillwarePOIInstance:
+    return CHECK_REGISTRY[kind](
+        kind,
+        target,
+        key,
+        payload,
+        detail,
+        severity,
+        evidence,
     )
 
 
@@ -157,7 +365,7 @@ def parser_diagnostics(
 
 
 __all__ = [
-    "SKILLWARE_POI_CLASSES",
+    "CHECK_REGISTRY",
     "SkillwarePOIInstance",
     "edition_history_findings_to_pois",
     "network_finding_to_poi",
