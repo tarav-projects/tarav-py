@@ -1,13 +1,12 @@
 # $kw: --from Scope.Axis --note [CT] the axis is project-scope vs user-scope, not public vs private
-"""LineScope resolution.
+"""Index geography.
 
-Two tiers, and the distinction is *not* public/private:
+The project root locates source surfaces and project-local declarations. The user root
+locates operational state. Neither is an Index-record tier: every ``LineRecord`` lives in
+one Bloberia depot, and its ``scope`` distinguishes projects inside that model.
 
-- ``Project.LineScope`` — this project's shared understanding, at ``<project>/.tarav/``.
-- ``User.LineScope`` — the user's working life across all projects, at ``~/.tarav/``.
-
-The rule that settles placement arguments: a fresh clone with no user tier must be able to
-use the project and read its index. Grounding degrades; nothing else does.
+A clone can read its source surfaces without user state. It cannot resolve the serialized
+record model or its chat evidence until the user-side record depot and archive are present.
 """
 
 from __future__ import annotations
@@ -43,19 +42,19 @@ class ScopeResolutionError(TaravIndexError):
 
 @dataclass(frozen=True, slots=True)
 class Geography:
-    """The two resolved tiers for one invocation."""
+    """The project and user roots resolved for one invocation."""
 
     project_root: Path
     user_root: Path
 
     @property
     def project_tier(self) -> Path:
-        """Project-scoped index state: record, manifests, chat index."""
+        """Project-local declarations and manifests; never the record depot."""
         return self.project_root / PROJECT_DIR_NAME
 
     @property
     def user_tier(self) -> Path:
-        """User-scoped index state: the authority archive."""
+        """User-local operational state."""
         return self.user_root
 
     @property

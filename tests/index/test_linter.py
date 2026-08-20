@@ -82,6 +82,23 @@ class TestTheBar:
         assert "Index.Linter/Line.Ungrounded" in _classes(lint(geo))
         assert store.count() == 1, "reporting debt must not remove the entry"
 
+    def test_duplicate_record_labels_are_reported_as_a_poi(self, geo, project_root):
+        store = IndexStore(geo)
+        first = _entry(body="first").relabel("^c20260818-1u")
+        second = _entry(body="second").relabel("^c20260818-1u")
+        store.depot.insert(first.to_json())
+        store.depot.insert(second.to_json())
+
+        report = lint(geo, check=["records-loadable", "record-label-unique"])
+
+        finding = next(
+            f
+            for f in report.findings
+            if f.poi_class == "Index.Linter/Record.LabelCollision"
+        )
+        assert finding.subject == "^c20260818-1u"
+        assert finding.operands["ids"] == " ".join(sorted((first.id, second.id)))
+
 
 class TestScopeChecks:
     def test_an_unresolvable_scope_is_reported(self, geo, project_root):

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 
@@ -117,6 +119,50 @@ class TestUnifiedStore:
         store = IndexStore(geo)
         store.put(_entry().relabel("^c20260818-5u"))
         assert store.by_label("c20260818-5u") is not None
+
+    def test_a_public_label_cannot_belong_to_two_records(self, geo):
+        store = IndexStore(geo)
+        first = store.put(_entry("first").relabel("^c20260818-5u"))
+
+        with pytest.raises(RecordStoreError, match=f"already belongs to {first.id}"):
+            store.put(_entry("second").relabel("^c20260818-5u"))
+
+        assert store.count() == 1
+
+    def test_concurrent_writers_cannot_claim_the_same_public_label(self, geo):
+        barrier = Barrier(2)
+
+        def write(body):
+            barrier.wait()
+            try:
+                IndexStore(geo).put(_entry(body).relabel("^c20260818-5u"))
+                return "written"
+            except RecordStoreError:
+                return "collision"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(write, ("first", "second")))
+
+        assert sorted(outcomes) == ["collision", "written"]
+        assert IndexStore(geo).count() == 1
+
+    def test_lookup_refuses_a_label_collision_already_in_the_depot(self, geo):
+        store = IndexStore(geo)
+        first = _entry("first").relabel("^c20260818-5u")
+        second = _entry("second").relabel("^c20260818-5u")
+        store.depot.insert(first.to_json())
+        store.depot.insert(second.to_json())
+
+        with pytest.raises(RecordStoreError, match="ambiguous across records"):
+            store.by_label("^c20260818-5u")
+
+    def test_replacing_a_record_may_keep_its_label(self, geo):
+        store = IndexStore(geo)
+        original = store.put(_entry("before").relabel("^c20260818-5u"))
+        amended = store.put(original.amend("CT", "after"))
+
+        assert amended.id == original.id
+        assert store.by_label("^c20260818-5u") == amended
 
     def test_a_trace_gathers_its_members(self, geo):
         store = IndexStore(geo)

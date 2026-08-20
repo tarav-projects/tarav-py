@@ -291,7 +291,7 @@ def head_surfaces_path(geo: Geography) -> Path:
     return geo.project_tier / HEAD_SURFACES_FILE
 
 
-# $kw: --from Scope.Axis --note [DC] the declaration is project tier, because a fresh clone must read the index without the user tier ^c20260818-1u
+# $kw: --from Index.Line.Record.Model --note [DC] HEAD patterns are project-local declarations; LineRecords remain in the one record depot
 def load_head_surfaces(geo: Geography) -> HeadSurfaces:
     """Read the declaration, falling back to the default so a fresh project still works."""
 

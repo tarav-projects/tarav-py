@@ -28,6 +28,8 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
+from filelock import FileLock
+
 from tarav.bloberia.core import TYPE_SHARDS, BloberiaDepot
 
 from ..config import Geography, TaravIndexError
@@ -62,6 +64,7 @@ class IndexStore:
         self._depot = BloberiaDepot(
             geo.index_depot, depot_type=TYPE_SHARDS, key="id", git="."
         )
+        self._write_lock = geo.user_root / "locks" / "index-records.lock"
 
     @property
     def directory(self) -> Path:
@@ -91,8 +94,14 @@ class IndexStore:
         return found
 
     def by_label(self, label: str) -> LineRecord | None:
-        cargo = self._depot.first({"line.label": {"equals": normalize_label(label)}})
-        return LineRecord.from_json(cargo) if cargo is not None else None
+        normalized = normalize_label(label)
+        matches = self._depot.all({"line.label": {"equals": normalized}})
+        if len(matches) > 1:
+            ids = ", ".join(sorted(str(cargo.get("id")) for cargo in matches))
+            raise RecordStoreError(
+                f"index label {normalized!r} is ambiguous across records: {ids}"
+            )
+        return LineRecord.from_json(matches[0]) if matches else None
 
     def by_trace(self, trace_id: str) -> list[LineRecord]:
         """Every line carrying one indexed semantic."""
@@ -118,7 +127,30 @@ class IndexStore:
     # -- writing ---------------------------------------------------------------
 
     def put(self, record: LineRecord) -> LineRecord:
-        """Write an entry, replacing any entry with the same id."""
+        """Write an entry, replacing its id while preserving public-label uniqueness."""
+
+        self._write_lock.parent.mkdir(parents=True, exist_ok=True)
+        with FileLock(self._write_lock):
+            return self._put(record)
+
+    def _put(self, record: LineRecord) -> LineRecord:
+        """Write under the Index-store lock held by ``put`` or ``mint_label``."""
+
+        if record.line.label:
+            record = record.relabel(record.line.label)
+            matches = self._depot.all(
+                {"line.label": {"equals": record.line.label}}
+            )
+            conflicts = sorted(
+                str(cargo.get("id"))
+                for cargo in matches
+                if cargo.get("id") != record.id
+            )
+            if conflicts:
+                raise RecordStoreError(
+                    f"index label {record.line.label!r} already belongs to "
+                    + ", ".join(conflicts)
+                )
 
         query = {"id": {"equals": record.id}}
         if self._depot.count(query):
@@ -153,17 +185,23 @@ class IndexStore:
         if record.line.label:
             return record
 
-        today = datetime.now(UTC).strftime("%Y%m%d")
-        prefix = f"^{LABEL_SIGIL}{today}-"
-        used: list[int] = []
-        for existing in self._depot.all({"line.label": {"contains": prefix.lstrip("^")}}):
-            label = (existing.get("line") or {}).get("label")
-            if isinstance(label, str) and label.startswith(prefix):
-                match = LABEL_RE.match(label)
-                if match:
-                    used.append(int(match.group("seq")))
+        self._write_lock.parent.mkdir(parents=True, exist_ok=True)
+        with FileLock(self._write_lock):
+            today = datetime.now(UTC).strftime("%Y%m%d")
+            prefix = f"^{LABEL_SIGIL}{today}-"
+            used: list[int] = []
+            for existing in self._depot.all(
+                {"line.label": {"contains": prefix.lstrip("^")}}
+            ):
+                label = (existing.get("line") or {}).get("label")
+                if isinstance(label, str) and label.startswith(prefix):
+                    match = LABEL_RE.match(label)
+                    if match:
+                        used.append(int(match.group("seq")))
 
-        return self.put(record.relabel(f"{prefix}{max(used, default=-1) + 1}{USER_TAG}"))
+            return self._put(
+                record.relabel(f"{prefix}{max(used, default=-1) + 1}{USER_TAG}")
+            )
 
 
 __all__ = [

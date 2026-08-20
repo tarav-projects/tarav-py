@@ -153,21 +153,23 @@
 - `agentos anchory ...` is registered by `agentos.cli` as a thin wrapper over the library.
 - `agentos anchory scan --depot ... --src-file ... --regex ... [--json]` is a read-only source-file query feed: it extracts anchor candidates from text, resolves them against the depot, and never mutates records.
 
+## Index Line Record Model
+
+- `src/tarav/index/record/` owns the one complete serialized model for an Index line: its line projection, immutable record id, semantic trace, scope, evidence links, and explicit equivalence claim.
+- `LineRecord.id` identifies one record edition and is the Bloberia shard key. `trace` joins semantically equivalent editions. `line.label` is the mutable, store-unique public citation; it is neither record identity nor storage placement.
+- every record lives in one user-side Bloberia depot. Projects remain distinguishable through `scope`; project-local `.tarav/` state contains declarations and manifests, not another record tier.
+- `IndexStore.put()` permits an unlabeled record, rejects a label already held by another id, and replaces only the matching id. `by_label()` refuses an already-corrupt ambiguous result rather than selecting the first record.
+- the linter reports a bypassed duplicate as `Index.Linter/Record.LabelCollision`. Migration incompleteness remains ordinary POI output and does not authorize record deletion.
+
 ## Bloberia System
 
-- `src/agentos/bloberia/` owns the importable query:value record library and thin command registrar.
-- `BloberiaDepot` receives one exact explicit root; v1 has no discovery, implicit/global depot, namespaces, or Anchory integration.
-- canonical records are `{"_bloberia": {...}, "value": ...}`; the library owns opaque UUID identity, timestamps, and revision while applications own any JSON-serializable value.
-- records live individually under `<depot>/records/`; create/edit use depot locking and atomic replacement, and `check` reports corruption without mutation.
-- structural queries are recursive JSON-object subset matches over the complete canonical record; arrays and scalars compare by equality.
-- public operations are `create`, `get`, `edit`, `query`, and `check`; edit replaces the full application value.
-- records may live in a `Bloberia.Record.Namespace`: a subfolder under `records/`, of arbitrary depth, addressed as a relative path prefix. `create`/`get`/`edit`/`query` take an optional `namespace`; `namespaces()` lists the prefixes present without reading a record.
-- a namespace is **placement only** — it carries no meaning Bloberia enforces and is not part of record identity. It is data *outside* the record, so an application that lets a fact live only in the path owns that risk; the namespace should duplicate something already inside the value.
-- omitting the namespace preserves the old meaning: reads walk `records/` recursively so a flat depot stays readable, and `get(id)` searches every namespace rather than failing. That fallback costs one walk of the depot — pass the namespace when you know it.
-- `check` walks recursively. A check that only globbed `records/*.json` would report **ok** on a namespaced depot by finding nothing, which is worse than no check.
-- unsafe namespaces (absolute, `..`, empty segments) are rejected rather than silently rerooted.
-- locking stays depot-wide; namespaces partition reads, not writes.
-- `agentos bloberia ...` is registered by `agentos.cli` as a thin JSON CLI over the library and requires `--depot` for every operation.
+- `src/tarav/bloberia/` owns the importable opaque-cargo store and thin command registrar.
+- `BloberiaDepot` receives one exact explicit root. It adds no envelope, id, timestamp, revision, or application schema; consumers own the complete JSON cargo and its meaning.
+- `first`, `all`, and `count` make result arity explicit. Queries support dotted-path `equals`, `contains`, and `exists`; the storage topology remains private.
+- `files` stores one cargo value per private file. `shards` stores several values per file and requires one declared nonempty string cargo key, unique across the depot; key-pinned queries open only the computed shard.
+- insert, replace, and delete use depot-wide locking and atomic replacement. `check` reports malformed stored JSON without mutating it.
+- optional namespaces partition placement only. They carry no application meaning, never enter record identity, and do not narrow an omitted-namespace scan.
+- `tarav bloberia ...` is the thin JSON CLI over the same library and requires an explicit depot.
 
 ## Workspaces
 

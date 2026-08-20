@@ -530,6 +530,24 @@ def _check_record_typed(ctx: LintContext) -> list[Finding]:
     ]
 
 
+def _check_record_label_unique(ctx: LintContext) -> list[Finding]:
+    """A public selector that resolves to several records selects nothing reliably."""
+
+    ids_by_label: dict[str, list[str]] = {}
+    for record in ctx.records:
+        if record.line.label:
+            ids_by_label.setdefault(record.line.label, []).append(record.id)
+    return [
+        Finding(
+            "Index.Linter/Record.LabelCollision",
+            label,
+            {"ids": " ".join(sorted(ids))},
+        )
+        for label, ids in sorted(ids_by_label.items())
+        if len(ids) > 1
+    ]
+
+
 def _check_record_scoped(ctx: LintContext) -> list[Finding]:
     """A line is an orthogonal part of something larger; unscoped, it evaluates to nothing."""
 
@@ -1086,6 +1104,11 @@ CATALOG: tuple[Check, ...] = (
         "record-typed", Tier.REPORTABLE, _check_record_typed, resolutions=(
         "type the entry",
         "delete it while it is still ungrounded",
+    )),
+    Check(
+        "record-label-unique", Tier.REPORTABLE, _check_record_label_unique, resolutions=(
+        "relabel one record so the public selector is unambiguous",
+        "merge the records, if they are duplicate editions of one line",
     )),
     Check(
         "record-scoped", Tier.REPORTABLE, _check_record_scoped, resolutions=(

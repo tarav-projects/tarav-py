@@ -103,8 +103,9 @@ def cmd_init(args: argparse.Namespace) -> int:
     if args.depot:
         ProjectIndex(geo.project_root, args.depot).ensure_layout()
 
-    print(f"project tier   {geo.project_tier}")
-    print(f"user tier      {geo.user_tier}")
+    print(f"project state  {geo.project_tier}")
+    print(f"user state     {geo.user_tier}")
+    print(f"record depot   {geo.index_depot}")
     print(f"manifests      {', '.join(m.surface_type for m in manifests)}")
     print(f"HEAD surfaces  {head_path.name}")
     if args.depot:
@@ -612,7 +613,7 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     index_sub = index.add_subparsers(dest="index_command", required=True)
     index.set_defaults(handler=_dispatch)
 
-    p = index_sub.add_parser("init", help="initialize the project tier and manifests")
+    p = index_sub.add_parser("init", help="initialize project-local index declarations")
     p.add_argument("--depot", help="also create this depot's layout")
     p.set_defaults(func=cmd_init)
 
