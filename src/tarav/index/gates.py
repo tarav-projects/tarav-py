@@ -22,10 +22,11 @@ normal case on any other machine and must not read as *failed*.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from .chatlas import ChatError, load_session
+from .chatlas import ChatError, ChatSession, load_session
 from .config import Geography
 
 
@@ -85,17 +86,29 @@ class GateCheck:
 
 # $kw: --from Typed.Agent.State --note [DF] a Gate is a token round-trip: the user turn carries the token and qualifies as touch, and the agent turn carries the same token with the line verbatim ^c20260819-21u
 # --note [CT] the round-trip is checked against the archive rather than trusted, because evidence must be solid rather than a recorded summary ^c20260819-22u
+#: How a caller supplies an already-resolved archive read. It raises `ChatError` exactly
+#: as the ordinary read does, so an unavailable session stays UNVERIFIABLE rather than
+#: becoming a different failure for having been cached.
+SessionLoader = Callable[[Geography, str], ChatSession]
+
+
 def verify_gate(
     geo: Geography,
     gate: GateRef,
     verbatim: str | None = None,
     *,
     require_touch: bool = True,
+    load: SessionLoader | None = None,
 ) -> GateCheck:
     """Check one gate against the archive.
 
     ``verbatim`` is the text the agent turn must contain — the line the user was approving.
     Omit it for a gate whose subject is not a line, such as an accepted POI.
+
+    ``load`` substitutes the archive read. A caller verifying many gates is usually
+    verifying them against a handful of sessions -- the whole index corpus names 22 -- and
+    without this the same session is normalized once per gate. The default is the ordinary
+    read, so a lone verification needs no ceremony.
 
     ``require_touch`` is the *only* thing the dev lane relaxes. Every other step is
     identical: both turns must exist in the archive, both must carry the token, and the
@@ -105,7 +118,7 @@ def verify_gate(
     """
 
     try:
-        session = load_session(geo, gate.session_id)
+        session = (load or load_session)(geo, gate.session_id)
     except ChatError as exc:
         return GateCheck(GateVerdict.UNVERIFIABLE, f"archive unavailable: {exc}")
 

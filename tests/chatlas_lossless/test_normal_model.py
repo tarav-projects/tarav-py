@@ -77,7 +77,7 @@ def test_diagnostic_computation_bypasses_cache(monkeypatch, tmp_path: Path) -> N
         calls.append(kwargs)
         return expected
 
-    monkeypatch.setattr(normal_model, "build_normal_model", build)
+    monkeypatch.setattr(normal_model, "_build_normal_model", build)
 
     assert (
         normal_model.compute_normal_model(

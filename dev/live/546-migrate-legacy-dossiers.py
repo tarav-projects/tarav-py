@@ -28,7 +28,7 @@ from typing import Any
 from tarav.chatlas._payload_helpers import dict_list
 from tarav.chatlas.index_query import select_one_chatlas_index_row
 from tarav.chatlas.lossless.messages import list_chat_messages
-from tarav.chatlas.lossless.pipeline import build_normal_model
+from tarav.chatlas.lossless import compute_normal_model
 from tarav.chatlas.lossless.turns import list_chat_turns
 from tarav.chatlas.normalization.session_model import (
     build_chatlas_session_model_from_index_row,
@@ -137,7 +137,7 @@ class SessionJoin:
     def __init__(self, session: str) -> None:
         row = select_one_chatlas_index_row(command="migrate", identity_hash=session)
         old = build_chatlas_session_model_from_index_row(row)
-        self.new = build_normal_model(identity_hash=session)
+        self.new = compute_normal_model(identity_hash=session)
         self.session = session
 
         self.turn_text: dict[str, str] = {}

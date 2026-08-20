@@ -9,7 +9,7 @@ from .cache import (
     open_or_materialize_normal_model_cache,
 )
 from .model import JsonObject
-from .pipeline import build_normal_model
+from .pipeline import _build_normal_model
 
 
 def provide_normal_model_reader(
@@ -56,7 +56,7 @@ def compute_normal_model(
     include_raw: bool = False,
 ) -> JsonObject:
     """Compute directly for diagnostics without reading or writing the cache."""
-    return build_normal_model(
+    return _build_normal_model(
         session_id=session_id,
         identity_hash=identity_hash,
         chatlas_root=chatlas_root,

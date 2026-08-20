@@ -76,9 +76,10 @@
 - `chatlas.sources` is the authority for native provider-home ingestion. Each source may set boolean `scannable` (default `true`); non-scannable sources remain configured inventory but never become live provider instances for update, provider query, or live GC scanning.
 - Source selection does not mutate or hide existing Chatlas-owned raw/index data. `ProviderHomeAdapter` retains its per-session symlinked-source rejection as a final ingestion defense.
 
-## Chatlas2 Experiment
+## Chatlas Lossless Layer
 
-- `src/tarav/chatlas2/` owns the isolated Chatlas2 Normal Model experiment. It may import current Chatlas archive and index mechanics, but `src/tarav/chatlas/` must not import Chatlas2.
+- `src/tarav/chatlas/lossless/` owns the Normal Model layer, absorbed from the former `src/tarav/chatlas2/`. It may import the archive, session index, paths, and providers that `src/tarav/chatlas/` owns; nothing outside it may import back in, except `chatlas/commands.py`, which is the CLI composition point. `tests/test_architecture.py` holds both directions.
+- consumers import `tarav.chatlas.lossless` itself, never a submodule. The package surface exports the cache-transparent `provide_normal_model` and withholds the pipeline's direct builder, so reaching past `__init__` is how a caller silently ends up on the uncached path.
 - Chatlas2 reviews every relevant retained artifact, versions each independently, and assembles a retention-biased chronological event tape. Keep semantic annotations shallow and conservative; raw artifacts remain the fallback authority.
 - Supported vertical slices are Codex `codex.rollout.5f98` plus Claude Code `claude.transcript.1ecc` (`promptSource`-capable) and `claude.transcript.b17b` (legacy no-`promptSource`). Raw-version suffixes are opaque identities, not a sequence. The prompt-source-capable Claude mapping recovers accepted human suggestions, typed text-plus-image content, and non-meta legacy-shaped direct messages retained in mixed artifacts. In either Claude family, a human-origin `queued_command` attachment is a `User.Event` and user `Chat.Message` starting at the attachment's queue timestamp; it may become the nearest conservative input in the following `Agent.Loaded.Context`. Claude timed records become `Unresolved.Event` when neither user nor agent origin is structurally supported; untimed sidecar records remain available only in the raw artifact.
 - Raw-model version is dispatch/provenance metadata and never participates in `Event.Address` or `Chat.Message.Address`; Claude's two compatible normalizers share parsing and event assembly but keep separate direct user-message mapping rules.
@@ -160,6 +161,14 @@
 - every record lives in one user-side Bloberia depot. Projects remain distinguishable through `scope`; project-local `.tarav/` state contains declarations and manifests, not another record tier.
 - `IndexStore.put()` permits an unlabeled record, rejects a label already held by another id, and replaces only the matching id. `by_label()` refuses an already-corrupt ambiguous result rather than selecting the first record.
 - the linter reports a bypassed duplicate as `Index.Linter/Record.LabelCollision`. Migration incompleteness remains ordinary POI output and does not authorize record deletion.
+
+## Index CLI
+
+- every `tarav index` data input is a named option; the command set has no positional data arguments. Selectors are precise rather than generic: `--label` (mutable public citation), `--record-id` (immutable record edition), `--trace-id` (semantic lineage), `--scope` (semantic attachment), `--session`, `--poi-class`, `--poi-id`.
+- `--json` selects presentation only. Text and JSON perform the same work and may render different fields, but neither takes a different execution path.
+- `resolve --label` is a point lookup: it reads the record and derives standing, and never runs the linter. `linter --label/--record-id` (both repeatable) is the targeted error bar; an unmatched selector fails rather than reporting a clean run.
+- a check is offered to a targeted run when its body iterates `LintContext.selected_records()`, which is also how it declares record scope — `Check.record_scoped` reads that off the code rather than storing it twice. The structural tier always runs, because it is what loads the surfaces and records every other check reads.
+- a targeted run narrows what is *examined*, never what is *known*: `records`, `by_label`, `traces`, and `standing` stay whole, so a targeted result equals the corpus result filtered to the same record. `tests/cli/test_e2e_index.py` asserts that equality.
 
 ## Bloberia System
 

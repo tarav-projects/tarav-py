@@ -746,3 +746,59 @@ class TestSupersededPlacement:
             .relabel("^c20260819-21u")
         )
         assert "Index.Linter/Record.Unplaced" in _classes(lint(geo))
+
+
+def test_no_corpus_scoped_check_reports_a_finding_about_one_record() -> None:
+    """Scope and subject must agree, or a targeted run silently under-reports.
+
+    `Check.record_scoped` decides whether a check is offered to `linter --label` /
+    `--record-id`. A check left out of that set while still naming a record as its subject
+    is a finding a targeted run can never produce — and the caller sees a clean result for
+    a record that was never examined, which is worse than a slow one.
+
+    Twice already: the gate checks reach records through a shared helper, and `line-drift`,
+    `scope-kind` and `review-closure` reach them sideways through surface labels and trace
+    members. Both were invisible to a scope derivation reading only the top-level body.
+    Asserted structurally so the third one fails here rather than in the field.
+    """
+
+    import inspect
+    import re
+
+    from tarav.index.linter import CATALOG
+
+    #: Subject expressions that name something other than a record. A trace, a surface, a
+    #: label and a session are all legitimately corpus-scoped subjects.
+    NOT_A_RECORD = ("trace.id", "str(ctx.store.directory)")
+
+    gaps: list[str] = []
+    for check in CATALOG:
+        if check.record_scoped:
+            continue
+        source = inspect.getsource(check.run)
+        for poi_class, subject in re.findall(
+            r'Finding\(\s*\n?\s*"([^"]+)",\s*\n?\s*([^,\n]+),', source
+        ):
+            subject = subject.strip()
+            if ".id" in subject and subject not in NOT_A_RECORD:
+                gaps.append(f"{check.name} reports {poi_class} about {subject}")
+
+    assert gaps == [], (
+        "these checks name a record as their subject but are not record-scoped, so "
+        "`linter --record-id` would never report them: " + "; ".join(gaps)
+    )
+
+
+def test_check_scope_follows_through_a_module_local_helper() -> None:
+    """A check that delegates its traversal is still the scope of what it traverses.
+
+    `gate-verifies` and `gate-verifies-dev` are two-line wrappers over one shared body;
+    reading only the wrapper called both corpus-scoped and dropped every
+    `Gate.Contradicted` finding from targeted runs.
+    """
+
+    from tarav.index.linter import CATALOG
+
+    by_name = {check.name: check for check in CATALOG}
+    assert by_name["gate-verifies"].record_scoped
+    assert by_name["gate-verifies-dev"].record_scoped

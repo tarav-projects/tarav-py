@@ -7,6 +7,7 @@ import pytest
 from tarav.chatlas.lossless.message_ref import compute_chat_message_hash
 from tarav.chatlas.lossless.messages import (
     chat_message_at,
+    chat_message_times,
     chat_message_neighborhood,
     chat_message_support_member,
     find_chat_messages,
@@ -118,3 +119,33 @@ def test_message_neighborhood_preserves_amended_and_missing_standing() -> None:
     }
     with pytest.raises(ValueError, match="non-negative"):
         chat_message_neighborhood(model, amended_ref, radius=-1)
+
+
+def test_batched_message_times_agree_with_the_single_lookup() -> None:
+    """The batched form is an optimization, so it owes the single form exact agreement.
+
+    `chat_message_times` exists only because asking per message re-walks the event tape;
+    the moment it answers differently it is not an optimization but a second, quieter
+    definition of when a message happened. Asserted over every message, including the ones
+    whose time is absent, because a batched pass is exactly where a missing key silently
+    becomes `None` for a different reason than the single lookup does.
+    """
+
+    model = _model()
+    model["annotations"]["chat_messages"].append(
+        {
+            "class": "Chat.Message",
+            "message_address": "9" * 64,
+            "side": "user",
+            "text": "orphan with no event",
+            "event_refs": [],
+        }
+    )
+    batched = chat_message_times(model)
+
+    for message in list_chat_messages(model):
+        address = str(message["message_address"])
+        assert address in batched, address
+        assert batched[address] == chat_message_at(model, message), address
+
+    assert batched["9" * 64] is None

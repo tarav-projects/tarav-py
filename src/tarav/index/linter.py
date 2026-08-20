@@ -148,6 +148,36 @@ class LintContext:
     standing: dict[str, Standing] = field(default_factory=dict)
     surface_lines: dict[str, list[SurfaceLine]] = field(default_factory=dict)
     head_lines: set[str] = field(default_factory=set)
+    subjects: frozenset[str] | None = None
+    """The record ids under examination, or `None` for the whole corpus.
+
+    It narrows what is *examined*, never what is *known*: `records`, `by_label`, `traces`
+    and `standing` stay whole, because a check that must consult a record's trace siblings
+    or its label neighbours is not asking about the selection. Narrowing the context
+    instead would make a targeted run quietly answer a different question than a full one.
+    """
+
+    def selected_records(self) -> list[LineRecord]:
+        """The records this run is examining, one at a time.
+
+        Which iterator a check body uses is also how its scope is declared -- see
+        `Check.record_scoped`. A check that reads `records` is consulting context; a check
+        that iterates this is examining subjects, and is the kind a point lookup can run.
+        """
+
+        if self.subjects is None:
+            return self.records
+        return [record for record in self.records if record.id in self.subjects]
+
+    def is_selected(self, record_id: str) -> bool:
+        """Whether this record is under examination.
+
+        For the checks that reach records sideways -- through a surface line's label or a
+        trace's members -- where iterating the selection directly would mean not walking
+        the structure the check is about.
+        """
+
+        return self.subjects is None or record_id in self.subjects
 
     def head_surface_lines(self) -> Iterator[tuple[str, SurfaceLine]]:
         """Only the lines sitting on a declared `HEAD.Surface`."""
@@ -168,6 +198,30 @@ class LintContext:
         for surface, lines in self.surface_lines.items():
             for line in lines:
                 yield surface, line
+
+
+def _reaches_selected_records(fn: CheckFn, seen: frozenset[str] = frozenset()) -> bool:
+    """Whether `fn`, or a module-local function it calls, iterates the selected records.
+
+    Static and local: it walks names this module defines, so it cannot be fooled into
+    following something imported, and `seen` keeps a mutually recursive pair terminating.
+    """
+
+    code = getattr(fn, "__code__", None)
+    if code is None:  # a class or builtin reached through a call name
+        return False
+    names = code.co_names
+    if "selected_records" in names or "is_selected" in names:
+        return True
+    here = globals()
+    for name in names:
+        if name in seen:
+            continue
+        candidate = here.get(name)
+        if callable(candidate) and getattr(candidate, "__module__", None) == __name__:
+            if _reaches_selected_records(candidate, seen | {name}):
+                return True
+    return False
 
 
 CheckFn = Callable[[LintContext], list[Finding]]
@@ -210,6 +264,24 @@ class Check:
     for the duration, so the dev lane reports one verdict per constraint rather
     than two contradictory ones.
     """
+
+    @property
+    def record_scoped(self) -> bool:
+        """Whether this check examines records one at a time.
+
+        Read off the body rather than stored beside it: a check declares its scope by
+        iterating `selected_records()`, and a second declaration in the catalog would be a
+        copy of that fact with nothing keeping the two honest. A check that only reads
+        `records` for context, or that walks surfaces, traces, or the depot, is not
+        answerable for one record and is not offered to a targeted run.
+
+        Followed through module-local helpers, because `gate-verifies` and its dev
+        counterpart are two-line wrappers over one shared body -- and reading only the
+        wrapper called both of them corpus-scoped, which silently dropped every
+        `Gate.Contradicted` finding from targeted runs against the live corpus.
+        """
+
+        return _reaches_selected_records(self.run)
 
     def can_run(self, ctx: LintContext) -> GateResult:
         """`GateResult`: a precondition the check cannot supply for itself."""
@@ -415,7 +487,7 @@ def _check_line_drift(ctx: LintContext) -> list[Finding]:
     findings: list[Finding] = []
     for surface, line in ctx.all_surface_lines():
         record = by_label.get(line.label or "")
-        if record is None:
+        if record is None or not ctx.is_selected(record.id):
             continue
         if line.body != record.line.body or line.line_type != record.line.type:
             findings.append(
@@ -440,25 +512,49 @@ def _check_record_grounded(ctx: LintContext) -> list[Finding]:
 
     return [
         Finding("Index.Linter/Line.Ungrounded", record.id, {"support": "0"})
-        for record in ctx.records
+        for record in ctx.selected_records()
         if not record.support
     ]
 
 
 class _SessionCache:
-    """One archive read per session. Plumbing, kept out of the checks that use it."""
+    """One archive read per session. Plumbing, kept out of the checks that use it.
+
+    The failure is remembered as well as the success. A cache that only remembered
+    successes would re-attempt every unavailable session once per record, which is the
+    expensive case rather than the cheap one.
+    """
 
     def __init__(self, geo: Geography) -> None:
         self._geo = geo
-        self._seen: dict[str, object | None] = {}
+        self._seen: dict[str, object | ChatError] = {}
 
-    def get(self, session_id: str):
+    def _resolve(self, session_id: str) -> object | ChatError:
         if session_id not in self._seen:
             try:
                 self._seen[session_id] = load_session(self._geo, session_id)
-            except ChatError:
-                self._seen[session_id] = None
+            except ChatError as exc:
+                self._seen[session_id] = exc
         return self._seen[session_id]
+
+    def get(self, session_id: str):
+        """The session, or `None` when the archive cannot supply it."""
+
+        resolved = self._resolve(session_id)
+        return None if isinstance(resolved, ChatError) else resolved
+
+    def load(self, _geo: Geography, session_id: str):
+        """`load_session`'s signature, so it can stand in for it.
+
+        The original error is re-raised rather than a fresh one: `verify_gate` puts the
+        detail into its UNVERIFIABLE verdict, and a cached read must not degrade that to a
+        vaguer reason than an uncached one would give.
+        """
+
+        resolved = self._resolve(session_id)
+        if isinstance(resolved, ChatError):
+            raise resolved
+        return resolved
 
 
 def _check_support_resolves(ctx: LintContext) -> list[Finding]:
@@ -474,7 +570,7 @@ def _check_support_resolves(ctx: LintContext) -> list[Finding]:
 
     findings: list[Finding] = []
     archive = _SessionCache(ctx.geo)
-    for record in ctx.records:
+    for record in ctx.selected_records():
         for ref in record.support:
             session = archive.get(ref.session_id)
             if session is None:
@@ -518,13 +614,16 @@ def _check_review_covers_support(ctx: LintContext) -> list[Finding]:
     """
 
     findings: list[Finding] = []
-    for record in ctx.records:
+    # The whole corpus's gates name 22 distinct sessions. Asking the archive per record
+    # instead of per session is the same read 76 times over, which is what made a full run
+    # cost tens of minutes.
+    archive = _SessionCache(ctx.geo)
+    for record in ctx.selected_records():
         if not record.review or not record.support:
             continue
         gate = record.review[0]
-        try:
-            session = load_session(ctx.geo, gate.session_id)
-        except ChatError:
+        session = archive.get(gate.session_id)
+        if session is None:
             findings.append(
                 Finding(
                     "Index.Linter/Review.SupportUnseen",
@@ -570,7 +669,7 @@ def _check_record_placed(ctx: LintContext) -> list[Finding]:
     }
     on_surface = {line.label for _, line in ctx.all_surface_lines() if line.label}
     findings: list[Finding] = []
-    for record in ctx.records:
+    for record in ctx.selected_records():
         label = record.line.label
         if not label or label in on_surface or record.id in superseded:
             continue
@@ -588,7 +687,7 @@ def _check_record_typed(ctx: LintContext) -> list[Finding]:
 
     return [
         Finding("Index.Linter/Record.Untyped", record.id, {"body": record.line.body})
-        for record in ctx.records
+        for record in ctx.selected_records()
         if record.line.type is None
     ]
 
@@ -597,7 +696,7 @@ def _check_record_label_unique(ctx: LintContext) -> list[Finding]:
     """A public selector that resolves to several records selects nothing reliably."""
 
     ids_by_label: dict[str, list[str]] = {}
-    for record in ctx.records:
+    for record in ctx.selected_records():
         if record.line.label:
             ids_by_label.setdefault(record.line.label, []).append(record.id)
     return [
@@ -616,7 +715,7 @@ def _check_record_scoped(ctx: LintContext) -> list[Finding]:
 
     return [
         Finding("Index.Linter/Record.Unscoped", record.id, {"scope": ""})
-        for record in ctx.records
+        for record in ctx.selected_records()
         if not record.scope.address
     ]
 
@@ -629,7 +728,7 @@ def _check_scope_resolves(ctx: LintContext) -> list[Finding]:
     """
 
     findings: list[Finding] = []
-    for record in ctx.records:
+    for record in ctx.selected_records():
         path = resolve_scope_surface(record.scope, ctx.root)
         if path is None or not path.exists():
             findings.append(
@@ -655,7 +754,7 @@ def _check_review_closure(ctx: LintContext) -> list[Finding]:
         if not trace.reviewed:
             continue
         for member in trace.members:
-            if member.support:
+            if member.support or not ctx.is_selected(member.id):
                 continue
             findings.append(
                 Finding(
@@ -674,7 +773,7 @@ def _check_annotation_scope_kind(ctx: LintContext) -> list[Finding]:
     by_label = ctx.by_label()
     for surface, line in ctx.all_surface_lines():
         record = by_label.get(line.label or "")
-        if record is None:
+        if record is None or not ctx.is_selected(record.id):
             continue
         if line.scope.kind is not record.scope.kind:
             findings.append(
@@ -734,7 +833,7 @@ def _check_equivalence_predecessor(ctx: LintContext) -> list[Finding]:
 
     by_id = {r.id: r for r in ctx.records}
     findings: list[Finding] = []
-    for record in ctx.records:
+    for record in ctx.selected_records():
         if record.equivalence is None:
             continue
         predecessor = by_id.get(record.equivalence.predecessor)
@@ -767,7 +866,7 @@ def _check_equivalence_support_invariant(ctx: LintContext) -> list[Finding]:
 
     by_id = {r.id: r for r in ctx.records}
     findings: list[Finding] = []
-    for record in ctx.records:
+    for record in ctx.selected_records():
         if record.equivalence is None:
             continue
         predecessor = by_id.get(record.equivalence.predecessor)
@@ -796,7 +895,7 @@ def _check_rename_verifiable(ctx: LintContext) -> list[Finding]:
 
     by_id = {r.id: r for r in ctx.records}
     findings: list[Finding] = []
-    for record in ctx.records:
+    for record in ctx.selected_records():
         equivalence = record.equivalence
         if equivalence is None or equivalence.kind is not EquivalenceKind.RENAME:
             continue
@@ -827,7 +926,7 @@ def _check_rephrase_in_review_chain(ctx: LintContext) -> list[Finding]:
 
     by_id = {r.id: r for r in ctx.records}
     findings: list[Finding] = []
-    for record in ctx.records:
+    for record in ctx.selected_records():
         if record.review:
             continue
         trace = ctx.traces().get(record.trace)
@@ -880,13 +979,18 @@ def _gate_findings(ctx: LintContext, *, require_touch: bool) -> list[Finding]:
     """
 
     findings: list[Finding] = []
-    for record in ctx.records:
+    archive = _SessionCache(ctx.geo)
+    for record in ctx.selected_records():
         gates = [("review", g) for g in record.review]
         if record.landing is not None:
             gates.append(("landing", record.landing))
         for kind, gate in gates:
             check = verify_gate(
-                ctx.geo, gate, record.line.body, require_touch=require_touch
+                ctx.geo,
+                gate,
+                record.line.body,
+                require_touch=require_touch,
+                load=archive.load,
             )
             if check.verdict is GateVerdict.CONTRADICTED:
                 findings.append(
@@ -917,7 +1021,7 @@ def _check_landing_evidenced(ctx: LintContext) -> list[Finding]:
 
     traces = ctx.traces()
     findings: list[Finding] = []
-    for record in ctx.records:
+    for record in ctx.selected_records():
         if record.id not in ctx.head_lines:
             continue
         trace = traces.get(record.trace)
@@ -959,7 +1063,7 @@ def _check_materialization_standing(ctx: LintContext) -> list[Finding]:
     """The older wording should have left when its successor arrived."""
 
     findings: list[Finding] = []
-    for record in ctx.records:
+    for record in ctx.selected_records():
         standing = ctx.standing.get(record.id)
         if standing is None or standing.materializable:
             continue
@@ -1435,6 +1539,7 @@ def select_checks(
     skip: list[str] | None = None,
     *,
     dev: bool = False,
+    targeted: bool = False,
 ) -> list[Check]:
     """The checks this run will execute.
 
@@ -1456,6 +1561,16 @@ def select_checks(
     for entry in CATALOG:
         if entry.dev and not dev:
             continue
+        if targeted and not entry.record_scoped and entry.tier is not Tier.STRUCTURAL:
+            # Not a filter applied afterwards: a corpus check has no per-record answer to
+            # give, so asking it about one record and discarding the rest would be running
+            # the whole linter to throw most of it away.
+            #
+            # The structural tier stays regardless, because it is what establishes the
+            # context: it reads the surfaces and loads the records. Dropping it leaves a
+            # targeted run examining an empty corpus and reporting it clean, which is the
+            # failure mode this whole selection has to avoid.
+            continue
         if entry.name in displaced:
             continue
         enabled = entry.name in check if check else entry.default_on
@@ -1475,8 +1590,16 @@ def lint(
     check: list[str] | None = None,
     skip: list[str] | None = None,
     dev: bool = False,
+    subjects: Iterable[str] | None = None,
 ) -> LintReport:
-    """Run the selected checks and report what each one found — including what it could not."""
+    """Run the selected checks and report what each one found — including what it could not.
+
+    ``subjects`` narrows the run to those record ids: only checks answerable for a single
+    record run, and they examine only those records. The corpus is still loaded, because a
+    record's standing depends on its trace siblings and a corpus this size loads in about a
+    tenth of a second; what a targeted run avoids is the per-record archive reads, which is
+    where the time actually goes.
+    """
 
     root = project_root or geo.project_root
     ctx = LintContext(
@@ -1485,9 +1608,10 @@ def lint(
         store=IndexStore(geo),
         head=load_head_surfaces(geo),
         homes=load_homes(geo),
+        subjects=None if subjects is None else frozenset(subjects),
     )
 
-    selected = select_checks(check, skip, dev=dev)
+    selected = select_checks(check, skip, dev=dev, targeted=subjects is not None)
     blessings = read_blessings(geo)
     findings: list[Finding] = []
     blocked: list[Finding] = []
@@ -1539,7 +1663,7 @@ def lint(
         blocked=tuple(blocked),
         blessed=tuple(blessed),
         results=tuple(results),
-        records_checked=len(ctx.records),
+        records_checked=len(ctx.selected_records()),
         surface_lines_checked=sum(len(v) for v in ctx.surface_lines.values()),
         dev=tuple(e.name for e in selected if e.dev),
     )

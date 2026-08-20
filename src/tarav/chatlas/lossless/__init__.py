@@ -60,6 +60,7 @@ from .turn_ref import (
 from .turns import list_chat_turns
 from .messages import (
     chat_message_at,
+    chat_message_times,
     chat_message_neighborhood,
     chat_message_support_member,
     find_chat_messages,
@@ -85,6 +86,7 @@ __all__ = [
     "chat_message_ref",
     "chat_turn_ref",
     "chat_message_at",
+    "chat_message_times",
     "chat_message_neighborhood",
     "chat_message_support_member",
     "chat_index_surface_path",

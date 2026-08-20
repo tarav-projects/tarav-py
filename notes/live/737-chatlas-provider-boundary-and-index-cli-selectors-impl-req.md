@@ -18,7 +18,7 @@ a subcommand-by-subcommand equivalence mapping first, and deleting 13,179 lines 
 before that mapping exists is the data-conservation failure this migration exists to avoid.
 It gets its own `Impl.Req`. Slice 3 here removes its single largest piece.
 
-**Status.** Slices 1–3 not started.
+**Status.** Slices 1 and 2 **done**. Slice 3 **blocked on a decision** — its premise does not hold; see below.
 
 **Source context.** Continues the 641 migration. Slice 1 fixes the root cause of the
 50-minute `tarav index resolve`; slice 2 fixes the corpus-wide lint on a point lookup that the
@@ -83,7 +83,7 @@ Fixed for the whole Index CLI. Precise names only — no generic `--record` or `
 
 ## Execution.Plan
 
-### Slice 1 — close the Normal Model provider boundary
+### Slice 1 — close the Normal Model provider boundary — **done**
 
 **Do.**
 
@@ -121,7 +121,7 @@ cache is disposable by design. Not a data risk.
 for instance on a session whose cache cannot be materialized — do not fall back to the
 pipeline. Record it in `Impl.Log` and stop; a silent fallback would rebuild the bug.
 
-### Slice 2 — Index CLI selectors, point lookup, presentation-only `--json`
+### Slice 2 — Index CLI selectors, point lookup, presentation-only `--json` — **done**
 
 **Do.**
 
@@ -196,7 +196,7 @@ marking the check corpus-scoped, not by weakening the test.
 record it in `Impl.Log` with the reason and classify it corpus-scoped. Correct and slow beats
 fast and wrong.
 
-### Slice 3 — retire Anchory's importers
+### Slice 3 — retire Anchory's importers — **blocked**
 
 **Do.** Nothing reads Anchory records since the 641 migration converted all 3,956 anchors to
 `LineRecord`s. Retire the importers, walking outward from the leaves:
@@ -217,7 +217,127 @@ Same shape as slice 1's rule and for the same reason: assert the constraint, not
 `LineRecord` equivalent — stop and record it. That is a migration gap, not a cleanup blocker,
 and it is resolved by finishing the migration rather than by keeping the import.
 
+#### The trigger fired. What is actually there
+
+The "22 importers" in the plan came from grepping for the *word* `anchory`. That over-counted:
+inside `src/tarav/index/`, every occurrence is a **comment** recording migration history, and
+each is still true. **The index imports Anchory nowhere.** That part of the retirement is
+already complete and needs no work.
+
+What remains is not a set of stale importers. It is the Anchory subsystem and its two Chatlas
+integrations, and all three back **live command trees**:
+
+```
+tarav anchory          register | resolve | query | amend | check | scan | namespace
+tarav chatlas anchory  preview | register | support | resolve | batch
+tarav chatlas2 anchory (the lossless dossier path)
+```
+
+Ten real imports across `runtime.py`, `chatlas/`, and `chatlas/lossless/`, over
+`src/tarav/anchory/` (1,565 lines) plus `chatlas/anchory.py` (1,671),
+`chatlas/anchory_batch.py` (340) and `chatlas/lossless/anchory.py` (1,072).
+
+**Why this needs a decision rather than a corrective action.** `tarav chatlas2 anchory` is how
+Hugentic capture mints grounding dossiers — `references/check.md` step 3 resolves them, and the
+real-time grounding module writes them. Capture is *frozen*, not retired: no new grounding is
+being minted while the index converges. Retiring Anchory now removes the writing path before
+its replacement exists, and "nothing reads it today" is true only because the system is paused.
+
+Anchory is obsolete **as a design** — that was settled, and its data is migrated. It is not yet
+obsolete **as the capture path**. Closing that gap is what unfreezes the index, and it is a
+larger piece of the migration than a cleanup slice.
+
+Nothing was deleted. The three modules are still there, still reachable, still tested.
+
 ## Impl.Log
+
+### Slice 1 result
+
+Landed as planned, plus one thing the plan did not anticipate.
+
+The architecture rule went RED naming three offenders, not one: `index/chatlas.py` on both
+`lossless.messages` and `lossless.pipeline`, and `chatlas/commands.py` on `lossless.commands`.
+All three now import the package surface, which already exported everything they needed.
+
+**Measured, and the first measurement was misleading.** A cold pass showed the cached path
+*slower* than the uncached one — because that pass was paying the one-time cache
+materialization. Warm, on the three hottest gate sessions:
+
+| | uncached (`compute_normal_model`) | cached (`provide_normal_model`) |
+|---|---|---|
+| `4d13d871` | 0.54s | 0.09s |
+| `c9c843d6` | 0.62s | 0.10s |
+| `29bf3344` | 0.49s | 0.08s |
+
+About 6–7x, once per session rather than once per call.
+
+**A second defect, found while verifying.** With the model load down to 0.09s, `load_session`
+still took 0.50s. `chat_message_at` walks the whole event tape per message — 791 messages
+against 8,463 events. Added `chat_message_times(model)` beside it in the layer, which indexes
+the tape once; `load_session` asks once per session. `load_session` on the hottest session:
+0.50s → 0.47s, and 0.36s → 0.26s on the next. Smaller than expected — the remaining cost is
+`list_chat_messages`' deepcopy, not the scan — so this is a real but modest win, recorded here
+rather than claimed as the fix.
+
+Its test asserts the constraint rather than the incident: the batched form must agree with the
+single form for *every* message, absent times included. Writing it caught a collision in the
+existing fixture, where `chr(100 + index)` already claims the address the orphan case wanted.
+
+**Not done, deliberately.** `provide_normal_model_reader(...).iter_chat_message_records()` is
+another 2x over the full model load (0.04s vs 0.09s), but `load_session` needs event times too,
+so using it means resolving `at` a different way. Out of the minimum change; noted.
+
+### Slice 2 result
+
+Measured on the live corpus (3,993 records, 2,527 gates):
+
+| | before | after |
+|---|---|---|
+| `resolve --label` | over two minutes | **1.23s** |
+| `linter --label` (targeted) | did not exist | **1.22s**, 16 of 31 checks, 1 record |
+| `linter` (full corpus) | ~50 min | **38s** |
+
+The corpus run producing **the identical 14,964 findings** before and after, and a targeted
+run agreeing with it on **30 randomly sampled live records**, are what make the speed
+meaningful rather than merely faster.
+
+**The design changed under measurement, twice, and both times the live check found it.**
+
+The plan proposed a declared `record_scoped: bool` on each catalog entry. Deriving it instead
+from which iterator the body uses is better — the check declares its scope by how it is
+written, and there is no second copy to drift. But reading only the top-level body was wrong
+in two ways the synthetic fixture could not see:
+
+1. `gate-verifies` and its dev counterpart are two-line wrappers over one shared body, so both
+   read as corpus-scoped. Every `Gate.Contradicted` finding — 2,143 of them — vanished from
+   targeted runs. Found by comparing against the live corpus, not by the unit test.
+2. `line-drift`, `scope-kind` and `review-closure` reach records *sideways*, through a surface
+   line's label or a trace's members, so they never iterate records at all. Found by adding a
+   gated record to the fixture.
+
+Fixed by following the derivation through module-local helpers, and by giving the sideways
+checks `ctx.is_selected()`. 19 of 31 checks are now record-scoped.
+
+The general form is now asserted structurally: **no corpus-scoped check may name a record as
+its finding subject**, because such a finding is one a targeted run can never produce. That
+test would have caught both defects, and will catch the third.
+
+**A third thing the slice needed that the plan did not name.** The structural tier has to run
+in every mode: it is what reads the surfaces and loads the records. Excluded, a targeted run
+examined an empty corpus and reported it clean — the exact failure the whole design exists to
+avoid, reached by trying to avoid it.
+
+**Where the time actually went.** Not the corpus scan. `_check_review_covers_support` and
+`_gate_findings` each asked the archive per record for sessions the corpus names only 22 of.
+Routing both through the existing `_SessionCache` — which sat 70 lines above one of them,
+written for this — is most of the 50-minutes-to-38-seconds. `verify_gate` gained a `load`
+parameter so a caller verifying thousands of gates can supply the read.
+
+**Also landed:** `record --json` and `resolve --json` now report the standing and error bars
+text mode reports. `write --trace` became `--trace-id` for one vocabulary. An unmatched
+selector fails rather than reporting a clean run. `tarav-hugentics/references/check.md` and its
+`.skw` source documented `linter --depot … --anchor …`, a surface that never existed; both now
+say `--label`, and `skillware check` reports the file clean.
 
 **Presumption (`Index.Presumption`, not touched authority).** Slice 2's split of checks into
 record- and corpus-scoped is my classification, derived from reading each check body for

@@ -7,7 +7,8 @@ of them, so they are **used**, not reimplemented:
 
 - `tarav chatlas` is already the git-backed archive, which is what the chat manifest's
   git-backing criterion requires;
-- `tarav.chatlas.lossless.build_normal_model` normalizes a session across both providers;
+- `tarav.chatlas.lossless.provide_normal_model` normalizes a session across both providers,
+  reusing the on-disk model cache and rebuilding it only when the transcripts moved;
 - each normalized message already carries a `message_address` — a stable coordinate derived
   from event identity rather than from position, so it survives a machine change *and*
   further appends to a live session.
@@ -21,8 +22,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from tarav.chatlas.lossless.messages import chat_message_at, list_chat_messages
-from tarav.chatlas.lossless.pipeline import build_normal_model
+from tarav.chatlas.lossless import (
+    chat_message_times,
+    list_chat_messages,
+    provide_normal_model,
+)
 
 from .authority import ManifestRegistry
 from .config import Geography, TaravIndexError
@@ -94,7 +98,7 @@ def load_session(scopes: Geography, session_id: str) -> ChatSession:
     errors: list[str] = []
     for selector in ("session_id", "identity_hash"):
         try:
-            model = build_normal_model(**{selector: session_id})
+            model = provide_normal_model(**{selector: session_id})
             break
         except Exception as exc:  # chatlas2 raises CliError subclasses we do not re-export
             errors.append(f"{selector}: {exc}")
@@ -103,6 +107,8 @@ def load_session(scopes: Geography, session_id: str) -> ChatSession:
             f"cannot normalize session {session_id!r}: " + "; ".join(errors)
         )
 
+    # Asked once for the whole session: per-message resolution walks the event tape.
+    times = chat_message_times(model)
     messages: list[ChatMessage] = []
     for raw in list_chat_messages(model):
         side = str(raw.get("side") or "")
@@ -117,7 +123,7 @@ def load_session(scopes: Geography, session_id: str) -> ChatSession:
                 address=str(raw.get("message_address") or ""),
                 side=side,
                 text=_text_of(raw),
-                at=chat_message_at(model, raw),
+                at=times.get(str(raw.get("message_address") or "")),
                 carries_touch=carries_touch,
             )
         )

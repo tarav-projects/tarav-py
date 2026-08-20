@@ -6,7 +6,7 @@ from pathlib import Path
 
 from tarav.agent.providers import canonical_provider_families
 from tarav.chatlas.anchory_batch import ANCHOR_BATCH_SCHEMA
-from tarav.chatlas.lossless.commands import add_lossless_commands
+from tarav.chatlas.lossless import add_lossless_commands
 from tarav.chatlas.gc import DEFAULT_OLDER_THAN
 from tarav.chatlas.output import add_chatlas_output_arguments_to_leaves
 from tarav.chatlas.touch_heuristics import (

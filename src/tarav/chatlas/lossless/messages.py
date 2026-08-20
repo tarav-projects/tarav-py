@@ -48,6 +48,41 @@ def find_chat_messages(
     return matches
 
 
+def chat_message_times(model: JsonObject) -> dict[str, str | None]:
+    """Every message's time, in one pass over the events.
+
+    `chat_message_at` walks the event tape looking for one address, which is right for one
+    message and quadratic for a whole session: the index's `load_session` spent four fifths
+    of its time here, 791 messages against 8,463 events. Reading many messages is the
+    ordinary case, so the batched form belongs beside the single one rather than in each
+    caller -- where a hand-rolled copy would also be a second place that knows a message's
+    time is its first event's `started_at`.
+    """
+
+    events = model.get("events")
+    started: dict[str, str | None] = {}
+    if isinstance(events, list):
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            address = event.get("event_address")
+            if isinstance(address, str):
+                at = event.get("started_at")
+                started[address] = at if isinstance(at, str) and at else None
+
+    times: dict[str, str | None] = {}
+    for message in list_chat_messages(model):
+        address = message.get("message_address")
+        if not isinstance(address, str):
+            continue
+        refs = message.get("event_refs")
+        first = refs[0].get("event_address") if (
+            isinstance(refs, list) and refs and isinstance(refs[0], dict)
+        ) else None
+        times[address] = started.get(first) if isinstance(first, str) else None
+    return times
+
+
 def chat_message_at(model: JsonObject, message: JsonObject) -> str | None:
     refs = message.get("event_refs")
     if not isinstance(refs, list) or not refs or not isinstance(refs[0], dict):

@@ -182,3 +182,40 @@ def test_chatlas2_text_anonymizer_has_no_model_or_provider_dependency() -> None:
 def test_hooks_foundation_does_not_import_daemon_adapters() -> None:
     imports = _top_level_import_graph()
     assert "daemon" not in imports["hooks"]
+
+
+def test_consumers_import_the_lossless_package_and_not_its_submodules() -> None:
+    """The layer's public surface is `tarav.chatlas.lossless`, and only that.
+
+    Its `__init__` deliberately exports `provide_normal_model` -- the cache-transparent
+    reader -- while withholding the pipeline's direct builder, which neither reads nor
+    writes the cache. A consumer that imports `lossless.pipeline` walks around that
+    choice and gets the uncached path without ever asking for it, which is how
+    `index/chatlas.py` spent every session read re-deriving whole transcripts from raw
+    JSONL. The submodule split is layer-internal; binding to it makes a consumer's
+    behavior depend on where the layer happens to keep things.
+
+    Tests under `tests/chatlas_lossless/` are exempt by construction: this walks `src/`
+    only, because testing an internal is exactly what a unit test is for.
+    """
+
+    prefix = "tarav.chatlas.lossless"
+    lossless = PACKAGE_ROOT / "chatlas" / "lossless"
+    offenders: list[str] = []
+    for path in PACKAGE_ROOT.rglob("*.py"):
+        if lossless in path.parents:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            names: tuple[str, ...] = ()
+            if isinstance(node, ast.Import):
+                names = tuple(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                names = (node.module,)
+            for name in names:
+                if name.startswith(prefix + "."):
+                    offenders.append(f"{path.relative_to(PACKAGE_ROOT)}: {name}")
+    assert offenders == [], (
+        "import `tarav.chatlas.lossless` itself, not its submodules: "
+        + "; ".join(sorted(offenders))
+    )

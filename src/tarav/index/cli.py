@@ -241,19 +241,49 @@ def cmd_index_lines(args: argparse.Namespace) -> int:
 def cmd_index_record(args: argparse.Namespace) -> int:
     geo = _geo(args)
     store = IndexStore(geo)
-    if args.line:
-        _emit(store.get(args.line).to_json())
+    if args.record_id:
+        record = store.get(args.record_id)
+        st = _derive(geo)[record.id]
+        _emit(
+            {
+                **record.to_json(),
+                "standing": {
+                    "side": str(st.side),
+                    "index": str(st.index),
+                    "review": str(st.review),
+                    "is_trace_head": st.is_trace_head,
+                },
+            }
+        )
         return 0
 
     derived = _derive(geo)
     records = store.all()
     if args.side:
         records = [r for r in records if str(derived[r.id].side) == args.side]
+
+    # Both renderings of a corpus listing report the same corpus, error bars included.
+    # The retired shape returned here before computing them, so the JSON caller and the
+    # text caller were reading two different answers under one command.
+    vector = _verdicts(geo)
     if args.json:
-        _emit([r.to_json() for r in records])
+        _emit(
+            [
+                {
+                    **record.to_json(),
+                    "standing": {
+                        "side": str(derived[record.id].side),
+                        "index": str(derived[record.id].index),
+                        "review": str(derived[record.id].review),
+                        "is_trace_head": derived[record.id].is_trace_head,
+                    },
+                    "open_signals": len(vector.get(record.id, [])),
+                }
+                for record in records
+            ]
+        )
         return 0
 
-    vector = _verdicts(geo)
     for record in records:
         st = derived[record.id]
         marks = "".join(
@@ -299,7 +329,7 @@ def cmd_index_write(args: argparse.Namespace) -> int:
         args.type,
         args.body,
         support=support,
-        trace=args.trace,
+        trace=args.trace_id,
     )
     if args.anchor:
         record = record.relabel(args.anchor)
@@ -318,7 +348,7 @@ def cmd_index_revise(args: argparse.Namespace) -> int:
 
     geo = _geo(args)
     store = IndexStore(geo)
-    previous = store.get(args.line)
+    previous = store.get(args.record_id)
     successor = previous.successor(
         args.type or previous.line.type,
         args.body,
@@ -346,13 +376,13 @@ def cmd_index_revise(args: argparse.Namespace) -> int:
 def cmd_index_trace(args: argparse.Namespace) -> int:
     geo = _geo(args)
     store = IndexStore(geo)
-    members = store.by_trace(args.trace)
+    members = store.by_trace(args.trace_id)
     if not members:
-        print(f"no trace {args.trace}", file=sys.stderr)
+        print(f"no trace {args.trace_id}", file=sys.stderr)
         return 1
     derived = _derive(geo)
     print(
-        f"trace {args.trace}   reviewed={any(m.review for m in members)}   "
+        f"trace {args.trace_id}   reviewed={any(m.review for m in members)}   "
         f"landed={any(m.landing for m in members)}"
     )
     for member in members:
@@ -372,7 +402,7 @@ def cmd_index_gate(args: argparse.Namespace) -> int:
 
     geo = _geo(args)
     store = IndexStore(geo)
-    record = store.get(args.line)
+    record = store.get(args.record_id)
     gate = _gate_from(args)
     updated = record.with_landing(gate) if args.kind == "landing" else record.with_review(gate)
     store.put(updated)
@@ -390,8 +420,8 @@ def cmd_index_remove(args: argparse.Namespace) -> int:
 
     geo = _geo(args)
     store = IndexStore(geo)
-    record = store.get(args.line)
-    store.remove(args.line)
+    record = store.get(args.record_id)
+    store.remove(args.record_id)
     print(f"removed {record.id}")
     if record.grounded:
         print("  grounded: `tarav index linter` will report the lost coverage")
@@ -399,34 +429,62 @@ def cmd_index_remove(args: argparse.Namespace) -> int:
 
 
 def cmd_index_resolve(args: argparse.Namespace) -> int:
+    """Resolve one label to its entry and standing.
+
+    A point lookup. It reads the record and derives standing, and deliberately does not run
+    the linter: reporting one line's error bar used to mean checking every record in the
+    corpus, which is thousands of archive reads to answer a question about one. The error bar
+    is still a command away -- `tarav index linter --label` -- and that one is targeted too.
+    """
+
     geo = _geo(args)
     store = IndexStore(geo)
     record = store.by_label(args.label)
     if record is None:
-        print(f"{args.anchor} resolves to no index entry", file=sys.stderr)
+        print(f"{args.label} resolves to no index entry", file=sys.stderr)
         return 1
-    if args.json:
-        _emit(record.to_json())
-        return 0
+
     st = _derive(geo)[record.id]
+    # One read per session rather than one per reference: a line's support is normally
+    # several turns of the same conversation.
+    sessions: dict[str, object] = {}
+    support: list[tuple[str, str]] = []
+    for ref in record.support:
+        if ref.session_id not in sessions:
+            try:
+                sessions[ref.session_id] = load_session(geo, ref.session_id)
+            except TaravIndexError:
+                sessions[ref.session_id] = None
+        session = sessions[ref.session_id]
+        message = session.message(ref.message_id) if session is not None else None
+        excerpt = message.text.replace("\n", " ")[:90] if message else "(unreachable)"
+        support.append((ref.message_id, excerpt))
+
+    if args.json:
+        _emit(
+            {
+                **record.to_json(),
+                "standing": {
+                    "side": str(st.side),
+                    "index": str(st.index),
+                    "review": str(st.review),
+                    "is_trace_head": st.is_trace_head,
+                },
+                "support_excerpts": [
+                    {"message_id": message_id, "excerpt": excerpt}
+                    for message_id, excerpt in support
+                ],
+            }
+        )
+        return 0
+
     print(f"anchor  {record.line.label}")
     print(f"entry   {record.id}  [{st.side}]  {st.index}  review={st.review}")
     print(f"line    [{record.line.type}] {record.line.body}")
     print(f"scope   {record.scope.address}  ({record.scope.kind})")
-    for ref in record.support:
-        message = None
-        try:
-            message = load_session(geo, ref.session_id).message(ref.message_id)
-        except TaravIndexError:
-            pass
-        excerpt = message.text.replace("\n", " ")[:90] if message else "(unreachable)"
-        print(f"  support  {ref.message_id[:16]}…  {excerpt}")
-
-    signals = _verdicts(geo).get(record.id, [])
-    print(f"verdict  {len(signals)} open signal(s)")
-    for finding in signals:
-        print(f"  {finding.status:8} {finding.evaluator:6} {finding.poi_class}")
-        print(f"           {finding.source}")
+    for message_id, excerpt in support:
+        print(f"  support  {message_id[:16]}…  {excerpt}")
+    print("verdict  `tarav index linter --label " + str(record.line.label) + "`")
     return 0
 
 
@@ -459,6 +517,42 @@ def cmd_index_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _lint_subjects(geo: Geography, args: argparse.Namespace) -> set[str] | None:
+    """The record ids a targeted lint examines, or `None` for the whole corpus.
+
+    A label is resolved to its record here rather than inside the linter: the store already
+    owns label resolution and refuses an ambiguous one, and duplicating that would be a
+    second place that decides what a citation points at.
+    """
+
+    labels = args.label or []
+    record_ids = args.record_id or []
+    if not labels and not record_ids:
+        return None
+
+    store = IndexStore(geo)
+    subjects = set()
+    unresolved: list[str] = []
+    for label in labels:
+        record = store.by_label(label)
+        if record is None:
+            unresolved.append(label)
+        else:
+            subjects.add(record.id)
+    for record_id in record_ids:
+        if store.find(record_id) is None:
+            unresolved.append(record_id)
+        else:
+            subjects.add(record_id)
+    if unresolved:
+        # Fail rather than lint the rest: a selector that silently matched nothing would
+        # report a clean run for a line that was never examined.
+        raise TaravIndexError(
+            "no index record for: " + ", ".join(sorted(unresolved))
+        )
+    return subjects
+
+
 def cmd_index_linter(args: argparse.Namespace) -> int:
     geo = _geo(args)
     if args.list_checks:
@@ -468,7 +562,8 @@ def cmd_index_linter(args: argparse.Namespace) -> int:
         return 0
 
     dev = args.lane == "dev"
-    report = lint(geo, check=args.check, skip=args.skip, dev=dev)
+    subjects = _lint_subjects(geo, args)
+    report = lint(geo, check=args.check, skip=args.skip, dev=dev, subjects=subjects)
     if report.is_dev and not args.json:
         print("DEV LANE — not a verdict about the project, a verdict about the machinery")
         for name in report.dev:
@@ -496,6 +591,8 @@ def cmd_index_linter(args: argparse.Namespace) -> int:
         f"{report.records_checked} record(s), "
         f"{report.surface_lines_checked} surface line(s)"
     )
+    if subjects is not None:
+        scanned += "  [targeted: record-scoped checks only]"
 
     for poi_class, findings in report.by_class().items():
         print(f"\n{poi_class}  ({len(findings)})")
@@ -546,8 +643,8 @@ def cmd_index_bless(args: argparse.Namespace) -> int:
     decided something. The linter revokes it if the archive contradicts the gate.
     """
 
-    bless(_geo(args), args.identity, _gate_from(args))
-    print(f"blessed {args.identity}")
+    bless(_geo(args), args.poi_id, _gate_from(args))
+    print(f"blessed {args.poi_id}")
     return 0
 
 
@@ -621,11 +718,11 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_config)
 
     p = index_sub.add_parser("session", help="summarize one normalized chat session")
-    p.add_argument("session")
+    p.add_argument("--session", required=True, help="native id, URI, or identity hash")
     p.set_defaults(func=cmd_chatlas_session)
 
     p = index_sub.add_parser("messages", help="list messages with touch standing")
-    p.add_argument("session")
+    p.add_argument("--session", required=True, help="native id, URI, or identity hash")
     p.add_argument("--touched", action="store_true", help="only qualifying editions")
     p.add_argument("--contains", help="substring filter")
     p.add_argument("--limit", type=int, default=0)
@@ -641,7 +738,7 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_lines)
 
     p = index_sub.add_parser("record", help="inspect index entries")
-    p.add_argument("--line")
+    p.add_argument("--record-id")
     p.add_argument("--side", choices=["agent", "user"], help="filter by derived review side")
     p.set_defaults(func=cmd_index_record)
 
@@ -652,13 +749,13 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--anchor")
     p.add_argument("--session")
     p.add_argument("--support", nargs="*", help="touched message addresses")
-    p.add_argument("--trace", help="join an existing trace (same indexed semantic)")
+    p.add_argument("--trace-id", help="join an existing trace (same indexed semantic)")
     p.set_defaults(func=cmd_index_write)
 
     p = index_sub.add_parser(
         "revise", help="write a new version of a line into its trace"
     )
-    p.add_argument("line", help="the line this revises")
+    p.add_argument("--record-id", required=True, help="the record edition this revises")
     p.add_argument("--body", required=True)
     p.add_argument("--type")
     p.add_argument(
@@ -668,11 +765,11 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_revise)
 
     p = index_sub.add_parser("trace", help="show one trace and its members")
-    p.add_argument("trace")
+    p.add_argument("--trace-id", required=True, help="the semantic lineage")
     p.set_defaults(func=cmd_index_trace)
 
     p = index_sub.add_parser("remove", help="remove an entry from the semantic model")
-    p.add_argument("line")
+    p.add_argument("--record-id", required=True)
     p.set_defaults(func=cmd_index_remove)
 
     def _gate_args(parser_):
@@ -682,7 +779,7 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
         parser_.add_argument("--agent-turn", required=True, help="the turn it answered")
 
     p = index_sub.add_parser("gate", help="record a user gate on a line")
-    p.add_argument("line")
+    p.add_argument("--record-id", required=True)
     p.add_argument(
         "--kind", choices=["review", "landing"], default="review",
         help="review evidences reading; landing evidences approval to HEAD",
@@ -691,11 +788,11 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_gate)
 
     p = index_sub.add_parser("resolve", help="resolve a label to its entry and standing")
-    p.add_argument("label")
+    p.add_argument("--label", required=True, help="the public citation")
     p.set_defaults(func=cmd_index_resolve)
 
     p = index_sub.add_parser("import", help="bring a legacy depot into the current layout")
-    p.add_argument("depot_root", help="path to the tarav1 depot")
+    p.add_argument("--depot-root", required=True, help="path to the tarav1 depot")
     p.add_argument("--depot", help="depot name (defaults to the directory name)")
     p.add_argument("--home", default="agent")
     p.add_argument("--chapter", default="design")
@@ -703,8 +800,16 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
 
     p = index_sub.add_parser("linter", help="run conformance checks")
     p.add_argument(
-        "lane", nargs="?", choices=["dev"], default=None,
+        "--lane", choices=["dev"], default=None,
         help="dev runs the dev lane: registered dev checks displace the ones they stand in for",
+    )
+    p.add_argument(
+        "--label", action="append",
+        help="lint only this line, by public citation; repeatable",
+    )
+    p.add_argument(
+        "--record-id", action="append",
+        help="lint only this record edition; repeatable",
     )
     p.add_argument("--check", action="append", help="run only this check; repeatable")
     p.add_argument("--skip", action="append", help="skip this check; repeatable")
@@ -712,12 +817,12 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_linter)
 
     p = index_sub.add_parser("bless", help="accept one exact POI, on a user gate")
-    p.add_argument("identity")
+    p.add_argument("--poi-id", required=True, help="the POI occurrence to accept")
     _gate_args(p)
     p.set_defaults(func=cmd_index_bless)
 
     p = index_sub.add_parser("explain", help="explain a check or POI class")
-    p.add_argument("poi_class")
+    p.add_argument("--poi-class", required=True)
     p.set_defaults(func=cmd_poi_explain)
 
 
