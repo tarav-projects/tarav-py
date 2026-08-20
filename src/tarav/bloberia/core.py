@@ -21,6 +21,7 @@ Three things follow from it, and they are the whole design:
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -29,6 +30,9 @@ from typing import Any, Iterator, Mapping
 from uuid import uuid4
 
 from tarav._core.persistence import atomic_write_json
+
+from .coordinate import RecordCoordinate, derive as _derive, resolve as _resolve
+from .git import GitCheckpoint
 
 #: The public depot for records that belong to no single project, beside the Chatlas
 #: archive. An important system carries its own public depot rather than hiding in a
@@ -43,10 +47,20 @@ DEPOT_SCHEMA = "tarav.bloberia-depot.v2"
 #: record; jsonl and accelerated types are additions, not replacements, which is why the
 #: contract below is fixed while only one type exists.
 TYPE_FILES = "files"
-DEPOT_TYPES = (TYPE_FILES,)
+
+#: Many records per file, grouped by two hex digits of the key's digest. Carried forward
+#: from Anchory, where it was measured: 3,956 records under `files` is 3,956 opens per
+#: scan. The key is a declared cargo path, so this type does look inside cargo — that is
+#: the term a consumer accepts by choosing it, not a leak in the `files` contract.
+TYPE_SHARDS = "shards"
+DEPOT_TYPES = (TYPE_FILES, TYPE_SHARDS)
 
 Cargo = Any
 Query = Mapping[str, Mapping[str, Any]]
+
+#: Where one record sits, in whatever the depot's topology is. A `files` record is a
+#: whole file; a `shards` record is one entry inside one. Never surfaced to a caller.
+_Locator = tuple[Path, str | None]
 
 _PREDICATES = ("equals", "contains", "exists")
 
@@ -165,18 +179,94 @@ class BloberiaCheckResult:
 class BloberiaDepot:
     """One record store rooted at an explicit directory."""
 
-    def __init__(self, root: Path | str, *, depot_type: str = TYPE_FILES) -> None:
-        if depot_type not in DEPOT_TYPES:
+    def __init__(
+        self,
+        root: Path | str,
+        *,
+        depot_type: str | None = None,
+        key: str | None = None,
+        git: str | None = None,
+        git_interval_seconds: int | None = None,
+    ) -> None:
+        if depot_type is not None and depot_type not in DEPOT_TYPES:
             raise InvalidBloberiaInputError(f"unknown depot type: {depot_type}")
         self.root = Path(root).expanduser().resolve()
-        self._type = depot_type
+        #: `None` means "whatever the depot is". It is distinct from an explicit
+        #: `files`, which is a claim about the depot that a shards meta must refuse.
+        self._type = depot_type or TYPE_FILES
+        self._asked_for = depot_type
+        self._declared_key = key
+        self._declared_git = (git, git_interval_seconds)
+        self._meta: dict[str, object] | None = None
+        self._load_meta()
+
+    # -- meta --------------------------------------------------------------------
+
+    @property
+    def meta_path(self) -> Path:
+        return self.root / META_FILENAME
+
+    def _load_meta(self) -> None:
+        """A depot's own meta is authoritative; a constructor argument may not contradict it.
+
+        The type decides the storage topology, so letting a caller pass a different one
+        would mean reading a depot through a layout it was not written in.
+        """
+        if not self.meta_path.is_file():
+            return
+        try:
+            meta = json.loads(self.meta_path.read_text("utf-8"))
+        except (OSError, ValueError) as exc:
+            raise CorruptBloberiaDepotError(f"unreadable depot meta {self.meta_path}: {exc}") from exc
+        if not isinstance(meta, dict):
+            raise CorruptBloberiaDepotError(f"depot meta is not an object: {self.meta_path}")
+        stored_type = meta.get("type", TYPE_FILES)
+        if stored_type not in DEPOT_TYPES:
+            raise CorruptBloberiaDepotError(f"unknown depot type in meta: {stored_type!r}")
+        if self._asked_for is not None and self._asked_for != stored_type:
+            raise InvalidBloberiaInputError(
+                f"depot at {self.root} is type {stored_type!r}, not {self._asked_for!r}"
+            )
+        self._type = str(stored_type)
+        self._meta = meta
+        if self._declared_key is None:
+            self._declared_key = meta.get("key")  # type: ignore[assignment]
+        if self._declared_git == (None, None):
+            self._declared_git = (meta.get("git"), meta.get("git_interval_seconds"))
+
+    def _write_meta(self) -> None:
+        if self.meta_path.exists():
+            return
+        meta: dict[str, object] = {"schema": DEPOT_SCHEMA, "type": self._type}
+        if self._type == TYPE_SHARDS:
+            meta["key"] = self.shard_key
+        git, interval = self._declared_git
+        if git is not None:
+            meta["git"] = git
+            if interval is not None:
+                meta["git_interval_seconds"] = interval
+        atomic_write_json(self.meta_path, meta)
+        self._meta = meta
+
+    @property
+    def git(self) -> GitCheckpoint | None:
+        try:
+            return GitCheckpoint.resolve(self.meta_path, *self._declared_git)
+        except ValueError as exc:
+            raise InvalidBloberiaInputError(str(exc)) from exc
+
+    def _checkpoint(self) -> None:
+        """Offered after every write, and free to decline. Never raises."""
+        handler = self.git
+        if handler is not None:
+            handler.checkpoint(self.root)
 
     # -- reading -----------------------------------------------------------------
 
     def iterate(self, *, namespace: str | None = None) -> Iterator[Cargo]:
         """Every record, in a stable order the caller must not depend on for meaning."""
-        for path in self._record_paths(namespace):
-            yield self._read(path)
+        for _locator, cargo in self._scan({}, namespace=namespace):
+            yield cargo
 
     def first(self, query: Query, *, namespace: str | None = None) -> Cargo | None:
         for _path, cargo in self._scan(query, namespace=namespace):
@@ -194,41 +284,131 @@ class BloberiaDepot:
     def insert(self, cargo: Cargo, *, namespace: str | None = None) -> None:
         """Store one record. Always a new record: bloberia never merges by content."""
         normalized = _normalize(cargo)
+        namespace = _validate_namespace(namespace)
         with self._lock(exclusive=True, create=True):
-            atomic_write_json(self._new_path(_validate_namespace(namespace)), normalized)
+            self._write_meta()
+            if self._type == TYPE_SHARDS:
+                key = self._key_of(normalized)
+                path = self._shard_path(namespace, key)
+                records = self._read_shard(path)
+                if key in records:
+                    raise InvalidBloberiaInputError(
+                        f"{self.shard_key} {key!r} already exists in this depot"
+                    )
+                records[key] = normalized
+                path.parent.mkdir(parents=True, exist_ok=True)
+                atomic_write_json(path, records)
+            else:
+                atomic_write_json(self._new_path(namespace), normalized)
+        self._checkpoint()
 
     def replace(self, query: Query, cargo: Cargo, *, namespace: str | None = None) -> int:
         normalized = _normalize(cargo)
         with self._lock(exclusive=True, create=True):
-            paths = [p for p, _ in self._scan(query, namespace=namespace, locked=True)]
-            for path in paths:
-                atomic_write_json(path, normalized)
-        return len(paths)
+            located = [loc for loc, _ in self._scan(query, namespace=namespace, locked=True)]
+            for locator in located:
+                self._store(locator, normalized)
+        self._checkpoint()
+        return len(located)
 
     def delete(self, query: Query, *, namespace: str | None = None) -> int:
         with self._lock(exclusive=True, create=True):
-            paths = [p for p, _ in self._scan(query, namespace=namespace, locked=True)]
-            for path in paths:
-                path.unlink()
-        return len(paths)
+            located = [loc for loc, _ in self._scan(query, namespace=namespace, locked=True)]
+            for locator in located:
+                self._drop(locator)
+        self._checkpoint()
+        return len(located)
+
+    def _store(self, locator: _Locator, cargo: Cargo) -> None:
+        path, key = locator
+        if key is None:
+            atomic_write_json(path, cargo)
+            return
+        records = self._read_shard(path)
+        records.pop(key, None)
+        records[self._key_of(cargo)] = cargo
+        atomic_write_json(path, records)
+
+    def _drop(self, locator: _Locator) -> None:
+        path, key = locator
+        if key is None:
+            path.unlink()
+            return
+        records = self._read_shard(path)
+        records.pop(key, None)
+        if records:
+            atomic_write_json(path, records)
+        else:
+            path.unlink()
 
     # -- internals ---------------------------------------------------------------
 
     def _records_root(self) -> Path:
         return self.root / RECORDS_DIRNAME
 
+    def _namespace_root(self, namespace: str | None) -> Path:
+        return self._records_root() / namespace if namespace else self._records_root()
+
     def _new_path(self, namespace: str | None) -> Path:
         """A private filename. Opaque and never surfaced, so the topology stays free."""
-        root = self._records_root() / namespace if namespace else self._records_root()
+        root = self._namespace_root(namespace)
         root.mkdir(parents=True, exist_ok=True)
         return root / f"{uuid4().hex}.json"
+
+    # -- shards ------------------------------------------------------------------
+
+    @property
+    def shard_key(self) -> str:
+        key = (self._meta or {}).get("key", self._declared_key)
+        if not isinstance(key, str) or not key:
+            raise InvalidBloberiaInputError(
+                f"a {TYPE_SHARDS} depot must declare the cargo path it shards by"
+            )
+        return key
+
+    def _shard_path(self, namespace: str | None, key_value: str) -> Path:
+        digest = hashlib.sha256(key_value.encode("utf-8")).hexdigest()[:2]
+        return self._namespace_root(namespace) / f"{digest}.json"
+
+    def _key_of(self, cargo: object) -> str:
+        """The declared key must be present and a string. A missing key is loud.
+
+        Silently placing an unkeyed record would put it in a shard nothing can compute,
+        which is a record written and never findable again.
+        """
+        value = _at_path(cargo, self.shard_key)
+        if value is _MISSING:
+            raise InvalidBloberiaInputError(
+                f"cargo carries no {self.shard_key!r}, which this depot shards by"
+            )
+        if not isinstance(value, str) or not value:
+            raise InvalidBloberiaInputError(
+                f"{self.shard_key!r} must be a non-empty string, got {value!r}"
+            )
+        return value
+
+    def _read_shard(self, path: Path) -> dict[str, Cargo]:
+        if not path.is_file():
+            return {}
+        loaded = self._read(path)
+        if not isinstance(loaded, dict):
+            raise CorruptBloberiaDepotError(f"shard is not an object: {path}")
+        return loaded
+
+    def _shard_paths(self, namespace: str | None) -> tuple[Path, ...]:
+        root = self._namespace_root(_validate_namespace(namespace))
+        if not root.is_dir():
+            return ()
+        return tuple(
+            sorted(p for p in root.rglob("*.json") if p.name != META_FILENAME)
+        )
 
     def _record_paths(self, namespace: str | None = None) -> tuple[Path, ...]:
         namespace = _validate_namespace(namespace)
         root = self._records_root() / namespace if namespace else self._records_root()
         if not root.is_dir():
             return ()
-        return tuple(sorted(root.rglob("*.json")))
+        return tuple(sorted(p for p in root.rglob("*.json") if p.name != META_FILENAME))
 
     def namespaces(self) -> tuple[str, ...]:
         """Every namespace prefix present, without reading any record.
@@ -260,7 +440,12 @@ class BloberiaDepot:
 
         findings: list[BloberiaCheckFinding] = []
         with self._lock(exclusive=False, create=False):
-            for path in self._record_paths(None):
+            paths = (
+                self._shard_paths(None)
+                if self._type == TYPE_SHARDS
+                else self._record_paths(None)
+            )
+            for path in paths:
                 try:
                     json.loads(path.read_text("utf-8"))
                 except (OSError, ValueError) as exc:
@@ -272,6 +457,33 @@ class BloberiaDepot:
                         )
                     )
         return BloberiaCheckResult(findings=tuple(sorted(findings, key=lambda f: f.path)))
+
+    # -- stable references -------------------------------------------------------
+
+    def coordinate(
+        self, query: Query, *, namespace: str | None = None, path: str = ""
+    ) -> RecordCoordinate | None:
+        """The `commit + file + path` of the first matching record, if git holds it.
+
+        `path` addresses a sub-value, so a coordinate links to a piece of a record as
+        readily as to the whole. Returns `None` when the depot is not git-tracked, or when
+        the record is not committed — which is a fact reported, never one manufactured.
+        """
+        handler = self.git
+        if handler is None:
+            return None
+        for locator, _cargo in self._scan(query, namespace=namespace):
+            file, key = locator
+            inner = f"{key}.{path}".rstrip(".") if key is not None else path
+            return _derive(handler.repo, file, inner)
+        return None
+
+    def at(self, coordinate: RecordCoordinate) -> object:
+        """Read the value a coordinate names, out of the commit it names."""
+        handler = self.git
+        if handler is None:
+            raise InvalidBloberiaInputError(f"depot at {self.root} is not git-tracked")
+        return _resolve(handler.repo, coordinate)
 
     def _read(self, path: Path) -> Cargo:
         try:
@@ -290,11 +502,30 @@ class BloberiaDepot:
         with self._lock(exclusive=False, create=False):
             yield from self._scan_unlocked(query, namespace)
 
-    def _scan_unlocked(self, query: Query, namespace: str | None) -> Iterator[tuple[Path, Cargo]]:
+    def _scan_unlocked(self, query: Query, namespace: str | None) -> Iterator[tuple[_Locator, Cargo]]:
+        if self._type == TYPE_SHARDS:
+            for path in self._candidate_shards(query, namespace):
+                for key, cargo in self._read_shard(path).items():
+                    if _matches(cargo, query):
+                        yield (path, key), cargo
+            return
         for path in self._record_paths(namespace):
             cargo = self._read(path)
             if _matches(cargo, query):
-                yield path, cargo
+                yield (path, None), cargo
+
+    def _candidate_shards(self, query: Query, namespace: str | None) -> tuple[Path, ...]:
+        """One shard when the query pins the key, every shard otherwise.
+
+        This is the only reason the type exists: a lookup by the declared key computes
+        its shard instead of reading the depot. The result is identical either way, so
+        the fast path can never disagree with the scan — it visits fewer files.
+        """
+        predicate = query.get(self.shard_key) if isinstance(query, Mapping) else None
+        if isinstance(predicate, Mapping) and isinstance(predicate.get("equals"), str):
+            path = self._shard_path(_validate_namespace(namespace), predicate["equals"])
+            return (path,) if path.is_file() else ()
+        return self._shard_paths(namespace)
 
     @contextmanager
     def _lock(self, *, exclusive: bool, create: bool) -> Iterator[None]:
@@ -320,5 +551,7 @@ __all__ = [
     "CorruptBloberiaDepotError",
     "InvalidBloberiaInputError",
     "PUBLIC_DEPOT_ROOT",
+    "RecordCoordinate",
     "TYPE_FILES",
+    "TYPE_SHARDS",
 ]
