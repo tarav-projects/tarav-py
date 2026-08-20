@@ -456,21 +456,22 @@ def _check_review_covers_support(ctx: LintContext) -> list[Finding]:
 
     findings: list[Finding] = []
     for record in ctx.records:
-        if record.review is None or not record.support:
+        if not record.review or not record.support:
             continue
+        gate = record.review[0]
         try:
-            session = load_session(ctx.geo, record.review.session_id)
+            session = load_session(ctx.geo, gate.session_id)
         except ChatError:
             findings.append(
                 Finding(
                     "Index.Linter/Review.SupportUnseen",
                     record.id,
-                    {"session": record.review.session_id},
+                    {"session": gate.session_id},
                     status=Status.BLOCKED,
                 )
             )
             continue
-        turn = session.message(record.review.agent_turn_id)
+        turn = session.message(gate.agent_turn_id)
         if turn is None:
             continue
         missing = [r.message_id for r in record.support if r.message_id not in turn.text]
@@ -746,7 +747,7 @@ def _check_rephrase_in_review_chain(ctx: LintContext) -> list[Finding]:
     by_id = {r.id: r for r in ctx.records}
     findings: list[Finding] = []
     for record in ctx.records:
-        if record.review is not None:
+        if record.review:
             continue
         trace = ctx.traces().get(record.trace)
         if trace is None or not trace.reviewed:
@@ -777,7 +778,7 @@ def _check_review_evidence_retained(ctx: LintContext) -> list[Finding]:
         if not trace.reviewed:
             continue
         for member in trace.review_members:
-            if member.review is None:
+            if not member.review:
                 continue
             if not member.line.body.strip():
                 findings.append(
@@ -799,9 +800,10 @@ def _gate_findings(ctx: LintContext, *, require_touch: bool) -> list[Finding]:
 
     findings: list[Finding] = []
     for record in ctx.records:
-        for kind, gate in (("review", record.review), ("landing", record.landing)):
-            if gate is None:
-                continue
+        gates = [("review", g) for g in record.review]
+        if record.landing is not None:
+            gates.append(("landing", record.landing))
+        for kind, gate in gates:
             check = verify_gate(
                 ctx.geo, gate, record.line.body, require_touch=require_touch
             )

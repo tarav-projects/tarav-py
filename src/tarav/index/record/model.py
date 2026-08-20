@@ -34,7 +34,11 @@ from enum import StrEnum
 from ..gates import GateRef
 from ..scope import LineScope, parse_scope
 
-RECORD_SCHEMA = "tarav.index-line-record.v3"
+RECORD_SCHEMA = "tarav.index-line-record.v4"
+#: `v3` held one review gate. It could not carry a line the user gated twice under two
+#: tokens, and the anchory corpus has such lines, so migrating into it would have dropped
+#: evidence the record exists to hold.
+RECORD_SCHEMA_V3 = "tarav.index-line-record.v3"
 LINE_ID_PREFIX = "ln"
 TRACE_ID_PREFIX = "tr"
 
@@ -178,6 +182,19 @@ class Line:
         )
 
 
+def _gate_tuple(payload: object) -> tuple[GateRef, ...]:
+    """Read `links.review` from either schema.
+
+    `v3` wrote one object or null; `v4` writes a list. Both are read, because records on
+    disk predate the widening and rewriting them is a migration, not a read.
+    """
+    if payload is None:
+        return ()
+    if isinstance(payload, dict):
+        return (GateRef.from_json(payload),)
+    return tuple(GateRef.from_json(g) for g in payload)
+
+
 @dataclass(frozen=True, slots=True)
 class LineRecord:
     """One index entry: what it says, and how it indexes the authority surface.
@@ -197,7 +214,10 @@ class LineRecord:
     line: Line
     support: tuple[SupportRef, ...] = ()
     placement: PlacementRef | None = None
-    review: GateRef | None = None
+    #: Every gate that evidenced this wording. A tuple rather than one gate: a line can
+    #: be gated more than once under distinct tokens, and a single slot would make the
+    #: extra evidence unstorable rather than merely unstored.
+    review: tuple[GateRef, ...] = ()
     landing: GateRef | None = None
     equivalence: Equivalence | None = None
 
@@ -276,10 +296,10 @@ class LineRecord:
     def with_placement(self, placement: PlacementRef) -> LineRecord:
         return replace(self, placement=placement)
 
-    def with_review(self, review: GateRef) -> LineRecord:
-        """Attach the gate evidencing that the user read this wording."""
+    def with_review(self, *review: GateRef) -> LineRecord:
+        """Attach the gates evidencing that the user read this wording."""
 
-        return replace(self, review=review)
+        return replace(self, review=tuple(review))
 
     def with_landing(self, landing: GateRef) -> LineRecord:
         """Attach the gate evidencing that the user approved landing this to HEAD.
@@ -300,7 +320,7 @@ class LineRecord:
             "links": {
                 "grounding": [s.to_json() for s in self.support],
                 "placement": self.placement.to_json() if self.placement else None,
-                "review": self.review.to_json() if self.review else None,
+                "review": [g.to_json() for g in self.review],
                 "landing": self.landing.to_json() if self.landing else None,
             },
             "equivalence": self.equivalence.to_json() if self.equivalence else None,
@@ -320,7 +340,7 @@ class LineRecord:
             line=Line.from_json(payload["line"]),  # type: ignore[arg-type]
             support=tuple(SupportRef.from_json(s) for s in links.get("grounding", [])),
             placement=PlacementRef.from_json(placement) if placement else None,
-            review=GateRef.from_json(review) if review else None,
+            review=_gate_tuple(review),
             landing=GateRef.from_json(landing) if landing else None,
             equivalence=Equivalence.from_json(equivalence) if equivalence else None,
         )

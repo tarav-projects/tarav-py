@@ -225,3 +225,43 @@ class TestGroundingBoundary:
 
     def test_an_ungrounded_entry_is_legitimate(self):
         assert not _entry(support=()).grounded
+
+
+def test_a_line_gated_twice_keeps_both_gates(geo) -> None:
+    """`v3` held one review gate, so a twice-gated line could not be stored at all.
+
+    The anchory corpus has such lines. A single slot would have made the extra evidence
+    unstorable rather than merely unstored, which is why the field is a tuple.
+    """
+    store = IndexStore(geo)
+    first = GateRef("chat", "s1", "idx-edition:aaaa1111", "u1", "a1")
+    second = GateRef("chat", "s1", "idx-edition:bbbb2222", "u2", "a2")
+
+    stored = store.put(_entry("gated twice").with_review(first, second))
+    read_back = store.get(stored.id)
+
+    assert read_back.review == (first, second)
+
+
+def test_a_v3_record_on_disk_still_reads(geo) -> None:
+    """`v3` wrote one gate object or null; reading it is not a migration."""
+    store = IndexStore(geo)
+    stored = store.put(_entry("v3 shaped"))
+
+    payload = json.loads(store.root().record_path(stored.id).read_text("utf-8"))
+    payload["schema"] = "tarav.index-line-record.v3"
+    payload["links"]["review"] = GateRef("chat", "s1", "t", "u1", "a1").to_json()
+    store.root().record_path(stored.id).write_text(json.dumps(payload), encoding="utf-8")
+
+    assert store.get(stored.id).review == (GateRef("chat", "s1", "t", "u1", "a1"),)
+
+
+def test_a_v3_record_with_a_null_review_reads_as_no_gates(geo) -> None:
+    store = IndexStore(geo)
+    stored = store.put(_entry("ungated"))
+
+    payload = json.loads(store.root().record_path(stored.id).read_text("utf-8"))
+    payload["links"]["review"] = None
+    store.root().record_path(stored.id).write_text(json.dumps(payload), encoding="utf-8")
+
+    assert store.get(stored.id).review == ()

@@ -95,13 +95,13 @@ class Trace:
     def reviewed(self) -> bool:
         """Review is a property of the trace, so every member is semantically reviewed."""
 
-        return any(m.review is not None for m in self.members)
+        return any(m.review for m in self.members)
 
     @property
     def review_members(self) -> tuple[LineRecord, ...]:
         """The members carrying review evidence — the ones that may never be dropped."""
 
-        return tuple(m for m in self.members if m.review is not None)
+        return tuple(m for m in self.members if m.review)
 
     @property
     def landed(self) -> bool:
@@ -169,7 +169,7 @@ def index_standing(record: LineRecord, head_lines: set[str]) -> IndexStanding:
 
 # $kw: --from Typed.Agent.State --note [CT] review standing is computed from evidence on the record and its trace, because the system will not carry a value which is merely agent-based ^c20260819-15u
 def review_standing(record: LineRecord, trace: Trace | None) -> ReviewStanding:
-    if record.review is not None:
+    if record.review:
         return ReviewStanding.DIRECT
     if trace is not None and trace.reviewed:
         return ReviewStanding.VIA_TRACE
