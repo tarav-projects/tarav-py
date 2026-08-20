@@ -85,16 +85,41 @@ def _support(record: dict) -> list[dict]:
     return members
 
 
+def _gate_space(entry: object) -> str:
+    """How a gate addresses, not where it was stored.
+
+    The `v1` dossier kept turn-addressed gates under `relationships.gates`, the same place
+    `v2` keeps message-addressed ones, so location is not the coordinate space. Reading the
+    space off the entry is what makes two representations of one token recognisable as
+    such instead of looking like two gates.
+    """
+    if isinstance(entry, dict) and not entry:
+        return "empty"
+    text = json.dumps(entry)
+    if "message_address" in text:
+        return "message"
+    if "turn_id" in text or "turn_hash" in text:
+        return "turn"
+    # `support-set.v4` serialized a turn ref as the string `<session>:<turn>`, which names
+    # the same coordinate without naming the field. Same space, older spelling.
+    if isinstance(entry, dict) and any(
+        isinstance(entry.get(field), str) and ":" in entry[field]
+        for field in ("approval_turn", "verbatim_turn", "proposal_turn")
+    ):
+        return "turn"
+    return "unknown"
+
+
 def _gates(record: dict) -> list[dict]:
     """Every gate, under the three legacy spellings and the current one."""
     gates: list[dict] = []
     relationships = record.get("relationships") or {}
     for kind, entries in (relationships.get("gates") or {}).items():
         for entry in entries or []:
-            gates.append({"space": "message", "kind": kind, "entry": entry})
+            gates.append({"space": _gate_space(entry), "kind": kind, "entry": entry})
     for member in (record.get("members") or []):
         for kind, entry in (member.get("types") or {}).items():
-            gates.append({"space": "turn", "kind": kind, "entry": entry})
+            gates.append({"space": _gate_space(entry), "kind": kind, "entry": entry})
     return gates
 
 
