@@ -37,12 +37,14 @@ def compute_event_hash(event: JsonObject) -> str:
     return _digest(body)
 
 
+# $kw: --from Touch.Authority.Surface --note [DF] a stored ref carries an address plus a content hash, so it names a place and not a position and survives the tape being reordered ^c20260729-292u
 def event_ref(event: JsonObject) -> JsonObject:
     address = _full_digest(event.get("event_address"), field="event_address")
     digest = _full_digest(event.get("event_hash"), field="event_hash")
     return {"event_address": address, "event_hash": digest}
 
 
+# $kw: --from Touched.Authority --note [CT] resolution fails loudly on a duplicate or missing address rather than selecting a near match, because unresolved evidence is a Point.Of.Interest and never a relocation ^c20260729-210u
 def resolve_event_ref(
     events: Iterable[JsonObject],
     ref: JsonObject,

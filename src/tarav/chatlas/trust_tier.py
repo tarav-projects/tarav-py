@@ -19,6 +19,7 @@ TRUST_TIERS = (TRUST_APPEND, TRUST_VERIFY, TRUST_REBUILD)
 _TRUST_CONTEXT: ContextVar[str] = ContextVar("chatlas_delta_trust", default=TRUST_VERIFY)
 
 
+# $kw: --from Normalization.Trust.Tier --note [DC] three tiers — append resumes blindly, verify re-checks provenance and recomputes from the first divergence, rebuild re-derives from source ^c20260712-56u
 def set_trust_tier(tier: str) -> None:
     if tier not in TRUST_TIERS:
         raise ValueError(
@@ -27,6 +28,7 @@ def set_trust_tier(tier: str) -> None:
     _TRUST_CONTEXT.set(tier)
 
 
+# $kw: --from Normalization.Trust.Tier --note [CT] tier selection changes cost and staleness risk only, never the model contract, so every tier produces the same model shape ^c20260712-37u
 def current_trust_tier() -> str:
     return _TRUST_CONTEXT.get()
 

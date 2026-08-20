@@ -51,6 +51,7 @@ def lossless_anchory_depot(chatlas_root: Path | None = None) -> AnchoryDepot:
     return AnchoryDepot(root / "anchory")
 
 
+# $kw: --from Anchory.System --note [DC] one namespace under one prefix, because a second prefix would name a distinction that no longer exists once every record carries one model
 def ensure_lossless_namespace(depot: AnchoryDepot) -> None:
     meta = depot.namespace_meta(CHATLAS2_NAMESPACE)
     if meta is None:
@@ -843,6 +844,8 @@ def lossless_anchory_register(
     )
 
 
+# $kw: --from Support.Set --note [DF] an anchor resolves to its ordered support-member neighborhoods, because the turns around a member are often what make it legible
+# --from Touched.Authority --note [CT] resolution reports what it finds and never substitutes a near match, since touched data may be incomplete or contradictory ^c20260729-163u
 def lossless_anchory_resolve(
     anchor: str,
     *,

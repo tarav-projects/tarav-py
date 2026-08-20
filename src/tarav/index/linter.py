@@ -371,6 +371,7 @@ def _check_line_drift(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: --from Index.WIP.Surface --note [CT] an ungrounded line is work not yet done rather than a violation, because the index is a WIP.Surface ^c20260818-19u
 def _check_record_grounded(ctx: LintContext) -> list[Finding]:
     """The bar. An ungrounded entry carries `Index.Presumption`, which is debt, not error."""
 
@@ -674,6 +675,7 @@ def _check_equivalence_predecessor(ctx: LintContext) -> list[Finding]:
     return findings
 
 
+# $kw: --from Typed.Agent.State --note [DC] the rephrase claim is agent-generated, so it sits beside a cheap inlined assertion that makes talking harder than being right ^c20260819-19u
 def _check_equivalence_support_invariant(ctx: LintContext) -> list[Finding]:
     """If the new wording needed new evidence, it is not the same claim.
 
@@ -823,6 +825,7 @@ def _gate_findings(ctx: LintContext, *, require_touch: bool) -> list[Finding]:
     return findings
 
 
+# $kw: --from Index.Head.Surface --note [DF] the approval turn is the gate, and approval there also means moving the line to the HEAD ^c20260819-16u
 def _check_landing_evidenced(ctx: LintContext) -> list[Finding]:
     """Presence says what is; the gate says what licensed it.
 
@@ -955,6 +958,7 @@ def _coverage_at_git_head(geo: Geography) -> set[tuple[str, str, str]] | None:
     return coverage
 
 
+# $kw: --from Index.Removal --note [CT] deleted lines are tracked on git and not by the index, so what is conserved is coverage rather than a removals ledger ^c20260819-23u
 def _check_coverage_converges(ctx: LintContext) -> list[Finding]:
     """The bytes of the index are free to move; its coverage of the Touched.Data is not.
 
@@ -1347,6 +1351,8 @@ def select_checks(
     return selected
 
 
+# $kw: --from State.Estimation --note [DF] a state is minimally a value plus an err or unknown estimate, so the report counts blocked apart from failed ^d20260819-16u
+# --from Dumb.Code --note [DF] the catalog is a Fishing.Net: cheap tests run over all items, converting expensive semantic attention into cheap mechanical attention ^d20260819-21u
 def lint(
     geo: Geography,
     *,

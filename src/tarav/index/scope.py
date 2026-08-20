@@ -67,6 +67,7 @@ class LineScope:
         return self.address
 
 
+# $kw: --from Skw.Annotation --note [DC] one field and one resolver carry two address kinds, because a Skw.Annotation is named by one explicit Locator.Name and a block by its Block.Path ^c20260720-36u
 def parse_scope(address: str) -> LineScope:
     """Parse a scope address.
 
@@ -114,6 +115,8 @@ def annotation_scope(file: str, region: str | None = None) -> LineScope:
     return parse_scope(f"@{file}" + (f"/{region}" if region else ""))
 
 
+# $kw: --from Index.Head.Surface --note [DC] a scope names depot and chapter but never a home, so every home is searched and no home is the SSOT ^c20260819-26u
+# --note [CT] resolution reads the filesystem rather than a recorded path, because a stored location is a cache of what the tree already answers ^d20260819-14u
 def resolve_scope_surface(
     scope: LineScope, root: Path, *, contains: str | None = None
 ) -> Path | None:

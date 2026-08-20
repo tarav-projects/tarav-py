@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.bloberia import BloberiaDepot
+from tarav.bloberia.depot_v1 import BloberiaDepot
 from tarav.skillware.edition_history import (
     DEFAULT_EDITION_HISTORY_DEPOT,
     EditionFile,

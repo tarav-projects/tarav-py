@@ -10,7 +10,7 @@ from typing import Protocol
 from tarav._core.errors import CliError
 from tarav._core.json_input import load_json_arg, load_json_object_arg
 
-from .core import BloberiaCheckResult, BloberiaDepot, BloberiaError, BloberiaRecord
+from .depot_v1 import BloberiaCheckResult, BloberiaDepot, BloberiaError, BloberiaRecord
 
 
 class BloberiaCheckReport(Protocol):

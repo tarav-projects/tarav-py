@@ -177,6 +177,8 @@ def resolve_surface_path(surface: str, root: Path) -> Path:
     return root / surface
 
 
+# $kw: --from Skw.Touched.Index --note [DC] markdown chapters and skw-annotated code are discovered by the one pass, because index lines attach to any skw annotation through the same mechanism as the markdown index ^c20260729-173u
+# --note [CT] a surface outside these patterns is not reported as unchecked, it is absent from the run — discovery scope sits upstream of every verdict ^c20260819-25u
 def discover_surfaces(scopes: Geography, root: Path) -> list[str]:
     """Every index surface reachable in this project, recorded or not.
 
@@ -203,6 +205,8 @@ def discover_surfaces(scopes: Geography, root: Path) -> list[str]:
     return surfaces
 
 
+# $kw: --from Index.Head.Surface --note [DF] this set states what has been promoted, and a line is in the HEAD if it is on one of these ^c20260819-25u
+# --note [DC] it is project-tier declared state rather than inferred from a path, so widening the trust root is a diff a human reads ^c20260818-2u
 @dataclass(frozen=True, slots=True)
 class HeadSurfaces:
     """Which surfaces carry the index HEAD.
@@ -257,6 +261,7 @@ def homes_path(geo: Geography) -> Path:
     return geo.project_tier / HOMES_FILE
 
 
+# $kw: --from Touched.Index.Record --note [CT] a home may carry the serialized record alone, so "materialized on no surface" is a normal state and not a defect ^c20260818-9u
 def load_homes(geo: Geography) -> Homes:
     path = homes_path(geo)
     if not path.exists():
@@ -268,6 +273,7 @@ def load_homes(geo: Geography) -> Homes:
         raise SurfaceError(f"malformed homes declaration at {path}") from None
 
 
+# $kw: --from Index.Head.Surface --note [DC] a scope names a depot and chapter but never a home, so the home is resolved from where the chapter is found ^c20260819-26u
 def scope_home(scope: LineScope, root: Path) -> str | None:
     """The home a block scope resolves into, or ``None`` when it resolves nowhere."""
 
@@ -285,6 +291,7 @@ def head_surfaces_path(geo: Geography) -> Path:
     return geo.project_tier / HEAD_SURFACES_FILE
 
 
+# $kw: --from Scope.Axis --note [DC] the declaration is project tier, because a fresh clone must read the index without the user tier ^c20260818-1u
 def load_head_surfaces(geo: Geography) -> HeadSurfaces:
     """Read the declaration, falling back to the default so a fresh project still works."""
 

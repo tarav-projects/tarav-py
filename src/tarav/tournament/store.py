@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from tarav._core.clock import iso_z, utc_now_iso
 from tarav._core.ids import generate_uuid4_string
-from tarav.bloberia import BloberiaDepot, BloberiaRecord
+from tarav.bloberia.depot_v1 import BloberiaDepot, BloberiaRecord
 from tarav.tournament.depot import DEFINITIONS_DIRNAME, resolve_depot_root
 from tarav.tournament.model import (
     ENVELOPE_KEY,

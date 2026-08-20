@@ -4,7 +4,7 @@ from pathlib import Path
 
 from tarav.anchory import AnchoryDepot
 from tarav.anchory.poi import ANCHORY_POI_CODES, build_anchory_linter_report
-from tarav.bloberia import BloberiaDepot
+from tarav.bloberia.depot_v1 import BloberiaDepot
 from tarav.wayfinder.index_blocks import create_index_wayfinder
 from tarav.poi.adapters.bloberia import (
     BLOBERIA_POI_CODES,

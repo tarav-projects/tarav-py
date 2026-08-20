@@ -8,7 +8,7 @@ from uuid import UUID
 
 import pytest
 
-from tarav.bloberia import (
+from tarav.bloberia.depot_v1 import (
     BloberiaDepot,
     InvalidBloberiaInputError,
     RecordExistsError,
@@ -87,7 +87,7 @@ def test_generated_identity_collision_never_overwrites(
     depot = BloberiaDepot(tmp_path / "bloberia")
     record_id = "a8dcf050-086a-4fb6-8bd4-a24167c94584"
     monkeypatch.setattr(
-        "tarav.bloberia.core.generate_uuid4_string", lambda: record_id
+        "tarav.bloberia.depot_v1.generate_uuid4_string", lambda: record_id
     )
     depot.create({"version": 1})
 

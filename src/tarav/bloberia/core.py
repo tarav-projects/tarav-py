@@ -1,23 +1,53 @@
-# $kw: ^bloberia-core --from Agentos.Bloberia --from Bloberia.Record.Namespace --note [DF] explicit-depot JSON records with library-owned identity and metadata; namespaces partition placement under records/ without entering identity --supp ^c20260806-31u ^c20260724-31u
+# $kw: ^bloberia-core --from Agentos.Bloberia --from Bloberia.Record.Namespace --note [DF] opaque-cargo JSON records addressed by path queries; the depot owns storage topology and nothing else --supp ^c20260806-31u ^c20260724-31u
+"""Depot-scoped storage for opaque JSON records.
+
+Bloberia holds a consumer's cargo **verbatim**. There is no envelope — no id, no
+timestamps, no revision, no `value` wrapper — because the moment the store adds a field
+it owns a schema, and every consumer inherits its migrations. That refusal is what lets
+one store serve consumers whose schemas move independently.
+
+Three things follow from it, and they are the whole design:
+
+- **Arity belongs to the call.** `first(query)` returns one match, `all(query)` returns
+  every match. Nothing is declared, nothing is enforced, and a collision is the
+  consumer's business rather than a configuration error.
+- **The layout is private.** No caller learns where a record sits. Anchory's sharding
+  leaked and two migration scripts in this repo reimplemented it, which is exactly what
+  makes a storage topology unchangeable afterwards.
+- **Placement is the caller's.** A depot is rooted at an explicit directory, so project
+  tier, user tier and public depot are decisions bloberia never makes.
+"""
+
 from __future__ import annotations
 
 import fcntl
 import json
 from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Mapping
-from uuid import UUID
+from typing import Any, Iterator, Mapping
+from uuid import uuid4
 
-from tarav._core.clock import iso_z
-from tarav._core.ids import generate_uuid4_string
 from tarav._core.persistence import atomic_write_json
 
+#: The public depot for records that belong to no single project, beside the Chatlas
+#: archive. An important system carries its own public depot rather than hiding in a
+#: dotfile; a project-tier depot is rooted in the project instead.
+PUBLIC_DEPOT_ROOT = Path.home() / "Documents" / "bloberia"
 
-ENVELOPE_KEY = "_bloberia"
-RECORD_KEYS = frozenset({ENVELOPE_KEY, "value"})
-ENVELOPE_KEYS = frozenset({"id", "created_at", "updated_at", "revision"})
+META_FILENAME = "meta.json"
+RECORDS_DIRNAME = "records"
+DEPOT_SCHEMA = "tarav.bloberia-depot.v2"
+
+#: One storage topology under the shared contract. `files` is one JSON document per
+#: record; jsonl and accelerated types are additions, not replacements, which is why the
+#: contract below is fixed while only one type exists.
+TYPE_FILES = "files"
+DEPOT_TYPES = (TYPE_FILES,)
+
+Cargo = Any
+Query = Mapping[str, Mapping[str, Any]]
+
+_PREDICATES = ("equals", "contains", "exists")
 
 
 class BloberiaError(RuntimeError):
@@ -28,389 +58,200 @@ class InvalidBloberiaInputError(BloberiaError):
     pass
 
 
-class RecordExistsError(BloberiaError):
-    pass
-
-
-class RecordNotFoundError(BloberiaError):
-    pass
-
-
 class CorruptBloberiaDepotError(BloberiaError):
     pass
 
 
-@dataclass(frozen=True)
-class BloberiaRecord:
-    id: str
-    created_at: str
-    updated_at: str
-    revision: int
-    value: object
-
-    def as_dict(self) -> dict[str, object]:
-        return _normalize_json(
-            {
-                ENVELOPE_KEY: {
-                    "id": self.id,
-                    "created_at": self.created_at,
-                    "updated_at": self.updated_at,
-                    "revision": self.revision,
-                },
-                "value": self.value,
-            }
-        )
+def _normalize(value: object) -> object:
+    try:
+        return json.loads(json.dumps(value))
+    except (TypeError, ValueError) as exc:
+        raise InvalidBloberiaInputError(f"cargo must be JSON serializable: {exc}") from exc
 
 
-@dataclass(frozen=True)
-class BloberiaCheckFinding:
-    code: str
-    path: str
-    message: str
-    record_id: str | None = None
+_MISSING = object()
 
 
-@dataclass(frozen=True)
-class BloberiaCheckResult:
-    findings: tuple[BloberiaCheckFinding, ...]
+def _validate_namespace(namespace: str | None) -> str | None:
+    """A namespace partitions *placement* only; it never enters identity or meaning."""
+    if namespace is None:
+        return None
+    if not isinstance(namespace, str) or not namespace or "/" in namespace or namespace.startswith("."):
+        raise InvalidBloberiaInputError(f"invalid namespace: {namespace!r}")
+    return namespace
 
-    @property
-    def ok(self) -> bool:
-        return not self.findings
+
+def _at_path(cargo: object, path: str) -> object:
+    """Resolve a dotted path, treating an integer segment as a list index.
+
+    Returns a private sentinel rather than None for an absent path, because `exists`
+    must distinguish "no such path" from "the path holds null" — a distinction the
+    index relies on, where `links.landing: null` means *ungated* rather than *unknown*.
+    """
+    current: object = cargo
+    for segment in path.split("."):
+        if isinstance(current, Mapping):
+            if segment not in current:
+                return _MISSING
+            current = current[segment]
+        elif isinstance(current, list):
+            try:
+                current = current[int(segment)]
+            except (ValueError, IndexError):
+                return _MISSING
+        else:
+            return _MISSING
+    return current
+
+
+def _matches(cargo: object, query: Query) -> bool:
+    for path, condition in query.items():
+        if not isinstance(condition, Mapping) or not condition:
+            raise InvalidBloberiaInputError(
+                f"query condition for {path!r} must name a predicate"
+            )
+        for predicate, operand in condition.items():
+            if predicate not in _PREDICATES:
+                # `regex` is deliberately absent: it is the one predicate no index or
+                # textual prescan can serve, so admitting it would guarantee a fast path
+                # and a slow path that diverge. Refused loudly rather than ignored.
+                raise InvalidBloberiaInputError(
+                    f"unsupported predicate {predicate!r}; bloberia supports "
+                    f"{', '.join(_PREDICATES)} (regex is not available)"
+                )
+            found = _at_path(cargo, path)
+            if predicate == "exists":
+                if (found is not _MISSING) is not bool(operand):
+                    return False
+            elif found is _MISSING:
+                return False
+            elif predicate == "equals":
+                if found != operand:
+                    return False
+            elif predicate == "contains":
+                if not isinstance(found, str) or str(operand) not in found:
+                    return False
+    return True
 
 
 class BloberiaDepot:
-    """One Bloberia record store rooted at an explicit directory."""
+    """One record store rooted at an explicit directory."""
 
-    def __init__(self, root: Path | str) -> None:
+    def __init__(self, root: Path | str, *, depot_type: str = TYPE_FILES) -> None:
+        if depot_type not in DEPOT_TYPES:
+            raise InvalidBloberiaInputError(f"unknown depot type: {depot_type}")
         self.root = Path(root).expanduser().resolve()
+        self._type = depot_type
 
-    def create(self, value: object, *, namespace: str | None = None) -> BloberiaRecord:
-        namespace = _validate_namespace(namespace)
-        normalized_value = _normalize_json(value)
-        record_id = generate_uuid4_string()
-        timestamp = _now_iso()
-        record = BloberiaRecord(
-            id=record_id,
-            created_at=timestamp,
-            updated_at=timestamp,
-            revision=1,
-            value=normalized_value,
-        )
+    # -- reading -----------------------------------------------------------------
+
+    def iterate(self, *, namespace: str | None = None) -> Iterator[Cargo]:
+        """Every record, in a stable order the caller must not depend on for meaning."""
+        for path in self._record_paths(namespace):
+            yield self._read(path)
+
+    def first(self, query: Query, *, namespace: str | None = None) -> Cargo | None:
+        for _path, cargo in self._scan(query, namespace=namespace):
+            return cargo
+        return None
+
+    def all(self, query: Query, *, namespace: str | None = None) -> tuple[Cargo, ...]:
+        return tuple(cargo for _path, cargo in self._scan(query, namespace=namespace))
+
+    def count(self, query: Query, *, namespace: str | None = None) -> int:
+        return sum(1 for _ in self._scan(query, namespace=namespace))
+
+    # -- writing -----------------------------------------------------------------
+
+    def insert(self, cargo: Cargo, *, namespace: str | None = None) -> None:
+        """Store one record. Always a new record: bloberia never merges by content."""
+        normalized = _normalize(cargo)
         with self._lock(exclusive=True, create=True):
-            path = self._record_path(record_id, namespace)
-            if path.exists():
-                raise RecordExistsError(f"record already exists: {record_id}")
-            _write_json_atomic(path, record.as_dict())
-        return _record_from_payload(
-            record.as_dict(), path=self._record_path(record_id, namespace)
-        )
+            atomic_write_json(self._new_path(_validate_namespace(namespace)), normalized)
 
-    def get(self, record_id: str, *, namespace: str | None = None) -> BloberiaRecord:
-        record_id = _validate_record_id(record_id)
-        namespace = _validate_namespace(namespace)
-        with self._lock(exclusive=False, create=False):
-            path = self._locate(record_id, namespace)
-            if path is None:
-                raise RecordNotFoundError(f"record does not exist: {record_id}")
-            return _read_record(path, expected_id=record_id)
-
-    def edit(
-        self, record_id: str, value: object, *, namespace: str | None = None
-    ) -> BloberiaRecord:
-        record_id = _validate_record_id(record_id)
-        namespace = _validate_namespace(namespace)
-        normalized_value = _normalize_json(value)
+    def replace(self, query: Query, cargo: Cargo, *, namespace: str | None = None) -> int:
+        normalized = _normalize(cargo)
         with self._lock(exclusive=True, create=True):
-            path = self._locate(record_id, namespace)
-            if path is None:
-                raise RecordNotFoundError(f"record does not exist: {record_id}")
-            current = _read_record(path, expected_id=record_id)
-            updated_at = _now_iso()
-            while updated_at <= current.updated_at:
-                updated_at = _now_iso()
-            edited = BloberiaRecord(
-                id=current.id,
-                created_at=current.created_at,
-                updated_at=updated_at,
-                revision=current.revision + 1,
-                value=normalized_value,
-            )
-            _write_json_atomic(path, edited.as_dict())
-        return _record_from_payload(edited.as_dict(), path=path, expected_id=record_id)
+            paths = [p for p, _ in self._scan(query, namespace=namespace, locked=True)]
+            for path in paths:
+                atomic_write_json(path, normalized)
+        return len(paths)
 
-    def query(
-        self, query: Mapping[str, object], *, namespace: str | None = None
-    ) -> tuple[BloberiaRecord, ...]:
-        normalized_query = _normalize_json(query)
-        if not isinstance(normalized_query, dict):
-            raise InvalidBloberiaInputError("query must be a JSON object")
+    def delete(self, query: Query, *, namespace: str | None = None) -> int:
+        with self._lock(exclusive=True, create=True):
+            paths = [p for p, _ in self._scan(query, namespace=namespace, locked=True)]
+            for path in paths:
+                path.unlink()
+        return len(paths)
+
+    # -- internals ---------------------------------------------------------------
+
+    def _records_root(self) -> Path:
+        return self.root / RECORDS_DIRNAME
+
+    def _new_path(self, namespace: str | None) -> Path:
+        """A private filename. Opaque and never surfaced, so the topology stays free."""
+        root = self._records_root() / namespace if namespace else self._records_root()
+        root.mkdir(parents=True, exist_ok=True)
+        return root / f"{uuid4().hex}.json"
+
+    def _record_paths(self, namespace: str | None = None) -> tuple[Path, ...]:
         namespace = _validate_namespace(namespace)
-        records: list[BloberiaRecord] = []
-        with self._lock(exclusive=False, create=False):
-            for path in self._record_paths(namespace):
-                try:
-                    expected_id = _validate_record_id(path.stem)
-                except InvalidBloberiaInputError as exc:
-                    raise CorruptBloberiaDepotError(
-                        f"invalid record filename {path}: {exc}"
-                    ) from exc
-                record = _read_record(path, expected_id=expected_id)
-                if _matches_subset(normalized_query, record.as_dict()):
-                    records.append(record)
-        return tuple(sorted(records, key=lambda record: record.id))
+        root = self._records_root() / namespace if namespace else self._records_root()
+        if not root.is_dir():
+            return ()
+        return tuple(sorted(root.rglob("*.json")))
 
     def namespaces(self) -> tuple[str, ...]:
-        """Every namespace prefix present, without reading any record."""
-        records_root = self.root / "records"
-        if not records_root.is_dir():
+        root = self._records_root()
+        if not root.is_dir():
             return ()
-        found = {
-            path.relative_to(records_root).as_posix()
-            for path in records_root.rglob("*")
-            if path.is_dir()
-        }
-        return tuple(sorted(found))
+        return tuple(sorted(p.name for p in root.iterdir() if p.is_dir()))
 
-    def check(self) -> BloberiaCheckResult:
-        findings: list[BloberiaCheckFinding] = []
+    def _read(self, path: Path) -> Cargo:
+        try:
+            return json.loads(path.read_text("utf-8"))
+        except (OSError, ValueError) as exc:
+            raise CorruptBloberiaDepotError(f"unreadable record {path}: {exc}") from exc
+
+    def _scan(
+        self, query: Query, *, namespace: str | None = None, locked: bool = False
+    ) -> Iterator[tuple[Path, Cargo]]:
+        if not isinstance(query, Mapping):
+            raise InvalidBloberiaInputError("query must be a mapping of path to predicate")
+        if locked:
+            yield from self._scan_unlocked(query, namespace)
+            return
         with self._lock(exclusive=False, create=False):
+            yield from self._scan_unlocked(query, namespace)
 
-
-            for path in self._record_paths(None):
-                relative_path = str(path.relative_to(self.root))
-                try:
-                    expected_id = _validate_record_id(path.stem)
-                except InvalidBloberiaInputError as exc:
-                    findings.append(
-                        BloberiaCheckFinding(
-                            code="invalid-record-filename",
-                            path=relative_path,
-                            record_id=path.stem,
-                            message=str(exc),
-                        )
-                    )
-                    continue
-                try:
-                    payload = json.loads(path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError) as exc:
-                    findings.append(
-                        BloberiaCheckFinding(
-                            code="invalid-json",
-                            path=relative_path,
-                            record_id=expected_id,
-                            message=str(exc),
-                        )
-                    )
-                    continue
-                try:
-                    record = _record_from_payload(payload, path=path)
-                except CorruptBloberiaDepotError as exc:
-                    findings.append(
-                        BloberiaCheckFinding(
-                            code="invalid-record",
-                            path=relative_path,
-                            record_id=expected_id,
-                            message=str(exc),
-                        )
-                    )
-                    continue
-                if record.id != expected_id:
-                    findings.append(
-                        BloberiaCheckFinding(
-                            code="identity-mismatch",
-                            path=relative_path,
-                            record_id=expected_id,
-                            message=(
-                                f"record identity {record.id} does not match filename "
-                                f"{expected_id}"
-                            ),
-                        )
-                    )
-        return BloberiaCheckResult(
-            findings=tuple(
-                sorted(
-                    findings,
-                    key=lambda finding: (
-                        finding.path,
-                        finding.code,
-                        finding.record_id or "",
-                    ),
-                )
-            )
-        )
-
-    def _record_path(self, record_id: str, namespace: str | None = None) -> Path:
-        records_root = self.root / "records"
-        if namespace:
-            records_root = records_root / namespace
-        return records_root / f"{record_id}.json"
-
-    def _record_paths(self, namespace: str | None) -> tuple[Path, ...]:
-        """Every record file under a namespace prefix, or under the whole depot."""
-        scope = self.root / "records"
-        if namespace:
-            scope = scope / namespace
-        if not scope.is_dir():
-            return ()
-        return tuple(sorted(scope.rglob("*.json")))
-
-    def _locate(self, record_id: str, namespace: str | None) -> Path | None:
-        """Resolve a record's path, searching every namespace when none is given.
-
-        An unqualified lookup costs one walk of the depot rather than failing;
-        a caller that knows its namespace gets a direct path.
-        """
-        if namespace:
-            path = self._record_path(record_id, namespace)
-            return path if path.is_file() else None
-        direct = self._record_path(record_id)
-        if direct.is_file():
-            return direct
-        for path in self._record_paths(None):
-            if path.stem == record_id:
-                return path
-        return None
+    def _scan_unlocked(self, query: Query, namespace: str | None) -> Iterator[tuple[Path, Cargo]]:
+        for path in self._record_paths(namespace):
+            cargo = self._read(path)
+            if _matches(cargo, query):
+                yield path, cargo
 
     @contextmanager
     def _lock(self, *, exclusive: bool, create: bool) -> Iterator[None]:
         if create:
             self.root.mkdir(parents=True, exist_ok=True)
-        elif not self.root.is_dir():
+        if not self.root.is_dir():
             yield
             return
         lock_path = self.root / ".bloberia.lock"
-        if not create and not lock_path.exists():
-            yield
-            return
-        with lock_path.open("a", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        with open(lock_path, "a+") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
             try:
                 yield
             finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-def _now_iso() -> str:
-    return iso_z(datetime.now(timezone.utc), drop_micros=False)
-
-
-def _normalize_json(value: object) -> object:
-    try:
-        return json.loads(json.dumps(value))
-    except (TypeError, ValueError) as exc:
-        raise InvalidBloberiaInputError(
-            f"value must be JSON serializable: {exc}"
-        ) from exc
-
-
-def _validate_namespace(namespace: str | None) -> str | None:
-    """Validate a placement-only namespace prefix.
-
-    A rejected namespace is an error rather than a silent fall back to the
-    records root: quietly rerooting would scatter an application's records
-    across two layouts with no signal that it happened.
-    """
-    if namespace is None:
-        return None
-    if not isinstance(namespace, str) or not namespace.strip():
-        raise InvalidBloberiaInputError("namespace must be a non-empty string")
-    if namespace != namespace.strip():
-        raise InvalidBloberiaInputError(
-            f"namespace must not be padded with whitespace: {namespace!r}"
-        )
-    if namespace.startswith("/"):
-        raise InvalidBloberiaInputError(
-            f"namespace must be relative to the records root: {namespace!r}"
-        )
-    segments = namespace.split("/")
-    for segment in segments:
-        if not segment:
-            raise InvalidBloberiaInputError(
-                f"namespace must not contain an empty segment: {namespace!r}"
-            )
-        if segment in {".", ".."}:
-            raise InvalidBloberiaInputError(
-                f"namespace must not traverse outside the records root: {namespace!r}"
-            )
-    return "/".join(segments)
-
-
-def _validate_record_id(record_id: str) -> str:
-    if not isinstance(record_id, str) or not record_id:
-        raise InvalidBloberiaInputError("record id must be a UUID string")
-    try:
-        parsed = UUID(record_id)
-    except ValueError as exc:
-        raise InvalidBloberiaInputError(
-            f"record id must be a UUID string: {record_id}"
-        ) from exc
-    return str(parsed)
-
-
-def _matches_subset(query: object, candidate: object) -> bool:
-    if isinstance(query, dict):
-        if not isinstance(candidate, dict):
-            return False
-        return all(
-            key in candidate and _matches_subset(value, candidate[key])
-            for key, value in query.items()
-        )
-    return query == candidate
-
-
-def _read_record(path: Path, *, expected_id: str | None = None) -> BloberiaRecord:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise CorruptBloberiaDepotError(
-            f"cannot read Bloberia record {path}: {exc}"
-        ) from exc
-    return _record_from_payload(payload, path=path, expected_id=expected_id)
-
-
-def _record_from_payload(
-    payload: object,
-    *,
-    path: Path,
-    expected_id: str | None = None,
-) -> BloberiaRecord:
-    if not isinstance(payload, dict) or set(payload) != RECORD_KEYS:
-        raise CorruptBloberiaDepotError(
-            f"record must contain exactly {sorted(RECORD_KEYS)}: {path}"
-        )
-    envelope = payload.get(ENVELOPE_KEY)
-    if not isinstance(envelope, dict) or set(envelope) != ENVELOPE_KEYS:
-        raise CorruptBloberiaDepotError(
-            f"record envelope must contain exactly {sorted(ENVELOPE_KEYS)}: {path}"
-        )
-    record_id = envelope.get("id")
-    try:
-        normalized_id = _validate_record_id(record_id)  # type: ignore[arg-type]
-    except InvalidBloberiaInputError as exc:
-        raise CorruptBloberiaDepotError(f"invalid record identity in {path}: {exc}") from exc
-    if expected_id is not None and normalized_id != expected_id:
-        raise CorruptBloberiaDepotError(
-            f"record identity does not match filename: {path}"
-        )
-    created_at = envelope.get("created_at")
-    updated_at = envelope.get("updated_at")
-    revision = envelope.get("revision")
-    if not isinstance(created_at, str) or not created_at:
-        raise CorruptBloberiaDepotError(f"created_at must be a non-empty string: {path}")
-    if not isinstance(updated_at, str) or not updated_at:
-        raise CorruptBloberiaDepotError(f"updated_at must be a non-empty string: {path}")
-    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
-        raise CorruptBloberiaDepotError(f"revision must be a positive integer: {path}")
-    value = _normalize_json(payload["value"])
-    return BloberiaRecord(
-        id=normalized_id,
-        created_at=created_at,
-        updated_at=updated_at,
-        revision=revision,
-        value=value,
-    )
-
-
-def _write_json_atomic(path: Path, payload: Mapping[str, object]) -> None:
-    atomic_write_json(path, payload)
+__all__ = [
+    "BloberiaDepot",
+    "BloberiaError",
+    "CorruptBloberiaDepotError",
+    "InvalidBloberiaInputError",
+    "PUBLIC_DEPOT_ROOT",
+    "TYPE_FILES",
+]

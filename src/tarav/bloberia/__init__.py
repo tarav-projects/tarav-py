@@ -1,26 +1,20 @@
-# $kw: ^bloberia-public --from Agentos.Bloberia --note [DF] the public import surface for depot-scoped query:value storage ^c20260724-31u
-"""Depot-scoped query:value storage for agent-associated data."""
+# $kw: ^bloberia-public --from Agentos.Bloberia --note [DF] the public import surface for depot-scoped opaque-cargo storage ^c20260724-31u
+"""Depot-scoped storage for opaque JSON records."""
 
 from .core import (
-    BloberiaCheckFinding,
-    BloberiaCheckResult,
     BloberiaDepot,
     BloberiaError,
-    BloberiaRecord,
     CorruptBloberiaDepotError,
     InvalidBloberiaInputError,
-    RecordExistsError,
-    RecordNotFoundError,
+    PUBLIC_DEPOT_ROOT,
+    TYPE_FILES,
 )
 
 __all__ = [
-    "BloberiaCheckFinding",
-    "BloberiaCheckResult",
     "BloberiaDepot",
     "BloberiaError",
-    "BloberiaRecord",
     "CorruptBloberiaDepotError",
     "InvalidBloberiaInputError",
-    "RecordExistsError",
-    "RecordNotFoundError",
+    "PUBLIC_DEPOT_ROOT",
+    "TYPE_FILES",
 ]

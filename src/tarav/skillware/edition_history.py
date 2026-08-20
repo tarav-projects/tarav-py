@@ -10,7 +10,7 @@ from pathlib import Path
 
 from tarav._core.errors import CliError
 from tarav._core.project import find_agentos_project
-from tarav.bloberia import (
+from tarav.bloberia.depot_v1 import (
     BloberiaDepot,
     BloberiaError,
     BloberiaRecord,

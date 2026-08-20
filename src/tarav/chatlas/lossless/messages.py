@@ -11,6 +11,7 @@ from .model import JsonObject
 MessageSide = Literal["user", "agent"]
 
 
+# $kw: --from User.Touched --note [DC] the side is read from the normalized annotation rather than asserted, since User.Touched is derived per datum from touch provenance and not stored as surface membership ^c20260729-176u
 def list_chat_messages(
     model: JsonObject,
     *,

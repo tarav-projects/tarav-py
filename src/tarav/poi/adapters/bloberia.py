@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.bloberia.core import BloberiaCheckFinding, BloberiaCheckResult
+from tarav.bloberia.depot_v1 import BloberiaCheckFinding, BloberiaCheckResult
 from tarav.poi import (
     POIInstance,
     POILinterReport,

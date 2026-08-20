@@ -197,6 +197,7 @@ class ManifestRegistry:
         return list(BUILTIN_MANIFESTS)
 
 
+# $kw: --from Touch.Authority.Surface --note [DC] this reports who governs a path and licenses nothing; what gates a user home is a satisfied landing gate, never the path ^c20260729-206u
 def home_owner(path: Path) -> str | None:
     """The home owner governing ``path``, or ``None`` if it is outside any home."""
 

@@ -125,6 +125,7 @@ class Trace:
         return next((m for m in self.members if m.id == line_id), None)
 
 
+# $kw: --from Index.Line.Record --note [DC] a trace is grouped from the records themselves, never read from a stored chain, so a more auditable structure displaces the agent definition ^c20260819-20u
 def build_traces(records: Iterable[LineRecord]) -> dict[str, Trace]:
     grouped: dict[str, list[LineRecord]] = {}
     for record in records:
@@ -135,6 +136,8 @@ def build_traces(records: Iterable[LineRecord]) -> dict[str, Trace]:
     }
 
 
+# $kw: --from Index.Head.Surface --note [DF] a line is in the HEAD because it is observed on a HEAD.Surface, which is what promoted means ^c20260819-25u
+# --note [CT] the scan replaces a stored surface list, because a value the filesystem already answers cheaply is not a design variable ^d20260819-14u
 def lines_on_head_surfaces(
     records: Iterable[LineRecord],
     surface_lines: Mapping[str, Sequence[SurfaceLine]],
@@ -159,10 +162,12 @@ def lines_on_head_surfaces(
     return found
 
 
+# $kw: --from Index.Head.Surface --note [DC] standing is linked to presence on a surface, so no supersedes field is needed ^c20260819-26u
 def index_standing(record: LineRecord, head_lines: set[str]) -> IndexStanding:
     return IndexStanding.HEAD if record.id in head_lines else IndexStanding.TAIL
 
 
+# $kw: --from Typed.Agent.State --note [CT] review standing is computed from evidence on the record and its trace, because the system will not carry a value which is merely agent-based ^c20260819-15u
 def review_standing(record: LineRecord, trace: Trace | None) -> ReviewStanding:
     if record.review is not None:
         return ReviewStanding.DIRECT

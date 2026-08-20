@@ -42,6 +42,8 @@ class _TranscriptSource:
     current: bool
 
 
+# $kw: --from Normalization.Pipeline --note [DC] this is the Normal.Assembler stage: normalizers produce fragments and merging them is never a normalizer's job
+# --note [CT] full derivation from raw sources stays always available and authoritative, so a delta pass is an optimization and never a new source of truth ^c20260712-31u
 def build_normal_model(
     *,
     session_id: str | None = None,

@@ -83,6 +83,8 @@ class GateCheck:
         return self.verdict is GateVerdict.CONTRADICTED
 
 
+# $kw: --from Typed.Agent.State --note [DF] a Gate is a token round-trip: the user turn carries the token and qualifies as touch, and the agent turn carries the same token with the line verbatim ^c20260819-21u
+# --note [CT] the round-trip is checked against the archive rather than trusted, because evidence must be solid rather than a recorded summary ^c20260819-22u
 def verify_gate(
     geo: Geography,
     gate: GateRef,
