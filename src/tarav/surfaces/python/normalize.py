@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
+import ast
 import io
 import re
 import tokenize
 
 from tarav.surfaces.model import SourceDiagnostic, SourceSpan
 
-from .model import PythonComment, PythonDirective, PythonNormalModel
+from .model import PythonComment, PythonDirective, PythonElement, PythonNormalModel
 
 
 PYTHON_EXTERNAL_DIRECTIVE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -65,6 +66,55 @@ def _directive(text: str, span: SourceSpan) -> PythonDirective | None:
     return None
 
 
+def _element_span(node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> SourceSpan:
+    first = min(node.decorator_list, key=lambda item: item.lineno, default=node)
+    return SourceSpan(
+        start_line=first.lineno,
+        start_column=first.col_offset,
+        end_line=node.end_lineno or node.lineno,
+        end_column=node.end_col_offset or node.col_offset,
+    )
+
+
+class _ElementCollector(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.elements: list[PythonElement] = []
+        self._parents: list[str] = []
+
+    def _visit_declaration(
+        self,
+        node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+        kind: str,
+    ) -> None:
+        qualified_name = ".".join((*self._parents, node.name))
+        self.elements.append(
+            PythonElement(
+                kind=kind,
+                name=node.name,
+                qualified_name=qualified_name,
+                span=_element_span(node),
+            )
+        )
+        self._parents.append(node.name)
+        self.generic_visit(node)
+        self._parents.pop()
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._visit_declaration(node, "class")
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_declaration(node, "function")
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_declaration(node, "async-function")
+
+
+def _elements(text: str) -> tuple[PythonElement, ...]:
+    collector = _ElementCollector()
+    collector.visit(ast.parse(text))
+    return tuple(collector.elements)
+
+
 def normalize_python(text: str) -> PythonNormalModel:
     """Tokenize comments and classify only complete recognized directives."""
 
@@ -89,8 +139,29 @@ def normalize_python(text: str) -> PythonNormalModel:
                 directives.append(directive)
     except (IndentationError, SyntaxError, tokenize.TokenError) as exc:
         diagnostics.append(SourceDiagnostic(message=str(exc)))
+    elements: tuple[PythonElement, ...] = ()
+    if not diagnostics:
+        try:
+            elements = _elements(text)
+        except SyntaxError as exc:
+            diagnostics.append(
+                SourceDiagnostic(
+                    message=str(exc),
+                    span=(
+                        SourceSpan(
+                            start_line=exc.lineno,
+                            start_column=max((exc.offset or 1) - 1, 0),
+                            end_line=exc.end_lineno or exc.lineno,
+                            end_column=max((exc.end_offset or exc.offset or 1) - 1, 0),
+                        )
+                        if exc.lineno is not None
+                        else None
+                    ),
+                )
+            )
     return PythonNormalModel(
         text=text,
+        elements=elements,
         comments=tuple(comments),
         directives=tuple(directives),
         diagnostics=tuple(diagnostics),

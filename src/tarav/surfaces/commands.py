@@ -42,7 +42,14 @@ def _resolve_language(path: Path, explicit: str | None) -> str:
 def _render_text(language: str, path: Path, model: object) -> str:
     payload = asdict(model)
     rows = [f"file: {path}", f"language: {language}"]
-    for field in ("comments", "directives", "headings", "fences", "diagnostics"):
+    for field in (
+        "elements",
+        "comments",
+        "directives",
+        "headings",
+        "fences",
+        "diagnostics",
+    ):
         if field in payload:
             rows.append(f"{field}: {len(payload[field])}")
     return "\n".join(rows)
