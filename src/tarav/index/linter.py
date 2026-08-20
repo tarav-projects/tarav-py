@@ -50,6 +50,9 @@ from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
 
+from tarav.index_model.nodes import BlockHeading, MetaLine
+from tarav.index_model.parser import parse_depot, parse_index_file
+
 from .chatlas import ChatError, load_session
 from .config import Geography, TaravIndexError
 from .gates import GateRef, GateVerdict, verify_gate
@@ -249,6 +252,66 @@ def _check_surfaces_readable(ctx: LintContext) -> list[Finding]:
                     tier=Tier.STRUCTURAL,
                 )
             )
+    return findings
+
+
+def _check_alias_has_no_block(ctx: LintContext) -> list[Finding]:
+    """An alias resolves to its canonical block; a second block creates two definitions."""
+
+    findings: list[Finding] = []
+    routers = sorted(ctx.root.rglob("000-INDEX.md"))
+    for router in routers:
+        depot = router.parent
+        if any(part.startswith(".") for part in depot.relative_to(ctx.root).parts):
+            continue
+
+        documents = list(parse_depot(depot).documents)
+        for pattern, kind in (
+            ("homes/*/chapters/*.md", "chapter"),
+            ("homes/*/appendix/*.md", "appendix"),
+        ):
+            documents.extend(
+                parse_index_file(path, surface_kind=kind)
+                for path in sorted(depot.glob(pattern))
+            )
+
+        blocks: dict[str, list[tuple[Path, int]]] = {}
+        aliases: list[tuple[str, str, Path, int]] = []
+        for document in documents:
+            if document.path is None:
+                continue
+            for node in document.nodes:
+                if isinstance(node, BlockHeading):
+                    name = str(node.parsed.get("path", "")).strip()
+                    if name:
+                        blocks.setdefault(name, []).append((document.path, node.start_line))
+                elif isinstance(node, MetaLine) and node.src.strip().startswith("- aliases:"):
+                    canonical = str(node.parsed.get("block_path", "")).strip()
+                    for span in node.spans:
+                        if span.kind == "concept_cite":
+                            alias = str(span.parsed.get("value", "")).strip()
+                            if alias and alias != canonical:
+                                aliases.append(
+                                    (canonical, alias, document.path, node.start_line)
+                                )
+
+        for canonical, alias, declaration_path, declaration_line in aliases:
+            for block_path, block_line in blocks.get(alias, []):
+                surface = str(block_path.relative_to(ctx.root))
+                findings.append(
+                    Finding(
+                        "Index.Linter/Alias.HasBlock",
+                        alias,
+                        {
+                            "canonical": canonical,
+                            "declaration": (
+                                f"{declaration_path.relative_to(ctx.root)}:{declaration_line}"
+                            ),
+                            "alias_block": f"{surface}:{block_line}",
+                        },
+                        surface=surface,
+                    )
+                )
     return findings
 
 
@@ -1060,6 +1123,13 @@ CATALOG: tuple[Check, ...] = (
         resolutions=(
             "repair the surface so it parses",
             "remove it from discovery, if it is not an index surface",
+        ),
+    ),
+    Check(
+        "alias-has-no-block", Tier.REPORTABLE, _check_alias_has_no_block,
+        resolutions=(
+            "merge the alias block into its canonical concept block",
+            "remove the alias declaration, if the second concept is genuinely distinct",
         ),
     ),
     Check(

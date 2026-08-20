@@ -67,6 +67,104 @@ class TestCatalog:
 
 
 class TestTheBar:
+    def test_an_alias_may_not_have_its_own_block(self, geo, project_root):
+        depot = project_root / "skills" / "tarav-pkg"
+        (depot / "design").mkdir(parents=True)
+        (depot / "000-INDEX.md").write_text(
+            "- `design/100-design.md` — Canonical.Name\n", encoding="utf-8"
+        )
+        (depot / "design" / "100-design.md").write_text(
+            """****
+
+## Canonical.Name
+
+- [DF] canonical
+
+### meta
+
+- aliases: `Alias.Name`
+
+****
+""",
+            encoding="utf-8",
+        )
+        _surface(
+            project_root,
+            "- [DF] duplicate alias block",
+            at="skills/tarav-pkg/homes/agent/chapters/100-design.md",
+        ).write_text(
+            """****
+
+## Alias.Name
+
+- [DF] duplicate alias block
+
+****
+""",
+            encoding="utf-8",
+        )
+
+        report = lint(geo, check=["alias-has-no-block"])
+
+        finding = next(
+            f for f in report.findings if f.poi_class == "Index.Linter/Alias.HasBlock"
+        )
+        assert finding.subject == "Alias.Name"
+        assert finding.operands["canonical"] == "Canonical.Name"
+        assert finding.surface == "skills/tarav-pkg/homes/agent/chapters/100-design.md"
+
+    def test_an_alias_without_a_second_block_is_clean(self, geo, project_root):
+        depot = project_root / "skills" / "tarav-pkg"
+        (depot / "design").mkdir(parents=True)
+        (depot / "000-INDEX.md").write_text(
+            "- `design/100-design.md` — Canonical.Name\n", encoding="utf-8"
+        )
+        (depot / "design" / "100-design.md").write_text(
+            """****
+
+## Canonical.Name
+
+- [DF] canonical
+
+### meta
+
+- aliases: `Alias.Name`
+
+****
+""",
+            encoding="utf-8",
+        )
+
+        assert "Index.Linter/Alias.HasBlock" not in _classes(
+            lint(geo, check=["alias-has-no-block"])
+        )
+
+    def test_a_redundant_self_alias_is_not_a_second_block(self, geo, project_root):
+        depot = project_root / "skills" / "tarav-pkg"
+        (depot / "design").mkdir(parents=True)
+        (depot / "000-INDEX.md").write_text(
+            "- `design/100-design.md` — Canonical.Name\n", encoding="utf-8"
+        )
+        (depot / "design" / "100-design.md").write_text(
+            """****
+
+## Canonical.Name
+
+- [DF] canonical
+
+### meta
+
+- aliases: `Canonical.Name`
+
+****
+""",
+            encoding="utf-8",
+        )
+
+        assert "Index.Linter/Alias.HasBlock" not in _classes(
+            lint(geo, check=["alias-has-no-block"])
+        )
+
     def test_untyped_surface_line_is_reported(self, geo, project_root):
         _surface(project_root, "- an untyped assertion ^c20260818-1u")
         assert "Index.Linter/Line.Untyped" in _classes(lint(geo))
