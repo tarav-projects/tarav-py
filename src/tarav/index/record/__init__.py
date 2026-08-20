@@ -20,10 +20,8 @@ from .model import (
 )
 from .store import (
     LABEL_SIGIL,
-    IndexRoot,
     IndexStore,
     RecordStoreError,
-    Tier,
     is_label,
     normalize_label,
 )
@@ -32,14 +30,12 @@ __all__ = [
     "LABEL_SIGIL",
     "Equivalence",
     "EquivalenceKind",
-    "IndexRoot",
     "IndexStore",
     "Line",
     "LineRecord",
     "PlacementRef",
     "RecordStoreError",
     "SupportRef",
-    "Tier",
     "is_label",
     "new_line_id",
     "new_trace_id",

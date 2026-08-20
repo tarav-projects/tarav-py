@@ -910,7 +910,7 @@ def _coverage_at_git_head(geo: Geography) -> set[tuple[str, str, str]] | None:
     defect.
     """
 
-    index_dir = geo.index_dir
+    index_dir = geo.index_depot
     if not index_dir.exists():
         return None
 
@@ -943,7 +943,7 @@ def _coverage_at_git_head(geo: Geography) -> set[tuple[str, str, str]] | None:
 
     coverage: set[tuple[str, str, str]] = set()
     for name in listing.stdout.splitlines():
-        if not name.endswith(".json"):
+        if not name.endswith(".json") or name.endswith("meta.json"):
             continue
         blob = subprocess.run(
             ["git", "show", f"HEAD:{name}"],
@@ -953,11 +953,31 @@ def _coverage_at_git_head(geo: Geography) -> set[tuple[str, str, str]] | None:
             continue
         try:
             payload = json.loads(blob.stdout)
-            record = LineRecord.from_json(payload)
-        except (ValueError, KeyError):
+        except ValueError:
             continue
-        coverage |= _grounded_coverage([record])
+        # A depot file holds one record or a shard of many, and which is the depot's
+        # private business. Reading both keeps this check indifferent to the topology,
+        # which is the property the store went to some trouble to keep.
+        for candidate in _records_in(payload):
+            coverage |= _grounded_coverage([candidate])
     return coverage
+
+
+def _records_in(payload: object) -> list[LineRecord]:
+    if not isinstance(payload, dict):
+        return []
+    try:
+        return [LineRecord.from_json(payload)]
+    except (ValueError, KeyError, TypeError):
+        pass
+    found = []
+    for value in payload.values():
+        if isinstance(value, dict):
+            try:
+                found.append(LineRecord.from_json(value))
+            except (ValueError, KeyError, TypeError):
+                continue
+    return found
 
 
 # $kw: --from Index.Removal --note [CT] deleted lines are tracked on git and not by the index, so what is conserved is coverage rather than a removals ledger ^c20260819-23u
@@ -987,7 +1007,7 @@ def _check_coverage_converges(ctx: LintContext) -> list[Finding]:
 
 def _gate_git_available(ctx: LintContext) -> GateResult:
     if _coverage_at_git_head(ctx.geo) is None:
-        return GateResult.blocked("the project index is not tracked by git")
+        return GateResult.blocked("the index depot is not tracked by git")
     return GateResult.ok()
 
 

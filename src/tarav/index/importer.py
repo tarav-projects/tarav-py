@@ -30,7 +30,7 @@ from pathlib import Path
 
 from .config import Geography, TaravIndexError
 from .record.model import LineRecord
-from .record.store import IndexStore, Tier
+from .record.store import IndexStore
 from .scope import block_scope
 from .surfaces import read_block_lines
 
@@ -69,7 +69,6 @@ def import_depot(
     depot: str | None = None,
     home: str = "agent",
     chapter: str = "design",
-    tier: str = Tier.PROJECT,
 ) -> ImportReport:
     """Copy a legacy depot's chapter notes into the current layout and record every line."""
 
@@ -96,14 +95,14 @@ def import_depot(
             label = line.label
             if label is None:
                 report.unlabelled += 1
-                record = store.mint_label(store.put(record, tier=tier), tier=tier)
+                record = store.mint_label(store.put(record))
             elif label in taken:
-                minted = store.mint_label(store.put(record, tier=tier), tier=tier)
+                minted = store.mint_label(store.put(record))
                 report.relabelled.append((label, str(minted.line.label)))
                 _replace_label(target, label, str(minted.line.label))
                 record = minted
             else:
-                record = store.put(record.relabel(label), tier=tier)
+                record = store.put(record.relabel(label))
             taken.add(str(record.line.label))
             report.recorded.append(record)
 

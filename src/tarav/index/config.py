@@ -20,6 +20,8 @@ from pathlib import Path
 
 PROJECT_DIR_NAME = ".tarav"
 USER_DIR_ENV = "TARAV_INDEX_HOME"
+#: Beside `~/Documents/chatlas`, whose messages every record's support points at.
+PUBLIC_INDEX_DEPOT = Path.home() / "Documents" / "bloberia" / "tarav-index"
 PROJECT_ROOT_ENV = "TARAV_INDEX_PROJECT"
 
 #: Markers that identify a project root when walking upward from the working directory.
@@ -66,6 +68,18 @@ class Geography:
         return self.project_tier / "manifests"
 
     @property
+    def index_depot(self) -> Path:
+        """The one depot holding every index line record.
+
+        Public by default, beside the Chatlas archive it grounds against: an important
+        system carries its own visible home rather than hiding in a dotfile. A configured
+        user root still wins, which is what keeps a test isolated from the real corpus.
+        """
+        if self.user_root != _default_user_root():
+            return self.user_root / "index"
+        return PUBLIC_INDEX_DEPOT
+
+    @property
     def user_index_dir(self) -> Path:
         """User-tier index roots: a full index held outside the project folder."""
         return self.user_tier / "index"
@@ -97,11 +111,15 @@ def find_project_root(start: Path | None = None) -> Path:
     return current
 
 
+def _default_user_root() -> Path:
+    return Path.home() / PROJECT_DIR_NAME
+
+
 def find_user_root() -> Path:
     override = os.environ.get(USER_DIR_ENV)
     if override:
         return Path(override).expanduser().resolve()
-    return Path.home() / PROJECT_DIR_NAME
+    return _default_user_root()
 
 
 def resolve_geography(start: Path | None = None) -> Geography:

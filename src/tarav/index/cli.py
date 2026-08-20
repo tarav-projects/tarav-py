@@ -27,7 +27,7 @@ from .gates import GateRef
 from .importer import import_depot
 from .linter import BAR_CHECKS, CATALOG, bless, lint
 from .record.model import EquivalenceKind, LineRecord, SupportRef
-from .record.store import IndexStore, Tier
+from .record.store import IndexStore
 from .scope import parse_scope, resolve_scope_surface
 from .standing import (
     IndexStanding,
@@ -245,7 +245,7 @@ def cmd_index_record(args: argparse.Namespace) -> int:
         return 0
 
     derived = _derive(geo)
-    records = store.all(tier=args.tier)
+    records = store.all()
     if args.side:
         records = [r for r in records if str(derived[r.id].side) == args.side]
     if args.json:
@@ -302,9 +302,9 @@ def cmd_index_write(args: argparse.Namespace) -> int:
     )
     if args.anchor:
         record = record.relabel(args.anchor)
-    record = store.put(record, tier=args.tier)
+    record = store.put(record)
     if not record.line.label:
-        record = store.mint_label(record, tier=args.tier)
+        record = store.mint_label(record)
     print(f"{record.id}  {record.line.label}  {record.scope.address}")
     return 0
 
@@ -323,7 +323,7 @@ def cmd_index_revise(args: argparse.Namespace) -> int:
         args.body,
         kind=EquivalenceKind(args.kind),
     )
-    successor = store.mint_label(store.put(successor, tier=args.tier), tier=args.tier)
+    successor = store.mint_label(store.put(successor))
     print(f"{successor.id}  {successor.line.label}  trace {successor.trace}")
     print(f"  claims {args.kind} of {previous.id}")
 
@@ -374,7 +374,7 @@ def cmd_index_gate(args: argparse.Namespace) -> int:
     record = store.get(args.line)
     gate = _gate_from(args)
     updated = record.with_landing(gate) if args.kind == "landing" else record.with_review(gate)
-    store.put(updated, tier=args.tier)
+    store.put(updated)
 
     from .gates import verify_gate
 
@@ -443,7 +443,6 @@ def cmd_index_import(args: argparse.Namespace) -> int:
         depot=args.depot,
         home=args.home,
         chapter=args.chapter,
-        tier=args.tier or Tier.PROJECT,
     )
     print(f"imported {report.depot} → homes/{report.home}")
     for surface in report.chapters:
@@ -632,12 +631,6 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--width", type=int, default=90)
     p.set_defaults(func=cmd_chatlas_messages)
 
-    def _tier(parser_):
-        parser_.add_argument(
-            "--tier", choices=[Tier.PROJECT, Tier.USER], default=Tier.PROJECT,
-            help="project index (ships with the repo) or user index (stays local)",
-        )
-
     p = index_sub.add_parser("blocks", help="geo by grounding density")
     p.add_argument("--limit", type=int, default=0)
     p.set_defaults(func=cmd_index_blocks)
@@ -649,7 +642,6 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p = index_sub.add_parser("record", help="inspect index entries")
     p.add_argument("--line")
     p.add_argument("--side", choices=["agent", "user"], help="filter by derived review side")
-    p.add_argument("--tier", choices=[Tier.PROJECT, Tier.USER])
     p.set_defaults(func=cmd_index_record)
 
     p = index_sub.add_parser("write", help="write the record for a surface-authored line")
@@ -660,7 +652,6 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--session")
     p.add_argument("--support", nargs="*", help="touched message addresses")
     p.add_argument("--trace", help="join an existing trace (same indexed semantic)")
-    _tier(p)
     p.set_defaults(func=cmd_index_write)
 
     p = index_sub.add_parser(
@@ -673,7 +664,6 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
         "--kind", choices=["rename", "rephrase"], default="rephrase",
         help="rename is mechanically verifiable; rephrase is agent judgment",
     )
-    _tier(p)
     p.set_defaults(func=cmd_index_revise)
 
     p = index_sub.add_parser("trace", help="show one trace and its members")
@@ -697,7 +687,6 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
         help="review evidences reading; landing evidences approval to HEAD",
     )
     _gate_args(p)
-    _tier(p)
     p.set_defaults(func=cmd_index_gate)
 
     p = index_sub.add_parser("resolve", help="resolve a label to its entry and standing")
@@ -709,7 +698,6 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--depot", help="depot name (defaults to the directory name)")
     p.add_argument("--home", default="agent")
     p.add_argument("--chapter", default="design")
-    _tier(p)
     p.set_defaults(func=cmd_index_import)
 
     p = index_sub.add_parser("linter", help="run conformance checks")

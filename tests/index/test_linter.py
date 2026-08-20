@@ -277,23 +277,34 @@ class TestCleanRun:
 class TestConvergence:
     """Grounded coverage only grows; the bytes of the index are free to move."""
 
-    def _repo(self, project_root):
+    def _repo(self, geo):
+        """The depot's repo, not the project's.
+
+        Coverage is compared against the history of the records themselves, and the records
+        moved user-side — so the tracked tree that matters is the depot's own.
+        """
         import subprocess
 
+        geo.index_depot.mkdir(parents=True, exist_ok=True)
         for args in (
             ["git", "init", "--quiet"],
             ["git", "config", "user.email", "t@example.com"],
             ["git", "config", "user.name", "t"],
         ):
-            subprocess.run(args, cwd=project_root, check=True, capture_output=True)
+            subprocess.run(args, cwd=geo.index_depot, check=True, capture_output=True)
 
-    def _commit(self, project_root, message="state"):
+    def _commit(self, geo, message="state"):
         import subprocess
 
-        subprocess.run(["git", "add", "-A"], cwd=project_root, check=True, capture_output=True)
         subprocess.run(
-            ["git", "commit", "--quiet", "-m", message],
-            cwd=project_root, check=True, capture_output=True,
+            ["git", "add", "-A"], cwd=geo.index_depot, check=True, capture_output=True
+        )
+        # `--allow-empty` because the depot commits itself: its git handler checkpoints on
+        # the first write, so by the time a test asks for a commit there is often nothing
+        # left staged. An empty commit here still marks the HEAD the check compares against.
+        subprocess.run(
+            ["git", "commit", "--quiet", "--allow-empty", "-m", message],
+            cwd=geo.index_depot, check=True, capture_output=True,
         )
 
     def test_an_untracked_project_is_not_a_defect(self, geo, project_root):
@@ -301,36 +312,36 @@ class TestConvergence:
         assert "Index.Linter/Coverage.Shrank" not in _classes(lint(geo))
 
     def test_losing_a_grounded_line_shrinks_coverage(self, geo, project_root):
-        self._repo(project_root)
+        self._repo(geo)
         store = IndexStore(geo)
         record = store.put(_entry(support=[SupportRef("chat", "s1", "m1")]))
-        self._commit(project_root)
-        store.root().record_path(record.id).unlink()
+        self._commit(geo)
+        store.remove(record.id)
         assert "Index.Linter/Coverage.Shrank" in _classes(lint(geo))
 
     def test_rewording_a_grounded_line_keeps_coverage(self, geo, project_root):
         """The bytes may move freely — only coverage is conserved."""
-        self._repo(project_root)
+        self._repo(geo)
         store = IndexStore(geo)
         record = store.put(_entry(body="first wording", support=[SupportRef("chat", "s1", "m1")]))
-        self._commit(project_root)
+        self._commit(geo)
         store.put(record.amend("CT", "a much better wording").relabel("^c20260818-9u"))
         assert "Index.Linter/Coverage.Shrank" not in _classes(lint(geo))
 
     def test_removing_an_ungrounded_line_keeps_coverage(self, geo, project_root):
-        self._repo(project_root)
+        self._repo(geo)
         store = IndexStore(geo)
         record = store.put(_entry(support=()))
-        self._commit(project_root)
+        self._commit(geo)
         store.remove(record.id)
         assert "Index.Linter/Coverage.Shrank" not in _classes(lint(geo))
 
     def test_removing_a_grounded_line_is_reported_without_excuse(self, geo, project_root):
         """No index-side ledger can excuse the loss; the commit is the record."""
-        self._repo(project_root)
+        self._repo(geo)
         store = IndexStore(geo)
         record = store.put(_entry(support=[SupportRef("chat", "s1", "m1")]))
-        self._commit(project_root)
+        self._commit(geo)
         store.remove(record.id)
         assert "Index.Linter/Coverage.Shrank" in _classes(lint(geo))
 
@@ -442,11 +453,13 @@ class TestTheEstimator:
             ["git", "config", "user.email", "t@example.com"],
             ["git", "config", "user.name", "t"],
         ):
-            subprocess.run(args, cwd=project_root, check=True, capture_output=True)
-        subprocess.run(["git", "add", "-A"], cwd=project_root, check=True, capture_output=True)
+            subprocess.run(args, cwd=geo.index_depot, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "add", "-A"], cwd=geo.index_depot, check=True, capture_output=True
+        )
         subprocess.run(
             ["git", "commit", "--quiet", "-m", "base"],
-            cwd=project_root, check=True, capture_output=True,
+            cwd=geo.index_depot, check=True, capture_output=True,
         )
         assert not lint(geo).blocked_checks
 

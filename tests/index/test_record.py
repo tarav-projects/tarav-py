@@ -10,7 +10,6 @@ from tarav.index.record import (
     LineRecord,
     RecordStoreError,
     SupportRef,
-    Tier,
     split_statement,
 )
 from tarav.index.standing import ReviewSide, standings
@@ -69,8 +68,8 @@ class TestAssertionHalf:
         """Reformat the bytes; the model is unchanged, so no drift is manufactured."""
         store = IndexStore(geo)
         record = store.put(_entry())
-        path = store.root().record_path(record.id)
-        path.write_text(json.dumps(json.loads(path.read_text("utf-8")), indent=7))
+        cargo = store.depot.first({"id": {"equals": record.id}})
+        store.depot.replace({"id": {"equals": record.id}}, json.loads(json.dumps(cargo)))
         assert store.get(record.id) == record
 
     def test_the_record_carries_no_content_hash(self):
@@ -173,11 +172,13 @@ class TestUnifiedStore:
 class TestReviewSplit:
     """The agent/user split is derived, so it is a computation and not a folder."""
 
-    def test_the_store_keeps_one_folder_per_tier(self, geo):
+    def test_the_store_names_no_side_in_its_layout(self, geo):
+        """The agent/user split is derived from review evidence, so no directory may name it."""
         store = IndexStore(geo)
         record = store.put(_entry())
-        assert store.root().record_path(record.id).exists()
-        assert not (geo.project_tier / "index" / "agent").exists()
+        assert store.find(record.id) is not None
+        assert not (store.directory / "records" / "agent").exists()
+        assert not (store.directory / "records" / "user").exists()
 
     def test_review_evidence_puts_a_trace_on_the_user_side(self, geo):
         store = IndexStore(geo)
@@ -196,31 +197,34 @@ class TestReviewSplit:
 
 
 class TestGeography:
-    def test_a_user_tier_entry_stays_out_of_the_project(self, geo):
-        store = IndexStore(geo)
-        record = store.put(_entry("local only"), tier=Tier.USER)
-        assert store.root(Tier.USER).record_path(record.id).exists()
-        assert not store.root(Tier.PROJECT).record_path(record.id).exists()
+    def test_every_record_lives_in_one_depot(self, geo):
+        """The project/user split is gone.
 
-    def test_reads_span_both_tiers_as_one_index(self, geo):
+        A record's support points at chat evidence that never ships with a project, so a
+        project-tier record would reach a clone as a dangling reference.
+        """
         store = IndexStore(geo)
-        store.put(_entry("ships"), tier=Tier.PROJECT)
-        store.put(_entry("stays local"), tier=Tier.USER)
+        store.put(_entry("one"))
+        store.put(_entry("two"))
         assert len(store.all()) == 2
+        assert store.directory == geo.index_depot
 
-    def test_a_tier_can_be_read_alone(self, geo):
+    def test_projects_stay_distinguishable_by_scope_not_by_directory(self, geo):
         store = IndexStore(geo)
-        store.put(_entry("ships"), tier=Tier.PROJECT)
-        store.put(_entry("stays local"), tier=Tier.USER)
-        assert len(store.all(tier=Tier.USER)) == 1
+        store.put(_entry("here", scope=BLOCK))
+        store.put(_entry("elsewhere", scope="other-pkg/design#Thing"))
+        assert len(store.by_scope(BLOCK)) == 1
+        assert len(store.by_scope("other-pkg/design#Thing")) == 1
+
+    def test_a_configured_user_root_isolates_the_depot_from_the_public_one(self, geo):
+        assert "Documents" not in str(geo.index_depot)
 
 
 class TestGroundingBoundary:
     def test_support_stores_refs_and_never_grounding_content(self, geo):
         store = IndexStore(geo)
         record = store.put(_entry())
-        raw = store.root().record_path(record.id).read_text("utf-8")
-        payload = json.loads(raw)["links"]["grounding"][0]
+        payload = store.depot.first({"id": {"equals": record.id}})["links"]["grounding"][0]
         assert set(payload) == {"archive", "session_id", "message_id"}
 
     def test_an_ungrounded_entry_is_legitimate(self):
@@ -248,10 +252,10 @@ def test_a_v3_record_on_disk_still_reads(geo) -> None:
     store = IndexStore(geo)
     stored = store.put(_entry("v3 shaped"))
 
-    payload = json.loads(store.root().record_path(stored.id).read_text("utf-8"))
+    payload = store.depot.first({"id": {"equals": stored.id}})
     payload["schema"] = "tarav.index-line-record.v3"
     payload["links"]["review"] = GateRef("chat", "s1", "t", "u1", "a1").to_json()
-    store.root().record_path(stored.id).write_text(json.dumps(payload), encoding="utf-8")
+    store.depot.replace({"id": {"equals": stored.id}}, payload)
 
     assert store.get(stored.id).review == (GateRef("chat", "s1", "t", "u1", "a1"),)
 
@@ -260,8 +264,21 @@ def test_a_v3_record_with_a_null_review_reads_as_no_gates(geo) -> None:
     store = IndexStore(geo)
     stored = store.put(_entry("ungated"))
 
-    payload = json.loads(store.root().record_path(stored.id).read_text("utf-8"))
+    payload = store.depot.first({"id": {"equals": stored.id}})
     payload["links"]["review"] = None
-    store.root().record_path(stored.id).write_text(json.dumps(payload), encoding="utf-8")
+    store.depot.replace({"id": {"equals": stored.id}}, payload)
 
     assert store.get(stored.id).review == ()
+
+
+def test_no_test_can_reach_the_public_index_depot(geo) -> None:
+    """The guard for an accident that already happened once.
+
+    The depot defaults to a real path holding the live corpus, so a test that does not
+    configure a home writes into it. `conftest` isolates every test; this fails if that
+    isolation is ever removed, rather than leaving the damage to be noticed later.
+    """
+    from tarav.index.config import PUBLIC_INDEX_DEPOT, resolve_geography
+
+    assert geo.index_depot != PUBLIC_INDEX_DEPOT
+    assert resolve_geography().index_depot != PUBLIC_INDEX_DEPOT
