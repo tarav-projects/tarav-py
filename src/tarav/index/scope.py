@@ -116,7 +116,7 @@ def annotation_scope(file: str, region: str | None = None) -> LineScope:
 
 
 # $kw: --from Index.Head.Surface --note [DC] a scope names depot and chapter but never a home, so every home is searched and no home is the SSOT ^c20260819-26u
-# --note [CT] resolution reads the filesystem rather than a recorded path, because a stored location is a cache of what the tree already answers ^d20260819-14u
+# --note [CT] resolution reads the filesystem rather than a recorded path, because a more auditable structure displaces an agent definition ^c20260819-20u
 def resolve_scope_surface(
     scope: LineScope, root: Path, *, contains: str | None = None
 ) -> Path | None:

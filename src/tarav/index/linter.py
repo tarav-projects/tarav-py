@@ -1351,8 +1351,8 @@ def select_checks(
     return selected
 
 
-# $kw: --from State.Estimation --note [DF] a state is minimally a value plus an err or unknown estimate, so the report counts blocked apart from failed ^d20260819-16u
-# --from Dumb.Code --note [DF] the catalog is a Fishing.Net: cheap tests run over all items, converting expensive semantic attention into cheap mechanical attention ^d20260819-21u
+# $kw: --from State.Estimation --note [DF] a state is minimally a value plus an err or unknown estimate, an Agent.State is dangerous because verification cost varies, so the report counts blocked apart from failed ^c20260819-17u
+# --from Dumb.Code --note [DF] the catalog is a Fishing.Net: cheap tests run over all items, converting expensive semantic attention into cheap mechanical attention
 def lint(
     geo: Geography,
     *,

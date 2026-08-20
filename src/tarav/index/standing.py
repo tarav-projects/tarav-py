@@ -137,7 +137,7 @@ def build_traces(records: Iterable[LineRecord]) -> dict[str, Trace]:
 
 
 # $kw: --from Index.Head.Surface --note [DF] a line is in the HEAD because it is observed on a HEAD.Surface, which is what promoted means ^c20260819-25u
-# --note [CT] the scan replaces a stored surface list, because a value the filesystem already answers cheaply is not a design variable ^d20260819-14u
+# --note [CT] the scan replaces a stored surface list, because a more auditable structure displaces an agent definition ^c20260819-20u
 def lines_on_head_surfaces(
     records: Iterable[LineRecord],
     surface_lines: Mapping[str, Sequence[SurfaceLine]],
