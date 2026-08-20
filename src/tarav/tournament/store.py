@@ -1,8 +1,11 @@
-# $kw: ^tournament-store --from Agentos.Tournament --from Tournament.Verdict --from Tournament.Depot --from Tournament.Label --from Bloberia.Record.Namespace --note [CT] append-only is a Tournament-layer rule; BloberiaDepot.edit exists and this store never calls it --supp ^c20260806-28u ^<anchor-on-landing>
+# $kw: ^tournament-store --from Agentos.Tournament --from Tournament.Verdict --from Tournament.Depot --from Tournament.Label --from Bloberia.Record.Namespace --note [CT] append-only is a Tournament-layer rule; BloberiaDepot.replace exists and this store never calls it --supp ^c20260806-28u ^<anchor-on-landing>
 """Bloberia-backed tournament and verdict storage.
 
-Append-only is enforced here, not by Bloberia: ``BloberiaDepot.edit`` mutates in
+Append-only is enforced here, not by Bloberia: ``BloberiaDepot.replace`` overwrites in
 place, so this store exposes creation and reading and never reaches for it.
+
+The store mints its own ``record_id``. Bloberia stores cargo verbatim and hands back no
+identity, so a verdict that must be addressable carries its id in its own schema.
 """
 
 from __future__ import annotations
@@ -13,10 +16,11 @@ from datetime import datetime, timezone
 
 from tarav._core.clock import iso_z, utc_now_iso
 from tarav._core.ids import generate_uuid4_string
-from tarav.bloberia.depot_v1 import BloberiaDepot, BloberiaRecord
+from tarav.bloberia.core import BloberiaDepot
 from tarav.tournament.depot import DEFINITIONS_DIRNAME, resolve_depot_root
 from tarav.tournament.model import (
     ENVELOPE_KEY,
+    RECORD_ID_KEY,
     KIND_KEY,
     RECORD_KIND_TOURNAMENT,
     RECORD_KIND_VERDICT,
@@ -54,7 +58,7 @@ class TournamentStore:
 
 
         tournament_id = generate_uuid4_string()
-        self.depot.create(
+        self.depot.insert(
             {
                 KIND_KEY: RECORD_KIND_TOURNAMENT,
                 "tournament_id": tournament_id,
@@ -67,12 +71,12 @@ class TournamentStore:
         return self.tournament(tournament_id)
 
     def tournament(self, tournament_id: str) -> Tournament:
-        records = self.depot.query(
-            {"value": {KIND_KEY: RECORD_KIND_TOURNAMENT}}, namespace=tournament_id
+        cargo = self.depot.first(
+            {KIND_KEY: {"equals": RECORD_KIND_TOURNAMENT}}, namespace=tournament_id
         )
-        for record in records:
-            return _tournament_from_record(record)
-        raise TournamentNotFoundError(f"tournament does not exist: {tournament_id}")
+        if cargo is None:
+            raise TournamentNotFoundError(f"tournament does not exist: {tournament_id}")
+        return _tournament_from_cargo(cargo)
 
     def tournaments(self) -> tuple[Tournament, ...]:
         """List by namespace directory rather than by scanning every record."""
@@ -147,32 +151,28 @@ class TournamentStore:
             "recorded_at": iso_z(datetime.now(timezone.utc), drop_micros=False),
             "duration_ms": duration_ms,
         }
-        record = self.depot.create(
-            {
-                KIND_KEY: RECORD_KIND_VERDICT,
-                ENVELOPE_KEY: envelope,
-                SLOT_KEY: slot_value,
-            },
-            namespace=tournament_id,
-        )
-        return _verdict_from_record(record)
+        cargo = {
+            KIND_KEY: RECORD_KIND_VERDICT,
+            RECORD_ID_KEY: generate_uuid4_string(),
+            ENVELOPE_KEY: envelope,
+            SLOT_KEY: slot_value,
+        }
+        self.depot.insert(cargo, namespace=tournament_id)
+        return _verdict_from_cargo(cargo)
 
     def verdicts(
         self, tournament_id: str, *, match_id: str | None = None
     ) -> tuple[Verdict, ...]:
-        query: dict[str, object] = {
-            KIND_KEY: RECORD_KIND_VERDICT,
-            ENVELOPE_KEY: {"tournament_id": tournament_id},
+        query: dict[str, dict[str, object]] = {
+            KIND_KEY: {"equals": RECORD_KIND_VERDICT},
+            f"{ENVELOPE_KEY}.tournament_id": {"equals": tournament_id},
         }
         if match_id is not None:
-            query[ENVELOPE_KEY] = {
-                "tournament_id": tournament_id,
-                "match_id": match_id,
-            }
-        records = self.depot.query({"value": query}, namespace=tournament_id)
+            query[f"{ENVELOPE_KEY}.match_id"] = {"equals": match_id}
+        cargos = self.depot.all(query, namespace=tournament_id)
         return tuple(
             sorted(
-                (_verdict_from_record(record) for record in records),
+                (_verdict_from_cargo(cargo) for cargo in cargos),
                 key=lambda item: (item.envelope["recorded_at"], item.record_id),
             )
         )
@@ -193,10 +193,9 @@ def _require_ordering(
     return ranked
 
 
-def _tournament_from_record(record: BloberiaRecord) -> Tournament:
-    value = record.value
+def _tournament_from_cargo(value: object) -> Tournament:
     if not isinstance(value, dict):
-        raise TournamentError(f"corrupt tournament record: {record.id}")
+        raise TournamentError(f"corrupt tournament record: {value!r}")
     return Tournament(
         tournament_id=str(value["tournament_id"]),
         definition_path=str(value["definition_path"]),
@@ -205,12 +204,12 @@ def _tournament_from_record(record: BloberiaRecord) -> Tournament:
     )
 
 
-def _verdict_from_record(record: BloberiaRecord) -> Verdict:
-    value = record.value
+def _verdict_from_cargo(value: object) -> Verdict:
     if not isinstance(value, dict):
-        raise TournamentError(f"corrupt verdict record: {record.id}")
+        raise TournamentError(f"corrupt verdict record: {value!r}")
+    record_id = value.get(RECORD_ID_KEY)
     envelope = value.get(ENVELOPE_KEY)
     slot = value.get(SLOT_KEY)
-    if not isinstance(envelope, dict) or not isinstance(slot, dict):
-        raise TournamentError(f"corrupt verdict record: {record.id}")
-    return Verdict(record_id=record.id, envelope=dict(envelope), slot=dict(slot))
+    if not isinstance(record_id, str) or not isinstance(envelope, dict) or not isinstance(slot, dict):
+        raise TournamentError(f"corrupt verdict record: {record_id!r}")
+    return Verdict(record_id=record_id, envelope=dict(envelope), slot=dict(slot))

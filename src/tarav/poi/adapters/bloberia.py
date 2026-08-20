@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.bloberia.depot_v1 import BloberiaCheckFinding, BloberiaCheckResult
+from tarav.bloberia.core import BloberiaCheckFinding, BloberiaCheckResult
 from tarav.poi import (
     POIInstance,
     POILinterReport,
@@ -15,19 +15,16 @@ from tarav.wayfinder import Wayfinder
 
 
 
+#: One class, because the depot owns one invariant. `Record.Filename.Invalid`,
+#: `Record.Invalid` and `Identity.Mismatch` retired with the envelope they inspected:
+#: a store that stores cargo verbatim has no shape of its own left to violate.
 BLOBERIA_POI_CLASSES = {
-    "invalid-record-filename": "Bloberia.Linter/Record.Filename.Invalid",
     "invalid-json": "Bloberia.Linter/Json.Invalid",
-    "invalid-record": "Bloberia.Linter/Record.Invalid",
-    "identity-mismatch": "Bloberia.Linter/Identity.Mismatch",
 }
 BLOBERIA_POI_CODES = tuple(BLOBERIA_POI_CLASSES)
 
 
 def bloberia_finding_to_poi(finding: BloberiaCheckFinding) -> POIInstance:
-    evidence = {}
-    if finding.record_id is not None:
-        evidence["record_id"] = finding.record_id
     return POIInstance.create(
         class_reference=poi_class_reference(
             "tarav-pkg", BLOBERIA_POI_CLASSES[finding.code]
@@ -35,7 +32,7 @@ def bloberia_finding_to_poi(finding: BloberiaCheckFinding) -> POIInstance:
         target=POILocation(path=finding.path),
         severity="error",
         situation=finding.message,
-        evidence=evidence,
+        evidence={},
     )
 
 

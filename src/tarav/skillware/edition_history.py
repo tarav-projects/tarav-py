@@ -10,10 +10,10 @@ from pathlib import Path
 
 from tarav._core.errors import CliError
 from tarav._core.project import find_agentos_project
-from tarav.bloberia.depot_v1 import (
+from tarav._core.ids import generate_uuid4_string
+from tarav.bloberia.core import (
     BloberiaDepot,
     BloberiaError,
-    BloberiaRecord,
 )
 
 
@@ -24,6 +24,37 @@ DEFAULT_EDITION_HISTORY_DEPOT = (
     Path(".tarav") / "state" / "bloberia" / "edition-history"
 )
 _COMMIT_RE = re.compile(r"^[0-9a-fA-F]{4,64}$")
+RECORD_ID_KEY = "record_id"
+
+
+@dataclass(frozen=True)
+class _StoredRecord:
+    """The service's own envelope around one edition-session value.
+
+    Bloberia stores cargo verbatim and hands back no identity, so a record the CLI
+    addresses by id and reports a revision for has to carry both in its own schema. The
+    envelope moved from the store to here; it did not disappear, because the CLI contract
+    that exposes `record_id` and `revision` never depended on the store owning them.
+    """
+
+    id: str
+    revision: int
+    value: object
+
+    def as_cargo(self) -> dict[str, object]:
+        return {RECORD_ID_KEY: self.id, "revision": self.revision, "value": self.value}
+
+
+def _stored(cargo: object) -> _StoredRecord:
+    if not isinstance(cargo, dict):
+        raise EditionHistoryError("edition-history record is not an object")
+    record_id = cargo.get(RECORD_ID_KEY)
+    revision = cargo.get("revision")
+    if not isinstance(record_id, str) or not record_id:
+        raise EditionHistoryError("edition-history record carries no record_id")
+    if not isinstance(revision, int):
+        raise EditionHistoryError(f"edition-history record {record_id} carries no revision")
+    return _StoredRecord(id=record_id, revision=revision, value=cargo.get("value"))
 
 
 class EditionHistoryError(RuntimeError):
@@ -219,20 +250,18 @@ class EditionHistoryService:
         self._resolve_support(normalized_support)
 
         identity_query = {
-            "value": {
-                "kind": EDITION_SESSION_KIND,
-                "schema_version": EDITION_SESSION_SCHEMA_VERSION,
-                "file": resolved_file.identity.as_dict(),
-                "edition": {"commit": full_commit},
-                "session": {"id": normalized_session_id},
-            }
+            "value.kind": {"equals": EDITION_SESSION_KIND},
+            "value.schema_version": {"equals": EDITION_SESSION_SCHEMA_VERSION},
+            "value.file": {"equals": resolved_file.identity.as_dict()},
+            "value.edition.commit": {"equals": full_commit},
+            "value.session.id": {"equals": normalized_session_id},
         }
         try:
-            existing = self.depot.query(identity_query)
+            existing = self.depot.first(identity_query)
         except BloberiaError as exc:
             raise EditionHistoryError(str(exc)) from exc
-        if existing:
-            association = _association_from_record(existing[0])
+        if existing is not None:
+            association = _association_from_record(_stored(existing))
             self._resolve_support(association.session.support)
             return RecordEditionSessionResult(
                 created=False,
@@ -253,8 +282,9 @@ class EditionHistoryService:
             },
             "support": normalized_support,
         }
+        record = _StoredRecord(id=generate_uuid4_string(), revision=1, value=value)
         try:
-            record = self.depot.create(value)
+            self.depot.insert(record.as_cargo())
         except BloberiaError as exc:
             raise EditionHistoryError(str(exc)) from exc
         return RecordEditionSessionResult(created=True, record_id=record.id)
@@ -263,16 +293,16 @@ class EditionHistoryService:
         resolved_file = _resolve_file(file)
         identity = resolved_file.identity
         query = {
-            "value": {
-                "kind": EDITION_SESSION_KIND,
-                "file": identity.as_dict(),
-            }
+            "value.kind": {"equals": EDITION_SESSION_KIND},
+            "value.file": {"equals": identity.as_dict()},
         }
         try:
-            records = self.depot.query(query)
+            cargos = self.depot.all(query)
         except BloberiaError as exc:
             raise EditionHistoryError(str(exc)) from exc
-        associations = tuple(_association_from_record(record) for record in records)
+        associations = tuple(
+            _association_from_record(_stored(cargo)) for cargo in cargos
+        )
         for association in associations:
             self._resolve_support(association.session.support)
         return _build_history(
@@ -290,10 +320,14 @@ class EditionHistoryService:
         session_started_at: str | None = None,
     ) -> AmendEditionSessionResult:
         resolved_file = _resolve_file(file)
+        id_query = {RECORD_ID_KEY: {"equals": record_id}}
         try:
-            record = self.depot.get(record_id)
+            cargo = self.depot.first(id_query)
         except BloberiaError as exc:
             raise EditionHistoryError(str(exc)) from exc
+        if cargo is None:
+            raise EditionHistoryError(f"record does not exist: {record_id}")
+        record = _stored(cargo)
         association = _association_from_record(record)
         if association.file != resolved_file.identity:
             raise EditionHistoryError(
@@ -333,8 +367,11 @@ class EditionHistoryService:
                 record_id=record.id,
                 revision=record.revision,
             )
+        amended = _StoredRecord(
+            id=record.id, revision=record.revision + 1, value=value
+        )
         try:
-            amended = self.depot.edit(record_id, value)
+            self.depot.replace(id_query, amended.as_cargo())
         except BloberiaError as exc:
             raise EditionHistoryError(str(exc)) from exc
         return AmendEditionSessionResult(
@@ -367,18 +404,13 @@ class EditionHistoryService:
                         code=f"bloberia-{finding.code}",
                         target=finding.path,
                         message=finding.message,
-                        record_ids=(
-                            (finding.record_id,) if finding.record_id else ()
-                        ),
                     )
                     for finding in depot_check.findings
                 )
             )
 
         try:
-            records = self.depot.query(
-                {"value": {"kind": EDITION_SESSION_KIND}}
-            )
+            cargos = self.depot.all({"value.kind": {"equals": EDITION_SESSION_KIND}})
         except BloberiaError as exc:
             return EditionHistoryCheckResult(
                 findings=(
@@ -393,16 +425,16 @@ class EditionHistoryService:
         findings: list[EditionHistoryFinding] = []
         associations: list[_Association] = []
         supported_associations: list[_Association] = []
-        for record in records:
+        for cargo in cargos:
             try:
+                record = _stored(cargo)
                 association = _association_from_record(record)
             except EditionHistoryError as exc:
                 findings.append(
                     EditionHistoryFinding(
                         code="invalid-edition-history-record",
-                        target=f"records/{record.id}.json",
+                        target=str(self.depot.root),
                         message=str(exc),
-                        record_ids=(record.id,),
                     )
                 )
                 continue
@@ -620,7 +652,7 @@ def _run_git(root: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
-def _association_from_record(record: BloberiaRecord) -> _Association:
+def _association_from_record(record: _StoredRecord) -> _Association:
     try:
         value = _exact_object(
             record.value,

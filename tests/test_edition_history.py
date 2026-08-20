@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.bloberia.depot_v1 import BloberiaDepot
+from tarav.bloberia.core import BloberiaDepot
 from tarav.skillware.edition_history import (
     DEFAULT_EDITION_HISTORY_DEPOT,
     EditionFile,
@@ -254,7 +254,7 @@ def test_amend_rejects_wrong_file_without_mutation(tmp_path: Path) -> None:
             support=_support("session", turn_id="event-2"),
         )
 
-    assert depot.get(recorded.record_id).revision == 1
+    assert depot.first({"record_id": {"equals": recorded.record_id}})["revision"] == 1
 
 
 def test_record_rejects_invalid_session_metadata(tmp_path: Path) -> None:
@@ -329,7 +329,7 @@ def test_record_requires_resolvable_support(tmp_path: Path) -> None:
             support=_support("session"),
         )
 
-    assert depot.query({"value": {"kind": "skw.edition-session"}}) == ()
+    assert depot.all({"value.kind": {"equals": "skw.edition-session"}}) == ()
 
 
 def test_list_rejects_and_check_reports_unresolvable_support(
@@ -365,8 +365,11 @@ def test_list_rejects_and_check_reports_unresolvable_support(
 def test_list_rejects_malformed_matching_record(tmp_path: Path) -> None:
     _root, source, _commit = _project(tmp_path)
     depot = BloberiaDepot(tmp_path / "bloberia")
-    depot.create(
+    depot.insert(
         {
+            "record_id": "malformed-1",
+            "revision": 1,
+            "value": {
             "kind": "skw.edition-session",
             "schema_version": 2,
             "file": {"project_id": PROJECT_ID, "path": "src/example.py"},
@@ -376,6 +379,7 @@ def test_list_rejects_malformed_matching_record(tmp_path: Path) -> None:
             },
             "session": {"id": "session", "started_at": None},
             "support": _support("session"),
+            },
         }
     )
 
@@ -431,25 +435,26 @@ def test_check_reports_duplicate_and_malformed_associations(
     depot = BloberiaDepot(tmp_path / "bloberia")
     service = _service(depot)
     service.record(source, commit, "session", support=_support("session"))
-    valid_record = depot.query(
+    valid_record = depot.first(
         {
+            "value.kind": {"equals": "skw.edition-session"},
+            "value.file": {
+                "equals": {"project_id": PROJECT_ID, "path": "src/example.py"}
+            },
+        }
+    )
+    depot.insert({**valid_record, "record_id": "duplicate-1"})
+    depot.insert(
+        {
+            "record_id": "broken-1",
+            "revision": 1,
             "value": {
                 "kind": "skw.edition-session",
-                "file": {
-                    "project_id": PROJECT_ID,
-                    "path": "src/example.py",
-                },
-            }
-        }
-    )[0]
-    depot.create(valid_record.value)
-    depot.create(
-        {
-            "kind": "skw.edition-session",
-            "schema_version": 1,
-            "file": {"project_id": PROJECT_ID, "path": "src/example.py"},
-            "edition": {"commit": commit},
-            "session": {"id": "broken"},
+                "schema_version": 1,
+                "file": {"project_id": PROJECT_ID, "path": "src/example.py"},
+                "edition": {"commit": commit},
+                "session": {"id": "broken"},
+            },
         }
     )
 
@@ -462,18 +467,21 @@ def test_check_reports_duplicate_and_malformed_associations(
 
 
 def test_check_surfaces_bloberia_corruption(tmp_path: Path) -> None:
+    """Depot-level corruption is reported, not swallowed into a record-level finding.
+
+    The trigger moved with the contract: an odd filename is no longer a defect, because
+    nothing resolves by filename. A record that will not parse still is.
+    """
     _root, source, _commit = _project(tmp_path)
     depot_root = tmp_path / "bloberia"
     records = depot_root / "records"
     records.mkdir(parents=True)
-    (records / "not-a-uuid.json").write_text("{}\n", encoding="utf-8")
+    (records / "unparseable.json").write_text("{not json", encoding="utf-8")
 
     result = _service(BloberiaDepot(depot_root)).check([source])
 
     assert result.ok is False
-    assert [finding.code for finding in result.findings] == [
-        "bloberia-invalid-record-filename"
-    ]
+    assert [finding.code for finding in result.findings] == ["bloberia-invalid-json"]
 
 
 def _parser() -> argparse.ArgumentParser:

@@ -111,11 +111,10 @@ def test_a_verdict_without_a_template_fails_with_a_message_not_a_traceback(
     tmp_path: Path,
 ) -> None:
     store, tournament, verdict, _result = _recorded(tmp_path)
-    record = store.depot.get(verdict.record_id, namespace=tournament.tournament_id)
-    record.value["envelope"].pop("template")
-    store.depot.edit(
-        verdict.record_id, record.value, namespace=tournament.tournament_id
-    )
+    query = {"record_id": {"equals": verdict.record_id}}
+    cargo = store.depot.first(query, namespace=tournament.tournament_id)
+    cargo["envelope"].pop("template")
+    store.depot.replace(query, cargo, namespace=tournament.tournament_id)
 
     with pytest.raises(CliError) as excinfo:
         _invoke(

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from tarav._core.errors import CliError
 from tarav._core.json_input import load_json_object_arg
-from tarav.bloberia.depot_v1 import BloberiaDepot
+from tarav.bloberia.core import BloberiaDepot
 from tarav.wayfinder.index_blocks import create_index_wayfinder
 from tarav.poi import (
     POILinterReport,

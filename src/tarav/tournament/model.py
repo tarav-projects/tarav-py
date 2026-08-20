@@ -19,6 +19,8 @@ RECORD_KIND_VERDICT = "verdict"
 ENVELOPE_KEY = "envelope"
 SLOT_KEY = "slot"
 KIND_KEY = "kind"
+#: The store mints this; Bloberia hands back no identity of its own.
+RECORD_ID_KEY = "record_id"
 
 ENVELOPE_FIELDS = frozenset(
     {

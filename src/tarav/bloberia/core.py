@@ -23,6 +23,7 @@ from __future__ import annotations
 import fcntl
 import json
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 from uuid import uuid4
@@ -73,10 +74,19 @@ _MISSING = object()
 
 
 def _validate_namespace(namespace: str | None) -> str | None:
-    """A namespace partitions *placement* only; it never enters identity or meaning."""
+    """A namespace partitions *placement* only; it never enters identity or meaning.
+
+    It is a relative path prefix and may nest, because placement is organizational and a
+    consumer's organization is its own. Every segment is checked rather than the string as
+    a whole: `..` and a leading dot are the two ways a prefix stops being a prefix and
+    starts being a re-rooting.
+    """
     if namespace is None:
         return None
-    if not isinstance(namespace, str) or not namespace or "/" in namespace or namespace.startswith("."):
+    if not isinstance(namespace, str) or not namespace:
+        raise InvalidBloberiaInputError(f"invalid namespace: {namespace!r}")
+    segments = namespace.split("/")
+    if any(not segment or segment.startswith(".") for segment in segments):
         raise InvalidBloberiaInputError(f"invalid namespace: {namespace!r}")
     return namespace
 
@@ -132,6 +142,24 @@ def _matches(cargo: object, query: Query) -> bool:
                 if not isinstance(found, str) or str(operand) not in found:
                     return False
     return True
+
+
+@dataclass(frozen=True)
+class BloberiaCheckFinding:
+    """One record that does not parse. `path` is depot-relative, for a human to open."""
+
+    code: str
+    path: str
+    message: str
+
+
+@dataclass(frozen=True)
+class BloberiaCheckResult:
+    findings: tuple[BloberiaCheckFinding, ...]
+
+    @property
+    def ok(self) -> bool:
+        return not self.findings
 
 
 class BloberiaDepot:
@@ -203,10 +231,47 @@ class BloberiaDepot:
         return tuple(sorted(root.rglob("*.json")))
 
     def namespaces(self) -> tuple[str, ...]:
+        """Every namespace prefix present, without reading any record.
+
+        A nested namespace contributes each of its prefixes, because `a/b/c` is reachable
+        as `a` and `a/b` too — listing only the leaves would name places a read cannot
+        address and hide places it can.
+        """
         root = self._records_root()
         if not root.is_dir():
             return ()
-        return tuple(sorted(p.name for p in root.iterdir() if p.is_dir()))
+        return tuple(
+            sorted(
+                path.relative_to(root).as_posix()
+                for path in root.rglob("*")
+                if path.is_dir()
+            )
+        )
+
+    def check(self) -> BloberiaCheckResult:
+        """Audit every record against the only invariant bloberia still owns: it parses.
+
+        The previous check also verified that a filename was a well-formed uuid, that a
+        payload carried the store's envelope, and that the id inside a record matched its
+        filename. All three describe a store that models its cargo. Nothing resolves by
+        filename, there is no envelope, and a record has no id the store knows about — so
+        those findings could only report on a structure that no longer exists.
+        """
+
+        findings: list[BloberiaCheckFinding] = []
+        with self._lock(exclusive=False, create=False):
+            for path in self._record_paths(None):
+                try:
+                    json.loads(path.read_text("utf-8"))
+                except (OSError, ValueError) as exc:
+                    findings.append(
+                        BloberiaCheckFinding(
+                            code="invalid-json",
+                            path=str(path.relative_to(self.root)),
+                            message=str(exc),
+                        )
+                    )
+        return BloberiaCheckResult(findings=tuple(sorted(findings, key=lambda f: f.path)))
 
     def _read(self, path: Path) -> Cargo:
         try:
@@ -248,6 +313,8 @@ class BloberiaDepot:
 
 
 __all__ = [
+    "BloberiaCheckFinding",
+    "BloberiaCheckResult",
     "BloberiaDepot",
     "BloberiaError",
     "CorruptBloberiaDepotError",

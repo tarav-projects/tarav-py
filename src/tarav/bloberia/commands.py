@@ -1,4 +1,12 @@
 # $kw: ^bloberia-commands --from Agentos.Bloberia --from POI.System --from POI.Linter --note [DF] thin argparse handlers over the importable BloberiaDepot and common POI report contracts ^c20260724-31u --supp POI migration execution ^c20260729-49u
+"""The CLI surface, one subcommand per depot verb.
+
+`get --id` and `edit --id` are gone rather than reimplemented. The store mints no
+identity, so an id flag could only address a record through bloberia's private filename —
+the one handle the contract keeps out of a consumer's hands. Both are recovered as
+queries: a record with an identity of its own is found by naming that field.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -10,7 +18,7 @@ from typing import Protocol
 from tarav._core.errors import CliError
 from tarav._core.json_input import load_json_arg, load_json_object_arg
 
-from .depot_v1 import BloberiaCheckResult, BloberiaDepot, BloberiaError, BloberiaRecord
+from .core import BloberiaCheckResult, BloberiaDepot, BloberiaError
 
 
 class BloberiaCheckReport(Protocol):
@@ -30,62 +38,65 @@ def _print_json(payload: object) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
-def _value_arg(args: argparse.Namespace) -> object:
-    return load_json_arg(args.value_json, args.value_file, field_name="value")
+def _cargo_arg(args: argparse.Namespace) -> object:
+    return load_json_arg(args.cargo_json, args.cargo_file, field_name="cargo")
 
 
-def _record_payload(depot: BloberiaDepot, record: BloberiaRecord) -> dict[str, object]:
-    return {"depot": str(depot.root), "record": record.as_dict()}
+def _query_arg(args: argparse.Namespace) -> dict[str, object]:
+    return load_json_object_arg(args.query_json, args.query_file, field_name="query")
 
 
-def _cmd_create(args: argparse.Namespace) -> int:
+def _cmd_insert(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        record = depot.create(_value_arg(args), namespace=args.namespace)
+        depot.insert(_cargo_arg(args), namespace=args.namespace)
     except BloberiaError as exc:
         raise CliError(str(exc)) from exc
-    _print_json(_record_payload(depot, record))
+    _print_json({"depot": str(depot.root), "inserted": 1})
     return 0
 
 
-def _cmd_get(args: argparse.Namespace) -> int:
+def _cmd_first(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        record = depot.get(args.id, namespace=args.namespace)
+        cargo = depot.first(_query_arg(args), namespace=args.namespace)
     except BloberiaError as exc:
         raise CliError(str(exc)) from exc
-    _print_json(_record_payload(depot, record))
+    _print_json({"depot": str(depot.root), "found": cargo is not None, "record": cargo})
     return 0
 
 
-def _cmd_edit(args: argparse.Namespace) -> int:
+def _cmd_all(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        record = depot.edit(args.id, _value_arg(args), namespace=args.namespace)
-    except BloberiaError as exc:
-        raise CliError(str(exc)) from exc
-    _print_json(_record_payload(depot, record))
-    return 0
-
-
-def _cmd_query(args: argparse.Namespace) -> int:
-    depot = _depot(args)
-    query = load_json_object_arg(
-        args.query_json,
-        args.query_file,
-        field_name="query",
-    )
-    try:
-        records = depot.query(query, namespace=args.namespace)
+        cargos = depot.all(_query_arg(args), namespace=args.namespace)
     except BloberiaError as exc:
         raise CliError(str(exc)) from exc
     _print_json(
-        {
-            "depot": str(depot.root),
-            "count": len(records),
-            "records": [record.as_dict() for record in records],
-        }
+        {"depot": str(depot.root), "count": len(cargos), "records": list(cargos)}
     )
+    return 0
+
+
+def _cmd_replace(args: argparse.Namespace) -> int:
+    depot = _depot(args)
+    try:
+        replaced = depot.replace(
+            _query_arg(args), _cargo_arg(args), namespace=args.namespace
+        )
+    except BloberiaError as exc:
+        raise CliError(str(exc)) from exc
+    _print_json({"depot": str(depot.root), "replaced": replaced})
+    return 0
+
+
+def _cmd_delete(args: argparse.Namespace) -> int:
+    depot = _depot(args)
+    try:
+        deleted = depot.delete(_query_arg(args), namespace=args.namespace)
+    except BloberiaError as exc:
+        raise CliError(str(exc)) from exc
+    _print_json({"depot": str(depot.root), "deleted": deleted})
     return 0
 
 
@@ -114,14 +125,21 @@ def _add_namespace_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_record_id_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--id", required=True, help="Opaque Bloberia record identity.")
-
-
-def _add_value_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_cargo_arguments(parser: argparse.ArgumentParser) -> None:
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--value-json", help="Application value as JSON.")
-    group.add_argument("--value-file", help="Path to an application-value JSON file.")
+    group.add_argument("--cargo-json", help="The record, verbatim, as JSON.")
+    group.add_argument("--cargo-file", help="Path to a JSON file holding the record.")
+
+
+def _add_query_arguments(
+    parser: argparse.ArgumentParser, *, required: bool = False
+) -> None:
+    group = parser.add_mutually_exclusive_group(required=required)
+    group.add_argument(
+        "--query-json",
+        help='Path predicates as JSON, e.g. {"line.label": {"equals": "^c1-1u"}}.',
+    )
+    group.add_argument("--query-file", help="Path to a query JSON file.")
 
 
 def register_bloberia_commands(
@@ -131,44 +149,44 @@ def register_bloberia_commands(
 ) -> None:
     parser = subparsers.add_parser(
         "bloberia",
-        help="Depot-scoped query:value storage for agent-associated data.",
+        help="Depot-scoped storage for opaque JSON records.",
     )
     commands = parser.add_subparsers(dest="bloberia_command", required=True)
 
-    create_parser = commands.add_parser("create", help="Create a record.")
-    _add_depot_argument(create_parser)
-    _add_namespace_argument(create_parser)
-    _add_value_arguments(create_parser)
-    create_parser.set_defaults(handler=_cmd_create)
+    insert_parser = commands.add_parser("insert", help="Store one record verbatim.")
+    _add_depot_argument(insert_parser)
+    _add_namespace_argument(insert_parser)
+    _add_cargo_arguments(insert_parser)
+    insert_parser.set_defaults(handler=_cmd_insert)
 
-    get_parser = commands.add_parser("get", help="Read one record by identity.")
-    _add_depot_argument(get_parser)
-    _add_namespace_argument(get_parser)
-    _add_record_id_argument(get_parser)
-    get_parser.set_defaults(handler=_cmd_get)
+    first_parser = commands.add_parser("first", help="Read the first matching record.")
+    _add_depot_argument(first_parser)
+    _add_namespace_argument(first_parser)
+    _add_query_arguments(first_parser, required=True)
+    first_parser.set_defaults(handler=_cmd_first)
 
-    edit_parser = commands.add_parser(
-        "edit", help="Atomically replace one record's application value."
+    all_parser = commands.add_parser("all", help="Read every matching record.")
+    _add_depot_argument(all_parser)
+    _add_namespace_argument(all_parser)
+    _add_query_arguments(all_parser)
+    all_parser.set_defaults(handler=_cmd_all)
+
+    replace_parser = commands.add_parser(
+        "replace", help="Overwrite every matching record with one cargo."
     )
-    _add_depot_argument(edit_parser)
-    _add_namespace_argument(edit_parser)
-    _add_record_id_argument(edit_parser)
-    _add_value_arguments(edit_parser)
-    edit_parser.set_defaults(handler=_cmd_edit)
+    _add_depot_argument(replace_parser)
+    _add_namespace_argument(replace_parser)
+    _add_query_arguments(replace_parser, required=True)
+    _add_cargo_arguments(replace_parser)
+    replace_parser.set_defaults(handler=_cmd_replace)
 
-    query_parser = commands.add_parser(
-        "query", help="Select records by structural JSON subset."
-    )
-    _add_depot_argument(query_parser)
-    _add_namespace_argument(query_parser)
-    query_group = query_parser.add_mutually_exclusive_group()
-    query_group.add_argument("--query-json", help="Structural query as a JSON object.")
-    query_group.add_argument(
-        "--query-file", help="Path to a structural-query JSON file."
-    )
-    query_parser.set_defaults(handler=_cmd_query)
+    delete_parser = commands.add_parser("delete", help="Delete every matching record.")
+    _add_depot_argument(delete_parser)
+    _add_namespace_argument(delete_parser)
+    _add_query_arguments(delete_parser, required=True)
+    delete_parser.set_defaults(handler=_cmd_delete)
 
-    check_parser = commands.add_parser("check", help="Check depot structure.")
+    check_parser = commands.add_parser("check", help="Check that every record parses.")
     _add_depot_argument(check_parser)
     check_parser.set_defaults(
         handler=lambda args: _cmd_check(
