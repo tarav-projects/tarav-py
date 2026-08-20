@@ -57,6 +57,14 @@ class TestConfiguration:
         assert reopened.git is not None
         assert reopened.git.interval_seconds == 1
 
+    def test_a_redeclared_git_path_keeps_the_stored_interval(self, tmp_path: Path) -> None:
+        repo = _repo(tmp_path / "project")
+        BloberiaDepot(repo / "depot", git="..", git_interval_seconds=3600).insert({"k": 1})
+
+        reopened = BloberiaDepot(repo / "depot", git="..")
+        assert reopened.git is not None
+        assert reopened.git.interval_seconds == 3600
+
     def test_a_git_path_that_is_not_a_string_is_refused(self, tmp_path: Path) -> None:
         depot = BloberiaDepot(tmp_path / "depot", git=17)  # type: ignore[arg-type]
         with pytest.raises(InvalidBloberiaInputError):

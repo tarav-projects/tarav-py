@@ -231,8 +231,13 @@ class BloberiaDepot:
         self._meta = meta
         if self._declared_key is None:
             self._declared_key = meta.get("key")  # type: ignore[assignment]
-        if self._declared_git == (None, None):
-            self._declared_git = (meta.get("git"), meta.get("git_interval_seconds"))
+        declared_git, declared_interval = self._declared_git
+        self._declared_git = (
+            declared_git if declared_git is not None else meta.get("git"),
+            declared_interval
+            if declared_interval is not None
+            else meta.get("git_interval_seconds"),
+        )
 
     def _write_meta(self) -> None:
         if self.meta_path.exists():
