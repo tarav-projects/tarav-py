@@ -1,3 +1,4 @@
+# $kw: Index.Linter/Class.Review --from POI.Linter --note [CT] Every Tarav linter POI.Class requires an individual semantic review; corpus counts prove execution, not correctness. ^c20260821-6u
 # $kw: --from POI.Linter --note [CT] agents edit surfaces with general primitives; the linter checks conformance
 # --from Convergent.Justification --note [DC] Check.default_on is held on one reason — a check may ship off when it is expensive or situational, though no catalog row does yet
 """The tarav index linter.
@@ -55,7 +56,7 @@ from pathlib import Path
 from tarav.index_model.nodes import BlockHeading, MetaLine
 from tarav.index_model.parser import parse_depot
 
-from .chatlas import ARCHIVE_NAME as CHAT_ARCHIVE, ChatError, load_session
+from .chatlas import ChatError, load_session
 from .config import Geography, TaravIndexError
 from .gates import GateCheck, GateRef, GateVerdict, verify_gate
 from .record.blessing import BlessingRecord, BlessingStore
@@ -355,18 +356,6 @@ class Check:
 # Each returns findings; none mutates anything.
 
 
-# $kw: Index.Linter/Support.LegacyCoordinate --from POI.Linter
-def _support_legacy_coordinate_finding(
-    record: LineRecord, ref: SupportRef
-) -> Finding:
-    return Finding(
-        "Index.Linter/Support.LegacyCoordinate",
-        record.id,
-        {"archive": ref.archive, "coordinate": ref.message_id},
-        status=Status.BLOCKED,
-    )
-
-
 # $kw: Index.Linter/Support.Unreachable --from POI.Linter
 def _support_unreachable_finding(record: LineRecord, ref: SupportRef) -> Finding:
     return Finding(
@@ -377,12 +366,16 @@ def _support_unreachable_finding(record: LineRecord, ref: SupportRef) -> Finding
     )
 
 
-# $kw: Index.Linter/Support.Mismatch --from POI.Linter
-def _support_mismatch_finding(record: LineRecord, ref: SupportRef) -> Finding:
+# $kw: Index.Linter/Support.Unresolved --from POI.Linter
+def _support_unresolved_finding(record: LineRecord, ref: SupportRef) -> Finding:
+    """Named for what the check computed. `Mismatch` asserted the evidence had *changed*,
+    which is a stronger claim than the walk supports and false for every reference that
+    addresses a model this one superseded."""
+
     return Finding(
-        "Index.Linter/Support.Mismatch",
+        "Index.Linter/Support.Unresolved",
         record.id,
-        {"message": ref.message_id, "session": ref.session_id},
+        {"message": ref.message_id, "session": ref.session_id, "archive": ref.archive},
     )
 
 
@@ -744,22 +737,13 @@ def _check_support_resolves(ctx: LintContext) -> list[Finding]:
     archive = _SessionCache(ctx.geo)
     for record in ctx.selected_records():
         for ref in record.support:
-            if ref.archive != CHAT_ARCHIVE:
-                # A coordinate this archive cannot address is not a mismatch. 5,755 refs
-                # carry Chatlas1 turn ids -- `turn-r1326`, or a provider uuid -- which
-                # Chatlas2 addresses by digest and cannot look up at all. Calling that
-                # `Support.Mismatch` asserted the evidence had changed; it has not been
-                # read. Reported as its own unverifiable state so the migration backlog is
-                # legible instead of hiding inside 38% of the corpus's findings.
-                findings.append(_support_legacy_coordinate_finding(record, ref))
-                continue
             session = archive.get(ref.session_id)
             if session is None:
                 findings.append(_support_unreachable_finding(record, ref))
                 continue
             message = session.message(ref.message_id)
             if message is None:
-                findings.append(_support_mismatch_finding(record, ref))
+                findings.append(_support_unresolved_finding(record, ref))
             elif not message.carries_touch:
                 findings.append(
                     _support_not_touched_finding(record, ref, side=message.side)
@@ -1374,7 +1358,6 @@ def _check_gate_verifies_dev(ctx: LintContext) -> list[Finding]:
     return _gate_findings(ctx, require_touch=False)
 
 
-# $kw: Index.Linter/Class.Review --from POI.Linter --note [CT] Every Tarav linter POI.Class requires an individual semantic review; corpus counts prove execution, not correctness. ^c20260821-6u
 # -- blessings ----------------------------------------------------------------
 
 class BlessingStanding(StrEnum):

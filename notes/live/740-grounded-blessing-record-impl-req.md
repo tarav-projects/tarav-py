@@ -189,3 +189,96 @@ survives a re-run.
   its siblings: a file-description line is below the capture bar, and 55% of the product
   annotations in `src/` carry no anchor for the same reason.
 - [TS] Final: 2,187 tests passed, ruff clean.
+
+### Slice 6 — POI class catalog reconciliation — **done**
+
+- [OBS] **Defect, found by review rather than by the suite.** POI class identity is the
+  Wayfinder reference of its one managed `$kw` block in the codebase, and two of the classes
+  this requirement emits had none: `Blessing.Support.Unresolved` and
+  `Blessing.Support.Untouched` resolved to a `Wayfinder.Resolution.POI` instead of a block.
+  The report builds the reference from the class name, so a dangling identity renders exactly
+  like a good one until something resolves it — which is why nothing failed.
+- [DC] Each class now has its own small emitter carrying its own `$kw` block, which is the
+  convention every other multi-class check in the module already follows and the reason
+  `_referenced_poi_classes` walks module-local callables transitively.
+- [OBS] `Index.Linter/Blessing.Unevidenced` was left declared after its gate-era check was
+  deleted — a block declaring a class nothing can emit. Removed.
+- [TS] Two guards added and mutation-checked: every emitted class declares its managed block,
+  and a *bare* declaration nothing emits is stale. The second holds only bare annotations to
+  the rule, because one carrying a `--note` is a deliberate statement about a class agents
+  raise (`Class.Review`) rather than a leftover — derived from the annotation instead of a
+  maintained allowlist.
+- [OBS] Two Skillware POIs on `record/blessing.py` were also mine and are fixed: a second
+  file-header `$kw` with no host point (now one annotation with a `--note` continuation), and
+  `--from Index.Line.Record`, which is dangling — the block is `Index.Line.Record.Model`. The
+  same dangling name remains in `standing.py`, `record/model.py`, `record/__init__.py`, and
+  `capture.py`; those are pre-existing and out of scope here.
+- [TS] Project `skw check` POIs 216 → 214; none now touch this requirement's files except
+  three `Annotation.NonSkw` on ordinary comments, of 174 project-wide.
+- [TS] Final: 2,189 tests passed, ruff clean.
+
+### Slice 7 — every POI class defined beside its code — **done**
+
+- [DC] A POI class is defined by the managed `$kw` block beside the code that emits it, in
+  every namespace. The markdown `poi/` chapter path stays discoverable but is not the
+  executable definition, so a class defined there instead is not defined at all.
+- [TS] Survey of all 135 POI classes across `Index.Linter`, `Skillware.Linter`,
+  `Anchory.Linter`, `Bloberia.Linter`, `Canvas.Linter`, and `Tournament.Linter`: eight were
+  undeclared — five Canvas, three Tournament — and both modules built their references with
+  the package-skill form rather than `tarav_poi_class_reference`.
+- [DC] Canvas's five moved out of `tarav-canvas-md/skills/tarav-canvas-pkg/poi/100-poi.md`
+  into per-class emitters; the markdown definitions and their router entry are removed, and
+  their `[DF]`/`[CT]` text is carried into the `$kw` notes verbatim. Canvas also had to
+  compose `create_tarav_wayfinder`, since the index-block wayfinder cannot resolve a
+  `managed.block`.
+- [OBS] Keeping both copies was not neutral: with the class defined in markdown *and* in
+  code, Wayfinder reported `resolves more than once` and the reference resolved to neither.
+  A duplicate definition is an unresolvable identity, not redundant documentation.
+- [OBS] Tournament's three resolved to nothing at all — `tarav-md/skills/tarav-pkg/poi/` is
+  an empty directory, so its package-skill references had no target.
+- [OBS] `Index.Linter/Class.Review` was annotated above `CHECK_REGISTRY`, a module-level
+  constant, which is not one of the configured attachment points (`file`, `class`,
+  `function`). It never resolved; nothing checked. Moved to the module's file point, text and
+  anchor unchanged. (Restoring it after my own edit displaced it proved the placement, not
+  the displacement, was the defect.)
+- [TS] Two system-wide guards in `test_architecture.py`, both mutation-checked: every emitted
+  class declares its block, and every declared class resolves to *exactly one* managed block.
+  The second first shipped passing because `wayfinder.resolve` **returns** an unresolvable
+  reference as a POI rather than raising — checking only for an exception asserted nothing.
+- [DC] The Index-only version of the first guard is removed as subsumed; what stays in
+  `test_linter.py` is the one thing only that registry can answer — a declaration outliving
+  the check that emitted it.
+- [TS] Final: 135/135 POI classes resolve to a managed block. 2,195 tests passed, ruff clean
+  across every file this requirement touched.
+
+### Slice 8 — `Current.Model.Only` applied to support resolution — **done**
+
+- [DC] `Index.Linter/Support.LegacyCoordinate` is removed. `Current.Model.Only` `^c20260820-31u`
+  says the checker names the mechanical failure and never its historical cause, and
+  `^c20260820-35u` names this exact case: references addressing Chatlas1 turns "fail the
+  current reference assertion exactly as any unresolvable address does" and are "not a
+  category the linter knows".
+- [RJ] The branch it hung on — `if ref.archive != CHAT_ARCHIVE` — is deleted rather than
+  renamed. A legacy branch is a second model the checker would carry and keep correct forever
+  (`^c20260820-32u`); the refs now flow through the one assertion.
+- [DC] `Support.Mismatch` is renamed `Support.Unresolved`. "Mismatch" asserts the evidence
+  *changed*, which the walk does not establish and which is false for every reference
+  addressing a superseded model — and 3,632 of those were about to enter it. The archive the
+  reference names is preserved in the operands, so the migration backlog stays legible
+  without a class of its own.
+- [TS] Live corpus, measured: `Support.LegacyCoordinate` 3,666 blocked → gone;
+  `Support.Unresolved` **3,632 failed**; `Support.Unreachable` 47 blocked, those being the
+  sessions the archive genuinely cannot read. Corpus blocked **3,666 → 47**, failed
+  **12,958 → 16,614**. The non-conformant count is now the migration's progress measure
+  (`^c20260820-33u`) instead of an excluded category.
+- [TS] A guard in `test_architecture.py` refuses any POI class naming a superseded model,
+  mutation-checked by reintroducing the old name.
+- [OBS] It immediately found four more. Three (`Anchor.LegacySigil`, `Router.LegacyName`,
+  `TypeStatement.LegacySigil`) live in `index/historical_poi.py`, whose whole purpose is
+  keeping already-emitted instances resolvable and which produces nothing; the guard scopes
+  to producers, derived from that module rather than an allowlist.
+- [DC] The fourth, `Skillware.Linter/Callout.Legacy`, is a live producer and a real
+  violation: renamed `Skillware.Linter/Callout.Inert`, which is what its own `[DF]` already
+  said the parser found. Its producer finding *kind* `legacy-callout` is Skillware's separate
+  vocabulary and is untouched, so that package's documented catalog and tests are unaffected.
+- [TS] 2,196 tests passed, ruff clean.

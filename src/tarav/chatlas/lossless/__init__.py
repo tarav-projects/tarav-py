@@ -29,6 +29,7 @@ from .chat_index import (
     apply_chat_index_capture_plan,
     chat_index_surface_path,
     scaffold_chat_index_capture_plan,
+    surface_state,
     validate_chat_index_capture_plan,
 )
 from .chat_index_plan import CAPTURE_PLAN_SCHEMA, CapturePlan, CapturePlanLine
@@ -118,6 +119,7 @@ __all__ = [
     "query_sessions",
     "add_lossless_commands",
     "scaffold_chat_index_capture_plan",
+    "surface_state",
     "resolve_chat_message_ref",
     "resolve_chat_turn_ref",
     "resolve_event_ref",

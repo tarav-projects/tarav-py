@@ -1,23 +1,23 @@
-# Agentos Python Architecture
+# Tarav Python Architecture
 
-`agentos-py` is one modular-monolith distribution. Subsystems are importable
+`tarav-py` is one modular-monolith distribution. Subsystems are importable
 namespaces, but one release and one composition root keep their contracts aligned.
 
 ## Dependency direction
 
 ```text
-entrypoints (agentos.cli, agentos.daemon)
+entrypoints (tarav.cli, tarav.daemon)
                     |
-              agentos.runtime
+                tarav.runtime
                     |
       domain systems and integration adapters
                     |
-     agentos.surfaces, stdlib, and domain foundations
+       tarav.surfaces, stdlib, and domain foundations
                     |
-               agentos._core
+                 tarav._core
 ```
 
-- `agentos.runtime` constructs registries and injects cross-domain adapters.
+- `tarav.runtime` constructs registries and injects cross-domain adapters.
 - Domain foundations do not import runtime or CLI composition to obtain defaults.
 - `_core` contains dependency-free infrastructure with proven multiple consumers;
   it does not contain product policy.
@@ -82,9 +82,12 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   those files through Tarav's native surface parsers; Index never performs its own language
   globbing or annotation recognition. Chat evidence is selected by typed references. No
   cwd-local HEAD or touch-authority manifest participates in a verdict.
-- `tarav.index.capture` consumes that same discovered `SurfaceLine` model for Markdown and
-  SKW hosting kinds, verifies grounded attachment triplets, and materializes missing
-  `LineRecord`s without inventing a second annotation-specific record path.
+- `tarav.index.capture_manifest` composes the existing Anchory, discovered `SurfaceLine`,
+  `LineRecord`, and Chat.Index primitives. One strict manifest and one preflight model drive
+  both preview and land. Discovered Index/SKW surfaces retain their domain adapters; an explicit
+  live-Markdown target is interpreted from Tarav's native Markdown model and a heading locator.
+  Message side is verified from immutable chat evidence rather than repeated in the manifest,
+  and exact content expectations fail before durable writes.
 - Markdown normalization is also consumed at parser boundaries by
   `agentos.stdlib.mdblocks`, `agentos.index.model`, and Chatlas Index-audit
   extraction. Separators, Index nodes, anchors, and lint policy remain in those

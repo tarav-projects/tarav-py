@@ -142,9 +142,7 @@ def test_index_poi_classes_resolve_to_their_emitting_code() -> None:
         "Index.Linter/Gate.Evidence.Unavailable": (
             "_gate_evidence_unavailable_finding"
         ),
-        "Index.Linter/Support.LegacyCoordinate": (
-            "_support_legacy_coordinate_finding"
-        ),
+        "Index.Linter/Support.Unresolved": "_support_unresolved_finding",
         "Index.Linter/Support.Unreachable": "_support_unreachable_finding",
         "Index.Linter/Trace.Forked": "_trace_forked_finding",
     }

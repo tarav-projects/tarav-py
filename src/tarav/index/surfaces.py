@@ -22,6 +22,8 @@ from pathlib import Path
 
 from tarav.index_model.nodes import BlockHeading, KernelLine
 from tarav.index_model.parser import parse_depot, parse_index_file
+from tarav.index_model.label import parse_citation, split_trailing_address
+from tarav.surfaces.markdown import normalize_markdown
 
 from .config import Geography, TaravIndexError
 from .record.identity import split_statement
@@ -78,7 +80,9 @@ def _depot_and_chapter(path: Path, surface: str) -> tuple[str, str]:
     return depot, chapter
 
 
-def read_block_lines(path: Path, surface: str, *, kind: str = "chapter") -> list[SurfaceLine]:
+def read_block_lines(
+    path: Path, surface: str, *, kind: str = "chapter"
+) -> list[SurfaceLine]:
     """Kernel lines from an `Index.Native.Surface`, scoped by `Block.Path`.
 
     ``kind`` must be passed: with the parser's default of ``"unknown"`` every kernel line is
@@ -145,6 +149,65 @@ def read_annotation_lines(path: Path, surface: str) -> list[SurfaceLine]:
     return lines
 
 
+# $kw: Index.Capture/Live.Markdown --from Floor.Model --note [DC] explicit live-Markdown capture consumes Tarav's native Markdown model and adds only the heading-scoped Index interpretation ^c20260821-43u
+def read_markdown_heading_lines(
+    path: Path,
+    surface: str,
+    block: str,
+) -> list[SurfaceLine]:
+    """Index-shaped bullets under one ordinary Markdown heading.
+
+    A Capture.Manifest may target a live design artifact before the project's default
+    evaluator discovers that surface kind. The native Markdown parser supplies host facts;
+    this Index adapter supplies the domain interpretation and explicit locator scope.
+    """
+
+    scope = annotation_scope(surface, block)
+    model = normalize_markdown(path.read_text(encoding="utf-8"))
+    headings = [heading for heading in model.headings if heading.text == block]
+    if len(headings) != 1:
+        raise SurfaceError(
+            f"Markdown capture target {surface} has {len(headings)} headings named {block!r}"
+        )
+    heading = headings[0]
+    next_heading = next(
+        (
+            candidate
+            for candidate in model.headings
+            if candidate.span.start_line > heading.span.start_line
+            and candidate.level <= heading.level
+        ),
+        None,
+    )
+    end_line = (
+        next_heading.span.start_line
+        if next_heading is not None
+        else len(model.lines) + 1
+    )
+    fenced = model.fenced_line_numbers()
+    lines: list[SurfaceLine] = []
+    for source in model.lines:
+        lineno = source.span.start_line
+        if not (heading.span.start_line < lineno < end_line) or lineno in fenced:
+            continue
+        if not source.text.lstrip().startswith("- "):
+            continue
+        line_type, body = split_statement(source.text)
+        _without_address, address = split_trailing_address(source.text)
+        citation = parse_citation(address) if address is not None else None
+        labels = (normalize_label(address),) if citation is not None else ()
+        lines.append(
+            SurfaceLine(
+                scope=scope,
+                line_type=line_type,
+                body=body,
+                labels=labels,
+                lineno=lineno,
+            )
+        )
+    return lines
+
+
 def surface_kind_for(surface: str) -> str:
     if surface.startswith(SKW_SURFACE_PREFIX):
         return "skw"
@@ -157,7 +220,9 @@ def surface_kind_for(surface: str) -> str:
     return "chapter"
 
 
-def read_surface(path: Path, surface: str, *, kind: str | None = None) -> list[SurfaceLine]:
+def read_surface(
+    path: Path, surface: str, *, kind: str | None = None
+) -> list[SurfaceLine]:
     """Read index lines from a surface of any hosting kind."""
 
     resolved = kind or surface_kind_for(surface)
@@ -262,7 +327,11 @@ def load_homes(geo: Geography) -> Homes:
         return Homes()
     try:
         payload = json.loads(path.read_text("utf-8"))
-        return Homes(serialized_only=frozenset(str(h) for h in payload.get("serialized_only", ())))
+        return Homes(
+            serialized_only=frozenset(
+                str(h) for h in payload.get("serialized_only", ())
+            )
+        )
     except (OSError, ValueError):
         raise SurfaceError(f"malformed homes declaration at {path}") from None
 
@@ -333,6 +402,7 @@ __all__ = [
     "load_homes",
     "read_annotation_lines",
     "read_block_lines",
+    "read_markdown_heading_lines",
     "read_surface",
     "resolve_surface_path",
     "scope_home",

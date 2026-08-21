@@ -17,7 +17,16 @@ import pytest
 from tarav.cli.cli import main
 
 
-_GATE = ("--session", "s-1", "--token", "t-1", "--user-turn", "u-1", "--agent-turn", "a-1")
+_GATE = (
+    "--session",
+    "s-1",
+    "--token",
+    "t-1",
+    "--user-turn",
+    "u-1",
+    "--agent-turn",
+    "a-1",
+)
 
 #: Every index subcommand that takes a data input, spelled the one supported way. Driven as
 #: a table so a subcommand added later with a positional argument fails here rather than
@@ -48,7 +57,9 @@ PROJECT_COMMANDS = frozenset(
 )
 
 
-def _argv(project: Path, invocation: tuple[str, ...], *, json_flag: bool = False) -> list[str]:
+def _argv(
+    project: Path, invocation: tuple[str, ...], *, json_flag: bool = False
+) -> list[str]:
     """The invocation as a caller writes it, with --project wherever that command wants it."""
 
     head = ["index", "--json"] if json_flag else ["index"]
@@ -83,8 +94,16 @@ def _write_line(project: Path, capsys: object, body: str) -> str:
     assert (
         main(
             [
-                "index", "--project", str(project), "write",
-                "--scope", "d/design#Concept", "--body", body, "--type", "DF",
+                "index",
+                "--project",
+                str(project),
+                "write",
+                "--scope",
+                "d/design#Concept",
+                "--body",
+                body,
+                "--type",
+                "DF",
             ]
         )
         == 0
@@ -185,8 +204,13 @@ def test_targeted_lint_agrees_with_the_corpus_run_filtered_to_the_same_record(
     assert (
         main(
             [
-                "index", "--project", str(project), "gate",
-                "--record-id", ids[0], *_GATE,
+                "index",
+                "--project",
+                str(project),
+                "gate",
+                "--record-id",
+                ids[0],
+                *_GATE,
             ]
         )
         == 0
@@ -209,10 +233,13 @@ def test_targeted_lint_agrees_with_the_corpus_run_filtered_to_the_same_record(
             "--limit",
             "1000",
         )
-        assert sorted(
-            (f["class_address"], f["subject"])
-            for f in targeted["poi_instances"]["items"]  # type: ignore[index]
-        ) == expected, record_id
+        assert (
+            sorted(
+                (f["class_address"], f["subject"])
+                for f in targeted["poi_instances"]["items"]  # type: ignore[index]
+            )
+            == expected
+        ), record_id
         assert expected, "the fixture must actually produce findings to compare"
 
 
@@ -230,9 +257,12 @@ def test_linter_text_and_json_share_one_bounded_agent_report(
     assert window["shown"] == 1
     assert window["matching"] == window["total"]
     assert window["truncated"] is True
-    assert sum(row["counts"]["total"] for row in payload["poi_classes"]) == window[  # type: ignore[index]
-        "total"
-    ]
+    assert (
+        sum(row["counts"]["total"] for row in payload["poi_classes"])
+        == window[  # type: ignore[index]
+            "total"
+        ]
+    )
 
     assert (
         main(
@@ -318,7 +348,9 @@ def test_a_named_project_answers_the_same_from_any_directory(
 ) -> None:
     """Given the project, the answer is the project's -- not the caller's."""
 
-    record_id = _write_line(project, capsys, "standing cannot depend on the caller's pwd")
+    record_id = _write_line(
+        project, capsys, "standing cannot depend on the caller's pwd"
+    )
     label = _json(project, capsys, "record", "--record-id", record_id)["line"]["label"]  # type: ignore[index,call-overload]
 
     def _text(*argv: str) -> str:
@@ -349,6 +381,8 @@ def test_capture_uses_the_same_required_project_contract(
     assert exc_info.value.code == 2
     capsys.readouterr()
 
+    manifest = project / "capture.json"
+    manifest.write_text("{}\n", encoding="utf-8")
     assert (
         main(
             [
@@ -358,13 +392,14 @@ def test_capture_uses_the_same_required_project_contract(
                 "preview",
                 "--project",
                 str(project),
+                "--manifest",
+                str(manifest),
             ]
         )
-        == 0
+        == 1
     )
-    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
-    assert payload["class"] == "Index.Capture.Run"
-    assert payload["mode"] == "preview"
+    captured = capsys.readouterr()  # type: ignore[attr-defined]
+    assert "Capture.Manifest" in captured.err
 
 
 def test_linter_poi_selectors_filter_instances_without_hiding_class_totals(
@@ -389,9 +424,12 @@ def test_linter_poi_selectors_filter_instances_without_hiding_class_totals(
     )
 
     assert narrowed["poi_instances"]["matching"] == 1  # type: ignore[index]
-    assert narrowed["poi_instances"]["items"][0]["instance_id"] == selected[  # type: ignore[index]
-        "instance_id"
-    ]
+    assert (
+        narrowed["poi_instances"]["items"][0]["instance_id"]
+        == selected[  # type: ignore[index]
+            "instance_id"
+        ]
+    )
     assert narrowed["poi_classes"] == corpus["poi_classes"]  # type: ignore[index]
 
     assert (
@@ -438,6 +476,9 @@ def test_a_selector_matching_no_record_fails_rather_than_reporting_a_clean_run(
     """A targeted run that silently examined nothing would report success for a line it
     never looked at, which is the one outcome worse than being slow."""
 
-    assert main(
-        ["index", "linter", "--project", str(project), "--label", "^c20260101-99u"]
-    ) != 0
+    assert (
+        main(
+            ["index", "linter", "--project", str(project), "--label", "^c20260101-99u"]
+        )
+        != 0
+    )

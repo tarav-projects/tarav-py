@@ -1,4 +1,5 @@
 # $kw: --from Chat.Index --from Chat.Index.Delta --from Chat.Index.HEAD --from Line.Home --note [IMPL] real-time capture projects exact landed lines to Chat HEAD first and then appends stable Chat.Turn.Ref receipts when their support has a provable local horizon --supp ^c20260816-60u
+# --note [CT] idempotency is decided by whether the requested projection is already satisfied, not by whether a caller retained an older base fingerprint ^c20260821-44u
 from __future__ import annotations
 
 from copy import deepcopy
@@ -54,9 +55,7 @@ def surface_state(surface: Path) -> dict[str, object] | None:
     if not surface.is_dir():
         raise CliError(f"Chat.Index surface is not a directory: {surface}")
     files = sorted(
-        str(path.relative_to(surface))
-        for path in surface.rglob("*")
-        if path.is_file()
+        str(path.relative_to(surface)) for path in surface.rglob("*") if path.is_file()
     )
     digest = sha256()
     for relative in files:
@@ -180,11 +179,13 @@ def validate_chat_index_capture_plan(
         ],
         "already_applied": False,
     }
-    if current_base != capture_plan.base_surface:
-        if _surface_satisfies(surface, result):
-            result["already_applied"] = True
-        else:
-            raise CliError("Chat.Index surface changed since scaffold")
+    # Idempotency is a property of the requested projection, not of whether the caller
+    # happened to retain an older base fingerprint. A freshly composed Capture.Manifest
+    # naturally observes the already-landed surface as its base on every retry.
+    if _surface_satisfies(surface, result):
+        result["already_applied"] = True
+    elif current_base != capture_plan.base_surface:
+        raise CliError("Chat.Index surface changed since scaffold")
     return result
 
 
@@ -344,13 +345,10 @@ def _turn_at(reader: object, turn: dict[str, object]) -> str | None:
 
 def _apply_to_surface(surface: Path, validation: dict[str, object]) -> None:
     predecessors = {
-        anchor
-        for item in validation["lines"]
-        for anchor in item["predecessor_anchors"]
+        anchor for item in validation["lines"] for anchor in item["predecessor_anchors"]
     }
     additions = [
-        (str(item["concept"]), _anchored_line(item))
-        for item in validation["lines"]
+        (str(item["concept"]), _anchored_line(item)) for item in validation["lines"]
     ]
     _patch_document(
         surface / HEAD_FILENAME,
@@ -393,11 +391,7 @@ def _patch_document(
             raise CliError(f"Chat.Index file has an unexpected heading: {path}")
     else:
         lines = [heading]
-    lines = [
-        source
-        for source in lines
-        if (_line_anchor(source) not in predecessors)
-    ]
+    lines = [source for source in lines if (_line_anchor(source) not in predecessors)]
     if isinstance(horizon, dict):
         lines = _set_horizon(lines, horizon=horizon, is_head=is_head)
     for concept, anchored in additions:
@@ -476,11 +470,7 @@ def _audit_surface(surface: Path, validation: dict[str, object]) -> dict[str, ob
     horizon = validation["horizon"]
     if isinstance(horizon, dict):
         ref = horizon["turn_ref"]
-        delta = (
-            surface
-            / DELTA_DIRNAME
-            / f"{ref['turn_address']}-{ref['turn_hash']}.md"
-        )
+        delta = surface / DELTA_DIRNAME / f"{ref['turn_address']}-{ref['turn_hash']}.md"
         delta_text = delta.read_text(encoding="utf-8") if delta.is_file() else ""
         missing_delta = [
             str(item["client_id"])

@@ -2,9 +2,9 @@
 # --note [PR] Agents escalate with named selectors for check, POI class, POI instance, record, label, and status. ^c20260820-17u
 """The index command set.
 
-Shaped after `tarav`: **grouped, surface-authored, and linted**. Agents edit Markdown and SKW
-surfaces with ordinary file primitives. `index capture preview|land` reconciles grounded lines
-into `LineRecord`s; `index linter` checks conformance afterwards.
+Shaped after `tarav`: **grouped, surface-authored, and linted**. Agents author one capture
+manifest for exact Markdown and SKW lines. `index capture preview|land` derives their Anchory,
+source, `LineRecord`, and Chat.Index effects; `index linter` checks conformance afterwards.
 
 The only writes here are the ones markdown editing genuinely cannot do by hand: minting an
 anchor, writing a record, and accepting a POI.
@@ -25,7 +25,7 @@ from tarav._core.project import require_explicit_agentos_project
 from tarav.poi import reference_sugar, tarav_poi_class_reference
 
 from .chatlas import load_session
-from .capture import capture_surface_lines
+from .capture_manifest import capture_manifest, render_capture_report
 from .config import Geography, TaravIndexError, find_user_root, resolve_geography
 from .gates import GateRef
 from .importer import import_depot
@@ -212,8 +212,6 @@ def cmd_chatlas_messages(args: argparse.Namespace) -> int:
 
 
 # -- index ------------------------------------------------------------------
-
-
 
 
 def cmd_index_blocks(args: argparse.Namespace) -> int:
@@ -405,7 +403,11 @@ def cmd_index_revise(args: argparse.Namespace) -> int:
         successor.scope, geo.project_root, contains=previous.line.label
     )
     if note is not None:
-        rel = note.relative_to(geo.project_root) if note.is_relative_to(geo.project_root) else note
+        rel = (
+            note.relative_to(geo.project_root)
+            if note.is_relative_to(geo.project_root)
+            else note
+        )
         print("  surface   replace  " + previous.line.render())
         print("            with     " + successor.line.render())
         print(f"            in       {rel}")
@@ -427,7 +429,9 @@ def cmd_index_trace(args: argparse.Namespace) -> int:
     for member in members:
         st = derived[member.id]
         head = " HEAD" if st.is_trace_head else ""
-        print(f"  {member.id} {member.line.label or '-':16} {st.review:9}{st.index:5}{head}")
+        print(
+            f"  {member.id} {member.line.label or '-':16} {st.review:9}{st.index:5}{head}"
+        )
         print(f"    [{member.line.type}] {member.line.body}")
     return 0
 
@@ -443,7 +447,11 @@ def cmd_index_gate(args: argparse.Namespace) -> int:
     store = IndexStore(geo)
     record = store.get(args.record_id)
     gate = _gate_from(args)
-    updated = record.with_landing(gate) if args.kind == "landing" else record.with_review(gate)
+    updated = (
+        record.with_landing(gate)
+        if args.kind == "landing"
+        else record.with_review(gate)
+    )
     store.put(updated)
 
     from .gates import verify_gate
@@ -586,9 +594,7 @@ def _lint_subjects(geo: Geography, args: argparse.Namespace) -> set[str] | None:
     if unresolved:
         # Fail rather than lint the rest: a selector that silently matched nothing would
         # report a clean run for a line that was never examined.
-        raise TaravIndexError(
-            "no index record for: " + ", ".join(sorted(unresolved))
-        )
+        raise TaravIndexError("no index record for: " + ", ".join(sorted(unresolved)))
     return subjects
 
 
@@ -619,23 +625,18 @@ def cmd_index_linter(args: argparse.Namespace) -> int:
 
 def cmd_index_capture(args: argparse.Namespace) -> int:
     geo = _explicit_index_geo(args, f"tarav index capture {args.capture_command}")
-    report = capture_surface_lines(
+    report = capture_manifest(
         geo,
+        Path(args.manifest),
         land=args.capture_command == "land",
-        labels=args.label,
+        limit=args.limit,
     )
     payload = report.to_json()
     if args.json:
         _emit(payload)
     else:
-        print(
-            f"{report.mode}: {len(report.created)} created, {len(report.planned)} planned, "
-            f"{len(report.existing)} existing, {len(report.unresolved)} unresolved, "
-            f"{len(report.conflicts)} conflicts"
-        )
-        for issue in (*report.unresolved, *report.conflicts):
-            print(f"  {issue.label}  {issue.reason}")
-    return 0 if report.clean else 1
+        print(render_capture_report(report))
+    return 0
 
 
 def cmd_index_bless(args: argparse.Namespace) -> int:
@@ -707,8 +708,7 @@ def cmd_poi_explain(args: argparse.Namespace) -> int:
         print(f"\n{check.name}")
         for poi_class in sorted(check.poi_classes):
             print(
-                "  class     "
-                + reference_sugar(tarav_poi_class_reference(poi_class))
+                "  class     " + reference_sugar(tarav_poi_class_reference(poi_class))
             )
         print(f"  computes  {check.source}   ← read it; the body is the specification")
         print(f"  tier      {check.tier}")
@@ -779,10 +779,14 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p = index_sub.add_parser("record", help="inspect index entries")
     _add_project_option(p)
     p.add_argument("--record-id")
-    p.add_argument("--side", choices=["agent", "user"], help="filter by derived review side")
+    p.add_argument(
+        "--side", choices=["agent", "user"], help="filter by derived review side"
+    )
     p.set_defaults(func=cmd_index_record)
 
-    p = index_sub.add_parser("write", help="write the record for a surface-authored line")
+    p = index_sub.add_parser(
+        "write", help="write the record for a surface-authored line"
+    )
     p.add_argument("--scope", required=True, help="Block.Path or @Locator.Name")
     p.add_argument("--body", required=True)
     p.add_argument("--type", help="Line.Type code")
@@ -800,7 +804,9 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--body", required=True)
     p.add_argument("--type")
     p.add_argument(
-        "--kind", choices=["rename", "rephrase"], default="rephrase",
+        "--kind",
+        choices=["rename", "rephrase"],
+        default="rephrase",
         help="rename is mechanically verifiable; rephrase is agent judgment",
     )
     p.set_defaults(func=cmd_index_revise)
@@ -816,25 +822,35 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
 
     def _gate_args(parser_):
         parser_.add_argument("--session", required=True)
-        parser_.add_argument("--token", required=True, help="the token both turns carry")
-        parser_.add_argument("--user-turn", required=True, help="the turn that opened the gate")
+        parser_.add_argument(
+            "--token", required=True, help="the token both turns carry"
+        )
+        parser_.add_argument(
+            "--user-turn", required=True, help="the turn that opened the gate"
+        )
         parser_.add_argument("--agent-turn", required=True, help="the turn it answered")
 
     p = index_sub.add_parser("gate", help="record a user gate on a line")
     p.add_argument("--record-id", required=True)
     p.add_argument(
-        "--kind", choices=["review", "landing"], default="review",
+        "--kind",
+        choices=["review", "landing"],
+        default="review",
         help="review evidences reading; landing evidences approval to HEAD",
     )
     _gate_args(p)
     p.set_defaults(func=cmd_index_gate)
 
-    p = index_sub.add_parser("resolve", help="resolve a label to its entry and standing")
+    p = index_sub.add_parser(
+        "resolve", help="resolve a label to its entry and standing"
+    )
     _add_project_option(p)
     p.add_argument("--label", required=True, help="the public citation")
     p.set_defaults(func=cmd_index_resolve)
 
-    p = index_sub.add_parser("import", help="bring a legacy depot into the current layout")
+    p = index_sub.add_parser(
+        "import", help="bring a legacy depot into the current layout"
+    )
     _add_project_option(p)
     p.add_argument("--depot-root", required=True, help="path to the tarav1 depot")
     p.add_argument("--depot", help="depot name (defaults to the directory name)")
@@ -845,15 +861,19 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p = index_sub.add_parser("linter", help="run conformance checks")
     _add_project_option(p)
     p.add_argument(
-        "--lane", choices=["dev"], default=None,
+        "--lane",
+        choices=["dev"],
+        default=None,
         help="dev runs the dev lane: registered dev checks displace the ones they stand in for",
     )
     p.add_argument(
-        "--label", action="append",
+        "--label",
+        action="append",
         help="lint only this line, by public citation; repeatable",
     )
     p.add_argument(
-        "--record-id", action="append",
+        "--record-id",
+        action="append",
         help="lint only this record edition; repeatable",
     )
     p.add_argument("--check", action="append", help="run only this check; repeatable")
@@ -887,17 +907,22 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_linter)
 
     p = index_sub.add_parser(
-        "capture", help="reconcile grounded surface lines with Index LineRecords"
+        "capture", help="preview or land one complete Index Capture.Manifest"
     )
     capture_sub = p.add_subparsers(dest="capture_command", required=True)
     for command in ("preview", "land"):
         capture = capture_sub.add_parser(command)
         _add_project_option(capture)
         capture.add_argument(
-            "--label",
-            action="append",
-            default=[],
-            help="reconcile only this grounded Index line; repeatable",
+            "--manifest",
+            required=True,
+            help="path to a tarav.index.capture-manifest.v1 JSON document",
+        )
+        capture.add_argument(
+            "--limit",
+            type=_nonnegative_int,
+            default=20,
+            help="maximum planned item rows to render in text or JSON (default: 20)",
         )
         capture.set_defaults(func=cmd_index_capture)
 
@@ -905,7 +930,9 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
         "bless", help="accept one exact POI, on a grounded agent claim"
     )
     p.add_argument("--poi-id", required=True, help="the POI occurrence to accept")
-    p.add_argument("--body", required=True, help="why this POI is acceptable, in one line")
+    p.add_argument(
+        "--body", required=True, help="why this POI is acceptable, in one line"
+    )
     p.add_argument("--type", help="Line.Type code for the claim")
     p.add_argument("--session", help="the session its support messages belong to")
     p.add_argument(
@@ -913,7 +940,9 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     p.set_defaults(func=cmd_index_bless)
 
-    p = index_sub.add_parser("blessings", help="list blessings with their derived standing")
+    p = index_sub.add_parser(
+        "blessings", help="list blessings with their derived standing"
+    )
     p.add_argument("--poi-id", help="only blessings of this POI occurrence")
     p.set_defaults(func=cmd_index_blessings)
 

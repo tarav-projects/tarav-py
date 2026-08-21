@@ -821,19 +821,12 @@ class TestSignalNotSemantics:
 
 
 class TestPoiClassCatalog:
-    """A POI class identity is the Wayfinder reference of its one managed block.
+    """Registry-specific catalog hygiene.
 
-    The block lives in this codebase as a `$kw` annotation, so a class the code emits
-    without one has an identity pointing at nothing -- and nothing said so: the report
-    builds the reference from the class name, and a dangling reference renders exactly like
-    a good one until someone resolves it.
+    That every emitted class declares a resolving managed block is asserted system-wide in
+    `test_architecture.py`; what only this registry can answer is whether a declaration has
+    outlived the check that emitted it.
     """
-
-    def _declared(self) -> set[str]:
-        import re
-
-        source = pathlib.Path(linter.__file__).read_text("utf-8")
-        return set(re.findall(r"\$kw: (Index\.Linter/[A-Za-z.]+)", source))
 
     def _annotations(self) -> dict[str, str]:
         import re
@@ -843,14 +836,6 @@ class TestPoiClassCatalog:
             match.group(1): match.group(0)
             for match in re.finditer(r"\$kw: (Index\.Linter/[A-Za-z.]+)[^\n]*", source)
         }
-
-    def test_every_emitted_poi_class_declares_its_managed_block(self):
-        emitted = set().union(*(set(c.poi_classes) for c in CHECK_REGISTRY))
-        undeclared = sorted(emitted - self._declared())
-        assert undeclared == [], (
-            "these classes are emitted with no `$kw` block, so their canonical reference "
-            "resolves to nothing: " + ", ".join(undeclared)
-        )
 
     def test_a_bare_declaration_nothing_emits_is_removed(self):
         """A `$kw` block left behind by a deleted check declares a class that cannot occur.
@@ -1065,19 +1050,20 @@ def test_check_scope_follows_through_a_module_local_helper() -> None:
     assert by_name["gate-verifies-dev"].record_scoped
 
 
-def test_a_legacy_support_coordinate_is_unverifiable_rather_than_mismatched(
+def test_a_reference_the_model_cannot_address_fails_the_current_assertion(
     geo, chat, tmp_path
 ) -> None:
-    """An address this archive cannot look up has not been checked, let alone contradicted.
+    """`Current.Model.Only`: a superseded coordinate fails, exactly as any address that does not resolve.
 
-    5,755 of the corpus's support refs carry Chatlas1 turn ids — `turn-r1326`, or a provider
-    uuid — which Chatlas2 addresses by digest and cannot resolve at all. Reporting those as
-    `Support.Mismatch` claimed the evidence had *changed*, which is a stronger and different
-    statement than "not read", and it put 38% of the corpus's findings under a label that
-    invited repair of data that is fine.
+    5,755 of the corpus's support refs address Chatlas1 turns — `turn-r1326`, or a provider
+    uuid — which the current model cannot look up. They used to be siphoned into a class of
+    their own, reported `BLOCKED`, and thereby excluded from the count of things that do not
+    conform. That named migration history rather than a check result, and it hid the backlog
+    inside a category the linter had to keep carrying.
 
-    `BLOCKED`, not `FAILED`, for the same reason `Support.Unreachable` is: the checker could
-    not run, and a check that could not run is not a check that passed or failed.
+    They now fail the one reference assertion, so the count of non-conformant refs *is* the
+    migration's progress measure. The archive they name is preserved in the operands, which
+    keeps the backlog legible without giving it a class.
     """
 
     from tarav.index.linter import Status, lint
@@ -1091,7 +1077,7 @@ def test_a_legacy_support_coordinate_is_unverifiable_rather_than_mismatched(
         LineRecord.create(
             parse_scope("d/design#Concept"),
             "DF",
-            "a line grounded on a legacy coordinate",
+            "a line grounded on a superseded coordinate",
             support=[
                 SupportRef(archive="chat-turn", session_id="s-1", message_id="turn-r1326")
             ],
@@ -1099,23 +1085,17 @@ def test_a_legacy_support_coordinate_is_unverifiable_rather_than_mismatched(
     )
 
     report = lint(geo, subjects=[record.id])
-    classes = {f.poi_class for f in (*report.findings, *report.blocked)}
-    assert "Index.Linter/Support.LegacyCoordinate" in classes
-    assert "Index.Linter/Support.Mismatch" not in classes
-
-    legacy = next(
-        f for f in report.blocked if f.poi_class == "Index.Linter/Support.LegacyCoordinate"
+    finding = next(
+        f for f in report.findings if f.poi_class == "Index.Linter/Support.Unresolved"
     )
-    assert legacy.status is Status.BLOCKED
-    assert legacy.operands["coordinate"] == "turn-r1326"
+    assert finding.status is Status.FAILED, "non-conformant is a result, not an unknown"
+    assert finding.operands["message"] == "turn-r1326"
+    assert finding.operands["archive"] == "chat-turn"
+    assert finding not in report.blocked
 
 
-def test_a_message_coordinate_that_is_absent_is_still_a_mismatch(geo, chat) -> None:
-    """The new state must not swallow the old one.
-
-    A `chat` ref naming a message the session does not have is a real disagreement between
-    the record and the archive, and stays reported as one.
-    """
+def test_a_message_coordinate_that_is_absent_does_not_resolve(geo, chat) -> None:
+    """One assertion, one result: the archive named changes the evidence, never the class."""
 
     from tarav.index.linter import lint
     from tarav.index.record.model import LineRecord, SupportRef
@@ -1135,5 +1115,4 @@ def test_a_message_coordinate_that_is_absent_is_still_a_mismatch(geo, chat) -> N
 
     report = lint(geo, subjects=[record.id])
     classes = {f.poi_class for f in (*report.findings, *report.blocked)}
-    assert "Index.Linter/Support.Mismatch" in classes
-    assert "Index.Linter/Support.LegacyCoordinate" not in classes
+    assert "Index.Linter/Support.Unresolved" in classes

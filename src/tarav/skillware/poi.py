@@ -188,11 +188,12 @@ def _address_mismatch(*args, **kwargs) -> SkillwarePOIInstance:
     return _bound_poi("Skillware.Linter/Address.Mismatch")(*args, **kwargs)
 
 
-# $kw: Skillware.Linter/Callout.Legacy
-# --note [DF] an inert legacy `[!skw]` callout remains outside a fence
+# $kw: Skillware.Linter/Callout.Inert
+# --note [DF] a `[!skw]` callout line outside a fence is prose the parser does not read as an annotation
+# --note [CT] the class names what the parser found, not the grammar version that produced it
 # --note [PR] rewrite it using current `$kw` grammar
 def _callout_legacy(*args, **kwargs) -> SkillwarePOIInstance:
-    return _bound_poi("Skillware.Linter/Callout.Legacy")(*args, **kwargs)
+    return _bound_poi("Skillware.Linter/Callout.Inert")(*args, **kwargs)
 
 
 # $kw: Skillware.Linter/Annotation.NonSkw

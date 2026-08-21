@@ -1,4 +1,4 @@
-# $kw: --from Index.Line.Record --from Semantic.Assertion --note [DC] a blessing is an Agent.Claim carrying its own support set, not a user gate ^c20260821-35u
+# $kw: --from Index.Line.Record.Model --from Semantic.Assertion --note [DC] a blessing is an Agent.Claim carrying its own support set, not a user gate ^c20260821-35u
 # --note [CT] the record makes the agent's judgment auditable later; it never makes it checkable now ^c20260821-36u
 """`Blessing.Record` — an agent's claim that one `POI.Instance` is acceptable.
 
