@@ -23,8 +23,8 @@ they do not express succession. The four historical scripts are preserved under 
 From the `tarav-py` repository:
 
 ```sh
-tarav chatlas2 corpus verify --corpus tests/chatlas2/conformance
-tarav chatlas2 corpus check --corpus tests/chatlas2/conformance
+tarav chatlas corpus verify --corpus tests/chatlas_lossless/conformance
+tarav chatlas corpus check --corpus tests/chatlas_lossless/conformance
 uv run pytest -q tests/chatlas2/test_conformance_corpus.py
 ```
 
@@ -40,7 +40,7 @@ run the script and let current Chatlas archive the complete provider session. Ad
 its JSON specification, then prepare into a private temporary directory:
 
 ```sh
-tarav chatlas2 corpus ingest prepare \
+tarav chatlas corpus ingest prepare \
   --corpus tests/chatlas2/conformance \
   --stage /tmp/chatlas2-candidate \
   --script tests/chatlas2/conformance/specifications/SCRIPT.json \
@@ -69,7 +69,7 @@ background task performs registration.
 After review, register the exact candidate explicitly:
 
 ```sh
-tarav chatlas2 corpus ingest register \
+tarav chatlas corpus ingest register \
   --corpus tests/chatlas2/conformance \
   --candidate /tmp/chatlas2-candidate/candidate-CAPTURE_ID.json \
   --json

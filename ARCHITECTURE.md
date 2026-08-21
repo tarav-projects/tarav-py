@@ -129,7 +129,7 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   provider-neutral primary-text projection plus pure discovery, derived-time,
   and bounded-neighborhood operations. Exact-session message reads stream the
   provider's cached collections and apply optional limits during iteration.
-  `tarav chatlas2 views` provides disposable `full`, `transcript`, `user`, and
+  `tarav chatlas views` provides disposable `full`, `transcript`, `user`, and
   `events` read projections without introducing a second model or cache policy;
   collection bounds stop their JSONL iteration, while `full` returns the
   complete canonical model unchanged. Replay and zip-transcript behavior remain

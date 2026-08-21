@@ -7,6 +7,12 @@ both the line content and the description of how it indexes the `Touch.Authority
 
 from __future__ import annotations
 
+from .blessing import (
+    BlessingRecord,
+    BlessingStore,
+    BlessingStoreError,
+    new_blessing_id,
+)
 from .identity import split_statement
 from .model import (
     Equivalence,
@@ -28,6 +34,9 @@ from .store import (
 
 __all__ = [
     "LABEL_SIGIL",
+    "BlessingRecord",
+    "BlessingStore",
+    "BlessingStoreError",
     "Equivalence",
     "EquivalenceKind",
     "IndexStore",
@@ -37,6 +46,7 @@ __all__ = [
     "RecordStoreError",
     "SupportRef",
     "is_label",
+    "new_blessing_id",
     "new_line_id",
     "new_trace_id",
     "normalize_label",

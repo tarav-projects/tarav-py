@@ -3,13 +3,15 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import re
 
-from .parser import ANCHOR_RE, TYPE_BRACKET_RE
+from .parser import ANCHOR_RE, TYPE_BRACKET_RE as TYPE_BRACKET_RE
 
 
 INDEX_LINE_BODY_SCHEMA = "agentos.index-line-body.v1"
 INDEX_LINE_STATEMENT_SCHEMA = "agentos.index-line-statement.v1"
 INDEX_LINE_ANCHOR_TRIPLET_SCHEMA = "agentos.index-line-anchor-triplet.v1"
+_STATEMENT_TYPE_RE = re.compile(r"^(?:- )?\[(?P<source>AS:)?(?P<act>[A-Z]{2})\] ")
 
 
 def index_line_statement_parts(source: str) -> tuple[str | None, str]:
@@ -19,7 +21,7 @@ def index_line_statement_parts(source: str) -> tuple[str | None, str]:
     while tokens and ANCHOR_RE.fullmatch(tokens[-1]):
         tokens.pop()
     unlinked = " ".join(tokens)
-    typed = TYPE_BRACKET_RE.match(unlinked)
+    typed = _STATEMENT_TYPE_RE.match(unlinked)
     if typed is not None:
         line_type = typed.group("act")
         body = unlinked[typed.end() :]

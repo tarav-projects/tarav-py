@@ -217,6 +217,10 @@ def test_index_line_body_and_anchor_triplet_identity_are_separate() -> None:
     second = "- [CT] Same `Line.Content` here ^c20260802-9u"
 
     assert index_line_statement_parts(first) == ("CT", "Same `Line.Content` here")
+    assert index_line_statement_parts("[CT] Same `Line.Content` here") == (
+        "CT",
+        "Same `Line.Content` here",
+    )
     assert canonical_index_line_body(first) == canonical_index_line_body(second)
     assert index_line_body_hash(first) == index_line_body_hash(
         "- [DC] Same `Line.Content` here"

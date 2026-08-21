@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 
+from tarav.index import linter
+
 from tarav.index.gates import GateRef
-from tarav.index.linter import CHECK_REGISTRY, LintError, bless, lint, select_checks
+from tarav.index.linter import (
+    CHECK_REGISTRY,
+    Tier,
+    POI_TEST_MARKER,
+    LintError,
+    bless,
+    lint,
+    select_checks,
+)
 from tarav.index.record import IndexStore, LineRecord, SupportRef
 
 SURFACE = "skills/tarav-pkg/design/100-design.md"
@@ -60,8 +72,21 @@ class TestCatalog:
         names = [c.name for c in CHECK_REGISTRY]
         assert len(names) == len(set(names))
 
-    def test_selectors_narrow_the_run(self):
-        assert [c.name for c in select_checks(check=["line-typed"])] == ["line-typed"]
+    def test_selectors_narrow_the_reportable_run(self):
+        reportable = [
+            c.name for c in select_checks(check=["line-typed"]) if c.tier is not Tier.STRUCTURAL
+        ]
+        assert reportable == ["line-typed"]
+
+    def test_a_named_check_still_runs_the_structural_checks_it_reads(self):
+        """`--check` narrows what is reported, never what establishes the context.
+
+        The structural tier is what loads the surfaces and records every other check reads,
+        so dropping it leaves the named check examining an empty corpus and reporting it
+        clean -- the same failure the targeted-run selection already refuses to allow.
+        """
+
+        assert Tier.STRUCTURAL in {c.tier for c in select_checks(check=["line-typed"])}
 
     def test_skip_removes_a_default_check(self):
         assert "line-typed" not in {c.name for c in select_checks(skip=["line-typed"])}
@@ -360,28 +385,32 @@ class TestSupport:
 
 class TestBless:
     def test_a_blessed_finding_leaves_the_report(self, geo, project_root, chat):
-        chat("s1", [("user-turn", "user", "tok"), ("agent-turn", "agent", "tok")])
+        chat("s1", [("m1", "user", "an untyped assertion is fine here")])
         _surface(project_root, "- an untyped assertion ^c20260818-1u")
         finding = next(
             f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
         )
-        bless(geo, finding.identity, _gate())
+        bless(geo, finding.identity, "DC", "this surface predates the fence",
+              support=[SupportRef("chat", "s1", "m1")])
         after = lint(geo)
         assert finding.identity not in {f.identity for f in after.findings}
         assert finding.identity in {f.identity for f in after.blessed}
 
-    def test_blessing_one_finding_does_not_disable_the_check(self, geo, project_root):
-        _surface(project_root, "- first untyped ^c20260818-1u")
-        first = next(
-            f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
-        )
-        bless(geo, first.identity, _gate())
+    def test_blessing_one_finding_does_not_disable_the_check(self, geo, project_root, chat):
+        chat("s1", [("m1", "user", "an untyped assertion is fine here")])
         _surface(
             project_root,
             "- first untyped ^c20260818-1u",
             "- second untyped ^c20260818-2u",
         )
-        assert "Index.Linter/Line.Untyped" in _classes(lint(geo))
+        first = next(
+            f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
+        )
+        bless(geo, first.identity, "DC", "this one predates the fence",
+              support=[SupportRef("chat", "s1", "m1")])
+        after = lint(geo)
+        assert "Index.Linter/Line.Untyped" in _classes(after)
+
 
 
 class TestCleanRun:
@@ -491,41 +520,206 @@ class TestGateVerification:
 
 
 class TestBlessingEvidence:
-    """A blessing silences a check, so it is the last place to demand evidence."""
+    """A blessing silences a check, so it is the last place to demand evidence.
 
-    def test_a_blessing_carries_its_gate(self, geo, project_root):
-        from tarav.index.linter import read_blessings
+    What licenses it is not a user's approval token but an agent's claim plus the user turns
+    that claim rests on -- the same thing that licenses every other index line.
+    """
 
-        _surface(project_root, "- an untyped assertion ^c20260818-1u")
-        finding = lint(geo).findings[0]
-        bless(geo, finding.identity, _gate())
-        assert read_blessings(geo)[finding.identity].token == "tok"
-
-    def test_the_bless_api_refuses_an_ungated_call(self, geo, project_root):
-        with pytest.raises(TypeError):
-            bless(geo, "deadbeef")
-
-    def test_an_invalid_gate_revokes_the_blessing(self, geo, project_root, chat):
-        """An agent cannot silence its own finding with a file it writes itself."""
-        chat("s1", [("agent-turn", "agent", "nothing"), ("user-turn", "user", "nothing")])
-        _surface(project_root, "- an untyped assertion ^c20260818-1u")
-        finding = next(
-            f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
+    def _probe(self, geo, project_root, tag="alpha"):
+        _surface(project_root, f"- [CT] a probe {POI_TEST_MARKER}#{tag}")
+        return next(
+            f for f in lint(geo).findings if f.poi_class == "Index.Linter/POI.Test"
         )
-        bless(geo, finding.identity, _gate())
+
+    def test_a_grounded_blessing_silences_its_poi(self, geo, project_root, chat):
+        chat("s1", [("m1", "user", "we do not lint legacy stuff")])
+        finding = self._probe(geo, project_root)
+        bless(geo, finding.identity, "DC", "a probe is not a defect",
+              support=[SupportRef("chat", "s1", "m1")])
+
+        after = lint(geo)
+        assert finding.identity in {f.identity for f in after.blessed}
+        assert finding.identity not in {f.identity for f in after.findings}
+
+    def test_blessing_one_poi_does_not_silence_another(self, geo, project_root, chat):
+        chat("s1", [("m1", "user", "we do not lint legacy stuff")])
+        _surface(
+            project_root,
+            f"- [CT] first probe {POI_TEST_MARKER}#alpha",
+            f"- [CT] second probe {POI_TEST_MARKER}#beta",
+        )
+        probes = {
+            f.subject: f for f in lint(geo).findings if f.poi_class == "Index.Linter/POI.Test"
+        }
+        alpha = probes[f"{SURFACE}#alpha"]
+        bless(geo, alpha.identity, "DC", "this one is deliberate",
+              support=[SupportRef("chat", "s1", "m1")])
+
+        after = lint(geo)
+        assert {f.subject for f in after.blessed} == {f"{SURFACE}#alpha"}
+        assert f"{SURFACE}#beta" in {f.subject for f in after.findings}
+
+    def test_an_ungrounded_blessing_silences_nothing(self, geo, project_root, chat):
+        """An agent cannot silence its own finding with a claim it writes itself."""
+        chat("s1", [("m1", "user", "anything")])
+        finding = self._probe(geo, project_root)
+        bless(geo, finding.identity, "DC", "trust me")
+
         after = lint(geo)
         assert finding.identity in {f.identity for f in after.findings}
-        assert "Index.Linter/Blessing.Unevidenced" in _classes(after)
+        assert "Index.Linter/Blessing.Ungrounded" in _classes(after)
 
-    def test_an_unavailable_gate_does_not_silence(self, geo, project_root):
-        _surface(project_root, "- an untyped assertion ^c20260818-1u")
-        finding = next(
-            f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
-        )
-        bless(geo, finding.identity, _gate())
+    def test_support_that_does_not_resolve_silences_nothing(self, geo, project_root, chat):
+        chat("s1", [("m1", "user", "anything")])
+        finding = self._probe(geo, project_root)
+        bless(geo, finding.identity, "DC", "a claim",
+              support=[SupportRef("chat", "s1", "absent-message")])
+
         after = lint(geo)
         assert finding.identity in {f.identity for f in after.findings}
-        assert "Index.Linter/Blessing.Unevidenced" in _classes(after)
+        assert "Index.Linter/Blessing.Support.Unresolved" in _classes(after)
+
+    def test_support_on_an_agent_turn_silences_nothing(self, geo, project_root, chat):
+        """`Touched.Authority` comes from a user turn; an agent turn carries none."""
+        chat("s1", [("m1", "agent", "I think this is fine")])
+        finding = self._probe(geo, project_root)
+        bless(geo, finding.identity, "DC", "a claim",
+              support=[SupportRef("chat", "s1", "m1")])
+
+        after = lint(geo)
+        assert finding.identity in {f.identity for f in after.findings}
+        assert "Index.Linter/Blessing.Support.Untouched" in _classes(after)
+
+    def test_a_blessing_whose_poi_stopped_occurring_is_reported(self, geo, project_root, chat):
+        chat("s1", [("m1", "user", "we do not lint legacy stuff")])
+        finding = self._probe(geo, project_root)
+        bless(geo, finding.identity, "DC", "a claim",
+              support=[SupportRef("chat", "s1", "m1")])
+
+        # The probe is removed; its blessing now points at nothing.
+        _surface(project_root, "- [CT] an ordinary line ^c20260818-1u")
+        assert "Index.Linter/Blessing.Orphaned" in _classes(lint(geo))
+
+    def test_a_finding_about_a_blessing_cannot_itself_be_blessed(
+        self, geo, project_root, chat
+    ):
+        """The escape hatch may not cover its own hatch.
+
+        Without this an agent answers `Blessing.Ungrounded` with a second ungrounded
+        blessing, and the grounding requirement becomes decorative.
+        """
+
+        chat("s1", [("m1", "user", "we do not lint legacy stuff")])
+        finding = self._probe(geo, project_root)
+        bless(geo, finding.identity, "DC", "no support here")
+
+        ungrounded = next(
+            f for f in lint(geo).findings
+            if f.poi_class == "Index.Linter/Blessing.Ungrounded"
+        )
+        bless(geo, ungrounded.identity, "DC", "and neither here",
+              support=[SupportRef("chat", "s1", "m1")])
+
+        after = lint(geo)
+        assert ungrounded.identity in {f.identity for f in after.findings}
+        assert ungrounded.identity not in {f.identity for f in after.blessed}
+
+
+class TestSelectionKeepsItsContext:
+    def test_a_named_reportable_check_reports_on_a_corpus_it_can_see(self, geo, project_root):
+        _surface(project_root, "- an untyped assertion ^c20260818-1u")
+        report = lint(geo, check=["line-typed"])
+        assert "Index.Linter/Line.Untyped" in _classes(report)
+
+    def test_a_named_probe_check_reports_on_a_corpus_it_can_see(self, geo, project_root):
+        _surface(project_root, f"- [CT] a probe {POI_TEST_MARKER}")
+        report = lint(geo, check=["poi-test"])
+        assert "Index.Linter/POI.Test" in _classes(report)
+
+
+class TestRegistryOrder:
+    def test_a_check_is_registered_after_whatever_loads_what_it_reads(self):
+        """Registry order is load order, and nothing else says so.
+
+        `LintContext` starts empty; the structural checks fill it as they run. A check
+        registered before its provider therefore reads an empty field and silently reports
+        clean -- which is how `poi-test` first shipped finding nothing at all.
+        """
+
+        providers = {"surface_lines": "surfaces-readable", "records": "records-loadable"}
+        position = {check.name: index for index, check in enumerate(CHECK_REGISTRY)}
+        for check in CHECK_REGISTRY:
+            for field, provider in providers.items():
+                if field not in check.run.__code__.co_names or check.name == provider:
+                    continue
+                assert position[check.name] > position[provider], (
+                    f"{check.name} reads ctx.{field} before {provider} fills it"
+                )
+
+    def test_a_check_reading_the_whole_run_is_registered_last(self):
+        """`ctx.produced` is filled by the run itself, one check at a time.
+
+        A check asking what did *not* occur therefore has to be last, or it reports the
+        checks registered after it as absences.
+        """
+
+        consumers = [c.name for c in CHECK_REGISTRY if "produced" in c.run.__code__.co_names]
+        assert consumers, "the guard is vacuous if nothing reads ctx.produced"
+        assert consumers == [CHECK_REGISTRY[-1].name]
+
+
+class TestPoiTestProbe:
+    """The summonable finding: a real POI on demand, for working on the linter itself.
+
+    Every other check needs a genuine defect to fire. That makes the linter's own behaviour
+    -- selection, targeting, reporting, blessing -- awkward to exercise against a real corpus,
+    because exercising it means damaging one. This check fires on a marker instead.
+    """
+
+    def test_a_marker_summons_one_finding(self, geo, project_root):
+        _surface(project_root, f"- [CT] a probe {POI_TEST_MARKER}")
+        subjects = [
+            f.subject for f in lint(geo).findings if f.poi_class == "Index.Linter/POI.Test"
+        ]
+        assert subjects == [f"{SURFACE}#default"]
+
+    def test_no_marker_summons_nothing(self, geo, project_root):
+        _surface(project_root, "- [CT] an ordinary line ^c20260818-1u")
+        assert "Index.Linter/POI.Test" not in _classes(lint(geo))
+
+    def test_tagged_probes_are_independent_findings(self, geo, project_root):
+        _surface(
+            project_root,
+            f"- [CT] first probe {POI_TEST_MARKER}#alpha",
+            f"- [CT] second probe {POI_TEST_MARKER}#beta",
+        )
+        subjects = {
+            f.subject for f in lint(geo).findings if f.poi_class == "Index.Linter/POI.Test"
+        }
+        assert subjects == {f"{SURFACE}#alpha", f"{SURFACE}#beta"}
+
+    def test_the_probe_identity_survives_the_marker_moving(self, geo, project_root):
+        """A probe exists to be blessed and stay blessed while its file is worked on.
+
+        The other surface checks subject on `scope:lineno`, which moves whenever a line is
+        inserted above. That is right for them and wrong here: it would revoke the blessing
+        this check exists to let a test place.
+        """
+
+        _surface(project_root, f"- [CT] a probe {POI_TEST_MARKER}#alpha")
+        before = next(
+            f for f in lint(geo).findings if f.poi_class == "Index.Linter/POI.Test"
+        )
+        _surface(
+            project_root,
+            "- [CT] an unrelated line added above ^c20260818-9u",
+            f"- [CT] a probe {POI_TEST_MARKER}#alpha",
+        )
+        after = next(
+            f for f in lint(geo).findings if f.poi_class == "Index.Linter/POI.Test"
+        )
+        assert after.identity == before.identity
 
 
 class TestResolutions:
@@ -626,6 +820,56 @@ class TestSignalNotSemantics:
         assert a.identity == b.identity
 
 
+class TestPoiClassCatalog:
+    """A POI class identity is the Wayfinder reference of its one managed block.
+
+    The block lives in this codebase as a `$kw` annotation, so a class the code emits
+    without one has an identity pointing at nothing -- and nothing said so: the report
+    builds the reference from the class name, and a dangling reference renders exactly like
+    a good one until someone resolves it.
+    """
+
+    def _declared(self) -> set[str]:
+        import re
+
+        source = pathlib.Path(linter.__file__).read_text("utf-8")
+        return set(re.findall(r"\$kw: (Index\.Linter/[A-Za-z.]+)", source))
+
+    def _annotations(self) -> dict[str, str]:
+        import re
+
+        source = pathlib.Path(linter.__file__).read_text("utf-8")
+        return {
+            match.group(1): match.group(0)
+            for match in re.finditer(r"\$kw: (Index\.Linter/[A-Za-z.]+)[^\n]*", source)
+        }
+
+    def test_every_emitted_poi_class_declares_its_managed_block(self):
+        emitted = set().union(*(set(c.poi_classes) for c in CHECK_REGISTRY))
+        undeclared = sorted(emitted - self._declared())
+        assert undeclared == [], (
+            "these classes are emitted with no `$kw` block, so their canonical reference "
+            "resolves to nothing: " + ", ".join(undeclared)
+        )
+
+    def test_a_bare_declaration_nothing_emits_is_removed(self):
+        """A `$kw` block left behind by a deleted check declares a class that cannot occur.
+
+        Only bare declarations are held to this. One carrying a `--note` is a deliberate
+        statement about a class agents raise, not a leftover -- which is a property of the
+        annotation rather than a list someone has to maintain.
+        """
+
+        emitted = set().union(*(set(c.poi_classes) for c in CHECK_REGISTRY))
+        annotations = self._annotations()
+        stale = sorted(
+            name
+            for name, annotation in annotations.items()
+            if name not in emitted and "--note" not in annotation
+        )
+        assert stale == [], "declared but emitted by nothing: " + ", ".join(stale)
+
+
 class TestCodeIsTheDocumentation:
     def test_no_check_carries_a_prose_title(self):
         assert not any(hasattr(c, "title") for c in CHECK_REGISTRY)
@@ -701,7 +945,9 @@ class TestDevLane:
         run is one that will eventually be reached by accident."""
         from tarav.index.linter import select_checks
 
-        assert not select_checks(check=["gate-verifies-dev"])
+        assert "gate-verifies-dev" not in {
+            c.name for c in select_checks(check=["gate-verifies-dev"])
+        }
 
     def test_the_dev_check_displaces_the_one_it_stands_in_for(self):
         from tarav.index.linter import select_checks
@@ -782,7 +1028,9 @@ def test_no_corpus_scoped_check_reports_a_finding_about_one_record() -> None:
 
     #: Subject expressions that name something other than a record. A trace, a surface, a
     #: label and a session are all legitimately corpus-scoped subjects.
-    NOT_A_RECORD = ("trace.id", "str(ctx.store.directory)")
+    #: `blessing.id` is a Blessing.Record, which is a different subject in a different
+    #: depot; the heuristic below only recognises the string `.id`.
+    NOT_A_RECORD = ("trace.id", "str(ctx.store.directory)", "blessing.id")
 
     gaps: list[str] = []
     for check in CHECK_REGISTRY:

@@ -43,6 +43,7 @@ readability of a check body a contract rather than a preference.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from time import perf_counter
 from collections.abc import Callable, Iterable, Iterator
@@ -57,6 +58,7 @@ from tarav.index_model.parser import parse_depot
 from .chatlas import ARCHIVE_NAME as CHAT_ARCHIVE, ChatError, load_session
 from .config import Geography, TaravIndexError
 from .gates import GateCheck, GateRef, GateVerdict, verify_gate
+from .record.blessing import BlessingRecord, BlessingStore
 from .record.model import EquivalenceKind, LineRecord, SupportRef
 from .record.store import IndexStore
 from .scope import resolve_scope_surface
@@ -77,6 +79,13 @@ from .surfaces import (
     scope_home,
 )
 from .verdict import Evaluator, GateResult, Status
+
+
+def _source_of(fn: Callable[..., object]) -> str:
+    """`file:line` of a function body — the pointer that replaces a description."""
+
+    code = fn.__code__  # type: ignore[attr-defined]
+    return f"{Path(code.co_filename).name}:{code.co_firstlineno}"
 
 
 class Tier(StrEnum):
@@ -147,6 +156,19 @@ class LintContext:
     standing: dict[str, Standing] = field(default_factory=dict)
     surface_lines: dict[str, list[SurfaceLine]] = field(default_factory=dict)
     head_lines: set[str] = field(default_factory=set)
+    produced: set[str] = field(default_factory=set)
+    """Every POI identity this run has produced so far.
+
+    Filled by `lint` as each check returns, which makes it the one context field a check
+    reads that no other check fills. A check consuming it is asking a question about the
+    whole run and must therefore be registered last.
+    """
+    narrowed: bool = False
+    """Whether selection has narrowed this run below the whole corpus.
+
+    A check that reasons about what did *not* occur cannot answer on a narrowed run: most
+    of the corpus is unproduced by construction, so every absence looks like a defect.
+    """
     subjects: frozenset[str] | None = None
     """The record ids under examination, or `None` for the whole corpus.
 
@@ -320,8 +342,7 @@ class Check:
     def source(self) -> str:
         """`file:line` of the check body — computed, never written down."""
 
-        code = self.run.__code__
-        return f"{Path(code.co_filename).name}:{code.co_firstlineno}"
+        return _source_of(self.run)
 
     @property
     def why(self) -> str:
@@ -441,18 +462,6 @@ def _gate_evidence_unavailable_finding(
             "reason": check.detail,
         },
         status=Status.BLOCKED,
-    )
-
-
-# $kw: Index.Linter/Blessing.Unevidenced --from POI.Linter
-def _blessing_unevidenced_finding(
-    finding: Finding, *, check_name: str, source: str
-) -> Finding:
-    return Finding(
-        "Index.Linter/Blessing.Unevidenced",
-        finding.identity,
-        {"check": check_name, "gate": "invalid"},
-        source=source,
     )
 
 
@@ -1366,6 +1375,200 @@ def _check_gate_verifies_dev(ctx: LintContext) -> list[Finding]:
 
 
 # $kw: Index.Linter/Class.Review --from POI.Linter --note [CT] Every Tarav linter POI.Class requires an individual semantic review; corpus counts prove execution, not correctness. ^c20260821-6u
+# -- blessings ----------------------------------------------------------------
+
+class BlessingStanding(StrEnum):
+    """Whether a blessing's own claim is licensed. Derived, never stored."""
+
+    #: Every support reference resolves to a user turn.
+    GROUNDED = "grounded"
+    #: No support at all — an `Index.Presumption`, which silences nothing.
+    UNGROUNDED = "ungrounded"
+    #: A reference the archive cannot supply.
+    UNRESOLVED = "unresolved"
+    #: A reference that resolves to a turn carrying no `User.Touch`.
+    UNTOUCHED = "untouched"
+
+
+#: A blessing accepting one of these would let the escape hatch cover its own hatch.
+BLESSING_POI_PREFIX = "Index.Linter/Blessing."
+
+
+def blessing_standing(
+    geo: Geography, record: BlessingRecord, *, sessions: "_SessionCache | None" = None
+) -> BlessingStanding:
+    """What the archive says about this blessing's evidence.
+
+    The whole of what a checker may assert about a blessing. Whether these turns actually
+    license accepting that finding is the `Semantic.Assertion` no walk decides — which is
+    the point of storing the claim and its evidence rather than a verdict.
+    """
+
+    if not record.support:
+        return BlessingStanding.UNGROUNDED
+
+    cache = sessions or _SessionCache(geo)
+    for ref in record.support:
+        session = cache.get(ref.session_id)
+        if session is None:
+            return BlessingStanding.UNRESOLVED
+        message = session.message(ref.message_id)
+        if message is None:
+            return BlessingStanding.UNRESOLVED
+        if not message.carries_touch:
+            return BlessingStanding.UNTOUCHED
+    return BlessingStanding.GROUNDED
+
+
+def bless(
+    geo: Geography,
+    poi: str,
+    line_type: str | None,
+    body: str,
+    *,
+    support: Iterable[SupportRef] = (),
+) -> BlessingRecord:
+    """Accept one exact POI, on the agent's claim and the user turns behind it.
+
+    A blessing is the one piece of state whose *purpose* is to stop the checker, so it is the
+    last place an unevidenced agent value could survive. Nothing here decides whether the
+    claim holds: the record is written as given, and `blessing_standing` derives the rest.
+    Writing an ungrounded blessing is therefore allowed and useless, which is the honest
+    shape — a refusal here would be a verdict issued by the writer about its own work.
+
+    Silencing one known case still never weakens the check for any other.
+    """
+
+    return BlessingStore(geo).put(
+        BlessingRecord.create(poi, line_type, body, support=support)
+    )
+
+
+def _blessing_operands(blessing: BlessingRecord) -> dict[str, str]:
+    return {"poi": blessing.poi, "claim": blessing.line.body}
+
+
+# $kw: Index.Linter/Blessing.Ungrounded --from POI.Linter
+def _blessing_ungrounded_finding(blessing: BlessingRecord) -> Finding:
+    return Finding(
+        "Index.Linter/Blessing.Ungrounded", blessing.id, _blessing_operands(blessing)
+    )
+
+
+# $kw: Index.Linter/Blessing.Support.Unresolved --from POI.Linter
+def _blessing_support_unresolved_finding(blessing: BlessingRecord) -> Finding:
+    return Finding(
+        "Index.Linter/Blessing.Support.Unresolved",
+        blessing.id,
+        _blessing_operands(blessing),
+    )
+
+
+# $kw: Index.Linter/Blessing.Support.Untouched --from POI.Linter
+def _blessing_support_untouched_finding(blessing: BlessingRecord) -> Finding:
+    return Finding(
+        "Index.Linter/Blessing.Support.Untouched",
+        blessing.id,
+        _blessing_operands(blessing),
+    )
+
+
+def _check_blessing_grounded(ctx: LintContext) -> list[Finding]:
+    """A blessing silences a finding, so it owes the same evidence the finding's line owes.
+
+    Reported against the blessing rather than against what it accepted: the defect is in the
+    claim, and attaching it to the silenced finding would make one constraint report twice.
+    """
+
+    sessions = _SessionCache(ctx.geo)
+    findings: list[Finding] = []
+    for blessing in BlessingStore(ctx.geo).all():
+        standing = blessing_standing(ctx.geo, blessing, sessions=sessions)
+        if standing is BlessingStanding.GROUNDED:
+            continue
+        if standing is BlessingStanding.UNGROUNDED:
+            findings.append(_blessing_ungrounded_finding(blessing))
+        elif standing is BlessingStanding.UNRESOLVED:
+            findings.append(_blessing_support_unresolved_finding(blessing))
+        else:
+            findings.append(_blessing_support_untouched_finding(blessing))
+    return findings
+
+
+def _complete_run_only(ctx: LintContext) -> GateResult:
+    """A question about what did *not* occur is unanswerable on a narrowed run."""
+
+    if ctx.narrowed:
+        return GateResult.blocked("selection narrowed the run below the whole corpus")
+    return GateResult.ok()
+
+
+# $kw: Index.Linter/Blessing.Orphaned --from POI.Linter
+def _check_blessing_orphaned(ctx: LintContext) -> list[Finding]:
+    """A blessing whose POI no longer occurs silences nothing and says otherwise.
+
+    It reads what the run produced, so it is registered last: every other check has to have
+    contributed before "this POI did not occur" is a fact rather than an artefact of order.
+    """
+
+    return [
+        Finding(
+            "Index.Linter/Blessing.Orphaned",
+            blessing.id,
+            {"poi": blessing.poi, "claim": blessing.line.body},
+        )
+        for blessing in BlessingStore(ctx.geo).all()
+        if blessing.poi not in ctx.produced
+    ]
+
+
+# -- the probe ----------------------------------------------------------------
+
+#: Assembled from parts rather than written whole, so this file never matches its own marker
+#: when a project that includes it as a code surface is linted.
+POI_TEST_MARKER = "LINTER-POI-TEST-" + "ajsgdjadsasd"
+#: The probe name when the marker carries no `#<tag>`.
+POI_TEST_DEFAULT_TAG = "default"
+_POI_TEST_RE = re.compile(re.escape(POI_TEST_MARKER) + r"(?:#(?P<tag>[A-Za-z0-9._-]+))?")
+
+
+# $kw: Index.Linter/POI.Test --from POI.Linter
+def _check_poi_test(ctx: LintContext) -> list[Finding]:
+    """A real POI on demand, so the linter itself can be worked on without damaging a corpus.
+
+    Every other check needs a genuine defect to fire, which makes exercising selection,
+    targeting, reporting, and blessing against real data mean breaking real data first. This
+    one fires on a marker instead, so a probe can be placed, targeted, blessed, and removed.
+
+    The subject is the marker's *name*, not its line number: a probe exists to be blessed and
+    stay blessed while its surface is edited around it, which a positional subject would
+    revoke on the next inserted line.
+    """
+
+    findings: list[Finding] = []
+    for surface in sorted(ctx.surface_lines):
+        try:
+            text = resolve_surface_path(surface, ctx.root).read_text("utf-8")
+        except OSError:
+            continue
+        seen: set[str] = set()
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            for match in _POI_TEST_RE.finditer(line):
+                tag = match.group("tag") or POI_TEST_DEFAULT_TAG
+                if tag in seen:
+                    continue
+                seen.add(tag)
+                findings.append(
+                    Finding(
+                        "Index.Linter/POI.Test",
+                        f"{surface}#{tag}",
+                        {"tag": tag, "lineno": str(lineno)},
+                        surface=surface,
+                    )
+                )
+    return findings
+
+
 CHECK_REGISTRY: tuple[Check, ...] = (
     Check(
         "surfaces-readable", Tier.STRUCTURAL, _check_surfaces_readable,
@@ -1386,6 +1589,22 @@ CHECK_REGISTRY: tuple[Check, ...] = (
         resolutions=(
             "repair the malformed entry",
             "restore it from git, if the damage is recent",
+        ),
+    ),
+    Check(
+        "blessing-grounded", Tier.REPORTABLE, _check_blessing_grounded,
+        resolutions=(
+            "ground the claim on the user turns it actually rests on",
+            "correct the claim, when the support says something the blessing does not",
+            "remove the blessing and let the finding stand",
+        ),
+    ),
+    Check(
+        "poi-test", Tier.REPORTABLE, _check_poi_test,
+        resolutions=(
+            "remove the marker, when the probe has served its purpose",
+            "bless it, when the probe is exercising the blessing path",
+            "give it a distinct `#tag`, to place several independent probes at once",
         ),
     ),
     Check(
@@ -1538,6 +1757,14 @@ CHECK_REGISTRY: tuple[Check, ...] = (
             "accept the loss — the support never supported the claim",
         ),
     ),
+    Check(
+        "blessing-orphaned", Tier.REPORTABLE, _check_blessing_orphaned,
+        gate=_complete_run_only,
+        resolutions=(
+            "remove the blessing, when what it accepted is genuinely gone",
+            "restore the POI, when its disappearance is the actual defect",
+        ),
+    ),
 )
 
 # $kw: --from Index.WIP.Surface --note [DF] the bar checks are the ones reporting work not yet done, as against an inconsistency between two things
@@ -1637,53 +1864,6 @@ class LintReport:
         )
 
 
-def _blessings_path(geo: Geography) -> Path:
-    return geo.project_tier / "blessed.json"
-
-
-def read_blessings(geo: Geography) -> dict[str, GateRef]:
-    """The accepted POIs and the gate each one rests on."""
-
-    path = _blessings_path(geo)
-    if not path.exists():
-        return {}
-    payload = json.loads(path.read_text("utf-8"))
-    return {
-        identity: GateRef.from_json(gate) for identity, gate in payload.items()
-    }
-
-
-def bless(geo: Geography, identity: str, gate: GateRef) -> None:
-    """Accept one exact POI, on the user's evidence.
-
-    A blessing is the one piece of state whose *purpose* is to stop the checker, so it is the
-    last place an unevidenced agent value could survive — an agent silencing its own findings
-    with a file it writes itself. It needs a gate for the same reason everything else does.
-
-    Silencing one known case still never weakens the check for any other.
-    """
-
-    blessings = read_blessings(geo)
-    blessings[identity] = gate
-    path = _blessings_path(geo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {k: v.to_json() for k, v in sorted(blessings.items())},
-            indent=1,
-            ensure_ascii=False,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-
-def _blessing_holds(geo: Geography, gate: GateRef) -> bool:
-    """Only verified user evidence may silence a finding."""
-
-    return verify_gate(geo, gate).verdict is GateVerdict.VERIFIED
-
-
 def select_checks(
     check: list[str] | None = None,
     skip: list[str] | None = None,
@@ -1723,6 +1903,14 @@ def select_checks(
             continue
         if entry.name in displaced:
             continue
+        if entry.tier is Tier.STRUCTURAL:
+            # Selection narrows what is *reported*, never what establishes the context.
+            # The structural tier is what loads the surfaces and records every other check
+            # reads, so honouring `--check line-typed` literally would run that check
+            # against an empty corpus and call it clean -- the same failure the targeted
+            # branch above refuses, arriving by the other selector.
+            selected.append(entry)
+            continue
         enabled = entry.name in check if check else entry.default_on
         if skip and entry.name in skip:
             enabled = False
@@ -1760,10 +1948,17 @@ def lint(
         store=IndexStore(geo),
         homes=load_homes(geo),
         subjects=None if subjects is None else frozenset(subjects),
+        narrowed=subjects is not None or bool(check) or bool(skip),
     )
 
     selected = select_checks(check, skip, dev=dev, targeted=subjects is not None)
-    blessings = read_blessings(geo)
+    blessings = BlessingStore(geo).all()
+    sessions = _SessionCache(geo)
+    silenced = {
+        record.poi
+        for record in blessings
+        if blessing_standing(geo, record, sessions=sessions) is BlessingStanding.GROUNDED
+    }
     findings: list[Finding] = []
     blocked: list[Finding] = []
     blessed: list[Finding] = []
@@ -1784,20 +1979,14 @@ def lint(
             if finding.blocked:
                 blocked.append(finding)
                 continue
-            gate = blessings.get(finding.identity)
-            if gate is None:
-                errors.append(finding)
-            elif _blessing_holds(geo, gate):
+            ctx.produced.add(finding.identity)
+            # A blessing accepting a blessing finding would answer the grounding
+            # requirement with another unevidenced claim, so the hatch excludes itself.
+            blessable = not finding.poi_class.startswith(BLESSING_POI_PREFIX)
+            if blessable and finding.identity in silenced:
                 blessed.append(finding)
             else:
                 errors.append(finding)
-                errors.append(
-                    _blessing_unevidenced_finding(
-                        finding,
-                        check_name=entry.name,
-                        source=entry.source,
-                    )
-                )
 
         findings.extend(errors)
         results.append(
@@ -1832,9 +2021,11 @@ __all__ = [
     "Finding",
     "LintError",
     "LintReport",
+    "POI_TEST_MARKER",
     "Tier",
     "bless",
     "lint",
-    "read_blessings",
+    "BlessingStanding",
+    "blessing_standing",
     "select_checks",
 ]

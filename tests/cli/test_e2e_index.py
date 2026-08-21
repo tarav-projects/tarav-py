@@ -32,7 +32,8 @@ INVOCATIONS: tuple[tuple[str, ...], ...] = (
     ("revise", "--record-id", "ln_absent", "--body", "a revision"),
     ("gate", "--record-id", "ln_absent", *_GATE),
     ("resolve", "--label", "^c20260101-1u"),
-    ("bless", "--poi-id", "poi-absent", *_GATE),
+    ("bless", "--poi-id", "poi-absent", "--body", "a claim", "--type", "DC"),
+    ("blessings", "--poi-id", "poi-absent"),
     ("explain", "--poi-class", "Index.Linter/Line.Untyped"),
     ("import", "--depot-root", "/nonexistent"),
     ("linter", "--label", "^c20260101-1u"),
@@ -43,7 +44,7 @@ INVOCATIONS: tuple[tuple[str, ...], ...] = (
 #: Subcommands whose answer or write target depends on the project, so they name it
 #: themselves. Every other subcommand reads only the shared depot or the chat archive.
 PROJECT_COMMANDS = frozenset(
-    {"lines", "record", "revise", "trace", "resolve", "import", "linter", "bless"}
+    {"lines", "record", "revise", "trace", "resolve", "import", "linter"}
 )
 
 

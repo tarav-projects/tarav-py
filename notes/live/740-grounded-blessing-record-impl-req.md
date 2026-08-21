@@ -54,7 +54,7 @@ worktree, so the old format is deleted rather than carried.
 
 ## Execution.Plan
 
-### Slice 1 — `POI.Test`, the summonable finding
+### Slice 1 — `POI.Test`, the summonable finding — **done**
 
 The instrument comes first: every later slice is verified with it.
 
@@ -69,7 +69,7 @@ The instrument comes first: every later slice is verified with it.
 tags yield two independent findings; the identity is unchanged after an unrelated edit to the
 same file that moves the marker's line number.
 
-### Slice 2 — `BlessingRecord` and its depot
+### Slice 2 — `BlessingRecord` and its depot — **done**
 
 - `record/blessing.py`: `BlessingRecord(id, poi, line, support)` on schema
   `tarav.index-blessing-record.v1`, reusing the existing `Line` and `SupportRef` primitives.
@@ -79,7 +79,7 @@ same file that moves the marker's line number.
 **Check:** round-trips through the depot; a blessing written under a test `TARAV_INDEX_HOME`
 never appears in the index record depot, and vice versa.
 
-### Slice 3 — derived standing, and the checks on the blessing itself
+### Slice 3 — derived standing, and the checks on the blessing itself — **done**
 
 - `blessing_standing()`: resolves each support ref and reports grounded / ungrounded /
   unresolved / untouched. No stored flag anywhere.
@@ -97,7 +97,7 @@ one whose ref does not resolve reports `Blessing.Support.Unresolved`; one ground
 turn reports `Blessing.Support.Untouched`; one naming an absent POI reports `Blessing.Orphaned`;
 and a `Blessing.*` finding cannot itself be blessed.
 
-### Slice 4 — the CLI
+### Slice 4 — the CLI — **done**
 
 - `tarav index bless --poi-id --body [--type] --session --support ...` writes the record and
   immediately prints its derived standing, following `gate`'s report-don't-refuse shape.
@@ -109,7 +109,7 @@ and a `Blessing.*` finding cannot itself be blessed.
 confirm it is reported `blessed` while the other stays `failed`, and confirm the blessing
 survives a re-run.
 
-### Slice 5 — close the visited surfaces
+### Slice 5 — close the visited surfaces — **done**
 
 - Update `AGENTS.md`, the architecture notes, and the CLI contract section.
 - Run the focused Index/CLI suites, then the full suite and ruff.
@@ -136,3 +136,56 @@ survives a re-run.
   `12809a93bbc1c381` (blessings can be free lines, other surfaces do not allow them),
   `8289ebbfa6696847` (create a POI that is a test),
   `57719fe142be2895` (a general mechanism for working and testing the linter).
+
+- [TS] Slice 1 green: 4 probe tests plus a registry-order guard; `poi-test` reports clean on
+  the live 92-surface corpus, confirming the marker never matches by accident.
+- [OBS] **Deviation, corrected.** Building the probe exposed a defect in `select_checks`
+  outside the plan: `--check <name>` did not select the structural tier, so the named check
+  ran against an empty `LintContext` and reported clean. Measured on the live corpus,
+  `--check line-typed` reported **0** where the full run reports **1,362**. This is the same
+  failure the targeted branch already refuses two lines above, arriving by the other selector.
+  Structural checks are now always selected; `test_a_dev_check_cannot_be_summoned_by_name`
+  was restated to assert the dev check's absence from the selection rather than an empty one.
+- [OBS] Registry order is load order, and only the ordering of `CHECK_REGISTRY` enforced it.
+  `poi-test` first shipped finding nothing because it was registered above the structural
+  check that fills `ctx.surface_lines`. The constraint is now asserted from `co_names` for
+  every check, not patched for this one.
+
+- [TS] Slice 2 green: `BlessingRecord` and `BlessingStore` on
+  `tarav.index-blessing-record.v1`, in `~/Documents/bloberia/tarav-blessings`. The depot is
+  lazy — a corpus lint with no blessings never creates it.
+- [TS] Slice 3 green: seven behaviour tests over grounded, ungrounded, unresolved, untouched,
+  orphaned, sibling-independence, and the recursion guard.
+- [TS] Slice 4 green: the full loop through the real CLI and the **real** chat archive on an
+  isolated depot — two probes summoned, one blessed on message
+  `8289ebbf…` of this session, re-lint reporting `blessed` for it and `failed` for its
+  sibling; the ungrounded case reporting `ungrounded` and `Blessing.Ungrounded`; and removing
+  the blessed probe producing `Blessing.Orphaned`.
+- [TS] Full suite 2,187 passed; ruff clean. Live corpus lint unchanged except for concurrent
+  work by another agent (`Gate.Contradicted` renamed to `Gate.Evidence.Invalid` and three new
+  records), both confirmed present in the pre-execution checkpoint rather than caused here.
+- [OBS] **Deviation, corrected.** `explain` could not find the new POI classes: they were
+  built by f-string, and class identities are read off `co_consts` as literals. Restructured
+  to explicit literals. The same reading exposed a better home for orphan detection — see
+  below — so the defect was worth more than its fix.
+- [DC] `Blessing.Orphaned` became a real registered check rather than a post-loop pass in
+  `lint`. `LintContext` gained `produced`, filled by the run as each check returns, and the
+  check is registered last and reads it. This is the same load-order mechanism the structural
+  checks already use, so the whole-run question needed no new machinery.
+- [DC] The orphan check declares a gate and reports **blocked** on a narrowed run rather than
+  answering. On `--check blessing-orphaned` almost nothing is produced, so every blessing
+  would look orphaned; `blocked` is what the three-valued vocabulary exists to say.
+- [OBS] Timing comparisons taken during this execution are unreliable: another agent was
+  working the same tree throughout. The probe's own cost is bounded by the 0.46 MB of text
+  across the corpus's 92 discovered surfaces.
+- [OBS] A block replacement while rewriting `TestBlessingEvidence` silently deleted three
+  test classes added earlier in the same session. Caught by inventorying test classes rather
+  than by the suite, which stayed green because deleted tests do not fail. Restored.
+- [TS] Product.Surface capture closed: two product claims on `record/blessing.py` minted as
+  `^c20260821-35u` and `^c20260821-36u`, both resolving `MATCHED/user` against this session.
+  Backpropagation applied with `audit.ok: True`, `missing_head: []`, `missing_delta: []`,
+  `head_only_gaps: []`, and both lines placed on the Delta tape rather than head-only.
+- [DC] The `[DF]` annotation on `tests/index/test_blessing.py` is left unanchored, matching
+  its siblings: a file-description line is below the capture bar, and 55% of the product
+  annotations in `src/` carry no anchor for the same reason.
+- [TS] Final: 2,187 tests passed, ruff clean.

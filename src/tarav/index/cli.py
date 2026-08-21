@@ -29,7 +29,8 @@ from .capture import capture_surface_lines
 from .config import Geography, TaravIndexError, find_user_root, resolve_geography
 from .gates import GateRef
 from .importer import import_depot
-from .linter import BAR_CHECKS, CHECK_REGISTRY, bless, lint
+from .linter import BAR_CHECKS, CHECK_REGISTRY, bless, blessing_standing, lint
+from .record.blessing import BlessingStore
 from .record.model import EquivalenceKind, LineRecord, SupportRef
 from .record.store import IndexStore
 from .report import build_linter_document, render_linter_text
@@ -638,15 +639,42 @@ def cmd_index_capture(args: argparse.Namespace) -> int:
 
 
 def cmd_index_bless(args: argparse.Namespace) -> int:
-    """Accept one POI on the user's evidence.
+    """Accept one POI on the agent's claim and the user turns behind it.
 
-    A blessing silences a check, so it is gated like everything else that claims the user
-    decided something. The linter revokes it if the archive contradicts the gate.
+    Written as given, then reported: nothing is refused here. Whether the claim holds is
+    derived, and a writer that also issued a verdict on its own work would be exactly the
+    unevidenced agent value this path exists to prevent.
     """
 
-    geo = _explicit_index_geo(args, "tarav index bless")
-    bless(geo, args.poi_id, _gate_from(args))
-    print(f"blessed {args.poi_id}")
+    geo = _geo(args)
+    support = [
+        SupportRef(archive="chat", session_id=args.session, message_id=m)
+        for m in (args.support or [])
+    ]
+    record = bless(geo, args.poi_id, args.type, args.body, support=support)
+    print(f"{record.id}  blesses {record.poi}")
+    print(f"  claim     [{record.line.type}] {record.line.body}")
+    print(f"  standing  {blessing_standing(geo, record)}")
+    return 0
+
+
+def cmd_index_blessings(args: argparse.Namespace) -> int:
+    """Every blessing and what the archive currently says about its evidence."""
+
+    geo = _geo(args)
+    store = BlessingStore(geo)
+    records = store.by_poi(args.poi_id) if args.poi_id else store.all()
+    rows = [(record, str(blessing_standing(geo, record))) for record in records]
+
+    if args.json:
+        _emit([{**record.to_json(), "standing": standing} for record, standing in rows])
+        return 0
+    for record, standing in rows:
+        print(f"{record.id}  {standing:<11} {record.poi}")
+        print(f"  claim    [{record.line.type}] {record.line.body}")
+        for ref in record.support:
+            print(f"  support  {ref.session_id}:{ref.message_id}")
+    print(f"\n{len(rows)} blessing(s)")
     return 0
 
 
@@ -710,7 +738,7 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     """Register the index command set under `tarav index`.
 
     One flat namespace: there is no `tarav index index`, and no `chatlas` or
-    `poi` group here — `tarav chatlas2` and `tarav poi` already own those.
+    `poi` group here — `tarav chatlas` and `tarav poi` already own those.
     """
     index = subparsers.add_parser(
         "index", help="Touched.Index entries, surfaces, and linting."
@@ -873,11 +901,21 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
         )
         capture.set_defaults(func=cmd_index_capture)
 
-    p = index_sub.add_parser("bless", help="accept one exact POI, on a user gate")
-    _add_project_option(p)
+    p = index_sub.add_parser(
+        "bless", help="accept one exact POI, on a grounded agent claim"
+    )
     p.add_argument("--poi-id", required=True, help="the POI occurrence to accept")
-    _gate_args(p)
+    p.add_argument("--body", required=True, help="why this POI is acceptable, in one line")
+    p.add_argument("--type", help="Line.Type code for the claim")
+    p.add_argument("--session", help="the session its support messages belong to")
+    p.add_argument(
+        "--support", nargs="*", help="touched message addresses licensing the claim"
+    )
     p.set_defaults(func=cmd_index_bless)
+
+    p = index_sub.add_parser("blessings", help="list blessings with their derived standing")
+    p.add_argument("--poi-id", help="only blessings of this POI occurrence")
+    p.set_defaults(func=cmd_index_blessings)
 
     p = index_sub.add_parser("explain", help="explain a check or POI class")
     p.add_argument("--poi-class", required=True)

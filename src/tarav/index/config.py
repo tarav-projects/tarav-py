@@ -22,6 +22,8 @@ PROJECT_DIR_NAME = ".tarav"
 USER_DIR_ENV = "TARAV_INDEX_HOME"
 #: Beside `~/Documents/chatlas`, whose messages every record's support points at.
 PUBLIC_INDEX_DEPOT = Path.home() / "Documents" / "bloberia" / "tarav-index"
+#: Beside the records it accepts findings about, and grounded against the same archive.
+PUBLIC_BLESSING_DEPOT = Path.home() / "Documents" / "bloberia" / "tarav-blessings"
 PROJECT_ROOT_ENV = "TARAV_INDEX_PROJECT"
 
 #: Markers that identify a project root when walking upward from the working directory.
@@ -75,6 +77,19 @@ class Geography:
         if self.user_root != _default_user_root():
             return self.user_root / "index"
         return PUBLIC_INDEX_DEPOT
+
+    @property
+    def blessing_depot(self) -> Path:
+        """The one depot holding every `Blessing.Record`.
+
+        Public and user-side for the same reason the record depot is: a blessing's support
+        points at chat evidence that never ships with a project, and its subject is a
+        depot-global record id, so there is no project data in it to make it project-tier.
+        """
+
+        if self.user_root != _default_user_root():
+            return self.user_root / "blessings"
+        return PUBLIC_BLESSING_DEPOT
 
     @property
     def user_index_dir(self) -> Path:

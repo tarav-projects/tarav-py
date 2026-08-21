@@ -438,7 +438,7 @@ def _cmd_anchory_batch_register(args: argparse.Namespace) -> int:
 
 def _cmd_corpus_prepare(args: argparse.Namespace) -> int:
     row = select_one_chatlas_index_row(
-        command="tarav chatlas2 corpus ingest prepare",
+        command="tarav chatlas corpus ingest prepare",
         providers=(args.provider,),
         session_id=args.session_id,
     )
