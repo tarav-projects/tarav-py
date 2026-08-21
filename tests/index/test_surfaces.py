@@ -114,6 +114,19 @@ class TestDiscovery:
         _module(project_root, "x = 1\n", name="plain.py")
         assert "skw:plain.py" not in discover_surfaces(geo, project_root)
 
+    def test_deprecated_python_snapshots_are_not_live_index_surfaces(
+        self, geo, project_root
+    ):
+        _module(
+            project_root,
+            "# $kw: --from Historical.Concept --note [CT] old edition\n",
+            name="_DEPRECATED/old-project/module.py",
+        )
+        assert (
+            "skw:_DEPRECATED/old-project/module.py"
+            not in discover_surfaces(geo, project_root)
+        )
+
     def test_surface_kinds_are_classified(self):
         assert surface_kind_for("skw:a/b.py") == "skw"
         assert surface_kind_for("skills/d/homes/ceo/appendix/x.md") == "appendix"

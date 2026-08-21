@@ -194,11 +194,15 @@ def discover_surfaces(scopes: Geography, root: Path) -> list[str]:
             surfaces.extend(str(p.relative_to(root)) for p in sorted(skills.glob(pattern)))
 
     for python in sorted(root.rglob("*.py")):
-        if any(part in {".venv", "__pycache__", "node_modules", ".git"} for part in python.parts):
+        relative = python.relative_to(root)
+        if any(
+            part in {".venv", "__pycache__", "node_modules", ".git", "_DEPRECATED"}
+            for part in relative.parts
+        ):
             continue
         try:
             if "$kw:" in python.read_text("utf-8", errors="ignore"):
-                surfaces.append(f"{SKW_SURFACE_PREFIX}{python.relative_to(root)}")
+                surfaces.append(f"{SKW_SURFACE_PREFIX}{relative}")
         except OSError:
             continue
 

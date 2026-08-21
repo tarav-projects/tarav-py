@@ -72,6 +72,10 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
 - Tarav POI producers use stable project-rooted managed-block references. Their
   canonical class blocks are annotations on producer code; the optional generic
   `POI.Catalog` primitive is not part of Tarav's executable discovery path.
+- `tarav.index.report` adapts Index findings through the shared `POIInstance`
+  model and builds the single JSON-serializable `Index.Linter.Run` document.
+  Text and JSON renderers consume that document; neither reruns selection,
+  class aggregation, or occurrence limiting.
 - Markdown normalization is also consumed at parser boundaries by
   `agentos.stdlib.mdblocks`, `agentos.index.model`, and Chatlas Index-audit
   extraction. Separators, Index nodes, anchors, and lint policy remain in those

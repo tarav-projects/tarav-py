@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from time import perf_counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
@@ -55,12 +56,13 @@ from tarav.index_model.parser import parse_depot, parse_index_file
 
 from .chatlas import ARCHIVE_NAME as CHAT_ARCHIVE, ChatError, load_session
 from .config import Geography, TaravIndexError
-from .gates import GateRef, GateVerdict, verify_gate
-from .record.model import EquivalenceKind, LineRecord
+from .gates import GateCheck, GateRef, GateVerdict, verify_gate
+from .record.model import EquivalenceKind, LineRecord, SupportRef
 from .record.store import IndexStore
 from .scope import resolve_scope_surface
 from .standing import (
     Standing,
+    Trace,
     build_traces,
     lines_on_head_surfaces,
     standings,
@@ -224,6 +226,31 @@ def _reaches_selected_records(fn: CheckFn, seen: frozenset[str] = frozenset()) -
     return False
 
 
+def _referenced_poi_classes(
+    fn: CheckFn, seen: frozenset[str] = frozenset()
+) -> frozenset[str]:
+    """POI class identities named by a check and its module-local helpers."""
+
+    code = getattr(fn, "__code__", None)
+    if code is None:
+        return frozenset()
+    found = {
+        value
+        for value in code.co_consts
+        if isinstance(value, str) and value.startswith("Index.Linter/")
+    }
+    here = globals()
+    for name in code.co_names:
+        if name in seen:
+            continue
+        candidate = here.get(name)
+        if callable(candidate) and getattr(candidate, "__module__", None) == __name__:
+            found.update(
+                _referenced_poi_classes(candidate, seen | {name})  # type: ignore[arg-type]
+            )
+    return frozenset(found)
+
+
 CheckFn = Callable[[LintContext], list[Finding]]
 GateFn = Callable[[LintContext], GateResult]
 
@@ -289,6 +316,12 @@ class Check:
         return self.gate(ctx) if self.gate else GateResult.ok()
 
     @property
+    def poi_classes(self) -> frozenset[str]:
+        """Class identities derived from the executable check, never a second registry."""
+
+        return _referenced_poi_classes(self.run)
+
+    @property
     def source(self) -> str:
         """`file:line` of the check body — computed, never written down."""
 
@@ -307,58 +340,120 @@ class Check:
 
 
 # $kw: Index.Linter/Support.LegacyCoordinate --from POI.Linter
-def _support_legacy_coordinate_class() -> str:
-    return "Index.Linter/Support.LegacyCoordinate"
+def _support_legacy_coordinate_finding(
+    record: LineRecord, ref: SupportRef
+) -> Finding:
+    return Finding(
+        "Index.Linter/Support.LegacyCoordinate",
+        record.id,
+        {"archive": ref.archive, "coordinate": ref.message_id},
+        status=Status.BLOCKED,
+    )
 
 
 # $kw: Index.Linter/Support.Unreachable --from POI.Linter
-def _support_unreachable_class() -> str:
-    return "Index.Linter/Support.Unreachable"
+def _support_unreachable_finding(record: LineRecord, ref: SupportRef) -> Finding:
+    return Finding(
+        "Index.Linter/Support.Unreachable",
+        record.id,
+        {"archive": ref.archive, "session": ref.session_id},
+        status=Status.BLOCKED,
+    )
 
 
 # $kw: Index.Linter/Support.Mismatch --from POI.Linter
-def _support_mismatch_class() -> str:
-    return "Index.Linter/Support.Mismatch"
+def _support_mismatch_finding(record: LineRecord, ref: SupportRef) -> Finding:
+    return Finding(
+        "Index.Linter/Support.Mismatch",
+        record.id,
+        {"message": ref.message_id, "session": ref.session_id},
+    )
 
 
 # $kw: Index.Linter/Support.NotTouched --from POI.Linter
-def _support_not_touched_class() -> str:
-    return "Index.Linter/Support.NotTouched"
+def _support_not_touched_finding(
+    record: LineRecord, ref: SupportRef, *, side: str
+) -> Finding:
+    return Finding(
+        "Index.Linter/Support.NotTouched",
+        record.id,
+        {"message": ref.message_id, "side": side},
+    )
 
 
 # $kw: Index.Linter/Trace.Forked --from POI.Linter
-def _trace_forked_class() -> str:
-    return "Index.Linter/Trace.Forked"
+def _trace_forked_finding(trace: Trace) -> Finding:
+    heads = trace.heads()
+    return Finding(
+        "Index.Linter/Trace.Forked",
+        trace.id,
+        {"heads": str(len(heads)), "ids": " ".join(member.id for member in heads)},
+    )
 
 
 # $kw: Index.Linter/Trace.Cycle --from POI.Linter
-def _trace_cycle_class() -> str:
-    return "Index.Linter/Trace.Cycle"
+def _trace_cycle_finding(trace: Trace) -> Finding:
+    return Finding(
+        "Index.Linter/Trace.Cycle",
+        trace.id,
+        {"members": str(len(trace.members)), "heads": "0"},
+    )
 
 
 # $kw: Index.Linter/Equivalence.PredecessorMissing --from POI.Linter
-def _equivalence_predecessor_missing_class() -> str:
-    return "Index.Linter/Equivalence.PredecessorMissing"
+def _equivalence_predecessor_missing_finding(record: LineRecord) -> Finding:
+    assert record.equivalence is not None
+    return Finding(
+        "Index.Linter/Equivalence.PredecessorMissing",
+        record.id,
+        {"predecessor": record.equivalence.predecessor},
+    )
 
 
 # $kw: Index.Linter/Equivalence.TraceMismatch --from POI.Linter
-def _equivalence_trace_mismatch_class() -> str:
-    return "Index.Linter/Equivalence.TraceMismatch"
+def _equivalence_trace_mismatch_finding(
+    record: LineRecord, predecessor: LineRecord
+) -> Finding:
+    return Finding(
+        "Index.Linter/Equivalence.TraceMismatch",
+        record.id,
+        {"trace": record.trace, "predecessor_trace": predecessor.trace},
+    )
 
 
 # $kw: Index.Linter/Gate.Contradicted --from POI.Linter
-def _gate_contradicted_class() -> str:
-    return "Index.Linter/Gate.Contradicted"
+def _gate_contradicted_finding(
+    record: LineRecord, kind: str, gate: GateRef, check: GateCheck
+) -> Finding:
+    return Finding(
+        "Index.Linter/Gate.Contradicted",
+        record.id,
+        {"gate": kind, "reason": check.detail, "token": gate.token},
+    )
 
 
 # $kw: Index.Linter/Gate.Unverifiable --from POI.Linter
-def _gate_unverifiable_class() -> str:
-    return "Index.Linter/Gate.Unverifiable"
+def _gate_unverifiable_finding(
+    record: LineRecord, kind: str, gate: GateRef
+) -> Finding:
+    return Finding(
+        "Index.Linter/Gate.Unverifiable",
+        record.id,
+        {"gate": kind, "session": gate.session_id},
+        status=Status.BLOCKED,
+    )
 
 
 # $kw: Index.Linter/Blessing.Unevidenced --from POI.Linter
-def _blessing_unevidenced_class() -> str:
-    return "Index.Linter/Blessing.Unevidenced"
+def _blessing_unevidenced_finding(
+    finding: Finding, *, check_name: str, source: str
+) -> Finding:
+    return Finding(
+        "Index.Linter/Blessing.Unevidenced",
+        finding.identity,
+        {"check": check_name, "gate": "contradicted"},
+        source=source,
+    )
 
 
 # $kw: Index.Linter/Surface.Unreadable --from POI.Linter
@@ -655,42 +750,18 @@ def _check_support_resolves(ctx: LintContext) -> list[Finding]:
                 # `Support.Mismatch` asserted the evidence had changed; it has not been
                 # read. Reported as its own unverifiable state so the migration backlog is
                 # legible instead of hiding inside 38% of the corpus's findings.
-                findings.append(
-                    Finding(
-                        _support_legacy_coordinate_class(),
-                        record.id,
-                        {"archive": ref.archive, "coordinate": ref.message_id},
-                        status=Status.BLOCKED,
-                    )
-                )
+                findings.append(_support_legacy_coordinate_finding(record, ref))
                 continue
             session = archive.get(ref.session_id)
             if session is None:
-                findings.append(
-                    Finding(
-                        _support_unreachable_class(),
-                        record.id,
-                        {"archive": ref.archive, "session": ref.session_id},
-                        status=Status.BLOCKED,
-                    )
-                )
+                findings.append(_support_unreachable_finding(record, ref))
                 continue
             message = session.message(ref.message_id)
             if message is None:
-                findings.append(
-                    Finding(
-                        _support_mismatch_class(),
-                        record.id,
-                        {"message": ref.message_id, "session": ref.session_id},
-                    )
-                )
+                findings.append(_support_mismatch_finding(record, ref))
             elif not message.carries_touch:
                 findings.append(
-                    Finding(
-                        _support_not_touched_class(),
-                        record.id,
-                        {"message": ref.message_id, "side": message.side},
-                    )
+                    _support_not_touched_finding(record, ref, side=message.side)
                 )
     return findings
 
@@ -914,21 +985,9 @@ def _check_trace_wellformed(ctx: LintContext) -> list[Finding]:
     for trace in ctx.traces().values():
         heads = trace.heads()
         if len(heads) > 1:
-            findings.append(
-                Finding(
-                    _trace_forked_class(),
-                    trace.id,
-                    {"heads": str(len(heads)), "ids": " ".join(m.id for m in heads)},
-                )
-            )
+            findings.append(_trace_forked_finding(trace))
         elif not heads:
-            findings.append(
-                Finding(
-                    _trace_cycle_class(),
-                    trace.id,
-                    {"members": str(len(trace.members)), "heads": "0"},
-                )
-            )
+            findings.append(_trace_cycle_finding(trace))
     return findings
 
 
@@ -942,20 +1001,10 @@ def _check_equivalence_predecessor(ctx: LintContext) -> list[Finding]:
             continue
         predecessor = by_id.get(record.equivalence.predecessor)
         if predecessor is None:
-            findings.append(
-                Finding(
-                    _equivalence_predecessor_missing_class(),
-                    record.id,
-                    {"predecessor": record.equivalence.predecessor},
-                )
-            )
+            findings.append(_equivalence_predecessor_missing_finding(record))
         elif predecessor.trace != record.trace:
             findings.append(
-                Finding(
-                    _equivalence_trace_mismatch_class(),
-                    record.id,
-                    {"trace": record.trace, "predecessor_trace": predecessor.trace},
-                )
+                _equivalence_trace_mismatch_finding(record, predecessor)
             )
     return findings
 
@@ -1102,21 +1151,10 @@ def _gate_findings(ctx: LintContext, *, require_touch: bool) -> list[Finding]:
             )
             if check.verdict is GateVerdict.CONTRADICTED:
                 findings.append(
-                    Finding(
-                        _gate_contradicted_class(),
-                        record.id,
-                        {"gate": kind, "reason": check.detail, "token": gate.token},
-                    )
+                    _gate_contradicted_finding(record, kind, gate, check)
                 )
             elif check.verdict is GateVerdict.UNVERIFIABLE:
-                findings.append(
-                    Finding(
-                        _gate_unverifiable_class(),
-                        record.id,
-                        {"gate": kind, "session": gate.session_id},
-                        status=Status.BLOCKED,
-                    )
-                )
+                findings.append(_gate_unverifiable_finding(record, kind, gate))
     return findings
 
 
@@ -1534,8 +1572,11 @@ class LintReport:
     blocked: tuple[Finding, ...]
     blessed: tuple[Finding, ...]
     results: tuple[CheckResult, ...]
+    records_loaded: int
     records_checked: int
+    surface_files_loaded: int
     surface_lines_checked: int
+    elapsed_ms: float
     dev: tuple[str, ...] = ()
     """Names of the dev checks this run used, empty for an ordinary run.
 
@@ -1695,6 +1736,7 @@ def select_checks(
 
 # $kw: --from State.Estimation --note [DF] a state is minimally a value plus an err or unknown estimate, an Agent.State is dangerous because verification cost varies, so the report counts blocked apart from failed ^c20260819-17u
 # --from Dumb.Code --note [DF] the catalog is a Fishing.Net: cheap tests run over all items, converting expensive semantic attention into cheap mechanical attention
+# --note [CT] Execution metadata reports elapsed time and loaded surface-file, surface-line, record, and check counts. ^c20260820-15u
 def lint(
     geo: Geography,
     *,
@@ -1713,6 +1755,7 @@ def lint(
     where the time actually goes.
     """
 
+    started_at = perf_counter()
     root = project_root or geo.project_root
     ctx = LintContext(
         geo=geo,
@@ -1753,10 +1796,9 @@ def lint(
             else:
                 errors.append(finding)
                 errors.append(
-                    Finding(
-                        _blessing_unevidenced_class(),
-                        finding.identity,
-                        {"check": entry.name, "gate": "contradicted"},
+                    _blessing_unevidenced_finding(
+                        finding,
+                        check_name=entry.name,
                         source=entry.source,
                     )
                 )
@@ -1775,8 +1817,11 @@ def lint(
         blocked=tuple(blocked),
         blessed=tuple(blessed),
         results=tuple(results),
+        records_loaded=len(ctx.records),
         records_checked=len(ctx.selected_records()),
+        surface_files_loaded=len(ctx.surface_lines),
         surface_lines_checked=sum(len(v) for v in ctx.surface_lines.values()),
+        elapsed_ms=round((perf_counter() - started_at) * 1000, 3),
         dev=tuple(e.name for e in selected if e.dev),
     )
 

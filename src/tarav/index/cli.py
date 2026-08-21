@@ -1,4 +1,5 @@
 # $kw: --from Usage.Surface --note [CT] no write commands: agents edit surfaces, the linter checks them
+# --note [PR] Agents escalate with named selectors for check, POI class, POI instance, record, label, and status. ^c20260820-17u
 """The index command set.
 
 Shaped after `tarav`: **grouped, read-and-lint**. There is deliberately no capture, edit,
@@ -20,6 +21,8 @@ import json
 import sys
 from pathlib import Path
 
+from tarav.poi import reference_sugar, tarav_poi_class_reference
+
 from .authority import ManifestRegistry
 from .chatlas import load_session
 from .config import Geography, TaravIndexError, resolve_geography
@@ -28,6 +31,7 @@ from .importer import import_depot
 from .linter import BAR_CHECKS, CHECK_REGISTRY, bless, lint
 from .record.model import EquivalenceKind, LineRecord, SupportRef
 from .record.store import IndexStore
+from .report import build_linter_document, render_linter_text
 from .scope import parse_scope, resolve_scope_surface
 from .standing import (
     IndexStanding,
@@ -53,6 +57,13 @@ def _geo(args: argparse.Namespace) -> Geography:
 
 def _emit(payload: object) -> None:
     print(json.dumps(payload, indent=1, ensure_ascii=False, default=str))
+
+
+def _nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
 
 
 def _derive(geo: Geography) -> dict[str, Standing]:
@@ -564,76 +575,18 @@ def cmd_index_linter(args: argparse.Namespace) -> int:
     dev = args.lane == "dev"
     subjects = _lint_subjects(geo, args)
     report = lint(geo, check=args.check, skip=args.skip, dev=dev, subjects=subjects)
-    if report.is_dev and not args.json:
-        print("DEV LANE — not a verdict about the project, a verdict about the machinery")
-        for name in report.dev:
-            entry = next(c for c in CHECK_REGISTRY if c.name == name)
-            print(f"  {name} stands in for {entry.replaces}  {entry.source}")
-        print()
-    if args.json:
-        _emit(
-            {
-                "results": [
-                    {"check": r.name, "status": str(r.status), "reason": r.reason}
-                    for r in report.results
-                ],
-                "records_checked": report.records_checked,
-                "surface_lines_checked": report.surface_lines_checked,
-                "findings": [_finding_json(f) for f in report.findings],
-                "blocked": [_finding_json(f) for f in report.blocked],
-                "blessed": len(report.blessed),
-                "dev": list(report.dev),
-            }
-        )
-        return 1 if report.findings else 0
-
-    scanned = (
-        f"{report.records_checked} record(s), "
-        f"{report.surface_lines_checked} surface line(s)"
+    document = build_linter_document(
+        report,
+        limit=args.limit,
+        poi_classes=args.poi_class,
+        poi_ids=args.poi_id,
+        statuses=args.status,
     )
-    if subjects is not None:
-        scanned += "  [targeted: record-scoped checks only]"
-
-    for poi_class, findings in report.by_class().items():
-        print(f"\n{poi_class}  ({len(findings)})")
-        for finding in findings:
-            print(f"  {finding.identity}  {finding.subject}  {finding.source or ''}")
-            for key, value in finding.operands.items():
-                print(f"      {key} = {value!r}")
-
-    if report.blocked or report.blocked_checks:
-        print("\nUnverifiable — checked nothing, which is not the same as clean")
-        for result in report.blocked_checks:
-            print(f"  {result.name}: {result.reason}")
-        for finding in report.blocked:
-            print(f"  {finding.poi_class}  {finding.subject}")
-
-    concentrated = {s: f for s, f in report.by_subject().items() if len(f) > 2}
-    if concentrated:
-        print("\nConcentration (many assertions on one state, or one across many states)")
-        for subject, findings in sorted(
-            concentrated.items(), key=lambda kv: -len(kv[1])
-        ):
-            print(f"  {subject}  {len(findings)} findings")
-
-    print(f"\n{report.summary()}   over {scanned}")
-    if report.blessed:
-        print(f"{len(report.blessed)} blessed")
+    if args.json:
+        _emit(document)
+    else:
+        print(render_linter_text(document))
     return 1 if report.findings else 0
-
-
-def _finding_json(finding) -> dict[str, object]:
-    return {
-        "class": finding.poi_class,
-        "id": finding.identity,
-        "subject": finding.subject,
-        "status": str(finding.status),
-        "evaluator": str(finding.evaluator),
-        "operands": finding.operands,
-        "source": finding.source,
-        "surface": finding.surface,
-        "tier": str(finding.tier),
-    }
 
 
 def cmd_index_bless(args: argparse.Namespace) -> int:
@@ -660,7 +613,10 @@ def cmd_poi_explain(args: argparse.Namespace) -> int:
     """
 
     needle = args.poi_class.lower()
-    matches = [
+    exact_matches = [
+        check for check in CHECK_REGISTRY if args.poi_class in check.poi_classes
+    ]
+    matches = exact_matches or [
         c
         for c in CHECK_REGISTRY
         if needle in c.name.lower() or needle in f"index.linter/{c.name}".lower()
@@ -672,6 +628,11 @@ def cmd_poi_explain(args: argparse.Namespace) -> int:
 
     for check in matches:
         print(f"\n{check.name}")
+        for poi_class in sorted(check.poi_classes):
+            print(
+                "  class     "
+                + reference_sugar(tarav_poi_class_reference(poi_class))
+            )
         print(f"  computes  {check.source}   ← read it; the body is the specification")
         print(f"  tier      {check.tier}")
         print(f"  default   {'on' if check.default_on else 'off'}")
@@ -813,6 +774,31 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument("--check", action="append", help="run only this check; repeatable")
     p.add_argument("--skip", action="append", help="skip this check; repeatable")
+    p.add_argument(
+        "--limit",
+        type=_nonnegative_int,
+        default=20,
+        help="maximum POI instances to render; 0 renders summaries only (default: 20)",
+    )
+    p.add_argument(
+        "--poi-class",
+        action="append",
+        default=[],
+        help="show instances of this POI class; repeatable",
+    )
+    p.add_argument(
+        "--poi-id",
+        action="append",
+        default=[],
+        help="show this POI instance; repeatable",
+    )
+    p.add_argument(
+        "--status",
+        action="append",
+        choices=("failed", "blocked", "blessed"),
+        default=[],
+        help="show instances with this status; repeatable",
+    )
     p.add_argument("--list-checks", action="store_true", help="print the check catalog")
     p.set_defaults(func=cmd_index_linter)
 

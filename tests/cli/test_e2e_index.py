@@ -161,18 +161,129 @@ def test_targeted_lint_agrees_with_the_corpus_run_filtered_to_the_same_record(
     )
     capsys.readouterr()  # type: ignore[attr-defined]
 
-    corpus = _json(project, capsys, "linter")
+    corpus = _json(project, capsys, "linter", "--limit", "1000")
     for record_id in ids:
         expected = sorted(
-            (f["class"], f["subject"])  # type: ignore[index]
-            for f in corpus["findings"]  # type: ignore[index]
+            (f["class_address"], f["subject"])  # type: ignore[index]
+            for f in corpus["poi_instances"]["items"]  # type: ignore[index]
             if f["subject"] == record_id
         )
-        targeted = _json(project, capsys, "linter", "--record-id", record_id)
+        targeted = _json(
+            project,
+            capsys,
+            "linter",
+            "--record-id",
+            record_id,
+            "--limit",
+            "1000",
+        )
         assert sorted(
-            (f["class"], f["subject"]) for f in targeted["findings"]  # type: ignore[index]
+            (f["class_address"], f["subject"])
+            for f in targeted["poi_instances"]["items"]  # type: ignore[index]
         ) == expected, record_id
         assert expected, "the fixture must actually produce findings to compare"
+
+
+def test_linter_text_and_json_share_one_bounded_agent_report(
+    project: Path, capsys: object
+) -> None:
+    for body in ("first migration line", "second migration line"):
+        _write_line(project, capsys, body)
+
+    payload = _json(project, capsys, "linter", "--limit", "1")
+    window = payload["poi_instances"]  # type: ignore[index]
+    assert payload["class"] == "Index.Linter.Run"  # type: ignore[index]
+    assert window["shown"] == 1
+    assert window["matching"] == window["total"]
+    assert window["truncated"] is True
+    assert sum(row["counts"]["total"] for row in payload["poi_classes"]) == window[  # type: ignore[index]
+        "total"
+    ]
+
+    assert (
+        main(
+            [
+                "index",
+                "--project",
+                str(project),
+                "linter",
+                "--limit",
+                "1",
+            ]
+        )
+        == 1
+    )
+    rendered = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert (
+        f"showing 1 of {window['matching']} matching POI instances "
+        f"({window['total']} total)" in rendered
+    )
+    assert "Concentration" not in rendered
+
+
+def test_linter_poi_selectors_filter_instances_without_hiding_class_totals(
+    project: Path, capsys: object
+) -> None:
+    _write_line(project, capsys, "one migration line")
+    corpus = _json(project, capsys, "linter", "--limit", "100")
+    selected = corpus["poi_instances"]["items"][0]  # type: ignore[index]
+
+    narrowed = _json(
+        project,
+        capsys,
+        "linter",
+        "--poi-class",
+        selected["class_address"],
+        "--poi-id",
+        selected["instance_id"],
+        "--status",
+        selected["status"],
+        "--limit",
+        "20",
+    )
+
+    assert narrowed["poi_instances"]["matching"] == 1  # type: ignore[index]
+    assert narrowed["poi_instances"]["items"][0]["instance_id"] == selected[  # type: ignore[index]
+        "instance_id"
+    ]
+    assert narrowed["poi_classes"] == corpus["poi_classes"]  # type: ignore[index]
+
+    assert (
+        main(
+            [
+                "index",
+                "--project",
+                str(project),
+                "linter",
+                "--poi-id",
+                "poi-does-not-exist",
+            ]
+        )
+        == 1
+    )
+    assert "matched no occurrence" in capsys.readouterr().err  # type: ignore[attr-defined]
+
+
+def test_explain_accepts_the_exact_class_emitted_by_the_linter(
+    project: Path, capsys: object
+) -> None:
+    assert (
+        main(
+            [
+                "index",
+                "--project",
+                str(project),
+                "explain",
+                "--poi-class",
+                "Index.Linter/Line.Unrecorded",
+            ]
+        )
+        == 0
+    )
+    rendered = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "anchor-has-record" in rendered
+    assert "block://" in rendered
+    assert "Index.Linter/Line.Unrecorded" in rendered
 
 
 def test_a_selector_matching_no_record_fails_rather_than_reporting_a_clean_run(
