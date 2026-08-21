@@ -13,7 +13,7 @@ from tarav.index.capture_manifest import (
     capture_manifest,
     parse_capture_manifest,
 )
-from tarav.index.record import IndexStore
+from tarav.index.record import IndexStore, SupportRef
 
 
 def _digest(value: str) -> str:
@@ -301,6 +301,10 @@ def test_disposable_capture_test_block_runs_the_complete_production_path(
     assert label in source.read_text(encoding="utf-8")
     record = IndexStore(geo).by_label(label)
     assert record is not None
+    assert (
+        record.support[0].message_hash
+        == model["annotations"]["chat_messages"][0]["message_hash"]
+    )
     assert len(record.review) == 1
     assert record.review[0].token == "idx-edition:test"
     assert record.landing == record.review[0]
@@ -321,6 +325,7 @@ def test_disposable_capture_test_block_runs_the_complete_production_path(
     assert repeated.effects["records"] == {
         "created": 0,
         "updated_gates": 0,
+        "updated_support": 0,
         "existing": 1,
     }
     assert repeated.effects["chat_index"]["changed"] is False
@@ -329,6 +334,42 @@ def test_disposable_capture_test_block_runs_the_complete_production_path(
     # temporary project, record depot, Anchory depot, and Chat.Index disappear with tmp_path.
     source.write_text("", encoding="utf-8")
     assert "Capture.Test" not in source.read_text(encoding="utf-8")
+
+
+def test_retry_enriches_a_matching_hashless_support_reference(
+    geo, project_root, tmp_path
+):
+    _surface(project_root)
+    identity = "9" * 64
+    model = _model(identity)
+    parsed = parse_capture_manifest(_manifest(model))
+    readers = {identity: _Reader(model)}
+    kwargs = {
+        "chatlas_root": tmp_path,
+        "model_loader": lambda _identity: deepcopy(model),
+        "reader_loader": readers.__getitem__,
+    }
+
+    landed = capture_manifest(geo, parsed, land=True, **kwargs)
+    label = landed.items[0]["anchor"]
+    store = IndexStore(geo)
+    record = store.by_label(label)
+    assert record is not None
+    store.put(
+        record.with_support(
+            SupportRef(ref.archive, ref.session_id, ref.message_id)
+            for ref in record.support
+        )
+    )
+
+    retried = capture_manifest(geo, parsed, land=True, **kwargs)
+    assert retried.effects["records"]["updated_support"] == 1
+    enriched = store.by_label(label)
+    assert enriched is not None
+    assert (
+        enriched.support[0].message_hash
+        == model["annotations"]["chat_messages"][0]["message_hash"]
+    )
 
 
 def test_content_expectation_fails_before_any_durable_write(

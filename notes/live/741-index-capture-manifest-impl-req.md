@@ -17,35 +17,27 @@ Per the session overwrite, product grounding is deliberately deferred until exec
 otherwise complete. The final pass will use this new workflow to scan and ground this
 Impl.Req and the edited code surfaces.
 
+Status: complete; final verification and capture audit passed.
+
 ## Impl.Index
 
-- [DC] one `Capture.Manifest` is the authored authority for support, gate evidence, target
-  placement, and line wording; downstream Anchory, source, LineRecord, and Chat.Index effects
-  are derived from it
-- [CT] `preview` performs the whole preflight and writes nothing; `land` repeats that preflight,
-  refuses every invalid batch before mutation, applies the complete pipeline, and audits the
-  final state
-- [CT] message references are structured objects containing session identity, message address,
-  message-content hash, and optional human hints such as timestamp and `expect.contains_all`
-- [DC] message side is not authored in the manifest; relationship position determines the
-  allowed side and the workflow verifies it against the immutable Chat.Surface
-- [CT] content expectations are conjunctive, normalized substring checks against the resolved
-  message text and fail closed before any anchor is minted
-- [CT] source edits address one project surface, one parser-backed block/annotation scope, and
-  one exact ungrounded typed line; ordinary live Markdown uses an explicit heading locator while
-  default Index and SKW surfaces retain structural discovery
-- [CT] all renderings consume one `Index.Capture.Run` runtime model; default text is compact and
-  structured JSON exposes the same plan and audit rather than a separate execution path
-- [CT] capture is retry-safe: a repeated manifest reuses exact dossiers, recognizes already
-  grounded source lines and records, and does not duplicate Chat.Index lines
-- [TS] a disposable `Capture.Test` Markdown block is created in an isolated project, captured
-  through the production coordinator, audited end to end, and then deleted with its test state
+- [DC] one `Capture.Manifest` is the authored authority for support, gate evidence, target placement, and line wording; downstream Anchory, source, LineRecord, and Chat.Index effects are derived from it ^c20260821-49u
+- [CT] `preview` performs the whole preflight and writes nothing; `land` repeats that preflight, refuses every invalid batch before mutation, applies the complete pipeline, and audits the final state ^c20260821-50u
+- [CT] message references are structured objects containing session identity, message address, message-content hash, and optional human hints such as timestamp and `expect.contains_all` ^c20260821-51u
+- [DC] message side is not authored in the manifest; relationship position determines the allowed side and the workflow verifies it against the immutable Chat.Surface ^c20260821-52u
+- [CT] content expectations are conjunctive, normalized substring checks against the resolved message text and fail closed before any anchor is minted ^c20260821-53u
+- [CT] source edits address one project surface, one parser-backed block/annotation scope, and one exact ungrounded typed line; ordinary live Markdown uses an explicit heading locator while default Index and SKW surfaces retain structural discovery ^c20260821-54u
+- [CT] all renderings consume one `Index.Capture.Run` runtime model; default text is compact and structured JSON exposes the same plan and audit rather than a separate execution path ^c20260821-55u
+- [CT] capture is retry-safe: a repeated manifest reuses exact dossiers, recognizes already grounded source lines and records, and does not duplicate Chat.Index lines ^c20260821-56u
+- [TS] a disposable `Capture.Test` Markdown block is created in an isolated project, captured through the production coordinator, audited end to end, and then deleted with its test state ^c20260820-51u
 - [PR] Stable.Surface means maintained valuable content, not undeletable content; immutability is a separate contract held by Chat.Surface and must not be inferred from stability ^c20260821-45u
 - [CT] maintained project guidance names the installed `tarav` CLI, not the retired `agentos` command ^c20260821-46u
 
 ## Execution.Plan
 
 ### Slice 1 — manifest and preflight
+
+- **status:** complete
 
 - Add strict dataclasses/parser for the manifest and structured message references.
 - Resolve all referenced messages once, verify relationship side, hashes, order, tokens, and
@@ -56,6 +48,8 @@ Impl.Req and the edited code surfaces.
 
 ### Slice 2 — coordinated landing
 
+- **status:** complete
+
 - Revalidate before writing, register the idempotent Anchory batch, patch exact source lines,
   create/reconcile LineRecords, and derive/apply Chat.Index capture plans from the same resolved
   objects.
@@ -64,12 +58,16 @@ Impl.Req and the edited code surfaces.
 
 ### Slice 3 — disposable production-path test
 
+- **status:** complete
+
 - Build an isolated discovered Markdown surface containing a `Capture.Test` block.
 - Preview and land its manifest through the production coordinator, assert every durable effect,
   repeat for idempotency, then remove the block and isolated state.
 - Keep this a real production-path probe, not a parallel fake implementation.
 
 ### Slice 4 — close and capture
+
+- **status:** complete
 
 - Correct maintained `AGENTS.md` CLI guidance from `agentos` to `tarav` where it describes this
   distribution's installed command.
@@ -79,7 +77,7 @@ Impl.Req and the edited code surfaces.
 
 ## Impl.Log
 
-- [TS] Execution is authorized by `$tarav-hugentics --impl --dev --AUTO`; the user explicitly deferred all grounding to the final scan so the new workflow can ground its own implementation.
-- [OBS] The pre-edit checkpoint is clean except for a concurrent edit to
-  `src/tarav/index/record/blessing.py`; capture work will preserve and avoid that file.
+- [TS] Execution is authorized by `$tarav-hugentics --impl --dev --AUTO`; the user explicitly deferred all grounding to the final scan so the new workflow can ground its own implementation. ^c20260821-57u
+- [CT] concurrent agents may edit the shared worktree; implementation work must preserve their files and re-read current state before changing overlapping surfaces. ^c20260820-52u
 - [DC] Existing Anchory registration validates immutable message hashes, relationship sides, proposal/approval order, exact attachment triplets, and idempotent reuse; existing Chat.Index application validates dossier support and applies an idempotent audited surface update, so the missing unit was composition and one authored model. ^c20260821-47u
+- Verification passed: 20 capture/CLI boundary tests and the complete 2,202-test distribution suite.

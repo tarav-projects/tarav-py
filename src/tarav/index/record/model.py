@@ -34,7 +34,11 @@ from enum import StrEnum
 from ..gates import GateRef
 from ..scope import LineScope, parse_scope
 
-RECORD_SCHEMA = "tarav.index-line-record.v4"
+RECORD_SCHEMA = "tarav.index-line-record.v5"
+#: `v4` had no place for a support reference's content hash, so a reference could be
+#: resolved but never validated. `v5` adds it as an optional member field; `v4` records
+#: read unchanged, because absent and none are the same state.
+RECORD_SCHEMA_V4 = "tarav.index-line-record.v4"
 #: `v3` held one review gate. It could not carry a line the user gated twice under two
 #: tokens, and the anchory corpus has such lines, so migrating into it would have dropped
 #: evidence the record exists to hold.
@@ -76,25 +80,42 @@ class SupportRef:
     """One member of a `Support.Set` — a reference, never grounding content.
 
     Grounding data belongs to the user, so the index carries coordinates only.
+
+    ``message_hash`` is the reference's **validation**: the address says where to look, the
+    hash proves what was found is what was meant. Without it a check can only establish that
+    the coordinate still exists, never that it still says the same thing.
+
+    It is optional because the references this migration carries never had one, and a
+    required field would make them unstorable — the mistake `v3`'s single review gate made,
+    which `v4` had to widen.
     """
 
     archive: str
     session_id: str
     message_id: str
+    message_hash: str | None = None
 
     def to_json(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "archive": self.archive,
             "session_id": self.session_id,
             "message_id": self.message_id,
         }
+        if self.message_hash:
+            # Absent rather than null: a reference that never had a hash and one explicitly
+            # recorded as having none are the same state, and writing `null` into 9,768
+            # references would assert a distinction the model does not make.
+            payload["message_hash"] = self.message_hash
+        return payload
 
     @classmethod
     def from_json(cls, payload: dict[str, object]) -> SupportRef:
+        message_hash = payload.get("message_hash")
         return cls(
             archive=str(payload["archive"]),
             session_id=str(payload["session_id"]),
             message_id=str(payload["message_id"]),
+            message_hash=str(message_hash) if message_hash else None,
         )
 
 

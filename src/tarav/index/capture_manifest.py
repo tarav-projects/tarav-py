@@ -6,6 +6,7 @@
 # --note [CT] text and JSON render the same bounded Index.Capture.Run while complete effect totals remain visible ^c20260821-41u
 # --note [CT] landing revalidates, registers dossiers, patches exact parser-resolved lines, creates records, applies Chat.Index, and audits the result ^c20260821-42u
 # --note [CT] tokenized verbatim approvals become LineRecord.review gates so capture and review lint consume the same evidence ^c20260821-48u
+# --note [CT] one capture run materializes each session's Chat.Message projection once and reuses exact resolved references across the batch ^c20260821-58u
 """Typed, fail-closed orchestration for complete Index capture."""
 
 from __future__ import annotations
@@ -702,6 +703,7 @@ def _prepare_capture(
                 archive="chat",
                 session_id=ref.session,
                 message_id=ref.message_address,
+                message_hash=ref.message_hash,
             )
             for ref in item.support
         )
@@ -711,7 +713,7 @@ def _prepare_capture(
             existing_record.line.type != item.line_type
             or existing_record.line.body != item.body
             or existing_record.scope.address != item.target.block
-            or existing_record.support != expected_support
+            or not _support_compatible(existing_record.support, expected_support)
             or (
                 bool(existing_record.review)
                 and bool(expected_review)
@@ -733,17 +735,11 @@ def _prepare_capture(
                 line=line,
                 anchor_action=str(anchor_item["action"]),
                 anchor=anchor if isinstance(anchor, str) else None,
-                record_action=(
-                    "create"
-                    if existing_record is None
-                    else (
-                        "update-gates"
-                        if (
-                            (expected_review and not existing_record.review)
-                            or (expected_landing and existing_record.landing is None)
-                        )
-                        else "existing"
-                    )
+                record_action=_record_action(
+                    existing_record,
+                    support=expected_support,
+                    review=expected_review,
+                    landing=expected_landing,
                 ),
                 host_kind=host_kind,
                 source_lineno=source_lineno,
@@ -835,12 +831,51 @@ def _preview_report(
                     item.record_action == "existing" for item in prepared.items
                 ),
                 "update_gates": sum(
-                    item.record_action == "update-gates" for item in prepared.items
+                    "gates" in item.record_action for item in prepared.items
+                ),
+                "update_support": sum(
+                    "support" in item.record_action for item in prepared.items
                 ),
             },
             "chat_index": {"plan": len(prepared.items)},
         },
     )
+
+
+def _support_compatible(
+    existing: tuple[SupportRef, ...], expected: tuple[SupportRef, ...]
+) -> bool:
+    """Allow a matching legacy coordinate to gain, but never contradict, its hash."""
+
+    if len(existing) != len(expected):
+        return False
+    return all(
+        current.archive == target.archive
+        and current.session_id == target.session_id
+        and current.message_id == target.message_id
+        and (
+            current.message_hash is None
+            or current.message_hash == target.message_hash
+        )
+        for current, target in zip(existing, expected, strict=True)
+    )
+
+
+def _record_action(
+    record: LineRecord | None,
+    *,
+    support: tuple[SupportRef, ...],
+    review: tuple[GateRef, ...],
+    landing: GateRef | None,
+) -> str:
+    if record is None:
+        return "create"
+    updates: list[str] = []
+    if record.support != support:
+        updates.append("support")
+    if (review and not record.review) or (landing and record.landing is None):
+        updates.append("gates")
+    return f"update-{'-and-'.join(updates)}" if updates else "existing"
 
 
 def _item_report(
@@ -930,7 +965,7 @@ def _land_records(
         record.line.label: record for record in store.all() if record.line.label
     }
     staged: list[LineRecord] = []
-    existing = updated = 0
+    existing = updated_gates = updated_support = created = 0
     for prepared_item in prepared.items:
         item = prepared_item.item
         result = results[item.client_id]
@@ -944,19 +979,27 @@ def _land_records(
                 prior.line.type != item.line_type
                 or prior.line.body != item.body
                 or prior.scope.address != item.target.block
-                or prior.support != support
+                or not _support_compatible(prior.support, support)
             ):
                 raise CliError(
                     f"Capture.Manifest {item.client_id} conflicts with LineRecord {prior.id}"
                 )
-            if (review and not prior.review) or (landing and prior.landing is None):
+            needs_support = prior.support != support
+            needs_gates = (review and not prior.review) or (
+                landing and prior.landing is None
+            )
+            if needs_support or needs_gates:
                 updated_record = prior
+                if needs_support:
+                    updated_record = updated_record.with_support(support)
+                    updated_support += 1
                 if review and not updated_record.review:
                     updated_record = updated_record.with_review(*review)
                 if landing and updated_record.landing is None:
                     updated_record = updated_record.with_landing(landing)
+                if needs_gates:
+                    updated_gates += 1
                 staged.append(updated_record)
-                updated += 1
             else:
                 existing += 1
             continue
@@ -971,11 +1014,13 @@ def _land_records(
         if landing:
             record = record.with_landing(landing)
         staged.append(record)
+        created += 1
     for record in staged:
         store.put(record)
     return {
-        "created": len(staged) - updated,
-        "updated_gates": updated,
+        "created": created,
+        "updated_gates": updated_gates,
+        "updated_support": updated_support,
         "existing": existing,
     }
 
@@ -1016,6 +1061,7 @@ def _record_support(record: object) -> tuple[SupportRef, ...]:
             archive="chat",
             session_id=str(member["session"]),
             message_id=str(member["message_address"]),
+            message_hash=str(member["message_hash"]),
         )
         for member in members
     )
@@ -1064,7 +1110,22 @@ def _audit_capture(
         ):
             source_missing.append(item.client_id)
         record = store.by_label(label)
-        if record is None or record.scope.address != item.target.block:
+        expected_support = tuple(
+            SupportRef(
+                archive="chat",
+                session_id=ref.session,
+                message_id=ref.message_address,
+                message_hash=ref.message_hash,
+            )
+            for ref in item.support
+        )
+        if (
+            record is None
+            or record.scope.address != item.target.block
+            or record.line.type != item.line_type
+            or record.line.body != item.body
+            or record.support != expected_support
+        ):
             record_missing.append(item.client_id)
         elif _record_review(item) and record.review != _record_review(item):
             record_missing.append(item.client_id)

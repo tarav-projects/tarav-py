@@ -1,4 +1,4 @@
-# $kw: --from Index.Surface --note [CT] index lines attach to any skw annotation through the same mechanism as the markdown index
+# $kw: --from Index.Surface --note [CT] index lines attach to any skw annotation through the same mechanism as the markdown index ^c20260821-61u
 """Index surfaces — where entries are materialized.
 
 An index's data is **distributed across surfaces**. Two hosting kinds today, and the model

@@ -19,7 +19,7 @@ directory without `.tarav`. Keep as is; discussed later.
 capture path a replacement, which is the precondition for retiring them — but the retirement
 itself rides with the v1 chatlas model in its own `Impl.Req`. Nothing is deleted here.
 
-**Status.** Slice 1 **done**. Slice 2 **partly done, premise corrected**. Slice 3 not started.
+**Status.** Slice 1 **done**. Slice 2 **done** — see the remainder result below. Slice 3 delivered by 739 slice 4.
 
 **Source context.** Follows 737, which closed the provider boundary and made the Index CLI a
 selector surface. Continues the 641 migration.
@@ -274,3 +274,77 @@ consolidation that had merged them would have been a regression dressed as clean
 **Awareness.** Other agents are working this tree concurrently. Slice 2 writes to the shared
 live depot; do the record-count check immediately before and after the backfill rather than
 trusting an earlier reading, and prefer narrow edits over file rewrites throughout.
+
+
+### Slice 2 remainder — the hash backfill and the coordinate migration — **done**
+
+Governing constraint, from the invocation: *only migrate the turns that are clear — pollution
+is worse than drift.*
+
+**`SupportRef.message_hash`, schema `v5`.** Optional, and written absent rather than null: a
+reference that never had a hash and one recorded as having none are the same state. `v4`
+records read unchanged. The address says where to look; the hash proves what was found is what
+was meant.
+
+**The clarity criterion.** A legacy coordinate is *clear* when its Anchory dossier records a
+timestamp and that timestamp matches **exactly one user-side message** in the session, to the
+millisecond. Measured over all 927 distinct coordinates, not a sample:
+
+| | |
+|---|---:|
+| clear | **862** (93.0%) |
+| ambiguous — several user messages at that instant | 27 |
+| unreadable — session will not normalize | 37 |
+| absent | 1 |
+
+**Two independent corroborations, both run before writing.**
+
+- *One coordinate, one timestamp.* Across every dossier in the depot, 927 coordinates, **0**
+  disagreements about when a turn happened.
+- *Ordinal order matches chronology.* For the 409 clear `turn-rNNNN` coordinates, the turn
+  ordinal and the mapped message's timestamp agree in every session: **0 inversions**. (A first
+  pass reported 120; it was extracting trailing digits from uuid coordinates and ordering by
+  them. The check is meaningful only where an ordinal exists.)
+
+**The strongest evidence arrived as a problem.** Applying the plan would have given 1,590
+records a duplicate support reference. Every one had the same cause: the record *already*
+carried a `chat` reference to the exact message the timestamp join independently arrived at.
+Zero collapses of several turns onto one message. So the join agrees with ground truth already
+in the corpus **2,061 times**, and those 2,061 references are redundant rather than migratable.
+
+**What was written.**
+
+| action | refs |
+|---|---:|
+| migrated onto a current-model address | 2,108 |
+| …carrying a hash recorded at reference time | 1,302 |
+| dropped as redundant with a reference already present | 2,061 |
+| hashes backfilled onto existing `chat` references | 3,987 |
+| left exactly as they were, not clear | **1,586** |
+
+**No hash is computed from today's archive.** Only hashes Anchory recorded at reference time
+are written. Recomputing would manufacture the validation and destroy the drift it exists to
+detect — the pollution the constraint names.
+
+**The deviation trigger fired, and was read.** Of 824 recorded hashes checked against the live
+archive, 823 agree and **1 disagrees**. Read before proceeding: the address resolves, the
+message is user-side and coherent, only its content hash moved. That is real drift, not a bad
+join, and writing the recorded hash is what makes it reportable.
+
+**Corpus effect.**
+
+| | before naming fix | after naming fix | after migration |
+|---|---:|---:|---:|
+| `Support.LegacyCoordinate` | 3,666 blocked | — | — |
+| `Support.Unresolved` | — | 3,632 | **749** |
+| POI instances | 16,624 | 16,661 | **13,808** |
+
+**Coverage.** The drop raised `Coverage.Shrank` 862 times. Checked rather than assumed: all
+862 are the same messages addressed by the current model — **zero** messages lost coverage.
+The check's declared resolution is to read the commit, so the depot carries one explaining the
+migration; the finding cleared at the new baseline, which is the loop working.
+
+**Concurrency.** Another agent landed records throughout. The apply asserted the record count
+had not moved and tripped on it — the corpus had grown by one. Verified directly instead:
+4,054 records, 0 without support, 1,586 `chat-turn` refs remaining, which is exactly the
+not-clear set.

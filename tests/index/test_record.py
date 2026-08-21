@@ -293,6 +293,43 @@ def test_a_line_gated_twice_keeps_both_gates(geo) -> None:
     assert read_back.review == (first, second)
 
 
+class TestSupportValidation:
+    """A support reference carries the hash of what it addressed, so drift is detectable.
+
+    Without one, verification can only prove the coordinate still exists — never that it
+    still says the same thing. Optional, because the references the migration carries never
+    had one and a required field would make them unstorable.
+    """
+
+    def test_a_reference_may_carry_the_hash_of_what_it_addressed(self):
+        ref = SupportRef(
+            archive="chat", session_id="s1", message_id="addr-1", message_hash="deadbeef"
+        )
+        assert ref.message_hash == "deadbeef"
+        assert SupportRef.from_json(ref.to_json()) == ref
+
+    def test_a_reference_without_a_hash_is_storable(self, geo):
+        """The 5,755 references the migration carries have no hash and must stay writable."""
+
+        record = _entry(support=(SupportRef("chat-turn", "s1", "turn-r1"),))
+        stored = IndexStore(geo).put(record)
+        read = IndexStore(geo).get(stored.id)
+        assert read.support[0].message_hash is None
+        assert read == stored
+
+    def test_a_v4_reference_on_disk_reads_as_no_hash(self):
+        """Records written before the widening are read, not migrated on read."""
+
+        v4 = {"archive": "chat", "session_id": "s1", "message_id": "addr-1"}
+        assert SupportRef.from_json(v4).message_hash is None
+
+    def test_a_reference_with_no_hash_writes_no_key(self):
+        """Absent and null are the same state; writing null into 9,768 references would
+        assert a distinction the model does not make."""
+
+        assert "message_hash" not in SupportRef("chat", "s1", "addr-1").to_json()
+
+
 def test_a_v3_record_on_disk_still_reads(geo) -> None:
     """`v3` wrote one gate object or null; reading it is not a migration."""
     store = IndexStore(geo)

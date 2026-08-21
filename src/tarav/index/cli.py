@@ -1,4 +1,4 @@
-# $kw: --from Usage.Surface --note [CT] agents edit surfaces directly; capture reconciles grounded surface lines into the record model and the linter checks conformance
+# $kw: --from Usage.Surface --note [CT] agents edit surfaces directly; capture reconciles grounded surface lines into the record model and the linter checks conformance ^c20260821-59u
 # --note [PR] Agents escalate with named selectors for check, POI class, POI instance, record, label, and status. ^c20260820-17u
 """The index command set.
 
@@ -73,7 +73,7 @@ def _linter_geo(args: argparse.Namespace) -> Geography:
     return _explicit_index_geo(args, "tarav index linter")
 
 
-# $kw: Index.Evaluator/Project.Selection --note [CT] a command carries --project when its answer or its write target depends on the project; one that reads only the shared depot deliberately does not
+# $kw: Index.Evaluator/Project.Selection --note [CT] a command carries --project when its answer or its write target depends on the project; one that reads only the shared depot deliberately does not ^c20260821-60u
 def _add_project_option(parser: argparse.ArgumentParser) -> None:
     """Declare the evaluator's project on one command, named rather than inferred."""
 
