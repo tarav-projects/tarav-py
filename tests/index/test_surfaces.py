@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from tarav.index.scope import ScopeKind
 from tarav.index.surfaces import (
     ProjectIndex,
@@ -11,7 +13,7 @@ from tarav.index.surfaces import (
     surface_kind_for,
 )
 
-CHAPTER_SURFACE = "skills/tarav-pkg/homes/agent/chapters/100-design.md"
+CHAPTER_SURFACE = "skills/tarav-pkg/design/100-design.md"
 
 CHAPTER = """> `Appendix.Discovery`: check `appendix/Concept.Name-appendix.md`
 
@@ -34,6 +36,9 @@ CHAPTER = """> `Appendix.Discovery`: check `appendix/Concept.Name-appendix.md`
 
 
 def _chapter(project_root, text=CHAPTER):
+    depot = project_root / "skills" / "tarav-pkg"
+    depot.mkdir(parents=True, exist_ok=True)
+    (depot / "000-INDEX.md").write_text("# test Index\n", encoding="utf-8")
     path = project_root / CHAPTER_SURFACE
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -45,6 +50,26 @@ def _module(project_root, body, name="thing.py"):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body, encoding="utf-8")
     return path
+
+
+def _configure_python_surfaces(project_root, include="pkg/**/*.py", exclude=()):
+    build_root = project_root / ".skw"
+    build_root.mkdir(exist_ok=True)
+    (build_root / "skw.json").write_text(
+        json.dumps(
+            {
+                "code_surfaces": [
+                    {
+                        "language": "python",
+                        "include": [include],
+                        "exclude": list(exclude),
+                        "allow_points": ["file", "class", "function"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 class TestBlockHostedLines:
@@ -107,16 +132,36 @@ class TestDiscovery:
         assert CHAPTER_SURFACE in discover_surfaces(geo, project_root)
 
     def test_annotated_product_surfaces_are_discovered(self, geo, project_root):
+        _configure_python_surfaces(project_root)
         _module(project_root, "# $kw: --from C --note [CT] found\n", name="pkg/thing.py")
         assert "skw:pkg/thing.py" in discover_surfaces(geo, project_root)
 
     def test_unannotated_python_is_not_an_index_surface(self, geo, project_root):
-        _module(project_root, "x = 1\n", name="plain.py")
-        assert "skw:plain.py" not in discover_surfaces(geo, project_root)
+        _configure_python_surfaces(project_root)
+        _module(project_root, "x = 1\n", name="pkg/plain.py")
+        assert "skw:pkg/plain.py" not in discover_surfaces(geo, project_root)
 
-    def test_deprecated_python_snapshots_are_not_live_index_surfaces(
+    def test_annotated_python_outside_skw_selection_is_not_discovered(
         self, geo, project_root
     ):
+        _configure_python_surfaces(project_root)
+        _module(project_root, "x = 1\n", name="pkg/plain.py")
+        _module(
+            project_root,
+            "# $kw: --from C --note [CT] outside configured floor\n",
+            name="other/thing.py",
+        )
+        assert "skw:other/thing.py" not in discover_surfaces(geo, project_root)
+
+    def test_skw_exclusions_are_honored_by_index_discovery(
+        self, geo, project_root
+    ):
+        _configure_python_surfaces(
+            project_root,
+            include="**/*.py",
+            exclude=("_DEPRECATED/**/*.py",),
+        )
+        _module(project_root, "x = 1\n", name="pkg/plain.py")
         _module(
             project_root,
             "# $kw: --from Historical.Concept --note [CT] old edition\n",
@@ -129,21 +174,19 @@ class TestDiscovery:
 
     def test_surface_kinds_are_classified(self):
         assert surface_kind_for("skw:a/b.py") == "skw"
-        assert surface_kind_for("skills/d/homes/ceo/appendix/x.md") == "appendix"
+        assert surface_kind_for("skills/d/appendix/Index.X-appendix.md") == "appendix"
         assert surface_kind_for(CHAPTER_SURFACE) == "chapter"
 
     def test_a_skw_surface_resolves_to_its_product_file(self, project_root):
         assert resolve_surface_path("skw:pkg/a.py", project_root) == project_root / "pkg/a.py"
 
 
-class TestHomesLayout:
-    def test_ensure_layout_creates_both_homes_asymmetrically(self, project_root):
+class TestDepotLayout:
+    def test_ensure_layout_creates_a_structurally_marked_depot(self, project_root):
         index = ProjectIndex(project_root, "tarav-pkg")
         index.ensure_layout()
-        agent_home = index.depot_root / "homes" / "agent"
         assert index.chapters_dir.exists()
-        assert (agent_home / ".tarav.index").exists()
-        assert not (agent_home / "chapters").exists()
+        assert (index.depot_root / "000-INDEX.md").exists()
 
 
 
@@ -162,6 +205,6 @@ class TestSurfaceLineLabels:
             "# T\n\n****\n\n## Concept\n\n- [DF] a body ^c20260819-19u\n\n****\n",
             encoding="utf-8",
         )
-        lines = read_block_lines(note, "skills/pkg/homes/agent/chapters/100-design.md")
+        lines = read_block_lines(note, "skills/pkg/design/100-design.md")
         assert not hasattr(lines[0], "anchor")
         assert lines[0].labels == ("^c20260819-19u",)

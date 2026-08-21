@@ -1,4 +1,5 @@
-# $kw: --from Scope.Axis --note [CT] the axis is project-scope vs user-scope, not public vs private
+# $kw: Index.Evaluator/Configuration --from Scope.Axis --note [CT] the axis is project-scope vs user-scope, not public vs private
+# --note [DC] The default Index evaluator derives project identity from .tarav/project.json and resolves evidence and surfaces structurally, without evaluator manifests. ^c20260821-1u
 """Index geography.
 
 The project root locates source surfaces and project-local declarations. The user root
@@ -46,6 +47,7 @@ class Geography:
 
     project_root: Path
     user_root: Path
+    project_id: str | None = None
 
     @property
     def project_tier(self) -> Path:
@@ -61,10 +63,6 @@ class Geography:
     def index_dir(self) -> Path:
         """Project-tier index roots: what ships with the project."""
         return self.project_tier / "index"
-
-    @property
-    def manifest_dir(self) -> Path:
-        return self.project_tier / "manifests"
 
     @property
     def index_depot(self) -> Path:

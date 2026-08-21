@@ -2,9 +2,9 @@
 # --from Convergent.Justification --note [DC] Check.default_on is held on one reason — a check may ship off when it is expensive or situational, though no catalog row does yet
 """The tarav index linter.
 
-This is where the intelligence lives. Agents edit the markdown surfaces directly with
-ordinary file primitives — there is no landing API, no capture pipeline, no adopt command.
-Afterwards the linter runs as many checks as it can and reports POIs.
+This is where the conformance intelligence lives. Agents edit Markdown and SKW surfaces
+directly; the capture path reconciles their grounded lines into records. Afterwards the
+linter runs as many checks as it can and reports POIs.
 
 Shaped after `tarav index linter`: a **check catalog** with selectors (`--check`, `--skip`,
 `--list-checks`), two tiers, and per-check default state. Growing the system means adding a
@@ -52,7 +52,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from tarav.index_model.nodes import BlockHeading, MetaLine
-from tarav.index_model.parser import parse_depot, parse_index_file
+from tarav.index_model.parser import parse_depot
 
 from .chatlas import ARCHIVE_NAME as CHAT_ARCHIVE, ChatError, load_session
 from .config import Geography, TaravIndexError
@@ -68,11 +68,9 @@ from .standing import (
     standings,
 )
 from .surfaces import (
-    HeadSurfaces,
     Homes,
     SurfaceLine,
     discover_surfaces,
-    load_head_surfaces,
     load_homes,
     read_surface,
     resolve_surface_path,
@@ -144,7 +142,6 @@ class LintContext:
     geo: Geography
     root: Path
     store: IndexStore
-    head: HeadSurfaces = field(default_factory=HeadSurfaces)
     homes: Homes = field(default_factory=Homes)
     records: list[LineRecord] = field(default_factory=list)
     standing: dict[str, Standing] = field(default_factory=dict)
@@ -182,11 +179,9 @@ class LintContext:
         return self.subjects is None or record_id in self.subjects
 
     def head_surface_lines(self) -> Iterator[tuple[str, SurfaceLine]]:
-        """Only the lines sitting on a declared `HEAD.Surface`."""
+        """Lines sitting on the structurally discovered live surface cut."""
 
         for surface, lines in self.surface_lines.items():
-            if not self.head.contains(surface):
-                continue
             for line in lines:
                 yield surface, line
 
@@ -305,7 +300,7 @@ class Check:
         Followed through module-local helpers, because `gate-verifies` and its dev
         counterpart are two-line wrappers over one shared body -- and reading only the
         wrapper called both of them corpus-scoped, which silently dropped every
-        `Gate.Contradicted` finding from targeted runs against the live corpus.
+        `Gate.Evidence.Invalid` finding from targeted runs against the live corpus.
         """
 
         return _reaches_selected_records(self.run)
@@ -421,25 +416,30 @@ def _equivalence_trace_mismatch_finding(
     )
 
 
-# $kw: Index.Linter/Gate.Contradicted --from POI.Linter
-def _gate_contradicted_finding(
+# $kw: Index.Linter/Gate.Evidence.Invalid --from POI.Linter
+def _gate_evidence_invalid_finding(
     record: LineRecord, kind: str, gate: GateRef, check: GateCheck
 ) -> Finding:
     return Finding(
-        "Index.Linter/Gate.Contradicted",
+        "Index.Linter/Gate.Evidence.Invalid",
         record.id,
         {"gate": kind, "reason": check.detail, "token": gate.token},
     )
 
 
-# $kw: Index.Linter/Gate.Unverifiable --from POI.Linter
-def _gate_unverifiable_finding(
-    record: LineRecord, kind: str, gate: GateRef
+# $kw: Index.Linter/Gate.Evidence.Unavailable --from POI.Linter
+def _gate_evidence_unavailable_finding(
+    record: LineRecord, kind: str, gate: GateRef, check: GateCheck
 ) -> Finding:
     return Finding(
-        "Index.Linter/Gate.Unverifiable",
+        "Index.Linter/Gate.Evidence.Unavailable",
         record.id,
-        {"gate": kind, "session": gate.session_id},
+        {
+            "gate": kind,
+            "archive": gate.archive,
+            "session": gate.session_id,
+            "reason": check.detail,
+        },
         status=Status.BLOCKED,
     )
 
@@ -451,7 +451,7 @@ def _blessing_unevidenced_finding(
     return Finding(
         "Index.Linter/Blessing.Unevidenced",
         finding.identity,
-        {"check": check_name, "gate": "contradicted"},
+        {"check": check_name, "gate": "invalid"},
         source=source,
     )
 
@@ -490,14 +490,6 @@ def _check_alias_has_no_block(ctx: LintContext) -> list[Finding]:
             continue
 
         documents = list(parse_depot(depot).documents)
-        for pattern, kind in (
-            ("homes/*/chapters/*.md", "chapter"),
-            ("homes/*/appendix/*.md", "appendix"),
-        ):
-            documents.extend(
-                parse_index_file(path, surface_kind=kind)
-                for path in sorted(depot.glob(pattern))
-            )
 
         blocks: dict[str, list[tuple[Path, int]]] = {}
         aliases: list[tuple[str, str, Path, int]] = []
@@ -545,7 +537,7 @@ def _check_records_loadable(ctx: LintContext) -> list[Finding]:
 
     try:
         ctx.records = list(ctx.store.all())
-        ctx.head_lines = lines_on_head_surfaces(ctx.records, ctx.surface_lines, ctx.head)
+        ctx.head_lines = lines_on_head_surfaces(ctx.records, ctx.surface_lines)
         ctx.standing = standings(ctx.records, head_lines=ctx.head_lines)
     except (OSError, ValueError, KeyError) as exc:
         return [
@@ -718,7 +710,7 @@ class _SessionCache:
         """`load_session`'s signature, so it can stand in for it.
 
         The original error is re-raised rather than a fresh one: `verify_gate` puts the
-        detail into its UNVERIFIABLE verdict, and a cached read must not degrade that to a
+        detail into its UNAVAILABLE verdict, and a cached read must not degrade that to a
         vaguer reason than an uncached one would give.
         """
 
@@ -1149,12 +1141,14 @@ def _gate_findings(ctx: LintContext, *, require_touch: bool) -> list[Finding]:
                 require_touch=require_touch,
                 load=archive.load,
             )
-            if check.verdict is GateVerdict.CONTRADICTED:
+            if check.verdict is GateVerdict.INVALID:
                 findings.append(
-                    _gate_contradicted_finding(record, kind, gate, check)
+                    _gate_evidence_invalid_finding(record, kind, gate, check)
                 )
-            elif check.verdict is GateVerdict.UNVERIFIABLE:
-                findings.append(_gate_unverifiable_finding(record, kind, gate))
+            elif check.verdict is GateVerdict.UNAVAILABLE:
+                findings.append(
+                    _gate_evidence_unavailable_finding(record, kind, gate, check)
+                )
     return findings
 
 
@@ -1371,6 +1365,7 @@ def _check_gate_verifies_dev(ctx: LintContext) -> list[Finding]:
     return _gate_findings(ctx, require_touch=False)
 
 
+# $kw: Index.Linter/Class.Review --from POI.Linter --note [CT] Every Tarav linter POI.Class requires an individual semantic review; corpus counts prove execution, not correctness. ^c20260821-6u
 CHECK_REGISTRY: tuple[Check, ...] = (
     Check(
         "surfaces-readable", Tier.STRUCTURAL, _check_surfaces_readable,
@@ -1520,12 +1515,12 @@ CHECK_REGISTRY: tuple[Check, ...] = (
     Check(
         "landing-evidenced", Tier.REPORTABLE, _check_landing_evidenced, resolutions=(
         "record the landing gate for the approval turn that licensed it",
-        "take the line off the HEAD.Surface until it is approved",
-        "narrow the HEAD.Surface declaration, if this surface is not current design",
+        "take the line off the live Index surface until it is approved",
+        "move provisional wording to a non-Index work surface",
     )),
     Check(
         "landing-honored", Tier.REPORTABLE, _check_landing_honored, resolutions=(
-        "land the approved line onto a HEAD.Surface",
+        "land the approved line onto a live Index surface",
         "accept the demotion — the gate records that it was once current design",
         "read the diff that removed it, if the demotion was not intended",
     )),
@@ -1577,6 +1572,8 @@ class LintReport:
     surface_files_loaded: int
     surface_lines_checked: int
     elapsed_ms: float
+    project_id: str | None = None
+    project_root: str | None = None
     dev: tuple[str, ...] = ()
     """Names of the dev checks this run used, empty for an ordinary run.
 
@@ -1682,9 +1679,9 @@ def bless(geo: Geography, identity: str, gate: GateRef) -> None:
 
 
 def _blessing_holds(geo: Geography, gate: GateRef) -> bool:
-    """A blessing degrades like review: absent archive silences, contradiction revokes."""
+    """Only verified user evidence may silence a finding."""
 
-    return verify_gate(geo, gate).verdict is not GateVerdict.CONTRADICTED
+    return verify_gate(geo, gate).verdict is GateVerdict.VERIFIED
 
 
 def select_checks(
@@ -1761,7 +1758,6 @@ def lint(
         geo=geo,
         root=root,
         store=IndexStore(geo),
-        head=load_head_surfaces(geo),
         homes=load_homes(geo),
         subjects=None if subjects is None else frozenset(subjects),
     )
@@ -1822,6 +1818,8 @@ def lint(
         surface_files_loaded=len(ctx.surface_lines),
         surface_lines_checked=sum(len(v) for v in ctx.surface_lines.values()),
         elapsed_ms=round((perf_counter() - started_at) * 1000, 3),
+        project_id=geo.project_id,
+        project_root=str(root.resolve()),
         dev=tuple(e.name for e in selected if e.dev),
     )
 

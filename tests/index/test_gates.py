@@ -36,14 +36,14 @@ class TestWhatItCatches:
     def test_a_token_the_user_never_wrote(self, geo, chat):
         chat(SESSION, _turns(user_text="sounds fine"))
         check = verify_gate(geo, _gate(), LINE)
-        assert check.verdict is GateVerdict.CONTRADICTED
+        assert check.verdict is GateVerdict.INVALID
         assert "user turn does not carry" in check.detail
 
     def test_an_agent_turn_gating_itself(self, geo, chat):
         """The user turn is the authority; an agent turn cannot open its own gate."""
         chat(SESSION, [("a1", "agent", f"{LINE} {TOKEN}"), ("u1", "agent", TOKEN)])
         check = verify_gate(geo, _gate(), LINE)
-        assert check.verdict is GateVerdict.CONTRADICTED
+        assert check.verdict is GateVerdict.INVALID
         assert "does not qualify as User.Touch" in check.detail
 
     def test_a_turn_that_is_not_in_the_session(self, geo, chat):
@@ -53,7 +53,7 @@ class TestWhatItCatches:
     def test_approval_of_some_other_wording(self, geo, chat):
         chat(SESSION, _turns(agent_text=f"proposing something else\n{TOKEN}"))
         check = verify_gate(geo, _gate(), LINE)
-        assert check.verdict is GateVerdict.CONTRADICTED
+        assert check.verdict is GateVerdict.INVALID
         assert "verbatim" in check.detail
 
     def test_the_agent_turn_must_carry_the_token_too(self, geo, chat):
@@ -62,8 +62,8 @@ class TestWhatItCatches:
 
 
 class TestDegradation:
-    def test_an_absent_archive_is_unverifiable_not_failed(self, geo, chat):
+    def test_an_absent_archive_is_unavailable_not_invalid(self, geo, chat):
         chat("other-session", _turns())
         check = verify_gate(geo, _gate(), LINE)
-        assert check.verdict is GateVerdict.UNVERIFIABLE
+        assert check.verdict is GateVerdict.UNAVAILABLE
         assert not check.failed

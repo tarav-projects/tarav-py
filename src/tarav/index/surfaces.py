@@ -18,16 +18,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from tarav.index_model.nodes import BlockHeading, KernelLine
-from tarav.index_model.parser import parse_index_file
+from tarav.index_model.parser import parse_depot, parse_index_file
 
-from .authority import (
-    AGENT_HOME_NAME,
-    DEFAULT_USER_HOME,
-    HOMES_DIR_NAME,
-    )
 from .config import Geography, TaravIndexError
 from .record.identity import split_statement
 from .record.store import normalize_label
@@ -39,17 +34,7 @@ SKW_SURFACE_PREFIX = "skw:"
 
 HOMES_FILE = "homes.json"
 HOMES_SCHEMA = "tarav.homes.v1"
-
-HEAD_SURFACES_FILE = "head-surfaces.json"
-HEAD_SURFACES_SCHEMA = "tarav.head-surfaces.v1"
-
-#: A user home is promoted material throughout. Appendix is depth rather than current
-#: design, but depth someone landed there is still promoted — the folder says how deep a
-#: line reads, not whether it stands.
-DEFAULT_HEAD_PATTERNS: tuple[str, ...] = (
-    "skills/*/homes/*/chapters/*.md",
-    "skills/*/homes/*/appendix/*.md",
-)
+DEFAULT_USER_HOME = "ceo"
 
 
 class SurfaceError(TaravIndexError):
@@ -77,8 +62,14 @@ class SurfaceLine:
         return self.line_type is not None
 
 
-def _depot_and_chapter(surface: str) -> tuple[str, str]:
-    """`skills/<depot>/homes/<home>/chapters/NNN-<chapter>.md` → (depot, chapter)."""
+def _depot_and_chapter(path: Path, surface: str) -> tuple[str, str]:
+    """Derive a block address from the nearest structurally marked Index depot."""
+
+    for parent in path.parents:
+        if (parent / ROUTER_NAME).is_file():
+            relative = path.relative_to(parent)
+            chapter = relative.parts[0] if len(relative.parts) > 1 else path.stem
+            return parent.name, chapter
 
     parts = Path(surface).parts
     depot = parts[1] if len(parts) > 1 else "unknown"
@@ -96,7 +87,7 @@ def read_block_lines(path: Path, surface: str, *, kind: str = "chapter") -> list
     """
 
     document = parse_index_file(path, surface_kind=kind)
-    depot, chapter = _depot_and_chapter(surface)
+    depot, chapter = _depot_and_chapter(path, surface)
     lines: list[SurfaceLine] = []
     concept = ""
 
@@ -159,6 +150,10 @@ def surface_kind_for(surface: str) -> str:
         return "skw"
     if "/appendix/" in surface:
         return "appendix"
+    if "/agendix/" in surface:
+        return "agendix"
+    if "/issues/" in surface:
+        return "issues"
     return "chapter"
 
 
@@ -177,8 +172,9 @@ def resolve_surface_path(surface: str, root: Path) -> Path:
     return root / surface
 
 
-# $kw: --from Skw.Touched.Index --note [DC] markdown chapters and skw-annotated code are discovered by the one pass, because index lines attach to any skw annotation through the same mechanism as the markdown index ^c20260729-173u
+# $kw: Index.Evaluator/Surface.Discovery --from Skw.Touched.Index --note [DC] markdown chapters and skw-annotated code are discovered by the one pass, because index lines attach to any skw annotation through the same mechanism as the markdown index ^c20260729-173u
 # --note [CT] a surface outside these patterns is not reported as unchecked, it is absent from the run — discovery scope sits upstream of every verdict ^c20260819-25u
+# --note [DC] The default Index evaluator derives project identity from .tarav/project.json and resolves evidence and surfaces structurally, without evaluator manifests. ^c20260821-1u
 def discover_surfaces(scopes: Geography, root: Path) -> list[str]:
     """Every index surface reachable in this project, recorded or not.
 
@@ -188,57 +184,51 @@ def discover_surfaces(scopes: Geography, root: Path) -> list[str]:
 
     surfaces: list[str] = []
 
-    skills = root / "skills"
-    if skills.exists():
-        for pattern in ("*/homes/*/chapters/*.md", "*/homes/*/appendix/*.md"):
-            surfaces.extend(str(p.relative_to(root)) for p in sorted(skills.glob(pattern)))
-
-    for python in sorted(root.rglob("*.py")):
-        relative = python.relative_to(root)
+    for router in sorted(root.rglob(ROUTER_NAME)):
+        relative = router.relative_to(root)
         if any(
-            part in {".venv", "__pycache__", "node_modules", ".git", "_DEPRECATED"}
+            part in {".venv", "node_modules", ".git", "_DEPRECATED"}
             for part in relative.parts
         ):
             continue
-        try:
-            if "$kw:" in python.read_text("utf-8", errors="ignore"):
+        depot = parse_depot(router.parent)
+        surfaces.extend(
+            str(document.path.relative_to(root))
+            for document in depot.documents
+            if document.path is not None and document.path.name != ROUTER_NAME
+        )
+
+    # Code is not a self-discovering Index corpus. Skillware owns the configured
+    # host-language floor and adapts each selected file through Tarav's native
+    # surface parser. Index consumes that model; it neither globs Python nor
+    # recognizes `$kw` machinery independently.
+    from tarav.skillware._build_core import SkillwareError, load_project_skw_config
+    from tarav.skillware._code_surfaces import (
+        DEFAULT_CODE_BACKENDS,
+        expand_code_surfaces,
+    )
+
+    try:
+        config = load_project_skw_config(root)
+        targets = expand_code_surfaces(
+            root,
+            config.code_surfaces,
+            backends=DEFAULT_CODE_BACKENDS,
+        )
+        for target in targets:
+            backend = DEFAULT_CODE_BACKENDS.get(target.language)
+            if backend is None:  # guarded by expand_code_surfaces
+                continue
+            model = backend.model(
+                target.path.read_text(encoding="utf-8", errors="replace")
+            )
+            if model.annotations.machinery_spans:
+                relative = target.path.relative_to(root)
                 surfaces.append(f"{SKW_SURFACE_PREFIX}{relative}")
-        except OSError:
-            continue
+    except (OSError, SkillwareError) as exc:
+        raise SurfaceError(f"cannot discover configured Skw surfaces: {exc}") from exc
 
-    return surfaces
-
-
-# $kw: --from Index.Head.Surface --note [DF] this set states what has been promoted, and a line is in the HEAD if it is on one of these ^c20260819-25u
-# --note [DC] it is project-tier declared state rather than inferred from a path, so widening the trust root is a diff a human reads ^c20260818-2u
-@dataclass(frozen=True, slots=True)
-class HeadSurfaces:
-    """Which surfaces carry the index HEAD.
-
-    A line is in the HEAD if it is on a `HEAD.Surface` — that is what *promoted* means,
-    stated positively. Nothing on a record says "I am current design"; the standing comes
-    from where the line actually is, which git tracks and a reader can diff.
-
-    That makes this set the **trust root**, so it is declared project-tier state rather than
-    inferred from a path. Inferred, an agent would make anything current design by creating a
-    file; declared, widening it is a diff a human reads.
-    """
-
-    patterns: tuple[str, ...] = DEFAULT_HEAD_PATTERNS
-
-    def contains(self, surface: str) -> bool:
-        if surface.startswith(SKW_SURFACE_PREFIX):
-            return False
-        path = PurePosixPath(surface)
-        if f"{HOMES_DIR_NAME}/{AGENT_HOME_NAME}" in surface:
-            # The agent home is where unpromoted material lives, so it is never a
-            # HEAD.Surface. Promotion means moving the line to a home that carries
-            # promoted content, and that move is what the landing gate licenses.
-            return False
-        return any(path.match(pattern) for pattern in self.patterns)
-
-    def to_json(self) -> dict[str, object]:
-        return {"schema": HEAD_SURFACES_SCHEMA, "patterns": list(self.patterns)}
+    return sorted(set(surfaces))
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,40 +281,9 @@ def scope_home(scope: LineScope, root: Path) -> str | None:
     return None
 
 
-def head_surfaces_path(geo: Geography) -> Path:
-    return geo.project_tier / HEAD_SURFACES_FILE
-
-
-# $kw: --from Index.Line.Record.Model --note [DC] HEAD patterns are project-local declarations; LineRecords remain in the one record depot
-def load_head_surfaces(geo: Geography) -> HeadSurfaces:
-    """Read the declaration, falling back to the default so a fresh project still works."""
-
-    path = head_surfaces_path(geo)
-    if not path.exists():
-        return HeadSurfaces()
-    try:
-        payload = json.loads(path.read_text("utf-8"))
-        patterns = tuple(str(p) for p in payload.get("patterns", ()))
-    except (OSError, ValueError):
-        raise SurfaceError(f"malformed HEAD.Surface declaration at {path}") from None
-    return HeadSurfaces(patterns=patterns or DEFAULT_HEAD_PATTERNS)
-
-
-def write_head_surfaces(geo: Geography, patterns: tuple[str, ...] | None = None) -> Path:
-    """Declare the HEAD.Surface set. Idempotent; `init` calls it with the default."""
-
-    declared = HeadSurfaces(patterns=patterns or DEFAULT_HEAD_PATTERNS)
-    path = head_surfaces_path(geo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(declared.to_json(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    return path
-
-
 @dataclass(frozen=True, slots=True)
 class ProjectIndex:
-    """One depot rooted at ``skills/<depot>/``."""
+    """One structurally marked depot rooted at ``skills/<depot>/``."""
 
     root: Path
     depot: str
@@ -336,15 +295,15 @@ class ProjectIndex:
 
     @property
     def home_root(self) -> Path:
-        return self.depot_root / "homes" / self.home
+        return self.depot_root
 
     @property
     def chapters_dir(self) -> Path:
-        return self.home_root / "chapters"
+        return self.depot_root / DEFAULT_CHAPTER
 
     @property
     def appendix_dir(self) -> Path:
-        return self.home_root / "appendix"
+        return self.depot_root / "appendix"
 
     def chapter_path(self, chapter: str = DEFAULT_CHAPTER) -> Path:
         matches = sorted(self.chapters_dir.glob(f"*-{chapter}.md"))
@@ -355,33 +314,22 @@ class ProjectIndex:
 
         self.chapters_dir.mkdir(parents=True, exist_ok=True)
         self.appendix_dir.mkdir(parents=True, exist_ok=True)
-        agent_home = self.depot_root / "homes" / "agent"
-        agent_home.mkdir(parents=True, exist_ok=True)
-        marker = agent_home / ".tarav.index"
+        marker = self.depot_root / ROUTER_NAME
         if not marker.exists():
-            marker.write_text(
-                "# agent home\n"
-                "# serialized only: the Agent.Chromosome carries no authored prose surfaces\n",
-                encoding="utf-8",
-            )
+            marker.write_text(f"# {self.depot} Index\n", encoding="utf-8")
         return self.depot_root
 
 
 __all__ = [
     "DEFAULT_CHAPTER",
-    "DEFAULT_HEAD_PATTERNS",
-    "HEAD_SURFACES_FILE",
     "ROUTER_NAME",
     "SKW_SURFACE_PREFIX",
-    "HeadSurfaces",
     "Homes",
     "ProjectIndex",
     "SurfaceError",
     "SurfaceLine",
     "discover_surfaces",
-    "head_surfaces_path",
     "homes_path",
-    "load_head_surfaces",
     "load_homes",
     "read_annotation_lines",
     "read_block_lines",
@@ -389,5 +337,4 @@ __all__ = [
     "resolve_surface_path",
     "scope_home",
     "surface_kind_for",
-    "write_head_surfaces",
 ]

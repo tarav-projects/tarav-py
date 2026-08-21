@@ -76,6 +76,15 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   model and builds the single JSON-serializable `Index.Linter.Run` document.
   Text and JSON renderers consume that document; neither reruns selection,
   class aggregation, or occurrence limiting.
+- Index linting resolves one required project through `.tarav/project.json`, discovers
+  native depots from their `000-INDEX.md` routers, and consumes annotated code exclusively
+  from the typed `code_surfaces` selected by the project's `.skw/skw.json`. Skillware adapts
+  those files through Tarav's native surface parsers; Index never performs its own language
+  globbing or annotation recognition. Chat evidence is selected by typed references. No
+  cwd-local HEAD or touch-authority manifest participates in a verdict.
+- `tarav.index.capture` consumes that same discovered `SurfaceLine` model for Markdown and
+  SKW hosting kinds, verifies grounded attachment triplets, and materializes missing
+  `LineRecord`s without inventing a second annotation-specific record path.
 - Markdown normalization is also consumed at parser boundaries by
   `agentos.stdlib.mdblocks`, `agentos.index.model`, and Chatlas Index-audit
   extraction. Separators, Index nodes, anchors, and lint policy remain in those

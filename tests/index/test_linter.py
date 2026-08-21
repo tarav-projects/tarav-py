@@ -6,8 +6,8 @@ from tarav.index.gates import GateRef
 from tarav.index.linter import CHECK_REGISTRY, LintError, bless, lint, select_checks
 from tarav.index.record import IndexStore, LineRecord, SupportRef
 
-SURFACE = "skills/tarav-pkg/homes/ceo/chapters/100-design.md"
-APPENDIX = "skills/tarav-pkg/homes/ceo/appendix/900-depth.md"
+SURFACE = "skills/tarav-pkg/design/100-design.md"
+APPENDIX = "skills/tarav-pkg/appendix/Index.Depth-appendix.md"
 BLOCK = "tarav-pkg/design#Index.WIP.Surface"
 
 CHAPTER = """****
@@ -21,6 +21,11 @@ CHAPTER = """****
 
 
 def _surface(project_root, *lines: str, at: str = SURFACE):
+    depot = project_root / "skills" / "tarav-pkg"
+    depot.mkdir(parents=True, exist_ok=True)
+    router = depot / "000-INDEX.md"
+    if not router.exists():
+        router.write_text("# test Index\n", encoding="utf-8")
     path = project_root / at
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(CHAPTER.format(lines="\n".join(lines)), encoding="utf-8")
@@ -91,7 +96,7 @@ class TestTheBar:
         _surface(
             project_root,
             "- [DF] duplicate alias block",
-            at="skills/tarav-pkg/homes/agent/chapters/100-design.md",
+            at="skills/tarav-pkg/design/200-design.md",
         ).write_text(
             """****
 
@@ -111,7 +116,7 @@ class TestTheBar:
         )
         assert finding.subject == "Alias.Name"
         assert finding.operands["canonical"] == "Canonical.Name"
-        assert finding.surface == "skills/tarav-pkg/homes/agent/chapters/100-design.md"
+        assert finding.surface == "skills/tarav-pkg/design/200-design.md"
 
     def test_an_alias_without_a_second_block_is_clean(self, geo, project_root):
         depot = project_root / "skills" / "tarav-pkg"
@@ -268,21 +273,11 @@ class TestHeadSurface:
         )
         assert "Index.Linter/Landing.Unevidenced" in _classes(lint(geo))
 
-    def test_the_head_surface_set_is_declared_not_inferred(self, geo, project_root):
-        from tarav.index.surfaces import load_head_surfaces, write_head_surfaces
+    def test_the_live_surface_cut_is_structurally_discovered(self, geo, project_root):
+        _surface(project_root, "- [CT] live ^c20260818-1u", at=APPENDIX)
+        from tarav.index.surfaces import discover_surfaces
 
-        write_head_surfaces(geo, ("skills/*/homes/*/appendix/*.md",))
-        head = load_head_surfaces(geo)
-        assert head.contains(APPENDIX)
-        assert not head.contains(SURFACE)
-
-    def test_the_agent_home_is_never_a_head_surface(self, geo, project_root):
-        from tarav.index.surfaces import HeadSurfaces, write_head_surfaces
-
-        write_head_surfaces(geo, ("skills/*/homes/*/chapters/*.md",))
-        head = HeadSurfaces(("skills/*/homes/*/chapters/*.md",))
-        assert head.contains(SURFACE)
-        assert not head.contains("skills/tarav-pkg/homes/agent/chapters/100-design.md")
+        assert APPENDIX in discover_surfaces(geo, project_root)
 
     def test_a_superseded_wording_on_a_head_surface_is_reported(self, geo, project_root):
         store = IndexStore(geo)
@@ -364,7 +359,8 @@ class TestSupport:
 
 
 class TestBless:
-    def test_a_blessed_finding_leaves_the_report(self, geo, project_root):
+    def test_a_blessed_finding_leaves_the_report(self, geo, project_root, chat):
+        chat("s1", [("user-turn", "user", "tok"), ("agent-turn", "agent", "tok")])
         _surface(project_root, "- an untyped assertion ^c20260818-1u")
         finding = next(
             f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
@@ -478,7 +474,9 @@ class TestGateVerification:
         chat("s1", [("agent-turn", "agent", "no token here"), ("user-turn", "user", "ok")])
         _landed(project_root, geo)
         finding = next(
-            f for f in lint(geo).findings if f.poi_class == "Index.Linter/Gate.Contradicted"
+            f
+            for f in lint(geo).findings
+            if f.poi_class == "Index.Linter/Gate.Evidence.Invalid"
         )
         assert finding.operands["gate"] == "landing"
         assert "token" in finding.operands["reason"]
@@ -489,11 +487,7 @@ class TestGateVerification:
             [("agent-turn", "agent", "proposing fine\ntok"), ("user-turn", "user", "::approve tok")],
         )
         _landed(project_root, geo)
-        assert "Index.Linter/Gate.Contradicted" not in _classes(lint(geo))
-
-    def test_an_absent_archive_reports_nothing(self, geo, project_root):
-        _landed(project_root, geo)
-        assert "Index.Linter/Gate.Contradicted" not in _classes(lint(geo))
+        assert "Index.Linter/Gate.Evidence.Invalid" not in _classes(lint(geo))
 
 
 class TestBlessingEvidence:
@@ -511,7 +505,7 @@ class TestBlessingEvidence:
         with pytest.raises(TypeError):
             bless(geo, "deadbeef")
 
-    def test_a_contradicted_gate_revokes_the_blessing(self, geo, project_root, chat):
+    def test_an_invalid_gate_revokes_the_blessing(self, geo, project_root, chat):
         """An agent cannot silence its own finding with a file it writes itself."""
         chat("s1", [("agent-turn", "agent", "nothing"), ("user-turn", "user", "nothing")])
         _surface(project_root, "- an untyped assertion ^c20260818-1u")
@@ -523,13 +517,15 @@ class TestBlessingEvidence:
         assert finding.identity in {f.identity for f in after.findings}
         assert "Index.Linter/Blessing.Unevidenced" in _classes(after)
 
-    def test_an_unverifiable_gate_still_silences(self, geo, project_root):
+    def test_an_unavailable_gate_does_not_silence(self, geo, project_root):
         _surface(project_root, "- an untyped assertion ^c20260818-1u")
         finding = next(
             f for f in lint(geo).findings if f.poi_class == "Index.Linter/Line.Untyped"
         )
         bless(geo, finding.identity, _gate())
-        assert finding.identity not in {f.identity for f in lint(geo).findings}
+        after = lint(geo)
+        assert finding.identity in {f.identity for f in after.findings}
+        assert "Index.Linter/Blessing.Unevidenced" in _classes(after)
 
 
 class TestResolutions:
@@ -562,10 +558,17 @@ class TestTheEstimator:
         result = next(r for r in lint(geo).blocked_checks if r.name == "coverage-converges")
         assert result.reason and "git" in result.reason
 
-    def test_an_unverifiable_gate_is_blocked_not_silent(self, geo, project_root):
+    def test_an_unavailable_gate_is_blocked_not_silent(self, geo, project_root):
         _landed(project_root, geo)
         classes = {f.poi_class for f in lint(geo).blocked}
-        assert "Index.Linter/Gate.Unverifiable" in classes
+        assert "Index.Linter/Gate.Evidence.Unavailable" in classes
+        finding = next(
+            finding
+            for finding in lint(geo).blocked
+            if finding.poi_class == "Index.Linter/Gate.Evidence.Unavailable"
+        )
+        assert finding.operands["archive"] == "chat"
+        assert "archive unavailable" in finding.operands["reason"]
 
     def test_a_verified_project_says_so(self, geo, project_root, chat):
         """With the archive present and git tracking, nothing is left unchecked."""
@@ -714,7 +717,7 @@ class TestDevLane:
         assert not lint(geo).is_dev
 
     def test_the_dev_gate_relaxes_touch_and_nothing_else(self, geo, project_root):
-        """A forged token stays contradicted in the dev lane.
+        """A forged token stays invalid in the dev lane.
 
         The dev gate drops only `carries_touch`. Token round-trip and verbatim
         containment still hold, so a gate that did not happen is still caught.
@@ -728,8 +731,8 @@ class TestDevLane:
         report = lint(geo, dev=True)
         raised = {f.poi_class for f in (*report.findings, *report.blocked)}
         assert raised & {
-            "Index.Linter/Gate.Contradicted",
-            "Index.Linter/Gate.Unverifiable",
+            "Index.Linter/Gate.Evidence.Invalid",
+            "Index.Linter/Gate.Evidence.Unavailable",
         }
 
 
@@ -804,7 +807,7 @@ def test_check_scope_follows_through_a_module_local_helper() -> None:
 
     `gate-verifies` and `gate-verifies-dev` are two-line wrappers over one shared body;
     reading only the wrapper called both corpus-scoped and dropped every
-    `Gate.Contradicted` finding from targeted runs.
+    `Gate.Evidence.Invalid` finding from targeted runs.
     """
 
     from tarav.index.linter import CHECK_REGISTRY

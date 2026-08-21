@@ -9,6 +9,9 @@ inputs to evaluation. Preserve the shared record depot and the concurrent report
 Configurable Index composition, record-level project ownership, and a richer structural HEAD
 model remain later design work. This slice establishes the deterministic default they can extend.
 
+**Parked follow-up.** [CT] Every Tarav linter `POI.Class` requires an individual semantic
+review; corpus counts prove execution, not correctness. ^c20260821-6u
+
 ## Impl.Index
 
 - [CT] `tarav index linter` requires `--project`; a bare flag selects the current directory and
@@ -47,10 +50,32 @@ model remain later design work. This slice establishes the deterministic default
 - Run focused tests, then the Index and full suites as proportionate.
 - Audit the working tree without rewriting concurrent edits.
 
+### Slice 4 — capture hosted lines through one record model
+
+- Treat grounded SKW notes and native Markdown lines as the same `SurfaceLine` input.
+- Add `index capture preview|land --project [PATH] [--label ...]` to verify each Anchory
+  dossier's exact typed attachment and user-message support before constructing a record.
+- Make an explicitly selected capture batch write nothing when any selected line is
+  unresolved or contradictory; never partially land a requested batch.
+- Reconcile the grounded implementation annotations created by this requirement and resolve
+  their resulting records back through the CLI.
+
 ## Impl.Log
 
 - [TS] Execution of Impl.Req 739 is authorized by the tarav-hugentics implementation invocation.
   ^c20260821-5u
 - [OBS] The target worktree already contained concurrent Index report, CLI, linter, surface, and
   test edits before this requirement was created; they are shared state and must be preserved.
-
+- [OBS] The first real run exposed a stored canonical typed scope
+  (`Natural.Placement::Skills`) that the legacy `LineScope` regex rejected. The scope grammar
+  now accepts canonical double-colon type parameters.
+- [TS] Focused Index/CLI suite: 196 passed. Full suite: 2,159 passed. Ruff: clean.
+- [TS] Real `tarav-md` targeted runs from `tarav-py` and `tarav-md` resolved the same project,
+  3,998 records, 92 surfaces, 3,195 surface lines, checks, classes, and POI instances; only
+  elapsed time varied. Full corpus execution completed in 122.956 seconds.
+- [TS] The capture audit initially found grounded code annotations without records. The new
+  bounded capture path landed five records (`^c20260821-0u`, `-1u`, `-3u`, `-6u`, `-7u`);
+  a selected preview now reports all five existing with zero unresolved items or conflicts.
+- [TS] Post-capture focused Index/CLI suite: 200 passed. Ruff: clean. Hugentics Skillware
+  build regenerated `references/capture.md`; its own target is current, while eight unrelated
+  pre-existing package POIs remain visible.

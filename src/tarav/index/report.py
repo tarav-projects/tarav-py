@@ -120,6 +120,8 @@ def build_linter_document(
         "schema_version": 1,
         "status": _run_status(report),
         "execution": {
+            "project_id": report.project_id,
+            "project_root": report.project_root,
             "elapsed_ms": report.elapsed_ms,
             "records_loaded": report.records_loaded,
             "records_checked": report.records_checked,
@@ -167,6 +169,7 @@ def render_linter_text(document: Mapping[str, object]) -> str:
         f"INDEX LINTER{lane} — {status} — {execution['elapsed_ms']} ms",
         "",
         "Execution",
+        f"  project {execution['project_id']}  {execution['project_root']}",
         (
             f"  loaded {execution['surface_files_loaded']} surface file(s), "
             f"{execution['surface_lines_loaded']} surface line(s), "
@@ -310,7 +313,7 @@ def _run_status(report: LintReport) -> str:
     if report.findings:
         return "failed"
     if report.blocked or report.blocked_checks:
-        return "unverifiable"
+        return "blocked"
     return "verified"
 
 

@@ -10,14 +10,14 @@ Four standings, on four independent axes:
 
 ```text
 Trace.HEAD       within a trace     which version of this line is current
-Index standing   across surfaces    whether this claim is on a HEAD.Surface
+Index standing   across surfaces    whether this claim is on the live Index surface cut
 Review standing  per trace          reviewed directly, via the trace, or not at all
 Review side      per trace          the agent/user split, derived from review evidence
 ```
 
 The index axis is the one that changed shape. It used to read a `supersedes` field, which
 demoted a whole trace on an agent's say-so. It now reads **where the line actually is**: a
-line is in the HEAD if it sits on a declared `HEAD.Surface`. Presence says what is; the
+line is in the HEAD if it sits on the structurally discovered live surface cut. Presence says what is; the
 landing gate says what licensed it; the linter reports every mismatch between the two.
 """
 
@@ -28,15 +28,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from .record.model import LineRecord
-from .surfaces import HeadSurfaces, SurfaceLine
+from .surfaces import SurfaceLine
 
 
 class IndexStanding(StrEnum):
     """Whether a claim is current design. Both values are well grounded."""
 
-    #: On a declared `HEAD.Surface` — promoted.
+    #: On a live Index surface — promoted.
     HEAD = "head"
-    #: Recorded, but on no HEAD.Surface. Old design, still grounded.
+    #: Recorded, but on no live Index surface. Old design, still grounded.
     TAIL = "tail"
 
 
@@ -141,9 +141,8 @@ def build_traces(records: Iterable[LineRecord]) -> dict[str, Trace]:
 def lines_on_head_surfaces(
     records: Iterable[LineRecord],
     surface_lines: Mapping[str, Sequence[SurfaceLine]],
-    head: HeadSurfaces,
 ) -> set[str]:
-    """The ids of records observed on a declared `HEAD.Surface`.
+    """The ids of records observed on the structurally discovered live surface cut.
 
     Read off a scan of the surfaces rather than a field on the record, because a stored list
     of "surfaces I am on" is a cache of something the filesystem already answers — and a
@@ -153,8 +152,6 @@ def lines_on_head_surfaces(
     by_label = {r.line.label: r.id for r in records if r.line.label}
     found: set[str] = set()
     for surface, lines in surface_lines.items():
-        if not head.contains(surface):
-            continue
         for line in lines:
             line_id = by_label.get(line.label or "")
             if line_id is not None:
@@ -204,7 +201,7 @@ def standings(
     """Derive every standing in one pass.
 
     ``head_lines`` comes from a surface scan. With no scan every entry derives TAIL, which is
-    the honest reading: nothing was observed on a HEAD.Surface.
+    the honest reading: nothing was observed on a live Index surface.
     """
 
     materialized = list(records)

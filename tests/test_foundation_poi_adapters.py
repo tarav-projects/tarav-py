@@ -138,7 +138,10 @@ def test_index_poi_classes_resolve_to_their_emitting_code() -> None:
         project_root=Path(__file__).resolve().parents[1]
     )
     expected_hosts = {
-        "Index.Linter/Gate.Unverifiable": "_gate_unverifiable_finding",
+        "Index.Linter/Gate.Evidence.Invalid": "_gate_evidence_invalid_finding",
+        "Index.Linter/Gate.Evidence.Unavailable": (
+            "_gate_evidence_unavailable_finding"
+        ),
         "Index.Linter/Support.LegacyCoordinate": (
             "_support_legacy_coordinate_finding"
         ),

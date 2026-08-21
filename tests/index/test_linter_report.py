@@ -35,6 +35,8 @@ def _report() -> LintReport:
         surface_files_loaded=2,
         surface_lines_checked=8,
         elapsed_ms=125.5,
+        project_id="11111111-1111-4111-8111-111111111111",
+        project_root="/tmp/project",
     )
 
 
@@ -44,6 +46,8 @@ def test_document_keeps_complete_classes_while_limiting_instances() -> None:
     assert document["class"] == "Index.Linter.Run"
     assert document["status"] == "failed"
     assert document["execution"] == {
+        "project_id": "11111111-1111-4111-8111-111111111111",
+        "project_root": "/tmp/project",
         "elapsed_ms": 125.5,
         "records_loaded": 10,
         "records_checked": 4,
@@ -126,6 +130,22 @@ def test_instance_filters_do_not_narrow_class_summary_or_run_verdict() -> None:
         "poi_ids": [selected_id],
         "statuses": ["blocked"],
     }
+
+
+def test_a_run_with_only_unavailable_evidence_is_blocked_not_failed_or_passed() -> None:
+    report = _report()
+    document = build_linter_document(
+        replace(
+            report,
+            findings=(),
+            blessed=(),
+            results=(CheckResult("gate-verifies", Status.BLOCKED, "unavailable"),),
+        ),
+        limit=20,
+    )
+
+    assert document["status"] == "blocked"
+    assert document["poi_instances"]["items"][0]["status"] == "blocked"
 
 
 def test_one_stable_poi_identity_renders_once_with_every_observation() -> None:

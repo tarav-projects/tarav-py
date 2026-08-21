@@ -10,12 +10,11 @@ from tarav.index.standing import (
     lines_on_head_surfaces,
     standings,
 )
-from tarav.index.surfaces import HeadSurfaces, SurfaceLine
+from tarav.index.surfaces import SurfaceLine
 
 BLOCK = "d/design#C"
-HEAD_SURFACE = "skills/d/homes/ceo/chapters/100-design.md"
-APPENDIX_SURFACE = "skills/d/homes/ceo/appendix/900-depth.md"
-OTHER_SURFACE = "skills/d/homes/agent/chapters/100-design.md"
+HEAD_SURFACE = "skills/d/design/100-design.md"
+APPENDIX_SURFACE = "skills/d/appendix/Depth-appendix.md"
 
 
 def _line(body="a claim", **kw):
@@ -41,9 +40,7 @@ def _surface_line(record):
 def _on(surface, *records):
     """The head-line set implied by putting these records on one surface."""
 
-    return lines_on_head_surfaces(
-        records, {surface: [_surface_line(r) for r in records]}, HeadSurfaces()
-    )
+    return lines_on_head_surfaces(records, {surface: [_surface_line(r) for r in records]})
 
 
 class TestTraceHead:
@@ -88,7 +85,7 @@ class TestIndexStanding:
 
     def test_a_line_on_no_head_surface_is_tail(self):
         line = _line().relabel("^c20260819-19u")
-        derived = standings([line], head_lines=_on(OTHER_SURFACE, line))
+        derived = standings([line], head_lines=set())
         assert derived[line.id].index is IndexStanding.TAIL
 
     def test_a_user_home_appendix_is_a_head_surface(self):

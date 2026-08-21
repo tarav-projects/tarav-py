@@ -1,17 +1,17 @@
-# $kw: --from Usage.Surface --note [CT] no write commands: agents edit surfaces, the linter checks them
+# $kw: --from Usage.Surface --note [CT] agents edit surfaces directly; capture reconciles grounded surface lines into the record model and the linter checks conformance
 # --note [PR] Agents escalate with named selectors for check, POI class, POI instance, record, label, and status. ^c20260820-17u
 """The index command set.
 
-Shaped after `tarav`: **grouped, read-and-lint**. There is deliberately no capture, edit,
-land, or adopt command — agents edit the markdown surfaces with ordinary file primitives, and
-`tarav index linter` checks conformance afterwards.
+Shaped after `tarav`: **grouped, surface-authored, and linted**. Agents edit Markdown and SKW
+surfaces with ordinary file primitives. `index capture preview|land` reconciles grounded lines
+into `LineRecord`s; `index linter` checks conformance afterwards.
 
 The only writes here are the ones markdown editing genuinely cannot do by hand: minting an
 anchor, writing a record, and accepting a POI.
 
     tarav index init | config | session | messages
     tarav index blocks | lines | record | write | revise | trace | gate |
-                import | remove | resolve | linter | bless | explain
+                import | remove | resolve | capture | linter | bless | explain
 """
 
 from __future__ import annotations
@@ -21,11 +21,12 @@ import json
 import sys
 from pathlib import Path
 
+from tarav._core.project import require_explicit_agentos_project
 from tarav.poi import reference_sugar, tarav_poi_class_reference
 
-from .authority import ManifestRegistry
 from .chatlas import load_session
-from .config import Geography, TaravIndexError, resolve_geography
+from .capture import capture_surface_lines
+from .config import Geography, TaravIndexError, find_user_root, resolve_geography
 from .gates import GateRef
 from .importer import import_depot
 from .linter import BAR_CHECKS, CHECK_REGISTRY, bless, lint
@@ -43,16 +44,46 @@ from .standing import (
 from .surfaces import (
     ProjectIndex,
     discover_surfaces,
-    load_head_surfaces,
     read_surface,
     resolve_surface_path,
-    write_head_surfaces,
 )
 
 
 def _geo(args: argparse.Namespace) -> Geography:
     start = Path(args.project).expanduser() if getattr(args, "project", None) else None
     return resolve_geography(start)
+
+
+# $kw: Index.Evaluator/Project.Selection --from Agentos.Project --note [CT] tarav index linter requires --project; a bare flag selects the current directory and an omitted flag is an error. ^c20260821-0u
+def _explicit_index_geo(args: argparse.Namespace, command_name: str) -> Geography:
+    project = require_explicit_agentos_project(
+        project=args.project,
+        command_name=command_name,
+        include_init_hint=False,
+    )
+    return Geography(
+        project_root=project.root,
+        user_root=find_user_root(),
+        project_id=project.project_id,
+    )
+
+
+def _linter_geo(args: argparse.Namespace) -> Geography:
+    return _explicit_index_geo(args, "tarav index linter")
+
+
+# $kw: Index.Evaluator/Project.Selection --note [CT] a command carries --project when its answer or its write target depends on the project; one that reads only the shared depot deliberately does not
+def _add_project_option(parser: argparse.ArgumentParser) -> None:
+    """Declare the evaluator's project on one command, named rather than inferred."""
+
+    parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        required=True,
+        help="required project root; omit the value to use the current directory",
+    )
 
 
 def _emit(payload: object) -> None:
@@ -74,7 +105,7 @@ def _derive(geo: Geography) -> dict[str, Standing]:
         surface: read_surface(resolve_surface_path(surface, geo.project_root), surface)
         for surface in discover_surfaces(geo, geo.project_root)
     }
-    head_lines = lines_on_head_surfaces(records, surface_lines, load_head_surfaces(geo))
+    head_lines = lines_on_head_surfaces(records, surface_lines)
     return standings(records, head_lines=head_lines)
 
 
@@ -108,8 +139,6 @@ def _gate_from(args: argparse.Namespace) -> GateRef:
 def cmd_init(args: argparse.Namespace) -> int:
     geo = _geo(args)
     geo.ensure_project_tier()
-    manifests = ManifestRegistry(geo).bootstrap()
-    head_path = write_head_surfaces(geo)
 
     if args.depot:
         ProjectIndex(geo.project_root, args.depot).ensure_layout()
@@ -117,8 +146,6 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"project state  {geo.project_tier}")
     print(f"user state     {geo.user_tier}")
     print(f"record depot   {geo.index_depot}")
-    print(f"manifests      {', '.join(m.surface_type for m in manifests)}")
-    print(f"HEAD surfaces  {head_path.name}")
     if args.depot:
         print(f"depot          skills/{args.depot}")
     return 0
@@ -228,7 +255,7 @@ def cmd_index_blocks(args: argparse.Namespace) -> int:
 def cmd_index_lines(args: argparse.Namespace) -> int:
     """Index lines as they appear on surfaces, independent of the store."""
 
-    geo = _geo(args)
+    geo = _explicit_index_geo(args, "tarav index lines")
     root = geo.project_root
     surfaces = [args.surface] if args.surface else discover_surfaces(geo, root)
     total = 0
@@ -250,7 +277,7 @@ def cmd_index_lines(args: argparse.Namespace) -> int:
 
 
 def cmd_index_record(args: argparse.Namespace) -> int:
-    geo = _geo(args)
+    geo = _explicit_index_geo(args, "tarav index record")
     store = IndexStore(geo)
     if args.record_id:
         record = store.get(args.record_id)
@@ -357,7 +384,7 @@ def cmd_index_revise(args: argparse.Namespace) -> int:
     The equivalence claim is recorded, not implied — it is the one step no machine can check.
     """
 
-    geo = _geo(args)
+    geo = _explicit_index_geo(args, "tarav index revise")
     store = IndexStore(geo)
     previous = store.get(args.record_id)
     successor = previous.successor(
@@ -385,7 +412,7 @@ def cmd_index_revise(args: argparse.Namespace) -> int:
 
 
 def cmd_index_trace(args: argparse.Namespace) -> int:
-    geo = _geo(args)
+    geo = _explicit_index_geo(args, "tarav index trace")
     store = IndexStore(geo)
     members = store.by_trace(args.trace_id)
     if not members:
@@ -448,7 +475,7 @@ def cmd_index_resolve(args: argparse.Namespace) -> int:
     is still a command away -- `tarav index linter --label` -- and that one is targeted too.
     """
 
-    geo = _geo(args)
+    geo = _explicit_index_geo(args, "tarav index resolve")
     store = IndexStore(geo)
     record = store.by_label(args.label)
     if record is None:
@@ -506,7 +533,7 @@ def cmd_index_import(args: argparse.Namespace) -> int:
     promoted — tarav1's review evidence is not evidence this design can check.
     """
 
-    geo = _geo(args)
+    geo = _explicit_index_geo(args, "tarav index import")
     report = import_depot(
         geo,
         Path(args.depot_root).expanduser().resolve(),
@@ -565,7 +592,7 @@ def _lint_subjects(geo: Geography, args: argparse.Namespace) -> set[str] | None:
 
 
 def cmd_index_linter(args: argparse.Namespace) -> int:
-    geo = _geo(args)
+    geo = _linter_geo(args)
     if args.list_checks:
         for entry in CHECK_REGISTRY:
             state = "dev" if entry.dev else ("on " if entry.default_on else "off")
@@ -589,6 +616,27 @@ def cmd_index_linter(args: argparse.Namespace) -> int:
     return 1 if report.findings else 0
 
 
+def cmd_index_capture(args: argparse.Namespace) -> int:
+    geo = _explicit_index_geo(args, f"tarav index capture {args.capture_command}")
+    report = capture_surface_lines(
+        geo,
+        land=args.capture_command == "land",
+        labels=args.label,
+    )
+    payload = report.to_json()
+    if args.json:
+        _emit(payload)
+    else:
+        print(
+            f"{report.mode}: {len(report.created)} created, {len(report.planned)} planned, "
+            f"{len(report.existing)} existing, {len(report.unresolved)} unresolved, "
+            f"{len(report.conflicts)} conflicts"
+        )
+        for issue in (*report.unresolved, *report.conflicts):
+            print(f"  {issue.label}  {issue.reason}")
+    return 0 if report.clean else 1
+
+
 def cmd_index_bless(args: argparse.Namespace) -> int:
     """Accept one POI on the user's evidence.
 
@@ -596,7 +644,8 @@ def cmd_index_bless(args: argparse.Namespace) -> int:
     decided something. The linter revokes it if the archive contradicts the gate.
     """
 
-    bless(_geo(args), args.poi_id, _gate_from(args))
+    geo = _explicit_index_geo(args, "tarav index bless")
+    bless(geo, args.poi_id, _gate_from(args))
     print(f"blessed {args.poi_id}")
     return 0
 
@@ -695,10 +744,12 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_blocks)
 
     p = index_sub.add_parser("lines", help="index lines as they appear on surfaces")
+    _add_project_option(p)
     p.add_argument("--surface")
     p.set_defaults(func=cmd_index_lines)
 
     p = index_sub.add_parser("record", help="inspect index entries")
+    _add_project_option(p)
     p.add_argument("--record-id")
     p.add_argument("--side", choices=["agent", "user"], help="filter by derived review side")
     p.set_defaults(func=cmd_index_record)
@@ -716,6 +767,7 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p = index_sub.add_parser(
         "revise", help="write a new version of a line into its trace"
     )
+    _add_project_option(p)
     p.add_argument("--record-id", required=True, help="the record edition this revises")
     p.add_argument("--body", required=True)
     p.add_argument("--type")
@@ -726,6 +778,7 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_revise)
 
     p = index_sub.add_parser("trace", help="show one trace and its members")
+    _add_project_option(p)
     p.add_argument("--trace-id", required=True, help="the semantic lineage")
     p.set_defaults(func=cmd_index_trace)
 
@@ -749,10 +802,12 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_gate)
 
     p = index_sub.add_parser("resolve", help="resolve a label to its entry and standing")
+    _add_project_option(p)
     p.add_argument("--label", required=True, help="the public citation")
     p.set_defaults(func=cmd_index_resolve)
 
     p = index_sub.add_parser("import", help="bring a legacy depot into the current layout")
+    _add_project_option(p)
     p.add_argument("--depot-root", required=True, help="path to the tarav1 depot")
     p.add_argument("--depot", help="depot name (defaults to the directory name)")
     p.add_argument("--home", default="agent")
@@ -760,6 +815,7 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_index_import)
 
     p = index_sub.add_parser("linter", help="run conformance checks")
+    _add_project_option(p)
     p.add_argument(
         "--lane", choices=["dev"], default=None,
         help="dev runs the dev lane: registered dev checks displace the ones they stand in for",
@@ -802,7 +858,23 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--list-checks", action="store_true", help="print the check catalog")
     p.set_defaults(func=cmd_index_linter)
 
+    p = index_sub.add_parser(
+        "capture", help="reconcile grounded surface lines with Index LineRecords"
+    )
+    capture_sub = p.add_subparsers(dest="capture_command", required=True)
+    for command in ("preview", "land"):
+        capture = capture_sub.add_parser(command)
+        _add_project_option(capture)
+        capture.add_argument(
+            "--label",
+            action="append",
+            default=[],
+            help="reconcile only this grounded Index line; repeatable",
+        )
+        capture.set_defaults(func=cmd_index_capture)
+
     p = index_sub.add_parser("bless", help="accept one exact POI, on a user gate")
+    _add_project_option(p)
     p.add_argument("--poi-id", required=True, help="the POI occurrence to accept")
     _gate_args(p)
     p.set_defaults(func=cmd_index_bless)

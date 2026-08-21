@@ -309,7 +309,7 @@ written, and there is no second copy to drift. But reading only the top-level bo
 in two ways the synthetic fixture could not see:
 
 1. `gate-verifies` and its dev counterpart are two-line wrappers over one shared body, so both
-   read as corpus-scoped. Every `Gate.Contradicted` finding — 2,143 of them — vanished from
+   read as corpus-scoped. Every `Gate.Evidence.Invalid` finding — 2,143 of them — vanished from
    targeted runs. Found by comparing against the live corpus, not by the unit test.
 2. `line-drift`, `scope-kind` and `review-closure` reach records *sideways*, through a surface
    line's label or a trace's members, so they never iterate records at all. Found by adding a

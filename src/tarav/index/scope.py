@@ -26,7 +26,8 @@ from .config import TaravIndexError
 
 #: `<depot>/<chapter>#<Concept.Name>`
 BLOCK_PATH_RE = re.compile(
-    r"^(?P<depot>[A-Za-z0-9._-]+)/(?P<chapter>[A-Za-z0-9._-]+)#(?P<concept>[A-Za-z0-9._-]+)$"
+    r"^(?P<depot>[A-Za-z0-9._-]+)/(?P<chapter>[A-Za-z0-9._-]+)#"
+    r"(?P<concept>[A-Za-z0-9._-]+(?:::[A-Za-z0-9._<>-]+)*)$"
 )
 #: `@<file path>/<region>` — the `@` is agent-maintained and may be omitted on input.
 LOCATOR_RE = re.compile(r"^@?(?P<path>[^\s@]+?\.[A-Za-z0-9]+)(?:/(?P<region>[^\s]+))?$")
@@ -115,24 +116,17 @@ def annotation_scope(file: str, region: str | None = None) -> LineScope:
     return parse_scope(f"@{file}" + (f"/{region}" if region else ""))
 
 
-# $kw: --from Index.Head.Surface --note [DC] a scope names depot and chapter but never a home, so every home is searched and no home is the SSOT ^c20260819-26u
-# --note [CT] resolution reads the filesystem rather than a recorded path, because a more auditable structure displaces an agent definition ^c20260819-20u
+# $kw: --from Line.Scope --note [DC] the Block.Path resolves from the structurally marked depot and chapter directory, without a home or manifest indirection
 def resolve_scope_surface(
     scope: LineScope, root: Path, *, contains: str | None = None
 ) -> Path | None:
     """The surface file a scope lives on, or ``None`` when it cannot be located.
 
-    A block resolves through the depot's home layout; an annotation resolves directly to its
+    A block resolves through the depot's structural layout; an annotation resolves directly to its
     product file. Both answer the same question, which is the point of one address space.
 
-    A `Block.Path` names a depot and a chapter, never a home — homes are a geography of the
-    same depot, and no home is the SSOT. So every home is searched, and a chapter that exists
-    in one of them resolves.
-
-    ``contains`` disambiguates when several files answer to the same chapter — `100-design.md`
-    and `900-design.md` both are the ``design`` chapter. Pass the label of a line known to be
-    on the surface and the file holding it wins; without it the first match is returned, which
-    is right only when there is one.
+    ``contains`` disambiguates when several files answer to one chapter. Otherwise the block
+    heading named by the scope wins before the deterministic filename fallback.
     """
 
     if scope.kind is ScopeKind.ANNOTATION:
@@ -141,14 +135,24 @@ def resolve_scope_surface(
     if not (scope.depot and scope.chapter):
         return None
 
-    homes = root / "skills" / scope.depot / "homes"
-    matches = sorted(homes.glob(f"*/chapters/*-{scope.chapter}.md"))
+    chapter = root / "skills" / scope.depot / scope.chapter
+    matches = sorted(
+        path for path in chapter.glob("*.md") if path.name != "AGENTS.md"
+    )
     if not matches:
         return None
     if contains:
         for candidate in matches:
             try:
                 if contains in candidate.read_text("utf-8"):
+                    return candidate
+            except OSError:
+                continue
+    heading = f"## {scope.concept}" if scope.concept else None
+    if heading:
+        for candidate in matches:
+            try:
+                if heading in candidate.read_text("utf-8"):
                     return candidate
             except OSError:
                 continue

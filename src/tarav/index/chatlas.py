@@ -1,20 +1,19 @@
-# $kw: --from Capture --note [CT] chat normalization is unchanged by the new model, so the existing Chatlas2 supplies it
+# $kw: Index.Evaluator/Chat.Resolution --from Capture --note [CT] chat normalization is unchanged by the new model, so the existing Chatlas2 supplies it
+# --note [CT] Chat evidence resolves directly from its typed support reference; archive availability affects verification standing, never whether the selected project enables resolution. ^c20260821-3u
 """Chat evidence — a thin layer over `tarav.chatlas.lossless`.
 
 Almost nothing here is new. Normalization, provider drift handling, the git-backed archive,
 and stable message addressing already exist in `tarav.chatlas.lossless` and the new model does not touch any
 of them, so they are **used**, not reimplemented:
 
-- `tarav chatlas` is already the git-backed archive, which is what the chat manifest's
-  git-backing criterion requires;
+- `tarav chatlas` is already the git-backed archive;
 - `tarav.chatlas.lossless.provide_normal_model` normalizes a session across both providers,
   reusing the on-disk model cache and rebuilding it only when the transcripts moved;
 - each normalized message already carries a `message_address` — a stable coordinate derived
   from event identity rather than from position, so it survives a machine change *and*
   further appends to a live session.
 
-The one genuinely new thing is **qualification**: reading a message's touch standing through
-the registered `Touch.Authority.Manifest` rather than assuming it. That is the layer below.
+Qualification is structural: user messages carry touch, agent messages do not.
 """
 
 from __future__ import annotations
@@ -28,7 +27,6 @@ from tarav.chatlas.lossless import (
     provide_normal_model,
 )
 
-from .authority import ManifestRegistry
 from .config import Geography, TaravIndexError
 
 ARCHIVE_NAME = "chat"
@@ -42,8 +40,7 @@ class ChatError(TaravIndexError):
 class ChatMessage:
     """One provider-neutral message with its qualification verdict.
 
-    ``carries_touch`` is the manifest predicate's verdict, not a role rename: an agent turn
-    never carries touch, so a fully agentic chat contains no `User.Touch` at all.
+    An agent turn never carries touch, so a fully agentic chat contains no `User.Touch`.
     """
 
     session_id: str
@@ -80,15 +77,7 @@ def _text_of(message: dict[str, Any]) -> str:
 
 
 def load_session(scopes: Geography, session_id: str) -> ChatSession:
-    """Normalize one session and apply the chat manifest's qualification predicate."""
-
-    registry = ManifestRegistry(scopes)
-    if not registry.is_registered(ARCHIVE_NAME):
-        raise ChatError(
-            "surface type 'chat' is not registered in this project; "
-            "run `tarav index init` before reading chat evidence"
-        )
-    manifest = registry.get(ARCHIVE_NAME)
+    """Normalize one session; the typed reference already selected this resolver."""
 
     # A `SupportRef` may name a session either way: the provider's session id, or the
     # provider-neutral identity hash. The identity hash is the better coordinate to store
@@ -112,11 +101,7 @@ def load_session(scopes: Geography, session_id: str) -> ChatSession:
     messages: list[ChatMessage] = []
     for raw in list_chat_messages(model):
         side = str(raw.get("side") or "")
-        # The predicate for a Commit.Records.Edition surface: attribution comes from the
-        # role inside the committed content, never from the commit author.
-        carries_touch = (
-            side == "user" and manifest.attribution.value == "message_role"
-        )
+        carries_touch = side == "user"
         messages.append(
             ChatMessage(
                 session_id=session_id,

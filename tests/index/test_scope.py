@@ -30,6 +30,10 @@ class TestBlockPath:
         address = "tarav-pkg/design#Index.Line.Record"
         assert parse_scope(address).address == address
 
+    def test_a_typed_concept_scope_uses_the_canonical_double_colon(self):
+        scope = parse_scope("tarav-pkg/design#Natural.Placement::Skills")
+        assert scope.concept == "Natural.Placement::Skills"
+
 
 class TestLocatorName:
     def test_a_locator_scopes_an_annotation_attachment_point(self):
@@ -65,8 +69,8 @@ class TestOneAddressSpace:
 
 
 class TestResolution:
-    def test_a_block_resolves_through_the_home_layout(self, project_root):
-        chapters = project_root / "skills/tarav-pkg/homes/agent/chapters"
+    def test_a_block_resolves_through_the_depot_layout(self, project_root):
+        chapters = project_root / "skills/tarav-pkg/design"
         chapters.mkdir(parents=True)
         (chapters / "100-design.md").write_text("", encoding="utf-8")
         path = resolve_scope_surface(parse_scope("tarav-pkg/design#C"), project_root)
@@ -78,31 +82,26 @@ class TestResolution:
 
     def test_both_kinds_answer_the_same_question(self, project_root):
         """One resolver, because name syntax does not change the entity's semantics."""
-        chapters = project_root / "skills/d/homes/ceo/chapters"
+        chapters = project_root / "skills/d/design"
         chapters.mkdir(parents=True)
         (chapters / "100-design.md").write_text("", encoding="utf-8")
         for address in ("d/design#C", "@src/a.py/C"):
             assert resolve_scope_surface(parse_scope(address), project_root) is not None
 
 
-class TestHomeAgnosticResolution:
-    """A Block.Path names a depot and a chapter, never a home — no home is the SSOT."""
+class TestStructuralResolution:
 
-    def _chapter(self, root, home):
-        path = root / "skills" / "d" / "homes" / home / "chapters" / "100-design.md"
+    def _chapter(self, root):
+        path = root / "skills" / "d" / "design" / "100-design.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("****\n\n## C\n\n****\n", encoding="utf-8")
         return path
 
-    def test_a_chapter_in_the_user_home_resolves(self, project_root):
-        expected = self._chapter(project_root, "ceo")
+    def test_a_chapter_in_the_depot_resolves(self, project_root):
+        expected = self._chapter(project_root)
         assert resolve_scope_surface(parse_scope("d/design#C"), project_root) == expected
 
-    def test_a_chapter_in_the_agent_home_resolves(self, project_root):
-        expected = self._chapter(project_root, "agent")
-        assert resolve_scope_surface(parse_scope("d/design#C"), project_root) == expected
-
-    def test_a_chapter_in_no_home_resolves_to_nothing(self, project_root):
+    def test_a_chapter_in_no_depot_resolves_to_nothing(self, project_root):
         assert resolve_scope_surface(parse_scope("d/design#C"), project_root) is None
 
 
@@ -116,7 +115,7 @@ class TestSurfaceDisambiguation:
         """
         from tarav.index.scope import block_scope, resolve_scope_surface
 
-        chapters = tmp_path / "skills" / "pkg" / "homes" / "ceo" / "chapters"
+        chapters = tmp_path / "skills" / "pkg" / "design"
         chapters.mkdir(parents=True)
         (chapters / "100-design.md").write_text("- [DF] other ^c20260819-19u\n")
         (chapters / "900-design.md").write_text("- [DF] wanted ^c20260819-20u\n")
@@ -129,7 +128,7 @@ class TestSurfaceDisambiguation:
     def test_an_unmatched_label_falls_back_to_the_first(self, tmp_path):
         from tarav.index.scope import block_scope, resolve_scope_surface
 
-        chapters = tmp_path / "skills" / "pkg" / "homes" / "ceo" / "chapters"
+        chapters = tmp_path / "skills" / "pkg" / "design"
         chapters.mkdir(parents=True)
         (chapters / "100-design.md").write_text("- [DF] other ^c20260819-19u\n")
         scope = block_scope("pkg", "design", "Concept")

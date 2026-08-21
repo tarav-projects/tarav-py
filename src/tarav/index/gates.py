@@ -16,8 +16,9 @@ Nothing here trusts a summary. The user turn is the authority; the agent turn is
 user was looking at when they wrote it. Both are in an immutable, git-backed archive, so a
 fabricated gate is detectable rather than merely improbable.
 
-Verification is three-valued on purpose. The archive is user-scoped, so *absent* is the
-normal case on any other machine and must not read as *failed*.
+Verification is three-valued on purpose. Resolved evidence is either verified or invalid.
+When the authoritative evidence source cannot be reached, evaluation is unavailable and
+the caller reports a blocked instance rather than silently passing or falsely failing it.
 """
 
 from __future__ import annotations
@@ -34,9 +35,9 @@ class GateVerdict(StrEnum):
     #: Both turns carry the token and the agent turn carries the line.
     VERIFIED = "verified"
     #: The archive was readable and says otherwise. A defect.
-    CONTRADICTED = "contradicted"
+    INVALID = "invalid"
     #: The archive is not on this machine. Not a defect.
-    UNVERIFIABLE = "unverifiable"
+    UNAVAILABLE = "unavailable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,13 +82,13 @@ class GateCheck:
 
     @property
     def failed(self) -> bool:
-        return self.verdict is GateVerdict.CONTRADICTED
+        return self.verdict is GateVerdict.INVALID
 
 
 # $kw: --from Typed.Agent.State --note [DF] a Gate is a token round-trip: the user turn carries the token and qualifies as touch, and the agent turn carries the same token with the line verbatim ^c20260819-21u
 # --note [CT] the round-trip is checked against the archive rather than trusted, because evidence must be solid rather than a recorded summary ^c20260819-22u
 #: How a caller supplies an already-resolved archive read. It raises `ChatError` exactly
-#: as the ordinary read does, so an unavailable session stays UNVERIFIABLE rather than
+#: as the ordinary read does, so an unavailable session stays UNAVAILABLE rather than
 #: becoming a different failure for having been cached.
 SessionLoader = Callable[[Geography, str], ChatSession]
 
@@ -120,39 +121,39 @@ def verify_gate(
     try:
         session = (load or load_session)(geo, gate.session_id)
     except ChatError as exc:
-        return GateCheck(GateVerdict.UNVERIFIABLE, f"archive unavailable: {exc}")
+        return GateCheck(GateVerdict.UNAVAILABLE, f"archive unavailable: {exc}")
 
     turns = {m.address: m for m in session.messages}
 
     user_turn = turns.get(gate.user_turn_id)
     if user_turn is None:
         return GateCheck(
-            GateVerdict.CONTRADICTED,
+            GateVerdict.INVALID,
             f"user turn {gate.user_turn_id[:16]}… is not in the session",
         )
     if require_touch and not user_turn.carries_touch:
         return GateCheck(
-            GateVerdict.CONTRADICTED,
+            GateVerdict.INVALID,
             "the turn named as the gate does not qualify as User.Touch",
         )
     if gate.token not in user_turn.text:
         return GateCheck(
-            GateVerdict.CONTRADICTED, "the user turn does not carry the gate token"
+            GateVerdict.INVALID, "the user turn does not carry the gate token"
         )
 
     agent_turn = turns.get(gate.agent_turn_id)
     if agent_turn is None:
         return GateCheck(
-            GateVerdict.CONTRADICTED,
+            GateVerdict.INVALID,
             f"agent turn {gate.agent_turn_id[:16]}… is not in the session",
         )
     if gate.token not in agent_turn.text:
         return GateCheck(
-            GateVerdict.CONTRADICTED, "the agent turn does not carry the gate token"
+            GateVerdict.INVALID, "the agent turn does not carry the gate token"
         )
     if verbatim is not None and verbatim not in agent_turn.text:
         return GateCheck(
-            GateVerdict.CONTRADICTED,
+            GateVerdict.INVALID,
             "the gated line does not appear verbatim in its agent turn",
         )
 
