@@ -208,7 +208,7 @@ def test_mock_scenario_is_deterministic_and_lints_cleanly(tmp_path, capsys) -> N
         assert scenario["lint"]["verified"] is True
         projections.append(scenario["projection"])
 
-        assert main(["indexlab", "lint", *_selection(library, name)]) == 0
+        assert main(["indexlab", "lint", *_selection(library, name), "--json"]) == 0
         assert json.loads(capsys.readouterr().out)["verified"] is True
 
     assert projections[0] == projections[1]
@@ -309,11 +309,74 @@ def test_lint_exits_nonzero_when_a_check_is_blocked(tmp_path, capsys) -> None:
         "utf-8",
     )
 
-    exit_code = main(["indexlab", "lint", *_selection(library, "blocked")])
+    exit_code = main(
+        ["indexlab", "lint", *_selection(library, "blocked"), "--json"]
+    )
     payload = json.loads(capsys.readouterr().out)
 
     assert exit_code == 1
     assert payload["clean"] is True
     assert payload["verified"] is False
     assert "ok" not in payload
-    assert payload["counts"]["blocked"] >= 1
+    assert payload["status"] == "blocked"
+    assert payload["checks"]["summary"]["blocked"] >= 1
+
+
+def test_lint_cli_exposes_catalog_selectors_and_one_report_document(
+    tmp_path, capsys
+) -> None:
+    library = tmp_path / "library"
+    _initialize_library(library, capsys)
+    _create_workspace(library, "main", capsys, touch_adapter="mock")
+    selection = _selection(library, "main")
+    assert (
+        main(["indexlab", "scenario", "seed-mock", *selection])
+        == 0
+    )
+    capsys.readouterr()
+
+    assert main(["indexlab", "lint", *selection, "--list-checks"]) == 0
+    catalog = capsys.readouterr().out
+    assert "records-loadable" in catalog
+    assert "projection-valid" in catalog
+
+    assert (
+        main(
+            [
+                "indexlab",
+                "lint",
+                *selection,
+                "--record-id",
+                "mock-record-line",
+                "--check",
+                "support-present",
+                "--limit",
+                "0",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    document = json.loads(capsys.readouterr().out)
+    assert document["class"] == "IndexLab.Linter.Run"
+    assert document["execution"]["records_loaded"] == 2
+    assert document["execution"]["records_selected"] == 1
+    assert [item["name"] for item in document["checks"]["items"]] == [
+        "records-loadable",
+        "support-present",
+    ]
+    assert document["poi_instances"]["shown"] == 0
+
+    assert (
+        main(
+            [
+                "indexlab",
+                "lint",
+                *selection,
+                "--record-id",
+                "absent-record",
+            ]
+        )
+        == 1
+    )
+    assert "unknown Index.Record id" in capsys.readouterr().err

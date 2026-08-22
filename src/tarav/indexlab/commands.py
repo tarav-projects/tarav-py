@@ -7,8 +7,13 @@ from pathlib import Path
 
 from tarav._core.errors import CliError
 from tarav._core.persistence import atomic_write_json
+from tarav.poi.runtime import (
+    LinterReportSelectionError,
+    build_linter_document,
+    render_linter_text,
+)
 
-from .linter import lint_records, lint_store
+from .linter import CHECK_REGISTRY, lint_records, lint_store
 from .model import (
     EvidenceNeighborhood,
     IndexRecord,
@@ -158,6 +163,11 @@ def _cmd_project(args: argparse.Namespace) -> int:
 
 # $kw: --note [DC] the lint command fails closed on the verified standing, not the clean one: a blocked check could not be evaluated, so it never earns a zero exit
 def _cmd_lint(args: argparse.Namespace) -> int:
+    if args.list_checks:
+        for entry in CHECK_REGISTRY:
+            state = "dev" if entry.dev else ("on " if entry.default_on else "off")
+            print(f"{entry.name:26} [{state}] {entry.tier:11} {entry.source}")
+        return 0
     try:
         store = _open_store(args)
         mock_path = store.workspace.root / TOUCH_MOCK_FILENAME
@@ -172,10 +182,28 @@ def _cmd_lint(args: argparse.Namespace) -> int:
             source = ChatlasTouchSource(
                 chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None
             )
-        report = lint_store(store, source=source)
-    except (OSError, ValueError, WorkspaceError) as exc:
+        report = lint_store(
+            store,
+            source=source,
+            check=args.check,
+            skip=args.skip,
+            dev=args.lane == "dev",
+            subjects=args.record_id,
+        )
+        document = build_linter_document(
+            report,
+            run_class="IndexLab.Linter.Run",
+            limit=args.limit,
+            poi_classes=args.poi_class,
+            poi_ids=args.poi_id,
+            statuses=args.status,
+        )
+    except (OSError, ValueError, WorkspaceError, LinterReportSelectionError) as exc:
         raise CliError(str(exc)) from exc
-    _print_json(report.to_dict())
+    if args.json:
+        _print_json(document)
+    else:
+        print(render_linter_text(document))
     return 0 if report.verified else 1
 
 
@@ -196,6 +224,11 @@ def _cmd_seed_mock(args: argparse.Namespace) -> int:
         )
         projection = project_records(stored)
         report = lint_records(stored, source=source)
+        lint_document = build_linter_document(
+            report,
+            run_class="IndexLab.Linter.Run",
+            limit=20,
+        )
     except (OSError, ValueError, WorkspaceError, ProjectionError) as exc:
         raise CliError(str(exc)) from exc
     _print_json(
@@ -204,7 +237,7 @@ def _cmd_seed_mock(args: argparse.Namespace) -> int:
             "workspace": str(store.workspace.root),
             "records": [record.to_dict() for record in stored],
             "projection": projection.to_dict(),
-            "lint": report.to_dict(),
+            "lint": lint_document,
         }
     )
     return 0 if report.verified else 1
@@ -305,6 +338,13 @@ def _add_workspace_selector(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
 def register_indexlab_commands(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "indexlab",
@@ -379,6 +419,52 @@ def register_indexlab_commands(subparsers: argparse._SubParsersAction) -> None:
         "--chatlas-root",
         help="Optional Chatlas root used by the read-only touch adapter.",
     )
+    lint_parser.add_argument(
+        "--lane",
+        choices=("dev",),
+        default=None,
+        help="Run registered development checks in place of their strict counterparts.",
+    )
+    lint_parser.add_argument(
+        "--record-id",
+        action="append",
+        help="Lint only this exact Index.Record; repeatable.",
+    )
+    lint_parser.add_argument(
+        "--check", action="append", help="Run only this check; repeatable."
+    )
+    lint_parser.add_argument(
+        "--skip", action="append", help="Skip this check; repeatable."
+    )
+    lint_parser.add_argument(
+        "--limit",
+        type=_nonnegative_int,
+        default=20,
+        help="Maximum POI instances to render; 0 shows summaries only.",
+    )
+    lint_parser.add_argument(
+        "--poi-class",
+        action="append",
+        default=[],
+        help="Show instances of this POI class; repeatable.",
+    )
+    lint_parser.add_argument(
+        "--poi-id",
+        action="append",
+        default=[],
+        help="Show this POI instance; repeatable.",
+    )
+    lint_parser.add_argument(
+        "--status",
+        action="append",
+        choices=("failed", "blocked", "blessed"),
+        default=[],
+        help="Show instances with this status; repeatable.",
+    )
+    lint_parser.add_argument(
+        "--list-checks", action="store_true", help="Print the check catalog."
+    )
+    lint_parser.add_argument("--json", action="store_true", help="Emit JSON.")
     lint_parser.set_defaults(handler=_cmd_lint)
 
     scenario_parser = commands.add_parser(

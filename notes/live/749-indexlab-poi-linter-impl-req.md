@@ -5,7 +5,7 @@
 - **Goal:** replace the ad-hoc IndexLab lint traversal with a faithful `POI.Linter` realization
   shaped after `src/tarav/index/linter.py`, integrated with context-attached `Index.Record`s,
   `Index.Workspace`, semantic projection, and `UserTouchSource`.
-- **Status:** ready for autonomous execution.
+- **Status:** executing a user-requested `POI.Test` continuation slice.
 - **Scope:** shared POI verdict/runtime primitives where the semantics are already proven,
   `tarav.indexlab` lint context/checks/report/CLI, focused tests, the retained development
   workspace, and the IndexLab developer guide.
@@ -82,7 +82,7 @@
 
 ### Slice 1 — shared POI runtime
 
-- **Status:** pending.
+- **Status:** completed.
 - **RED:** focused tests require stable operand-independent identity, failed-over-blocked-over-passed
   check verdicts, structural short-circuiting, forced structural selection, dev replacement, and
   targeted record-scoped selection.
@@ -92,7 +92,7 @@
 
 ### Slice 2 — IndexLab context and check registry
 
-- **Status:** pending.
+- **Status:** completed.
 - **RED:** existing IndexLab scenarios must expose named check results; unloadable cargo must stop
   the registry; blocked touch resolution must block its check; exact record targeting must retain
   the full corpus as context while examining one record.
@@ -102,7 +102,7 @@
 
 ### Slice 3 — canonical report and CLI surface
 
-- **Status:** pending.
+- **Status:** completed.
 - **RED:** text and JSON must consume one run document; check/class/instance sections remain
   distinct; limits preserve complete class summaries; unresolved record selectors fail closed;
   blocked-only runs exit nonzero.
@@ -112,7 +112,7 @@
 
 ### Slice 4 — playground and closure
 
-- **Status:** pending.
+- **Status:** completed.
 - Run the new linter over `var/indexlab/dev-library/main` through the real Chatlas adapter and
   inspect the named check results and class summaries.
 - Update `746-indexlab-dev-guide.md` and this artifact with the landed architecture, deferred
@@ -120,11 +120,41 @@
 - Run focused POI/IndexLab/architecture tests, Ruff, `git diff --check`, and the proportionate full
   suite. Audit product surfaces; add no annotation that merely restates self-evident code.
 
+### Slice 5 — summonable `POI.Test` record probe
+
+- **Status:** ready for execution.
+- **RED:** an ordinary `Index.Record` assertion of type `index.poi.test` must summon one
+  `IndexLab.Linter/POI.Test`; tagged probes must have independent identities; moving the assertion
+  among unrelated assertions must not change its identity; exact-record narrowing must select only
+  the targeted record's probes.
+- **GREEN:** add a default-on, reportable, record-scoped `poi-test` check. The assertion is the
+  IndexLab equivalent of the production linter's source marker: the new Floor.Model is records,
+  so the probe belongs on a record rather than in arbitrary source text.
+- **Check:** focused registry/finding tests, CLI catalog and JSON rendering, architecture guards,
+  then the relevant IndexLab suite.
+
 ## Impl.Log
 
 - **Execution authority:** `$tarav-hugentics --impl --dev --AUTO` at Chatlas message
   `3c0088d2…d20c45d`.
+- **Pre-execution checkpoint:** `d7c16d7` (`chore: checkpoint indexlab linter development`).
 - **Design correction:** the existing IndexLab check semantics are retained, but its private
   report/traversal runtime is superseded by the established POI.Linter algebra.
+- **Implemented:** `tarav.poi.runtime` now owns the reusable algebra; IndexLab supplies a cached
+  domain context, seven named checks, dependency gates, exact record narrowing, execution
+  metadata, and the canonical `IndexLab.Linter.Run` text/JSON surface.
+- **Playground:** `var/indexlab/dev-library/current-chat` loaded six records through Chatlas and
+  passed all seven checks; a one-record narrowed run retained six loaded records and selected one.
+- **Verification:** focused POI/IndexLab/production-Index/architecture tests passed; the complete
+  suite passed (`2262 passed`); Ruff and `git diff --check` passed.
+- **Product capture:** managed `$kw` blocks define each IndexLab POI class and the shared runtime
+  decision. No production Index capture was landed: this isolated lab slice changed implementation
+  and its maintained developer/Impl.Req surfaces without introducing a new accepted product claim.
 - **Open design boundary:** blessings and non-record selectors remain deliberately deferred because
   the new Index model has not yet defined their record operations or subject expansion semantics.
+- **Continuation authority:** the user requested that the earlier linter's `POI.Test` mechanism be
+  checked and, if absent, implemented for IndexLab. The old implementation was confirmed at
+  `src/tarav/index/linter.py`; IndexLab had no corresponding check.
+- **Porting decision:** the old raw-surface marker is not copied literally. IndexLab indexes
+  context-attached records and already retains opaque assertions, so `index.poi.test` is carried as
+  an ordinary record assertion and examined through `selected_records()`.

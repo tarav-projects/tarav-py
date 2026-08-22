@@ -3,8 +3,8 @@
 IndexLab is the experimental implementation of the context-attached Touched.Index recording
 kernel. This is the entry surface for another agent continuing the experiment.
 
-Status: recording kernel and workspace library running. The production `tarav.index` system is
-unchanged.
+Status: recording kernel, workspace library, and POI.Linter runtime running. The production
+`tarav.index` check corpus is unchanged.
 
 ## Enter here
 
@@ -50,6 +50,8 @@ uv run tarav indexlab scenario seed-mock --library var/indexlab/dev-library --wo
 uv run tarav indexlab records --library var/indexlab/dev-library --workspace my-run
 uv run tarav indexlab project --library var/indexlab/dev-library --workspace my-run
 uv run tarav indexlab lint --library var/indexlab/dev-library --workspace my-run
+uv run tarav indexlab lint --library var/indexlab/dev-library --workspace my-run --json
+uv run tarav indexlab lint --library var/indexlab/dev-library --workspace my-run --list-checks
 ```
 
 The retained same-chat playground is the `current-chat` workspace in
@@ -96,8 +98,10 @@ so one chat may index another.
   `line.reblock`, and `isoline.group`.
 - `touch.py` — `UserTouchSource`, read-only `ChatlasTouchSource`, and deterministic
   `UserTouchMock`.
-- `linter.py` — addressable mechanical findings with `failed` or `blocked` standing, explicit
-  operands, stable identities, and computed check-source locations.
+- `linter.py` — the IndexLab lint context, touch-resolution cache, gates, domain checks, and named
+  check registry.
+- `tarav.poi.runtime` — shared POI.Linter selection, three-valued execution, stable findings,
+  canonical run document, and text renderer.
 - `commands.py` — the isolated `tarav indexlab` developer surface with explicit library and
   name/UUID workspace selection.
 
@@ -125,15 +129,25 @@ storage-level Bloberia queryability, and the explicitly configured mock scenario
 
 ## Linter tiers and verdicts
 
-`lint_store` runs the structural tier first: cargo that cannot be read back as an `Index.Record`
-becomes an `IndexLab.Linter/Record.Unloadable` finding and **stops the run**, because linting on
-past it would examine a silently truncated corpus and report the remainder as clean. `lint_records`
-is the reportable tier alone, for callers holding records already.
+Both entry points run one named registry: `records-loadable`, `context-resolves`,
+`support-present`, `support-resolves`, `support-roles`, `support-visible`, and
+`projection-valid`. `lint_store` supplies real cargo defects; callers of `lint_records` already
+hold decoded records, so its structural check naturally passes. Unloadable cargo becomes an
+`IndexLab.Linter/Record.Unloadable` finding and **stops the run**, because continuing would inspect
+a silently truncated corpus.
 
 A report exposes `clean` (nothing failed), `verified` (nothing failed and nothing blocked), and
 `short_circuited`. There is deliberately no single `ok` boolean — collapsing three-valued verdicts
 into two is what the tier and standing model exists to prevent. The CLI fails closed: only a
-verified run exits zero.
+verified run exits zero. Blocked findings occupy their own report lane; a dependent check whose
+inputs cannot resolve receives one blocked check verdict through its gate rather than a false pass.
+
+The CLI follows the established `tarav index linter` operational surface: `--list-checks`,
+repeatable `--check`/`--skip`, `--lane dev`, exact repeatable `--record-id`, POI presentation
+filters, and deterministic `--limit`. Structural checks cannot be disabled. Narrowing changes the
+examined records, not the complete corpus available as context, and an unknown record id fails
+closed. Text and `--json` render the same `IndexLab.Linter.Run` document; filters and limits do not
+change check execution or class aggregates.
 
 Resolution standings distinguish absence from corruption. `MISSING` means the reference does not
 resolve; `MALFORMED` means it resolves but the stored Chat.Surface material cannot be read as a
@@ -149,8 +163,12 @@ the message.
 ## Current gaps
 
 - semantic assertions are opaque; no scoring machinery exists;
-- experimental POI classes have managed identities beside the checks, but are not yet exposed
-  through the shared selectable-check catalog and renderer;
+- the shared runtime exists below both Index implementations, but production `tarav.index` still
+  uses its original private runner; migrating that check corpus is a separate change;
+- IndexLab has no blessing record or suppression lane yet; the shared runtime reserves the lane,
+  but no ungrounded persistence mechanism was invented for it;
+- narrowing currently supports exact record ids only; label/isoline/isoblock expansion awaits a
+  settled subject-selection contract;
 - `RecordStore.replace` enforces only that identity, ordinal, and `Record.Context` are preserved;
   the `Index.Record.Mutation.Boundary` is otherwise unenforced, and even its mechanical half
   (replacement support still inside the original horizon, refs still resolving, fold still valid)

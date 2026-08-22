@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from tarav.indexlab import (
+    CHECK_REGISTRY,
     ChatlasTouchSource,
     EvidenceNeighborhood,
     IndexWorkspace,
@@ -94,6 +95,31 @@ def test_mock_lints_self_chat_and_external_capture() -> None:
     assert report.verified
     assert report.findings == ()
 
+    targeted = lint_records(
+        (block, line), source=source, subjects=("record-2",)
+    )
+    assert targeted.verified
+    assert targeted.execution["records_loaded"] == 2
+    assert targeted.execution["records_selected"] == 1
+
+
+def test_registry_discovers_every_managed_poi_class() -> None:
+    assert set().union(*(check.poi_classes for check in CHECK_REGISTRY)) == {
+        "IndexLab.Linter/Context.Amended",
+        "IndexLab.Linter/Context.Malformed",
+        "IndexLab.Linter/Context.Unresolved",
+        "IndexLab.Linter/Projection.Invalid",
+        "IndexLab.Linter/Record.Unloadable",
+        "IndexLab.Linter/Support.Amended",
+        "IndexLab.Linter/Support.ContextSide",
+        "IndexLab.Linter/Support.Empty",
+        "IndexLab.Linter/Support.GroundingSide",
+        "IndexLab.Linter/Support.Malformed",
+        "IndexLab.Linter/Support.NeighborhoodEmpty",
+        "IndexLab.Linter/Support.OutsideVisibleContext",
+        "IndexLab.Linter/Support.Unresolved",
+    }
+
 
 def test_linter_finds_wrong_sides_and_same_chat_support_after_horizon() -> None:
     source = UserTouchMock()
@@ -175,10 +201,10 @@ def test_linter_surfaces_bad_indexing_without_prescribing_repair() -> None:
     }
     assert {
         finding.status
-        for finding in report.findings
+        for finding in report.blocked
         if finding.poi_class == "IndexLab.Linter/Context.Unresolved"
     } == {"blocked"}
-    assert all("resolution" not in finding.to_dict() for finding in report.findings)
+    assert all("resolution" not in finding.operands for finding in report.findings)
 
 
 def test_blocked_run_is_clean_but_not_verified() -> None:
@@ -210,7 +236,7 @@ def test_blocked_run_is_clean_but_not_verified() -> None:
     assert report.clean is True
     assert report.verified is False
     assert report.short_circuited is False
-    assert {finding.status for finding in report.findings} == {"blocked"}
+    assert {finding.status for finding in report.blocked} == {"blocked"}
 
 
 def test_chatlas_adapter_resolves_public_normal_model(monkeypatch) -> None:
@@ -406,7 +432,7 @@ def test_malformed_support_material_is_not_reported_as_a_dangling_reference(
     )
 
     report = lint_records((record,), source=source)
-    classes = {finding.poi_class for finding in report.findings}
+    classes = {finding.poi_class for finding in report.blocked}
 
     assert "IndexLab.Linter/Support.Malformed" in classes
     assert "IndexLab.Linter/Support.Unresolved" not in classes

@@ -43,7 +43,14 @@ from .touch import (
     UserTouchMock,
     UserTouchSource,
 )
-from .linter import LintFinding, LintReport, lint_records, lint_store
+from .linter import (
+    CHECK_REGISTRY,
+    IndexLabLintContext,
+    LintReport,
+    lint_records,
+    lint_store,
+)
+from tarav.poi.runtime import Finding
 
 __all__ = [
     "RECORD_SCHEMA",
@@ -59,7 +66,9 @@ __all__ = [
     "IndexLibrary",
     "IndexWorkspace",
     "IndexRecord",
-    "LintFinding",
+    "CHECK_REGISTRY",
+    "Finding",
+    "IndexLabLintContext",
     "LintReport",
     "MessageRef",
     "Operation",

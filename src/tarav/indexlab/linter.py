@@ -1,509 +1,527 @@
-# $kw: --from POI.Linter
+# $kw: --from POI.Linter --note [DC] IndexLab owns its Floor.Model and checks while the shared POI runtime owns selection, execution, standings, and reporting
 from __future__ import annotations
 
-import hashlib
-import json
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable, Iterable, Literal
+from dataclasses import dataclass, field
+from typing import Iterable
 
-from .model import EvidenceNeighborhood, IndexRecord, MessageRef
-from .projection import ProjectionError, fold_records
+from tarav._core.errors import CliError
+from tarav.poi.runtime import (
+    Check,
+    Finding,
+    GateResult,
+    LintReport,
+    Status,
+    Tier,
+    run_checks,
+)
+
+from .model import IndexRecord, MessageRef
+from .projection import fold_records
 from .touch import Resolution, TouchContext, TouchMessage, UserTouchSource
 from .workspace import CargoDefect, RecordStore
 
 
-FindingStanding = Literal["failed", "blocked"]
-
-
-@dataclass(frozen=True, slots=True)
-class LintFinding:
-    """One addressable computation result; operands replace prose interpretation."""
-
-    identity: str
-    poi_class: str
-    subject: dict[str, object]
-    operands: dict[str, object]
-    status: FindingStanding
-    surface: dict[str, object]
-    source: str
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "identity": self.identity,
-            "poi_class": self.poi_class,
-            "subject": self.subject,
-            "operands": self.operands,
-            "status": self.status,
-            "surface": self.surface,
-            "source": self.source,
-        }
-
-
-# $kw: --note [DC] no single success boolean: clean means nothing failed and verified means nothing failed and nothing was blocked, and collapsing those into one flag is what three-valued verdicts exist to prevent --note [DC] a short-circuited run is reported as such so an empty reportable set is never read as evidence of health
-@dataclass(frozen=True, slots=True)
-class LintReport:
-    """The result of one run."""
-
-    findings: tuple[LintFinding, ...]
-    short_circuited: bool = False
-
-    @property
-    def clean(self) -> bool:
-        return not any(item.status == "failed" for item in self.findings)
-
-    @property
-    def verified(self) -> bool:
-        return not self.findings and not self.short_circuited
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "schema": "tarav.indexlab-lint-report.v1",
-            "clean": self.clean,
-            "verified": self.verified,
-            "short_circuited": self.short_circuited,
-            "counts": {
-                "failed": sum(item.status == "failed" for item in self.findings),
-                "blocked": sum(item.status == "blocked" for item in self.findings),
-            },
-            "findings": [finding.to_dict() for finding in self.findings],
-        }
-
-
-# $kw: --note [DC] the structural tier runs first and stops the run, because linting past unreadable cargo examines a silently truncated corpus and reports the remainder as clean
-def lint_store(store: RecordStore, *, source: UserTouchSource) -> LintReport:
-    """Lint a stored corpus, reporting unloadable cargo instead of raising."""
-
-    records, defects = store.load()
-    structural = tuple(_check_record_unloadable(defect) for defect in defects)
-    if structural:
-        return LintReport(findings=structural, short_circuited=True)
-    return lint_records(records, source=source)
-
-
 # $kw: IndexLab.Linter/Record.Unloadable --from POI.Linter
-def _check_record_unloadable(defect: CargoDefect) -> LintFinding:
-    return _structural_finding(
-        "IndexLab.Linter/Record.Unloadable",
-        subject={"record_id": defect.record_id or "<unidentified>"},
-        operands={"expected": "LOADABLE", "actual": defect.error},
-        check=_check_record_unloadable,
+def _record_unloadable_class() -> str:
+    return "IndexLab.Linter/Record.Unloadable"
+
+# $kw: IndexLab.Linter/Context.Unresolved --from POI.Linter
+def _context_unresolved_class() -> str:
+    return "IndexLab.Linter/Context.Unresolved"
+
+# $kw: IndexLab.Linter/Context.Malformed --from POI.Linter
+def _context_malformed_class() -> str:
+    return "IndexLab.Linter/Context.Malformed"
+
+# $kw: IndexLab.Linter/Context.Amended --from POI.Linter
+def _context_amended_class() -> str:
+    return "IndexLab.Linter/Context.Amended"
+
+# $kw: IndexLab.Linter/Support.Empty --from POI.Linter
+def _support_empty_class() -> str:
+    return "IndexLab.Linter/Support.Empty"
+
+# $kw: IndexLab.Linter/Support.NeighborhoodEmpty --from POI.Linter
+def _support_neighborhood_empty_class() -> str:
+    return "IndexLab.Linter/Support.NeighborhoodEmpty"
+
+# $kw: IndexLab.Linter/Support.Unresolved --from POI.Linter
+def _support_unresolved_class() -> str:
+    return "IndexLab.Linter/Support.Unresolved"
+
+# $kw: IndexLab.Linter/Support.Malformed --from POI.Linter
+def _support_malformed_class() -> str:
+    return "IndexLab.Linter/Support.Malformed"
+
+# $kw: IndexLab.Linter/Support.Amended --from POI.Linter
+def _support_amended_class() -> str:
+    return "IndexLab.Linter/Support.Amended"
+
+# $kw: IndexLab.Linter/Support.GroundingSide --from POI.Linter
+def _support_grounding_side_class() -> str:
+    return "IndexLab.Linter/Support.GroundingSide"
+
+# $kw: IndexLab.Linter/Support.ContextSide --from POI.Linter
+def _support_context_side_class() -> str:
+    return "IndexLab.Linter/Support.ContextSide"
+
+# $kw: IndexLab.Linter/Support.OutsideVisibleContext --from POI.Linter
+def _support_outside_visible_context_class() -> str:
+    return "IndexLab.Linter/Support.OutsideVisibleContext"
+
+# $kw: IndexLab.Linter/Projection.Invalid --from POI.Linter
+def _projection_invalid_class() -> str:
+    return "IndexLab.Linter/Projection.Invalid"
+
+
+@dataclass(slots=True)
+class IndexLabLintContext:
+    """One resolved IndexLab linter run over a stable record corpus."""
+
+    source: UserTouchSource
+    records: tuple[IndexRecord, ...]
+    defects: tuple[CargoDefect, ...] = ()
+    subjects: frozenset[str] | None = None
+    workspace_id: str | None = None
+    workspace_root: str | None = None
+    touch_adapter: str | None = None
+    produced: set[str] = field(default_factory=set)
+    _contexts: dict[str, tuple[Resolution[TouchContext], str | None]] = field(
+        default_factory=dict
     )
+    _messages: dict[
+        tuple[str, str, str], tuple[Resolution[TouchMessage], str | None]
+    ] = field(default_factory=dict)
+
+    def selected_records(self) -> tuple[IndexRecord, ...]:
+        if self.subjects is None:
+            return self.records
+        return tuple(record for record in self.records if record.id in self.subjects)
+
+    def is_selected(self, record_id: str | None) -> bool:
+        return self.subjects is None or record_id in self.subjects
+
+    def resolve_context(
+        self, record: IndexRecord
+    ) -> tuple[Resolution[TouchContext], str | None]:
+        cached = self._contexts.get(record.id)
+        if cached is not None:
+            return cached
+        try:
+            result = (self.source.resolve_context(record.context), None)
+        except Exception as exc:  # adapters are external read boundaries
+            result = (
+                Resolution[TouchContext](standing="MISSING", value=None),
+                str(exc),
+            )
+        self._contexts[record.id] = result
+        return result
+
+    def resolve_message(
+        self, session: str, ref: MessageRef
+    ) -> tuple[Resolution[TouchMessage], str | None]:
+        key = (session, ref.address, ref.hash)
+        cached = self._messages.get(key)
+        if cached is not None:
+            return cached
+        try:
+            result = (self.source.resolve_message(session, ref), None)
+        except Exception as exc:  # adapters are external read boundaries
+            result = (
+                Resolution[TouchMessage](standing="MISSING", value=None),
+                str(exc),
+            )
+        self._messages[key] = result
+        return result
+
+
+# $kw: --note [DC] the structural tier runs first and stops the run because linting past unreadable cargo examines a silently truncated corpus
+def lint_store(
+    store: RecordStore,
+    *,
+    source: UserTouchSource,
+    check: Iterable[str] | None = None,
+    skip: Iterable[str] | None = None,
+    dev: bool = False,
+    subjects: Iterable[str] | None = None,
+) -> LintReport:
+    records, defects = store.load()
+    context = IndexLabLintContext(
+        source=source,
+        records=_ordered(records),
+        defects=tuple(defects),
+        subjects=_subjects(subjects, records),
+        workspace_id=store.workspace.id,
+        workspace_root=str(store.workspace.root),
+        touch_adapter=store.workspace.touch_adapter,
+    )
+    return _run(context, check=check, skip=skip, dev=dev)
 
 
 def lint_records(
     records: Iterable[IndexRecord],
     *,
     source: UserTouchSource,
+    check: Iterable[str] | None = None,
+    skip: Iterable[str] | None = None,
+    dev: bool = False,
+    subjects: Iterable[str] | None = None,
 ) -> LintReport:
-    ordered = tuple(sorted(records, key=lambda record: (record.ordinal, record.id)))
-    findings: list[LintFinding] = []
+    ordered = _ordered(records)
+    context = IndexLabLintContext(
+        source=source,
+        records=ordered,
+        subjects=_subjects(subjects, ordered),
+    )
+    return _run(context, check=check, skip=skip, dev=dev)
 
-    for record in ordered:
-        context_error: str | None = None
-        try:
-            context = source.resolve_context(record.context)
-        except Exception as exc:
-            context = Resolution[TouchContext](standing="MISSING", value=None)
-            context_error = str(exc)
-        _append(findings, _check_context_unresolved(record, context, context_error))
-        _append(findings, _check_context_malformed(record, context))
-        _append(findings, _check_context_amended(record, context))
-        _append(findings, _check_support_empty(record))
 
-        for neighborhood_index, neighborhood in enumerate(
-            record.support.neighborhoods
-        ):
-            _append(
-                findings,
-                _check_neighborhood_empty(record, neighborhood, neighborhood_index),
+def _run(
+    context: IndexLabLintContext,
+    *,
+    check: Iterable[str] | None,
+    skip: Iterable[str] | None,
+    dev: bool,
+) -> LintReport:
+    return run_checks(
+        context,
+        CHECK_REGISTRY,
+        check=check,
+        skip=skip,
+        dev=dev,
+        targeted=context.subjects is not None,
+        execution=_execution,
+    )
+
+
+def _execution(context: IndexLabLintContext) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "records_loaded": len(context.records),
+        "records_selected": len(context.selected_records()),
+        "cargo_defects": len(context.defects),
+    }
+    for key, value in (
+        ("workspace_id", context.workspace_id),
+        ("workspace_root", context.workspace_root),
+        ("touch_adapter", context.touch_adapter),
+    ):
+        if value is not None:
+            payload[key] = value
+    return payload
+
+
+def _check_records_loadable(context: IndexLabLintContext) -> list[Finding]:
+    """Every stored cargo item must decode before corpus checks are meaningful."""
+
+    return [
+        Finding(
+            _record_unloadable_class(),
+            {"record_id": defect.record_id or "<unidentified>"},
+            {"expected": "LOADABLE", "actual": defect.error},
+            surface={"workspace": context.workspace_root},
+        )
+        for defect in context.defects
+    ]
+
+
+def _check_context_resolves(context: IndexLabLintContext) -> list[Finding]:
+    """Each producer context must remain resolvable and unamended."""
+
+    findings: list[Finding] = []
+    for record in context.selected_records():
+        resolution, error = context.resolve_context(record)
+        if resolution.standing == "MISSING":
+            operands: dict[str, object] = {
+                "expected": "MATCHED",
+                "actual": "ERROR" if error else "MISSING",
+            }
+            if error:
+                operands["error"] = error
+            findings.append(
+                _finding(
+                    record,
+                    _context_unresolved_class(),
+                    operands,
+                    status=Status.BLOCKED,
+                )
             )
+        elif resolution.standing == "MALFORMED":
+            operands = {"expected": "MATCHED", "actual": "MALFORMED"}
+            if resolution.detail is not None:
+                operands["detail"] = resolution.detail
+            findings.append(
+                _finding(
+                    record,
+                    _context_malformed_class(),
+                    operands,
+                    status=Status.BLOCKED,
+                )
+            )
+        elif resolution.standing == "AMENDED":
+            findings.append(
+                _finding(
+                    record,
+                    _context_amended_class(),
+                    {"expected": "MATCHED", "actual": "AMENDED"},
+                )
+            )
+    return findings
+
+
+def _check_support_present(context: IndexLabLintContext) -> list[Finding]:
+    """Every record and neighborhood must carry grounding material."""
+
+    findings: list[Finding] = []
+    for record in context.selected_records():
+        if not record.support.neighborhoods:
+            findings.append(
+                _finding(
+                    record,
+                    _support_empty_class(),
+                    {"expected_minimum": 1, "actual": 0},
+                )
+            )
+        for index, neighborhood in enumerate(record.support.neighborhoods):
+            if not neighborhood.grounding:
+                findings.append(
+                    _finding(
+                        record,
+                        _support_neighborhood_empty_class(),
+                        {"expected_minimum": 1, "actual": 0},
+                        target={"neighborhood": index},
+                    )
+                )
+    return findings
+
+
+def _check_support_resolves(context: IndexLabLintContext) -> list[Finding]:
+    """Every referenced support message must remain readable and unamended."""
+
+    findings: list[Finding] = []
+    for record, session, ref, role in _support_refs(context.selected_records()):
+        resolution, error = context.resolve_message(session, ref)
+        target = {"session": session, "message": ref.address, "role": role}
+        if resolution.standing == "MALFORMED":
+            operands: dict[str, object] = {
+                "expected": "MATCHED",
+                "actual": "MALFORMED",
+            }
+            if resolution.detail is not None:
+                operands["detail"] = resolution.detail
+            findings.append(
+                _finding(
+                    record,
+                    _support_malformed_class(),
+                    operands,
+                    target=target,
+                    status=Status.BLOCKED,
+                )
+            )
+        elif resolution.standing == "MISSING" or resolution.value is None:
+            operands = {
+                "expected": "MATCHED",
+                "actual": "ERROR" if error else "MISSING",
+            }
+            if error:
+                operands["error"] = error
+            findings.append(
+                _finding(
+                    record,
+                    _support_unresolved_class(),
+                    operands,
+                    target=target,
+                    status=Status.BLOCKED,
+                )
+            )
+        elif resolution.standing == "AMENDED":
+            findings.append(
+                _finding(
+                    record,
+                    _support_amended_class(),
+                    {"expected": "MATCHED", "actual": "AMENDED"},
+                    target=target,
+                )
+            )
+    return findings
+
+
+def _check_support_roles(context: IndexLabLintContext) -> list[Finding]:
+    """Grounding refs must be user-side and contextual refs agent-side."""
+
+    findings: list[Finding] = []
+    for record, session, ref, role in _support_refs(context.selected_records()):
+        resolution, _ = context.resolve_message(session, ref)
+        if resolution.value is None:
+            continue
+        expected = "user" if role == "grounding" else "agent"
+        if resolution.value.side == expected:
+            continue
+        poi_class = (
+            _support_grounding_side_class()
+            if role == "grounding"
+            else _support_context_side_class()
+        )
+        findings.append(
+            _finding(
+                record,
+                poi_class,
+                {"expected": expected, "actual": resolution.value.side},
+                target={"session": session, "message": ref.address, "role": role},
+            )
+        )
+    return findings
+
+
+def _check_support_visible(context: IndexLabLintContext) -> list[Finding]:
+    """Same-chat support must not occur after the producer horizon."""
+
+    findings: list[Finding] = []
+    for record, session, ref, role in _support_refs(context.selected_records()):
+        producer, _ = context.resolve_context(record)
+        message, _ = context.resolve_message(session, ref)
+        if (
+            session != record.context.session
+            or producer.value is None
+            or message.value is None
+            or message.value.turn_ordinal <= producer.value.horizon_ordinal
+        ):
+            continue
+        findings.append(
+            _finding(
+                record,
+                _support_outside_visible_context_class(),
+                {
+                    "expected_turn_maximum": producer.value.horizon_ordinal,
+                    "actual_turn": message.value.turn_ordinal,
+                },
+                target={"session": session, "message": ref.address, "role": role},
+            )
+        )
+    return findings
+
+
+def _check_projection_valid(context: IndexLabLintContext) -> list[Finding]:
+    """The complete ordered corpus must fold into one coherent projection."""
+
+    _, errors = fold_records(context.records)
+    records = {record.id: record for record in context.records}
+    findings: list[Finding] = []
+    for error in errors:
+        if not context.is_selected(error.record_id):
+            continue
+        record = records.get(error.record_id or "")
+        operands = {"expected": "VALID", "actual": str(error)}
+        if record is None:
+            findings.append(
+                Finding(
+                    _projection_invalid_class(),
+                    {"record_id": error.record_id or "<unattributed>"},
+                    operands,
+                    surface={"workspace": context.workspace_root},
+                )
+            )
+        else:
+            findings.append(
+                _finding(
+                    record,
+                    _projection_invalid_class(),
+                    operands,
+                )
+            )
+    return findings
+
+
+def _support_resolved_gate(context: IndexLabLintContext) -> GateResult:
+    for _, session, ref, _ in _support_refs(context.selected_records()):
+        resolution, _ = context.resolve_message(session, ref)
+        if resolution.value is None or resolution.standing == "MALFORMED":
+            return GateResult.blocked("support resolution is incomplete")
+    return GateResult.ok()
+
+
+def _visible_context_gate(context: IndexLabLintContext) -> GateResult:
+    for record in context.selected_records():
+        resolution, _ = context.resolve_context(record)
+        if resolution.value is None or resolution.standing == "MALFORMED":
+            return GateResult.blocked("producer-context resolution is incomplete")
+    return _support_resolved_gate(context)
+
+
+CHECK_REGISTRY: tuple[Check, ...] = (
+    Check("records-loadable", Tier.STRUCTURAL, _check_records_loadable),
+    Check("context-resolves", Tier.REPORTABLE, _check_context_resolves),
+    Check("support-present", Tier.REPORTABLE, _check_support_present),
+    Check("support-resolves", Tier.REPORTABLE, _check_support_resolves),
+    Check(
+        "support-roles",
+        Tier.REPORTABLE,
+        _check_support_roles,
+        gate=_support_resolved_gate,
+    ),
+    Check(
+        "support-visible",
+        Tier.REPORTABLE,
+        _check_support_visible,
+        gate=_visible_context_gate,
+    ),
+    Check("projection-valid", Tier.REPORTABLE, _check_projection_valid),
+)
+
+
+def _support_refs(
+    records: Iterable[IndexRecord],
+) -> Iterable[tuple[IndexRecord, str, MessageRef, str]]:
+    for record in records:
+        for neighborhood in record.support.neighborhoods:
             for role, refs in (
                 ("grounding", neighborhood.grounding),
                 ("context", neighborhood.context),
             ):
                 for ref in refs:
-                    findings.extend(
-                        _lint_support_ref(
-                            record=record,
-                            source=source,
-                            context=context,
-                            session=neighborhood.session,
-                            ref=ref,
-                            role=role,
-                        )
-                    )
-
-    _, projection_errors = fold_records(ordered)
-    by_id = {record.id: record for record in ordered}
-    for error in projection_errors:
-        target = by_id.get(error.record_id or "")
-        findings.append(_check_projection(target, error))
-    return LintReport(findings=tuple(findings))
-
-
-# $kw: IndexLab.Linter/Context.Unresolved --from POI.Linter
-def _check_context_unresolved(
-    record: IndexRecord,
-    resolution: Resolution[TouchContext],
-    error: str | None,
-) -> LintFinding | None:
-    if resolution.standing != "MISSING":
-        return None
-    operands = {
-        "expected": "MATCHED",
-        "actual": "ERROR" if error is not None else "MISSING",
-    }
-    if error is not None:
-        operands["error"] = error
-    return _finding(
-        record,
-        "IndexLab.Linter/Context.Unresolved",
-        "blocked",
-        operands=operands,
-        check=_check_context_unresolved,
-    )
-
-
-# $kw: IndexLab.Linter/Context.Malformed --from POI.Linter
-def _check_context_malformed(
-    record: IndexRecord,
-    resolution: Resolution[TouchContext],
-) -> LintFinding | None:
-    if resolution.standing != "MALFORMED":
-        return None
-    operands: dict[str, object] = {"expected": "MATCHED", "actual": "MALFORMED"}
-    if resolution.detail is not None:
-        operands["detail"] = resolution.detail
-    return _finding(
-        record,
-        "IndexLab.Linter/Context.Malformed",
-        "blocked",
-        operands=operands,
-        check=_check_context_malformed,
-    )
-
-
-# $kw: IndexLab.Linter/Context.Amended --from POI.Linter
-def _check_context_amended(
-    record: IndexRecord,
-    resolution: Resolution[TouchContext],
-) -> LintFinding | None:
-    if resolution.standing != "AMENDED":
-        return None
-    return _finding(
-        record,
-        "IndexLab.Linter/Context.Amended",
-        "failed",
-        operands={"expected": "MATCHED", "actual": "AMENDED"},
-        check=_check_context_amended,
-    )
-
-
-# $kw: IndexLab.Linter/Support.Empty --from POI.Linter
-def _check_support_empty(record: IndexRecord) -> LintFinding | None:
-    actual = len(record.support.neighborhoods)
-    if actual:
-        return None
-    return _finding(
-        record,
-        "IndexLab.Linter/Support.Empty",
-        "failed",
-        operands={"expected_minimum": 1, "actual": actual},
-        check=_check_support_empty,
-    )
-
-
-# $kw: IndexLab.Linter/Support.NeighborhoodEmpty --from POI.Linter
-def _check_neighborhood_empty(
-    record: IndexRecord,
-    neighborhood: EvidenceNeighborhood,
-    neighborhood_index: int,
-) -> LintFinding | None:
-    actual = len(neighborhood.grounding)
-    if actual:
-        return None
-    return _finding(
-        record,
-        "IndexLab.Linter/Support.NeighborhoodEmpty",
-        "failed",
-        operands={"expected_minimum": 1, "actual": actual},
-        target={"neighborhood": neighborhood_index},
-        check=_check_neighborhood_empty,
-    )
-
-
-def _lint_support_ref(
-    *,
-    record: IndexRecord,
-    source: UserTouchSource,
-    context: Resolution[TouchContext],
-    session: str,
-    ref: MessageRef,
-    role: str,
-) -> tuple[LintFinding, ...]:
-    error: str | None = None
-    try:
-        resolution = source.resolve_message(session, ref)
-    except Exception as exc:
-        resolution = Resolution[TouchMessage](standing="MISSING", value=None)
-        error = str(exc)
-    target = {"session": session, "message": ref.address, "role": role}
-    findings: list[LintFinding] = []
-    malformed = _check_support_malformed(record, resolution, target)
-    _append(findings, malformed)
-    unresolved = None
-    if malformed is None:
-        unresolved = _check_support_unresolved(record, resolution, target, error)
-        _append(findings, unresolved)
-    if malformed is not None or unresolved is not None or resolution.value is None:
-        return tuple(findings)
-    _append(findings, _check_support_amended(record, resolution, target))
-    if role == "grounding":
-        _append(findings, _check_grounding_side(record, resolution.value, target))
-    else:
-        _append(findings, _check_context_side(record, resolution.value, target))
-    _append(
-        findings,
-        _check_outside_visible_context(
-            record,
-            context,
-            resolution.value,
-            session,
-            target,
-        ),
-    )
-    return tuple(findings)
-
-
-# $kw: IndexLab.Linter/Support.Unresolved --from POI.Linter
-def _check_support_unresolved(
-    record: IndexRecord,
-    resolution: Resolution[TouchMessage],
-    target: dict[str, object],
-    error: str | None,
-) -> LintFinding | None:
-    if resolution.standing != "MISSING" and resolution.value is not None:
-        return None
-    operands = {
-        "expected": "MATCHED",
-        "actual": "ERROR" if error is not None else "MISSING",
-    }
-    if error is not None:
-        operands["error"] = error
-    return _finding(
-        record,
-        "IndexLab.Linter/Support.Unresolved",
-        "blocked",
-        operands=operands,
-        target=target,
-        check=_check_support_unresolved,
-    )
-
-
-# $kw: IndexLab.Linter/Support.Malformed --from POI.Linter
-def _check_support_malformed(
-    record: IndexRecord,
-    resolution: Resolution[TouchMessage],
-    target: dict[str, object],
-) -> LintFinding | None:
-    """The referenced material is present but unreadable."""
-
-    if resolution.standing != "MALFORMED":
-        return None
-    operands: dict[str, object] = {"expected": "MATCHED", "actual": "MALFORMED"}
-    if resolution.detail is not None:
-        operands["detail"] = resolution.detail
-    return _finding(
-        record,
-        "IndexLab.Linter/Support.Malformed",
-        "blocked",
-        operands=operands,
-        target=target,
-        check=_check_support_malformed,
-    )
-
-
-# $kw: IndexLab.Linter/Support.Amended --from POI.Linter
-def _check_support_amended(
-    record: IndexRecord,
-    resolution: Resolution[TouchMessage],
-    target: dict[str, object],
-) -> LintFinding | None:
-    if resolution.standing != "AMENDED":
-        return None
-    return _finding(
-        record,
-        "IndexLab.Linter/Support.Amended",
-        "failed",
-        operands={"expected": "MATCHED", "actual": "AMENDED"},
-        target=target,
-        check=_check_support_amended,
-    )
-
-
-# $kw: IndexLab.Linter/Support.GroundingSide --from POI.Linter
-def _check_grounding_side(
-    record: IndexRecord,
-    message: TouchMessage,
-    target: dict[str, object],
-) -> LintFinding | None:
-    if message.side == "user":
-        return None
-    return _finding(
-        record,
-        "IndexLab.Linter/Support.GroundingSide",
-        "failed",
-        operands={"expected": "user", "actual": message.side},
-        target=target,
-        check=_check_grounding_side,
-    )
-
-
-# $kw: IndexLab.Linter/Support.ContextSide --from POI.Linter
-def _check_context_side(
-    record: IndexRecord,
-    message: TouchMessage,
-    target: dict[str, object],
-) -> LintFinding | None:
-    if message.side == "agent":
-        return None
-    return _finding(
-        record,
-        "IndexLab.Linter/Support.ContextSide",
-        "failed",
-        operands={"expected": "agent", "actual": message.side},
-        target=target,
-        check=_check_context_side,
-    )
-
-
-# $kw: IndexLab.Linter/Support.OutsideVisibleContext --from POI.Linter
-def _check_outside_visible_context(
-    record: IndexRecord,
-    context: Resolution[TouchContext],
-    message: TouchMessage,
-    session: str,
-    target: dict[str, object],
-) -> LintFinding | None:
-    if (
-        session != record.context.session
-        or context.value is None
-        or message.turn_ordinal <= context.value.horizon_ordinal
-    ):
-        return None
-    return _finding(
-        record,
-        "IndexLab.Linter/Support.OutsideVisibleContext",
-        "failed",
-        operands={
-            "expected_turn_maximum": context.value.horizon_ordinal,
-            "actual_turn": message.turn_ordinal,
-        },
-        target=target,
-        check=_check_outside_visible_context,
-    )
-
-
-# $kw: IndexLab.Linter/Projection.Invalid --from POI.Linter
-def _check_projection(
-    record: IndexRecord | None,
-    error: ProjectionError,
-) -> LintFinding:
-    """Attribute a fold failure to the record the fold itself named."""
-
-    operands = {"expected": "VALID", "actual": str(error)}
-    if record is None:
-        return _structural_finding(
-            "IndexLab.Linter/Projection.Invalid",
-            subject={"record_id": error.record_id or "<unattributed>"},
-            operands=operands,
-            check=_check_projection,
-        )
-    return _finding(
-        record,
-        "IndexLab.Linter/Projection.Invalid",
-        "failed",
-        operands=operands,
-        check=_check_projection,
-    )
-
-
-def _structural_finding(
-    poi_class: str,
-    *,
-    subject: dict[str, object],
-    operands: dict[str, object],
-    check: Callable[..., object],
-) -> LintFinding:
-    """A finding about the corpus itself, with no readable Record.Context to cite."""
-
-    surface: dict[str, object] = {"session": None, "horizon": None}
-    return LintFinding(
-        identity=_identity(poi_class, subject, surface),
-        poi_class=poi_class,
-        subject=subject,
-        operands=operands,
-        status="failed",
-        surface=surface,
-        source=_source_of(check),
-    )
+                    yield record, neighborhood.session, ref, role
 
 
 def _finding(
     record: IndexRecord,
     poi_class: str,
-    status: FindingStanding,
-    *,
     operands: dict[str, object],
-    check: Callable[..., object],
+    *,
     target: dict[str, object] | None = None,
-) -> LintFinding:
-    subject = {"record_id": record.id, **(target or {})}
-    surface = {
-        "session": record.context.session,
-        "horizon": record.context.horizon.to_dict(),
-    }
-    return LintFinding(
-        identity=_identity(poi_class, subject, surface),
-        poi_class=poi_class,
-        subject=subject,
-        operands=operands,
+    status: Status = Status.FAILED,
+) -> Finding:
+    return Finding(
+        poi_class,
+        {"record_id": record.id, **(target or {})},
+        operands,
         status=status,
-        surface=surface,
-        source=_source_of(check),
+        surface={
+            "session": record.context.session,
+            "horizon": record.context.horizon.to_dict(),
+        },
     )
 
 
-def _identity(
-    poi_class: str,
-    subject: dict[str, object],
-    surface: dict[str, object],
-) -> str:
-    """Stable POI identity over class, subject, and surface; operands excluded."""
-
-    payload = json.dumps(
-        [poi_class, subject, surface],
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return f"poi-{hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]}"
+def _subjects(
+    values: Iterable[str] | None,
+    records: Iterable[IndexRecord],
+) -> frozenset[str] | None:
+    if values is None:
+        return None
+    selected = frozenset(values)
+    known = {record.id for record in records}
+    unknown = selected - known
+    if unknown:
+        raise CliError("unknown Index.Record id(s): " + ", ".join(sorted(unknown)))
+    return selected
 
 
-def _source_of(check: Callable[..., object]) -> str:
-    code = check.__code__  # type: ignore[attr-defined]
-    return f"{Path(code.co_filename).name}:{code.co_firstlineno}"
-
-
-def _append(findings: list[LintFinding], finding: LintFinding | None) -> None:
-    if finding is not None:
-        findings.append(finding)
+def _ordered(records: Iterable[IndexRecord]) -> tuple[IndexRecord, ...]:
+    return tuple(sorted(records, key=lambda record: (record.ordinal, record.id)))
 
 
 __all__ = [
-    "FindingStanding",
-    "LintFinding",
+    "CHECK_REGISTRY",
+    "IndexLabLintContext",
     "LintReport",
     "lint_records",
     "lint_store",
