@@ -6,7 +6,7 @@
   decide, and the grounded prior decisions it reused, so the result can be audited without
   re-reading the scripts.
 - **Session:** `9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5`
-- **Status:** corpus archived and extracted; workspace load in progress.
+- **Status:** complete. Corpus archived, extracted, loaded into `index-2208`, folded, and linted.
 - **Rule:** this is a **format** migration. Nothing here validates the corpus. Defects are
   carried into the new model intact so the new linter can report them.
 
@@ -89,17 +89,59 @@ inside a test fixture string demonstrating a malformed annotation. It is not an 
 The 262 unresolved anchors and 696 ungrounded lines are **migrated, not dropped**. They are
 the backlog the new linter should report, which is the point of moving format first.
 
-## 5. Open
+## 5. The load, and what the linter found
+
+All 5,047 records loaded and fold into a coherent projection: **1,072 blocks holding 3,975
+lines**, `cargo_defects: 0` — every record round-trips through the model.
+
+`tarav indexlab lint` over the full corpus, 32.5s, 7 checks:
+
+| status | check |
+|---|---|
+| passed | `records-loadable`, `support-roles`, + 1 |
+| failed | `support-present`, `support-resolves` |
+| blocked | `context-resolves`, `support-visible` |
+
+| POI class | total | failed | blocked |
+|---|---|---|---|
+| `IndexLab.Linter/Context.Unresolved` | 5,047 | 0 | **5,047** |
+| `IndexLab.Linter/Support.Empty` | 2,001 | 2,001 | 0 |
+| `IndexLab.Linter/Support.Amended` | 1 | 1 | 0 |
+
+Three things worth reading carefully:
+
+**`Context.Unresolved` is blocked, not failed — for every record.** The migration's
+`Record.Context` names this session honestly, but its horizon `Turn.Ref` (`index-2208:corpus`)
+is minted by the migration and is not a real Chatlas turn. So the check cannot resolve it and
+reports *nothing known* rather than *something wrong*. That is the correct verdict and the
+exact distinction 752 argues for: blocked is expected, failed is a defect.
+
+**`support-visible` is blocked by `context-resolves`.** The dependency short-circuit works:
+one unresolvable precondition suppresses the check that depends on it without pretending the
+run was clean. `verified: false`, `clean: false`, `short_circuited: false`.
+
+**`Support.Empty` decomposes exactly**: 2,001 = 1,072 `block.create` (empty by construction)
++ 929 lines with no resolvable support. Verified against the manifest, not inferred.
+**3,046 of 3,975 lines — 77% — carry real resolved support.**
+
+The 929 ungrounded lines are the honest backlog. They were migrated, not dropped, and the
+linter can now see every one of them. That is what moving format first buys.
+
+## 6. Open
 
 - **`append_many` is O(n²).** It calls `append` per record, and each `append` calls
-  `self.list()`, re-reading the whole depot. Loading 5,047 records degrades from ~150
-  records/10s and keeps slowing. Fine for a one-off; a real defect for a kernel meant to take
+  `self.list()`, re-reading the whole depot. Loading 5,047 records took ~25 minutes, degrading
+  from ~150 records/10s. Fine for a one-off; a real defect for a kernel meant to take
   continuous capture.
+- **The migration horizon is unresolvable by construction.** Every record blocks
+  `context-resolves`. Either the kernel needs a first-class way to say "this context is a
+  migration, not a chat turn", or migrated records need a real turn to hang from. Right now
+  the honest answer produces 5,047 blocked checks, which is correct but not useful.
 - 642 says to reconcile "the 3,974-record Bloberia corpus"; this extraction produced 3,975
   lines. Close enough to be worth checking whether they are the same corpus.
 - Nothing in the live tree has been rewritten. The old system is untouched and still runs.
 
-## 6. Hugentics wording
+## 7. Hugentics wording
 
 The always-loaded `What The Index Is` block now describes the recording kernel:
 context-attached `Index.Record`s in an `Index.Workspace`, `Record.Context` and `Support.Set`
