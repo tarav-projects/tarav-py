@@ -35,12 +35,13 @@ ARCHIVE = PROJECT / "index-archive-2208"
 
 MD_REPOS = (
     "tarav-md",
+    "tarav-py",
     "tarav-chatlas-md",
     "tarav-canvas-md",
     "tarav-iterante-md",
     "tarav-projects-center-md",
 )
-STATE_REPOS = MD_REPOS + ("tarav-py", "tarav-canvas-js", "tarav-js", "tarav-pkg-testground")
+STATE_REPOS = MD_REPOS + ("tarav-canvas-js", "tarav-js", "tarav-pkg-testground")
 CODE_ROOTS = ("tarav-py/src", "tarav-py/tests", "tarav-py/dev")
 
 #: Stores the migration depends on that live outside the project tree entirely. The anchory
@@ -85,7 +86,10 @@ def bearing_markdown() -> list[Path]:
         if not root.is_dir():
             continue
         for path in root.rglob("*.md"):
-            if ".git" in path.parts or "node_modules" in path.parts:
+            if any(
+                part in path.parts
+                for part in (".git", "node_modules", ".venv", "__pycache__", "_DEPRECATED")
+            ):
                 continue
             if ARCHIVE in path.parents:
                 continue
