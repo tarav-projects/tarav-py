@@ -5,7 +5,7 @@
 - **Goal:** implement the new Touched.Index recording kernel as an isolated `tarav.indexlab`
   laboratory, including a namespaced CLI, deterministic touch mocks, a same-chat playground,
   mechanical linting, and a maintained developer guide.
-- **Status:** ready for autonomous execution.
+- **Status:** complete and verified.
 - **Design authority:**
   `tarav-md/notes/live/642-touched-index-recording-kernel-design-session.md` and the current
   design/implementation conversation.
@@ -39,8 +39,8 @@
   equivalence across editions.
 - A same-isoline or same-isoblock operation is itself an assertion of semantic equivalence; a new
   meaning receives a new iso-object.
-- `Trace.Support` is derived as the union of support captured by equivalent line records. Block
-  support is derived from the current lines' trace support.
+- `Isoline.Support` is derived as the union of support captured by equivalent line records. Block
+  support is derived from the current lines' Isoline support.
 
 ### Context.And.Support
 
@@ -62,10 +62,12 @@ The MVP operation vocabulary is deliberately small:
 
 - `block.create` creates an exact block edition and its isoblock.
 - `block.rename` creates a same-isoblock edition with a new name and carries current membership.
-- `line.capture` creates an exact line edition in a block and assigns an isoline.
+- `line.capture` creates an exact labeled line in a block and assigns an isoline; the label is its
+  public citation.
 - `support.add` targets one exact line edition and contributes additional support.
-- `line.reblock` places a new exact line edition in another block; retaining its isoline asserts
-  semantic equivalence in the new block context.
+- `line.reblock` changes the current block placement of an exact existing line; retaining its
+  isoline asserts semantic equivalence in the new block context, while the record support grounds
+  only the placement operation.
 - `isoline.group` records a later-context claim that existing line editions are semantically
   equivalent under one resulting isoline.
 
@@ -115,7 +117,7 @@ queryable view, not another authoritative write surface.
 
 ### Slice 1 — workspace, records, and persistence
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** uninitialized directories and writes outside an explicit workspace are rejected;
   initialized temporary workspaces round-trip ordered records.
 - **GREEN:** add strict models, the workspace marker, and a Bloberia-backed record store.
@@ -123,7 +125,7 @@ queryable view, not another authoritative write surface.
 
 ### Slice 2 — semantic evolution projection
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** simulate create/capture, support growth, rename, reblock, iso grouping, repair, and purge;
   assert current blocks/lines and accumulated support.
 - **GREEN:** add the small operation vocabulary, invariant checks, record replacement/removal, and
@@ -132,7 +134,7 @@ queryable view, not another authoritative write surface.
 
 ### Slice 3 — touch sources and linter
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** cover self-chat capture, external capture, contextual agent turns, invalid sides,
   out-of-horizon references, missing targets, and unresolved external sources.
 - **GREEN:** implement `UserTouchMock`, the read-only Chatlas adapter, and mechanical findings.
@@ -140,7 +142,7 @@ queryable view, not another authoritative write surface.
 
 ### Slice 4 — CLI and same-chat playground
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** CLI tests prove explicit initialization, ingest/list/project/lint behavior, and mock
   scenario repeatability.
 - **GREEN:** register `tarav indexlab`; initialize `var/indexlab/current-chat`; ingest records whose
@@ -149,7 +151,7 @@ queryable view, not another authoritative write surface.
 
 ### Slice 5 — maintained developer guide and closure
 
-- **Status:** pending.
+- **Status:** complete.
 - Allocate a live-note prefix, write the IndexLab developer guide, and route it from `AGENTS.md`.
 - Run focused tests after each slice, then IndexLab/CLI/architecture tests, Ruff, `git diff --check`,
   and the proportionate full suite.
@@ -166,3 +168,34 @@ queryable view, not another authoritative write surface.
 - **Checkpoint gate:** before the first product-code edit, commit the current tarav-py worktree,
   including this implementation record and the pre-existing Index model wording edits. Preserve all
   unrelated work and make no further implementation commits.
+- **Checkpoint:** `9da94ed` recorded the ready Impl.Req and pre-existing Index wording edits before
+  product-code execution. All implementation changes remain uncommitted for review.
+- **Kernel:** added strict context/support/operation/record values, marker-enforced workspaces, and a
+  Bloberia-sharded curated store with ordered append, same-context replacement, batch rollback, and
+  purge.
+- **Semantic evolution:** the projection fold now exercises block creation/rename, labeled line
+  capture, support growth, reblocking exact lines without inflating wording support, later Isoline
+  grouping, and recomputation after context-local repair or purge.
+- **Conformance correction:** final design-session simulation removed the provisional new-line
+  behavior from `line.reblock`, removed reblock/group evidence from `Isoline.Support`, replaced the
+  residual trace terminology with Isoline, and made the line's public citation label mandatory and
+  unique.
+- **Touch boundary:** added deterministic `UserTouchMock` serialization and a read-only
+  `ChatlasTouchSource` built only on the public lossless API. The real Normal Model revealed that
+  retained turns carry `message_refs`; the adapter now reads those while also accepting the earlier
+  `message_addresses` projection used by fixtures.
+- **Linter:** mechanical findings distinguish `failed` from `blocked`, report stable POI identity,
+  class, subject, operands, surface, and computed check source, and distinguish `clean` from
+  `verified`. Each class has one managed identity beside its check; shared selectable-check catalog
+  and renderer integration are deliberately deferred.
+- **CLI:** registered `tarav indexlab` with explicit workspace initialization, manifest capture,
+  authoritative record listing, semantic projection, linting, and a persistent deterministic mock
+  scenario.
+- **Same-chat MVP:** `var/indexlab/current-chat/` contains six records grounded in this Chatlas
+  session. They project into `Recording.Kernel` and `Development.Boundary` and lint `verified` with
+  zero failed or blocked findings. The ignored workspace is machine-local playground state.
+- **Developer surface:** added `746-indexlab-dev-guide.md` and routed IndexLab work to it from
+  `AGENTS.md`.
+- **Verification:** 23 IndexLab tests, 13 architecture/focused boundary tests, Ruff, installed CLI
+  smoke tests, `git diff --check`, zero IndexLab Skillware POIs/diagnostics, the real-chat linter,
+  and the complete 2,225-test suite pass.

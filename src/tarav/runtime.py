@@ -54,6 +54,7 @@ class TaravRuntime:
         from tarav.forum import register_forum_commands
         from tarav.hooks import register_hook_commands
         from tarav.index.cli import register_index_commands
+        from tarav.indexlab.commands import register_indexlab_commands
         from tarav.skillware._build_core import find_project_root
         from tarav.skillware.managed_blocks import create_tarav_wayfinder
         from tarav.skillware.related_surfaces import RelatedSurfaceResolver
@@ -144,6 +145,7 @@ class TaravRuntime:
             edition_history_support_resolver=resolve_event_support_set_record,
         )
         register_index_commands(subparsers)
+        register_indexlab_commands(subparsers)
         register_mission_commands(subparsers)
 
 

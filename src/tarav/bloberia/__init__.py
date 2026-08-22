@@ -8,6 +8,7 @@ from .core import (
     InvalidBloberiaInputError,
     PUBLIC_DEPOT_ROOT,
     TYPE_FILES,
+    TYPE_SHARDS,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "InvalidBloberiaInputError",
     "PUBLIC_DEPOT_ROOT",
     "TYPE_FILES",
+    "TYPE_SHARDS",
 ]

@@ -87,6 +87,14 @@
   references and content expectations before writes, derive all planned effects
   from one model, and audit LineRecords after landing.
 
+## IndexLab
+
+- `tarav.indexlab` is an experimental recording kernel isolated from the
+  production `tarav.index` model. Before changing or operating it, read
+  [the IndexLab developer guide](notes/live/746-indexlab-dev-guide.md).
+- Every IndexLab writer requires an explicit initialized workspace. Existing
+  Index and Chatlas systems are read-only inputs through named adapters.
+
 ## Chatlas
 
 - `tarav.chatlas` owns archives, session indexes, and provider adapters.
