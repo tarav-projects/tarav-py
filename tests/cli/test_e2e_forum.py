@@ -52,8 +52,3 @@ def test_forum_help_is_top_level(capsys: pytest.CaptureFixture[str]) -> None:
         main(["forum", "--help"])
     assert exc_info.value.code == 0
     assert "post" in capsys.readouterr().out
-
-    with pytest.raises(SystemExit) as exc_info:
-        main(["future", "forum", "--help"])
-    assert exc_info.value.code == 2
-    assert "invalid choice: 'forum'" in capsys.readouterr().err

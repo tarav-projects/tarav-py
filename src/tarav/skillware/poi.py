@@ -110,13 +110,13 @@ def _unresolvable(*args, **kwargs) -> SkillwarePOIInstance:
 
 
 # $kw: Skillware.Linter/Never.Built --note [DF] a source exists without a corresponding lock entry
-# --note [PR] run `agentos skw build`
+# --note [PR] run `tarav skw build` to create the missing lock entry ^c20260821-62u
 def _never_built(*args, **kwargs) -> SkillwarePOIInstance:
     return _bound_poi("Skillware.Linter/Never.Built")(*args, **kwargs)
 
 
 # $kw: Skillware.Linter/Stale.Build --note [DF] the on-disk target matches the lock while a fresh compilation differs
-# --note [PR] run `agentos skw build`
+# --note [PR] run `tarav skw build` to refresh the stale target ^c20260821-63u
 def _stale_build(*args, **kwargs) -> SkillwarePOIInstance:
     return _bound_poi("Skillware.Linter/Stale.Build")(*args, **kwargs)
 
@@ -128,7 +128,7 @@ def _hand_edited(*args, **kwargs) -> SkillwarePOIInstance:
 
 
 # $kw: Skillware.Linter/Copy.Drift --note [DF] a copy body no longer equals the expansion of its target
-# --note [PR] run `agentos skw build`
+# --note [PR] run `tarav skw build` to restore the generated copy body ^c20260821-64u
 def _copy_drift(*args, **kwargs) -> SkillwarePOIInstance:
     return _bound_poi("Skillware.Linter/Copy.Drift")(*args, **kwargs)
 

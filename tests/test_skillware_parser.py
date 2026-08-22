@@ -522,7 +522,7 @@ def test_annotated_router_rejects_duplicate_explicit_keys() -> None:
 
 def test_router_compiles_to_pure_prose(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n## Router Table\n\n"
         "> $kw: #r\n\n"
@@ -544,7 +544,7 @@ def test_router_compiles_to_pure_prose(tmp_path: Path) -> None:
 
 def test_annotated_router_views_compile_from_one_table(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n"
         "## Public Calls\n\n"
@@ -585,7 +585,7 @@ def test_annotated_router_views_compile_from_one_table(tmp_path: Path) -> None:
 
 def test_annotated_router_load_target_must_resolve(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n"
         "> $kw: ^driver --routing-table --select many\n"
@@ -607,11 +607,11 @@ def test_annotated_router_load_resolves_registered_package_file(
     dependency.mkdir()
     (dependency / "SKILL.md").write_text("# Dependency\n", encoding="utf-8")
     skill = _write_skill(tmp_path)
-    (skill / ".skillware" / "skillware.json").write_text(
+    (skill / ".skw" / "skw.json").write_text(
         '{"deps": {"dependency": "../dependency"}}\n',
         encoding="utf-8",
     )
-    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n"
         "> $kw: ^driver --routing-table --select many\n"
@@ -627,7 +627,7 @@ def test_annotated_router_load_resolves_registered_package_file(
 
 def test_addressed_router_row_is_nonempty_dependency_content(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n"
         "> $kw: ^driver --routing-table --select many\n"
@@ -656,7 +656,7 @@ def test_addressed_router_row_is_nonempty_dependency_content(tmp_path: Path) -> 
 
 def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n## Pair\n\n"
         "> $kw: --derived --from references/lib.skw.md#Alpha --intent first\n\n- one\n\n> $kw. end\n\n"
@@ -715,7 +715,7 @@ def test_bare_end_closes_top_and_duplicate_address() -> None:
 
 def test_labels_never_reach_compiled_output(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n## A\n\n> $kw: ^frag\nfragment prose\n> $kw. end\n",
         encoding="utf-8",
@@ -729,7 +729,7 @@ def test_labels_never_reach_compiled_output(tmp_path: Path) -> None:
 
 def test_label_locators_resolve(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references"
+    src = skill / ".skw" / "src" / "references"
     (src / "lib.skw.md").write_text(
         "# lib\n\n## Alpha\n\nintro prose around the span.\n\n"
         "> $kw: ^alpha-core\n- alpha core one\n- alpha core two\n> $kw. end\n\n"
@@ -761,7 +761,7 @@ def test_label_locators_resolve(tmp_path: Path) -> None:
 
 def test_label_spans_hash_fine_grained(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references"
+    src = skill / ".skw" / "src" / "references"
     (src / "lib.skw.md").write_text(
         "# lib\n\n## Alpha\n\nprose outside.\n\n"
         "> $kw: ^core\n- core line\n> $kw. end\n",
@@ -799,7 +799,7 @@ def test_label_spans_hash_fine_grained(tmp_path: Path) -> None:
 
 def test_region_body_is_fence_aware(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references"
+    src = skill / ".skw" / "src" / "references"
     (src / "lib.skw.md").write_text(
         "# lib\n\n## Spec\n\nintro line.\n\n"
         "````md\n```\n## Fenced Heading\nfenced content\n````\n\n"
@@ -821,14 +821,14 @@ def test_region_body_is_fence_aware(tmp_path: Path) -> None:
 
 def test_ordinal_shift_does_not_bless_stale_derived(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n## Pair\n\n"
         "> $kw: --derived --from references/lib.skw.md#Alpha --intent i\n\n- solution\n\n> $kw. end\n",
         encoding="utf-8",
     )
     build_skill(skill)
-    lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
+    lib = skill / ".skw" / "src" / "references" / "lib.skw.md"
     lib.write_text(
         lib.read_text(encoding="utf-8").replace("- alpha one", "- alpha one v2"),
         encoding="utf-8",
@@ -867,7 +867,7 @@ def test_adjacent_blockquotes_are_body_not_args() -> None:
 
 def test_quote_after_end_survives_compilation(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n## A\n\n"
         "> $kw: ^frag\nbody line\n> $kw. end\n"
@@ -890,7 +890,7 @@ def test_copy_with_multiple_froms_is_a_finding() -> None:
 
 def test_labeled_span_resolves_nested_copies_fresh(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    src = skill / ".skillware" / "src" / "references"
+    src = skill / ".skw" / "src" / "references"
     (src / "lib.skw.md").write_text(
         "# lib\n\n## Alpha\n\n- alpha one\n",
         encoding="utf-8",

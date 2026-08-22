@@ -528,7 +528,7 @@ def test_cli_record_list_and_check_round_trip(
 
     args = parser.parse_args(
         [
-            "skillware",
+                "skw",
             "edition-history",
             "list",
             "--file",

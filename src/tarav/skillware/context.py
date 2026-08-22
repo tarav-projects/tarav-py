@@ -139,7 +139,7 @@ def _relative_runtime_path(raw: str, *, field: str) -> Path:
     ):
         raise SkillwareError(f"{field} must be a skill-root-relative file: {raw!r}")
     path = Path(*pure.parts)
-    if path.parts and path.parts[0] in {".skw", ".skillware"}:
+    if path.parts and path.parts[0] == ".skw":
         raise SkillwareError(f"{field} cannot load the .skw build surface: {raw!r}")
     return path
 

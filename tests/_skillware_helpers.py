@@ -155,12 +155,12 @@ Hand tail.
 
 def _write_skill(root: Path) -> Path:
     skill = root / "skill"
-    src = skill / ".skillware" / "src" / "references"
+    src = skill / ".skw" / "src" / "references"
     src.mkdir(parents=True)
     (src / "base.skw.md").write_text(BASE, encoding="utf-8")
     (src / "lib.skw.md").write_text(LIB, encoding="utf-8")
     (src / "mod.skw.md").write_text(MOD, encoding="utf-8")
-    (skill / ".skillware" / "skillware.json").write_text(
+    (skill / ".skw" / "skw.json").write_text(
         json.dumps({"depots": ["../depot"]}), encoding="utf-8"
     )
     (skill / "references").mkdir()

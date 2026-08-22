@@ -115,7 +115,7 @@ def _valid_runtime_file_locator(locator: str) -> bool:
         path.is_absolute()
         or path == PurePosixPath(".")
         or ".." in path.parts
-        or path.parts[0] in {".skw", ".skillware"}
+        or path.parts[0] == ".skw"
     )
 
 

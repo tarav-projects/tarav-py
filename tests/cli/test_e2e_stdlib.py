@@ -40,8 +40,10 @@ def test_stdlib_routing_and_payloads_are_nested(
     help_text = build_parser().format_help()
     assert "stdlib" in help_text
     assert "mdblocks" not in help_text
-    assert "future" in help_text
     assert "forum" in help_text
+    assert "future" not in help_text
+    assert "skillware" not in help_text
+    assert "skw" in help_text
 
     with pytest.raises(SystemExit) as excinfo:
         main(["prefix", "--help"])

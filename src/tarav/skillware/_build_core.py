@@ -22,30 +22,17 @@ from tarav.skillware.model import (
 
 SRC_SUFFIX = ".skw.md"
 BUILD_DIR = ".skw"
-LEGACY_BUILD_DIR = ".skillware"
 SETTINGS_NAME = "skw.json"
-LEGACY_SETTINGS_NAME = "skillware.json"
 
 
 def resolve_build_root(skill_root: Path) -> Path:
-    """The `.skw/` build home for a package, preferring the current `.skw/`
-    layout and falling back to the legacy `.skillware/` during the rename
-    deprecation window. Defaults to `.skw/` when neither exists yet."""
-    current = skill_root / BUILD_DIR
-    if (current / "src").is_dir():
-        return current
-    legacy = skill_root / LEGACY_BUILD_DIR
-    if (legacy / "src").is_dir():
-        return legacy
-    return current
+    """Return the package's sole Skillware build home."""
+    return skill_root / BUILD_DIR
 
 
 def _settings_path(build_root: Path) -> Path | None:
-    for name in (SETTINGS_NAME, LEGACY_SETTINGS_NAME):
-        candidate = build_root / name
-        if candidate.is_file():
-            return candidate
-    return None
+    candidate = build_root / SETTINGS_NAME
+    return candidate if candidate.is_file() else None
 
 
 class SkillwareError(Exception):
@@ -880,7 +867,7 @@ def _resolve_locator(
         return body, None
 
     if not skillware.depots:
-        return None, "Dotted.Name target needs a depot in skillware.json"
+        return None, "Dotted.Name target needs a depot in skw.json"
     for depot in skillware.depots:
         entry = _depot_name_index(skillware, depot).get(locator)
         if entry is not None:

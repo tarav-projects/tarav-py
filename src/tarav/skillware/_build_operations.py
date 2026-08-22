@@ -21,7 +21,6 @@ from tarav.skillware.model import (
 
 from ._build_core import (
     BUILD_DIR,
-    LEGACY_BUILD_DIR,
     Expansion,
     Skillware,
     SkillwareError,
@@ -762,10 +761,11 @@ class ProjectCheckReport:
 
 
 def discover_packages(project_root: Path) -> list[Path]:
-    """Every skw package under the project: a directory holding a `.skw/src`
-    (or legacy `.skillware/src`). Honors the project config's `surfaces`
-    (explicit set) and `exclude` (trim). A config-only project root — a
-    `.skw/` with no `src/` — is not itself a package."""
+    """Every package under the project containing a `.skw/src` directory.
+
+    Honors the project config's explicit `surfaces` and `exclude` set. A
+    config-only project root with no `src/` is not itself a package.
+    """
     project_root = Path(project_root).resolve()
     config = load_project_skw_config(project_root)
     excluded = {(project_root / raw).resolve() for raw in config.exclude}
@@ -775,13 +775,12 @@ def discover_packages(project_root: Path) -> list[Path]:
         candidates = [(project_root / raw).resolve() for raw in config.surfaces]
     else:
         candidates = []
-        for build_name in (BUILD_DIR, LEGACY_BUILD_DIR):
-            for build_dir in project_root.rglob(build_name):
-                if not (build_dir / "src").is_dir():
-                    continue
-                if {".git", "node_modules"} & set(build_dir.parts):
-                    continue
-                candidates.append(build_dir.parent.resolve())
+        for build_dir in project_root.rglob(BUILD_DIR):
+            if not (build_dir / "src").is_dir():
+                continue
+            if {".git", "node_modules"} & set(build_dir.parts):
+                continue
+            candidates.append(build_dir.parent.resolve())
     for pkg in candidates:
         if pkg in excluded:
             continue

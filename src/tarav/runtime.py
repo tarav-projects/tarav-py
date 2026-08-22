@@ -105,7 +105,6 @@ class TaravRuntime:
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
         register_surface_commands(subparsers)
-        _register_future_commands(subparsers)
         _register_stdlib_commands(
             subparsers,
             registrars=(
@@ -166,17 +165,6 @@ def _register_stdlib_commands(
     )
     for registrar in registrars:
         registrar(stdlib_subparsers)
-
-
-def _register_future_commands(subparsers: argparse._SubParsersAction) -> None:
-    future_parser = subparsers.add_parser(
-        "future",
-        help="Emerging Tarav surfaces that are not common-use yet.",
-    )
-    future_parser.add_subparsers(
-        dest="future_command",
-        required=True,
-    )
 
 
 def create_runtime(

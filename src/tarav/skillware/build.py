@@ -7,8 +7,6 @@ from tarav.skw.network import extract_mentions
 
 from ._build_core import (
     BUILD_DIR,
-    LEGACY_BUILD_DIR,
-    LEGACY_SETTINGS_NAME,
     PROJECT_MARKER,
     SETTINGS_NAME,
     SRC_SUFFIX,
@@ -110,8 +108,6 @@ _DIRECT_EXPORTS = (
     AGENTS_MD_TEXT,
     AGENTS_NAME,
     BUILD_DIR,
-    LEGACY_BUILD_DIR,
-    LEGACY_SETTINGS_NAME,
     LOCK_NAME,
     PROJECT_MARKER,
     EditionHistoryConfig,

@@ -860,7 +860,6 @@ def register_skillware_commands(
 ) -> None:
     skillware_parser = subparsers.add_parser(
         "skw",
-        aliases=["skillware"],
         help="Build Skw packages and lint configured project surfaces.",
         description=(
             "skw: a package's files can be produced from .skw/src/**/*.skw.md "
@@ -868,7 +867,7 @@ def register_skillware_commands(
             "selected by typed code_surfaces entries. build compiles and refreshes "
             "copy bodies; check lints for POIs; bless accepts supported exact POIs; "
             "status inventories the managed files; context projects declared runtime "
-            "loading paths. (skillware is a deprecated alias.)"
+            "loading paths."
         ),
     )
     skillware_parser.set_defaults(

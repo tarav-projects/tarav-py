@@ -110,7 +110,7 @@ def test_edition_history_cli_round_trip(
     assert (
         main(
             [
-                "skillware",
+                "skw",
                 "edition-history",
                 "list",
                 "--file",

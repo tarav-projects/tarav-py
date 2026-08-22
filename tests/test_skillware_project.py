@@ -13,6 +13,7 @@ from tarav.skillware.build import (
     check_skill,
     expand_file,
     load_skillware,
+    resolve_build_root,
 )
 from tarav.skillware.commands import (
     _cmd_skillware_build,
@@ -382,7 +383,7 @@ def test_cascade_extends_package_depots_across_repos(tmp_path: Path) -> None:
 
     # project with a package and a project-scope config pointing at the sibling
     proj = tmp_path / "proj"
-    skill = _write_skill(proj)  # legacy .skillware/ package with its own ../depot
+    skill = _write_skill(proj)  # package with its own ../depot
     (proj / ".tarav").mkdir(parents=True)
     (proj / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
     (proj / ".skw").mkdir()
@@ -399,36 +400,29 @@ def test_cascade_extends_package_depots_across_repos(tmp_path: Path) -> None:
     assert any(str(d).endswith("proj/depot") for d in sw.depots)
 
 
-def test_build_dir_prefers_skw_with_skillware_fallback(tmp_path: Path) -> None:
-    """`.skw/` is the current build home; `.skillware/` still loads during the
-    deprecation window; when both exist, `.skw/` wins."""
-    skill = _write_skill(tmp_path)  # writes a legacy .skillware/ package
+def test_skw_is_the_only_build_home(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    loaded = load_skillware(skill)
 
-    # Fallback: a legacy .skillware/ package still loads.
-    legacy = load_skillware(skill)
-    assert legacy.build_root.name == ".skillware"
+    assert loaded.build_root == skill / ".skw"
+    assert loaded.src_root == skill / ".skw" / "src"
 
-    # Current: rename to .skw/ and it loads as the preferred home.
-    (skill / ".skillware").rename(skill / ".skw")
-    current = load_skillware(skill)
-    assert current.build_root.name == ".skw"
-
-    # Both present: .skw/ takes precedence.
-    (skill / ".skillware").mkdir()
-    (skill / ".skillware" / "src").mkdir()
-    assert load_skillware(skill).build_root.name == ".skw"
+    old_layout = tmp_path / "old-layout"
+    (old_layout / ".skillware" / "src").mkdir(parents=True)
+    assert resolve_build_root(old_layout) == old_layout / ".skw"
 
 
-def test_skw_verb_with_skillware_alias() -> None:
-    """The verb is `tarav skw`; `skillware` stays as a deprecation alias."""
+def test_skw_is_the_only_skillware_verb() -> None:
     parser = argparse.ArgumentParser(prog="tarav")
     subparsers = parser.add_subparsers(dest="command")
     register_skillware_commands(subparsers)
 
-    for verb in ("skw", "skillware"):
-        args = parser.parse_args([verb, "check", "--skill", "some/path"])
-        assert args.handler is _cmd_skillware_check
-        assert args.skill == "some/path"
+    args = parser.parse_args(["skw", "check", "--skill", "some/path"])
+    assert args.handler is _cmd_skillware_check
+    assert args.skill == "some/path"
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["skillware", "check", "--skill", "some/path"])
 
 
 def test_project_bless_accepts_exact_poi_without_skill() -> None:
@@ -593,7 +587,7 @@ def test_build_stamps_agents_md(tmp_path: Path) -> None:
 
     skill = _write_skill(tmp_path)
     build_skill(skill)
-    agents = skill / ".skillware" / "AGENTS.md"
+    agents = skill / ".skw" / "AGENTS.md"
     assert agents.is_file()
     assert agents.read_text(encoding="utf-8") == AGENTS_MD_TEXT
     assert "tarav skw build" in AGENTS_MD_TEXT
@@ -605,7 +599,7 @@ def test_build_overwrites_hand_edited_agents_md(tmp_path: Path) -> None:
 
     skill = _write_skill(tmp_path)
     build_skill(skill)
-    agents = skill / ".skillware" / "AGENTS.md"
+    agents = skill / ".skw" / "AGENTS.md"
     agents.write_text("# my local notes\n", encoding="utf-8")
     build_skill(skill)
     assert agents.read_text(encoding="utf-8") == AGENTS_MD_TEXT
