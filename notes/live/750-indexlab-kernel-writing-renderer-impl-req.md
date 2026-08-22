@@ -4,7 +4,7 @@
 
 - **Goal:** add a read-only IndexLab consumer that renders the current semantic projection as
   directly readable `Kernel.Writing` Markdown, with exact block selection.
-- **Status:** ready for execution.
+- **Status:** completed and verified.
 - **Scope:** projection retention of opaque line assertions, a pure renderer, the namespaced
   `tarav indexlab render` CLI, focused tests, the retained `dev-library/main` playground, and the
   IndexLab developer guide.
@@ -55,7 +55,7 @@
 
 ### Slice 1 — projection-backed renderer
 
-- **Status:** planned.
+- **Status:** completed.
 - **RED:** tests require exact Kernel.Writing separators, headings, line order, type sugar, labels,
   empty-block behavior, and visible missing/conflicting type assertions.
 - **GREEN:** retain opaque capture assertions on `ProjectedLine` and add a pure renderer over
@@ -64,7 +64,7 @@
 
 ### Slice 2 — CLI selection
 
-- **Status:** planned.
+- **Status:** completed.
 - **RED:** CLI tests require whole-index rendering, exact name and Block.Id selection, and
   fail-closed absent/ambiguous selectors.
 - **GREEN:** register `tarav indexlab render` using the same explicit library/workspace resolution
@@ -74,7 +74,7 @@
 
 ### Slice 3 — closure
 
-- **Status:** planned.
+- **Status:** completed.
 - Update the developer guide and this artifact with the landed surface and verification.
 - Run focused IndexLab tests, architecture tests, Ruff, `git diff --check`, and the proportionate
   complete suite.
@@ -84,6 +84,22 @@
 
 - **Execution authority:** `$tarav-hugentics --impl --dev --AUTO` at Chatlas message
   `5eeda162…54688`.
-- **Pre-execution checkpoint:** pending.
+- **Pre-execution checkpoint:** `e7bf026` (`chore: checkpoint indexlab renderer development`).
 - **Open-space decision:** initial scope deliberately stops at `render` plus `--block`; label
   selection and richer metadata views can be added when a concrete consumer requires them.
+- **Projection:** `ProjectedLine` now retains its creating record's opaque assertions without
+  changing their kernel semantics.
+- **Renderer:** current blocks render as separator-anchored headings and ordered typed/citable
+  lines; missing and conflicting line-type assertions stay visible as `[--]` and `[??]`.
+- **CLI:** `tarav indexlab render` renders the complete current projection or one exact active
+  block selected by dotted name or `Block.Id`; missing and ambiguous selectors fail closed.
+- **Playground:** `dev-library/main` renders three blocks and fourteen lines; the resulting
+  Markdown round-trips through `tarav stdlib mdblocks` as three blocks.
+- **Verification:** 72 focused IndexLab/architecture tests and the complete suite (`2267 passed`)
+  passed; Ruff and `git diff --check` passed; the reinstalled `tarav` CLI rendered the retained
+  `POI.Class.Documentation` block exactly.
+- **Skillware audit:** the project-wide check retains its pre-existing nonzero corpus (221 POIs,
+  including one production Index parse diagnostic) and reports no POI against the new renderer.
+- **Product capture:** the new renderer carries one file-level SKW dependency annotation but no
+  product `--note`; the final audit found no maintenance-relevant product claim beyond the
+  implementation and this Impl.Req, so no capture manifest was warranted.

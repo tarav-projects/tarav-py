@@ -43,6 +43,7 @@ from .touch import (
     UserTouchMock,
     UserTouchSource,
 )
+from .render import RenderError, render_kernel_writing
 from .linter import (
     CHECK_REGISTRY,
     IndexLabLintContext,
@@ -78,6 +79,7 @@ __all__ = [
     "RecordContext",
     "RecordModelError",
     "RecordStore",
+    "RenderError",
     "Resolution",
     "SupportSet",
     "SemanticProjection",
@@ -90,6 +92,7 @@ __all__ = [
     "WorkspaceEntry",
     "fold_records",
     "project_records",
+    "render_kernel_writing",
     "lint_records",
     "lint_store",
     "union_support",

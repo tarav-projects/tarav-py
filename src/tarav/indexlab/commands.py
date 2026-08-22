@@ -22,6 +22,7 @@ from .model import (
     SupportSet,
 )
 from .projection import ProjectionError, fold_records, project_records
+from .render import RenderError, render_kernel_writing
 from .touch import ChatlasTouchSource, UserTouchMock
 from .workspace import IndexLibrary, IndexWorkspace, RecordStore, WorkspaceError
 
@@ -158,6 +159,17 @@ def _cmd_project(args: argparse.Namespace) -> int:
             + "\n".join(f"- {error}" for error in errors)
         )
     _print_json(projection.to_dict())
+    return 0
+
+
+def _cmd_render(args: argparse.Namespace) -> int:
+    try:
+        projection = project_records(_open_store(args).list())
+        rendered = render_kernel_writing(projection, block=args.block)
+    except (ProjectionError, RenderError, WorkspaceError) as exc:
+        raise CliError(str(exc)) from exc
+    if rendered:
+        print(rendered)
     return 0
 
 
@@ -411,6 +423,16 @@ def register_indexlab_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_workspace_selector(project_parser)
     project_parser.set_defaults(handler=_cmd_project)
+
+    render_parser = commands.add_parser(
+        "render", help="Render the current semantic projection as Kernel.Writing."
+    )
+    _add_workspace_selector(render_parser)
+    render_parser.add_argument(
+        "--block",
+        help="Render one exact active block by dotted name or Block.Id.",
+    )
+    render_parser.set_defaults(handler=_cmd_render)
 
     lint_parser = commands.add_parser(
         "lint", help="Surface mechanical IndexLab findings and POIs."

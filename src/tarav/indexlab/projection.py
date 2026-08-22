@@ -48,6 +48,7 @@ class ProjectedLine:
     label: str
     text: str
     support: SupportSet
+    assertions: tuple[dict[str, object], ...] = ()
     active: bool = True
 
     def to_dict(self) -> dict[str, object]:
@@ -58,6 +59,7 @@ class ProjectedLine:
             "label": self.label,
             "text": self.text,
             "support": self.support.to_dict(),
+            "assertions": list(self.assertions),
         }
 
 
@@ -274,6 +276,7 @@ def _apply_record(
             label=label,
             text=text,
             support=record.support,
+            assertions=record.assertions,
         )
         blocks[block_id] = replace(
             block,

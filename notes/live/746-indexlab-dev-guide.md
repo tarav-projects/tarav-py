@@ -3,8 +3,8 @@
 IndexLab is the experimental implementation of the context-attached Touched.Index recording
 kernel. This is the entry surface for another agent continuing the experiment.
 
-Status: recording kernel, workspace library, and POI.Linter runtime running. The production
-`tarav.index` check corpus is unchanged.
+Status: recording kernel, workspace library, semantic renderer, and POI.Linter runtime running.
+The production `tarav.index` check corpus is unchanged.
 
 ## Enter here
 
@@ -49,6 +49,7 @@ uv run tarav indexlab workspace create --library var/indexlab/dev-library --name
 uv run tarav indexlab scenario seed-mock --library var/indexlab/dev-library --workspace my-run
 uv run tarav indexlab records --library var/indexlab/dev-library --workspace my-run
 uv run tarav indexlab project --library var/indexlab/dev-library --workspace my-run
+uv run tarav indexlab render --library var/indexlab/dev-library --workspace my-run
 uv run tarav indexlab lint --library var/indexlab/dev-library --workspace my-run
 uv run tarav indexlab lint --library var/indexlab/dev-library --workspace my-run --json
 uv run tarav indexlab lint --library var/indexlab/dev-library --workspace my-run --list-checks
@@ -63,6 +64,20 @@ uv run tarav indexlab workspace list --library var/indexlab/dev-library
 uv run tarav indexlab project --library var/indexlab/dev-library --workspace current-chat
 uv run tarav indexlab lint --library var/indexlab/dev-library --workspace current-chat
 ```
+
+`project` emits the machine-readable current semantic projection. `render` consumes the same
+projection read-only and presents every active block as citable Kernel.Writing Markdown. Select
+one exact active block by dotted name or `Block.Id`:
+
+```sh
+uv run tarav indexlab render --library var/indexlab/dev-library --workspace main \
+  --block POI.Class.Documentation
+```
+
+The renderer preserves projection block order and each block's line order. It reads the opaque
+`index.line.type` assertion as presentation sugar: one value renders as `[XX]`, no value as
+`[--]`, and conflicting values as `[??]`. The authoritative data remains the records; rendering
+does not create or maintain a secondary surface.
 
 The workspace create/list result includes its exact `depot` path. That path is directly queryable
 through the storage-level CLI:
@@ -96,6 +111,8 @@ so one chat may index another.
   composition, and the Bloberia-backed curated record store.
 - `projection.py` — fold for `block.create`, `block.rename`, `line.capture`, `support.add`,
   `line.reblock`, and `isoline.group`.
+- `render.py` — pure Kernel.Writing rendering and exact active-block selection over the semantic
+  projection.
 - `touch.py` — `UserTouchSource`, read-only `ChatlasTouchSource`, and deterministic
   `UserTouchMock`.
 - `linter.py` — the IndexLab lint context, touch-resolution cache, gates, domain checks, and named
@@ -122,7 +139,8 @@ uv run ruff check src/tarav/indexlab tests/indexlab
 
 `test_workspace.py` guards library/workspace isolation, stable identities, the shared
 workspace/depot/Git root, and the mutable boundary. `test_projection.py` runs semantic evolution
-simulations. `test_touch_and_linter.py` covers evidence resolution and mechanical findings.
+simulations. `test_render.py` protects Kernel.Writing output, visible type standing, and exact
+block selection. `test_touch_and_linter.py` covers evidence resolution and mechanical findings.
 `test_usage_scenarios.py` runs the seven grounded Design.Session scenarios end to end through the
 record store, projection, touch source, and linter. `test_cli.py` protects library resolution,
 storage-level Bloberia queryability, and the explicitly configured mock scenario.

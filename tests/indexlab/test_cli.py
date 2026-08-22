@@ -56,6 +56,9 @@ def _manifest(path) -> None:
                                 "text": "The index is a sequence of records.",
                             },
                         },
+                        "assertions": [
+                            {"type": "index.line.type", "value": "DF"}
+                        ],
                     },
                 ],
             }
@@ -132,6 +135,42 @@ def test_cli_creates_captures_projects_and_exposes_the_bloberia_depot(
     assert main(["indexlab", "project", *_selection(library, "main")]) == 0
     projection = json.loads(capsys.readouterr().out)
     assert projection["blocks"][0]["line_ids"] == ["line-a"]
+
+    assert main(["indexlab", "render", *_selection(library, "main")]) == 0
+    assert capsys.readouterr().out == (
+        "****\n"
+        "## Recording.Kernel\n\n"
+        "- [DF] The index is a sequence of records. ^index-sequence\n"
+    )
+
+    for selector in ("Recording.Kernel", "block-a"):
+        assert (
+            main(
+                [
+                    "indexlab",
+                    "render",
+                    *_selection(library, "main"),
+                    "--block",
+                    selector,
+                ]
+            )
+            == 0
+        )
+        assert "## Recording.Kernel" in capsys.readouterr().out
+
+    assert (
+        main(
+            [
+                "indexlab",
+                "render",
+                *_selection(library, "main"),
+                "--block",
+                "Absent.Block",
+            ]
+        )
+        == 1
+    )
+    assert "does not resolve" in capsys.readouterr().err
 
     assert (
         main(
