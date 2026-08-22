@@ -4,7 +4,7 @@
 
 - **Goal:** replace the laboratory's path-only `IndexLabWorkspace` with the accepted
   `Index.Workspace` and `Index.Library` model, while preserving the explicit write boundary.
-- **Status:** ready for autonomous execution.
+- **Status:** complete and verified.
 - **Scope:** the experimental `tarav.indexlab` namespace, the small Bloberia initialization seam it
   needs, its CLI, tests, playground, and developer guide.
 - **Out of scope:** production `tarav.index`, migration of `/Users/pereiro/Documents/bloberia/tarav-index`,
@@ -69,7 +69,7 @@
 
 ### Slice 1 — Bloberia empty-depot initialization
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** an explicitly initialized empty shards depot has authoritative `meta.json`, preserves its
   type/key/Git configuration when reopened, and does not create a Git repository itself.
 - **GREEN:** add the smallest public initialization operation over Bloberia's existing metadata
@@ -78,7 +78,7 @@
 
 ### Slice 2 — official workspace root contract
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** a new workspace has stable identity/configuration, owns a Git repository, is also the
   Bloberia depot root, and its records are readable through both `RecordStore` and generic
   `BloberiaDepot`.
@@ -88,7 +88,7 @@
 
 ### Slice 3 — library registry and selectors
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** an explicit library creates two isolated named workspaces, resolves names and UUIDs,
   rejects collisions and traversal, and never treats its own root as a depot.
 - **GREEN:** add the versioned library registry and workspace lifecycle.
@@ -96,7 +96,7 @@
 
 ### Slice 4 — CLI and end-to-end queryability
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** CLI tests create a library/workspace, capture and project records by workspace name, lint
   with the configured adapter, and query the same cargo with `tarav bloberia --depot <root>`.
 - **GREEN:** replace path-only IndexLab commands with explicit `--library` plus name/UUID selectors;
@@ -105,7 +105,7 @@
 
 ### Slice 5 — playground, guide, and closure
 
-- **Status:** pending.
+- **Status:** complete.
 - Create a new ignored development library under `var/indexlab/` without touching the old sandbox
   or the production Index depot.
 - Update the developer guide and architecture guidance for the library/workspace/root contract.
@@ -121,4 +121,33 @@
   eventual linter vision in this slice. Explicit selection removes accidental mock activation;
   general allowed-capability findings require a concrete non-mock scenario before enlarging the
   linter vocabulary.
-- **Checkpoint:** pending.
+- **Checkpoint:** `a6e2d9a` preserved the complete pre-execution worktree, including the prior
+  IndexLab MVP, this ready Impl.Req, and concurrently present user work. No later implementation
+  commit was created.
+- **Bloberia seam:** added `BloberiaDepot.initialize()` to materialize an empty depot's declared
+  type, key, and Git metadata without fake cargo and without creating a repository.
+- **Workspace root:** replaced `IndexLabWorkspace` with `IndexWorkspace`. Its UUID/config marker,
+  Bloberia metadata/private records, and Git repository now share one exact root; `RecordStore`
+  exposes and uses that root directly.
+- **Library:** added `IndexLibrary`, whose versioned `library.json` maps safe human names to stable
+  workspace UUIDs. It creates, lists, and resolves isolated workspaces by either selector while
+  remaining neither a depot nor a Git repository itself.
+- **Adapters:** moved touch-source selection into `workspace.json`. Mock scenarios require an
+  explicitly mock-configured workspace and missing mock material fails closed; file presence no
+  longer changes a Chatlas workspace's behavior.
+- **CLI:** added `indexlab library init`, `workspace create`, and `workspace list`; capture,
+  records, project, lint, and scenarios now resolve `--workspace <name|uuid>` through an explicit
+  `--library`. Workspace results expose the exact lower-level `depot` path.
+- **Playground:** created the ignored `var/indexlab/dev-library` and captured the existing six
+  same-chat records into its `current-chat` workspace. It projects two blocks, lints verified with
+  zero findings, and a generic Bloberia query returns its two `block.create` cargos.
+- **Git observation:** Bloberia committed the initialized workspace configuration. The subsequent
+  six-record burst occurred inside its 900-second interval and remains pending until a later
+  eligible write. This exposes the existing write-triggered final-burst gap; Index workflows do
+  not bypass it with direct Git calls.
+- **Product capture:** the final audit found no maintenance fact that belongs as an SKW annotation.
+  Production Index backpropagation was intentionally not invoked because this slice's safety scope
+  permits writes only to the experimental workspace and product files.
+- **Verification:** 150 focused IndexLab/Bloberia/CLI/architecture tests pass; Ruff and
+  `git diff --check` pass; the editable installed CLI passes workspace and generic-depot smoke
+  queries; the complete suite passes with 2,255 tests.

@@ -3,7 +3,8 @@
 IndexLab is the experimental implementation of the context-attached Touched.Index recording
 kernel. This is the entry surface for another agent continuing the experiment.
 
-Status: MVP running. The production `tarav.index` system is unchanged.
+Status: recording kernel and workspace library running. The production `tarav.index` system is
+unchanged.
 
 ## Enter here
 
@@ -19,35 +20,57 @@ scope and execution record. This guide owns how to enter, run, inspect, and main
 
 ## Safety boundary
 
-Every writer requires an explicit initialized `IndexLab.Workspace`. There is no default Index
-path. Initialization refuses a non-empty unowned directory. Existing systems enter through named
-read adapters; the Chatlas adapter computes a Normal Model without mutating the archive or its
-cache.
+Every writer requires an explicit `Index.Workspace` resolved through an explicit initialized
+`Index.Library`. There is no inferred library or workspace. Initialization refuses non-empty
+unowned directories. Existing systems enter through named read adapters; the Chatlas adapter
+computes a Normal Model without mutating the archive or its cache.
 
-Tests write only to `tmp_path`. Manual experiments belong under the ignored
-`var/indexlab/<workspace>/` tree. Never point a workspace initializer at an existing production
-surface.
+Each workspace is one isolation boundary with this root algebra:
+
+```text
+Index.Workspace.Root = Bloberia.Depot.Root = Git.Repository.Root
+```
+
+The library is only a user-level name registry. It is not a Bloberia depot or Git repository.
+Workspace creation initializes Git; Bloberia receives `git="."` and owns best-effort checkpoint
+commits after record writes. The selected touch adapter is stored in `workspace.json`; a mock file
+cannot silently activate mock behavior in a Chatlas-configured workspace.
+
+Tests write only to `tmp_path`. Manual libraries belong under the ignored `var/indexlab/` tree.
+Never point a library or workspace initializer at an existing production surface. The conventional
+future user-level library root is `/Users/pereiro/Documents/bloberia/tarav-index`, but the lab CLI
+still requires it explicitly and this experiment does not migrate or write that surface.
 
 ## Quickstart
 
 ```sh
-uv run tarav indexlab workspace init --workspace var/indexlab/my-run
-uv run tarav indexlab scenario seed-mock --workspace var/indexlab/my-run
-uv run tarav indexlab records --workspace var/indexlab/my-run
-uv run tarav indexlab project --workspace var/indexlab/my-run
-uv run tarav indexlab lint --workspace var/indexlab/my-run
+uv run tarav indexlab library init --library var/indexlab/dev-library
+uv run tarav indexlab workspace create --library var/indexlab/dev-library --name my-run --touch-adapter mock
+uv run tarav indexlab scenario seed-mock --library var/indexlab/dev-library --workspace my-run
+uv run tarav indexlab records --library var/indexlab/dev-library --workspace my-run
+uv run tarav indexlab project --library var/indexlab/dev-library --workspace my-run
+uv run tarav indexlab lint --library var/indexlab/dev-library --workspace my-run
 ```
 
-The retained same-chat playground is `var/indexlab/current-chat/`. It contains six records grounded
-in the design conversation and currently lints cleanly through the real Chatlas adapter:
+The retained same-chat playground is the `current-chat` workspace in
+`var/indexlab/dev-library/`. It contains six records grounded in the design conversation and
+currently lints cleanly through the real Chatlas adapter:
 
 ```sh
-uv run tarav indexlab project --workspace var/indexlab/current-chat
-uv run tarav indexlab lint --workspace var/indexlab/current-chat
+uv run tarav indexlab workspace list --library var/indexlab/dev-library
+uv run tarav indexlab project --library var/indexlab/dev-library --workspace current-chat
+uv run tarav indexlab lint --library var/indexlab/dev-library --workspace current-chat
 ```
 
-Runtime playground files are intentionally ignored. Recreate the current-chat workspace from its
-local `capture.json` only after initializing an empty workspace.
+The workspace create/list result includes its exact `depot` path. That path is directly queryable
+through the storage-level CLI:
+
+```sh
+uv run tarav bloberia all --depot <depot-from-workspace-result> --query-json '{"operation.type":{"equals":"block.create"}}'
+```
+
+Runtime playground files are intentionally ignored. The previous path-only
+`var/indexlab/current-chat/` sandbox remains untouched as historical local data.
 
 ## Capture manifest
 
@@ -67,14 +90,16 @@ so one chat may index another.
 ## Current kernel
 
 - `model.py` — record, context, support, operation, and reference values.
-- `workspace.py` — marker-enforced workspace and Bloberia-backed curated record store.
+- `workspace.py` — library registry, stable workspace identity/configuration, Git/depot root
+  composition, and the Bloberia-backed curated record store.
 - `projection.py` — fold for `block.create`, `block.rename`, `line.capture`, `support.add`,
   `line.reblock`, and `isoline.group`.
 - `touch.py` — `UserTouchSource`, read-only `ChatlasTouchSource`, and deterministic
   `UserTouchMock`.
 - `linter.py` — addressable mechanical findings with `failed` or `blocked` standing, explicit
   operands, stable identities, and computed check-source locations.
-- `commands.py` — the isolated `tarav indexlab` developer surface.
+- `commands.py` — the isolated `tarav indexlab` developer surface with explicit library and
+  name/UUID workspace selection.
 
 Exact line/block ids identify editions, while each line label is its public citation.
 Isoline/isoblock ids assert semantic equivalence. The current projection is derived by folding
@@ -91,11 +116,12 @@ uv run pytest tests/test_architecture.py -q
 uv run ruff check src/tarav/indexlab tests/indexlab
 ```
 
-`test_workspace.py` guards the sandbox and mutable boundary. `test_projection.py` runs semantic
-evolution simulations. `test_touch_and_linter.py` covers evidence resolution and mechanical
-findings. `test_usage_scenarios.py` runs the seven grounded Design.Session scenarios end to end
-through the record store, projection, touch source, and linter. `test_cli.py` protects the public
-laboratory surface and deterministic mock scenario.
+`test_workspace.py` guards library/workspace isolation, stable identities, the shared
+workspace/depot/Git root, and the mutable boundary. `test_projection.py` runs semantic evolution
+simulations. `test_touch_and_linter.py` covers evidence resolution and mechanical findings.
+`test_usage_scenarios.py` runs the seven grounded Design.Session scenarios end to end through the
+record store, projection, touch source, and linter. `test_cli.py` protects library resolution,
+storage-level Bloberia queryability, and the explicitly configured mock scenario.
 
 ## Linter tiers and verdicts
 
@@ -137,6 +163,11 @@ the message.
 - capture manifests are authored directly; no Chatlas-assisted authoring command exists;
 - replacement and purge have no CLI yet;
 - there is no SKW/project-secondary-surface consumer integration;
+- workspace names cannot yet be renamed and library registry updates have no concurrency protocol;
+- adapter selection is explicit, but a general allowed-capability policy and its POI vocabulary do
+  not exist yet;
+- Bloberia checkpoints are write-triggered; a final burst inside the configured interval can remain
+  uncommitted until another interval-eligible write occurs;
 - ordinal allocation is an MVP single-writer mechanism, not a concurrency protocol.
 
 The next useful slice should be driven by a concrete usage scenario. Do not grow a general

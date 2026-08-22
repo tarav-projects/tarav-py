@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -58,26 +59,60 @@ def _manifest(path) -> None:
                     },
                 ],
             }
-        )
+        ),
+        "utf-8",
     )
 
 
-def test_cli_initializes_captures_lists_and_projects(tmp_path, capsys) -> None:
-    workspace = tmp_path / "lab"
+def _initialize_library(path, capsys) -> None:
+    assert main(["indexlab", "library", "init", "--library", str(path)]) == 0
+    capsys.readouterr()
+
+
+def _create_workspace(
+    library, name: str, capsys, *, touch_adapter: str = "chatlas"
+) -> dict[str, object]:
+    assert (
+        main(
+            [
+                "indexlab",
+                "workspace",
+                "create",
+                "--library",
+                str(library),
+                "--name",
+                name,
+                "--touch-adapter",
+                touch_adapter,
+            ]
+        )
+        == 0
+    )
+    return json.loads(capsys.readouterr().out)
+
+
+def _selection(library, workspace: str) -> list[str]:
+    return ["--library", str(library), "--workspace", workspace]
+
+
+def test_cli_creates_captures_projects_and_exposes_the_bloberia_depot(
+    tmp_path, capsys
+) -> None:
+    library = tmp_path / "library"
     manifest = tmp_path / "capture.json"
     _manifest(manifest)
+    _initialize_library(library, capsys)
+    created = _create_workspace(library, "main", capsys)
+    depot = created["depot"]
 
-    assert main(["indexlab", "workspace", "init", "--workspace", str(workspace)]) == 0
-    initialized = json.loads(capsys.readouterr().out)
-    assert initialized["workspace"] == str(workspace.resolve())
-
+    assert created["workspace"] == depot
+    assert created["name"] == "main"
     assert (
         main(
             [
                 "indexlab",
                 "capture",
-                "--workspace",
-                str(workspace),
+                *_selection(library, "main"),
                 "--manifest",
                 str(manifest),
             ]
@@ -87,44 +122,84 @@ def test_cli_initializes_captures_lists_and_projects(tmp_path, capsys) -> None:
     captured = json.loads(capsys.readouterr().out)
     assert captured["ordinals"] == [1, 2]
 
-    assert main(["indexlab", "records", "--workspace", str(workspace)]) == 0
+    assert main(["indexlab", "records", *_selection(library, "main")]) == 0
     records = json.loads(capsys.readouterr().out)
     assert [record["id"] for record in records["records"]] == [
         "record-block",
         "record-line",
     ]
 
-    assert main(["indexlab", "project", "--workspace", str(workspace)]) == 0
+    assert main(["indexlab", "project", *_selection(library, "main")]) == 0
     projection = json.loads(capsys.readouterr().out)
     assert projection["blocks"][0]["line_ids"] == ["line-a"]
 
-
-def test_cli_refuses_uninitialized_workspace(tmp_path, capsys) -> None:
-    result = main(
-        ["indexlab", "records", "--workspace", str(tmp_path / "not-initialized")]
+    assert (
+        main(
+            [
+                "bloberia",
+                "all",
+                "--depot",
+                str(depot),
+                "--query-json",
+                '{"operation.type":{"equals":"block.create"}}',
+            ]
+        )
+        == 0
     )
+    generic_query = json.loads(capsys.readouterr().out)
+    assert generic_query["count"] == 1
+    assert generic_query["records"][0]["id"] == "record-block"
+
+
+def test_cli_lists_workspaces_and_accepts_stable_uuid_selector(tmp_path, capsys) -> None:
+    library = tmp_path / "library"
+    _initialize_library(library, capsys)
+    created = _create_workspace(library, "main", capsys)
+    _create_workspace(library, "scenarios", capsys, touch_adapter="mock")
+
+    assert main(["indexlab", "workspace", "list", "--library", str(library)]) == 0
+    listing = json.loads(capsys.readouterr().out)
+    assert [item["name"] for item in listing["workspaces"]] == ["main", "scenarios"]
+
+    assert (
+        main(
+            [
+                "indexlab",
+                "records",
+                *_selection(library, str(created["id"])),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["count"] == 0
+
+
+def test_cli_refuses_uninitialized_library_and_unknown_workspace(tmp_path, capsys) -> None:
+    library = tmp_path / "not-initialized"
+    result = main(["indexlab", "records", *_selection(library, "main")])
 
     assert result == 1
-    assert "not an initialized IndexLab workspace" in capsys.readouterr().err
+    assert "not an initialized Index.Library" in capsys.readouterr().err
+
+    _initialize_library(library, capsys)
+    result = main(["indexlab", "records", *_selection(library, "absent")])
+    assert result == 1
+    assert "unknown Index.Workspace" in capsys.readouterr().err
 
 
 def test_mock_scenario_is_deterministic_and_lints_cleanly(tmp_path, capsys) -> None:
+    library = tmp_path / "library"
+    _initialize_library(library, capsys)
     projections = []
     for name in ("first", "second"):
-        workspace = tmp_path / name
-        assert (
-            main(["indexlab", "workspace", "init", "--workspace", str(workspace)])
-            == 0
-        )
-        capsys.readouterr()
+        _create_workspace(library, name, capsys, touch_adapter="mock")
         assert (
             main(
                 [
                     "indexlab",
                     "scenario",
                     "seed-mock",
-                    "--workspace",
-                    str(workspace),
+                    *_selection(library, name),
                 ]
             )
             == 0
@@ -133,28 +208,53 @@ def test_mock_scenario_is_deterministic_and_lints_cleanly(tmp_path, capsys) -> N
         assert scenario["lint"]["verified"] is True
         projections.append(scenario["projection"])
 
-        assert main(["indexlab", "lint", "--workspace", str(workspace)]) == 0
+        assert main(["indexlab", "lint", *_selection(library, name)]) == 0
         assert json.loads(capsys.readouterr().out)["verified"] is True
 
     assert projections[0] == projections[1]
 
 
-def test_indexlab_help_exposes_the_sandbox_boundary(capsys) -> None:
+def test_mock_adapter_is_explicit_and_fails_closed_without_its_material(
+    tmp_path, capsys
+) -> None:
+    library = tmp_path / "library"
+    _initialize_library(library, capsys)
+    _create_workspace(library, "main", capsys)
+
+    result = main(
+        ["indexlab", "scenario", "seed-mock", *_selection(library, "main")]
+    )
+    assert result == 1
+    assert "touch_adapter 'mock'" in capsys.readouterr().err
+
+    mock_workspace = _create_workspace(
+        library, "mock-without-material", capsys, touch_adapter="mock"
+    )
+    result = main(
+        ["indexlab", "lint", *_selection(library, "mock-without-material")]
+    )
+    assert result == 1
+    assert TOUCH_MOCK_FILENAME in capsys.readouterr().err
+    assert mock_workspace["touch_adapter"] == "mock"
+
+
+def test_indexlab_help_exposes_library_and_workspace_boundaries(capsys) -> None:
     with pytest.raises(SystemExit) as raised:
         main(["indexlab", "--help"])
 
     assert raised.value.code == 0
     output = capsys.readouterr().out
     assert "experimental" in output.lower()
+    assert "library" in output.lower()
     assert "workspace" in output.lower()
 
 
 def test_lint_exits_nonzero_when_a_check_is_blocked(tmp_path, capsys) -> None:
     """Fail closed: blocked is not a pass, even though nothing failed."""
 
-    workspace = tmp_path / "lab"
-    main(["indexlab", "workspace", "init", "--workspace", str(workspace)])
-    capsys.readouterr()
+    library = tmp_path / "library"
+    _initialize_library(library, capsys)
+    created = _create_workspace(library, "blocked", capsys, touch_adapter="mock")
 
     manifest = tmp_path / "manifest.json"
     manifest.write_text(
@@ -197,20 +297,19 @@ def test_lint_exits_nonzero_when_a_check_is_blocked(tmp_path, capsys) -> None:
         [
             "indexlab",
             "capture",
-            "--workspace",
-            str(workspace),
+            *_selection(library, "blocked"),
             "--manifest",
             str(manifest),
         ]
     )
     capsys.readouterr()
-    # An empty mock resolves nothing, so every check on this record is blocked.
-    (workspace / TOUCH_MOCK_FILENAME).write_text(
+    workspace_root = created["workspace"]
+    (Path(str(workspace_root)) / TOUCH_MOCK_FILENAME).write_text(
         json.dumps({"schema": "tarav.indexlab-user-touch-mock.v1", "sessions": {}}),
         "utf-8",
     )
 
-    exit_code = main(["indexlab", "lint", "--workspace", str(workspace)])
+    exit_code = main(["indexlab", "lint", *_selection(library, "blocked")])
     payload = json.loads(capsys.readouterr().out)
 
     assert exit_code == 1

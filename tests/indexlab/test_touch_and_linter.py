@@ -3,7 +3,7 @@ from __future__ import annotations
 from tarav.indexlab import (
     ChatlasTouchSource,
     EvidenceNeighborhood,
-    IndexLabWorkspace,
+    IndexWorkspace,
     IndexRecord,
     MessageRef,
     Operation,
@@ -421,7 +421,12 @@ def test_structural_tier_reports_unloadable_cargo_and_stops_the_run(tmp_path) ->
     remainder as clean.
     """
 
-    store = RecordStore(IndexLabWorkspace.initialize(tmp_path / "lab"))
+    store = RecordStore(
+        IndexWorkspace.initialize(
+            tmp_path / "lab",
+            workspace_id="00000000-0000-4000-8000-000000000001",
+        )
+    )
     source = UserTouchMock()
     touched = source.add_turn("chat-a", "user", "Touched.")
     writer = source.add_turn("chat-a", "agent", "Captured.")

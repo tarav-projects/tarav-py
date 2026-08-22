@@ -7,6 +7,7 @@ may not change what a query means, or the two paths diverge and one of them is w
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -133,3 +134,30 @@ def test_the_declared_key_survives_reopening(tmp_path: Path) -> None:
     root = tmp_path / "shards"
     _filled(root, TYPE_SHARDS)
     assert BloberiaDepot(root).shard_key == "id"
+
+
+def test_an_empty_depot_can_materialize_its_declared_contract(tmp_path: Path) -> None:
+    root = tmp_path / "shards"
+
+    initialized = BloberiaDepot(
+        root,
+        depot_type=TYPE_SHARDS,
+        key="id",
+        git=".",
+        git_interval_seconds=60,
+    ).initialize()
+
+    assert initialized.root == root.resolve()
+    assert initialized.count({}) == 0
+    assert json.loads((root / "meta.json").read_text("utf-8")) == {
+        "schema": "tarav.bloberia-depot.v2",
+        "type": "shards",
+        "key": "id",
+        "git": ".",
+        "git_interval_seconds": 60,
+    }
+    reopened = BloberiaDepot(root)
+    assert reopened.shard_key == "id"
+    assert reopened.git is not None
+    assert reopened.git.repo == root.resolve()
+    assert not (root / ".git").exists()

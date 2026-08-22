@@ -18,7 +18,7 @@ from .model import (
 )
 from .projection import ProjectionError, fold_records, project_records
 from .touch import ChatlasTouchSource, UserTouchMock
-from .workspace import IndexLabWorkspace, RecordStore, WorkspaceError
+from .workspace import IndexLibrary, IndexWorkspace, RecordStore, WorkspaceError
 
 
 CAPTURE_MANIFEST_SCHEMA = "tarav.indexlab-capture-manifest.v1"
@@ -29,16 +29,78 @@ def _print_json(payload: object) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
+def _open_library(args: argparse.Namespace) -> IndexLibrary:
+    return IndexLibrary.open(Path(args.library))
+
+
+def _open_workspace(args: argparse.Namespace) -> IndexWorkspace:
+    return _open_library(args).resolve(args.workspace)
+
+
 def _open_store(args: argparse.Namespace) -> RecordStore:
-    return RecordStore(IndexLabWorkspace.open(Path(args.workspace)))
+    return RecordStore(_open_workspace(args))
 
 
-def _cmd_workspace_init(args: argparse.Namespace) -> int:
+def _cmd_library_init(args: argparse.Namespace) -> int:
     try:
-        workspace = IndexLabWorkspace.initialize(Path(args.workspace))
+        library = IndexLibrary.initialize(Path(args.library))
     except WorkspaceError as exc:
         raise CliError(str(exc)) from exc
-    _print_json({"schema": "tarav.indexlab-workspace-result.v1", "workspace": str(workspace.root)})
+    _print_json(
+        {
+            "schema": "tarav.indexlab-library-result.v1",
+            "library": str(library.root),
+        }
+    )
+    return 0
+
+
+def _cmd_workspace_create(args: argparse.Namespace) -> int:
+    try:
+        library = _open_library(args)
+        workspace = library.create_workspace(
+            args.name,
+            touch_adapter=args.touch_adapter,
+        )
+    except WorkspaceError as exc:
+        raise CliError(str(exc)) from exc
+    _print_json(
+        {
+            "schema": "tarav.indexlab-workspace-result.v1",
+            "library": str(library.root),
+            "name": args.name,
+            "id": workspace.id,
+            "workspace": str(workspace.root),
+            "depot": str(workspace.root),
+            "touch_adapter": workspace.touch_adapter,
+        }
+    )
+    return 0
+
+
+def _cmd_workspace_list(args: argparse.Namespace) -> int:
+    try:
+        library = _open_library(args)
+        entries = library.list_workspaces()
+    except WorkspaceError as exc:
+        raise CliError(str(exc)) from exc
+    _print_json(
+        {
+            "schema": "tarav.indexlab-workspace-list.v1",
+            "library": str(library.root),
+            "count": len(entries),
+            "workspaces": [
+                {
+                    "name": entry.name,
+                    "id": entry.id,
+                    "workspace": str(entry.root),
+                    "depot": str(entry.root),
+                    "touch_adapter": entry.workspace.touch_adapter,
+                }
+                for entry in entries
+            ],
+        }
+    )
     return 0
 
 
@@ -99,7 +161,12 @@ def _cmd_lint(args: argparse.Namespace) -> int:
     try:
         store = _open_store(args)
         mock_path = store.workspace.root / TOUCH_MOCK_FILENAME
-        if mock_path.is_file():
+        if store.workspace.touch_adapter == "mock":
+            if not mock_path.is_file():
+                raise WorkspaceError(
+                    f"mock touch adapter requires {TOUCH_MOCK_FILENAME}: "
+                    f"{store.workspace.root}"
+                )
             source = UserTouchMock.from_dict(json.loads(mock_path.read_text("utf-8")))
         else:
             source = ChatlasTouchSource(
@@ -115,8 +182,12 @@ def _cmd_lint(args: argparse.Namespace) -> int:
 def _cmd_seed_mock(args: argparse.Namespace) -> int:
     try:
         store = _open_store(args)
+        if store.workspace.touch_adapter != "mock":
+            raise WorkspaceError(
+                "mock scenario requires a workspace configured with touch_adapter 'mock'"
+            )
         if store.list():
-            raise WorkspaceError("mock scenario requires an empty IndexLab workspace")
+            raise WorkspaceError("mock scenario requires an empty Index.Workspace")
         source, records = _mock_scenario()
         stored = store.append_many(records)
         atomic_write_json(
@@ -217,11 +288,20 @@ def _mock_scenario() -> tuple[UserTouchMock, tuple[IndexRecord, ...]]:
     return source, records
 
 
-def _add_workspace_argument(parser: argparse.ArgumentParser) -> None:
+def _add_library_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--library",
+        required=True,
+        help="Explicit initialized Index.Library root; no default is inferred.",
+    )
+
+
+def _add_workspace_selector(parser: argparse.ArgumentParser) -> None:
+    _add_library_argument(parser)
     parser.add_argument(
         "--workspace",
         required=True,
-        help="Explicit initialized IndexLab workspace; no default is inferred.",
+        help="Workspace name or stable UUID resolved through the selected library.",
     )
 
 
@@ -231,46 +311,70 @@ def register_indexlab_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Experimental Touched.Index recording kernel in an explicit workspace.",
         description=(
             "Develop and inspect the experimental recording kernel. Every writer is "
-            "confined to an explicitly initialized IndexLab workspace."
+            "confined to a workspace resolved through an explicit Index.Library."
         ),
     )
     commands = parser.add_subparsers(dest="indexlab_command", required=True)
 
+    library_parser = commands.add_parser(
+        "library", help="Initialize the explicit user-level workspace registry."
+    )
+    library_commands = library_parser.add_subparsers(
+        dest="indexlab_library_command", required=True
+    )
+    library_init_parser = library_commands.add_parser(
+        "init", help="Initialize an empty Index.Library."
+    )
+    _add_library_argument(library_init_parser)
+    library_init_parser.set_defaults(handler=_cmd_library_init)
+
     workspace_parser = commands.add_parser(
-        "workspace", help="Initialize the explicit sandbox boundary."
+        "workspace", help="Create or list independently rooted Index.Workspaces."
     )
     workspace_commands = workspace_parser.add_subparsers(
         dest="indexlab_workspace_command", required=True
     )
-    init_parser = workspace_commands.add_parser(
-        "init", help="Initialize a new empty IndexLab workspace."
+    create_parser = workspace_commands.add_parser(
+        "create", help="Create a named workspace and its Bloberia/Git root."
     )
-    _add_workspace_argument(init_parser)
-    init_parser.set_defaults(handler=_cmd_workspace_init)
+    _add_library_argument(create_parser)
+    create_parser.add_argument("--name", required=True, help="Workspace name.")
+    create_parser.add_argument(
+        "--touch-adapter",
+        choices=("chatlas", "mock"),
+        default="chatlas",
+        help="Explicit User.Touch adapter for this workspace.",
+    )
+    create_parser.set_defaults(handler=_cmd_workspace_create)
+    list_parser = workspace_commands.add_parser(
+        "list", help="List the library's workspace names, identities, and roots."
+    )
+    _add_library_argument(list_parser)
+    list_parser.set_defaults(handler=_cmd_workspace_list)
 
     capture_parser = commands.add_parser(
         "capture", help="Append context-attached records from one JSON manifest."
     )
-    _add_workspace_argument(capture_parser)
+    _add_workspace_selector(capture_parser)
     capture_parser.add_argument("--manifest", required=True, help="Capture manifest JSON file.")
     capture_parser.set_defaults(handler=_cmd_capture)
 
     records_parser = commands.add_parser(
         "records", help="List the authoritative ordered Index.Record surface."
     )
-    _add_workspace_argument(records_parser)
+    _add_workspace_selector(records_parser)
     records_parser.set_defaults(handler=_cmd_records)
 
     project_parser = commands.add_parser(
         "project", help="Fold records into the current semantic block projection."
     )
-    _add_workspace_argument(project_parser)
+    _add_workspace_selector(project_parser)
     project_parser.set_defaults(handler=_cmd_project)
 
     lint_parser = commands.add_parser(
         "lint", help="Surface mechanical IndexLab findings and POIs."
     )
-    _add_workspace_argument(lint_parser)
+    _add_workspace_selector(lint_parser)
     lint_parser.add_argument(
         "--chatlas-root",
         help="Optional Chatlas root used by the read-only touch adapter.",
@@ -286,7 +390,7 @@ def register_indexlab_commands(subparsers: argparse._SubParsersAction) -> None:
     mock_parser = scenario_commands.add_parser(
         "seed-mock", help="Seed and lint the deterministic User.Touch.Mock scenario."
     )
-    _add_workspace_argument(mock_parser)
+    _add_workspace_selector(mock_parser)
     mock_parser.set_defaults(handler=_cmd_seed_mock)
 
 

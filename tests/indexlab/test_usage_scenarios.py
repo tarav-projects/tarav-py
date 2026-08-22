@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from tarav.indexlab import (
     EvidenceNeighborhood,
-    IndexLabWorkspace,
+    IndexWorkspace,
     IndexRecord,
     Operation,
     RecordContext,
@@ -14,6 +14,13 @@ from tarav.indexlab import (
     lint_records,
     project_records,
 )
+
+
+def _workspace(root):
+    return IndexWorkspace.initialize(
+        root,
+        workspace_id="00000000-0000-4000-8000-000000000001",
+    )
 
 
 def _support(session: str, user, agent=None) -> SupportSet:
@@ -85,7 +92,7 @@ def _append_base(
 
 def test_self_chat_capture_is_context_bounded_and_verified(tmp_path) -> None:
     source = UserTouchMock()
-    store = RecordStore(IndexLabWorkspace.initialize(tmp_path / "self-chat"))
+    store = RecordStore(_workspace(tmp_path / "self-chat"))
     block, line, _ = _append_base(store, source)
 
     report = lint_records(store.list(), source=source)
@@ -114,7 +121,7 @@ def test_external_chat_capture_separates_producer_context_from_touch(tmp_path) -
             },
         ),
     )
-    store = RecordStore(IndexLabWorkspace.initialize(tmp_path / "external-chat"))
+    store = RecordStore(_workspace(tmp_path / "external-chat"))
     store.append_many(
         (
             _record(
@@ -160,7 +167,7 @@ def test_external_chat_capture_separates_producer_context_from_touch(tmp_path) -
 
 def test_support_add_grows_exact_line_without_new_wording_edition(tmp_path) -> None:
     source = UserTouchMock()
-    store = RecordStore(IndexLabWorkspace.initialize(tmp_path / "support-add"))
+    store = RecordStore(_workspace(tmp_path / "support-add"))
     _, captured, original_support = _append_base(store, source)
     confirmation = source.add_turn("chat-b", "user", "Yes, that semantic tape model still fits.")
     response = source.add_turn("chat-b", "agent", "I will add this support to the exact line.")
@@ -191,7 +198,7 @@ def test_support_add_grows_exact_line_without_new_wording_edition(tmp_path) -> N
 
 def test_block_evolution_carries_content_only_through_same_isoblock(tmp_path) -> None:
     source = UserTouchMock()
-    store = RecordStore(IndexLabWorkspace.initialize(tmp_path / "block-evolution"))
+    store = RecordStore(_workspace(tmp_path / "block-evolution"))
     _, _, line_support = _append_base(store, source)
     rename_touch = source.add_turn("chat-b", "user", "Rename it Index.Recording.Kernel.")
     rename_writer = source.add_turn("chat-b", "agent", "The semantic frame is unchanged.")
@@ -224,7 +231,7 @@ def test_block_evolution_carries_content_only_through_same_isoblock(tmp_path) ->
 
 def test_line_reblock_preserves_exact_line_and_operation_support_boundary(tmp_path) -> None:
     source = UserTouchMock()
-    store = RecordStore(IndexLabWorkspace.initialize(tmp_path / "line-reblock"))
+    store = RecordStore(_workspace(tmp_path / "line-reblock"))
     _, captured, line_support = _append_base(store, source)
     destination_touch = source.add_turn("chat-b", "user", "Create a Semantic.Units block.")
     destination_writer = source.add_turn("chat-b", "agent", "The destination now exists.")
@@ -272,7 +279,7 @@ def test_line_reblock_preserves_exact_line_and_operation_support_boundary(tmp_pa
 
 def test_later_grouping_preserves_capture_records_and_unions_line_support(tmp_path) -> None:
     source = UserTouchMock()
-    store = RecordStore(IndexLabWorkspace.initialize(tmp_path / "isoline-group"))
+    store = RecordStore(_workspace(tmp_path / "isoline-group"))
     _, first, first_support = _append_base(store, source)
     second_touch = source.add_turn("chat-b", "user", "Touched.Index is an ordered record surface.")
     second_writer = source.add_turn("chat-b", "agent", "I will capture that exact wording.")
@@ -327,7 +334,7 @@ def test_later_grouping_preserves_capture_records_and_unions_line_support(tmp_pa
 
 def test_bad_indexing_correction_and_semantic_evolution_remain_distinct(tmp_path) -> None:
     source = UserTouchMock()
-    store = RecordStore(IndexLabWorkspace.initialize(tmp_path / "bad-indexing"))
+    store = RecordStore(_workspace(tmp_path / "bad-indexing"))
     _, captured, valid_support = _append_base(store, source)
     future_touch = source.add_turn("chat-a", "user", "This happened after capture.")
     bad = replace(captured, support=_support("chat-a", future_touch))

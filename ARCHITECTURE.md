@@ -35,6 +35,9 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
 - `tarav.index` owns Index records, standing, capture, gates, lint execution,
   and the Index CLI. `tarav.index_model` owns small shared Index-line identity
   and label primitives.
+- `tarav.indexlab` is the isolated experimental recording kernel. Its explicit
+  `IndexLibrary` resolves independently configured `IndexWorkspace` roots;
+  each workspace is also its Bloberia depot and Git repository root.
 - `tarav.surfaces` owns deliberately thin native Python and Markdown models.
   It exposes host-language structure, not Skillware attachment policy or Index
   policy.

@@ -13,11 +13,16 @@ from .model import (
     TurnRef,
 )
 from .workspace import (
+    DEFAULT_INDEX_LIBRARY_ROOT,
+    LIBRARY_MARKER,
+    LIBRARY_SCHEMA,
     WORKSPACE_MARKER,
     WORKSPACE_SCHEMA,
     CargoDefect,
-    IndexLabWorkspace,
+    IndexLibrary,
+    IndexWorkspace,
     RecordStore,
+    WorkspaceEntry,
     WorkspaceError,
 )
 from .projection import (
@@ -43,12 +48,16 @@ from .linter import LintFinding, LintReport, lint_records, lint_store
 __all__ = [
     "RECORD_SCHEMA",
     "PROJECTION_SCHEMA",
+    "DEFAULT_INDEX_LIBRARY_ROOT",
+    "LIBRARY_MARKER",
+    "LIBRARY_SCHEMA",
     "WORKSPACE_MARKER",
     "WORKSPACE_SCHEMA",
     "CargoDefect",
     "EvidenceNeighborhood",
     "ChatlasTouchSource",
-    "IndexLabWorkspace",
+    "IndexLibrary",
+    "IndexWorkspace",
     "IndexRecord",
     "LintFinding",
     "LintReport",
@@ -69,6 +78,7 @@ __all__ = [
     "UserTouchMock",
     "UserTouchSource",
     "WorkspaceError",
+    "WorkspaceEntry",
     "fold_records",
     "project_records",
     "lint_records",

@@ -253,6 +253,17 @@ class BloberiaDepot:
         atomic_write_json(self.meta_path, meta)
         self._meta = meta
 
+    def initialize(self) -> "BloberiaDepot":
+        """Materialize an empty depot's declared storage contract.
+
+        Depot hosts sometimes need an inspectable store before its first cargo exists.
+        This writes only Bloberia metadata; repository creation remains the host's job.
+        """
+        with self._lock(exclusive=True, create=True):
+            self._write_meta()
+        self._checkpoint()
+        return self
+
     @property
     def git(self) -> GitCheckpoint | None:
         try:
