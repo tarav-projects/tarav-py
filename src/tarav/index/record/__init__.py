@@ -1,4 +1,4 @@
-# $kw: --from Index.Line.Record
+# $kw: --from Index.Line.Record.Model
 """The index entry and its store.
 
 An `Index.Line` is more than a line: it is the object describing the index entry, carrying

@@ -125,7 +125,7 @@ class Trace:
         return next((m for m in self.members if m.id == line_id), None)
 
 
-# $kw: --from Index.Line.Record --note [DC] a trace is grouped from the records themselves, never read from a stored chain, so a more auditable structure displaces the agent definition ^c20260819-20u
+# $kw: --from Index.Line.Record.Model --note [DC] a trace is grouped from the records themselves, never read from a stored chain, so a more auditable structure displaces the agent definition ^c20260819-20u
 def build_traces(records: Iterable[LineRecord]) -> dict[str, Trace]:
     grouped: dict[str, list[LineRecord]] = {}
     for record in records:

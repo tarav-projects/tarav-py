@@ -1,8 +1,8 @@
-# $kw: --from Index.Line.Record --note [CT] the system never accepts an agent-set flag; every standing is derived or evidenced
+# $kw: --from Index.Line.Record.Model --note [CT] the system never accepts an agent-set flag; every standing is derived or evidenced
 # $kw: --from Index.Head.Surface --note [DC] no supersedes field: standing tied to a surface needs no field
 # $kw: --from Convergent.Justification --note [DC] placement is held on one reason — its consumer is the Chat.Index writer, designed and deferred rather than absent
 # $kw: --from Convergent.Justification --note [DC] an absent line.at edition time stays absent; reading a record never manufactures one
-"""`Index.Line.Record` — the object describing one index entry.
+"""`Index.Line.Record.Model` — the object describing one index entry.
 
 Minimally the index is *lines supported by a support set*: annotation plus evidence of
 `Touched.Authority`. `Line.Type` declares what to extract; a `Line.Scope` gives the context a
