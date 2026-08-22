@@ -338,6 +338,7 @@ def test_lint_cli_exposes_catalog_selectors_and_one_report_document(
     assert main(["indexlab", "lint", *selection, "--list-checks"]) == 0
     catalog = capsys.readouterr().out
     assert "records-loadable" in catalog
+    assert "tripwire" in catalog
     assert "projection-valid" in catalog
 
     assert (
@@ -380,3 +381,100 @@ def test_lint_cli_exposes_catalog_selectors_and_one_report_document(
         == 1
     )
     assert "unknown Index.Record id" in capsys.readouterr().err
+
+
+def test_lint_cli_trips_on_a_runtime_substring_without_mutating_the_record(
+    tmp_path, capsys
+) -> None:
+    library = tmp_path / "library"
+    manifest = tmp_path / "probe.json"
+    _initialize_library(library, capsys)
+    created = _create_workspace(library, "probe", capsys, touch_adapter="mock")
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema": CAPTURE_MANIFEST_SCHEMA,
+                "records": [
+                    {
+                        "id": "probe-record",
+                        "context": {
+                            "session": "probe-chat",
+                            "horizon": {"address": "turn", "hash": "turn-hash"},
+                        },
+                        "operation": {
+                            "type": "block.create",
+                            "parameters": {
+                                "block_id": "probe-block",
+                                "isoblock_id": "probe-isoblock",
+                                "name": "Linter.TRIPWIRE_CLI_X.Probe",
+                            },
+                        },
+                        "support": {"neighborhoods": []},
+                    }
+                ],
+            }
+        ),
+        "utf-8",
+    )
+    assert (
+        main(
+            [
+                "indexlab",
+                "capture",
+                *_selection(library, "probe"),
+                "--manifest",
+                str(manifest),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    (Path(str(created["workspace"])) / TOUCH_MOCK_FILENAME).write_text(
+        json.dumps({"schema": "tarav.indexlab-user-touch-mock.v1", "sessions": {}}),
+        "utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "indexlab",
+                "lint",
+                *_selection(library, "probe"),
+                "--check",
+                "tripwire",
+                "--tripwire",
+                "TRIPWIRE_CLI_X",
+                "--json",
+            ]
+        )
+        == 1
+    )
+    document = json.loads(capsys.readouterr().out)
+    assert [item["name"] for item in document["checks"]["items"]] == [
+        "records-loadable",
+        "tripwire",
+    ]
+    assert document["poi_instances"]["items"][0]["class_address"] == (
+        "IndexLab.Linter/Tripwire.Hit"
+    )
+    assert document["poi_instances"]["items"][0]["subject"] == {
+        "field_path": "/operation/parameters/name",
+        "occurrence": 1,
+        "record_id": "probe-record",
+        "tripwire": "TRIPWIRE_CLI_X",
+    }
+    assert document["execution"]["tripwires"] == ["TRIPWIRE_CLI_X"]
+
+    assert (
+        main(
+            [
+                "indexlab",
+                "lint",
+                *_selection(library, "probe"),
+                "--check",
+                "tripwire",
+            ]
+        )
+        == 1
+    )
+    assert "requires at least one --tripwire" in capsys.readouterr().err

@@ -189,6 +189,7 @@ def _cmd_lint(args: argparse.Namespace) -> int:
             skip=args.skip,
             dev=args.lane == "dev",
             subjects=args.record_id,
+            tripwires=args.tripwire,
         )
         document = build_linter_document(
             report,
@@ -429,6 +430,14 @@ def register_indexlab_commands(subparsers: argparse._SubParsersAction) -> None:
         "--record-id",
         action="append",
         help="Lint only this exact Index.Record; repeatable.",
+    )
+    lint_parser.add_argument(
+        "--tripwire",
+        action="append",
+        help=(
+            "Emit one Tripwire.Hit for every literal occurrence in selected "
+            "Index.Record string values; repeatable."
+        ),
     )
     lint_parser.add_argument(
         "--check", action="append", help="Run only this check; repeatable."

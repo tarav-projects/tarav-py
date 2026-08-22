@@ -5,7 +5,7 @@
 - **Goal:** replace the ad-hoc IndexLab lint traversal with a faithful `POI.Linter` realization
   shaped after `src/tarav/index/linter.py`, integrated with context-attached `Index.Record`s,
   `Index.Workspace`, semantic projection, and `UserTouchSource`.
-- **Status:** executing a user-requested `POI.Test` continuation slice.
+- **Status:** completed, including the read-only `POI.Tripwire` continuation slice.
 - **Scope:** shared POI verdict/runtime primitives where the semantics are already proven,
   `tarav.indexlab` lint context/checks/report/CLI, focused tests, the retained development
   workspace, and the IndexLab developer guide.
@@ -120,16 +120,16 @@
 - Run focused POI/IndexLab/architecture tests, Ruff, `git diff --check`, and the proportionate full
   suite. Audit product surfaces; add no annotation that merely restates self-evident code.
 
-### Slice 5 — summonable `POI.Test` record probe
+### Slice 5 — read-only `POI.Tripwire`
 
-- **Status:** ready for execution.
-- **RED:** an ordinary `Index.Record` assertion of type `index.poi.test` must summon one
-  `IndexLab.Linter/POI.Test`; tagged probes must have independent identities; moving the assertion
-  among unrelated assertions must not change its identity; exact-record narrowing must select only
-  the targeted record's probes.
-- **GREEN:** add a default-on, reportable, record-scoped `poi-test` check. The assertion is the
-  IndexLab equivalent of the production linter's source marker: the new Floor.Model is records,
-  so the probe belongs on a record rather than in arbitrary source text.
+- **Status:** completed.
+- **RED:** a supplied literal substring must trigger one `IndexLab.Linter/Tripwire.Hit` for every
+  occurrence in every string leaf of selected records; overlapping occurrences, several needles,
+  automatic check activation, exact-record narrowing, and operand-independent identity must be
+  protected; missing or empty tripwires fail closed.
+- **GREEN:** replace the record-assertion probe with a default-off, reportable, record-scoped
+  `tripwire` check and repeatable `--tripwire`. Each subject carries record id, JSON-pointer field
+  path, tripwire, and occurrence number; offset and bounded excerpt remain operands.
 - **Check:** focused registry/finding tests, CLI catalog and JSON rendering, architecture guards,
   then the relevant IndexLab suite.
 
@@ -155,6 +155,16 @@
 - **Continuation authority:** the user requested that the earlier linter's `POI.Test` mechanism be
   checked and, if absent, implemented for IndexLab. The old implementation was confirmed at
   `src/tarav/index/linter.py`; IndexLab had no corresponding check.
-- **Porting decision:** the old raw-surface marker is not copied literally. IndexLab indexes
-  context-attached records and already retains opaque assertions, so `index.poi.test` is carried as
-  an ordinary record assertion and examined through `selected_records()`.
+- **Superseded attempt:** `index.poi.test` record assertions worked mechanically, but required
+  mutating the Index merely to test its reader. The user rejected that carrier before commit; no
+  compatibility path is retained.
+- **Tripwire decision:** the probe is runtime input over the existing read-only record corpus.
+  Literal, case-sensitive matching keeps the query cheap and reproducible; raw Chatlas support
+  message bodies remain outside “everywhere” because they are not part of the Index.Record surface.
+- **Slice 5 result:** repeatable `--tripwire` automatically activates the otherwise-off,
+  record-scoped check; each overlapping occurrence is addressed by record, JSON-pointer field,
+  literal, and occurrence number, while offset and excerpt remain operands. `--check tripwire`
+  without a substring and empty substrings fail closed.
+- **Slice 5 verification:** the live six-record Chatlas workspace produced two read-only hits for
+  `block.create`; 167 focused tests and the complete suite (`2264 passed`) passed; Ruff and
+  `git diff --check` passed.

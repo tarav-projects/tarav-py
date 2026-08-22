@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
+from collections.abc import Iterable, Mapping
 
 from tarav._core.errors import CliError
 from tarav.poi.runtime import (
@@ -73,6 +73,10 @@ def _support_outside_visible_context_class() -> str:
 def _projection_invalid_class() -> str:
     return "IndexLab.Linter/Projection.Invalid"
 
+# $kw: IndexLab.Linter/Tripwire.Hit --from POI.Linter
+def _tripwire_hit_class() -> str:
+    return "IndexLab.Linter/Tripwire.Hit"
+
 
 @dataclass(slots=True)
 class IndexLabLintContext:
@@ -82,6 +86,7 @@ class IndexLabLintContext:
     records: tuple[IndexRecord, ...]
     defects: tuple[CargoDefect, ...] = ()
     subjects: frozenset[str] | None = None
+    tripwires: tuple[str, ...] = ()
     workspace_id: str | None = None
     workspace_root: str | None = None
     touch_adapter: str | None = None
@@ -144,13 +149,16 @@ def lint_store(
     skip: Iterable[str] | None = None,
     dev: bool = False,
     subjects: Iterable[str] | None = None,
+    tripwires: Iterable[str] | None = None,
 ) -> LintReport:
     records, defects = store.load()
+    selected_tripwires = _tripwires(tripwires)
     context = IndexLabLintContext(
         source=source,
         records=_ordered(records),
         defects=tuple(defects),
         subjects=_subjects(subjects, records),
+        tripwires=selected_tripwires,
         workspace_id=store.workspace.id,
         workspace_root=str(store.workspace.root),
         touch_adapter=store.workspace.touch_adapter,
@@ -166,12 +174,15 @@ def lint_records(
     skip: Iterable[str] | None = None,
     dev: bool = False,
     subjects: Iterable[str] | None = None,
+    tripwires: Iterable[str] | None = None,
 ) -> LintReport:
     ordered = _ordered(records)
+    selected_tripwires = _tripwires(tripwires)
     context = IndexLabLintContext(
         source=source,
         records=ordered,
         subjects=_subjects(subjects, ordered),
+        tripwires=selected_tripwires,
     )
     return _run(context, check=check, skip=skip, dev=dev)
 
@@ -183,10 +194,11 @@ def _run(
     skip: Iterable[str] | None,
     dev: bool,
 ) -> LintReport:
+    selected_checks = _checks_for_run(check, context.tripwires)
     return run_checks(
         context,
         CHECK_REGISTRY,
-        check=check,
+        check=selected_checks,
         skip=skip,
         dev=dev,
         targeted=context.subjects is not None,
@@ -200,6 +212,8 @@ def _execution(context: IndexLabLintContext) -> dict[str, object]:
         "records_selected": len(context.selected_records()),
         "cargo_defects": len(context.defects),
     }
+    if context.tripwires:
+        payload["tripwires"] = list(context.tripwires)
     for key, value in (
         ("workspace_id", context.workspace_id),
         ("workspace_root", context.workspace_root),
@@ -222,6 +236,34 @@ def _check_records_loadable(context: IndexLabLintContext) -> list[Finding]:
         )
         for defect in context.defects
     ]
+
+
+def _check_tripwire(context: IndexLabLintContext) -> list[Finding]:
+    """Emit one POI for every literal tripwire occurrence in record string values."""
+
+    findings: list[Finding] = []
+    for record in context.selected_records():
+        for field_path, value in _string_leaves(record.to_dict()):
+            for tripwire in context.tripwires:
+                for occurrence, offset in enumerate(
+                    _substring_offsets(value, tripwire), start=1
+                ):
+                    findings.append(
+                        _finding(
+                            record,
+                            _tripwire_hit_class(),
+                            {
+                                "offset": offset,
+                                "excerpt": _excerpt(value, offset, tripwire),
+                            },
+                            target={
+                                "field_path": field_path,
+                                "tripwire": tripwire,
+                                "occurrence": occurrence,
+                            },
+                        )
+                    )
+    return findings
 
 
 def _check_context_resolves(context: IndexLabLintContext) -> list[Finding]:
@@ -449,6 +491,16 @@ def _visible_context_gate(context: IndexLabLintContext) -> GateResult:
 
 CHECK_REGISTRY: tuple[Check, ...] = (
     Check("records-loadable", Tier.STRUCTURAL, _check_records_loadable),
+    Check(
+        "tripwire",
+        Tier.REPORTABLE,
+        _check_tripwire,
+        default_on=False,
+        resolutions=(
+            "remove the runtime tripwire when the probe has served its purpose",
+            "narrow the run when only one record should exercise the report path",
+        ),
+    ),
     Check("context-resolves", Tier.REPORTABLE, _check_context_resolves),
     Check("support-present", Tier.REPORTABLE, _check_support_present),
     Check("support-resolves", Tier.REPORTABLE, _check_support_resolves),
@@ -479,6 +531,42 @@ def _support_refs(
             ):
                 for ref in refs:
                     yield record, neighborhood.session, ref, role
+
+
+def _string_leaves(
+    value: object,
+    path: tuple[str, ...] = (),
+) -> Iterable[tuple[str, str]]:
+    if isinstance(value, str):
+        yield _json_pointer(path), value
+        return
+    if isinstance(value, Mapping):
+        for key in sorted(value):
+            yield from _string_leaves(value[key], (*path, str(key)))
+        return
+    if isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            yield from _string_leaves(item, (*path, str(index)))
+
+
+def _json_pointer(path: tuple[str, ...]) -> str:
+    return "/" + "/".join(part.replace("~", "~0").replace("/", "~1") for part in path)
+
+
+def _substring_offsets(value: str, tripwire: str) -> Iterable[int]:
+    start = 0
+    while True:
+        offset = value.find(tripwire, start)
+        if offset < 0:
+            return
+        yield offset
+        start = offset + 1
+
+
+def _excerpt(value: str, offset: int, tripwire: str) -> str:
+    start = max(0, offset - 24)
+    end = min(len(value), offset + len(tripwire) + 24)
+    return value[start:end]
 
 
 def _finding(
@@ -512,6 +600,37 @@ def _subjects(
     unknown = selected - known
     if unknown:
         raise CliError("unknown Index.Record id(s): " + ", ".join(sorted(unknown)))
+    return selected
+
+
+def _tripwires(values: Iterable[str] | None) -> tuple[str, ...]:
+    selected: list[str] = []
+    for value in values or ():
+        if not isinstance(value, str) or not value:
+            raise CliError("tripwire substring must not be empty")
+        if value not in selected:
+            selected.append(value)
+    return tuple(selected)
+
+
+def _checks_for_run(
+    checks: Iterable[str] | None,
+    tripwires: tuple[str, ...],
+) -> tuple[str, ...] | None:
+    if checks is None:
+        if not tripwires:
+            return None
+        return tuple(
+            entry.name
+            for entry in CHECK_REGISTRY
+            if entry.default_on or entry.name == "tripwire"
+        )
+
+    selected = tuple(checks)
+    if "tripwire" in selected and not tripwires:
+        raise CliError("tripwire check requires at least one --tripwire substring")
+    if tripwires and "tripwire" not in selected:
+        selected = (*selected, "tripwire")
     return selected
 
 

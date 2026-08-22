@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
+import pytest
+
+from tarav._core.errors import CliError
 from tarav.indexlab import (
     CHECK_REGISTRY,
     ChatlasTouchSource,
@@ -109,6 +114,7 @@ def test_registry_discovers_every_managed_poi_class() -> None:
         "IndexLab.Linter/Context.Malformed",
         "IndexLab.Linter/Context.Unresolved",
         "IndexLab.Linter/Projection.Invalid",
+        "IndexLab.Linter/Tripwire.Hit",
         "IndexLab.Linter/Record.Unloadable",
         "IndexLab.Linter/Support.Amended",
         "IndexLab.Linter/Support.ContextSide",
@@ -119,6 +125,97 @@ def test_registry_discovers_every_managed_poi_class() -> None:
         "IndexLab.Linter/Support.OutsideVisibleContext",
         "IndexLab.Linter/Support.Unresolved",
     }
+
+
+def test_tripwires_find_every_literal_occurrence_and_keep_stable_subjects() -> None:
+    source = UserTouchMock()
+    touched = source.add_turn("chat-a", "user", "Exercise the linter.")
+    writer = source.add_turn("chat-a", "agent", "I will place a probe.")
+    support = SupportSet(
+        neighborhoods=(
+            EvidenceNeighborhood(
+                session="chat-a",
+                grounding=(touched.ref,),
+                context=(writer.ref,),
+            ),
+        )
+    )
+    first = _record(
+        "record-1",
+        1,
+        source.record_context("chat-a", writer.turn_ref),
+        "block.create",
+        {"block_id": "block-1", "isoblock_id": "iso-1", "name": "banana"},
+        support,
+    )
+    second = _record(
+        "record-2",
+        2,
+        source.record_context("chat-a", writer.turn_ref),
+        "block.create",
+        {"block_id": "block-2", "isoblock_id": "iso-2", "name": "banana"},
+        support,
+    )
+
+    report = lint_records(
+        (first, second),
+        source=source,
+        check=("tripwire",),
+        tripwires=("ana", "nan"),
+    )
+    assert len(report.findings) == 6
+    assert {finding.subject["field_path"] for finding in report.findings} == {
+        "/operation/parameters/name"
+    }
+    assert {finding.subject["tripwire"] for finding in report.findings} == {
+        "ana",
+        "nan",
+    }
+    ana = [
+        finding
+        for finding in report.findings
+        if finding.subject["record_id"] == "record-1"
+        and finding.subject["tripwire"] == "ana"
+    ]
+    assert [finding.subject["occurrence"] for finding in ana] == [1, 2]
+    assert [finding.operands["offset"] for finding in ana] == [1, 3]
+
+    moved = replace(
+        first,
+        operation=Operation(
+            type="block.create",
+            parameters={
+                "block_id": "block-1",
+                "isoblock_id": "iso-1",
+                "name": "prefix banana",
+            },
+        ),
+    )
+    moved_hits = lint_records(
+        (moved,), source=source, check=("tripwire",), tripwires=("ana",)
+    ).findings
+    assert [finding.identity for finding in moved_hits] == [
+        finding.identity for finding in ana
+    ]
+
+    targeted = lint_records(
+        (first, second),
+        source=source,
+        check=("tripwire",),
+        tripwires=("ana",),
+        subjects=("record-2",),
+    )
+    assert {finding.subject["record_id"] for finding in targeted.findings} == {
+        "record-2"
+    }
+
+    automatic = lint_records((first,), source=source, tripwires=("ana",))
+    assert "tripwire" in {result.name for result in automatic.results}
+
+    with pytest.raises(CliError, match="requires at least one"):
+        lint_records((first,), source=source, check=("tripwire",))
+    with pytest.raises(CliError, match="must not be empty"):
+        lint_records((first,), source=source, tripwires=("",))
 
 
 def test_linter_finds_wrong_sides_and_same_chat_support_after_horizon() -> None:

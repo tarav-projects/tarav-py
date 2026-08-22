@@ -129,12 +129,28 @@ storage-level Bloberia queryability, and the explicitly configured mock scenario
 
 ## Linter tiers and verdicts
 
-Both entry points run one named registry: `records-loadable`, `context-resolves`,
+Both entry points run one named registry: `records-loadable`, `tripwire`, `context-resolves`,
 `support-present`, `support-resolves`, `support-roles`, `support-visible`, and
 `projection-valid`. `lint_store` supplies real cargo defects; callers of `lint_records` already
 hold decoded records, so its structural check naturally passes. Unloadable cargo becomes an
 `IndexLab.Linter/Record.Unloadable` finding and **stops the run**, because continuing would inspect
 a silently truncated corpus.
+
+### Place a read-only tripwire
+
+`POI.Tripwire` exercises selection, finding identity, reporting, and downstream linter workflows
+without manufacturing Bad.Indexing or mutating the Index:
+
+```sh
+uv run tarav indexlab lint --library <library> --workspace <workspace> --tripwire "substring"
+```
+
+The repeatable option automatically activates the otherwise-off `tripwire` check. It performs a
+literal, case-sensitive search over every string leaf of each selected record. Every occurrence
+emits `IndexLab.Linter/Tripwire.Hit`; its subject contains record id, JSON-pointer field path,
+tripwire text, and occurrence number, while offset and a bounded excerpt remain operands. This
+makes identity survive unrelated text inserted before a hit. Use `--record-id` to narrow the probe,
+and omit `--tripwire` when finished—there is no cleanup write.
 
 A report exposes `clean` (nothing failed), `verified` (nothing failed and nothing blocked), and
 `short_circuited`. There is deliberately no single `ok` boolean — collapsing three-valued verdicts
