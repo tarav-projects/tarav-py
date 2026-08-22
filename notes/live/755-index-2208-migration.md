@@ -97,9 +97,36 @@ the backlog the new linter should report, which is the point of moving format fi
   continuous capture.
 - 642 says to reconcile "the 3,974-record Bloberia corpus"; this extraction produced 3,975
   lines. Close enough to be worth checking whether they are the same corpus.
-- The hugentics wording migration is not started. Superseded terms still in `.skw/src`:
-  `Chat.Index.HEAD` (7), `Chat.Index.Delta` (6), `Index.Native.Surface` (10),
-  `Index.Depot` (14), `Demoted` (10), backpropagation language (16). 642 is explicit that
-  HEAD/Tail, agent/user standing, Chat.Index backpropagation and HEAD-surface discovery
-  "must not remain responsibilities of the reduced recording kernel".
 - Nothing in the live tree has been rewritten. The old system is untouched and still runs.
+
+## 6. Hugentics wording
+
+The always-loaded `What The Index Is` block now describes the recording kernel:
+context-attached `Index.Record`s in an `Index.Workspace`, `Record.Context` and `Support.Set`
+as orthogonal bounds, the record sequence as the sole `Index.Primary.Surface`,
+Isoline/Isoblock replacing trace and equivalence, and `Skw.Annotation` as
+`Project.Index.Grounding` rather than a distributed Index materialization.
+
+Dropped, because 642 says they must not remain: `Chat.Index.HEAD`/`Delta` backpropagation,
+`Demoted.Index.Line` standing, and the Chatlas2 dossier as a privileged link.
+
+**The `Index.Skillware` chapter and depot literacy was kept alongside it.** The first edit
+removed it and that was wrong: the corpus in hand is still written as chapters, and capture
+does not yet run on records, so a skill without that literacy would describe a system that
+cannot perform its own workflows.
+
+`tarav skw check`: 0 POIs, 0 diagnostics.
+
+### What blocks the rest
+
+The `--from` list declares `Kernel.Block::Index` dependencies, so a term can only be declared
+once it is a real block. Of the thirteen new-model terms, **three exist and ten do not**:
+
+| Declared today | Not declared anywhere |
+|---|---|
+| `Evidence.Neighborhood`, `Index.Block`, `Support.Set` | `Index.Record`, `Record.Context`, `Index.Isoline`, `Index.Isoblock`, `Index.Primary.Surface`, `Index.Secondary.Surface`, `Index.Workspace`, `Index.Library`, `Project.Index.Grounding`, `Index.Record.Operation` |
+
+Declaring the ten now would produce dangling references. **Landing the 642 model into the
+index is the prerequisite for finishing the wording migration**, and for the operational
+layer too: the workflow prose still routes through `tarav index capture` (18 references),
+which IndexLab has no equivalent for.
