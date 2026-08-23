@@ -5,7 +5,7 @@
 - **Goal:** stop `RecordStore.append` and `append_many` from re-reading and re-validating the
   entire record corpus once per appended record, and remove the duplicated cargo-reading
   logic between `list` and `load`.
-- **Status:** ready for execution.
+- **Status:** completed and verified.
 - **Scope:** `src/tarav/indexlab/workspace.py` (`RecordStore` read/write paths) and focused
   tests in `tests/indexlab/test_workspace.py`.
 - **Out of scope:** the Bloberia depot layout, the `Index.Record` model, projection, the
@@ -70,3 +70,22 @@ The 5,047-record migration paid roughly 12.7M record constructions to insert 5,0
 - `uv run ruff check src tests`
 - Re-load a slice of the `index-2208` manifest into a scratch workspace and confirm the
   per-record cost no longer grows with corpus size.
+
+## Outcome
+
+Landed in `fc5b33c`. Rollback floor: `f0fad10`.
+
+| | before | after |
+|---|---|---|
+| rate | ~15 records/s, **degrading** with corpus size | ~50 records/s, **flat** |
+| 5,047-record load | ~25 min (measured) | ~1.7 min (projected from the flat rate) |
+
+Measured by appending the `754` manifest in four 500-record batches into a scratch
+workspace: 50, 45, 50, 49 records/s as the corpus grew 500 → 2,000. The remaining per-record
+cost is the depot's own shard write, which is out of scope here.
+
+`append` now delegates to `append_many`, so there is one write path. The rollback test was
+checked against a deliberately disabled rollback and fails without it, so it is not vacuous.
+
+Verified: `2275 passed` (baseline 2272 plus three new tests), `ruff check` clean, `tarav skw
+check` unchanged at 217 POIs and the one pre-existing `src/tarav/index/cli.py:76` diagnostic.
