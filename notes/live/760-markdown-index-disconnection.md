@@ -30,8 +30,32 @@ moment while other agents kept landing lines. Two catch-up passes closed that:
   found belong to a real Index block; the other 33 are Batchy router rows and
   notes whose blocks were never Index blocks.
 
-Corpus now: **1,170 blocks / 4,406 lines / 5,576 records.** Re-running the delta
-reports zero.
+- `761-capture-untyped-chapter-lines.py` — the category the first two readers
+  agreed to exclude, and the largest. Both asked for a `Line.Type` code or an
+  anchor; the Index also holds pre-fence legacy lines carrying neither. They are
+  not prose: they sit under `##` concept headings inside real depot chapters,
+  and 187 concepts existed *only* as such lines. `What.Design.Session` had six
+  and no record at all. Scope is the depot chapter — the same bullet shape in a
+  note or Impl.Req is prose, and pulling it in would be the pollution that is
+  worse than drift.
+
+Corpus now: **1,365 blocks / 5,655 lines / 7,020 records**, folding without
+error. Both audits report zero.
+
+The kernel had to give first: `line.capture` required a label. The Index is a
+`WIP.Surface`, so a line can be typeless and labelless and still be Index data,
+and refusing the record would have let the kernel's shape decide what counts.
+An absent label is `None` rather than `""`, so "no label" cannot collide with a
+label that failed to render; a label that *is* present must still begin with `^`
+and be unique. `line-complete` then reports what is missing — 1,844
+`Line.Untyped`, 1,218 `Line.Unlabelled` — rather than a guess repairing it.
+
+Two defects surfaced in the delta pass, both from reusing the `754` builder
+against a live workspace instead of a fresh corpus: it re-created already-open
+blocks and re-allocated already-taken labels. The first is refused on insert;
+**the second inserts cleanly and breaks the projection afterwards**, which is how
+it was found. The builder now takes the workspace's held labels and blocks, and
+the 39 records that had broken the fold were purged and recaptured.
 
 ## One reader
 
@@ -106,10 +130,11 @@ Resulting edges: `wayfinder -> _core`; `indexlab -> _core, bloberia, poi`;
 
 ## State
 
-- **1,973 tests pass**, ruff clean, `skw check` 0 diagnostics in both projects.
-- `skw check` runs entirely off records: 467 advisories in `tarav-py`, of which
-  **235 are `--from` targets naming a concept the corpus does not declare.**
-  That is the finding the migration existed to expose, not a defect in the cut.
+- **1,974 tests pass**, ruff clean, `skw check` 0 diagnostics in both projects.
+- `skw check` runs entirely off records: 238 advisories in `tarav-py`, of which
+  **1** is a `--from` target naming a concept the corpus does not declare. It was
+  235 before the untyped lines were captured — those lines *were* the missing
+  blocks.
 - Conservation holds. The 753 freeze had captured only files carrying Index
   lines, so the deleted tests and two historical dossier-migration scripts were
   archived into `index-archive-2208` *before* leaving the tree.
@@ -131,9 +156,9 @@ steps, is worse than naming the gap.
 1. **Record-side capture** — anchor registration, gate evidence, landing audit.
    Until it lands, every write workflow stops at an approved manifest.
 2. **Land the 642 model into the index.** `Index.Primary.Surface` resolves only
-   to a block in note 642; ten kernel terms are declared nowhere. This is why
-   235 `--from` targets dangle.
-3. **The migration horizon is unresolvable by construction** — 5,576 blocked
+   to a block in note 642 rather than a chapter, and the kernel terms have no
+   declared home.
+3. **The migration horizon is unresolvable by construction** — 7,020 blocked
    `context-resolves` checks. The kernel needs a way to say "this context is a
    migration, not a chat turn."
 4. Reconnecting Markdown as a real `Index.Secondary.Surface` — a renderer exists
