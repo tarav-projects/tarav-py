@@ -43,6 +43,13 @@ from .touch import (
     UserTouchMock,
     UserTouchSource,
 )
+from .resolver import (
+    UNTYPED,
+    IndexPointer,
+    IndexResolutionError,
+    IndexResolver,
+    line_type,
+)
 from .render import RenderError, render_kernel_writing
 from .linter import (
     CHECK_REGISTRY,
@@ -62,6 +69,11 @@ __all__ = [
     "WORKSPACE_MARKER",
     "WORKSPACE_SCHEMA",
     "CargoDefect",
+    "IndexPointer",
+    "IndexResolutionError",
+    "IndexResolver",
+    "UNTYPED",
+    "line_type",
     "EvidenceNeighborhood",
     "ChatlasTouchSource",
     "IndexLibrary",
