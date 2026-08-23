@@ -61,14 +61,35 @@
 
 ## Index
 
-- `tarav index` uses a required project selection for evaluation. The same
-  project must produce the same verdict from every working directory.
-- Native Index surfaces, SKW annotations, and other domain surfaces are one
-  distributed Index under Natural.Placement. An Index line on code is still an
-  ordinary Index line and must receive a LineRecord through the same mechanics.
-- `LineRecord.id` is immutable record/version identity; `trace` is semantic
-  lineage; `line.label` is the mutable public selector; scope and support are
-  grounding edges. Do not collapse their roles.
+- The Index is a collection of `Index.Record`s held in an `Index.Workspace`,
+  resolved through an explicit `Index.Library`. Markdown is a secondary surface
+  and nothing reads it as the Index.
+- `.tarav/project.json` names the library and workspace holding a project's
+  records. `tarav.indexlab.IndexResolver` is the one reader: block by address or
+  bare `Dotted.Name`, block aliases, and citation resolution.
+- One resolver folds the record stream once and serves every consumer. A
+  consumer that folds for itself holds a private projection able to disagree
+  with the linter's.
+- Resolution is global within one workspace. There is no depot visibility and no
+  `depots` key: a name defined by two blocks is a reported collision, never a
+  lookup order.
+- A bare `Dotted.Name` prefers a chapter block over one written on a product
+  surface. A citation carries no `~n` occurrence suffix, so it resolves to the
+  isoline and returns every projection of that one semantic line.
+- `Line.Type` lives on a record assertion under the `line_type` key. Assertions
+  are otherwise opaque; a reader that understands a key may read it. An `alias`
+  assertion states a name *for* a block, so it stays out of any materialized
+  body.
+- Every writer requires an explicit `IndexWorkspace` resolved through an
+  explicit `IndexLibrary`. Each workspace is also its Bloberia depot and Git
+  repository root. Before changing or operating the kernel, read
+  [the IndexLab developer guide](notes/live/746-indexlab-dev-guide.md).
+- The kernel declares ports; other subsystems provide adapters.
+  `ChatlasTouchSource` lives in `chatlas.lossless`, and the CLI takes a
+  touch-source factory from the composition root.
+- `tarav.index_model` is not the Index model. It holds the written form of an
+  Index line — label grammar and the identity hashes Chatlas dossiers assert
+  over the `Line.Type + body + anchor` triplet.
 - Bloberia depot types own their formats and storage behavior. Do not impose one
   serializer or envelope across depot types.
 - Index linting builds one JSON-serializable run model. Text and JSON renderers
@@ -81,26 +102,13 @@
   each selected class with the resolved domain context and calls `run()`.
   Preconditions are ordinary earlier check results expressed through check
   dependencies; do not add a separate gate lifecycle to the shared runtime.
-- POI class blocks may be naturally placed beside check code as SKW annotations.
-  Their identity is independent of the Python symbol. Discovery is static.
+- POI class blocks are `<depot>/poi#<Class>` blocks in the records, and may also
+  be naturally placed beside check code as SKW annotations. Their identity is
+  independent of the Python symbol. Discovery is static.
 - Before adding or changing a check, read
   `tarav-md/skills/tarav-pkg/references/poi-linter.md` — the run loop, tier,
   selection and narrowing, the three-valued verdict, and what licenses a
-  blessing. Its production `tarav.index` gate model has not yet migrated to
-  shared-runtime check dependencies.
-- Capture preview and landing consume one `Capture.Manifest`. Validate chat
-  references and content expectations before writes, derive all planned effects
-  from one model, and audit LineRecords after landing.
-
-## IndexLab
-
-- `tarav.indexlab` is an experimental recording kernel isolated from the
-  production `tarav.index` model. Before changing or operating it, read
-  [the IndexLab developer guide](notes/live/746-indexlab-dev-guide.md).
-- Every IndexLab writer requires an explicit `IndexWorkspace` resolved through
-  an explicit `IndexLibrary`. Each workspace is also its Bloberia depot and Git
-  repository root. Existing Index and Chatlas systems are read-only inputs
-  through named adapters.
+  blessing.
 
 ## Chatlas
 

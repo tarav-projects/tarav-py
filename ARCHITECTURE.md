@@ -32,12 +32,14 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
 - `tarav.chatlas` owns the retained chat dataset. Its `lossless` package owns
   normalization, the provider-neutral Normal Model, compact caches, and
   content queries. It is a layer of Chatlas, not a second Chatlas product.
-- `tarav.index` owns Index records, standing, capture, gates, lint execution,
-  and the Index CLI. `tarav.index_model` owns small shared Index-line identity
-  and label primitives.
-- `tarav.indexlab` is the isolated experimental recording kernel. Its explicit
-  `IndexLibrary` resolves independently configured `IndexWorkspace` roots;
-  each workspace is also its Bloberia depot and Git repository root.
+- `tarav.indexlab` owns the Index: an ordered stream of `Index.Record`s, the
+  semantic projection folded from it, one `IndexResolver` that every consumer
+  reads through, rendering, and lint execution. Its explicit `IndexLibrary`
+  resolves independently configured `IndexWorkspace` roots; each workspace is
+  also its Bloberia depot and Git repository root.
+- `tarav.index_model` owns only the written form of an Index line: label grammar
+  and the identity hashes asserted over the `Line.Type + body + anchor` triplet.
+  It does not model the Index.
 - `tarav.surfaces` owns deliberately thin native Python and Markdown models.
   It exposes host-language structure, not Skillware attachment policy or Index
   policy.
@@ -68,26 +70,27 @@ file's syntax. Project-aware discovery supplies context and surface membership.
 Domain adapters interpret those facts. A file parser must not infer domain
 meaning from its path or current working directory.
 
-Index evaluation requires an explicit `--project` selection. It discovers
-native Index depots structurally and annotated code through the project's
-`.skw/skw.json`. The same project data must produce the same verdict regardless
-of the evaluator's working directory.
+Index reads resolve through the library and workspace named by
+`.tarav/project.json`. Resolution is global within that one workspace, so the
+same records must produce the same answer regardless of the reader's working
+directory. Annotated code is discovered through the project's `.skw/skw.json`.
 
 ## Integration boundaries
 
 - Hooks owns validation and dispatch; runtime injects daemon delivery.
 - Wayfinder owns generic reference resolution; domains provide resolvers for
   the resources they understand.
-- Skillware consumes native surface models through adapters. Neither Skillware
-  nor Index reparses Python or Markdown independently.
+- Skillware consumes native surface models through adapters and reads the Index
+  through `IndexResolver`. Nothing reparses Python, and nothing parses Markdown
+  as the Index.
 - Index findings use the shared POI runtime model. One JSON-serializable run
   model drives every renderer and limit/filter contract.
 - POI class documentation may be an Index block naturally placed beside its
   emitting check. Static discovery reads annotations; it never imports checker
   modules merely to discover POIs.
-- `tarav.index.capture_manifest` drives preview and landing from one validated
-  plan. Chat evidence, surface changes, LineRecords, and audit output derive
-  from that same plan.
+- The kernel declares ports and other subsystems provide the adapters:
+  `ChatlasTouchSource` lives in `chatlas.lossless`, and the composition root
+  injects it into the IndexLab CLI.
 - Chatlas consumers import the public `tarav.chatlas.lossless` package, not its
   internal modules. Only Chatlas command composition reaches into that layer
   to register its CLI.
