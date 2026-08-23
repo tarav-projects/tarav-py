@@ -113,13 +113,14 @@ def test_native_surfaces_do_not_import_skillware() -> None:
     imports = _top_level_import_graph()
     assert "skillware" not in imports["surfaces"]
     # Chatlas stopped consuming native surfaces when the Chat.Index Markdown
-    # projection was removed: nothing in the chat store parses a product surface.
+    # projection was removed, and index_model when its parser went: what is left
+    # there is line grammar over strings, which needs no surface model.
     assert {
-        "index_model",
         "skillware",
         "stdlib",
     } <= {name for name, targets in imports.items() if "surfaces" in targets}
     assert "surfaces" not in imports["chatlas"]
+    assert "surfaces" not in imports["index_model"]
 
 
 def test_subsystem_import_graph_is_acyclic() -> None:

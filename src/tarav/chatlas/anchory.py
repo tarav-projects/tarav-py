@@ -14,12 +14,15 @@ from typing import Any, Callable, Literal
 from tarav._core.errors import CliError
 from tarav.index_model.label import is_citation
 from tarav.anchory import AnchoryDepot, scan_anchory_source
+from tarav.indexlab import (
+    IndexResolutionError,
+    IndexResolver,
+    line_type,
+)
 from tarav.index_model import (
     INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
-    group_index_line_anchor_occurrences,
     index_line_anchor_triplet_hash,
     normalize_anchor,
-    parse_depot,
 )
 
 from ._payload_helpers import (
@@ -1368,7 +1371,6 @@ def chatlas_anchory_preview(
             "status": "allocated-anchor-required",
         }
 
-
     payload["equivalent_anchors"] = support_equivalent
     payload["support_equivalent_anchors"] = support_equivalent
     payload["exact_line_equivalent_anchors"] = exact_line_equivalent
@@ -1476,44 +1478,45 @@ def chatlas_anchory_resolve(
     )
 
 
+# $kw: --note [DC] a citation names a record, so its source is the block that carries it rather than a file offset that only one projection of it ever had
+def _citation_block(resolver: IndexResolver, line: object) -> str:
+    for block in resolver.blocks():
+        if line.id in block.line_ids:
+            return block.name
+    return ""
+
+
 def chatlas_line_anchor_reattach(
     anchor: str,
     *,
     depot_root: str | Path,
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
-    """Refresh one dossier from parser-owned Index line occurrences."""
+    """Refresh one dossier from the Index records the anchor cites."""
 
     anchor_key = normalize_anchor(anchor)
     root = Path(depot_root).expanduser().resolve()
-    if not root.is_dir():
-        raise CliError(f"Index depot is unavailable: {root}")
-    occurrence_group = group_index_line_anchor_occurrences(
-        parse_depot(root).kernel_lines(),
-        anchors=(anchor_key,),
-    ).get(anchor_key)
-    if occurrence_group is None:
-        raise CliError(
-            f"anchor ^{anchor_key} is absent from the parsed Index depot: {root}"
-        )
+    try:
+        resolver = IndexResolver.for_path(root)
+        projections = resolver.resolve_citation(anchor_key)
+    except IndexResolutionError as exc:
+        raise CliError(str(exc)) from exc
+
     sources = [
-        {
-            "path": occurrence.location(root)["path"],
-            "line": occurrence.line.start_line,
-        }
-        for occurrence in occurrence_group.occurrences
+        {"block": _citation_block(resolver, line), "line_id": line.id}
+        for line in projections
     ]
-    if occurrence_group.ambiguous:
-        locations = [
-            f"{location['path']}:{location['line']}"
-            for location in sources
-        ]
+    triplets = {
+        index_line_anchor_triplet_hash(f"- [{line_type(line)}] {line.text}", anchor_key)
+        for line in projections
+    }
+    if len(triplets) > 1:
         raise CliError(
-            f"anchor ^{anchor_key} resolves to {occurrence_group.projection_count} distinct Index "
-            "line triplets; repair the collision before reattachment: "
-            + ", ".join(locations)
+            f"anchor ^{anchor_key} resolves to {len(triplets)} distinct Index line "
+            "triplets; repair the collision before reattachment: "
+            + ", ".join(f"{item['block']}:{item['line_id']}" for item in sources)
         )
-    observed_hash = occurrence_group.occurrences[0].triplet_hash
+    observed_hash = triplets.pop()
 
     depot = chatlas_anchory_depot(chatlas_root)
     resolution = depot.resolve(anchor_key, namespace=CHATLAS_NAMESPACE)

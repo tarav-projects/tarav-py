@@ -5,7 +5,18 @@ from hashlib import sha256
 import json
 import re
 
-from .parser import ANCHOR_RE, TYPE_BRACKET_RE as TYPE_BRACKET_RE
+from .label import CITATION_BODY
+
+#: The grammar of one Index line's written form: an optional source marker and a
+#: two-letter Line.Type code, and a trailing anchor.
+TYPE_BRACKET_RE = re.compile(r"^- \[(?P<source>AS:)?(?P<act>[A-Z]{2})\] ")
+ANCHOR_RE = re.compile(rf"\^(?P<anchor>{CITATION_BODY})\b")
+
+
+def normalize_anchor(anchor: str) -> str:
+    """Return the provider-neutral anchor key without a citation sigil."""
+    token = anchor.strip()
+    return token[1:] if token.startswith(("^", "@")) else token
 
 
 INDEX_LINE_BODY_SCHEMA = "agentos.index-line-body.v1"

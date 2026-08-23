@@ -1,82 +1,56 @@
-# $kw: --from Agentos.Index.System --from Floor.Model
-from __future__ import annotations
+# $kw: --from Index.Line --note [DC] what survives here is the grammar and identity of one Index line's written form; the Index itself is a collection of Index.Records and this package no longer models it
+"""The written form of an `Index.Line`: its label grammar and its identity hashes.
+
+An Index line still has a syntax — a `Line.Type` code, a body, and a trailing anchor —
+wherever one is written or cited, and Chatlas dossiers assert identity over exactly that
+triplet. That grammar is what lives here.
+
+It is not the Index. The Index is the record stream in an `Index.Workspace`; read it
+through `tarav.indexlab`.
+"""
 
 from .identity import (
+    ANCHOR_RE,
     INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
     INDEX_LINE_BODY_SCHEMA,
     INDEX_LINE_STATEMENT_SCHEMA,
+    TYPE_BRACKET_RE,
     canonical_index_line_anchor_triplet,
     canonical_index_line_body,
     canonical_index_line_statement,
-    LINE_MANIFEST_SCHEMA,
     index_line_anchor_triplet_hash,
     index_line_body_hash,
     index_line_statement_hash,
     index_line_statement_parts,
-)
-from .anchors import (
-    AnchorOccurrenceStanding,
-    IndexLineAnchorOccurrence,
-    IndexLineAnchorOccurrenceGroup,
-    group_index_line_anchor_occurrences,
-)
-from .nodes import (
-    BlankLine,
-    BlockHeading,
-    CodeFence,
-    Diagnostic,
-    IndexDepotModel,
-    IndexDocument,
-    IndexSurfaceKind,
-    InlineSpan,
-    KernelLine,
-    MetaHeading,
-    MetaLine,
-    Node,
-    RouterEntry,
-    Separator,
-    Text,
-    kernel_line_anchors,
     normalize_anchor,
 )
-from .parser import parse_depot, parse_index_file
-from .stats import BlockGroundingStats, block_grounding_stats
+from .label import (
+    CITATION_BODY,
+    CITATION_RE,
+    is_citation,
+    parse_citation,
+    split_trailing_address,
+    strip_trailing_addresses,
+)
 
 __all__ = [
-    "BlankLine",
-    "AnchorOccurrenceStanding",
-    "BlockGroundingStats",
-    "block_grounding_stats",
-    "BlockHeading",
-    "CodeFence",
-    "Diagnostic",
+    "ANCHOR_RE",
+    "CITATION_BODY",
+    "CITATION_RE",
     "INDEX_LINE_ANCHOR_TRIPLET_SCHEMA",
     "INDEX_LINE_BODY_SCHEMA",
     "INDEX_LINE_STATEMENT_SCHEMA",
-    "IndexDepotModel",
-    "IndexLineAnchorOccurrence",
-    "IndexLineAnchorOccurrenceGroup",
-    "IndexDocument",
-    "IndexSurfaceKind",
-    "InlineSpan",
-    "KernelLine",
-    "kernel_line_anchors",
-    "MetaHeading",
-    "MetaLine",
-    "Node",
-    "normalize_anchor",
-    "RouterEntry",
-    "Separator",
-    "Text",
+    "TYPE_BRACKET_RE",
     "canonical_index_line_anchor_triplet",
     "canonical_index_line_body",
     "canonical_index_line_statement",
-    "LINE_MANIFEST_SCHEMA",
     "index_line_anchor_triplet_hash",
     "index_line_body_hash",
     "index_line_statement_hash",
     "index_line_statement_parts",
-    "group_index_line_anchor_occurrences",
-    "parse_depot",
-    "parse_index_file",
+    "is_citation",
+    "normalize_anchor",
+    "parse_citation",
+    "split_trailing_address",
+    "strip_trailing_addresses",
 ]

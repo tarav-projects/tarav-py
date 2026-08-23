@@ -151,7 +151,9 @@ def test_chatlas_anchory_resolve_unresolvable_errors(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _selection_fixture(tmp_path, monkeypatch, capsys)
-    assert main(["chatlas", "session-anchory", "resolve", "c20990101-0u", "--json"]) == 1
+    assert (
+        main(["chatlas", "session-anchory", "resolve", "c20990101-0u", "--json"]) == 1
+    )
     err = capsys.readouterr().err
     assert "c20990101-0u" in err
 
@@ -473,11 +475,9 @@ def test_chatlas_anchory_reattach_preserves_anchor_and_relationships(
     anchor = registered["anchor"]
     relationships = registered["record"]["relationships"]
     index_depot = tmp_path / "index-depot"
-    design = index_depot / "design"
-    design.mkdir(parents=True)
-    (design / "100-design.md").write_text(
-        f"****\n## Example.Concept\n\n{typed} ^{anchor}\n",
-        encoding="utf-8",
+    _write_index_records(
+        index_depot,
+        (("pkg/design#Example.Concept", (("DC", "beta decision", anchor),), ()),),
     )
 
     assert (
@@ -499,7 +499,9 @@ def test_chatlas_anchory_reattach_preserves_anchor_and_relationships(
     assert amended["anchor"] == anchor
     assert amended["changed"] is True
     assert amended["depot"] == str(index_depot.resolve())
-    assert amended["sources"] == [{"path": "design/100-design.md", "line": 4}]
+    assert [item["block"] for item in amended["sources"]] == [
+        "pkg/design#Example.Concept"
+    ]
     assert amended["relationships"] == relationships
     assert amended["attachment"]["triplet_hash"] == index_line_anchor_triplet_hash(
         typed,
@@ -529,15 +531,13 @@ def test_chatlas_anchory_reattach_rejects_parser_observed_collision(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     anchor = "c20260810-1u"
-    design = tmp_path / "index-depot" / "design"
-    design.mkdir(parents=True)
-    (design / "100-design.md").write_text(
-        f"****\n## Example.One\n\n- [CT] first body ^{anchor}\n",
-        encoding="utf-8",
-    )
-    (design / "101-design.md").write_text(
-        f"****\n## Example.Two\n\n- [CT] second body ^{anchor}\n",
-        encoding="utf-8",
+    # One anchor cited by two lines whose written form differs: a real collision.
+    _write_index_records(
+        tmp_path / "index-depot",
+        (
+            ("pkg/design#Example.One", (("CT", "first body", anchor),), ()),
+            ("pkg/design#Example.Two", (("CT", "second body", f"{anchor}~2"),), ()),
+        ),
     )
 
     assert (
@@ -557,8 +557,8 @@ def test_chatlas_anchory_reattach_rejects_parser_observed_collision(
     )
     error = capsys.readouterr().err
     assert "2 distinct Index line triplets" in error
-    assert "design/100-design.md:4" in error
-    assert "design/101-design.md:4" in error
+    assert "pkg/design#Example.One" in error
+    assert "pkg/design#Example.Two" in error
 
 
 def test_chatlas_anchory_preview_context_escalates_to_neighborhood(
@@ -863,7 +863,15 @@ def test_anchory_batch_previews_then_registers_idempotently(
 
     assert (
         main(
-            ["chatlas", "session-anchory", "batch", "preview", "--input", str(batch), "--json"]
+            [
+                "chatlas",
+                "session-anchory",
+                "batch",
+                "preview",
+                "--input",
+                str(batch),
+                "--json",
+            ]
         )
         == 0
     )
@@ -882,7 +890,15 @@ def test_anchory_batch_previews_then_registers_idempotently(
 
     assert (
         main(
-            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
+            [
+                "chatlas",
+                "session-anchory",
+                "batch",
+                "register",
+                "--input",
+                str(batch),
+                "--json",
+            ]
         )
         == 0
     )
@@ -901,7 +917,15 @@ def test_anchory_batch_previews_then_registers_idempotently(
 
     assert (
         main(
-            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
+            [
+                "chatlas",
+                "session-anchory",
+                "batch",
+                "register",
+                "--input",
+                str(batch),
+                "--json",
+            ]
         )
         == 0
     )
@@ -945,7 +969,15 @@ def test_anchory_batch_refuses_before_writing_when_one_item_is_invalid(
 
     assert (
         main(
-            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
+            [
+                "chatlas",
+                "session-anchory",
+                "batch",
+                "register",
+                "--input",
+                str(batch),
+                "--json",
+            ]
         )
         == 1
     )
@@ -985,7 +1017,15 @@ def test_anchory_batch_rejects_duplicate_client_ids(
 
     assert (
         main(
-            ["chatlas", "session-anchory", "batch", "preview", "--input", str(batch), "--json"]
+            [
+                "chatlas",
+                "session-anchory",
+                "batch",
+                "preview",
+                "--input",
+                str(batch),
+                "--json",
+            ]
         )
         == 1
     )
@@ -1021,7 +1061,15 @@ def test_anchory_batch_carries_independent_gates_predecessors_and_support_order(
     )
     assert (
         main(
-            ["chatlas", "session-anchory", "batch", "register", "--input", str(seed), "--json"]
+            [
+                "chatlas",
+                "session-anchory",
+                "batch",
+                "register",
+                "--input",
+                str(seed),
+                "--json",
+            ]
         )
         == 0
     )
@@ -1061,7 +1109,15 @@ def test_anchory_batch_carries_independent_gates_predecessors_and_support_order(
     )
     assert (
         main(
-            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
+            [
+                "chatlas",
+                "session-anchory",
+                "batch",
+                "register",
+                "--input",
+                str(batch),
+                "--json",
+            ]
         )
         == 0
     )
@@ -1081,7 +1137,15 @@ def test_anchory_batch_carries_independent_gates_predecessors_and_support_order(
 
     assert (
         main(
-            ["chatlas", "session-anchory", "batch", "register", "--input", str(batch), "--json"]
+            [
+                "chatlas",
+                "session-anchory",
+                "batch",
+                "register",
+                "--input",
+                str(batch),
+                "--json",
+            ]
         )
         == 0
     )
@@ -1135,7 +1199,15 @@ def test_anchory_batch_retry_reuses_anchors_minted_by_an_earlier_run(
     full = _batch_input(tmp_path / "full.json", identity_hash, alpha, beta)
     assert (
         main(
-            ["chatlas", "session-anchory", "batch", "register", "--input", str(full), "--json"]
+            [
+                "chatlas",
+                "session-anchory",
+                "batch",
+                "register",
+                "--input",
+                str(full),
+                "--json",
+            ]
         )
         == 0
     )
@@ -1146,3 +1218,41 @@ def test_anchory_batch_retry_reuses_anchors_minted_by_an_earlier_run(
     assert anchors["line-a"] == already
     assert anchors["line-a-again"] == already
     assert len(list(chatlas_anchory_depot().query(namespace=CHATLAS_NAMESPACE))) == 2
+
+
+def _write_index_records(root: Path, blocks) -> None:
+    """A project whose Index records hold `blocks`, each line carrying its anchor."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parents[1]))
+    from _skillware_helpers import index_records, write_index
+
+    write_index(root, ())
+    from tarav.indexlab import IndexLibrary, RecordStore
+
+    workspace = IndexLibrary.open(root / "index-library").resolve("test")
+    store = RecordStore(workspace)
+    for position, (name, lines, aliases) in enumerate(blocks):
+        records = index_records(
+            ((name, tuple((code, text) for code, text, _ in lines), aliases),),
+            prefix=f"b{position}",
+        )
+        relabelled = []
+        anchors = [anchor for _code, _text, anchor in lines]
+        pending = list(anchors)
+        for record in records:
+            if record.operation.type == "line.capture" and pending:
+                parameters = dict(record.operation.parameters)
+                parameters["label"] = f"^{pending.pop(0)}"
+                record = record.__class__(
+                    id=record.id,
+                    ordinal=0,
+                    context=record.context,
+                    operation=record.operation.__class__(
+                        type="line.capture", parameters=parameters
+                    ),
+                    support=record.support,
+                    assertions=record.assertions,
+                )
+            relabelled.append(record)
+        store.append_many(tuple(relabelled))
