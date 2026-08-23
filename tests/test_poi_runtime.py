@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import pytest
+
 from tarav.poi.runtime import (
     Check,
     Evaluator,
@@ -205,6 +207,74 @@ def test_failed_dependency_does_not_block_further_evaluation() -> None:
         Status.FAILED,
         Status.PASSED,
     ]
+
+
+def test_dev_replacement_satisfies_dependency_without_restoring_displaced_check() -> None:
+    class ProductionCheck(Check[_Context]):
+        name = "production"
+
+        def run(self) -> list[Finding]:
+            raise AssertionError("the active dev replacement must displace this check")
+
+    class DevCheck(Check[_Context]):
+        name = "production-dev"
+        dev = True
+        replaces = "production"
+
+        def run(self) -> list[Finding]:
+            return [
+                Finding(
+                    "Test.Linter/Archive.Unavailable",
+                    {"archive": "chat"},
+                    {"actual": "missing"},
+                    status=Status.BLOCKED,
+                )
+            ]
+
+    class DependentCheck(Check[_Context]):
+        name = "dependent"
+        requires = ("production",)
+
+        def run(self) -> list[Finding]:
+            raise AssertionError("the blocked replacement must block this check")
+
+    registry = (ProductionCheck, DevCheck, DependentCheck)
+
+    assert [check.name for check in select_checks(registry, dev=True)] == [
+        "production-dev",
+        "dependent",
+    ]
+    report = run_checks(_Context(), registry, dev=True)
+    assert [result.status for result in report.results] == [
+        Status.BLOCKED,
+        Status.BLOCKED,
+    ]
+    assert report.results[1].reason == "blocked by check(s): production-dev"
+
+
+def test_dev_replacement_declarations_are_unambiguous_and_known() -> None:
+    class ProductionCheck(Check[_Context]):
+        name = "production"
+
+    class FirstDevCheck(Check[_Context]):
+        name = "first-dev"
+        dev = True
+        replaces = "production"
+
+    class SecondDevCheck(Check[_Context]):
+        name = "second-dev"
+        dev = True
+        replaces = "production"
+
+    class UnknownDevCheck(Check[_Context]):
+        name = "unknown-dev"
+        dev = True
+        replaces = "missing"
+
+    with pytest.raises(ValueError, match="several active replacements"):
+        select_checks((ProductionCheck, FirstDevCheck, SecondDevCheck), dev=True)
+    with pytest.raises(ValueError, match="replaces unknown check"):
+        select_checks((ProductionCheck, UnknownDevCheck), dev=True)
 
 
 def test_one_document_drives_complete_summaries_and_bounded_rendering() -> None:

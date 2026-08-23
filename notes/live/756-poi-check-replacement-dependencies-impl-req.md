@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Goal:** make shared-runtime check dependencies honor active dev replacements instead of restoring and executing the displaced production check.
-- **Status:** ready for execution.
+- **Status:** completed and verified.
 - **Scope:** `tarav.poi.runtime` selection/execution semantics, focused runtime tests, and the shared POI runtime guidance affected by the correction.
 - **Out of scope:** production `tarav.index` migration, new dependency syntax, replacement chains, and IndexLab domain behavior.
 - **Source:** review of the class-based POI check implementation at checkpoint `2d5e534`.
@@ -21,7 +21,7 @@
 
 ### Slice 1 — effective dependency resolution
 
-- **Status:** pending.
+- **Status:** completed.
 - Add a boundary test where a selected check requires a production check that an active dev check replaces; first prove the current selector returns both implementations.
 - Centralize active replacement resolution inside the shared runtime.
 - Use the resolved dependency for closure, ordering validation, skip conflicts, and blocked-result propagation.
@@ -39,3 +39,8 @@
 
 - [IP] The correction treats `replaces` as a logical substitution rather than presentation-only selection metadata; this follows from the existing replacement behavior and dependency algebra.
 - [EX] Autonomous cleanup execution was authorized by the user's `$tarav-hugentics --impl --clear` followed by `--AUTO` invocation in the current chat.
+- [LG] Active replacement resolution is shared by selection and execution; dependencies resolve to the replacement for closure, ordering, skip conflicts, and blocked-result propagation.
+- [LG] Ambiguous replacements, unknown replacement targets, and replacement chains now fail deterministically rather than producing an order-dependent run.
+- [LG] RED reproduced both implementations being selected; GREEN selects only the replacement and dependent, with a blocked replacement blocking the dependent once.
+- [LG] Verification passed: 47 focused tests, an exact `dev-library/main` IndexLab lint (`VERIFIED`, 25 records, 7/7 checks), the complete suite (`2272 passed`), Ruff, and `git diff --check`.
+- [LG] Final Product.Surface capture audit found no qualifying new product annotation: the correction is directly expressed by runtime behavior and boundary tests.

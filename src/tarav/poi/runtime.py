@@ -157,9 +157,8 @@ def select_checks(
     if unknown:
         raise CliError("unknown linter check(s): " + ", ".join(sorted(unknown)))
 
-    displaced = {
-        entry.replaces for entry in entries if dev and entry.dev and entry.replaces
-    }
+    replacements = _active_replacements(entries, dev=dev)
+    displaced = frozenset(replacements)
     selected_names: set[str] = set()
     for entry in entries:
         if entry.dev and not dev:
@@ -186,7 +185,9 @@ def select_checks(
                 f"check {entry.name!r} requires unknown check(s): "
                 + ", ".join(sorted(unknown_requires))
             )
-        for dependency in entry.requires:
+        for dependency in _effective_dependencies(entry, replacements):
+            if dependency == entry.name:
+                raise ValueError(f"check {entry.name!r} depends on itself")
             if positions[dependency] >= positions[entry.name]:
                 raise ValueError(
                     f"check {entry.name!r} requires {dependency!r} before it"
@@ -195,9 +196,16 @@ def select_checks(
     pending = list(selected_names)
     while pending:
         name = pending.pop()
-        for dependency in by_name[name].requires:
+        entry = by_name[name]
+        for declared, dependency in zip(
+            entry.requires,
+            _effective_dependencies(entry, replacements),
+            strict=True,
+        ):
             dependency_type = by_name[dependency]
-            if dependency in excluded and dependency_type.tier is not Tier.STRUCTURAL:
+            if (
+                declared in excluded or dependency in excluded
+            ) and dependency_type.tier is not Tier.STRUCTURAL:
                 raise CliError(
                     f"cannot skip check {dependency!r}; selected check {name!r} requires it"
                 )
@@ -227,13 +235,15 @@ def run_checks(
     """Execute selected checks in registry order and return one three-valued run."""
 
     started_at = perf_counter()
+    entries = tuple(registry)
     selected = select_checks(
-        registry,
+        entries,
         check,
         skip,
         dev=dev,
         targeted=targeted,
     )
+    replacements = _active_replacements(entries, dev=dev)
     silenced_ids = frozenset(silenced)
     may_bless = blessable or (lambda _finding: True)
     findings: list[Finding] = []
@@ -246,7 +256,7 @@ def run_checks(
     for check_type in selected:
         blocked_by = tuple(
             dependency
-            for dependency in check_type.requires
+            for dependency in _effective_dependencies(check_type, replacements)
             if results_by_name[dependency].status is Status.BLOCKED
         )
         if blocked_by:
@@ -305,6 +315,47 @@ def run_checks(
         dev=tuple(entry.name for entry in selected if entry.dev),
         short_circuited=short_circuited,
     )
+
+
+def _active_replacements(
+    entries: tuple[type[Check[Any]], ...],
+    *,
+    dev: bool,
+) -> dict[str, str]:
+    if not dev:
+        return {}
+
+    names = {entry.name for entry in entries}
+    replacements: dict[str, str] = {}
+    for entry in entries:
+        target = entry.replaces if entry.dev else None
+        if target is None:
+            continue
+        if target not in names:
+            raise ValueError(
+                f"dev check {entry.name!r} replaces unknown check {target!r}"
+            )
+        previous = replacements.get(target)
+        if previous is not None:
+            raise ValueError(
+                f"check {target!r} has several active replacements: "
+                f"{previous!r}, {entry.name!r}"
+            )
+        replacements[target] = entry.name
+
+    chained = sorted(name for name in replacements.values() if name in replacements)
+    if chained:
+        raise ValueError(
+            "dev replacement chains are not supported: " + ", ".join(chained)
+        )
+    return replacements
+
+
+def _effective_dependencies(
+    entry: type[Check[Any]],
+    replacements: Mapping[str, str],
+) -> tuple[str, ...]:
+    return tuple(replacements.get(name, name) for name in entry.requires)
 
 
 class LinterReportSelectionError(ValueError):
