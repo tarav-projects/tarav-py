@@ -23,26 +23,18 @@ from tarav.skillware.commands import (
 )
 from _skillware_helpers import (
     _write_skill,
+    write_index,
 )
 
 
 def _write_project(root: Path) -> Path:
-    """A project with the marker, a shared depot, a project config pointing at
-    it, and one package (pkgA) that declares a dependency on a shared block."""
-    (root / ".tarav").mkdir(parents=True)
-    (root / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
-    depot = root / "shared-depot"
-    (depot / "design").mkdir(parents=True)
-    (depot / "000-INDEX.md").write_text(
-        "- `design/100-design.md` — Shared.Block\n", encoding="utf-8"
-    )
-    (depot / "design" / "100-design.md").write_text(
-        "## Shared.Block\n\n- shared across packages\n", encoding="utf-8"
+    """A project whose Index records hold a shared block one package depends on."""
+    write_index(
+        root,
+        (("shared/design#Shared.Block", (("CT", "shared across packages"),), ()),),
     )
     (root / ".skw").mkdir()
-    (root / ".skw" / "skw.json").write_text(
-        json.dumps({"depots": ["shared-depot"]}), encoding="utf-8"
-    )
+    (root / ".skw" / "skw.json").write_text(json.dumps({}), encoding="utf-8")
     pkg_a_src = root / "packages" / "pkgA" / ".skw" / "src"
     pkg_a_src.mkdir(parents=True)
     (pkg_a_src / "mod.skw.md").write_text(
@@ -54,24 +46,21 @@ def _write_project(root: Path) -> Path:
 
 
 def test_project_check_catches_cross_package_dangling(tmp_path: Path) -> None:
-    """The project-scope payoff: a rename in the shared depot breaks pkgA's
-    declared dependency, caught by `check_project` without targeting pkgA."""
+    """The project-scope payoff: renaming a shared block breaks pkgA's declared
+    dependency, caught by `check_project` without targeting pkgA."""
     from tarav.skillware.build import check_project
 
     proj = _write_project(tmp_path)
-    depot_chapter = proj / "shared-depot" / "design" / "100-design.md"
 
-    # GREEN: the shared block resolves via the cascaded project depot.
+    # GREEN: the shared block resolves against the project's Index records.
     report = check_project(proj)
     assert report.poi_count == 0
     assert any("pkgA" in str(pkg) for pkg, _ in report.packages)
 
     # RED: rename the shared block without an alias — pkgA's --from dangles.
-    depot_chapter.write_text(
-        depot_chapter.read_text(encoding="utf-8").replace(
-            "## Shared.Block", "## Renamed.Block"
-        ),
-        encoding="utf-8",
+    write_index(
+        proj,
+        (("shared/design#Renamed.Block", (("CT", "shared across packages"),), ()),),
     )
     report = check_project(proj)
     dangling = [
@@ -115,8 +104,8 @@ def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(
         json.dumps(
             {
                 "id": "tarav-pkg",
-                "depots": ["../pkg"],
                 "projects": ["../sib"],
+                "depots": ["../pkg"],
                 "mystery": 1,
             }
         ),
@@ -124,12 +113,13 @@ def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(
     )
     config = parse_skw_config(good)
     assert config.id == "tarav-pkg"
-    assert config.depots == ("../pkg",)
     assert config.projects == ("../sib",)
     assert any("mystery" in w for w in config.warnings)
+    # `depots` configured concept resolution; one workspace holds the Index whole.
+    assert any("depots" in w for w in config.warnings)
 
     bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps({"depots": "not-a-list"}), encoding="utf-8")
+    bad.write_text(json.dumps({"projects": "not-a-list"}), encoding="utf-8")
     with pytest.raises(SkillwareError):
         parse_skw_config(bad)
 

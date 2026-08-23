@@ -256,14 +256,14 @@ def check_code_surfaces(
                 for locator in dependencies:
                     collision = collisions.get(locator, [])
                     if collision:
-                        joined = ", ".join(str(path) for path in collision)
+                        joined = ", ".join(str(block) for block in collision)
                         pois.append(
                             skillware_poi(
                                 "dangling-dependency",
                                 relative,
                                 locator,
                                 f"collision:{locator}:{joined}",
-                                f"design dependency `{locator}` resolves in multiple depots: {joined}",
+                                f"design dependency `{locator}` is declared by more than one Index block: {joined}",
                             )
                         )
                         continue
@@ -275,7 +275,7 @@ def check_code_surfaces(
                                 relative,
                                 locator,
                                 f"unresolved:{locator}",
-                                f"design dependency `{locator}` does not resolve in the engaged Index depots",
+                                f"design dependency `{locator}` does not resolve in the Index records",
                             )
                         )
         for line in block_lines:

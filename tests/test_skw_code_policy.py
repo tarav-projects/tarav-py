@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from _skillware_helpers import write_index
 from tarav.skillware.build import check_project
 
 HEADER = (
@@ -19,13 +20,10 @@ def _project(
     *,
     allow_points: tuple[str, ...] = ("file",),
 ) -> Path:
-    (root / ".tarav").mkdir(parents=True)
-    (root / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
-    (root / ".skw").mkdir()
+    (root / ".skw").mkdir(parents=True)
     (root / ".skw" / "skw.json").write_text(
         json.dumps(
             {
-                "depots": ["depot"],
                 "code_surfaces": [
                     {
                         "language": "python",
@@ -37,15 +35,7 @@ def _project(
         ),
         encoding="utf-8",
     )
-    (root / "depot" / "design").mkdir(parents=True)
-    (root / "depot" / "000-INDEX.md").write_text(
-        "# Test Index\n\n- `design/100-design.md` — Design.Thing\n",
-        encoding="utf-8",
-    )
-    (root / "depot" / "design" / "100-design.md").write_text(
-        "## Design.Thing\n\n- [DF] test design.\n",
-        encoding="utf-8",
-    )
+    write_index(root, (("depot/design#Design.Thing", (("DF", "test design."),), ()),))
     for relative, code in files.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,29 +85,22 @@ def test_line1_design_dependency_must_resolve(tmp_path: Path) -> None:
     assert dangling[0].key == "Missing.Thing"
 
 
-def test_line1_design_dependency_cannot_resolve_to_two_depots(
+def test_line1_design_dependency_cannot_be_declared_by_two_blocks(
     tmp_path: Path,
 ) -> None:
     project = _project(tmp_path, {"src/mod.py": HEADER + "x = 1\n"})
-    second = project / "other-depot"
-    (second / "design").mkdir(parents=True)
-    (second / "000-INDEX.md").write_text(
-        "# Other Index\n\n- `design/100-design.md` — Design.Thing\n",
-        encoding="utf-8",
+    write_index(
+        project,
+        (
+            ("depot/design#Design.Thing", (("DF", "test design."),), ()),
+            ("other/design#Design.Thing", (("DF", "conflicting test design."),), ()),
+        ),
     )
-    (second / "design" / "100-design.md").write_text(
-        "## Design.Thing\n\n- [DF] conflicting test design.\n",
-        encoding="utf-8",
-    )
-    config_path = project / ".skw" / "skw.json"
-    config = json.loads(config_path.read_text(encoding="utf-8"))
-    config["depots"].append("other-depot")
-    config_path.write_text(json.dumps(config), encoding="utf-8")
 
     dangling = _kinds(check_project(project), "dangling-dependency")
     assert len(dangling) == 1
     assert dangling[0].key == "Design.Thing"
-    assert "multiple depots" in dangling[0].detail
+    assert "more than one Index block" in dangling[0].detail
 
 
 def test_configured_unannotated_file_has_missing_header(tmp_path: Path) -> None:

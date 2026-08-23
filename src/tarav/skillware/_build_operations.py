@@ -417,7 +417,7 @@ class _SkwSurfaceProvider:
 
     Extracts declared edges from a `SkwSource`'s dependencies and recipes, its
     mentions from the compiled (`Expansion`) text, and resolves names against
-    the package's configured depots — the `SurfaceProvider` the core drives.
+    the project's Index records — the `SurfaceProvider` the core drives.
     """
 
     def __init__(

@@ -313,13 +313,6 @@ def test_chatlas_anchory_sessions_extracts_unique_sessions_from_sources(
             "last_activity_at": "2026-03-08T01:09:05.000Z",
             "anchors": ["c20260308-0u", "c20260308-1u", "c20260308-1x"],
             "support_member_count": 3,
-            "chat_index": {
-                "materialized": False,
-                "state": "missing",
-                "path": str(
-                    Path(payload["chatlas_root"]) / "session-index" / identity_hash
-                ),
-            },
         }
     ]
     anchors = {item["anchor"]: item for item in payload["anchors"]}

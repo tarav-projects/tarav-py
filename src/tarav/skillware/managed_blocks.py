@@ -310,10 +310,12 @@ def _discover(project_root: Path) -> tuple[_HostedBlock, ...]:
     if resolver is not None:
         for block in resolver.blocks():
             target = resolved_index_block_target(resolver, block)
+            # A managed-block reference carries a bare Dotted.Name, so an Index
+            # block competes on its concept while the host still names its address.
             found.append(
                 _HostedBlock(
                     path=None,
-                    address=block.name,
+                    address=block.name.partition("#")[2] or block.name,
                     line=None,
                     end_line=None,
                     host_kind="index.block",

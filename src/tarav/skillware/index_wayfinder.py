@@ -43,6 +43,7 @@ def resolve_index_block_reference(
     return _resolve_index_block(reference, registry)
 
 
+# $kw: --note [DC] a remembered root that vanished is stale and a root that is present but carries no reachable records is unreachable; collapsing them would tell a relocation and a broken Index apart only by reading the message
 def _resolve_index_block(
     reference: WayfinderReference,
     registry: WayfinderRegistry,
@@ -89,7 +90,6 @@ def _resolve_index_block(
         )
     )
 
-    # $kw: --note [DC] a remembered root that vanished is stale and a root that is present but carries no reachable records is unreachable; collapsing them would tell a relocation and a broken Index apart only by reading the message
     if not registration.path.is_dir():
         trace.append(
             WayfinderTraceStep(

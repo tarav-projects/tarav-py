@@ -154,7 +154,7 @@ def _dependency_unhonored(*args, **kwargs) -> SkillwarePOIInstance:
 
 
 # $kw: Skillware.Linter/Dependency.Dangling
-# --note [DF] a declared `--from` target no longer resolves in configured depots
+# --note [DF] a declared `--from` target no longer resolves in the Index records
 # --note [PR] restore or repoint the target, or explicitly bless the instance
 def _dependency_dangling(*args, **kwargs) -> SkillwarePOIInstance:
     return _bound_poi("Skillware.Linter/Dependency.Dangling")(*args, **kwargs)

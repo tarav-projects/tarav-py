@@ -13,6 +13,7 @@ from tarav.skillware.build import (
 )
 from tarav.skillware.model import parse_skw_source
 from _skillware_helpers import (
+    write_index,
     SRC,
     _entry,
     _write_skill,
@@ -672,12 +673,8 @@ def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
     assert not check.pois
 
     # editing the second recipe's dep flags only Pair@1
-    depot_file = tmp_path / "depot" / "design" / "100-design.md"
-    depot_file.write_text(
-        depot_file.read_text(encoding="utf-8").replace(
-            "- concept line", "- concept line v2"
-        ),
-        encoding="utf-8",
+    write_index(
+        tmp_path, (("depot/design#Concept.One", (("CT", "concept line v2"),), ()),)
     )
     check = check_skill(skill)
     entry = _entry(check, "references/mod.md")

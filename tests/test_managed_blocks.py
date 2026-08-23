@@ -11,6 +11,7 @@ from tarav.wayfinder import (
     managed_block_reference,
     parse_reference,
 )
+from _skillware_helpers import write_index
 from tarav.skillware.managed_blocks import create_managed_wayfinder
 
 
@@ -132,16 +133,9 @@ def check() -> None:
 """
     project_root = tmp_path / "project"
     project_id, _ = _write_project(project_root, source)
-    config_path = project_root / ".skw" / "skw.json"
-    config = json.loads(config_path.read_text(encoding="utf-8"))
-    config["depots"] = ["../depot"]
-    config_path.write_text(json.dumps(config), encoding="utf-8")
-    depot = tmp_path / "depot"
-    (depot / "design").mkdir(parents=True)
-    (depot / "000-INDEX.md").write_text("# Index\n", encoding="utf-8")
-    (depot / "design" / "100-design.md").write_text(
-        "****\n\n## Shared.Block\n\n- [DF] Markdown root\n",
-        encoding="utf-8",
+    write_index(
+        project_root,
+        (("depot/design#Shared.Block", (("DF", "Index root"),), ()),),
     )
     registry = _registry(tmp_path, project_id, project_root)
 

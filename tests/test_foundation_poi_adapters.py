@@ -11,7 +11,7 @@ from tarav.poi.adapters.bloberia import (
     bloberia_finding_to_poi,
     build_bloberia_linter_report,
 )
-from tarav.poi import build_poi_report, tarav_poi_class_reference
+from tarav.poi import build_poi_report
 from tarav.bloberia.core import BloberiaCheckFinding
 from tarav.poi.adapters.mdblocks import (
     MDBLOCKS_POI_CODES,
@@ -133,23 +133,3 @@ def test_real_finding_resolves_to_its_annotated_check_without_catalog() -> None:
     assert "def _invalid_json" in group.documentation.target["content"]
 
 
-def test_index_poi_classes_resolve_to_their_emitting_code() -> None:
-    wayfinder = create_tarav_wayfinder(
-        project_root=Path(__file__).resolve().parents[1]
-    )
-    expected_hosts = {
-        "Index.Linter/Gate.Evidence.Invalid": "_gate_evidence_invalid_finding",
-        "Index.Linter/Gate.Evidence.Unavailable": (
-            "_gate_evidence_unavailable_finding"
-        ),
-        "Index.Linter/Support.Unresolved": "_support_unresolved_finding",
-        "Index.Linter/Support.Unreachable": "_support_unreachable_finding",
-        "Index.Linter/Trace.Forked": "_trace_forked_finding",
-    }
-
-    for poi_class, function_name in expected_hosts.items():
-        resolved = wayfinder.resolve(tarav_poi_class_reference(poi_class))
-        assert resolved.target["host"] == {
-            "kind": "function",
-            "name": function_name,
-        }

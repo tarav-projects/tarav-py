@@ -64,7 +64,13 @@ def _cmd_explain(
     else:
         target = result.target
         print(f"POI class: {reference_sugar(reference)}")
-        print(f"Source: {target['path']}:{target['start_line']}-{target['end_line']}")
+        # An Index block cites by address; a code-hosted block still cites by file.
+        if target.get("path"):
+            print(
+                f"Source: {target['path']}:{target['start_line']}-{target['end_line']}"
+            )
+        else:
+            print(f"Source: {target['block_path']}")
         print()
         print(target["content"])
         if related is not None:

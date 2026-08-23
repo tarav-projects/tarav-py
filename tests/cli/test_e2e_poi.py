@@ -12,17 +12,14 @@ def _write_depot(
     block: str = "Index.Linter/Block.TooLong",
     description: str = "a separator-anchored block exceeds the hard line limit",
 ) -> Path:
-    (root / "poi").mkdir(parents=True)
-    (root / "000-INDEX.md").write_text(
-        f"# INDEX\n\n## poi\n\n- `poi/100-poi.md` - {block}\n",
-        encoding="utf-8",
-    )
-    (root / "poi" / "100-poi.md").write_text(
-        "****\n\n"
-        f"## {block}\n\n"
-        f"- [DF] {description}\n",
-        encoding="utf-8",
-    )
+    """A project whose Index records hold one POI class block."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parents[1]))
+    from _skillware_helpers import write_index
+
+    root.mkdir(parents=True, exist_ok=True)
+    write_index(root, ((f"{root.name}/poi#{block}", (("DF", description),), ()),))
     return root
 
 

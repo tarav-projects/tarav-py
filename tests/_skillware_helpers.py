@@ -265,19 +265,24 @@ def write_index(root: Path, blocks=DEPOT_BLOCKS) -> Path:
     workspace = library.create_workspace("test")
     RecordStore(workspace).append_many(index_records(blocks))
 
+    # Only add the Index pointer: a caller may already have written the marker,
+    # and its project_id is the identity the Wayfinder registry was keyed on.
     marker = root / ".tarav" / "project.json"
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(
-        json.dumps(
-            {
-                "class": "agentos.project",
-                "schema_version": 1,
-                "project_id": "00000000-0000-4000-8000-000000000000",
-                "index": {"library": "index-library", "workspace": "test"},
-            }
-        ),
-        encoding="utf-8",
-    )
+    payload = {
+        "class": "agentos.project",
+        "schema_version": 1,
+        "project_id": "00000000-0000-4000-8000-000000000000",
+    }
+    if marker.is_file():
+        try:
+            existing = json.loads(marker.read_text(encoding="utf-8"))
+        except ValueError:
+            existing = {}
+        if isinstance(existing, dict):
+            payload |= existing
+    payload["index"] = {"library": "index-library", "workspace": "test"}
+    marker.write_text(json.dumps(payload), encoding="utf-8")
     return library_root
 
 

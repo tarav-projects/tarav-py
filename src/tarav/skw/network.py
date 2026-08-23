@@ -116,7 +116,7 @@ def dependency_sync_findings(
                 target_rel,
                 name,
                 declared_resolutions[name],
-                f"declared dependency `{name}` no longer resolves in the configured depots",
+                f"declared dependency `{name}` no longer resolves in the Index records",
             )
         )
     for name, resolution in sorted(mention_resolutions.items()):

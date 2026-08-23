@@ -47,12 +47,11 @@ def _write_project(root: Path, source: str) -> tuple[str, Path]:
 
 
 def _write_depot(root: Path, *, block: str) -> Path:
-    (root / "design").mkdir(parents=True)
-    (root / "000-INDEX.md").write_text("# Demo\n", encoding="utf-8")
-    (root / "design" / "100-design.md").write_text(
-        f"****\n\n## {block}\n\n- [DF] related guidance ^c20260820-5u\n",
-        encoding="utf-8",
-    )
+    """A project whose Index records hold one guidance block."""
+    from _skillware_helpers import write_index
+
+    root.mkdir(parents=True, exist_ok=True)
+    write_index(root, ((f"demo/design#{block}", (("DF", "related guidance"),), ()),))
     return root
 
 

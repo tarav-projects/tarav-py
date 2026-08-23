@@ -32,24 +32,25 @@ from tarav.wayfinder import (
 
 
 def _write_depot(root: Path, block: str = "Example.Linter/Problem") -> Path:
-    (root / "poi").mkdir(parents=True)
-    (root / "000-INDEX.md").write_text(
-        f"# Example Index\n\n## poi\n\n- `poi/100-poi.md` - {block}\n",
-        encoding="utf-8",
-    )
-    (root / "poi" / "100-poi.md").write_text(
-        "\n".join(
+    """A project whose Index records hold one POI class block."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from _skillware_helpers import write_index
+
+    root.mkdir(parents=True, exist_ok=True)
+    write_index(
+        root,
+        (
             (
-                "****",
-                "",
-                f"## {block}",
-                "",
-                "- [DF] the target contains a reviewable problem ^c20260729-47u",
-                "- [CT] inspect the concrete evidence before resolving it",
-                "",
-            )
+                f"{root.name}/poi#{block}",
+                (
+                    ("DF", "the target contains a reviewable problem"),
+                    ("CT", "inspect the concrete evidence before resolving it"),
+                ),
+                (),
+            ),
         ),
-        encoding="utf-8",
     )
     return root
 
@@ -322,7 +323,7 @@ def test_poi_explain_resolves_registered_code_and_reference_sugar(
     assert args.handler(args) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "resolved"
-    assert payload["target"]["block_path"] == "Example.Linter/Problem"
+    assert payload["target"]["block_path"] == "depot/poi#Example.Linter/Problem"
 
 
 def test_poi_explain_surfaces_resolution_poi(

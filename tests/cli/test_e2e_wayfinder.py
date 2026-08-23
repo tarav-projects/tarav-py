@@ -12,15 +12,16 @@ def _captured_json(capsys: object) -> dict[str, object]:
 
 
 def _write_depot(root: Path) -> Path:
-    design = root / "design"
-    design.mkdir(parents=True)
-    (root / "000-INDEX.md").write_text(
-        "# INDEX\n\n## Routing\n\n- `design/100-design.md` - POI.Example\n",
-        encoding="utf-8",
-    )
-    (design / "100-design.md").write_text(
-        "****\n\n## POI.Example\n\n- Example documentation.\n",
-        encoding="utf-8",
+    """A project whose Index records hold one documented block."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parents[1]))
+    from _skillware_helpers import write_index
+
+    root.mkdir(parents=True, exist_ok=True)
+    write_index(
+        root,
+        (("demo-pkg/design#POI.Example", (("DF", "Example documentation."),), ()),),
     )
     return root
 
