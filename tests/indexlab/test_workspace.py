@@ -278,3 +278,61 @@ def test_load_reports_unloadable_cargo_instead_of_raising(tmp_path) -> None:
 
     with pytest.raises(WorkspaceError):
         store.list()
+
+
+def test_append_does_not_require_the_stored_corpus_to_be_loadable(tmp_path) -> None:
+    """One unloadable cargo must not stop the store accepting new records.
+
+    `append` used to derive its next ordinal from `list`, which fails closed, so a single
+    corrupt cargo made the whole store unwritable. Corruption is `load`'s and the linter's
+    to report; it is not a reason to refuse an unrelated append.
+    """
+
+    store = RecordStore(_workspace(tmp_path))
+    store.append(_record("record-good"))
+    store._depot.insert({"id": "record-broken", "schema": "tarav.indexlab-record.v1"})
+
+    stored = store.append(_record("record-after-defect"))
+
+    assert stored.ordinal == 2
+    records, defects = store.load()
+    assert [record.id for record in records] == ["record-good", "record-after-defect"]
+    assert [defect.record_id for defect in defects] == ["record-broken"]
+
+
+def test_append_many_numbers_consecutively_from_the_stored_maximum(tmp_path) -> None:
+    store = RecordStore(_workspace(tmp_path))
+    store.append(_record("record-existing"))
+
+    stored = store.append_many((_record("record-a"), _record("record-b")))
+
+    assert [entry.ordinal for entry in stored] == [2, 3]
+    assert [record.id for record in store.list()] == [
+        "record-existing",
+        "record-a",
+        "record-b",
+    ]
+
+
+def test_append_many_rolls_back_every_partial_insert(tmp_path) -> None:
+    store = RecordStore(_workspace(tmp_path))
+    store.append(_record("record-existing"))
+    depot = store._depot
+    inserted: list[str] = []
+
+    def explode_on_second(cargo, **kwargs):
+        if len(inserted) == 1:
+            raise RuntimeError("insert failed midway")
+        inserted.append(str(cargo["id"]))
+        return BloberiaDepot.insert(depot, cargo, **kwargs)
+
+    store._depot = type("Proxy", (), {})()
+    store._depot.insert = explode_on_second
+    store._depot.iterate = depot.iterate
+    store._depot.delete = depot.delete
+
+    with pytest.raises(RuntimeError):
+        store.append_many((_record("record-a"), _record("record-b")))
+
+    store._depot = depot
+    assert [record.id for record in store.list()] == ["record-existing"]

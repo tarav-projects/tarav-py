@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -304,13 +305,25 @@ class RecordStore:
     def depot_root(self) -> Path:
         return self._depot.root
 
+    # $kw: --note [DC] one reader serves both the fail-closed and the defect-tolerant view, so the two differ only in what they do with a cargo that will not load
+    def _iter_cargo(
+        self,
+    ) -> Iterator[tuple[IndexRecord | None, object, RecordModelError | None]]:
+        """Each stored cargo as a record, or the error that stopped it loading."""
+
+        for cargo in self._depot.iterate():
+            try:
+                yield IndexRecord.from_dict(cargo), cargo, None
+            except RecordModelError as exc:
+                yield None, cargo, exc
+
     def list(self) -> tuple[IndexRecord, ...]:
         records: list[IndexRecord] = []
-        try:
-            for cargo in self._depot.iterate():
-                records.append(IndexRecord.from_dict(cargo))
-        except RecordModelError as exc:
-            raise WorkspaceError(f"invalid Index.Record cargo: {exc}") from exc
+        for record, _cargo, error in self._iter_cargo():
+            if error is not None:
+                raise WorkspaceError(f"invalid Index.Record cargo: {error}") from error
+            if record is not None:
+                records.append(record)
         return tuple(sorted(records, key=lambda record: (record.ordinal, record.id)))
 
     def load(self) -> tuple[tuple[IndexRecord, ...], tuple[CargoDefect, ...]]:
@@ -318,14 +331,31 @@ class RecordStore:
 
         records: list[IndexRecord] = []
         defects: list[CargoDefect] = []
-        for cargo in self._depot.iterate():
-            try:
-                records.append(IndexRecord.from_dict(cargo))
-            except RecordModelError as exc:
-                defects.append(CargoDefect(record_id=_cargo_id(cargo), error=str(exc)))
+        for record, cargo, error in self._iter_cargo():
+            if error is not None:
+                defects.append(CargoDefect(record_id=_cargo_id(cargo), error=str(error)))
+            elif record is not None:
+                records.append(record)
         records.sort(key=lambda record: (record.ordinal, record.id))
         defects.sort(key=lambda defect: (defect.record_id or "", defect.error))
         return tuple(records), tuple(defects)
+
+    # $kw: --note [DC] appending one record must not require the whole stored corpus to be model-valid, so the ordinal seed reads raw cargo and never constructs a record --note [CT] rebuilding every stored record to take one max(ordinal) made append cost grow with the corpus, which is why loading 5047 migration records took ~25 minutes
+    def _stored_index(self) -> tuple[set[str], int]:
+        """Every stored id and the highest ordinal, in one pass over raw cargo."""
+
+        ids: set[str] = set()
+        highest = 0
+        for cargo in self._depot.iterate():
+            if not isinstance(cargo, dict):
+                continue
+            identifier = cargo.get("id")
+            if isinstance(identifier, str):
+                ids.add(identifier)
+            ordinal = cargo.get("ordinal")
+            if isinstance(ordinal, int) and not isinstance(ordinal, bool):
+                highest = max(highest, ordinal)
+        return ids, highest
 
     def get(self, record_id: str) -> IndexRecord | None:
         cargo = self._depot.first({"id": {"equals": record_id}})
@@ -337,32 +367,28 @@ class RecordStore:
             raise WorkspaceError(f"invalid Index.Record {record_id!r}: {exc}") from exc
 
     def append(self, record: IndexRecord) -> IndexRecord:
-        if record.ordinal != 0:
-            raise WorkspaceError("new Index.Record ordinal must be zero before append")
-        if self.get(record.id) is not None:
-            raise WorkspaceError(f"Index.Record already exists: {record.id}")
-        records = self.list()
-        ordinal = max((item.ordinal for item in records), default=0) + 1
-        stored = replace(record, ordinal=ordinal)
-        self._depot.insert(stored.to_dict())
-        return stored
+        return self.append_many((record,))[0]
 
+    # $kw: --note [DC] one batch reads the stored id set and ordinal seed once and numbers from it, rather than rescanning the corpus per record, which keeps a batch linear in what it inserts
     def append_many(self, records: tuple[IndexRecord, ...]) -> tuple[IndexRecord, ...]:
         ids = [record.id for record in records]
         if len(set(ids)) != len(ids):
             raise WorkspaceError("capture batch contains duplicate Index.Record ids")
+        stored_ids, highest = self._stored_index()
         for record in records:
             if record.ordinal != 0:
                 raise WorkspaceError("new Index.Record ordinal must be zero before append")
-            if self.get(record.id) is not None:
+            if record.id in stored_ids:
                 raise WorkspaceError(f"Index.Record already exists: {record.id}")
         stored: list[IndexRecord] = []
         try:
-            for record in records:
-                stored.append(self.append(record))
+            for offset, record in enumerate(records, start=1):
+                entry = replace(record, ordinal=highest + offset)
+                self._depot.insert(entry.to_dict())
+                stored.append(entry)
         except Exception:
-            for record in reversed(stored):
-                self._depot.delete({"id": {"equals": record.id}})
+            for entry in reversed(stored):
+                self._depot.delete({"id": {"equals": entry.id}})
             raise
         return tuple(stored)
 
