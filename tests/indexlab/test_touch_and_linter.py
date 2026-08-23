@@ -30,6 +30,7 @@ def _record(
     operation: str,
     parameters: dict[str, object],
     support: SupportSet,
+    assertions: tuple[dict[str, object], ...] = (),
 ) -> IndexRecord:
     return IndexRecord(
         id=record_id,
@@ -37,6 +38,7 @@ def _record(
         context=context,
         operation=Operation(type=operation, parameters=parameters),
         support=support,
+        assertions=assertions,
     )
 
 
@@ -93,6 +95,7 @@ def test_mock_lints_self_chat_and_external_capture() -> None:
                 ),
             )
         ),
+        ({"line_type": "DF"},),
     )
 
     report = lint_records((block, line), source=source)
@@ -100,9 +103,7 @@ def test_mock_lints_self_chat_and_external_capture() -> None:
     assert report.verified
     assert report.findings == ()
 
-    targeted = lint_records(
-        (block, line), source=source, subjects=("record-2",)
-    )
+    targeted = lint_records((block, line), source=source, subjects=("record-2",))
     assert targeted.verified
     assert targeted.execution["records_loaded"] == 2
     assert targeted.execution["records_selected"] == 1
@@ -113,6 +114,8 @@ def test_registry_discovers_every_managed_poi_class() -> None:
         "IndexLab.Linter/Context.Amended",
         "IndexLab.Linter/Context.Malformed",
         "IndexLab.Linter/Context.Unresolved",
+        "IndexLab.Linter/Line.Unlabelled",
+        "IndexLab.Linter/Line.Untyped",
         "IndexLab.Linter/Projection.Invalid",
         "IndexLab.Linter/Tripwire.Hit",
         "IndexLab.Linter/Record.Unloadable",
@@ -484,7 +487,9 @@ def test_chatlas_adapter_reads_finalized_message_refs_turn_shape(monkeypatch) ->
     assert message.value.turn_ordinal == 1
 
 
-def test_chatlas_adapter_reports_malformed_material_apart_from_absence(monkeypatch) -> None:
+def test_chatlas_adapter_reports_malformed_material_apart_from_absence(
+    monkeypatch,
+) -> None:
     source = _chatlas_source(
         monkeypatch,
         _chatlas_model(turn_shape="message_refs", side="system"),
@@ -515,7 +520,9 @@ def test_malformed_support_material_is_not_reported_as_a_dangling_reference(
     record = _record(
         "record-malformed",
         1,
-        RecordContext(session="chat-a", horizon=TurnRef(address="1" * 64, hash="2" * 64)),
+        RecordContext(
+            session="chat-a", horizon=TurnRef(address="1" * 64, hash="2" * 64)
+        ),
         "block.create",
         {"block_id": "block", "isoblock_id": "isoblock", "name": "Block"},
         SupportSet(
@@ -622,3 +629,62 @@ def test_projection_findings_are_attributed_per_record(tmp_path) -> None:
 
     assert [finding.subject["record_id"] for finding in projection] == ["r1", "r2"]
     assert len({finding.identity for finding in projection}) == 2
+
+
+# The Index is a WIP.Surface: an incomplete line records, and its incompleteness
+# is reported rather than repaired.
+def test_line_complete_reports_untyped_and_unlabelled_lines_separately() -> None:
+    source = UserTouchMock()
+    turn = source.add_turn("chat-a", "user", "Capture the legacy chapter lines.")
+    context = source.record_context("chat-a", turn.turn_ref)
+
+    def entry(ordinal, parameters, assertions):
+        return IndexRecord(
+            id=f"record-{ordinal}",
+            ordinal=ordinal,
+            context=context,
+            operation=Operation(type="line.capture", parameters=parameters),
+            support=SupportSet(neighborhoods=()),
+            assertions=assertions,
+        )
+
+    block = _record(
+        "record-1",
+        1,
+        context,
+        "block.create",
+        {"block_id": "block-a", "isoblock_id": "isoblock-a", "name": "d/design#Alpha"},
+        SupportSet(neighborhoods=()),
+    )
+    complete = entry(
+        2,
+        {
+            "line_id": "line-a",
+            "isoline_id": "isoline-a",
+            "block_id": "block-a",
+            "label": "^c20260101-1u",
+            "text": "a complete line",
+        },
+        ({"line_type": "DF"},),
+    )
+    incomplete = entry(
+        3,
+        {
+            "line_id": "line-b",
+            "isoline_id": "isoline-b",
+            "block_id": "block-a",
+            "text": "pre-fence legacy: no type, no label",
+        },
+        ({"line_type": "UNTYPED"},),
+    )
+
+    report = lint_records(
+        (block, complete, incomplete), source=source, check=("line-complete",)
+    )
+    reported = sorted(
+        (finding.poi_class, finding.subject["record_id"]) for finding in report.findings
+    )
+    assert reported == [
+        ("IndexLab.Linter/Line.Unlabelled", "record-3"),
+        ("IndexLab.Linter/Line.Untyped", "record-3"),
+    ]

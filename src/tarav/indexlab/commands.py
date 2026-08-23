@@ -333,6 +333,7 @@ def _mock_scenario() -> tuple[UserTouchMock, tuple[IndexRecord, ...]]:
                 },
             ),
             support=support(units_touch, units_writer),
+            assertions=({"line_type": "DF"},),
         ),
     )
     return source, records

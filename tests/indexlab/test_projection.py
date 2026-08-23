@@ -212,8 +212,11 @@ def test_projection_rejects_missing_targets_and_duplicate_exact_ids() -> None:
         project_records(_base_records() + (duplicate,))
 
 
-def test_line_labels_are_required_unique_public_citations() -> None:
-    missing_label = _record(
+# The Index is a WIP.Surface, so an incomplete line is recordable: a real line
+# may carry no citation yet, and refusing it would let the kernel's shape decide
+# what counts as Index data. What it may not do is claim someone else's label.
+def test_a_line_may_carry_no_label_but_never_a_duplicate_one() -> None:
+    unlabelled = _record(
         2,
         "line.capture",
         {
@@ -221,6 +224,17 @@ def test_line_labels_are_required_unique_public_citations() -> None:
             "isoline_id": "isoline-a",
             "block_id": "block-a1",
             "text": "Missing citation.",
+        },
+    )
+    malformed_label = _record(
+        2,
+        "line.capture",
+        {
+            "line_id": "line-a2",
+            "isoline_id": "isoline-a",
+            "block_id": "block-a1",
+            "label": "line-a",
+            "text": "Label without its sigil.",
         },
     )
     duplicate_label = _record(
@@ -235,8 +249,12 @@ def test_line_labels_are_required_unique_public_citations() -> None:
         },
     )
 
-    with pytest.raises(ProjectionError, match="parameter label"):
-        project_records((_base_records()[0], missing_label))
+    projection = project_records((_base_records()[0], unlabelled))
+    assert projection.lines[0].label is None
+    assert projection.lines[0].text == "Missing citation."
+
+    with pytest.raises(ProjectionError, match="must begin with"):
+        project_records((_base_records()[0], malformed_label))
     with pytest.raises(ProjectionError, match=r"label \^line-a already exists"):
         project_records(_base_records() + (duplicate_label,))
 

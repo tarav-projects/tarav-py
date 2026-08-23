@@ -475,6 +475,46 @@ class ProjectionValidCheck(Check[IndexLabLintContext]):
         return findings
 
 
+# $kw: IndexLab.Linter/Line.Untyped --from POI.Linter
+# $kw: IndexLab.Linter/Line.Unlabelled --from POI.Linter
+# $kw: --note [DC] the Index is a WIP.Surface, so an incomplete line records and then reports; refusing the record would hide the incompleteness instead of surfacing it, and a corpus the kernel refused to hold cannot be linted at all
+class LineCompleteCheck(Check[IndexLabLintContext]):
+    name = "line-complete"
+
+    def run(self) -> list[Finding]:
+        """Every captured line should state a Line.Type and carry a citable label."""
+
+        findings: list[Finding] = []
+        for record in self.context.selected_records():
+            if record.operation.type != "line.capture":
+                continue
+            parameters = record.operation.parameters
+            stated = {
+                value
+                for assertion in record.assertions
+                if isinstance(value := assertion.get("line_type"), str)
+                and value.strip()
+                and value != "UNTYPED"
+            }
+            if not stated:
+                findings.append(
+                    _finding(
+                        record,
+                        "IndexLab.Linter/Line.Untyped",
+                        {"expected": "a Line.Type code", "actual": "UNTYPED"},
+                    )
+                )
+            if not parameters.get("label"):
+                findings.append(
+                    _finding(
+                        record,
+                        "IndexLab.Linter/Line.Unlabelled",
+                        {"expected": "a citable label", "actual": None},
+                    )
+                )
+        return findings
+
+
 CHECK_REGISTRY: tuple[type[Check[IndexLabLintContext]], ...] = (
     RecordsLoadableCheck,
     TripwireCheck,
@@ -483,6 +523,7 @@ CHECK_REGISTRY: tuple[type[Check[IndexLabLintContext]], ...] = (
     SupportResolvesCheck,
     SupportRolesCheck,
     SupportVisibleCheck,
+    LineCompleteCheck,
     ProjectionValidCheck,
 )
 

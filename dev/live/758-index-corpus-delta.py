@@ -85,6 +85,16 @@ def captured_keys() -> set[tuple[str, str]]:
     return {(blocks[line.block_id], line.text) for line in projection.lines}
 
 
+# $kw: --note [DC] the 754 builder assumes a fresh corpus, so a delta must hand it what the workspace already holds; without that it re-creates open blocks and re-allocates labels that are already taken, and both defects only surface later as a corpus that will not fold --note [CT] the label collision is the dangerous one: a duplicate block.create is refused on insert, but a duplicate label inserts cleanly and breaks the projection afterwards
+def _workspace_state() -> tuple[set[str], dict[str, str]]:
+    """Labels and blocks the live workspace already holds."""
+    workspace = IndexLibrary.open(LIBRARY).resolve(WORKSPACE)
+    projection = project_records(RecordStore(workspace).list())
+    labels = {line.label for line in projection.lines if line.label}
+    blocks = {block.name: block.id for block in projection.blocks}
+    return labels, blocks
+
+
 def main() -> int:
     entries = live_entries()
     entries.sort(key=lambda item: (item["surface"], item["line_number"]))
@@ -102,7 +112,17 @@ def main() -> int:
         fresh.append(entry)
 
     support_table = extract.load_anchor_support()
-    records, build_stats = extract.build(fresh, support_table) if fresh else ([], Counter())
+    taken_labels, taken_blocks = _workspace_state()
+    records, build_stats = (
+        extract.build(
+            fresh,
+            support_table,
+            labels_taken=taken_labels,
+            blocks_taken=taken_blocks,
+        )
+        if fresh
+        else ([], Counter())
+    )
 
     manifest = {
         "schema": "tarav.indexlab-capture-manifest.v1",

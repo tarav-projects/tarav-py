@@ -104,7 +104,9 @@ def load_anchor_support() -> dict[str, list[dict]]:
     return index
 
 
-def support_for(anchors: list[str], table: dict[str, list[dict]]) -> tuple[SupportSet, Counter]:
+def support_for(
+    anchors: list[str], table: dict[str, list[dict]]
+) -> tuple[SupportSet, Counter]:
     """One `Support.Set` per line, grouped into a neighborhood per session.
 
     An anchor that resolves to nothing contributes nothing. That leaves the line with an
@@ -240,14 +242,28 @@ def read_code(root: Path) -> list[dict]:
 # --------------------------------------------------------------------------- records
 
 
-def build(entries: list[dict], support_table: dict[str, list[dict]]) -> tuple[list[IndexRecord], dict]:
-    horizon = TurnRef(address=f"{MIGRATION_TAG}:corpus", hash=digest(MIGRATION_TAG, "corpus"))
+def build(
+    entries: list[dict],
+    support_table: dict[str, list[dict]],
+    *,
+    labels_taken: set[str] | None = None,
+    blocks_taken: dict[str, str] | None = None,
+) -> tuple[list[IndexRecord], dict]:
+    """Build records for `entries`.
+
+    A delta into a live workspace must pass what that workspace already holds:
+    labels are allocated with `~n` suffixes against the taken set, and a block
+    already open is reused rather than created a second time.
+    """
+    horizon = TurnRef(
+        address=f"{MIGRATION_TAG}:corpus", hash=digest(MIGRATION_TAG, "corpus")
+    )
     context = RecordContext(session=MIGRATION_SESSION, horizon=horizon)
 
     stats: Counter = Counter()
     records: list[IndexRecord] = []
-    blocks_seen: dict[str, str] = {}
-    labels_used: set[str] = set()
+    blocks_seen: dict[str, str] = dict(blocks_taken or {})
+    labels_used: set[str] = set(labels_taken or ())
     isolines: dict[str, str] = {}
 
     for entry in entries:
@@ -297,7 +313,9 @@ def build(entries: list[dict], support_table: dict[str, list[dict]]) -> tuple[li
                 label = f"{label}~{suffix}"
         else:
             # Synthetic, clearly namespaced, and ungrounded by construction.
-            seed = digest(entry["surface"], str(entry["line_number"]), entry["text"][:120])
+            seed = digest(
+                entry["surface"], str(entry["line_number"]), entry["text"][:120]
+            )
             isoline_id = f"isl_{seed}"
             label = f"^m{MIGRATION_TAG[-4:]}-{seed}"
             stats["ungrounded"] += 1

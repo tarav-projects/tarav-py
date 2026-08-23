@@ -45,7 +45,7 @@ class ProjectedLine:
     id: str
     isoline_id: str
     block_id: str
-    label: str
+    label: str | None
     text: str
     support: SupportSet
     assertions: tuple[dict[str, object], ...] = ()
@@ -94,6 +94,7 @@ class SemanticProjection:
             raise KeyError(f"unknown Line.Id: {line_id}") from exc
 
     def line_by_label(self, label: str) -> ProjectedLine:
+        """The one line carrying this label; a labelless line has none."""
         matches = [line for line in self._lines.values() if line.label == label]
         if len(matches) != 1:
             raise KeyError(f"line label must resolve exactly once: {label}")
@@ -209,6 +210,19 @@ def fold_records(
     )
 
 
+# $kw: --note [DC] a label is optional because a line can be real and uncited: the Index carries untyped, unanchored legacy lines, and refusing to record them would make the kernel's shape decide what counts as Index data --note [CT] an absent label is None rather than an empty string, so "no label" cannot collide with a line whose label failed to render
+def _optional_label(parameters: dict[str, object]) -> str | None:
+    """A line's citable label, when it has one."""
+    value = parameters.get("label")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ProjectionError("line label must be a non-empty string when present")
+    if not value.startswith("^"):
+        raise ProjectionError("line label must begin with '^'")
+    return value
+
+
 def _apply_record(
     record: IndexRecord,
     blocks: dict[str, ProjectedBlock],
@@ -221,7 +235,10 @@ def _apply_record(
         isoblock_id = _required_text(parameters, "isoblock_id")
         name = _required_text(parameters, "name")
         _require_new(blocks, block_id, kind="Block.Id")
-        if any(block.active and block.isoblock_id == isoblock_id for block in blocks.values()):
+        if any(
+            block.active and block.isoblock_id == isoblock_id
+            for block in blocks.values()
+        ):
             raise ProjectionError(
                 f"active Isoblock.Id {isoblock_id} already exists; use block.rename"
             )
@@ -261,13 +278,11 @@ def _apply_record(
         line_id = _required_text(parameters, "line_id")
         isoline_id = _required_text(parameters, "isoline_id")
         block_id = _required_text(parameters, "block_id")
-        label = _required_text(parameters, "label")
+        label = _optional_label(parameters)
         text = _required_text(parameters, "text")
         _require_new(lines, line_id, kind="Line.Id")
-        if any(line.label == label for line in lines.values()):
+        if label is not None and any(line.label == label for line in lines.values()):
             raise ProjectionError(f"line label {label} already exists")
-        if not label.startswith("^"):
-            raise ProjectionError("line label must begin with '^'")
         block = _active_block(blocks, block_id)
         lines[line_id] = ProjectedLine(
             id=line_id,
@@ -307,11 +322,15 @@ def _apply_record(
                 f"line.reblock Isoline.Id {isoline_id} does not match {source.isoline_id}"
             )
         if source.block_id == block_id:
-            raise ProjectionError("line.reblock destination must differ from its current block")
+            raise ProjectionError(
+                "line.reblock destination must differ from its current block"
+            )
         source_block = _active_block(blocks, source.block_id)
         blocks[source.block_id] = replace(
             source_block,
-            line_ids=tuple(value for value in source_block.line_ids if value != source_id),
+            line_ids=tuple(
+                value for value in source_block.line_ids if value != source_id
+            ),
         )
         lines[source_id] = replace(source, block_id=block_id)
         blocks[block_id] = replace(
@@ -323,8 +342,12 @@ def _apply_record(
     if operation == "isoline.group":
         raw_line_ids = parameters.get("line_ids")
         if not isinstance(raw_line_ids, list) or len(raw_line_ids) < 2:
-            raise ProjectionError("isoline.group line_ids must contain at least two ids")
-        line_ids = tuple(_plain_text(value, "line_ids member") for value in raw_line_ids)
+            raise ProjectionError(
+                "isoline.group line_ids must contain at least two ids"
+            )
+        line_ids = tuple(
+            _plain_text(value, "line_ids member") for value in raw_line_ids
+        )
         if len(set(line_ids)) != len(line_ids):
             raise ProjectionError("isoline.group line_ids must be unique")
         isoline_id = _required_text(parameters, "isoline_id")

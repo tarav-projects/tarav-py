@@ -35,19 +35,25 @@ def _support(session: str, user, agent=None) -> SupportSet:
     )
 
 
+# These scenarios demonstrate correct kernel usage, and a well-formed capture
+# states its Line.Type; without one every scenario would also report Line.Untyped.
 def _record(
     record_id: str,
     context: RecordContext,
     operation: str,
     parameters: dict[str, object],
     support: SupportSet,
+    assertions: tuple[dict[str, object], ...] | None = None,
 ) -> IndexRecord:
+    if assertions is None:
+        assertions = ({"line_type": "DF"},) if operation == "line.capture" else ()
     return IndexRecord(
         id=record_id,
         ordinal=0,
         context=context,
         operation=Operation(type=operation, parameters=parameters),
         support=support,
+        assertions=assertions,
     )
 
 
