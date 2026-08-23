@@ -1,0 +1,737 @@
+{
+ "records": [
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Global.Block",
+      "Concept.Block"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/100-design.md",
+     "surface_line": 253
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_696209e77aa2362f",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_9493362f833eab48",
+     "isoline_id": "iso_79269b8ee11fdc84",
+     "label": "^alias-517a36871d5aa8e1",
+     "line_id": "lin_79269b8ee11fdc84",
+     "text": "aliases: `Global.Block`, `Concept.Block`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Agentos.Index",
+      "Project.Index"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/103-design.md",
+     "surface_line": 116
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_4a58e42c9a067e63",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_febc319c6bc2af2d",
+     "isoline_id": "iso_d9a8df05ac602a59",
+     "label": "^alias-b35b604ed98c7d8e",
+     "line_id": "lin_d9a8df05ac602a59",
+     "text": "aliases: `Agentos.Index`, `Project.Index`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Appendix.Pages"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/104-design.md",
+     "surface_line": 74
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_9d9bcea72b789c3b",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_5223a3a56a667a9c",
+     "isoline_id": "iso_43996a1a8d424996",
+     "label": "^alias-c0bd807d132103dd",
+     "line_id": "lin_43996a1a8d424996",
+     "text": "aliases: `Appendix.Pages`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Agentos.Index.Depot"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/104-design.md",
+     "surface_line": 129
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_6c6f6e1da10d0e71",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_66ba2df6a145cb58",
+     "isoline_id": "iso_dac677b29506061e",
+     "label": "^alias-b5c33e19f11b0f76",
+     "line_id": "lin_dac677b29506061e",
+     "text": "aliases: `Agentos.Index.Depot`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Index.Depot.Visibility"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/104-design.md",
+     "surface_line": 144
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_fd28c5071af1f8d5",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_ff4fffcd5e3e6e26",
+     "isoline_id": "iso_93571251235c5764",
+     "label": "^alias-f7fd36496fb4c7ec",
+     "line_id": "lin_93571251235c5764",
+     "text": "aliases: `Index.Depot.Visibility`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Edit.Trigger.Gated"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/104-design.md",
+     "surface_line": 302
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_77590a05c26fef9b",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_193eda851b2ad544",
+     "isoline_id": "iso_1f67ea8c4270ebff",
+     "label": "^alias-de5dd56148d06f79",
+     "line_id": "lin_1f67ea8c4270ebff",
+     "text": "aliases: `Edit.Trigger.Gated`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Content.Verbatim.Gated"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/104-design.md",
+     "surface_line": 321
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_5ef0a9b513a680f3",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_64677e8261c8aa9d",
+     "isoline_id": "iso_c13ddbd2f3016343",
+     "label": "^alias-55c7981eb3245403",
+     "line_id": "lin_c13ddbd2f3016343",
+     "text": "aliases: `Content.Verbatim.Gated`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Module.Import",
+      "Import.Management"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/107-design.md",
+     "surface_line": 89
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_6ec50cff00db71ce",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_b4a54a9331c01b22",
+     "isoline_id": "iso_261d93253de047b6",
+     "label": "^alias-a3c4b8f71c1596e0",
+     "line_id": "lin_261d93253de047b6",
+     "text": "aliases: `Module.Import`, `Import.Management`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Quote.Binding"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/107-design.md",
+     "surface_line": 122
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_4a59c64fc25f7fa5",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_97890faddd659111",
+     "isoline_id": "iso_dfbde421b975a0c8",
+     "label": "^alias-e4440118f727bf39",
+     "line_id": "lin_dfbde421b975a0c8",
+     "text": "aliases: `Quote.Binding`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Skillware.Construct",
+      "Surface.Annotation"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/107-design.md",
+     "surface_line": 171
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_a416934de181a0b0",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_4e550706f2697513",
+     "isoline_id": "iso_75beae49d85538d0",
+     "label": "^alias-a4318fc68ecfd8a2",
+     "line_id": "lin_75beae49d85538d0",
+     "text": "aliases: `Skillware.Construct`, `Surface.Annotation`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Non.Skw.Comment"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/107-design.md",
+     "surface_line": 222
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_ea6de10a5fbfb635",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_3eca56a9062aa763",
+     "isoline_id": "iso_85120042ba801d45",
+     "label": "^alias-dc27761438b18084",
+     "line_id": "lin_85120042ba801d45",
+     "text": "aliases: `Non.Skw.Comment`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Index.Main",
+      "Index.Fundamentals"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/107-design.md",
+     "surface_line": 537
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_7a0ee9dbee2661b1",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_2cf5ca2ac5de01fa",
+     "isoline_id": "iso_8e755c701ce219b2",
+     "label": "^alias-5ca68e3e47d7abc7",
+     "line_id": "lin_8e755c701ce219b2",
+     "text": "aliases: `Index.Main`, `Index.Fundamentals`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Project.Index.Surface"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/107-design.md",
+     "surface_line": 551
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_6db6fec8eca17713",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_f344739084d0cac1",
+     "isoline_id": "iso_63187ee9d3190680",
+     "label": "^alias-f0c13b797c5db322",
+     "line_id": "lin_63187ee9d3190680",
+     "text": "aliases: `Project.Index.Surface`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Index.Support.Network"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/107-design.md",
+     "surface_line": 963
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_22263afee7c55797",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_0cca6e8c6d916dd1",
+     "isoline_id": "iso_32b2b8846c8a0ed3",
+     "label": "^alias-3cc7493af7f59a50",
+     "line_id": "lin_32b2b8846c8a0ed3",
+     "text": "aliases: `Index.Support.Network`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Index.Line.Anchor",
+      "Touched.Index.Record"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/107-design.md",
+     "surface_line": 982
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_0f84aa81e47276bc",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_d5305262817d9a41",
+     "isoline_id": "iso_a6daa4e245dc8fba",
+     "label": "^alias-4111fd942cdd8e47",
+     "line_id": "lin_a6daa4e245dc8fba",
+     "text": "aliases: `Index.Line.Anchor`, `Touched.Index.Record`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Block.Naming.Schema",
+      "Address.Schema"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/108-design.md",
+     "surface_line": 26
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_ccd2a5329809b352",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_43deecb41061de90",
+     "isoline_id": "iso_a84a5ba123fb41df",
+     "label": "^alias-6a45128817f488f1",
+     "line_id": "lin_a84a5ba123fb41df",
+     "text": "aliases: `Block.Naming.Schema` (the founding, block-scoped name), `Address.Schema`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Naming.Sigil.Vocabulary"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-md/skills/tarav-pkg/design/108-design.md",
+     "surface_line": 47
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_a0bc50f06aaf91a8",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_9b0bbbf5ab4189a0",
+     "isoline_id": "iso_3182dfa11965219e",
+     "label": "^alias-44c658042221c0f4",
+     "line_id": "lin_3182dfa11965219e",
+     "text": "aliases: `Naming.Sigil.Vocabulary`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Session.Normal.Model",
+      "Normal.Model",
+      "Normalization.Pipeline::Chatlas.Session.Model"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-chatlas-md/skills/tarav-chatlas-pkg/design/100-design.md",
+     "surface_line": 277
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_0cb4ef75c47bbfd1",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_51b7165072f6e5ec",
+     "isoline_id": "iso_a699bf2e84ed5180",
+     "label": "^alias-350bb722ca2fcf85",
+     "line_id": "lin_a699bf2e84ed5180",
+     "text": "aliases: `Session.Normal.Model` (session-scoped long form), `Normal.Model` (its role name as the target model of `Normalization.Pipeline::Chatlas.Session.Model`)"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  },
+  {
+   "assertions": [
+    {
+     "aliases": [
+      "Anchor.Support.Turns",
+      "Anchor.Landing.Turns"
+     ],
+     "kind": "alias",
+     "line_type": "DF",
+     "migrated_by": "index-2208",
+     "origin": "markdown",
+     "surface": "tarav-chatlas-md/skills/tarav-chatlas-pkg/design/100-design.md",
+     "surface_line": 665
+    }
+   ],
+   "context": {
+    "horizon": {
+     "address": "index-2208:aliases",
+     "hash": "fee3c90ca76d08e4"
+    },
+    "session": "9f41aa0e-d2cd-4873-b35d-0a3e1239c9e5"
+   },
+   "id": "rec_1dbaa34c551b3a24",
+   "operation": {
+    "parameters": {
+     "block_id": "blk_087a1b01463fd2ae",
+     "isoline_id": "iso_886909a94958f827",
+     "label": "^alias-eba445df64d487d0",
+     "line_id": "lin_886909a94958f827",
+     "text": "aliases: `Anchor.Support.Turns`, `Anchor.Landing.Turns`"
+    },
+    "type": "line.capture"
+   },
+   "ordinal": 0,
+   "schema": "tarav.indexlab-record.v1",
+   "support": {
+    "neighborhoods": []
+   }
+  }
+ ],
+ "schema": "tarav.indexlab-capture-manifest.v1"
+}

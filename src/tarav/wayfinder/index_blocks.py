@@ -1,11 +1,8 @@
-# $kw: ^wayfinder-resolver --from Wayfinder.Resolver --from Wayfinder.Reference.Type::Index.Block --note [DF] deterministic registry-to-Index block resolution over the parser-backed model ^c20260729-46u
+# $kw: ^wayfinder-resolver --from Wayfinder.Resolver --from Wayfinder.Reference.Type::Index.Block --from Index.Primary.Surface --note [DF] deterministic registry-to-Index block resolution over the record corpus ^c20260729-46u --note [DC] an Index block resolves to record coordinates and carries no path or line range, because the record stream is the Index.Primary.Surface and a file offset would name a projection instead of the thing itself
 from __future__ import annotations
 
-from pathlib import Path
-
-from tarav.index_model import BlockHeading, IndexDocument, parse_depot
-from tarav.wayfinder.resolver import Wayfinder
-
+from tarav.indexlab import IndexResolutionError, IndexResolver, line_type
+from tarav.indexlab.projection import ProjectedBlock
 from tarav.wayfinder.model import (
     INDEX_BLOCK_TYPE,
     PACKAGE_SKILL_ROOT_TYPE,
@@ -21,6 +18,7 @@ from tarav.wayfinder.registry import (
     WayfinderRegistration,
     WayfinderRegistry,
 )
+from tarav.wayfinder.resolver import Wayfinder
 
 
 def create_index_wayfinder(
@@ -90,27 +88,10 @@ def _resolve_index_block(
             },
         )
     )
-    if not registration.path.is_dir() or not (
-        registration.path / "000-INDEX.md"
-    ).is_file():
-        trace.append(
-            WayfinderTraceStep(
-                stage="index.lookup",
-                status="stale",
-                detail={"path": str(registration.path)},
-            )
-        )
-        return _poi(
-            reference,
-            "stale",
-            f"remembered Index root is no longer reachable: {registration.path}",
-            trace,
-            registration=registration,
-        )
 
     try:
-        model = parse_depot(registration.path)
-    except OSError as exc:
+        resolver = IndexResolver.for_path(registration.path)
+    except IndexResolutionError as exc:
         trace.append(
             WayfinderTraceStep(
                 stage="index.lookup",
@@ -121,19 +102,14 @@ def _resolve_index_block(
         return _poi(
             reference,
             "unreachable",
-            f"cannot read Index root {registration.path}: {exc}",
+            f"cannot read the Index records for {registration.path}: {exc}",
             trace,
             registration=registration,
         )
 
-    matches: list[tuple[IndexDocument, BlockHeading]] = []
-    for document in model.documents:
-        for node in document.nodes:
-            if (
-                isinstance(node, BlockHeading)
-                and node.parsed.get("path") == reference.address
-            ):
-                matches.append((document, node))
+    matches = tuple(
+        block for block in resolver.blocks() if block.name == reference.address
+    )
     trace.append(
         WayfinderTraceStep(
             stage="index.lookup",
@@ -147,7 +123,6 @@ def _resolve_index_block(
             detail={"block_path": reference.address, "match_count": len(matches)},
         )
     )
-    candidates = tuple(_candidate(document, heading) for document, heading in matches)
     if not matches:
         return _poi(
             reference,
@@ -163,19 +138,18 @@ def _resolve_index_block(
             f"Index block resolves more than once: {reference.address}",
             trace,
             registration=registration,
-            candidates=candidates,
+            candidates=tuple(_candidate(block) for block in matches),
         )
 
-    document, heading = matches[0]
-    target = resolved_index_block_target(document, heading, registration.path)
+    target = resolved_index_block_target(resolver, matches[0])
     trace.append(
         WayfinderTraceStep(
             stage="index.verify",
             status="verified",
             detail={
-                "path": target["path"],
-                "start_line": target["start_line"],
-                "end_line": target["end_line"],
+                "block_id": target["block_id"],
+                "isoblock_id": target["isoblock_id"],
+                "line_count": len(target["line_ids"]),
             },
         )
     )
@@ -186,44 +160,35 @@ def _resolve_index_block(
     )
 
 
-def _candidate(
-    document: IndexDocument, heading: BlockHeading
-) -> dict[str, object]:
+def _candidate(block: ProjectedBlock) -> dict[str, object]:
     return {
-        "path": str(document.path) if document.path is not None else "",
-        "block_path": heading.parsed.get("path", ""),
-        "line": heading.start_line,
+        "block_path": block.name,
+        "block_id": block.id,
+        "isoblock_id": block.isoblock_id,
     }
 
 
 def resolved_index_block_target(
-    document: IndexDocument,
-    heading: BlockHeading,
-    root: Path,
+    resolver: IndexResolver,
+    block: ProjectedBlock,
 ) -> dict[str, object]:
-    if document.path is None:
-        raise RuntimeError("parsed Index block has no source path")
-    nodes = document.nodes
-    heading_index = nodes.index(heading)
-    end_line = max(node.end_line for node in nodes[heading_index:])
-    for node in nodes[heading_index + 1 :]:
-        if isinstance(node, BlockHeading) or node.type == "Separator":
-            end_line = node.start_line - 1
-            break
-    lines = document.path.read_text(encoding="utf-8").splitlines()
-    selected = lines[heading.start_line - 1 : end_line]
-    while selected and not selected[-1].strip():
-        selected.pop()
-    actual_end = heading.start_line + len(selected) - 1
+    """The block's record coordinates and its `Kernel.Writing` rendering."""
+    lines = resolver.lines(block.name)
     return {
         "kind": "index.block",
-        "root": str(root),
-        "path": str(document.path),
-        "block_path": heading.parsed["path"],
-        "start_line": heading.start_line,
-        "end_line": actual_end,
-        "content": "\n".join(selected),
+        "block_path": block.name,
+        "block_id": block.id,
+        "isoblock_id": block.isoblock_id,
+        "line_ids": [line.id for line in lines],
+        "content": render_block(block, lines),
     }
+
+
+def render_block(block: ProjectedBlock, lines) -> str:
+    """One block as readable `Kernel.Writing`: a heading and its typed lines."""
+    body = [f"## {block.name}"]
+    body.extend(f"- [{line_type(line)}] {line.text}" for line in lines)
+    return "\n".join(body)
 
 
 def _poi(
@@ -256,6 +221,7 @@ def _poi(
 
 __all__ = [
     "create_index_wayfinder",
+    "render_block",
     "resolve_index_block_reference",
     "resolved_index_block_target",
 ]

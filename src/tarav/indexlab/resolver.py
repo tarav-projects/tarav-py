@@ -17,6 +17,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from tarav._core.project import find_agentos_project_root
+
 from .model import IndexRecord
 from .projection import (
     ProjectedBlock,
@@ -64,6 +66,14 @@ class IndexPointer:
             )
         return cls(library=(root / library).resolve(), workspace=workspace)
 
+    @classmethod
+    def for_path(cls, start: Path | str) -> IndexPointer:
+        """The Index pointer of the nearest enclosing project."""
+        root = find_agentos_project_root(start)
+        if root is None:
+            raise IndexResolutionError(f"not inside a tarav project: {start}")
+        return cls.from_project(root)
+
 
 def line_type(line: ProjectedLine) -> str:
     """The line's `Line.Type`, or `UNTYPED` when no assertion carries one."""
@@ -100,6 +110,10 @@ class IndexResolver:
     def for_project(cls, project_root: Path | str) -> IndexResolver:
         return cls.open(IndexPointer.from_project(project_root))
 
+    @classmethod
+    def for_path(cls, start: Path | str) -> IndexResolver:
+        return cls.open(IndexPointer.for_path(start))
+
     @property
     def projection(self) -> SemanticProjection:
         return self._projection
@@ -122,6 +136,30 @@ class IndexResolver:
     def lines(self, name: str) -> tuple[ProjectedLine, ...]:
         block = self.block(name)
         return tuple(self._projection.line(line_id) for line_id in block.line_ids)
+
+    # $kw: --note [DC] an alias is carried by an ordinary line's assertion rather than a block field, so reading it costs one pass over the block and the kernel stays unaware of the key
+    def aliases(self, name: str) -> tuple[str, ...]:
+        """Alternate names this block answers to."""
+        found: list[str] = []
+        for line in self.lines(name):
+            for assertion in line.assertions:
+                if assertion.get("kind") != "alias":
+                    continue
+                values = assertion.get("aliases")
+                if isinstance(values, list):
+                    found.extend(item for item in values if isinstance(item, str))
+        return tuple(dict.fromkeys(found))
+
+    # $kw: --note [DC] an alias that collides with a canonical block name loses to it, because a name that resolves two ways is worse than an alias that does not resolve
+    def block_by_locator(self, locator: str) -> ProjectedBlock | None:
+        """A block by canonical name, else by a non-colliding alias."""
+        block = self._by_name.get(locator)
+        if block is not None:
+            return block
+        for candidate in self._projection.blocks:
+            if locator in self.aliases(candidate.name):
+                return candidate
+        return None
 
     # $kw: --note [DC] a citation carries no `~n` occurrence suffix, so it resolves to the isoline and returns every projection of that one semantic line rather than arbitrarily picking one
     def resolve_citation(self, anchor: str) -> tuple[ProjectedLine, ...]:

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tarav._core.project import TARAV_PROJECT_ID
-from tarav.index_model import BlockHeading, parse_depot
+from tarav.indexlab import IndexResolutionError, IndexResolver
 from tarav.skillware._build_core import load_project_skw_config
 from tarav.skillware._code_surfaces import (
     DEFAULT_CODE_BACKENDS,
@@ -36,10 +36,10 @@ from tarav.wayfinder.resolver import Wayfinder
 
 @dataclass(frozen=True)
 class _HostedBlock:
-    path: Path
+    path: Path | None
     address: str
-    line: int
-    end_line: int
+    line: int | None
+    end_line: int | None
     host_kind: str
     host_name: str
     content: str
@@ -169,11 +169,7 @@ def _resolve(
         if blocks is None:
             blocks = _discover(registration.path)
             discovered[registration.path] = blocks
-    matches = tuple(
-        block
-        for block in blocks
-        if block.address == reference.address
-    )
+    matches = tuple(block for block in blocks if block.address == reference.address)
     trace.append(
         WayfinderTraceStep(
             stage="managed.lookup",
@@ -210,7 +206,7 @@ def _resolve(
     target = {
         "kind": "managed.block",
         "root": str(registration.path),
-        "path": str(block.path),
+        "path": str(block.path) if block.path is not None else None,
         "block_path": block.address,
         "start_line": block.line,
         "end_line": block.end_line,
@@ -223,7 +219,7 @@ def _resolve(
             stage="managed.verify",
             status="verified",
             detail={
-                "path": str(block.path),
+                "path": str(block.path) if block.path is not None else None,
                 "host_kind": block.host_kind,
                 "host_name": block.host_name,
             },
@@ -287,9 +283,7 @@ def _discover(project_root: Path) -> tuple[_HostedBlock, ...]:
                         host_point.span.start_line - 1 : host_point.span.end_line
                     ]
                 )
-                content_lines.append(
-                    f"```{target.language}\n{hosted_source}\n```"
-                )
+                content_lines.append(f"```{target.language}\n{hosted_source}\n```")
             relationships = tuple(
                 {"kind": kind, "address": address}
                 for kind, addresses in (("from", block.froms), ("cite", block.cites))
@@ -309,41 +303,37 @@ def _discover(project_root: Path) -> tuple[_HostedBlock, ...]:
             )
     from tarav.wayfinder.index_blocks import resolved_index_block_target
 
-    for raw_depot in config.depots:
-        depot_root = (project_root / raw_depot).resolve()
-        if not (depot_root / "000-INDEX.md").is_file():
-            continue
-        depot = parse_depot(depot_root)
-        for document in depot.documents:
-            for node in document.nodes:
-                if not isinstance(node, BlockHeading):
-                    continue
-                address = node.parsed.get("path")
-                if not isinstance(address, str) or not address:
-                    continue
-                target = resolved_index_block_target(document, node, depot_root)
-                found.append(
-                    _HostedBlock(
-                        path=Path(str(target["path"])),
-                        address=address,
-                        line=int(target["start_line"]),
-                        end_line=int(target["end_line"]),
-                        host_kind="index.block",
-                        host_name=address,
-                        content=str(target["content"]),
-                        relationships=(),
-                    )
+    try:
+        resolver = IndexResolver.for_project(project_root)
+    except IndexResolutionError:
+        resolver = None
+    if resolver is not None:
+        for block in resolver.blocks():
+            target = resolved_index_block_target(resolver, block)
+            found.append(
+                _HostedBlock(
+                    path=None,
+                    address=block.name,
+                    line=None,
+                    end_line=None,
+                    host_kind="index.block",
+                    host_name=block.name,
+                    content=str(target["content"]),
+                    relationships=(),
                 )
-    return tuple(sorted(found, key=lambda item: (str(item.path), item.line)))
+            )
+    return tuple(sorted(found, key=lambda item: (str(item.path or ""), item.line or 0)))
 
 
 def _candidate(block: _HostedBlock, root: Path) -> dict[str, object]:
-    try:
-        path = block.path.relative_to(root)
-    except ValueError:
-        path = block.path
+    path: Path | None = block.path
+    if path is not None:
+        try:
+            path = path.relative_to(root)
+        except ValueError:
+            pass
     return {
-        "path": str(path),
+        "path": str(path) if path is not None else None,
         "block_path": block.address,
         "line": block.line,
         "host": {"kind": block.host_kind, "name": block.host_name},
