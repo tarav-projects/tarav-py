@@ -261,13 +261,10 @@ def _registration_from_dict(
     )
 
 
+# $kw: --note [DC] a root is verified as a reachable directory and nothing more; the Index it carries lives in records, so demanding a Markdown routing file would verify a secondary surface instead of the root
 def _verify_root(root: WayfinderReferenceRoot, path: Path) -> None:
     if not path.is_dir():
         raise WayfinderError(f"registered root is not a reachable directory: {path}")
-    if root.type in {"package.skill", "index.depot"} and not (
-        path / "000-INDEX.md"
-    ).is_file():
-        raise WayfinderError(f"registered Index root has no 000-INDEX.md: {path}")
 
 
 def _normalize_json(value: object) -> object:

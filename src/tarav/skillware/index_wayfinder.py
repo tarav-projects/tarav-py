@@ -89,6 +89,23 @@ def _resolve_index_block(
         )
     )
 
+    # $kw: --note [DC] a remembered root that vanished is stale and a root that is present but carries no reachable records is unreachable; collapsing them would tell a relocation and a broken Index apart only by reading the message
+    if not registration.path.is_dir():
+        trace.append(
+            WayfinderTraceStep(
+                stage="index.lookup",
+                status="stale",
+                detail={"path": str(registration.path)},
+            )
+        )
+        return _poi(
+            reference,
+            "stale",
+            f"remembered Index root is no longer reachable: {registration.path}",
+            trace,
+            registration=registration,
+        )
+
     try:
         resolver = IndexResolver.for_path(registration.path)
     except IndexResolutionError as exc:
@@ -107,9 +124,7 @@ def _resolve_index_block(
             registration=registration,
         )
 
-    matches = tuple(
-        block for block in resolver.blocks() if block.name == reference.address
-    )
+    matches = resolver.blocks_by_locator(reference.address)
     trace.append(
         WayfinderTraceStep(
             stage="index.lookup",

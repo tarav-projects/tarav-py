@@ -24,24 +24,25 @@ from tarav.wayfinder import (
 
 
 def _write_depot(root: Path, *, block: str = "POI.Example") -> Path:
-    (root / "design").mkdir(parents=True)
-    (root / "000-INDEX.md").write_text(
-        f"# Test Index\n\n## Routing\n\n- `design/100-design.md` — {block}\n",
-        encoding="utf-8",
-    )
-    (root / "design" / "100-design.md").write_text(
-        "\n".join(
-            [
-                "****",
-                "",
-                f"## {block}",
-                "",
-                f"- [DF] `{block}` is test documentation ^c20260729-46u",
-                "- [CT] agents evaluate its instances from this block ^c20260729-46u",
-                "",
-            ]
+    """A project whose Index records hold one documented block."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from _skillware_helpers import write_index
+
+    root.mkdir(parents=True, exist_ok=True)
+    write_index(
+        root,
+        (
+            (
+                f"demo/design#{block}",
+                (
+                    ("DF", f"`{block}` is test documentation"),
+                    ("CT", "agents evaluate its instances from this block"),
+                ),
+                (),
+            ),
         ),
-        encoding="utf-8",
     )
     return root
 
@@ -145,8 +146,8 @@ def test_index_resolution_returns_authoritative_block_content(
     )
 
     assert isinstance(result, WayfinderResolutionResult)
-    assert result.target["block_path"] == "POI.Example"
-    assert result.target["path"].endswith("design/100-design.md")
+    assert result.target["block_path"] == "demo/design#POI.Example"
+    assert result.target["block_id"]
     assert "agents evaluate its instances" in result.target["content"]
     assert [step.stage for step in result.trace] == [
         "registry.lookup",
@@ -207,10 +208,20 @@ def test_duplicate_index_blocks_produce_ambiguous_poi(
     monkeypatch.setenv(
         "TARAV_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
     )
-    depot = _write_depot(tmp_path / "demo")
-    (depot / "design" / "101-design.md").write_text(
-        "****\n\n## POI.Example\n\n- [DF] duplicate ^c20260729-46u\n",
-        encoding="utf-8",
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from _skillware_helpers import write_index
+
+    depot = tmp_path / "demo"
+    depot.mkdir(parents=True, exist_ok=True)
+    # The same concept declared by two chapter blocks: neither is the home.
+    write_index(
+        depot,
+        (
+            ("demo/design#POI.Example", (("DF", "one declaration"),), ()),
+            ("other/design#POI.Example", (("DF", "duplicate"),), ()),
+        ),
     )
     registry = WayfinderRegistry()
     registry.register(

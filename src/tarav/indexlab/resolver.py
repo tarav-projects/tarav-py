@@ -173,29 +173,34 @@ class IndexResolver:
 
     # $kw: --note [DC] a bare Dotted.Name prefers a chapter block over one written on a product surface, because a chapter block is the concept's declared home and a product-surface block is a local use of it
     # $kw: --note [DC] an alias that collides with a canonical concept loses to it, because a name that resolves two ways is worse than an alias that does not resolve
-    def block_by_locator(self, locator: str) -> ProjectedBlock | None:
-        """A block by full address, else by bare concept name, else by alias."""
+    def blocks_by_locator(self, locator: str) -> tuple[ProjectedBlock, ...]:
+        """Every block a locator could mean, so a caller can report ambiguity."""
         block = self._by_name.get(locator)
         if block is not None:
-            return block
+            return (block,)
         if "#" not in locator:
-            named = [
+            named = tuple(
                 candidate
                 for candidate in self._projection.blocks
                 if candidate.name.partition("#")[2] == locator
-            ]
-            chapter_homes = [
+            )
+            homes = tuple(
                 candidate for candidate in named if not candidate.name.startswith("@")
-            ]
-            for group in (chapter_homes, named):
-                if len(group) == 1:
-                    return group[0]
-                if len(group) > 1:
-                    return None
-        for candidate in self._projection.blocks:
-            if locator in self.aliases(candidate.name):
-                return candidate
-        return None
+            )
+            if homes:
+                return homes
+            if named:
+                return named
+        return tuple(
+            candidate
+            for candidate in self._projection.blocks
+            if locator in self.aliases(candidate.name)
+        )
+
+    def block_by_locator(self, locator: str) -> ProjectedBlock | None:
+        """A block by full address, else by bare concept name, else by alias."""
+        matches = self.blocks_by_locator(locator)
+        return matches[0] if len(matches) == 1 else None
 
     # $kw: --note [DC] a citation carries no `~n` occurrence suffix, so it resolves to the isoline and returns every projection of that one semantic line rather than arbitrarily picking one
     def resolve_citation(self, anchor: str) -> tuple[ProjectedLine, ...]:

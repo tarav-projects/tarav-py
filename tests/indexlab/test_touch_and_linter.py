@@ -385,7 +385,7 @@ def test_chatlas_adapter_resolves_public_normal_model(monkeypatch) -> None:
         return model
 
     monkeypatch.setattr(
-        "tarav.indexlab.touch.compute_normal_model",
+        "tarav.chatlas.lossless.indexlab_touch.compute_normal_model",
         fake_compute_normal_model,
     )
     source = ChatlasTouchSource()
@@ -455,7 +455,7 @@ def _chatlas_model(*, turn_shape: str, side: str = "user") -> dict[str, object]:
 
 def _chatlas_source(monkeypatch, model: dict[str, object]) -> ChatlasTouchSource:
     monkeypatch.setattr(
-        "tarav.indexlab.touch.compute_normal_model",
+        "tarav.chatlas.lossless.indexlab_touch.compute_normal_model",
         lambda **_: model,
     )
     return ChatlasTouchSource()
