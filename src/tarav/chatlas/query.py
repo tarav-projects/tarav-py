@@ -6,7 +6,6 @@ from typing import Any
 
 from tarav.chatlas._payload_helpers import string_or_none
 from tarav.chatlas.annotations import read_shard_annotations
-from tarav.chatlas.chat_index import chat_index_discovery
 from tarav.chatlas.normalization.session_model.messages import visible_message_texts
 from tarav.chatlas.index_query import chatlas_index_row_matches
 from tarav.chatlas.index_query import sort_chatlas_index_rows
@@ -132,12 +131,6 @@ def chatlas_query(
     result_rows: list[dict[str, object]] = []
     for row in returned_rows:
         out: dict[str, object] = dict(row) if row_shape == "full" else _normalized_session_row(row)
-        row_identity_hash = row.get("identity_hash")
-        if isinstance(row_identity_hash, str) and row_identity_hash:
-            out["chat_index"] = chat_index_discovery(
-                row_identity_hash,
-                chatlas_root=index.chatlas_root,
-            )
         result_rows.append(out)
     return {
         "status": "ok",

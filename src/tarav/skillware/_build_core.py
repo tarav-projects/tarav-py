@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tarav.index_model import BlockHeading, KernelLine, MetaLine, parse_depot
+from tarav.indexlab import IndexResolutionError, IndexResolver
 from tarav.surfaces.markdown import normalize_markdown
 from tarav.skillware.model import (
     SkwFinding,
@@ -44,7 +44,6 @@ class Skillware:
     skill_root: Path
     build_root: Path
     src_root: Path
-    depots: tuple[Path, ...]
     package_id: str | None = None
     pkg_deps: dict[str, Path] = field(default_factory=dict)
     _depot_cache: dict = field(default_factory=dict, repr=False)
@@ -71,16 +70,9 @@ class Expansion:
     findings: tuple[SkwFinding, ...]
 
 
-@dataclass(frozen=True)
-class _DepotNameEntry:
-    canonical: str
-    body: tuple[str, ...]
-
-
 PROJECT_MARKER = Path(".tarav") / "project.json"
 _SKW_CONFIG_KEYS = (
     "id",
-    "depots",
     "deps",
     "edition_history",
     "surfaces",
@@ -116,18 +108,17 @@ class CodeSurfaceConfig:
 class SkwConfig:
     """A `skw.json` — the same schema at project and package scope.
 
-    All keys optional: `id` (stable package identity), `depots` (resolution
-    roots), `deps` (the named
-    `Skw.Pkg.Dependency` registry — `id → package-root`, serving both the
-    concept domain, folded into the depot search, and the file domain,
-    addressed as `@<id>/…`), `surfaces` (managed set; empty → discover),
+    All keys optional: `id` (stable package identity), `deps` (the named
+    `Skw.Pkg.Dependency` registry — `id → package-root`, addressing the file
+    domain as `@<id>/…`), `surfaces` (managed set; empty → discover),
     `exclude` (trim), `code_surfaces` (language-typed project file selectors),
-    `projects` (sibling project roots whose project-level
-    depots extend cross-repo resolution), and `unlock_registries` (explicit
-    Poi.Unlock.Token registry files)."""
+    `projects` (sibling project roots), and `unlock_registries` (explicit
+    Poi.Unlock.Token registry files).
+
+    Concept resolution is not configured here: `Dotted.Name` targets resolve
+    against the project's Index records, which one workspace holds whole."""
 
     id: str | None = None
-    depots: tuple[str, ...] = ()
     deps: dict[str, str] = field(default_factory=dict)
     surfaces: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
@@ -316,7 +307,6 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
 
     return SkwConfig(
         id=package_id,
-        depots=_list("depots"),
         deps=_map("deps"),
         surfaces=_list("surfaces"),
         exclude=_list("exclude"),
@@ -568,51 +558,18 @@ def expand_edition_history_targets(
     return tuple(sorted(targets))
 
 
-def resolve_project_depots(project_root: Path) -> list[Path]:
-    """Project-scope default depots: the project config's own `depots` plus,
-    one level deep, each sibling `projects` root's project-level `depots`."""
-    depots: list[Path] = []
-    config_path = _config_path(project_root)
-    if config_path is None:
-        return depots
-    config = parse_skw_config(config_path)
-    for raw in config.depots:
-        depot = (project_root / raw).resolve()
-        if depot.is_dir():
-            depots.append(depot)
-    for raw_project in config.projects:
-        sibling = (project_root / raw_project).resolve()
-        sibling_config = _config_path(sibling)
-        if sibling_config is None:
-            continue
-        for raw in parse_skw_config(sibling_config).depots:
-            depot = (sibling / raw).resolve()
-            if depot.is_dir():
-                depots.append(depot)
-    return depots
-
-
-def load_skillware(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> Skillware:
+def load_skillware(skill_root: Path) -> Skillware:
     skill_root = Path(skill_root)
     build_root = resolve_build_root(skill_root)
     src_root = build_root / "src"
     if not src_root.is_dir():
         raise SkillwareError(f"not a skw package (no {BUILD_DIR}/src): {skill_root}")
-    depots: list[Path] = []
     pkg_deps: dict[str, Path] = {}
     package_id: str | None = None
     settings_path = _settings_path(build_root)
     if settings_path is not None:
         config = parse_skw_config(settings_path)
         package_id = config.id
-        for raw_depot in config.depots:
-            depot = (skill_root / raw_depot).resolve()
-            if not depot.is_dir():
-                raise SkillwareError(
-                    f"configured depot is not a directory: {raw_depot}"
-                )
-            depots.append(depot)
-
         for dep_id, raw_root in config.deps.items():
             dep_root = (skill_root / raw_root).resolve()
             if not dep_root.is_dir():
@@ -620,16 +577,10 @@ def load_skillware(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> Ski
                     f"configured dep `{dep_id}` is not a directory: {raw_root}"
                 )
             pkg_deps[dep_id] = dep_root
-            if dep_root not in depots:
-                depots.append(dep_root)
-    for depot in extra_depots:
-        if depot not in depots:
-            depots.append(depot)
     return Skillware(
         skill_root=skill_root,
         build_root=build_root,
         src_root=src_root,
-        depots=tuple(depots),
         package_id=package_id,
         pkg_deps=pkg_deps,
     )
@@ -866,83 +817,36 @@ def _resolve_locator(
             return None, f"region not found: #{region}"
         return body, None
 
-    if not skillware.depots:
-        return None, "Dotted.Name target needs a depot in skw.json"
-    for depot in skillware.depots:
-        entry = _depot_name_index(skillware, depot).get(locator)
-        if entry is not None:
-            return list(entry.body), None
-    return None, "block not found in the configured depots"
+    resolver = _index_resolver(skillware)
+    if resolver is None:
+        return None, "Dotted.Name target needs Index records; see .tarav/project.json"
+    block = resolver.block_by_locator(locator)
+    if block is None:
+        return None, "block not found in the Index records"
+    return list(render_block_body(resolver, block)), None
 
 
-def _depot_model(skillware: Skillware, depot: Path):
-    key = ("model", depot)
-    model = skillware._depot_cache.get(key)
-    if model is None:
-        model = parse_depot(depot)
-        skillware._depot_cache[key] = model
-    return model
+# $kw: --note [CT] one resolver per Skillware run is cached on the run, because folding the record stream per locator would refold the whole corpus for every Dotted.Name a build materializes
+def _index_resolver(skillware: Skillware) -> IndexResolver | None:
+    key = ("index-resolver",)
+    if key in skillware._depot_cache:
+        return skillware._depot_cache[key]
+    try:
+        resolver = IndexResolver.for_path(skillware.skill_root)
+    except IndexResolutionError:
+        resolver = None
+    skillware._depot_cache[key] = resolver
+    return resolver
 
 
-def _depot_name_index(skillware: Skillware, depot: Path) -> dict[str, _DepotNameEntry]:
-    key = ("names", depot)
-    index = skillware._depot_cache.get(key)
-    if index is None:
-        index = _build_depot_name_index(_depot_model(skillware, depot))
-        skillware._depot_cache[key] = index
-    return index
+def render_block_body(resolver: IndexResolver, block) -> list[str]:
+    """A block's lines as Index source: type code, text, and the citable label."""
+    from tarav.indexlab import line_type
 
-
-def _build_depot_name_index(model) -> dict[str, _DepotNameEntry]:
-    blocks: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
-    for document in model.documents:
-        name: str | None = None
-        body: list[str] = []
-        aliases: list[str] = []
-
-        def flush() -> None:
-            if name is not None:
-                blocks.append((name, tuple(body), tuple(aliases)))
-
-        for node in document.nodes:
-            if isinstance(node, BlockHeading):
-                flush()
-                name = str(node.parsed.get("path", "")).strip()
-                body = []
-                aliases = []
-            elif name is not None:
-                if isinstance(node, KernelLine):
-                    body.append(node.src)
-                elif isinstance(node, MetaLine):
-                    aliases.extend(_meta_aliases(node))
-        flush()
-
-    index: dict[str, _DepotNameEntry] = {}
-    canonical_names = {name for name, _body, _aliases in blocks}
-    for name, body, _aliases in blocks:
-        index[name] = _DepotNameEntry(canonical=name, body=body)
-    for name, body, aliases in blocks:
-        entry = _DepotNameEntry(canonical=name, body=body)
-        for alias in aliases:
-            if alias in canonical_names or alias in index:
-                continue
-            index[alias] = entry
-    return index
-
-
-def _meta_aliases(node: MetaLine) -> list[str]:
-    if not node.src.strip().startswith("- aliases:"):
-        return []
     return [
-        match
-        for match in re.findall(r"`([^`]+)`", node.src)
-        if _is_dotted_name_locator(match)
+        f"- [{line_type(line)}] {line.text} {line.label}"
+        for line in resolver.content_lines(block.name)
     ]
-
-
-def _depot_block_body(model, name: str) -> list[str] | None:
-    entry = _build_depot_name_index(model).get(name)
-    return list(entry.body) if entry is not None else None
 
 
 _DOTTED_NAME_RE = re.compile(
@@ -974,11 +878,11 @@ def resolve_mentions(skillware: Skillware, names: set[str]) -> set[str]:
 
 
 def resolve_dotted_name_canonical(skillware: Skillware, name: str) -> str | None:
-    for depot in skillware.depots:
-        entry = _depot_name_index(skillware, depot).get(name)
-        if entry is not None:
-            return entry.canonical
-    return None
+    resolver = _index_resolver(skillware)
+    if resolver is None:
+        return None
+    block = resolver.block_by_locator(name)
+    return block.name if block is not None else None
 
 
 def _labeled_span(

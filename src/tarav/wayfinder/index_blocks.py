@@ -173,7 +173,7 @@ def resolved_index_block_target(
     block: ProjectedBlock,
 ) -> dict[str, object]:
     """The block's record coordinates and its `Kernel.Writing` rendering."""
-    lines = resolver.lines(block.name)
+    lines = resolver.content_lines(block.name)
     return {
         "kind": "index.block",
         "block_path": block.name,

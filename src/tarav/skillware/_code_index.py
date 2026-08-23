@@ -1,10 +1,11 @@
-# $kw: ^skw-code-index --from Index.Depot --from Skw.Network --note [DF] Index adapter for language-neutral code dependency checks ^c20260811-73u
-"""Resolve code annotation dependencies against engaged Index depots."""
+# $kw: ^skw-code-index --from Index.Primary.Surface --from Skw.Network --note [DF] Index adapter for language-neutral code dependency checks ^c20260811-73u
+"""Resolve code annotation dependencies against the Index records."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from tarav.indexlab import IndexResolutionError
 from tarav.skillware.index_surfaces import IndexSurfaceProvider
 
 from ._code_model import CodeDependencyResolver
@@ -12,18 +13,15 @@ from ._code_model import CodeDependencyResolver
 
 class EmptyCodeDependencyResolver:
     def resolve(self, names: set[str]) -> dict[str, str]:
-        return {name: "unresolved:no Index depots configured" for name in names}
+        return {name: "unresolved:no Index records reachable" for name in names}
 
-    def collisions(self, names: set[str]) -> dict[str, list[Path]]:
+    def collisions(self, names: set[str]) -> dict[str, list[str]]:
         return {}
 
 
-def index_code_dependency_resolver(
-    depots: tuple[Path, ...],
-) -> CodeDependencyResolver:
-    if not depots:
+def index_code_dependency_resolver(start: Path | str) -> CodeDependencyResolver:
+    """The record-backed resolver for the project enclosing `start`."""
+    try:
+        return IndexSurfaceProvider.for_path(start)
+    except IndexResolutionError:
         return EmptyCodeDependencyResolver()
-    return IndexSurfaceProvider(
-        depots[0],
-        engaged_depots=depots[1:],
-    )

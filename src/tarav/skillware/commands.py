@@ -546,7 +546,6 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
         "command": "tarav skw status",
         "skill": str(args.skill),
         "lock_present": lock_present,
-        "depots": [str(depot) for depot in skillware.depots],
         "files": files,
     }
     if args.json:

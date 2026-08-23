@@ -109,7 +109,6 @@ def chatlas_recents(
             "identity_hash": row.get("identity_hash"),
             "session_id": row.get("session_id"),
             "uri": row.get("uri"),
-            "chat_index": row.get("chat_index"),
             "user_turn_count": summary.get("visible_user_turn_count"),
             "last_user_turns": last_user_turns,
         })
@@ -154,10 +153,6 @@ def format_chatlas_recents_text(payload: dict[str, object]) -> str:
         lines.append(session_line)
         if isinstance(project_path, str) and project_path:
             lines.append(f"  {project_path}")
-        chat_index = entry.get("chat_index")
-        if isinstance(chat_index, dict) and chat_index.get("materialized") is True:
-            lines.append(f"  index at: {chat_index.get('path')}")
-
         turns = entry.get("last_user_turns", [])
         if isinstance(turns, list):
             rendered = [

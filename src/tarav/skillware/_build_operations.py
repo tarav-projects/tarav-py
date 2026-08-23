@@ -32,7 +32,6 @@ from ._build_core import (
     expand_file,
     load_project_skw_config,
     load_skillware,
-    resolve_project_depots,
     unlock_requirements,
 )
 from ._code_model import CodeCheckReport
@@ -599,14 +598,14 @@ def _address_mismatch_pois(
     return pois
 
 
-def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckReport:
+def check_skill(skill_root: Path) -> CheckReport:
     """The `Poi.Linter` pass: lint parse results, emit advisory POIs.
 
     Parse errors gate a file — below the `Parse.Floor` its semantic checks
     do not run; sibling files still check normally. Every POI carries a
     stable identity hash bound to the current situation.
     """
-    skillware = load_skillware(skill_root, extra_depots=extra_depots)
+    skillware = load_skillware(skill_root)
     lock = _read_lock(skillware)
     entries: list[CheckEntry] = []
     pois: list[SkillwarePOIInstance] = []
@@ -793,9 +792,8 @@ def check_project(project_root: Path) -> ProjectCheckReport:
     project-scope depots cascaded in, so cross-package name bindings resolve."""
     project_root = Path(project_root).resolve()
     config = load_project_skw_config(project_root)
-    extra = tuple(resolve_project_depots(project_root))
     packages = tuple(
-        (pkg, check_skill(pkg, extra_depots=extra))
+        (pkg, check_skill(pkg))
         for pkg in discover_packages(project_root)
     )
     return ProjectCheckReport(
@@ -804,7 +802,7 @@ def check_project(project_root: Path) -> ProjectCheckReport:
         code=check_code_surfaces(
             project_root,
             config.code_surfaces,
-            dependency_resolver=index_code_dependency_resolver(extra),
+            dependency_resolver=index_code_dependency_resolver(project_root),
         ),
     )
 

@@ -56,18 +56,6 @@ from ._command_support import (
     _cmd_chatlas_raw_export,
     _cmd_chatlas_views_list,
     _cmd_chatlas_products_list,
-    _cmd_chatlas_chat_index_status,
-    _cmd_chatlas_chat_index_show,
-    _cmd_chatlas_chat_index_path,
-    _cmd_chatlas_chat_index_files,
-    _cmd_chatlas_chat_index_deltas,
-    _cmd_chatlas_chat_index_head,
-    _cmd_chatlas_chat_index_home,
-    _cmd_chatlas_chat_index_source,
-    _cmd_chatlas_chat_index_tail,
-    _cmd_chatlas_chat_index_audit,
-    _cmd_chatlas_project_index_audit,
-    _cmd_chatlas_project_index_reconcile,
     _cmd_chatlas_products_get,
     _cmd_chatlas_products_status,
     _cmd_chatlas_products_path,
@@ -1018,189 +1006,6 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_update_flag(views_get_parser)
     views_get_parser.set_defaults(handler=_cmd_chatlas_views_get)
 
-    project_index_parser = chatlas_subparsers.add_parser(
-        "project-index",
-        help="Audit and incrementally reconcile a Project.Index with support chats.",
-    )
-    project_index_subparsers = project_index_parser.add_subparsers(
-        dest="chatlas_project_index_command",
-        required=True,
-    )
-    project_index_audit_parser = project_index_subparsers.add_parser(
-        "audit",
-        help="Read-only bulk Project.Index to support Chat.Index coverage audit.",
-    )
-    project_index_audit_parser.add_argument(
-        "--depot", required=True, help="Project.Index depot root."
-    )
-    project_index_audit_parser.add_argument(
-        "--cursor-root", help="Override the project-scoped reconciliation state root."
-    )
-    project_index_audit_parser.set_defaults(handler=_cmd_chatlas_project_index_audit)
-
-    project_index_reconcile_parser = project_index_subparsers.add_parser(
-        "reconcile",
-        help="Audit and advance per-support-chat reconciliation cursors.",
-    )
-    project_index_reconcile_parser.add_argument(
-        "--depot", required=True, help="Project.Index depot root."
-    )
-    project_index_reconcile_parser.add_argument(
-        "--cursor-root", help="Override the project-scoped reconciliation state root."
-    )
-    project_index_reconcile_parser.add_argument(
-        "--reset", action="store_true", help="Discard prior cursors before this pass."
-    )
-    project_index_reconcile_parser.set_defaults(
-        handler=_cmd_chatlas_project_index_reconcile
-    )
-
-    chat_index_parser = chatlas_subparsers.add_parser(
-        "chat-index",
-        help="Inspect a retained materialized Chat.Index stable surface.",
-    )
-    chat_index_subparsers = chat_index_parser.add_subparsers(
-        dest="chatlas_chat_index_command",
-        required=True,
-    )
-
-    chat_index_status_parser = chat_index_subparsers.add_parser(
-        "status",
-        help="Report whether one materialized Chat.Index is current or stale.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_status_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_status_parser.set_defaults(handler=_cmd_chatlas_chat_index_status)
-
-    chat_index_show_parser = chat_index_subparsers.add_parser(
-        "show",
-        help="Show one materialized Chat.Index descriptor and current status.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_show_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_show_parser.set_defaults(handler=_cmd_chatlas_chat_index_show)
-
-    chat_index_path_parser = chat_index_subparsers.add_parser(
-        "path",
-        help="Print the deterministic path for one session's Chat.Index.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_path_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_path_parser.set_defaults(handler=_cmd_chatlas_chat_index_path)
-
-    chat_index_files_parser = chat_index_subparsers.add_parser(
-        "files",
-        help="List the files managed by one materialized Chat.Index descriptor.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_files_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_files_parser.set_defaults(handler=_cmd_chatlas_chat_index_files)
-
-    chat_index_deltas_parser = chat_index_subparsers.add_parser(
-        "deltas",
-        help="List v2 Chat.Index.Deltas in authoritative tape order.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_deltas_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_deltas_parser.set_defaults(handler=_cmd_chatlas_chat_index_deltas)
-
-    chat_index_head_parser = chat_index_subparsers.add_parser(
-        "head",
-        help="Show the v2 Chat.Index.HEAD materialization.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_head_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_head_parser.set_defaults(handler=_cmd_chatlas_chat_index_head)
-
-    chat_index_home_parser = chat_index_subparsers.add_parser(
-        "home",
-        help="Find the oldest Delta containing exact Index.Line content.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_home_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_home_parser.add_argument(
-        "--line-content",
-        required=True,
-        help="Exact typed Index.Line content, with or without trailing anchors.",
-    )
-    chat_index_home_parser.set_defaults(handler=_cmd_chatlas_chat_index_home)
-
-    chat_index_source_parser = chat_index_subparsers.add_parser(
-        "source",
-        help="Show the v2 tape-ordered source descriptor used during capture.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_source_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_source_parser.set_defaults(handler=_cmd_chatlas_chat_index_source)
-
-    chat_index_tail_parser = chat_index_subparsers.add_parser(
-        "tail",
-        help="Show source evidence pending Chat.Index maintenance.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_tail_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_tail_parser.add_argument(
-        "--detail",
-        choices=("refs", "chat", "turn"),
-        default="refs",
-        help=(
-            "Return compact pending refs, transcript-visible chat messages, or "
-            "complete pending Normal.Turn groupings."
-        ),
-    )
-    chat_index_tail_parser.set_defaults(handler=_cmd_chatlas_chat_index_tail)
-
-    chat_index_audit_parser = chat_index_subparsers.add_parser(
-        "audit",
-        help="Audit one Chat.Index surface in a single read-only pass.",
-    )
-    _add_chatlas_index_selector_arguments(
-        chat_index_audit_parser,
-        include_active_after=False,
-        include_sort_limit=False,
-    )
-    chat_index_audit_parser.add_argument(
-        "--surface",
-        default=None,
-        help=(
-            "Audit this staged directory instead of the live surface, still "
-            "resolving source and support against the selected session."
-        ),
-    )
-    chat_index_audit_parser.set_defaults(handler=_cmd_chatlas_chat_index_audit)
-
-    # scaffold / validate / apply are registered by the lossless layer. The two
-    # capture-plan pipelines did the same three things against two normalizations;
-    # the loss-preserving one is the design that stays. The read verbs above have
-    # no counterpart there and are untouched.
-
     products_parser = chatlas_subparsers.add_parser(
         "products",
         help="Produce and consume retained artifacts derived from named views.",
@@ -1361,7 +1166,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     add_lossless_commands(
         chatlas_subparsers,
         chatlas_parser,
-        existing={"turns": turns_subparsers, "chat-index": chat_index_subparsers},
+        existing={"turns": turns_subparsers},
     )
 
     # Last, over the whole tree: one output contract for every leaf, whichever

@@ -20,7 +20,10 @@ from tarav.skillware.commands import (
     _cmd_skillware_status,
 )
 from _skillware_helpers import (
-    DEPOT_ALIAS_CHAPTER,
+    DEPOT_ALIAS_BLOCKS,
+    DEPOT_BLOCKS,
+    add_index_block,
+    write_index,
     MOD_COMPILED,
     _entry,
     _write_skill,
@@ -113,8 +116,7 @@ def test_resolve_mentions_keeps_only_depot_resolving_names(tmp_path: Path) -> No
 
 def test_dotted_name_locator_resolves_meta_aliases(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    depot_file = tmp_path / "depot" / "design" / "100-design.md"
-    depot_file.write_text(DEPOT_ALIAS_CHAPTER, encoding="utf-8")
+    write_index(tmp_path, DEPOT_ALIAS_BLOCKS)
     skillware = load_skillware(skill)
 
     canonical = expand_file(skillware, Path("references/mod.skw.md"))
@@ -137,8 +139,8 @@ def test_dotted_name_locator_resolves_meta_aliases(tmp_path: Path) -> None:
     assert (
         alias_detail is None and canonical_detail is None and collision_detail is None
     )
-    assert alias_lines == canonical_lines == ["- canonical line"]
-    assert collision_lines == ["- taken canonical line"]
+    assert alias_lines == canonical_lines == ["- [CT] canonical line ^lin_a_1"]
+    assert collision_lines == ["- [CT] taken canonical line ^lin_a_4"]
 
 
 def test_build_then_check_ok(tmp_path: Path) -> None:
@@ -361,11 +363,7 @@ def test_copy_drift_and_derived_stale_on_dep_edit(tmp_path: Path) -> None:
 def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skw" / "src" / "references" / "mod.skw.md"
-    depot = tmp_path / "depot" / "design" / "100-design.md"
-    depot.write_text(
-        depot.read_text(encoding="utf-8") + "\n## Concept.Two\n\n- concept two\n",
-        encoding="utf-8",
-    )
+    add_index_block(tmp_path, "depot/design#Concept.Two", (("CT", "concept two"),))
     src.write_text(
         "# mod\n\n"
         "Mentions `Concept.Two` without declaring it.\n\n"
@@ -399,9 +397,8 @@ def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
         src.read_text(encoding="utf-8").replace("Concept.Two", "Concept.Three"),
         encoding="utf-8",
     )
-    depot.write_text(
-        depot.read_text(encoding="utf-8") + "\n## Concept.Three\n\n- concept three\n",
-        encoding="utf-8",
+    add_index_block(
+        tmp_path, "depot/design#Concept.Three", (("CT", "concept three"),)
     )
     changed = next(
         p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"
@@ -545,8 +542,7 @@ def test_malformed_note_pois(tmp_path: Path) -> None:
 
 def test_alias_mentions_remain_literal_dependency_sync_pois(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
-    depot_file = tmp_path / "depot" / "design" / "100-design.md"
-    depot_file.write_text(DEPOT_ALIAS_CHAPTER, encoding="utf-8")
+    write_index(tmp_path, DEPOT_ALIAS_BLOCKS)
     src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n> $kw: --from Concept.One\n\nMentions `Concept.Alias`.\n",
@@ -572,12 +568,15 @@ def test_alias_mentions_remain_literal_dependency_sync_pois(tmp_path: Path) -> N
         for p in check_skill(skill).pois
     )
 
-    depot_file.write_text(
-        depot_file.read_text(encoding="utf-8").replace(
-            "- canonical line", "- canonical line v2"
+    revised = (
+        (
+            "depot/design#Concept.One",
+            (("CT", "canonical line v2"),),
+            ("Concept.Alias", "Concept.Taken"),
         ),
-        encoding="utf-8",
+        DEPOT_ALIAS_BLOCKS[1],
     )
+    write_index(tmp_path, revised)
     reminted = next(
         p
         for p in check_skill(skill).pois
@@ -590,11 +589,8 @@ def test_dangling_dependency_catches_unaliased_rename(tmp_path: Path) -> None:
     """RED->GREEN guard for the 591 silent-drift scenario: a declared `--from`
     whose target is renamed without an alias must break loudly."""
     skill = _write_skill(tmp_path)
-    depot = tmp_path / "depot" / "design" / "100-design.md"
-    depot.write_text(
-        depot.read_text(encoding="utf-8") + "\n## Old.Name\n\n- old body\n",
-        encoding="utf-8",
-    )
+    old = ("depot/design#Old.Name", (("CT", "old body"),), ())
+    write_index(tmp_path, (*DEPOT_BLOCKS, old))
     src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n> $kw: --from Old.Name\n\nUses `Old.Name` here.\n",
@@ -605,10 +601,8 @@ def test_dangling_dependency_catches_unaliased_rename(tmp_path: Path) -> None:
     assert not any(p.kind == "dangling-dependency" for p in check_skill(skill).pois)
 
     # RED: rename the block without leaving an alias — the declaration dangles.
-    depot.write_text(
-        depot.read_text(encoding="utf-8").replace("## Old.Name", "## New.Name"),
-        encoding="utf-8",
-    )
+    renamed = ("depot/design#New.Name", (("CT", "old body"),), ())
+    write_index(tmp_path, (*DEPOT_BLOCKS, renamed))
     dangling = [p for p in check_skill(skill).pois if p.kind == "dangling-dependency"]
     assert [p.key for p in dangling] == ["Old.Name"]
     # A dangling name is not also reported as unhonored.
@@ -617,13 +611,9 @@ def test_dangling_dependency_catches_unaliased_rename(tmp_path: Path) -> None:
         for p in check_skill(skill).pois
     )
 
-    # GREEN again: restore the name as a meta alias — the binding resolves.
-    depot.write_text(
-        depot.read_text(encoding="utf-8").replace(
-            "- old body", "- old body\n\n### meta\n\n- aliases: `Old.Name`"
-        ),
-        encoding="utf-8",
-    )
+    # GREEN again: restore the name as a declared alias — the binding resolves.
+    aliased = ("depot/design#New.Name", (("CT", "old body"),), ("Old.Name",))
+    write_index(tmp_path, (*DEPOT_BLOCKS, aliased))
     assert not any(p.kind == "dangling-dependency" for p in check_skill(skill).pois)
 
 
@@ -704,12 +694,8 @@ def test_parse_errors_gate_semantic_checks_per_file(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     build_skill(skill)
     # make mod's derived stale AND break a standalone file with a parse error
-    depot_file = tmp_path / "depot" / "design" / "100-design.md"
-    depot_file.write_text(
-        depot_file.read_text(encoding="utf-8").replace(
-            "- concept line", "- concept line v2"
-        ),
-        encoding="utf-8",
+    write_index(
+        tmp_path, (("depot/design#Concept.One", (("CT", "concept line v2"),), ()),)
     )
     extra = skill / ".skw" / "src" / "references" / "extra.skw.md"
     extra.write_text(
@@ -962,11 +948,7 @@ def test_cli_bulk_bless_clears_kind_only_for_current_situations(
     build_skill(skill)
     assert not any(p.kind == "undeclared-dependency" for p in check_skill(skill).pois)
 
-    depot = tmp_path / "depot" / "design" / "100-design.md"
-    depot.write_text(
-        depot.read_text(encoding="utf-8") + "\n## Concept.Two\n\n- concept two\n",
-        encoding="utf-8",
-    )
+    add_index_block(tmp_path, "depot/design#Concept.Two", (("CT", "concept two"),))
     src.write_text(
         src.read_text(encoding="utf-8") + "\nAlso `Concept.Two`.\n", encoding="utf-8"
     )

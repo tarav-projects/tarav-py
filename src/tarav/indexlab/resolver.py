@@ -30,7 +30,13 @@ from .workspace import IndexLibrary, RecordStore, WorkspaceError
 
 
 PROJECT_MARKER = ".tarav/project.json"
+
+#: Assertion key carrying a line's `Line.Type` code.
+LINE_TYPE_KEY = "line_type"
+#: No assertion states a type.
 UNTYPED = "UNTYPED"
+#: Assertions state more than one type, which is a finding rather than an answer.
+CONFLICTED = "CONFLICTED"
 
 
 class IndexResolutionError(LookupError):
@@ -75,13 +81,19 @@ class IndexPointer:
         return cls.from_project(root)
 
 
+# $kw: --note [DC] disagreeing assertions report CONFLICTED instead of letting the first one win, because silently picking a winner would hide exactly the contradiction the linter exists to surface
 def line_type(line: ProjectedLine) -> str:
-    """The line's `Line.Type`, or `UNTYPED` when no assertion carries one."""
-    for assertion in line.assertions:
-        value = assertion.get("line_type")
-        if isinstance(value, str) and value:
-            return value
-    return UNTYPED
+    """The line's `Line.Type`: `UNTYPED` when unstated, `CONFLICTED` when disputed."""
+    stated = {
+        value
+        for assertion in line.assertions
+        if isinstance(value := assertion.get(LINE_TYPE_KEY), str) and value.strip()
+    }
+    if not stated:
+        return UNTYPED
+    if len(stated) > 1:
+        return CONFLICTED
+    return stated.pop()
 
 
 # $kw: --note [DC] the resolver holds a projection and not a store, so it cannot be used to write; readers and writers stay separable without a permission flag
@@ -137,6 +149,15 @@ class IndexResolver:
         block = self.block(name)
         return tuple(self._projection.line(line_id) for line_id in block.line_ids)
 
+    # $kw: --note [DC] an alias declaration states a name *for* the block rather than content *of* it, so it stays in the corpus and out of any body a consumer materializes
+    def content_lines(self, name: str) -> tuple[ProjectedLine, ...]:
+        """The block's lines minus its metadata declarations."""
+        return tuple(
+            line
+            for line in self.lines(name)
+            if not any(item.get("kind") == "alias" for item in line.assertions)
+        )
+
     # $kw: --note [DC] an alias is carried by an ordinary line's assertion rather than a block field, so reading it costs one pass over the block and the kernel stays unaware of the key
     def aliases(self, name: str) -> tuple[str, ...]:
         """Alternate names this block answers to."""
@@ -150,12 +171,27 @@ class IndexResolver:
                     found.extend(item for item in values if isinstance(item, str))
         return tuple(dict.fromkeys(found))
 
-    # $kw: --note [DC] an alias that collides with a canonical block name loses to it, because a name that resolves two ways is worse than an alias that does not resolve
+    # $kw: --note [DC] a bare Dotted.Name prefers a chapter block over one written on a product surface, because a chapter block is the concept's declared home and a product-surface block is a local use of it
+    # $kw: --note [DC] an alias that collides with a canonical concept loses to it, because a name that resolves two ways is worse than an alias that does not resolve
     def block_by_locator(self, locator: str) -> ProjectedBlock | None:
-        """A block by canonical name, else by a non-colliding alias."""
+        """A block by full address, else by bare concept name, else by alias."""
         block = self._by_name.get(locator)
         if block is not None:
             return block
+        if "#" not in locator:
+            named = [
+                candidate
+                for candidate in self._projection.blocks
+                if candidate.name.partition("#")[2] == locator
+            ]
+            chapter_homes = [
+                candidate for candidate in named if not candidate.name.startswith("@")
+            ]
+            for group in (chapter_homes, named):
+                if len(group) == 1:
+                    return group[0]
+                if len(group) > 1:
+                    return None
         for candidate in self._projection.blocks:
             if locator in self.aliases(candidate.name):
                 return candidate

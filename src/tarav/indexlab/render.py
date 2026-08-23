@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 from .projection import ProjectedBlock, ProjectedLine, SemanticProjection
+from .resolver import CONFLICTED, UNTYPED, line_type
 
 
 BLOCK_SEPARATOR = "****"
-LINE_TYPE_ASSERTION = "index.line.type"
+#: Kernel.Writing stays compact, so the two non-answers render as marks rather than words.
+TYPE_MARKS = {UNTYPED: "--", CONFLICTED: "??"}
 
 
 class RenderError(ValueError):
@@ -21,7 +23,9 @@ def render_kernel_writing(
 ) -> str:
     """Render current semantic blocks as compact, citable Kernel.Writing Markdown."""
 
-    blocks = projection.blocks if block is None else (_resolve_block(projection, block),)
+    blocks = (
+        projection.blocks if block is None else (_resolve_block(projection, block),)
+    )
     return "\n\n".join(_render_block(projection, item) for item in blocks)
 
 
@@ -51,32 +55,20 @@ def _render_block(
     lines = [BLOCK_SEPARATOR, f"## {block.name}"]
     if block.line_ids:
         lines.append("")
-        lines.extend(_render_line(projection.line(line_id)) for line_id in block.line_ids)
+        lines.extend(
+            _render_line(projection.line(line_id)) for line_id in block.line_ids
+        )
     return "\n".join(lines)
 
 
 def _render_line(line: ProjectedLine) -> str:
-    return f"- [{_line_type(line)}] {line.text} {line.label}"
-
-
-def _line_type(line: ProjectedLine) -> str:
-    values = tuple(
-        assertion.get("value")
-        for assertion in line.assertions
-        if assertion.get("type") == LINE_TYPE_ASSERTION
-    )
-    if not values:
-        return "--"
-    if all(isinstance(value, str) and value.strip() for value in values):
-        normalized = {value.strip() for value in values if isinstance(value, str)}
-        if len(normalized) == 1:
-            return normalized.pop()
-    return "??"
+    code = line_type(line)
+    return f"- [{TYPE_MARKS.get(code, code)}] {line.text} {line.label}"
 
 
 __all__ = [
     "BLOCK_SEPARATOR",
-    "LINE_TYPE_ASSERTION",
+    "TYPE_MARKS",
     "RenderError",
     "render_kernel_writing",
 ]

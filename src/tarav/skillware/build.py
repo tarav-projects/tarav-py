@@ -28,7 +28,6 @@ from ._build_core import (
     resolve_build_root,
     resolve_dotted_name_canonical,
     resolve_mentions,
-    resolve_project_depots,
     unlock_requirements,
 )
 from ._code_model import (
@@ -122,5 +121,4 @@ _DIRECT_EXPORTS = (
     load_project_skw_config,
     parse_skw_config,
     resolve_build_root,
-    resolve_project_depots,
 )

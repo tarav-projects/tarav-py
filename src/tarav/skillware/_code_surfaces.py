@@ -13,7 +13,6 @@ from ._build_core import (
     CodeSurfaceConfig,
     SkillwareError,
     load_project_skw_config,
-    resolve_project_depots,
     unlock_requirements,
 )
 from ._code_index import index_code_dependency_resolver
@@ -192,7 +191,7 @@ def check_code_surfaces(
         else ()
     )
     pois = []
-    resolver = dependency_resolver or index_code_dependency_resolver(())
+    resolver = dependency_resolver or index_code_dependency_resolver(project_root)
     for target in targets:
         relative = target.path.relative_to(project_root)
         text = target.path.read_text(encoding="utf-8", errors="replace")
@@ -335,9 +334,7 @@ def bless_code_poi(
     report = check_code_surfaces(
         project_root,
         config.code_surfaces,
-        dependency_resolver=index_code_dependency_resolver(
-            tuple(resolve_project_depots(project_root))
-        ),
+        dependency_resolver=index_code_dependency_resolver(project_root),
     )
     match = next((poi for poi in report.pois if poi.poi_hash == poi_hash), None)
     if match is None:

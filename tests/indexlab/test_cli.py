@@ -57,7 +57,7 @@ def _manifest(path) -> None:
                             },
                         },
                         "assertions": [
-                            {"type": "index.line.type", "value": "DF"}
+                            {"line_type": "DF"}
                         ],
                     },
                 ],

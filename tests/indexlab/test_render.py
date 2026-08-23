@@ -70,7 +70,7 @@ def _projection():
                     "label": "^poi-documentation",
                     "text": "POI documentation must be sufficient.",
                 },
-                assertions=({"type": "index.line.type", "value": "CT"},),
+                assertions=({"line_type": "CT"},),
             ),
             _record(
                 3,
@@ -94,8 +94,8 @@ def _projection():
                     "text": "A conflicting type remains visible.",
                 },
                 assertions=(
-                    {"type": "index.line.type", "value": "DC"},
-                    {"type": "index.line.type", "value": "CT"},
+                    {"line_type": "DC"},
+                    {"line_type": "CT"},
                 ),
             ),
             _record(

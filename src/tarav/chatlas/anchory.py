@@ -338,8 +338,6 @@ def _chatlas_anchory_session_payload(
     row: dict[str, Any] | None,
     chatlas_root: Path,
 ) -> dict[str, object]:
-    from .chat_index import chat_index_discovery
-
     payload: dict[str, object] = {
         "identity_hash": identity,
         "indexed": row is not None,
@@ -351,7 +349,6 @@ def _chatlas_anchory_session_payload(
         ),
         "anchors": sorted(aggregate["anchors"]),
         "support_member_count": aggregate["support_member_count"],
-        "chat_index": chat_index_discovery(identity, chatlas_root=chatlas_root),
     }
     return payload
 

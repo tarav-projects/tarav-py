@@ -19,21 +19,6 @@ from tarav.chatlas.core import (
     chatlas_raw_paths,
     chatlas_update,
 )
-from tarav.chatlas.chat_index_apply import chatlas_chat_index_apply
-from tarav.chatlas.chat_index_audit import chatlas_chat_index_audit
-from tarav.chatlas.chat_index_plan import chatlas_chat_index_scaffold
-from tarav.chatlas.chat_index_render import chatlas_chat_index_validate
-from tarav.chatlas.chat_index import (
-    chatlas_chat_index_deltas,
-    chatlas_chat_index_files,
-    chatlas_chat_index_head,
-    chatlas_chat_index_home,
-    chatlas_chat_index_path,
-    chatlas_chat_index_show,
-    chatlas_chat_index_source,
-    chatlas_chat_index_status,
-    chatlas_chat_index_tail,
-)
 from tarav.chatlas.delta_scan import chatlas_index_redo, chatlas_index_reset
 from tarav.chatlas.gc import chatlas_gc
 from tarav.chatlas.event_pattern import EventPatternError
@@ -77,10 +62,6 @@ from tarav.chatlas.time_interface import normalize_cli_timestamp
 from tarav.chatlas.production_config import load_chatlas_run_produce_config
 from tarav.chatlas.output import (
     print_chatlas_output,
-)
-from tarav.chatlas.project_index_reconciliation import (
-    project_index_audit,
-    project_index_reconcile,
 )
 from tarav.chatlas.products import (
     chatlas_products_commit,
@@ -815,161 +796,6 @@ def _cmd_chatlas_views_list(args: argparse.Namespace) -> int:
 
 def _cmd_chatlas_products_list(args: argparse.Namespace) -> int:
     print_chatlas_output(chatlas_products_list(), output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_status(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_status(
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        )
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_show(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_show(
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        )
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_path(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_path(
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        )
-    )
-    print_chatlas_output(
-        payload,
-        output=args.output,
-        text_renderer=lambda rendered: str(rendered["path"]),
-    )
-    return 0
-
-
-def _cmd_chatlas_chat_index_files(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_files(
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        )
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_deltas(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_deltas(
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        )
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_head(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_head(
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        )
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_home(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_home(
-        line_content=args.line_content,
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        ),
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_source(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_source(
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        )
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_tail(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_tail(
-        detail=args.detail,
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        ),
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_audit(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_audit(
-        surface=args.surface,
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        ),
-    )
-    print_chatlas_output(payload, output=args.output)
-
-    return 1 if payload["blocking_finding_count"] else 0
-
-
-def _cmd_chatlas_chat_index_scaffold(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_scaffold(
-        stage=args.stage,
-        mode=args.mode,
-        **_chatlas_index_selector_kwargs(
-            args, include_active_after=False, include_sort_limit=False
-        ),
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_validate(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_validate(plan=args.plan)
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_chat_index_apply(args: argparse.Namespace) -> int:
-    payload = chatlas_chat_index_apply(plan=args.plan)
-    print_chatlas_output(payload, output=args.output)
-    return 0 if payload["ok"] else 1
-
-
-def _cmd_chatlas_project_index_audit(args: argparse.Namespace) -> int:
-    payload = project_index_audit(
-        args.depot,
-        cursor_root=Path(args.cursor_root).expanduser().resolve()
-        if args.cursor_root
-        else None,
-    )
-    print_chatlas_output(payload, output=args.output)
-    return 0
-
-
-def _cmd_chatlas_project_index_reconcile(args: argparse.Namespace) -> int:
-    payload = project_index_reconcile(
-        args.depot,
-        cursor_root=Path(args.cursor_root).expanduser().resolve()
-        if args.cursor_root
-        else None,
-        reset=args.reset,
-    )
-    print_chatlas_output(payload, output=args.output)
     return 0
 
 

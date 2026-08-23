@@ -1,29 +1,26 @@
-# $kw: ^index-skw-network --from POI.System --from POI.Linter --note [CT] Index drift consumes domain-owned Skw.Network findings before POI adaptation ^c20260729-49u
+# $kw: ^index-skw-network --from POI.System --from POI.Linter --from Index.Primary.Surface --note [CT] Index drift consumes domain-owned Skw.Network findings before POI adaptation ^c20260729-49u --note [DC] resolution is global within one Index.Workspace, so depot visibility stops being a resolution rule and a name defined twice becomes an ordinary reportable collision instead of a lookup order
 """The index `Skw.Backend`'s binding into the shared linter core.
 
-Implements `SurfaceProvider` (`tarav.skw.network`) over an index depot so the
-surface-agnostic drift engine can run over the index — the extensibility point
-of Impl.Req 700: a new surface is a new provider, no new engine.
+Implements `SurfaceProvider` (`tarav.skw.network`) over the Index records so the
+surface-agnostic drift engine can run over the Index — the extensibility point of
+Impl.Req 700: a new surface is a new provider, no new engine.
 
-The index declares no block->block edges (blocks reference each other only via
-Dotted.Name mentions), so `declared_edges` is empty and the meaningful check is
+The Index declares no block->block edges (blocks reference each other only via
+`Dotted.Name` mentions), so `declared_edges` is empty and the meaningful check is
 `dangling_mention_findings`: a mention that no longer resolves.
 
-Wired into `tarav index linter` as a **default-off** check (`dangling-mention`,
-Impl.Req 702): opt in with `--check dangling-mention`. It is off by default
-because the resolver still over-reports on the real index — it models block
-headings, `Inline.Definition`s, declared aliases, and resolves across declared
-`Index.Depot.Dependency` depots, but not yet canonical/plural short-forms
-(`Stable.Surfaces`->`Stable.Surface`), `::`-scoped names, illustrative example
-placeholders, or concepts defined on non-index skill surfaces (design-laden
-rules, Impl.Req 700/701 Impl.Log).
+The resolver still over-reports on the real corpus. It models block headings,
+`Inline.Definition`s and declared aliases, but not canonical/plural short-forms
+(`Stable.Surfaces` -> `Stable.Surface`), `::`-scoped names, or illustrative example
+placeholders. That is documented follow-up resolver work, not a defect in this binding.
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.skillware.index_depot_deps import resolve_dependency_depots
-from tarav.index_model import parse_depot
-from tarav.index_model.nodes import BlockHeading, KernelLine, MetaLine, Node
+from tarav.indexlab import IndexResolver, line_type
+from tarav.indexlab.projection import ProjectedLine
 from tarav.skw.network import (
     NetworkFinding,
     dangling_mention_findings,
@@ -31,124 +28,80 @@ from tarav.skw.network import (
     network_finding,
 )
 
+#: Chapters whose `[DF]` lines may carry an `Inline.Definition`.
+DEFINING_CHAPTERS = ("design", "index")
 
-def _line_act(node: Node) -> str | None:
-    for span in node.spans:
-        if span.kind == "type_bracket":
-            return span.parsed.get("act")
+
+def concept_of(block_name: str) -> str:
+    """The concept a block address names, without its depot or surface prefix."""
+    _, _, concept = block_name.partition("#")
+    return concept
+
+
+def chapter_of(block_name: str) -> str:
+    """The chapter a block lives in, or `""` for a block written on a product surface."""
+    scope, _, _ = block_name.partition("#")
+    if scope.startswith("@"):
+        return ""
+    _, _, chapter = scope.rpartition("/")
+    return chapter
+
+
+def _first_cited_concept(line: ProjectedLine) -> str | None:
+    for mention in sorted(extract_mentions(line.text)):
+        return mention
     return None
-
-
-def _first_cited_concept(node: Node) -> str | None:
-    for span in node.spans:
-        if span.kind == "concept_cite":
-            return str(span.parsed.get("value"))
-    return None
-
-
-def _defined_concepts(depot_root: Path) -> dict[str, str]:
-    """Every concept one index depot defines, mapped to a stable definition token.
-
-    Three definition forms are recognized:
-
-    - **block headings** — a concept with its own `##` block.
-    - **`Inline.Definition`** (103) — a `[DF]` line that defines a concept
-      inside another block's body, without a block of its own. Its subject is
-      the first cited concept on the line; the block's own first `[DF]` names
-      the heading (already indexed), so only *other* `[DF]` subjects are inline
-      definitions.
-    - **declared aliases** — a `### meta` `- aliases:` line naming alternate
-      dotted names for the enclosing concept (e.g. `Touched.Variable` for
-      `Hugentic.Variable`).
-
-    The token is the defining line's text, so a later change to the definition
-    shifts it — the hook a future `dangling`/stale check keys on.
-    """
-    concepts: dict[str, str] = {}
-    for document in parse_depot(depot_root).documents:
-        for node in document.nodes:
-            if isinstance(node, BlockHeading):
-                name = str(node.parsed.get("path", "")).strip()
-                if name:
-                    concepts.setdefault(name, node.src)
-            elif (
-                isinstance(node, KernelLine)
-                and _line_act(node) == "DF"
-                and document.path is not None
-                and document.path.parent.name in {"design", "index"}
-            ):
-                subject = _first_cited_concept(node)
-                if subject:
-                    concepts.setdefault(subject, node.src)
-            elif isinstance(node, MetaLine) and node.src.strip().startswith(
-                "- aliases:"
-            ):
-                for alias in extract_mentions(node.src):
-                    concepts.setdefault(alias, node.src)
-    return concepts
-
-
-def _engaged_concepts(depots: tuple[Path, ...]) -> dict[str, str]:
-    """Union the defined concepts across every engaged depot (multi-depot)."""
-    concepts: dict[str, str] = {}
-    for depot in depots:
-        for name, token in _defined_concepts(depot).items():
-            concepts.setdefault(name, token)
-    return concepts
-
-
-def _defining_depots(depots: tuple[Path, ...]) -> dict[str, list[Path]]:
-    """Map each concept name to the visible depots that define it.
-
-    A name defined in more than one visible depot is a collision — the
-    `Index.Depot.Dependency` surfaces it (a `Drift.POI`), it does not resolve it.
-    """
-    defining: dict[str, list[Path]] = {}
-    for depot in depots:
-        for name in _defined_concepts(depot):
-            defining.setdefault(name, []).append(depot)
-    return defining
 
 
 class IndexSurfaceProvider:
-    """`SurfaceProvider` over an index depot.
+    """`SurfaceProvider` over the Index records of one `Index.Workspace`.
 
-    Mentions come from `depot_root`; resolution runs against the concepts
-    *defined* across `depot_root` plus any additional `engaged_depots` — block
-    headings, `Inline.Definition`s, and declared aliases. The remaining
-    real-index gaps (canonical/plural short-forms, `::`-scoped names, example
-    placeholders, non-index skill-surface concepts) are the documented
-    follow-up resolver work, not a defect in this binding.
+    Mentions come from the record line text; resolution runs against every concept
+    the corpus *defines* — block headings, `Inline.Definition`s, and declared aliases.
     """
 
-    def __init__(
-        self,
-        depot_root: Path,
-        *,
-        engaged_depots: tuple[Path, ...] | None = None,
-        home: Path | None = None,
-    ) -> None:
-        self._depot_root = Path(depot_root)
-        if engaged_depots is None:
+    def __init__(self, resolver: IndexResolver) -> None:
+        self._resolver = resolver
+        self.unresolved_dependencies: list[str] = []
+        self._concepts: dict[str, str] = {}
+        self._defining: dict[str, list[str]] = {}
+        self._index()
 
-            deps, self.unresolved_dependencies = resolve_dependency_depots(
-                self._depot_root, home
-            )
-        else:
+    @classmethod
+    def for_path(cls, start: Path | str) -> IndexSurfaceProvider:
+        return cls(IndexResolver.for_path(start))
 
-            deps, self.unresolved_dependencies = [Path(d) for d in engaged_depots], []
-        depots = (self._depot_root, *deps)
-        self._concepts = _engaged_concepts(depots)
-        self._defining = _defining_depots(depots)
+    # $kw: --note [DC] a block's own first [DF] restates the heading, so only *other* [DF] subjects count as an Inline.Definition; taking every [DF] subject would make each block define itself twice
+    def _index(self) -> None:
+        for block in self._resolver.blocks():
+            concept = concept_of(block.name)
+            if concept:
+                self._define(concept, block.name, block.name)
+            defining_chapter = chapter_of(block.name) in DEFINING_CHAPTERS
+            for alias in self._resolver.aliases(block.name):
+                self._define(alias, block.name, alias)
+            if not defining_chapter:
+                continue
+            for line in self._resolver.lines(block.name):
+                if line_type(line) != "DF":
+                    continue
+                subject = _first_cited_concept(line)
+                if subject and subject != concept:
+                    self._define(subject, block.name, line.text)
+
+    def _define(self, name: str, block_name: str, token: str) -> None:
+        self._concepts.setdefault(name, token)
+        holders = self._defining.setdefault(name, [])
+        if block_name not in holders:
+            holders.append(block_name)
 
     def declared_edges(self) -> tuple[set[str], set[str]]:
-
         return set(), set()
 
     def mentions(self) -> set[str]:
         names: set[str] = set()
-        for path in sorted(self._depot_root.rglob("*.md")):
-            names |= extract_mentions(path.read_text(encoding="utf-8"))
+        for line in self._resolver.projection.lines:
+            names |= extract_mentions(line.text)
         return names
 
     def resolve(self, names: set[str]) -> dict[str, str]:
@@ -157,8 +110,8 @@ class IndexSurfaceProvider:
             for name in names
         }
 
-    def collisions(self, names: set[str]) -> dict[str, list[Path]]:
-        """Names (from `names`) defined in more than one visible depot."""
+    def collisions(self, names: set[str]) -> dict[str, list[str]]:
+        """Names defined by more than one block."""
         return {
             name: self._defining[name]
             for name in names
@@ -166,40 +119,40 @@ class IndexSurfaceProvider:
         }
 
 
-def index_dangling_mentions(
-    depot_root: Path, engaged_depots: tuple[Path, ...] | None = None
-) -> list[NetworkFinding]:
-    """Run the core dangling-mention check over an index depot.
-
-    ``engaged_depots=None`` resolves the visible set through the depot's
-    directed `Index.Depot.Dependency` declaration; an explicit tuple overrides it.
-    """
-    provider = IndexSurfaceProvider(depot_root, engaged_depots=engaged_depots)
+def index_dangling_mentions(start: Path | str) -> list[NetworkFinding]:
+    """Run the core dangling-mention check over the Index records."""
+    provider = IndexSurfaceProvider.for_path(start)
     resolutions = provider.resolve(provider.mentions())
-    return dangling_mention_findings(Path(Path(depot_root).name), resolutions)
+    return dangling_mention_findings(Path("index"), resolutions)
 
 
-def index_depot_collisions(
-    depot_root: Path, engaged_depots: tuple[Path, ...] | None = None
-) -> list[NetworkFinding]:
-    """Advisory collision `Drift.POI`s for mentions defined in >1 visible depot.
+def index_block_collisions(start: Path | str) -> list[NetworkFinding]:
+    """Advisory collision `Drift.POI`s for a concept defined by more than one block.
 
-    A mention whose name is defined in the depot and in one of its visible
-    dependency depots is ambiguous. The linter reports it; the human resolves it
-    (e.g. by namespacing) — the tool never repairs.
+    A name defined twice is ambiguous. The linter reports it; the human resolves it
+    (for instance by namespacing) — the tool never repairs.
     """
-    provider = IndexSurfaceProvider(depot_root, engaged_depots=engaged_depots)
-    target_rel = Path(Path(depot_root).name)
+    provider = IndexSurfaceProvider.for_path(start)
     findings: list[NetworkFinding] = []
-    for name, depots in sorted(provider.collisions(provider.mentions()).items()):
-        where = ", ".join(sorted(d.name for d in depots))
+    for name, blocks in sorted(provider.collisions(provider.mentions()).items()):
+        where = ", ".join(sorted(blocks))
         findings.append(
             network_finding(
-                "depot-collision",
-                target_rel,
+                "block-collision",
+                Path("index"),
                 name,
                 where,
-                f"mention `{name}` is defined in {len(depots)} visible depots ({where})",
+                f"mention `{name}` is defined by {len(blocks)} blocks ({where})",
             )
         )
     return findings
+
+
+__all__ = [
+    "DEFINING_CHAPTERS",
+    "IndexSurfaceProvider",
+    "chapter_of",
+    "concept_of",
+    "index_block_collisions",
+    "index_dangling_mentions",
+]

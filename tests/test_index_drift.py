@@ -1,235 +1,169 @@
-"""Index backend on the shared linter core (Impl.Req 700, slice 3).
+"""Index backend on the shared linter core, reading records.
 
-Proves the extensibility point: the index depot plugs into the surface-agnostic
+Proves the extensibility point: the Index plugs into the surface-agnostic
 `tarav.skw.network` engine through `IndexSurfaceProvider`, and the edge-free
-`dangling_mention_findings` fires exactly on a mention whose concept was
-removed. Runs over a controlled fixture where every concept is a heading, so
-the headings-only resolver is complete — the real-index resolver gap is
-deliberately out of scope (see the Impl.Req Impl.Log).
+`dangling_mention_findings` fires exactly on a mention whose concept was removed.
+
+Resolution is global within one `Index.Workspace`, so a name defined by two blocks
+is a reported collision rather than a lookup order.
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.skillware.index_surfaces import (
-    IndexSurfaceProvider,
-    index_dangling_mentions,
-    index_depot_collisions,
+from tarav.indexlab import IndexResolver
+from tarav.indexlab.model import (
+    IndexRecord,
+    Operation,
+    RecordContext,
+    SupportSet,
+    TurnRef,
 )
+from tarav.skillware.index_surfaces import IndexSurfaceProvider, chapter_of, concept_of
 from tarav.skw import SurfaceProvider, dangling_mention_findings
 
 ADVISORY = "advisory"
+_CONTEXT = RecordContext(session="s", horizon=TurnRef(address="t", hash="0" * 16))
 
 
-def _write_depot(root: Path, design: str) -> Path:
-    (root / "design").mkdir(parents=True)
-    (root / "000-INDEX.md").write_text(
-        "# INDEX\n\n- `design/100-design.md` — concepts\n", encoding="utf-8"
-    )
-    (root / "design" / "100-design.md").write_text(design, encoding="utf-8")
-    return root
+class _Corpus:
+    """Build a record stream the way a capture would, one block at a time."""
+
+    def __init__(self) -> None:
+        self._records: list[IndexRecord] = []
+
+    def _add(self, operation: str, parameters: dict, assertions=()) -> None:
+        ordinal = len(self._records) + 1
+        self._records.append(
+            IndexRecord(
+                id=f"rec_{ordinal}",
+                ordinal=ordinal,
+                context=_CONTEXT,
+                operation=Operation(type=operation, parameters=parameters),
+                support=SupportSet(neighborhoods=()),
+                assertions=assertions,
+            )
+        )
+
+    def block(self, name: str, lines: tuple[tuple[str, str], ...] = ()) -> _Corpus:
+        block_id = f"blk_{len(self._records)}"
+        self._add(
+            "block.create",
+            {"block_id": block_id, "isoblock_id": f"iso{block_id}", "name": name},
+        )
+        for code, text in lines:
+            line_id = f"lin_{len(self._records)}"
+            self._add(
+                "line.capture",
+                {
+                    "line_id": line_id,
+                    "isoline_id": f"iso{line_id}",
+                    "block_id": block_id,
+                    "label": f"^{line_id}",
+                    "text": text,
+                },
+                ({"line_type": code},),
+            )
+        return self
+
+    def provider(self) -> IndexSurfaceProvider:
+        return IndexSurfaceProvider(IndexResolver.from_records(tuple(self._records)))
 
 
-CLEAN = """# design
-
-****
-
-## Foo.Bar
-
-- [DF] `Foo.Bar` is a thing that leans on `Baz.Qux`
-
-****
-
-## Baz.Qux
-
-- [DF] `Baz.Qux` is another thing
-"""
-
-# same references, but the `Baz.Qux` concept block was renamed away
-DRIFTED = """# design
-
-****
-
-## Foo.Bar
-
-- [DF] `Foo.Bar` is a thing that leans on `Baz.Qux`
-
-****
-
-## Baz.Renamed
-
-- [DF] `Baz.Renamed` is the renamed thing
-"""
+def test_address_parts_split_depot_chapter_and_concept() -> None:
+    assert concept_of("pkg/design#Alpha.Concept") == "Alpha.Concept"
+    assert chapter_of("pkg/design#Alpha.Concept") == "design"
+    # A block written on a product surface belongs to no chapter.
+    assert chapter_of("@notes/live/1-note.md#Alpha.Concept") == ""
 
 
-def test_index_backend_satisfies_surface_provider(tmp_path: Path) -> None:
-    assert issubclass(IndexSurfaceProvider, SurfaceProvider)
-    depot = _write_depot(tmp_path / "d", CLEAN)
-    provider = IndexSurfaceProvider(depot)
+def test_the_provider_satisfies_the_surface_protocol() -> None:
+    provider = _Corpus().block("pkg/design#Alpha.Concept").provider()
+    assert isinstance(provider, SurfaceProvider)
+    # The Index declares no block->block edges.
     assert provider.declared_edges() == (set(), set())
-    assert {"Foo.Bar", "Baz.Qux"} <= provider.mentions()
 
 
-def test_clean_index_has_no_dangling_mentions(tmp_path: Path) -> None:
-    depot = _write_depot(tmp_path / "d", CLEAN)
-    assert index_dangling_mentions(depot) == []
-
-
-def test_removed_concept_raises_a_dangling_mention(tmp_path: Path) -> None:
-    depot = _write_depot(tmp_path / "d", DRIFTED)
-    findings = index_dangling_mentions(depot)
-    kinds = {(f.kind, f.key) for f in findings}
-    assert ("dangling-mention", "Baz.Qux") in kinds
-    assert all(f.severity == ADVISORY for f in findings)
-
-
-def test_core_dangling_mention_is_surface_agnostic() -> None:
-    findings = dangling_mention_findings(
-        Path("s"),
-        {"Here.Now": "hash", "Gone.Away": "unresolved:no concept block"},
+def test_a_mention_of_a_defined_concept_resolves() -> None:
+    corpus = (
+        _Corpus()
+        .block("pkg/design#Alpha.Concept", (("DF", "`Alpha.Concept` is a thing"),))
+        .block(
+            "pkg/design#Beta.Concept", (("CT", "`Beta.Concept` cites `Alpha.Concept`"),)
+        )
     )
-    assert [f.key for f in findings] == ["Gone.Away"]
-    assert findings[0].kind == "dangling-mention"
+    provider = corpus.provider()
+    resolutions = provider.resolve(provider.mentions())
+    assert not dangling_mention_findings(Path("index"), resolutions)
 
 
-# an inline-defined concept: `Child.Inline` is defined by a [DF] line inside
-# Parent.Block, without a block of its own, and referenced from another block.
-INLINE_DEFINED = """# design
-
-****
-
-## Parent.Block
-
-- [DF] `Parent.Block` is the parent
-- [DF] `Child.Inline` is a concept defined inside the parent block
-
-****
-
-## Other.Block
-
-- [DF] `Other.Block` leans on `Child.Inline`
-"""
-
-# same, but the inline definition line was removed — the reference dangles
-INLINE_REMOVED = """# design
-
-****
-
-## Parent.Block
-
-- [DF] `Parent.Block` is the parent
-
-****
-
-## Other.Block
-
-- [DF] `Other.Block` leans on `Child.Inline`
-"""
-
-
-def test_inline_definition_resolves(tmp_path: Path) -> None:
-    # a concept defined by a [DF] line inside another block resolves — no
-    # false dangling on a reference to it (Impl.Req 700 follow-up).
-    depot = _write_depot(tmp_path / "d", INLINE_DEFINED)
-    provider = IndexSurfaceProvider(depot)
-    assert "Child.Inline" in provider.resolve({"Child.Inline"})
-    assert not provider.resolve({"Child.Inline"})["Child.Inline"].startswith(
-        "unresolved:"
+def test_a_mention_whose_concept_was_removed_dangles() -> None:
+    provider = (
+        _Corpus()
+        .block(
+            "pkg/design#Beta.Concept", (("CT", "`Beta.Concept` cites `Gone.Concept`"),)
+        )
+        .provider()
     )
-    assert index_dangling_mentions(depot) == []
+    resolutions = provider.resolve(provider.mentions())
+    findings = dangling_mention_findings(Path("index"), resolutions)
+    assert [finding.key for finding in findings] == ["Gone.Concept"]
 
 
-def test_removing_an_inline_definition_drifts(tmp_path: Path) -> None:
-    depot = _write_depot(tmp_path / "d", INLINE_REMOVED)
-    findings = index_dangling_mentions(depot)
-    assert ("dangling-mention", "Child.Inline") in {(f.kind, f.key) for f in findings}
-
-
-def test_block_heading_is_not_shadowed_by_inline_pass(tmp_path: Path) -> None:
-    # the block's own first [DF] names the heading; headings still resolve.
-    depot = _write_depot(tmp_path / "d", INLINE_DEFINED)
-    provider = IndexSurfaceProvider(depot)
-    res = provider.resolve({"Parent.Block", "Other.Block"})
-    assert all(not v.startswith("unresolved:") for v in res.values())
-
-
-def test_poi_definition_body_does_not_define_mentioned_subject(
-    tmp_path: Path,
-) -> None:
-    depot = _write_depot(tmp_path / "d", CLEAN)
-    (depot / "poi").mkdir()
-    (depot / "poi" / "100-poi.md").write_text(
-        "## Linter/Missing\n\n"
-        "- [DF] a `Foreign.Concept` is missing from this surface\n",
-        encoding="utf-8",
+def test_an_inline_definition_defines_a_concept_without_a_block() -> None:
+    provider = (
+        _Corpus()
+        .block(
+            "pkg/design#Alpha.Concept",
+            (
+                ("DF", "`Alpha.Concept` is a thing"),
+                ("DF", "`Inline.Thing` is defined inside another block's body"),
+            ),
+        )
+        .block(
+            "pkg/design#Beta.Concept", (("CT", "`Beta.Concept` cites `Inline.Thing`"),)
+        )
+        .provider()
     )
-    resolution = IndexSurfaceProvider(depot).resolve({"Foreign.Concept"})
-    assert resolution["Foreign.Concept"].startswith("unresolved:")
+    resolutions = provider.resolve(provider.mentions())
+    assert not dangling_mention_findings(Path("index"), resolutions)
 
 
-ALIASED = """# design
-
-****
-
-## Real.Concept
-
-- [DF] `Real.Concept` is the thing that `Alt.Name` also names
-
-### meta
-
-- aliases: `Alt.Name`
-"""
-
-
-def test_declared_alias_resolves(tmp_path: Path) -> None:
-    # a concept's `### meta / - aliases:` name resolves like the concept itself.
-    depot = _write_depot(tmp_path / "d", ALIASED)
-    provider = IndexSurfaceProvider(depot)
-    res = provider.resolve({"Real.Concept", "Alt.Name"})
-    assert not res["Alt.Name"].startswith("unresolved:")
-
-
-def test_cross_depot_resolution(tmp_path: Path) -> None:
-    # a mention resolving to a concept defined in another engaged depot is not
-    # dangling once that depot is engaged.
-    home = _write_depot(
-        tmp_path / "home",
-        "# design\n\n****\n\n## Home.Concept\n\n- [DF] `Home.Concept` leans on `Foreign.Concept`\n",
+# Only a defining chapter hosts Inline.Definitions; a note is not one.
+def test_a_df_line_on_a_product_surface_is_not_an_inline_definition() -> None:
+    provider = (
+        _Corpus()
+        .block(
+            "@notes/live/1-note.md#Note.Block",
+            (("DF", "`Note.Only.Thing` appears only here"),),
+        )
+        .block(
+            "pkg/design#Beta.Concept",
+            (("CT", "`Beta.Concept` cites `Note.Only.Thing`"),),
+        )
+        .provider()
     )
-    other = _write_depot(
-        tmp_path / "other",
-        "# design\n\n****\n\n## Foreign.Concept\n\n- [DF] `Foreign.Concept` is defined elsewhere\n",
-    )
-    assert index_dangling_mentions(home) != []  # dangling without the other depot
-    findings = index_dangling_mentions(home, engaged_depots=(other,))
-    assert "Foreign.Concept" not in {f.key for f in findings}
+    resolutions = provider.resolve(provider.mentions())
+    findings = dangling_mention_findings(Path("index"), resolutions)
+    assert [finding.key for finding in findings] == ["Note.Only.Thing"]
 
 
-def test_depot_collision_flagged_when_name_defined_in_two_visible_depots(
-    tmp_path: Path,
-) -> None:
-    # `Shared` is defined in the depot AND in a visible dependency, and the
-    # depot mentions it -> a collision Drift.POI (linter reports, never repairs).
-    home = _write_depot(
-        tmp_path / "home",
-        "# design\n\n****\n\n## Shared.Concept\n\n- [DF] `Shared.Concept` is defined here and leans on `Shared.Concept`\n",
+def test_a_concept_defined_by_two_blocks_is_a_collision() -> None:
+    provider = (
+        _Corpus()
+        .block("pkg/design#Alpha.Concept", (("DF", "`Alpha.Concept` here"),))
+        .block(
+            "other/design#Alpha.Concept",
+            (("DF", "`Alpha.Concept` defined a second time"),),
+        )
+        .block(
+            "pkg/design#Beta.Concept", (("CT", "`Beta.Concept` cites `Alpha.Concept`"),)
+        )
+        .provider()
     )
-    other = _write_depot(
-        tmp_path / "other",
-        "# design\n\n****\n\n## Shared.Concept\n\n- [DF] `Shared.Concept` is also defined over here\n",
-    )
-    assert index_depot_collisions(home) == []  # not visible without the dep
-    collisions = index_depot_collisions(home, engaged_depots=(other,))
-    assert [c.key for c in collisions] == ["Shared.Concept"]
-    assert all(c.severity == ADVISORY for c in collisions)
-
-
-def test_no_collision_when_name_is_unique(tmp_path: Path) -> None:
-    home = _write_depot(
-        tmp_path / "home",
-        "# design\n\n****\n\n## Uniq\n\n- [DF] `Uniq` stands alone\n",
-    )
-    other = _write_depot(
-        tmp_path / "other",
-        "# design\n\n****\n\n## Elsewhere\n\n- [DF] `Elsewhere` is unrelated\n",
-    )
-    assert index_depot_collisions(home, engaged_depots=(other,)) == []
+    collisions = provider.collisions(provider.mentions())
+    assert sorted(collisions["Alpha.Concept"]) == [
+        "other/design#Alpha.Concept",
+        "pkg/design#Alpha.Concept",
+    ]

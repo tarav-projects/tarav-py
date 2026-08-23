@@ -16,11 +16,6 @@ from .cache import (
     materialize_normal_model_cache,
     normal_model_cache_status,
 )
-from .chat_index import (
-    apply_chat_index_capture_plan,
-    scaffold_chat_index_capture_plan,
-    validate_chat_index_capture_plan,
-)
 from .corpus import (
     check_corpus,
     load_capture_records,
@@ -238,35 +233,6 @@ def _cmd_chat_query(args: argparse.Namespace) -> int:
         session_limit=args.session_limit,
         offset=args.offset,
         limit=args.limit,
-        chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
-    )
-    _print_payload(payload, pretty=args.json)
-    return 0
-
-
-def _cmd_chat_index_scaffold(args: argparse.Namespace) -> int:
-    payload = scaffold_chat_index_capture_plan(
-        stage=Path(args.stage),
-        session_id=args.session_id,
-        identity_hash=args.identity_hash,
-        chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
-    )
-    _print_payload(payload, pretty=args.json)
-    return 0
-
-
-def _cmd_chat_index_validate(args: argparse.Namespace) -> int:
-    payload = validate_chat_index_capture_plan(
-        Path(args.plan),
-        chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
-    )
-    _print_payload(payload, pretty=args.json)
-    return 0
-
-
-def _cmd_chat_index_apply(args: argparse.Namespace) -> int:
-    payload = apply_chat_index_capture_plan(
-        Path(args.plan),
         chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
     )
     _print_payload(payload, pretty=args.json)
@@ -705,38 +671,6 @@ def add_lossless_commands(
     turn_get.add_argument("--hydrate", action="store_true")
     turn_get.add_argument("--chatlas-root")
     turn_get.set_defaults(handler=_cmd_lossless, lossless_operation=_cmd_turns_get)
-
-    chat_index_commands = existing.get("chat-index") or commands.add_parser(
-        "chat-index",
-        help="Backpropagate landed Hugentic lines into Chat.Index HEAD and tape.",
-    ).add_subparsers(dest="lossless_chat_index_command", required=True)
-    chat_index_scaffold = chat_index_commands.add_parser(
-        "scaffold", help="Create one real-time Capture.Plan envelope."
-    )
-    chat_index_selector = chat_index_scaffold.add_mutually_exclusive_group(
-        required=True
-    )
-    chat_index_selector.add_argument("--session-id")
-    chat_index_selector.add_argument("--identity-hash")
-    chat_index_scaffold.add_argument("--stage", required=True)
-    chat_index_scaffold.add_argument("--chatlas-root")
-    chat_index_scaffold.set_defaults(handler=_cmd_lossless, lossless_operation=_cmd_chat_index_scaffold)
-    for name, handler, help_text in (
-        (
-            "validate",
-            _cmd_chat_index_validate,
-            "Resolve one ready Capture.Plan without writing Chat.Index.",
-        ),
-        (
-            "apply",
-            _cmd_chat_index_apply,
-            "Apply one ready Capture.Plan through recoverable replacement.",
-        ),
-    ):
-        command = chat_index_commands.add_parser(name, help=help_text)
-        command.add_argument("--plan", required=True)
-        command.add_argument("--chatlas-root")
-        command.set_defaults(handler=_cmd_lossless, lossless_operation=handler)
 
     views = commands.add_parser(
         "views",
