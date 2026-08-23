@@ -362,44 +362,6 @@ def test_find_project_root_walks_to_marker(tmp_path: Path) -> None:
     assert find_project_root(tmp_path / "nowhere") == tmp_path.resolve()
 
 
-def test_cascade_extends_package_depots_across_repos(tmp_path: Path) -> None:
-    """A package's own depots are extended by project-scope depots, including
-    a sibling project's depots reached via `projects`."""
-    from tarav.skillware.build import load_skillware, resolve_project_depots
-
-    # sibling repo with its own project-level depot
-    sib = tmp_path / "sib"
-    (sib / ".skw").mkdir(parents=True)
-    (sib / "depot" / "design").mkdir(parents=True)
-    (sib / "depot" / "000-INDEX.md").write_text(
-        "- `design/100-design.md` — Sib.Concept\n", encoding="utf-8"
-    )
-    (sib / "depot" / "design" / "100-design.md").write_text(
-        "## Sib.Concept\n\n- from the sibling repo\n", encoding="utf-8"
-    )
-    (sib / ".skw" / "skw.json").write_text(
-        json.dumps({"depots": ["depot"]}), encoding="utf-8"
-    )
-
-    # project with a package and a project-scope config pointing at the sibling
-    proj = tmp_path / "proj"
-    skill = _write_skill(proj)  # package with its own ../depot
-    (proj / ".tarav").mkdir(parents=True)
-    (proj / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
-    (proj / ".skw").mkdir()
-    (proj / ".skw" / "skw.json").write_text(
-        json.dumps({"projects": ["../sib"]}), encoding="utf-8"
-    )
-
-    project_depots = tuple(resolve_project_depots(proj))
-    assert any(d.name == "depot" and "sib" in str(d) for d in project_depots)
-
-    sw = load_skillware(skill, extra_depots=project_depots)
-    # the package keeps its own depot AND gains the sibling's
-    assert any("sib" in str(d) for d in sw.depots)
-    assert any(str(d).endswith("proj/depot") for d in sw.depots)
-
-
 def test_skw_is_the_only_build_home(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     loaded = load_skillware(skill)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from tarav._core.errors import CliError
@@ -23,7 +24,7 @@ from .model import (
 )
 from .projection import ProjectionError, fold_records, project_records
 from .render import RenderError, render_kernel_writing
-from .touch import ChatlasTouchSource, UserTouchMock
+from .touch import UserTouchMock, UserTouchSource
 from .workspace import IndexLibrary, IndexWorkspace, RecordStore, WorkspaceError
 
 
@@ -191,9 +192,12 @@ def _cmd_lint(args: argparse.Namespace) -> int:
                 )
             source = UserTouchMock.from_dict(json.loads(mock_path.read_text("utf-8")))
         else:
-            source = ChatlasTouchSource(
-                chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None
-            )
+            factory = getattr(args, "touch_source", None)
+            if factory is None:
+                raise WorkspaceError(
+                    "no touch adapter is wired for this workspace's touch_adapter"
+                )
+            source = factory(Path(args.chatlas_root) if args.chatlas_root else None)
         report = lint_store(
             store,
             source=source,
@@ -358,7 +362,12 @@ def _nonnegative_int(value: str) -> int:
     return parsed
 
 
-def register_indexlab_commands(subparsers: argparse._SubParsersAction) -> None:
+# $kw: --note [DC] the kernel declares the touch port and the composition root injects the adapter, so indexlab never imports the chat store it resolves through
+def register_indexlab_commands(
+    subparsers: argparse._SubParsersAction,
+    *,
+    touch_source: Callable[[Path | None], UserTouchSource] | None = None,
+) -> None:
     parser = subparsers.add_parser(
         "indexlab",
         help="Experimental Touched.Index recording kernel in an explicit workspace.",
@@ -496,7 +505,7 @@ def register_indexlab_commands(subparsers: argparse._SubParsersAction) -> None:
         "--list-checks", action="store_true", help="Print the check catalog."
     )
     lint_parser.add_argument("--json", action="store_true", help="Emit JSON.")
-    lint_parser.set_defaults(handler=_cmd_lint)
+    lint_parser.set_defaults(handler=_cmd_lint, touch_source=touch_source)
 
     scenario_parser = commands.add_parser(
         "scenario", help="Run deterministic recording-kernel scenarios."

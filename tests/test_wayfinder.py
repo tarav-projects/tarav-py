@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.wayfinder.index_blocks import create_index_wayfinder
+from tarav.skillware.index_wayfinder import create_index_wayfinder
 from tarav.skillware.managed_blocks import create_tarav_wayfinder
 from tarav.poi.adapters.wayfinder import build_wayfinder_registry_linter_report
 from tarav.wayfinder import (

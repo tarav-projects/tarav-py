@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tarav.skillware.related_surfaces import RelatedSurfaceResolver
 from tarav.wayfinder import Wayfinder, WayfinderReferenceRoot, WayfinderRegistry
-from tarav.wayfinder.index_blocks import resolve_index_block_reference
+from tarav.skillware.index_wayfinder import resolve_index_block_reference
 from tarav.skillware.managed_blocks import resolve_managed_block_reference
 from tarav.wayfinder.model import managed_block_reference
 

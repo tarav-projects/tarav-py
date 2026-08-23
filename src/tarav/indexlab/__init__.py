@@ -36,7 +36,6 @@ from .projection import (
     union_support,
 )
 from .touch import (
-    ChatlasTouchSource,
     Resolution,
     TouchContext,
     TouchMessage,
@@ -75,7 +74,6 @@ __all__ = [
     "UNTYPED",
     "line_type",
     "EvidenceNeighborhood",
-    "ChatlasTouchSource",
     "IndexLibrary",
     "IndexWorkspace",
     "IndexRecord",

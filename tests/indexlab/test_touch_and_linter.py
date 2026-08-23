@@ -5,9 +5,9 @@ from dataclasses import replace
 import pytest
 
 from tarav._core.errors import CliError
+from tarav.chatlas.lossless import ChatlasTouchSource
 from tarav.indexlab import (
     CHECK_REGISTRY,
-    ChatlasTouchSource,
     EvidenceNeighborhood,
     IndexWorkspace,
     IndexRecord,

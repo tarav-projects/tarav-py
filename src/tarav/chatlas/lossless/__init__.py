@@ -61,7 +61,10 @@ from .messages import (
 )
 from .views import list_views, project_view, view_names
 
+from .indexlab_touch import ChatlasTouchSource
+
 __all__ = [
+    "ChatlasTouchSource",
     "CHATLAS2_ANCHOR_BATCH_SCHEMA",
     "CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA",
     "CHATLAS2_NAMESPACE",

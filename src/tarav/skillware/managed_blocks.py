@@ -66,7 +66,7 @@ def create_tarav_wayfinder(
     the normal Wayfinder workflow.
     """
 
-    from tarav.wayfinder.index_blocks import resolve_index_block_reference
+    from tarav.skillware.index_wayfinder import resolve_index_block_reference
 
     selected = registry or WayfinderRegistry()
     if project_root is not None:
@@ -301,7 +301,7 @@ def _discover(project_root: Path) -> tuple[_HostedBlock, ...]:
                     relationships=relationships,
                 )
             )
-    from tarav.wayfinder.index_blocks import resolved_index_block_target
+    from tarav.skillware.index_wayfinder import resolved_index_block_target
 
     try:
         resolver = IndexResolver.for_project(project_root)

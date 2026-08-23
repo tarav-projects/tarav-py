@@ -53,6 +53,7 @@ class TaravRuntime:
         from tarav.daemon.log import report_hook_delivery_failure
         from tarav.forum import register_forum_commands
         from tarav.hooks import register_hook_commands
+        from tarav.chatlas.lossless import ChatlasTouchSource
         from tarav.indexlab.commands import register_indexlab_commands
         from tarav.skillware._build_core import find_project_root
         from tarav.skillware.managed_blocks import create_tarav_wayfinder
@@ -143,7 +144,10 @@ class TaravRuntime:
             subparsers,
             edition_history_support_resolver=resolve_event_support_set_record,
         )
-        register_indexlab_commands(subparsers)
+        register_indexlab_commands(
+            subparsers,
+            touch_source=lambda root: ChatlasTouchSource(chatlas_root=root),
+        )
         register_mission_commands(subparsers)
 
 
