@@ -115,10 +115,10 @@ so one chat may index another.
   projection.
 - `touch.py` — `UserTouchSource`, read-only `ChatlasTouchSource`, and deterministic
   `UserTouchMock`.
-- `linter.py` — the IndexLab lint context, touch-resolution cache, gates, domain checks, and named
-  check registry.
-- `tarav.poi.runtime` — shared POI.Linter selection, three-valued execution, stable findings,
-  canonical run document, and text renderer.
+- `linter.py` — the IndexLab lint context, touch-resolution cache, executable check classes, and
+  ordered check-class registry.
+- `tarav.poi.runtime` — shared POI.Linter check instantiation, dependency-aware selection,
+  three-valued execution, stable findings, canonical run document, and text renderer.
 - `commands.py` — the isolated `tarav indexlab` developer surface with explicit library and
   name/UUID workspace selection.
 
@@ -174,7 +174,14 @@ A report exposes `clean` (nothing failed), `verified` (nothing failed and nothin
 `short_circuited`. There is deliberately no single `ok` boolean — collapsing three-valued verdicts
 into two is what the tier and standing model exists to prevent. The CLI fails closed: only a
 verified run exits zero. Blocked findings occupy their own report lane; a dependent check whose
-inputs cannot resolve receives one blocked check verdict through its gate rather than a false pass.
+ordinary prerequisite check is blocked receives one blocked check verdict rather than a false
+pass. A failed prerequisite does not automatically block further evaluation.
+
+Every registry entry is a `Check` class. One run resolves `IndexLabLintContext` once, instantiates
+each selected class with it, and calls `run()`. Check metadata is class-level; there is no separate
+gate lifecycle. POI class `$kw` blocks attach to the class containing the executable computation,
+so `tarav poi explain` renders the meaningful `run()` body. Consecutive `$kw` declarations may
+attach several POI classes to the same check class.
 
 The CLI follows the established `tarav index linter` operational surface: `--list-checks`,
 repeatable `--check`/`--skip`, `--lane dev`, exact repeatable `--record-id`, POI presentation

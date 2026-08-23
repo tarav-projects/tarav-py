@@ -46,7 +46,9 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
 - `tarav.skw` owns backend-neutral network algorithms shared by consumers; it
   does not own Skillware policy.
 - `tarav.poi` owns the shared finding model and resolution adapters. Producers
-  retain their checks and class definitions.
+  retain their check classes and POI class definitions. The shared runner
+  instantiates selected checks with one domain context; ordinary earlier check
+  results express execution dependencies.
 - `tarav.anchory`, `tarav.bloberia`, and `tarav.wayfinder` own anchor,
   record-depot, and portable-reference primitives respectively.
 - `tarav.stdlib` contains reusable `mdblocks`, `prefix`, `refs`, and `utils`

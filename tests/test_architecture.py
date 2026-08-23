@@ -346,6 +346,25 @@ def test_every_poi_class_resolves_to_exactly_one_managed_block() -> None:
     assert unresolved == [], "\n".join(unresolved)
 
 
+def test_indexlab_tripwire_poi_documents_the_executable_check() -> None:
+    from tarav.poi import tarav_poi_class_reference
+    from tarav.skillware._build_core import find_project_root
+    from tarav.skillware.managed_blocks import create_tarav_wayfinder
+    from tarav.wayfinder import WayfinderResolutionResult
+
+    wayfinder = create_tarav_wayfinder(project_root=find_project_root(PACKAGE_ROOT))
+    result = wayfinder.resolve(
+        tarav_poi_class_reference("IndexLab.Linter/Tripwire.Hit")
+    )
+
+    assert isinstance(result, WayfinderResolutionResult)
+    content = result.target["content"]
+    assert isinstance(content, str)
+    assert "class TripwireCheck" in content
+    assert "def run(self)" in content
+    assert "_substring_offsets(value, tripwire)" in content
+
+
 # $kw: --from Current.Model.Only --note [CT] a POI class names the mechanical failure, never the superseded model that produced it
 def test_no_poi_class_names_a_superseded_model() -> None:
     """`Current.Model.Only`: "does not resolve" is a check result, "is legacy" is history.

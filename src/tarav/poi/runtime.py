@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, ClassVar, Generic, TypeVar
 
 from tarav._core.errors import CliError
 
@@ -18,6 +18,7 @@ from .model import reference_sugar, tarav_poi_class_reference
 
 
 JsonObject = dict[str, object]
+ContextT = TypeVar("ContextT")
 
 
 class Status(StrEnum):
@@ -35,20 +36,6 @@ class Evaluator(StrEnum):
 class Tier(StrEnum):
     STRUCTURAL = "structural"
     REPORTABLE = "reportable"
-
-
-@dataclass(frozen=True, slots=True)
-class GateResult:
-    allowed: bool
-    reason: str | None = None
-
-    @classmethod
-    def ok(cls) -> GateResult:
-        return cls(allowed=True)
-
-    @classmethod
-    def blocked(cls, reason: str) -> GateResult:
-        return cls(allowed=False, reason=reason)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,42 +63,39 @@ class Finding:
         return self.status is Status.BLOCKED
 
 
-CheckFn = Callable[[Any], list[Finding]]
-GateFn = Callable[[Any], GateResult]
+class Check(Generic[ContextT]):
+    """One instantiated evaluation over a domain-owned linter context."""
 
+    name: ClassVar[str]
+    tier: ClassVar[Tier] = Tier.REPORTABLE
+    default_on: ClassVar[bool] = True
+    resolutions: ClassVar[tuple[str, ...]] = ()
+    requires: ClassVar[tuple[str, ...]] = ()
+    dev: ClassVar[bool] = False
+    replaces: ClassVar[str | None] = None
 
-@dataclass(frozen=True, slots=True)
-class Check:
-    """One named evaluation over a domain-owned linter context."""
+    def __init__(self, context: ContextT) -> None:
+        self.context = context
 
-    name: str
-    tier: Tier
-    run: CheckFn
-    default_on: bool = True
-    resolutions: tuple[str, ...] = ()
-    gate: GateFn | None = None
-    dev: bool = False
-    replaces: str | None = None
+    def run(self) -> list[Finding]:
+        raise NotImplementedError
 
-    @property
-    def record_scoped(self) -> bool:
-        return _reaches_selected_records(self.run)
+    @classmethod
+    def record_scoped(cls) -> bool:
+        return _reaches_selected_records(cls.run)
 
-    def can_run(self, context: object) -> GateResult:
-        return self.gate(context) if self.gate else GateResult.ok()
+    @classmethod
+    def poi_classes(cls) -> frozenset[str]:
+        return _referenced_poi_classes(cls.run)
 
-    @property
-    def poi_classes(self) -> frozenset[str]:
-        return _referenced_poi_classes(self.run)
-
-    @property
-    def source(self) -> str:
-        code = self.run.__code__  # type: ignore[attr-defined]
+    @classmethod
+    def source(cls) -> str:
+        code = cls.run.__code__
         return f"{Path(code.co_filename).name}:{code.co_firstlineno}"
 
-    @property
-    def why(self) -> str:
-        return (self.run.__doc__ or "").strip()
+    @classmethod
+    def why(cls) -> str:
+        return (cls.run.__doc__ or "").strip()
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,19 +135,24 @@ class LintReport:
 
 
 def select_checks(
-    registry: Iterable[Check],
+    registry: Iterable[type[Check[Any]]],
     check: Iterable[str] | None = None,
     skip: Iterable[str] | None = None,
     *,
     dev: bool = False,
     targeted: bool = False,
-) -> list[Check]:
+) -> list[type[Check[Any]]]:
     """Resolve one registry selection without weakening structural or dev lanes."""
 
     entries = tuple(registry)
     included = tuple(check or ())
     excluded = tuple(skip or ())
     names = {entry.name for entry in entries}
+    if len(names) != len(entries):
+        duplicates = sorted(
+            name for name in names if sum(entry.name == name for entry in entries) > 1
+        )
+        raise ValueError("duplicate linter check name(s): " + ", ".join(duplicates))
     unknown = (set(included) | set(excluded)) - names
     if unknown:
         raise CliError("unknown linter check(s): " + ", ".join(sorted(unknown)))
@@ -171,28 +160,61 @@ def select_checks(
     displaced = {
         entry.replaces for entry in entries if dev and entry.dev and entry.replaces
     }
-    selected: list[Check] = []
+    selected_names: set[str] = set()
     for entry in entries:
         if entry.dev and not dev:
             continue
         if entry.name in displaced:
             continue
-        if targeted and not entry.record_scoped and entry.tier is not Tier.STRUCTURAL:
+        if targeted and not entry.record_scoped() and entry.tier is not Tier.STRUCTURAL:
             continue
         if entry.tier is Tier.STRUCTURAL:
-            selected.append(entry)
+            selected_names.add(entry.name)
             continue
         enabled = entry.name in included if included else entry.default_on
         if entry.name in excluded:
             enabled = False
         if enabled:
-            selected.append(entry)
-    return selected
+            selected_names.add(entry.name)
+
+    by_name = {entry.name: entry for entry in entries}
+    positions = {entry.name: index for index, entry in enumerate(entries)}
+    for entry in entries:
+        unknown_requires = set(entry.requires) - names
+        if unknown_requires:
+            raise ValueError(
+                f"check {entry.name!r} requires unknown check(s): "
+                + ", ".join(sorted(unknown_requires))
+            )
+        for dependency in entry.requires:
+            if positions[dependency] >= positions[entry.name]:
+                raise ValueError(
+                    f"check {entry.name!r} requires {dependency!r} before it"
+                )
+
+    pending = list(selected_names)
+    while pending:
+        name = pending.pop()
+        for dependency in by_name[name].requires:
+            dependency_type = by_name[dependency]
+            if dependency in excluded and dependency_type.tier is not Tier.STRUCTURAL:
+                raise CliError(
+                    f"cannot skip check {dependency!r}; selected check {name!r} requires it"
+                )
+            if dependency_type.dev and not dev:
+                raise CliError(
+                    f"check {name!r} requires dev check {dependency!r} outside the dev lane"
+                )
+            if dependency not in selected_names:
+                selected_names.add(dependency)
+                pending.append(dependency)
+
+    return [entry for entry in entries if entry.name in selected_names]
 
 
 def run_checks(
     context: object,
-    registry: Iterable[Check],
+    registry: Iterable[type[Check[Any]]],
     *,
     check: Iterable[str] | None = None,
     skip: Iterable[str] | None = None,
@@ -219,16 +241,28 @@ def run_checks(
     blessed: list[Finding] = []
     results: list[CheckResult] = []
     short_circuited = False
+    results_by_name: dict[str, CheckResult] = {}
 
-    for entry in selected:
-        gate = entry.can_run(context)
-        if not gate.allowed:
-            results.append(CheckResult(entry.name, Status.BLOCKED, gate.reason))
+    for check_type in selected:
+        blocked_by = tuple(
+            dependency
+            for dependency in check_type.requires
+            if results_by_name[dependency].status is Status.BLOCKED
+        )
+        if blocked_by:
+            result = CheckResult(
+                check_type.name,
+                Status.BLOCKED,
+                "blocked by check(s): " + ", ".join(blocked_by),
+            )
+            results.append(result)
+            results_by_name[result.name] = result
             continue
 
+        check_instance = check_type(context)
         produced = [
-            replace(item, source=entry.source, tier=entry.tier)
-            for item in entry.run(context)
+            replace(item, source=check_type.source(), tier=check_type.tier)
+            for item in check_instance.run()
         ]
         failed_here: list[Finding] = []
         blocked_here: list[Finding] = []
@@ -253,8 +287,10 @@ def run_checks(
             if blocked_here
             else Status.PASSED
         )
-        results.append(CheckResult(entry.name, status))
-        if entry.tier is Tier.STRUCTURAL and produced:
+        result = CheckResult(check_type.name, status)
+        results.append(result)
+        results_by_name[result.name] = result
+        if check_type.tier is Tier.STRUCTURAL and produced:
             short_circuited = True
             break
 
@@ -408,7 +444,7 @@ def render_linter_text(document: Mapping[str, object]) -> str:
 
 
 def _reaches_selected_records(
-    fn: CheckFn,
+    fn: Callable[..., object],
     seen: frozenset[str] = frozenset(),
 ) -> bool:
     code = getattr(fn, "__code__", None)
@@ -428,7 +464,7 @@ def _reaches_selected_records(
 
 
 def _referenced_poi_classes(
-    fn: CheckFn,
+    fn: Callable[..., object],
     seen: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     code = getattr(fn, "__code__", None)
@@ -577,7 +613,6 @@ __all__ = [
     "CheckResult",
     "Evaluator",
     "Finding",
-    "GateResult",
     "LintReport",
     "LinterReportSelectionError",
     "Status",

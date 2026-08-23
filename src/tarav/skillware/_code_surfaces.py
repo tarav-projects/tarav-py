@@ -141,11 +141,19 @@ def annotation_point(
     if span is None:
         return None
     next_index = span[1]
-    while (
-        next_index < len(model.surface.lines)
-        and not model.surface.lines[next_index].text.strip()
-    ):
-        next_index += 1
+    machinery_by_start = {
+        machinery_span[0]: machinery_span[1]
+        for machinery_span in model.annotations.machinery_spans
+    }
+    while next_index < len(model.surface.lines):
+        if not model.surface.lines[next_index].text.strip():
+            next_index += 1
+            continue
+        machinery_end = machinery_by_start.get(next_index)
+        if machinery_end is not None:
+            next_index = machinery_end
+            continue
+        break
     candidates = [
         point
         for point in model.surface.host_points

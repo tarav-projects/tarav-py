@@ -194,6 +194,25 @@ def test_decorated_class_and_nested_async_function_points_resolve(
     assert not _kinds(check_project(project), "illegal-attachment")
 
 
+def test_consecutive_blocks_attach_to_the_same_class_point(tmp_path: Path) -> None:
+    project = _project(
+        tmp_path,
+        {
+            "src/mod.py": (
+                HEADER
+                + "\n# $kw: First.Signal --from POI.Linter\n"
+                "# $kw: Second.Signal --from POI.Linter\n"
+                "class Check:\n"
+                "    def run(self):\n"
+                "        return None\n"
+            )
+        },
+        allow_points=("file", "class"),
+    )
+
+    assert not _kinds(check_project(project), "illegal-attachment")
+
+
 def test_function_annotation_separated_by_code_is_not_an_attachment(
     tmp_path: Path,
 ) -> None:

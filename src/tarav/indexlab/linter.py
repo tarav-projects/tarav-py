@@ -8,7 +8,6 @@ from tarav._core.errors import CliError
 from tarav.poi.runtime import (
     Check,
     Finding,
-    GateResult,
     LintReport,
     Status,
     Tier,
@@ -19,63 +18,6 @@ from .model import IndexRecord, MessageRef
 from .projection import fold_records
 from .touch import Resolution, TouchContext, TouchMessage, UserTouchSource
 from .workspace import CargoDefect, RecordStore
-
-
-# $kw: IndexLab.Linter/Record.Unloadable --from POI.Linter
-def _record_unloadable_class() -> str:
-    return "IndexLab.Linter/Record.Unloadable"
-
-# $kw: IndexLab.Linter/Context.Unresolved --from POI.Linter
-def _context_unresolved_class() -> str:
-    return "IndexLab.Linter/Context.Unresolved"
-
-# $kw: IndexLab.Linter/Context.Malformed --from POI.Linter
-def _context_malformed_class() -> str:
-    return "IndexLab.Linter/Context.Malformed"
-
-# $kw: IndexLab.Linter/Context.Amended --from POI.Linter
-def _context_amended_class() -> str:
-    return "IndexLab.Linter/Context.Amended"
-
-# $kw: IndexLab.Linter/Support.Empty --from POI.Linter
-def _support_empty_class() -> str:
-    return "IndexLab.Linter/Support.Empty"
-
-# $kw: IndexLab.Linter/Support.NeighborhoodEmpty --from POI.Linter
-def _support_neighborhood_empty_class() -> str:
-    return "IndexLab.Linter/Support.NeighborhoodEmpty"
-
-# $kw: IndexLab.Linter/Support.Unresolved --from POI.Linter
-def _support_unresolved_class() -> str:
-    return "IndexLab.Linter/Support.Unresolved"
-
-# $kw: IndexLab.Linter/Support.Malformed --from POI.Linter
-def _support_malformed_class() -> str:
-    return "IndexLab.Linter/Support.Malformed"
-
-# $kw: IndexLab.Linter/Support.Amended --from POI.Linter
-def _support_amended_class() -> str:
-    return "IndexLab.Linter/Support.Amended"
-
-# $kw: IndexLab.Linter/Support.GroundingSide --from POI.Linter
-def _support_grounding_side_class() -> str:
-    return "IndexLab.Linter/Support.GroundingSide"
-
-# $kw: IndexLab.Linter/Support.ContextSide --from POI.Linter
-def _support_context_side_class() -> str:
-    return "IndexLab.Linter/Support.ContextSide"
-
-# $kw: IndexLab.Linter/Support.OutsideVisibleContext --from POI.Linter
-def _support_outside_visible_context_class() -> str:
-    return "IndexLab.Linter/Support.OutsideVisibleContext"
-
-# $kw: IndexLab.Linter/Projection.Invalid --from POI.Linter
-def _projection_invalid_class() -> str:
-    return "IndexLab.Linter/Projection.Invalid"
-
-# $kw: IndexLab.Linter/Tripwire.Hit --from POI.Linter
-def _tripwire_hit_class() -> str:
-    return "IndexLab.Linter/Tripwire.Hit"
 
 
 @dataclass(slots=True)
@@ -224,299 +166,324 @@ def _execution(context: IndexLabLintContext) -> dict[str, object]:
     return payload
 
 
-def _check_records_loadable(context: IndexLabLintContext) -> list[Finding]:
-    """Every stored cargo item must decode before corpus checks are meaningful."""
+# $kw: IndexLab.Linter/Record.Unloadable --from POI.Linter
+class RecordsLoadableCheck(Check[IndexLabLintContext]):
+    name = "records-loadable"
+    tier = Tier.STRUCTURAL
 
-    return [
-        Finding(
-            _record_unloadable_class(),
-            {"record_id": defect.record_id or "<unidentified>"},
-            {"expected": "LOADABLE", "actual": defect.error},
-            surface={"workspace": context.workspace_root},
-        )
-        for defect in context.defects
-    ]
+    def run(self) -> list[Finding]:
+        """Every stored cargo item must decode before corpus checks are meaningful."""
+
+        return [
+            Finding(
+                "IndexLab.Linter/Record.Unloadable",
+                {"record_id": defect.record_id or "<unidentified>"},
+                {"expected": "LOADABLE", "actual": defect.error},
+                surface={"workspace": self.context.workspace_root},
+            )
+            for defect in self.context.defects
+        ]
 
 
-def _check_tripwire(context: IndexLabLintContext) -> list[Finding]:
-    """Emit one POI for every literal tripwire occurrence in record string values."""
+# $kw: IndexLab.Linter/Tripwire.Hit --from POI.Linter
+class TripwireCheck(Check[IndexLabLintContext]):
+    name = "tripwire"
+    default_on = False
+    resolutions = (
+        "remove the runtime tripwire when the probe has served its purpose",
+        "narrow the run when only one record should exercise the report path",
+    )
 
-    findings: list[Finding] = []
-    for record in context.selected_records():
-        for field_path, value in _string_leaves(record.to_dict()):
-            for tripwire in context.tripwires:
-                for occurrence, offset in enumerate(
-                    _substring_offsets(value, tripwire), start=1
-                ):
-                    findings.append(
-                        _finding(
-                            record,
-                            _tripwire_hit_class(),
-                            {
-                                "offset": offset,
-                                "excerpt": _excerpt(value, offset, tripwire),
-                            },
-                            target={
-                                "field_path": field_path,
-                                "tripwire": tripwire,
-                                "occurrence": occurrence,
-                            },
+    def run(self) -> list[Finding]:
+        """Emit one POI for every literal tripwire occurrence in record strings."""
+
+        findings: list[Finding] = []
+        for record in self.context.selected_records():
+            for field_path, value in _string_leaves(record.to_dict()):
+                for tripwire in self.context.tripwires:
+                    for occurrence, offset in enumerate(
+                        _substring_offsets(value, tripwire), start=1
+                    ):
+                        findings.append(
+                            _finding(
+                                record,
+                                "IndexLab.Linter/Tripwire.Hit",
+                                {
+                                    "offset": offset,
+                                    "excerpt": _excerpt(value, offset, tripwire),
+                                },
+                                target={
+                                    "field_path": field_path,
+                                    "tripwire": tripwire,
+                                    "occurrence": occurrence,
+                                },
+                            )
                         )
-                    )
-    return findings
+        return findings
 
 
-def _check_context_resolves(context: IndexLabLintContext) -> list[Finding]:
-    """Each producer context must remain resolvable and unamended."""
+# $kw: IndexLab.Linter/Context.Unresolved --from POI.Linter
+# $kw: IndexLab.Linter/Context.Malformed --from POI.Linter
+# $kw: IndexLab.Linter/Context.Amended --from POI.Linter
+class ContextResolvesCheck(Check[IndexLabLintContext]):
+    name = "context-resolves"
 
-    findings: list[Finding] = []
-    for record in context.selected_records():
-        resolution, error = context.resolve_context(record)
-        if resolution.standing == "MISSING":
-            operands: dict[str, object] = {
-                "expected": "MATCHED",
-                "actual": "ERROR" if error else "MISSING",
-            }
-            if error:
-                operands["error"] = error
-            findings.append(
-                _finding(
-                    record,
-                    _context_unresolved_class(),
-                    operands,
-                    status=Status.BLOCKED,
-                )
-            )
-        elif resolution.standing == "MALFORMED":
-            operands = {"expected": "MATCHED", "actual": "MALFORMED"}
-            if resolution.detail is not None:
-                operands["detail"] = resolution.detail
-            findings.append(
-                _finding(
-                    record,
-                    _context_malformed_class(),
-                    operands,
-                    status=Status.BLOCKED,
-                )
-            )
-        elif resolution.standing == "AMENDED":
-            findings.append(
-                _finding(
-                    record,
-                    _context_amended_class(),
-                    {"expected": "MATCHED", "actual": "AMENDED"},
-                )
-            )
-    return findings
+    def run(self) -> list[Finding]:
+        """Each producer context must remain resolvable and unamended."""
 
-
-def _check_support_present(context: IndexLabLintContext) -> list[Finding]:
-    """Every record and neighborhood must carry grounding material."""
-
-    findings: list[Finding] = []
-    for record in context.selected_records():
-        if not record.support.neighborhoods:
-            findings.append(
-                _finding(
-                    record,
-                    _support_empty_class(),
-                    {"expected_minimum": 1, "actual": 0},
-                )
-            )
-        for index, neighborhood in enumerate(record.support.neighborhoods):
-            if not neighborhood.grounding:
+        findings: list[Finding] = []
+        for record in self.context.selected_records():
+            resolution, error = self.context.resolve_context(record)
+            if resolution.standing == "MISSING":
+                operands: dict[str, object] = {
+                    "expected": "MATCHED",
+                    "actual": "ERROR" if error else "MISSING",
+                }
+                if error:
+                    operands["error"] = error
                 findings.append(
                     _finding(
                         record,
-                        _support_neighborhood_empty_class(),
-                        {"expected_minimum": 1, "actual": 0},
-                        target={"neighborhood": index},
+                        "IndexLab.Linter/Context.Unresolved",
+                        operands,
+                        status=Status.BLOCKED,
                     )
                 )
-    return findings
-
-
-def _check_support_resolves(context: IndexLabLintContext) -> list[Finding]:
-    """Every referenced support message must remain readable and unamended."""
-
-    findings: list[Finding] = []
-    for record, session, ref, role in _support_refs(context.selected_records()):
-        resolution, error = context.resolve_message(session, ref)
-        target = {"session": session, "message": ref.address, "role": role}
-        if resolution.standing == "MALFORMED":
-            operands: dict[str, object] = {
-                "expected": "MATCHED",
-                "actual": "MALFORMED",
-            }
-            if resolution.detail is not None:
-                operands["detail"] = resolution.detail
-            findings.append(
-                _finding(
-                    record,
-                    _support_malformed_class(),
-                    operands,
-                    target=target,
-                    status=Status.BLOCKED,
+            elif resolution.standing == "MALFORMED":
+                operands = {"expected": "MATCHED", "actual": "MALFORMED"}
+                if resolution.detail is not None:
+                    operands["detail"] = resolution.detail
+                findings.append(
+                    _finding(
+                        record,
+                        "IndexLab.Linter/Context.Malformed",
+                        operands,
+                        status=Status.BLOCKED,
+                    )
                 )
-            )
-        elif resolution.standing == "MISSING" or resolution.value is None:
-            operands = {
-                "expected": "MATCHED",
-                "actual": "ERROR" if error else "MISSING",
-            }
-            if error:
-                operands["error"] = error
-            findings.append(
-                _finding(
-                    record,
-                    _support_unresolved_class(),
-                    operands,
-                    target=target,
-                    status=Status.BLOCKED,
+            elif resolution.standing == "AMENDED":
+                findings.append(
+                    _finding(
+                        record,
+                        "IndexLab.Linter/Context.Amended",
+                        {"expected": "MATCHED", "actual": "AMENDED"},
+                    )
                 )
-            )
-        elif resolution.standing == "AMENDED":
-            findings.append(
-                _finding(
-                    record,
-                    _support_amended_class(),
-                    {"expected": "MATCHED", "actual": "AMENDED"},
-                    target=target,
+        return findings
+
+
+# $kw: IndexLab.Linter/Support.Empty --from POI.Linter
+# $kw: IndexLab.Linter/Support.NeighborhoodEmpty --from POI.Linter
+class SupportPresentCheck(Check[IndexLabLintContext]):
+    name = "support-present"
+
+    def run(self) -> list[Finding]:
+        """Every record and neighborhood must carry grounding material."""
+
+        findings: list[Finding] = []
+        for record in self.context.selected_records():
+            if not record.support.neighborhoods:
+                findings.append(
+                    _finding(
+                        record,
+                        "IndexLab.Linter/Support.Empty",
+                        {"expected_minimum": 1, "actual": 0},
+                    )
                 )
-            )
-    return findings
+            for index, neighborhood in enumerate(record.support.neighborhoods):
+                if not neighborhood.grounding:
+                    findings.append(
+                        _finding(
+                            record,
+                            "IndexLab.Linter/Support.NeighborhoodEmpty",
+                            {"expected_minimum": 1, "actual": 0},
+                            target={"neighborhood": index},
+                        )
+                    )
+        return findings
 
 
-def _check_support_roles(context: IndexLabLintContext) -> list[Finding]:
-    """Grounding refs must be user-side and contextual refs agent-side."""
+# $kw: IndexLab.Linter/Support.Unresolved --from POI.Linter
+# $kw: IndexLab.Linter/Support.Malformed --from POI.Linter
+# $kw: IndexLab.Linter/Support.Amended --from POI.Linter
+class SupportResolvesCheck(Check[IndexLabLintContext]):
+    name = "support-resolves"
 
-    findings: list[Finding] = []
-    for record, session, ref, role in _support_refs(context.selected_records()):
-        resolution, _ = context.resolve_message(session, ref)
-        if resolution.value is None:
-            continue
-        expected = "user" if role == "grounding" else "agent"
-        if resolution.value.side == expected:
-            continue
-        poi_class = (
-            _support_grounding_side_class()
-            if role == "grounding"
-            else _support_context_side_class()
-        )
-        findings.append(
-            _finding(
-                record,
-                poi_class,
-                {"expected": expected, "actual": resolution.value.side},
-                target={"session": session, "message": ref.address, "role": role},
-            )
-        )
-    return findings
+    def run(self) -> list[Finding]:
+        """Every referenced support message must remain readable and unamended."""
 
-
-def _check_support_visible(context: IndexLabLintContext) -> list[Finding]:
-    """Same-chat support must not occur after the producer horizon."""
-
-    findings: list[Finding] = []
-    for record, session, ref, role in _support_refs(context.selected_records()):
-        producer, _ = context.resolve_context(record)
-        message, _ = context.resolve_message(session, ref)
-        if (
-            session != record.context.session
-            or producer.value is None
-            or message.value is None
-            or message.value.turn_ordinal <= producer.value.horizon_ordinal
+        findings: list[Finding] = []
+        for record, session, ref, role in _support_refs(
+            self.context.selected_records()
         ):
-            continue
-        findings.append(
-            _finding(
-                record,
-                _support_outside_visible_context_class(),
-                {
-                    "expected_turn_maximum": producer.value.horizon_ordinal,
-                    "actual_turn": message.value.turn_ordinal,
-                },
-                target={"session": session, "message": ref.address, "role": role},
-            )
-        )
-    return findings
-
-
-def _check_projection_valid(context: IndexLabLintContext) -> list[Finding]:
-    """The complete ordered corpus must fold into one coherent projection."""
-
-    _, errors = fold_records(context.records)
-    records = {record.id: record for record in context.records}
-    findings: list[Finding] = []
-    for error in errors:
-        if not context.is_selected(error.record_id):
-            continue
-        record = records.get(error.record_id or "")
-        operands = {"expected": "VALID", "actual": str(error)}
-        if record is None:
-            findings.append(
-                Finding(
-                    _projection_invalid_class(),
-                    {"record_id": error.record_id or "<unattributed>"},
-                    operands,
-                    surface={"workspace": context.workspace_root},
+            resolution, error = self.context.resolve_message(session, ref)
+            target = {"session": session, "message": ref.address, "role": role}
+            if resolution.standing == "MALFORMED":
+                operands: dict[str, object] = {
+                    "expected": "MATCHED",
+                    "actual": "MALFORMED",
+                }
+                if resolution.detail is not None:
+                    operands["detail"] = resolution.detail
+                findings.append(
+                    _finding(
+                        record,
+                        "IndexLab.Linter/Support.Malformed",
+                        operands,
+                        target=target,
+                        status=Status.BLOCKED,
+                    )
                 )
+            elif resolution.standing == "MISSING" or resolution.value is None:
+                operands = {
+                    "expected": "MATCHED",
+                    "actual": "ERROR" if error else "MISSING",
+                }
+                if error:
+                    operands["error"] = error
+                findings.append(
+                    _finding(
+                        record,
+                        "IndexLab.Linter/Support.Unresolved",
+                        operands,
+                        target=target,
+                        status=Status.BLOCKED,
+                    )
+                )
+            elif resolution.standing == "AMENDED":
+                findings.append(
+                    _finding(
+                        record,
+                        "IndexLab.Linter/Support.Amended",
+                        {"expected": "MATCHED", "actual": "AMENDED"},
+                        target=target,
+                    )
+                )
+        return findings
+
+
+# $kw: IndexLab.Linter/Support.GroundingSide --from POI.Linter
+# $kw: IndexLab.Linter/Support.ContextSide --from POI.Linter
+class SupportRolesCheck(Check[IndexLabLintContext]):
+    name = "support-roles"
+    requires = ("support-resolves",)
+
+    def run(self) -> list[Finding]:
+        """Grounding refs must be user-side and contextual refs agent-side."""
+
+        findings: list[Finding] = []
+        for record, session, ref, role in _support_refs(
+            self.context.selected_records()
+        ):
+            resolution, _ = self.context.resolve_message(session, ref)
+            if resolution.value is None:
+                continue
+            expected = "user" if role == "grounding" else "agent"
+            if resolution.value.side == expected:
+                continue
+            poi_class = (
+                "IndexLab.Linter/Support.GroundingSide"
+                if role == "grounding"
+                else "IndexLab.Linter/Support.ContextSide"
             )
-        else:
             findings.append(
                 _finding(
                     record,
-                    _projection_invalid_class(),
-                    operands,
+                    poi_class,
+                    {"expected": expected, "actual": resolution.value.side},
+                    target={
+                        "session": session,
+                        "message": ref.address,
+                        "role": role,
+                    },
                 )
             )
-    return findings
+        return findings
 
 
-def _support_resolved_gate(context: IndexLabLintContext) -> GateResult:
-    for _, session, ref, _ in _support_refs(context.selected_records()):
-        resolution, _ = context.resolve_message(session, ref)
-        if resolution.value is None or resolution.standing == "MALFORMED":
-            return GateResult.blocked("support resolution is incomplete")
-    return GateResult.ok()
+# $kw: IndexLab.Linter/Support.OutsideVisibleContext --from POI.Linter
+class SupportVisibleCheck(Check[IndexLabLintContext]):
+    name = "support-visible"
+    requires = ("context-resolves", "support-resolves")
+
+    def run(self) -> list[Finding]:
+        """Same-chat support must not occur after the producer horizon."""
+
+        findings: list[Finding] = []
+        for record, session, ref, role in _support_refs(
+            self.context.selected_records()
+        ):
+            producer, _ = self.context.resolve_context(record)
+            message, _ = self.context.resolve_message(session, ref)
+            if (
+                session != record.context.session
+                or producer.value is None
+                or message.value is None
+                or message.value.turn_ordinal <= producer.value.horizon_ordinal
+            ):
+                continue
+            findings.append(
+                _finding(
+                    record,
+                    "IndexLab.Linter/Support.OutsideVisibleContext",
+                    {
+                        "expected_turn_maximum": producer.value.horizon_ordinal,
+                        "actual_turn": message.value.turn_ordinal,
+                    },
+                    target={
+                        "session": session,
+                        "message": ref.address,
+                        "role": role,
+                    },
+                )
+            )
+        return findings
 
 
-def _visible_context_gate(context: IndexLabLintContext) -> GateResult:
-    for record in context.selected_records():
-        resolution, _ = context.resolve_context(record)
-        if resolution.value is None or resolution.standing == "MALFORMED":
-            return GateResult.blocked("producer-context resolution is incomplete")
-    return _support_resolved_gate(context)
+# $kw: IndexLab.Linter/Projection.Invalid --from POI.Linter
+class ProjectionValidCheck(Check[IndexLabLintContext]):
+    name = "projection-valid"
+
+    def run(self) -> list[Finding]:
+        """The complete ordered corpus must fold into one coherent projection."""
+
+        _, errors = fold_records(self.context.records)
+        records = {record.id: record for record in self.context.records}
+        findings: list[Finding] = []
+        for error in errors:
+            if not self.context.is_selected(error.record_id):
+                continue
+            record = records.get(error.record_id or "")
+            operands = {"expected": "VALID", "actual": str(error)}
+            if record is None:
+                findings.append(
+                    Finding(
+                        "IndexLab.Linter/Projection.Invalid",
+                        {"record_id": error.record_id or "<unattributed>"},
+                        operands,
+                        surface={"workspace": self.context.workspace_root},
+                    )
+                )
+            else:
+                findings.append(
+                    _finding(
+                        record,
+                        "IndexLab.Linter/Projection.Invalid",
+                        operands,
+                    )
+                )
+        return findings
 
 
-CHECK_REGISTRY: tuple[Check, ...] = (
-    Check("records-loadable", Tier.STRUCTURAL, _check_records_loadable),
-    Check(
-        "tripwire",
-        Tier.REPORTABLE,
-        _check_tripwire,
-        default_on=False,
-        resolutions=(
-            "remove the runtime tripwire when the probe has served its purpose",
-            "narrow the run when only one record should exercise the report path",
-        ),
-    ),
-    Check("context-resolves", Tier.REPORTABLE, _check_context_resolves),
-    Check("support-present", Tier.REPORTABLE, _check_support_present),
-    Check("support-resolves", Tier.REPORTABLE, _check_support_resolves),
-    Check(
-        "support-roles",
-        Tier.REPORTABLE,
-        _check_support_roles,
-        gate=_support_resolved_gate,
-    ),
-    Check(
-        "support-visible",
-        Tier.REPORTABLE,
-        _check_support_visible,
-        gate=_visible_context_gate,
-    ),
-    Check("projection-valid", Tier.REPORTABLE, _check_projection_valid),
+CHECK_REGISTRY: tuple[type[Check[IndexLabLintContext]], ...] = (
+    RecordsLoadableCheck,
+    TripwireCheck,
+    ContextResolvesCheck,
+    SupportPresentCheck,
+    SupportResolvesCheck,
+    SupportRolesCheck,
+    SupportVisibleCheck,
+    ProjectionValidCheck,
 )
 
 

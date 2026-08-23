@@ -77,12 +77,17 @@
 - A check is executable machinery, a `POI.Class` is a finding category, and a
   `POI.Instance` is one occurrence. Output and storage must preserve the
   distinction.
+- Shared-runtime check registries contain `Check` classes. One run instantiates
+  each selected class with the resolved domain context and calls `run()`.
+  Preconditions are ordinary earlier check results expressed through check
+  dependencies; do not add a separate gate lifecycle to the shared runtime.
 - POI class blocks may be naturally placed beside check code as SKW annotations.
   Their identity is independent of the Python symbol. Discovery is static.
 - Before adding or changing a check, read
-  `tarav-md/skills/tarav-pkg/references/poi-linter.md` — the run loop, tier and
-  gate choice, selection and narrowing, the three-valued verdict, and what
-  licenses a blessing.
+  `tarav-md/skills/tarav-pkg/references/poi-linter.md` — the run loop, tier,
+  selection and narrowing, the three-valued verdict, and what licenses a
+  blessing. Its production `tarav.index` gate model has not yet migrated to
+  shared-runtime check dependencies.
 - Capture preview and landing consume one `Capture.Manifest`. Validate chat
   references and content expectations before writes, derive all planned effects
   from one model, and audit LineRecords after landing.

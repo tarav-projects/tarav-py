@@ -178,7 +178,7 @@ def _cmd_lint(args: argparse.Namespace) -> int:
     if args.list_checks:
         for entry in CHECK_REGISTRY:
             state = "dev" if entry.dev else ("on " if entry.default_on else "off")
-            print(f"{entry.name:26} [{state}] {entry.tier:11} {entry.source}")
+            print(f"{entry.name:26} [{state}] {entry.tier:11} {entry.source()}")
         return 0
     try:
         store = _open_store(args)

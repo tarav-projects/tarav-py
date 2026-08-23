@@ -5,7 +5,7 @@
 - **Goal:** replace the shared POI runtime's function-wrapper checks with instantiated `Check`
   classes whose `run()` method contains the executable computation, then express every IndexLab
   check through that model.
-- **Status:** ready for execution.
+- **Status:** completed and verified.
 - **Scope:** `tarav.poi.runtime`, the IndexLab check corpus and registry, their public exports,
   focused tests, POI explanation behavior, and the IndexLab developer guide.
 - **Out of scope:** migrating the production `tarav.index` private runner, implementing distributed
@@ -48,7 +48,7 @@
 
 ### Slice 1 — shared runtime algebra
 
-- **Status:** pending.
+- **Status:** completed.
 - **RED:** runtime tests require class selection, per-run instantiation, `run()` execution, blocked
   dependency propagation, structural short-circuiting, and metadata introspection.
 - **GREEN:** replace callable/gate rows with a focused `Check` base class and check-class registry;
@@ -57,7 +57,7 @@
 
 ### Slice 2 — IndexLab check corpus
 
-- **Status:** pending.
+- **Status:** completed.
 - **RED:** existing IndexLab behavior tests plus source/documentation assertions require the same
   POI instances and verdicts from class-based checks.
 - **GREEN:** move every check computation into a named `Check` subclass, express support/context
@@ -66,7 +66,7 @@
 
 ### Slice 3 — closure
 
-- **Status:** pending.
+- **Status:** completed.
 - Update the developer guide and this artifact.
 - Reinstall the editable CLI if the public import surface changes.
 - Run focused IndexLab/shared-runtime tests, architecture tests, Ruff, `git diff --check`, the
@@ -78,3 +78,24 @@
 - **Execution authority:** `$tarav-hugentics --impl --dev --AUTO` in the current conversation.
 - **Initial state:** the completed Kernel.Writing renderer slice is present but uncommitted and will
   be preserved by the workflow checkpoint before this implementation begins.
+- **Pre-execution checkpoint:** `722d8e2` (`chore: checkpoint poi check class development`).
+- **Shared runtime:** registries now contain `Check` classes; selection closes over ordered
+  dependencies, the runner instantiates each selected class with the shared context, and only a
+  blocked prerequisite blocks its dependent check. `GateResult` is removed from this runtime.
+- **IndexLab:** all eight checks are named classes whose `run()` methods own their computation.
+  `support-roles` depends on `support-resolves`; `support-visible` depends on both context and
+  support resolution. Existing POI identities, CLI selectors, and report standing are preserved.
+- **POI documentation:** each POI `$kw` block now attaches to its executable check class. Skillware
+  treats a contiguous annotation cluster before one class as several blocks attached to the same
+  host point, allowing a multi-signal check to remain one coherent computation.
+- **Verification:** 92 focused shared-runtime, IndexLab, Skillware-policy, and architecture tests
+  passed; the complete suite passed (`2270 passed`); Ruff and `git diff --check` passed. Installed
+  CLI smoke runs verified check listing, tripwire reporting, and `POI.Explain` rendering complete
+  `ContextResolvesCheck`, `SupportRolesCheck`, and `TripwireCheck` bodies.
+- **Skillware audit:** the project-wide check retains its pre-existing nonzero corpus (217 POIs and
+  one production Index parse diagnostic) and reports no attachment failure for IndexLab's check
+  classes.
+- **Product capture:** no new semantic product claim required a grounded annotation; the existing
+  POI blocks were moved onto more sufficient executable hosts, so no capture manifest was needed.
+- **Deferred:** production `tarav.index` retains its private callable/gate runner and its current
+  operational reference describes that realization; migrating it is a separate implementation.

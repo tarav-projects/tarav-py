@@ -6,7 +6,6 @@ from tarav.poi.runtime import (
     Check,
     Evaluator,
     Finding,
-    GateResult,
     Status,
     Tier,
     build_linter_document,
@@ -28,28 +27,40 @@ class _Context:
         return [record for record in self.records if record in self.subjects]
 
 
-def _structural(_ctx: _Context) -> list[Finding]:
-    return []
+class _StructuralCheck(Check[_Context]):
+    name = "load"
+    tier = Tier.STRUCTURAL
+
+    def run(self) -> list[Finding]:
+        return []
 
 
-def _record_check(ctx: _Context) -> list[Finding]:
-    return [
-        Finding(
-            "Test.Linter/Record.Bad",
-            {"record_id": record},
-            {"expected": "good", "actual": "bad"},
-            surface={"workspace": "test"},
-        )
-        for record in ctx.selected_records()
-    ]
+class _RecordCheck(Check[_Context]):
+    name = "record"
+
+    def run(self) -> list[Finding]:
+        return [
+            Finding(
+                "Test.Linter/Record.Bad",
+                {"record_id": record},
+                {"expected": "good", "actual": "bad"},
+                surface={"workspace": "test"},
+            )
+            for record in self.context.selected_records()
+        ]
 
 
-def _corpus_check(_ctx: _Context) -> list[Finding]:
-    return []
+class _CorpusCheck(Check[_Context]):
+    name = "corpus"
+
+    def run(self) -> list[Finding]:
+        return []
 
 
-def _dev_check(ctx: _Context) -> list[Finding]:
-    return _record_check(ctx)
+class _DevCheck(_RecordCheck):
+    name = "record-dev"
+    dev = True
+    replaces = "record"
 
 
 def test_finding_identity_excludes_operands_but_includes_occurrence() -> None:
@@ -79,16 +90,10 @@ def test_finding_identity_excludes_operands_but_includes_occurrence() -> None:
 
 def test_selection_forces_structural_checks_and_honors_target_and_dev_lanes() -> None:
     registry = (
-        Check("load", Tier.STRUCTURAL, _structural),
-        Check("record", Tier.REPORTABLE, _record_check),
-        Check("corpus", Tier.REPORTABLE, _corpus_check),
-        Check(
-            "record-dev",
-            Tier.REPORTABLE,
-            _dev_check,
-            dev=True,
-            replaces="record",
-        ),
+        _StructuralCheck,
+        _RecordCheck,
+        _CorpusCheck,
+        _DevCheck,
     )
 
     assert [check.name for check in select_checks(registry, check=["record"])] == [
@@ -110,31 +115,35 @@ def test_selection_forces_structural_checks_and_honors_target_and_dev_lanes() ->
 
 
 def test_run_reports_failed_blocked_and_structural_short_circuit() -> None:
-    def blocked(_ctx: _Context) -> list[Finding]:
-        return [
-            Finding(
-                "Test.Linter/Archive.Unavailable",
-                {"archive": "chat"},
-                {"actual": "missing"},
-                status=Status.BLOCKED,
-            )
-        ]
+    class BlockedCheck(Check[_Context]):
+        name = "blocked"
 
-    def broken_structure(_ctx: _Context) -> list[Finding]:
-        return [
-            Finding(
-                "Test.Linter/Cargo.Unloadable",
-                {"record_id": "r0"},
-                {"actual": "malformed"},
-            )
-        ]
+        def run(self) -> list[Finding]:
+            return [
+                Finding(
+                    "Test.Linter/Archive.Unavailable",
+                    {"archive": "chat"},
+                    {"actual": "missing"},
+                    status=Status.BLOCKED,
+                )
+            ]
+
+    class BrokenStructureCheck(Check[_Context]):
+        name = "load"
+        tier = Tier.STRUCTURAL
+
+        def run(self) -> list[Finding]:
+            return [
+                Finding(
+                    "Test.Linter/Cargo.Unloadable",
+                    {"record_id": "r0"},
+                    {"actual": "malformed"},
+                )
+            ]
 
     report = run_checks(
         _Context(),
-        (
-            Check("blocked", Tier.REPORTABLE, blocked),
-            Check("failed", Tier.REPORTABLE, _record_check),
-        ),
+        (BlockedCheck, _RecordCheck),
         execution=lambda ctx: {"records_loaded": len(ctx.records)},
     )
     assert [result.status for result in report.results] == [
@@ -146,38 +155,62 @@ def test_run_reports_failed_blocked_and_structural_short_circuit() -> None:
 
     stopped = run_checks(
         _Context(),
-        (
-            Check("load", Tier.STRUCTURAL, broken_structure),
-            Check("never", Tier.REPORTABLE, _record_check),
-        ),
+        (BrokenStructureCheck, _RecordCheck),
     )
     assert stopped.short_circuited is True
     assert [result.name for result in stopped.results] == ["load"]
 
 
-def test_gate_blocks_once_without_subject_findings() -> None:
+def test_blocked_check_dependency_blocks_once_without_subject_findings() -> None:
+    class ArchiveCheck(Check[_Context]):
+        name = "archive"
+
+        def run(self) -> list[Finding]:
+            return [
+                Finding(
+                    "Test.Linter/Archive.Unavailable",
+                    {"archive": "chat"},
+                    {"actual": "missing"},
+                    status=Status.BLOCKED,
+                )
+            ]
+
+    class DependentCheck(_RecordCheck):
+        name = "dependent"
+        requires = ("archive",)
+
     report = run_checks(
         _Context(),
-        (
-            Check(
-                "archive",
-                Tier.REPORTABLE,
-                _record_check,
-                gate=lambda _ctx: GateResult.blocked("archive unavailable"),
-            ),
-        ),
+        (ArchiveCheck, DependentCheck),
+        check=("dependent",),
     )
 
     assert report.findings == ()
-    assert report.blocked == ()
-    assert report.results[0].status is Status.BLOCKED
-    assert report.results[0].reason == "archive unavailable"
+    assert len(report.blocked) == 1
+    assert [result.status for result in report.results] == [
+        Status.BLOCKED,
+        Status.BLOCKED,
+    ]
+    assert report.results[1].reason == "blocked by check(s): archive"
+
+
+def test_failed_dependency_does_not_block_further_evaluation() -> None:
+    class DependentCheck(_CorpusCheck):
+        name = "dependent"
+        requires = ("record",)
+
+    report = run_checks(_Context(), (_RecordCheck, DependentCheck))
+
+    assert [result.status for result in report.results] == [
+        Status.FAILED,
+        Status.PASSED,
+    ]
 
 
 def test_one_document_drives_complete_summaries_and_bounded_rendering() -> None:
     report = run_checks(
         _Context(),
-        (Check("record", Tier.REPORTABLE, _record_check),),
+        (_RecordCheck,),
         execution=lambda ctx: {"records_loaded": len(ctx.records)},
     )
     document = build_linter_document(

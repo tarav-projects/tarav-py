@@ -109,7 +109,7 @@ def test_mock_lints_self_chat_and_external_capture() -> None:
 
 
 def test_registry_discovers_every_managed_poi_class() -> None:
-    assert set().union(*(check.poi_classes for check in CHECK_REGISTRY)) == {
+    assert set().union(*(check.poi_classes() for check in CHECK_REGISTRY)) == {
         "IndexLab.Linter/Context.Amended",
         "IndexLab.Linter/Context.Malformed",
         "IndexLab.Linter/Context.Unresolved",
