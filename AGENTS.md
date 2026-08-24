@@ -2,6 +2,8 @@
 
 ## Read first
 
+- Load the `tarav-pkg` skill and read its `CONSTITUTION.md`. Any surface claiming
+  to be part of Tarav must comply with it.
 - `tarav-py` is the single maintained Agentos Python distribution.
 - Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing subsystem ownership or
   cross-domain imports.
