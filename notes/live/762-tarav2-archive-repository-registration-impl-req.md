@@ -1,99 +1,219 @@
-# 762 — Tarav2 Archive repository registration
+# 762 — Tarav2 Archive Record and Artifact registry
 
 ## Impl.Abstract
 
-- **Goal:** implement the first `Tarav.Archive` slice as an isolated Python API under
-  `tarav.tarav2`: initialize an Archive root, register an external Git repository, persist
-  its primary and secondary Manifests, and resolve the resulting Repository by its human
-  name, UUID or UUID prefix, and registered location.
-- **Status:** ready for execution.
-- **Scope:** a new `src/tarav/tarav2/` namespace and focused tests under `tests/tarav2/`.
-- **Out of scope:** CLI/runtime integration, imports from existing Tarav domains into
-  `tarav.tarav2`, File.Version enumeration, Diagram integration, managed artifact
-  repositories, importing free files, automatic repository recognition, and non-Git data.
-- **Source context:** current Codex session
-  `01e7143eecc1b00b10b564d8bf26918cdaa0ebec4522d25448140e05abf5cd35`;
-  constraining user `Chat.Message` addresses:
-  `533a4f7a0e382ac5f82b965c7833b92810c8f7ba30fc9da85048d506330701ef`,
-  `ec940cc59c88a95dcc75774e973e76a50f5433ddad5e6255677ddf0e0bf55c2f`,
-  `b1b14ab13e0b648dcae4c163e5f76eeb394f40131a5b4fd25ea4c9770cf9a589`,
-  `79f789a42965247c3514add9417ad6824bb9cadb8c03bd62e0c2d9c421f5ef6c`, and
-  `d7163b2a224d0b44327eeb681a868c934304beba245e5f0663f45dbdae0267eb`.
+- **Goal:** maintain the approved Record-and-Artifact kernel under `tarav.tarav2`, including
+  the timestamped Record, append-only Locator, and Repository Git Hint amendment: initialize
+  a flat Archive, register root Artifacts and Git repositories without copying them, lazily
+  materialize repository-contained Artifacts, retain attributed Records and
+  External.Descriptors, and expose the system through option-only
+  `tarav tarav2 archive` commands.
+- **Status:** completed and verified, including the Record/Locator/Git Hint amendment.
+- **Scope:** `src/tarav/tarav2/`, focused tests under `tests/tarav2/`, the existing isolated
+  umbrella CLI registration, and this implementation record.
+- **Out of scope:** real Chatlas registration, eager repository scanning, semantic parsing,
+  Diagram integration, non-file substructure, managed Artifact import, automatic location
+  recovery, Record reconciliation, and migration compatibility with the superseded
+  Manifest/File.Version experiment.
+- **Authority:** `tarav-pkg/CONSTITUTION.md` and `tarav-pkg/tarav-archive.md`; execution is
+  authorized by user `Chat.Message`
+  `dc08c2a93fa591d0cf417e25e4423981cde6c2072cb554e742ddc2446d544e7f`
+  in session `01e7143eecc1b00b10b564d8bf26918cdaa0ebec4522d25448140e05abf5cd35`.
 
 ## Impl.Index
 
 ### Accepted constraints
 
-- [CT] `~/Documents/tarav-archive/manifests/` is its own Git repository and contains
-  Archive records; `repositories/` contains only repositories physically hosted by the
-  Archive.
-- [CT] Registering an external repository does not copy or modify it.
-- [CT] A Repository has one plain UUID identity plus a unique, human-facing name such as
-  `tarav.chatlas`; prefixes are convenience selectors only when unambiguous.
-- [CT] Each Archive object folder is flat: `registration.json` is the primary Manifest and
-  secondary Manifests such as `locations.json` and `git.json` sit beside it.
-- [CT] `locations.json` connects a Repository UUID to observed host/path locations; a path
-  is lookup evidence and cannot redefine the Repository identity.
-- [CT] Archive code records cheap mechanical Git facts and does not interpret repository
-  contents.
-- [CT] The implementation remains internal to `tarav.tarav2`: no existing Tarav module,
-  runtime, or CLI imports or exposes it.
+- [CT] The Archive stores Artifacts and flat Records about them; consumers construct
+  organization and meaning.
+- [CT] The Archive root contains `records/`, itself a Git repository, and
+  `repositories/`, used only for repositories physically hosted by the Archive.
+- [CT] All Record directories live at `records/artifacts/<artifact-id>/`; an Artifact ID is
+  also its physical Record-directory key.
+- [CT] Every Artifact ID occupies the same 256-bit, 64-character lowercase hexadecimal
+  space. Root and repoless Artifacts receive cryptographically random IDs.
+- [CT] A repository-contained Artifact receives a deterministic SHA-256 identity from a
+  versioned, unambiguous encoding of Repository ID, Git object format, exact commit, and
+  subpath.
+- [CT] A registered repository is a root Artifact with a public name and one or more
+  observed locations. Registering an external repository does not copy or modify it.
+- [CT] Git is the current containment gate. A root Repository registration is sufficient to
+  address any committed file or folder; contained Artifact Records are materialized only
+  when requested. There is no default eager scan.
+- [CT] Records describe one Artifact. They may contain Archive bureaucracy, locations,
+  observations, fingerprints, descriptions, and hints, and they may disagree without the
+  Archive reconciling them.
+- [CT] Consumers may register one Artifact as an External.Descriptor of another. The
+  Archive preserves that attributed declaration as an ordinary Record and does not endorse
+  its correctness or create a general semantic graph.
+- [CT] Existing Tarav domains and runtime remain independent from `tarav.tarav2`; only the
+  umbrella CLI composition adapter may import it.
+- [CT] Tarav2 CLI data inputs use named options only.
+- [CT] Every Archive Record carries one `recorded_at` timestamp. The Archive is not an
+  activity log, and timestamping does not justify retaining transient current-state copies.
+  Supported by user `Chat.Message`s
+  `00c6caad56de3e82a1485c08078236d0ca23474da7866ce3da0a55ec19f55f72` and
+  `fc528f7c79f06649483dd381fbbc98489d9311868c6389f403c5121418491e58`.
+- [CT] `locators.jsonl` is an appendable registry of independently timestamped locator
+  hints. It contains local paths and admitted Git remote configuration without claiming an
+  authoritative or current location. Supported by user `Chat.Message`
+  `99d4d277c27c4d888d2191ebd0100af9447e81354e31abbdfa70cc39e960aaff`.
+- [CT] The Archive does not sanitize suspicious locator values. An unsupported or
+  suspicious Git remote is skipped and warned about without echoing the possibly sensitive
+  value. Supported by user `Chat.Message`
+  `d4122fc84a3229b56abdb5bf55a77a90fa2f80f738b35204feb5da2fe119e6d7`.
+- [CT] Repository registration produces `git-hint.json`, not a stored `HEAD`. It samples
+  between one and ten commits across the selected branch beginning with the first commit,
+  and retains their Git metadata and messages as repository-recognition hints. Supported
+  by user `Chat.Message`s
+  `f7a78c12f8e60c129ea06fbe5b5b50ca17193367d049f8472bd228be2c90e09f` and
+  `ba01771409f9caf506b87e512dab1df02254a141bbfc813df7fec6daf50e2194`.
+- [CT] Re-registering an already registered Repository is a strict no-op. It does not
+  refresh its Git Hint, rescan remotes, append locators, or create a Record commit.
+  Supported by user `Chat.Message`
+  `4f2cdf3c427fb996ec20b969e0148ee654d81a0e552518c8feb2999ee97bb2d4`.
 
 ### Implementation decisions
 
-- Use a small standard-library domain module plus the existing dependency-free atomic JSON
-  writer. No new dependency or cross-domain policy is introduced.
-- `Archive.create(path)` owns initialization of the `manifests` Git repository and the empty
-  `repositories` container. `Archive.open(path)` fails closed when that shape is absent.
-- Repository registration resolves and validates the caller's Git top-level, returns an
-  existing registration for the same host/path, rejects name collisions, assigns a UUID,
-  writes the three approved Manifest files, and commits them together.
-- The first `git.json` records only cheap observations required by this slice: object format,
-  current HEAD when present, and root commits. Richer Git Manifest producers remain future
-  independent files or qualified producer variants.
-- Resolution accepts an explicit `Path` for a location and a string for exact name, full
-  UUID, or unique UUID prefix. It never guesses that an unknown location is an existing
-  Repository.
-- The Manifest repository uses a fixed mechanical Git author for automatic Archive commits;
-  it does not mutate global or repository-local user configuration.
+- Use standard-library code plus the existing atomic JSON writer; introduce no dependency
+  or import from existing Tarav domains.
+- `Archive.create(path)` initializes `records/` and `repositories/`; `Archive.open(path)`
+  validates that exact shape. Automatic Record commits use a fixed mechanical Git author
+  without changing user Git configuration.
+- Root Artifact registration accepts an opaque location, optional public name, and kind.
+  Path-like locations are normalized; URI locators remain literal. Repository
+  registration performs the additional Git validation and observation required for a
+  Repository Record.
+- `registration.json` owns Artifact identity and basic Archive bureaucracy;
+  `locators.jsonl`, `git-hint.json`, Git-coordinate Records, and
+  `external-descriptors.json` are independent flat Records beside it.
+- Public names, full IDs, and unambiguous ID prefixes are convenience selectors. A location
+  is lookup evidence and cannot rebind identity.
+- Git-contained materialization resolves a commit and tree entry mechanically, records its
+  Repository/commit/subpath coordinate and Git object facts, and is idempotent. It does not
+  parse the Artifact or walk unrelated history.
+- External.Descriptor registration requires both Artifacts to exist and records caller
+  attribution. Repeating the same attributed declaration is idempotent.
+- Repository registration accepts option-only `--branch`, defaulting to `main`. The named
+  local branch must exist; Tarav does not guess another branch.
+- Commit sampling is deterministic and includes both the earliest and latest commit in the
+  registration-time branch history when more than one commit exists. Each sampled commit
+  stores the raw Git commit object so all Git-owned metadata and the full message are
+  retained without a semantic Archive parser.
+- Remote admission accepts bounded common Git locators. Admitted configured values are
+  stored verbatim; skipped values produce a count-only warning that never echoes them.
+- Re-registering the same Repository name and local locator returns its existing Artifact
+  without reading new remote configuration, changing Records, or creating a commit.
 
 ## Execution.Plan
 
-### Vertical.Slice 1 — Archive bootstrap and repository registration
+### Vertical.Slice 1 — Archive bootstrap and uniform identity
 
-- **RED:** add a focused test that creates a source Git repository, creates an Archive,
-  registers the source as `tarav.chatlas`, and asserts the exact root split, flat Manifest
-  files, plain UUID identity, external location, Git facts, untouched source repository,
-  clean Manifest worktree, and committed Manifest history.
-- **GREEN:** add `tarav.tarav2.archive` with the minimum API and persistence needed for that
-  path.
-- **Check:** `uv run pytest tests/tarav2/test_archive.py -q`.
-- **Acceptance:** one call produces a committed Repository registration without copying the
-  source into the Archive's `repositories/` directory.
+**Status:** completed.
 
-### Vertical.Slice 2 — Idempotency and convenience resolution
+- Replace `manifests/` and per-type catalogs with `records/artifacts/`.
+- Add 256-bit random and deterministic Artifact identity primitives.
+- Verify bootstrap shape, Git-backed Record history, ID validation, and namespace isolation.
 
-- **RED:** add tests for repeat registration at the same location, name lookup, full UUID
-  lookup, unique-prefix lookup, location lookup, duplicate-name rejection, unknown selector,
-  and ambiguous prefix rejection.
-- **GREEN:** add only the lookup/catalog behavior required by those tests.
-- **Check:** `uv run pytest tests/tarav2/test_archive.py -q`.
-- **Acceptance:** physical location and convenient selectors consistently resolve to the
-  same immutable UUID without creating duplicate records.
+### Vertical.Slice 2 — Root Artifact and Repository registration
 
-### Vertical.Slice 3 — Namespace isolation and final audit
+**Status:** completed.
 
-- Add a boundary test proving no maintained module outside `tarav.tarav2` imports the new
-  namespace and that no CLI/runtime surface was changed.
-- Run `uv run pytest tests/tarav2/test_archive.py tests/test_architecture.py -q`.
-- Run `uv run ruff check src/tarav/tarav2 tests/tarav2`.
-- Review the diff and Manifest schemas against the accepted flat-folder design.
+- Register repoless root Artifacts and external Git Repository Artifacts.
+- Preserve public names, locations, and cheap Git observations as flat Records.
+- Verify idempotency, collision handling, and selector resolution.
+
+### Vertical.Slice 3 — Lazy Git-contained Artifact materialization
+
+**Status:** completed.
+
+- Materialize one committed file or folder from `--repository`, `--commit`, and `--path`.
+- Verify deterministic identity, exact-version distinction, repeated materialization, and
+  absence of eager history enumeration.
+
+### Vertical.Slice 4 — External.Descriptors and Artifact dossiers
+
+**Status:** completed.
+
+- Register attributed descriptor Artifact references as a flat Record on the target.
+- Return all retained Records for an Artifact without reconciling them.
+- Verify missing locations remain inspectable rather than rebinding identity.
+
+### Vertical.Slice 5 — Option-only CLI and final audit
+
+**Status:** completed.
+
+- Replace the scan command with generic Artifact registration/show, Repository
+  registration, Git-contained materialization, and External.Descriptor registration.
+- Run focused and maintained tests, Ruff, installed-entrypoint help checks, diff review,
+  namespace audit, and Product.Surface capture audit.
+
+### Vertical.Slice 6 — Timestamped Records, Locator registry, and Git Hint amendment
+
+**Status:** completed.
+
+- **RED:** replace focused expectations with universal Record timestamps,
+  `locators.jsonl`, remote-locator capture/skip warnings, no stored `HEAD`, deterministic
+  1–10 commit sampling, raw commit metadata/messages, and option-only branch selection.
+- **GREEN:** replace the superseded Record writers/readers directly; add no compatibility
+  aliases or migration path because no real Archive has been initialized through Tarav2.
+- **Check:** focused Tarav2 tests and Ruff, then architecture/CLI suites, full project tests,
+  editable CLI reinstall, and installed help smoke.
+- **Acceptance:** registering a Repository creates `registration.json`, append-only
+  `locators.jsonl`, and `git-hint.json`; every Record carries `recorded_at`; the Git Hint
+  contains no `HEAD`; and suspicious remotes are omitted with a non-secret warning.
 
 ## Impl.Log
 
-- [IP] File.Version objects are deliberately deferred. Repository registration is the first
-  complete boundary and gives later file-version producers a stable Repository UUID to
-  target.
-- Product-surface capture is expected to be empty: the new code and tests directly express
-  the accepted boundary, and the removed capture landing pipeline cannot place a separate
-  Capture.Manifest.
+- [CT] This implementation deliberately supersedes the eager File.Version experiment.
+  The Archive can still materialize every committed Artifact, but demand-driven Records are
+  the default because a root Repository Record already makes its committed contents
+  addressable.
+- [RS] The prior Chatlas estimate of roughly 350,000 changed-file occurrences remains useful
+  evidence for retaining lazy materialization and avoiding a million-file default Record
+  catalog.
+- [IP] The pre-development checkpoint already exists at commit `c582530`; this continuation
+  does not create another checkpoint or any final commit.
+- [IP] Full-suite collection initially exposed a duplicate generic `test_cli.py` module
+  name. Renaming the Tarav2 test module to `test_tarav2_cli.py` removed the collision; no
+  product behavior changed.
+- [CT] The user authorized amendment execution with `Implement`; evidence is `Chat.Message`
+  `58c7882dc387dbac021e4a0706d4f54b9219b329c09dc4c316ec2060f68fcd0c`.
+- [IP] The existing pre-development checkpoint at `c582530` remains the checkpoint for this
+  continuing Impl.Req. No additional checkpoint or final commit is created.
+- [IP] The user-reported stop-hook import failure in `Chat.Message`
+  `012fee4933fba5d60f1280cc6074e1c03b148db53decaa2ba29c14992a18fd35` occurred during the
+  deliberate delete/add replacement window for `archive.py`. After the new file landed,
+  both direct import and the installed `tarav tarav2 archive` command loaded successfully;
+  the full suite also exercises the CLI import boundary.
+- Final Product.Surface capture audit is empty: the maintenance-relevant constraints live
+  in the approved Archive design, focused tests, and this native implementation record; no
+  additional product annotation is warranted.
+
+## Outcome
+
+- Replaced the superseded `manifests/` and eager File.Version catalog with the approved
+  `records/artifacts/<artifact-id>/` model. The Record surface is its own Git repository;
+  `repositories/` remains reserved for physically managed repositories.
+- Added one uniform 256-bit lowercase-hex Artifact identity space: root/repoless Artifacts
+  use cryptographically random IDs and Git-contained Artifacts use versioned canonical
+  SHA-256 derivation from Repository ID, object format, exact commit, and subpath.
+- Added generic root Artifact registration, Repository registration, locator hints,
+  public-name/full-ID/prefix resolution, flat dossiers, lazy committed file/folder
+  materialization, and attributed External.Descriptor Records. No Archive operation parses
+  Artifact contents or eagerly walks repository history.
+- Replaced `repository scan` with option-only CLI surfaces for Artifact registration/show,
+  locator addition, External.Descriptor registration, Repository registration, and exact
+  Git Artifact materialization.
+- Amended every Record with `recorded_at`; replaced `locations.json` with appendable
+  `locators.jsonl`; captured admitted Git remotes verbatim while warning and skipping weird
+  values; replaced the Repository `git.json`/`HEAD` snapshot with a deterministic 1–10
+  commit `git-hint.json` retaining raw commit metadata and messages; and added option-only
+  branch selection defaulting to `main`.
+- Repository re-registration is verified as a strict no-op, including after its external
+  remote configuration changes.
+- Verification passed: 20 focused Tarav2 tests; 107 Tarav2, architecture, and maintained
+  CLI tests; all 1,995 project tests; full `src`/`tests` Ruff; `git diff --check`; editable
+  CLI reinstall; direct installed import; and installed Repository/Locator help smokes.
+- The real Chatlas repository was deliberately not registered or materialized. That remains
+  the next operator action after reviewing this implementation.

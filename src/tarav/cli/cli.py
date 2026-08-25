@@ -28,6 +28,9 @@ def build_parser(
     subparsers = parser.add_subparsers(dest="command")
     composed = runtime or create_runtime(hook_registrars=hook_registrars)
     composed.register_commands(subparsers)
+    from tarav.tarav2.commands import register_tarav2_commands
+
+    register_tarav2_commands(subparsers)
     return parser
 
 

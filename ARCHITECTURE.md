@@ -59,6 +59,9 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
   `tarav.tournament`, and `tarav.workspaces` are cohesive domains.
 - `tarav.iterante` and `tarav.iterante2` are separate runtimes; only behavior
   proven identical belongs in `tarav.iterante._shared`.
+- `tarav.tarav2` is the isolated experimental redesign namespace. Existing
+  domains and `tarav.runtime` do not import it; only the umbrella CLI adapter
+  exposes it through the dedicated `tarav tarav2` command branch.
 
 ## Project and surface resolution
 

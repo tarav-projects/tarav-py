@@ -132,6 +132,24 @@ def test_subsystem_import_graph_is_acyclic() -> None:
     assert _strongly_connected_components(graph) == ()
 
 
+def test_tarav2_is_exposed_only_by_the_umbrella_cli_adapter() -> None:
+    tarav2 = PACKAGE_ROOT / "tarav2"
+    offenders: list[str] = []
+    for path in PACKAGE_ROOT.rglob("*.py"):
+        if tarav2 in path.parents:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            modules: tuple[str, ...] = ()
+            if isinstance(node, ast.Import):
+                modules = tuple(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                modules = (node.module,)
+            if any(module.startswith("tarav.tarav2") for module in modules):
+                offenders.append(str(path.relative_to(PACKAGE_ROOT)))
+    assert offenders == ["cli/cli.py"]
+
+
 def test_the_lossless_layer_sits_on_chatlas_and_not_the_other_way() -> None:
     """`chatlas/lossless/` is the loss-preserving layer, not a second chatlas.
 
