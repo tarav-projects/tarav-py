@@ -5,8 +5,7 @@
 - **Goal:** reduce Chatlas to the smallest coherent substrate that captures provider-native
   chat artifacts, indexes sessions, materializes a provider-neutral `Normal.Model`, and
   preserves traceability from normalized objects to retained raw artifacts.
-- **Status:** approved for execution by the user's explicit `MAKE THE REIMPLEMENTATION`
-  instruction; implementation pending.
+- **Status:** implemented and verified; retained as the execution record.
 - **Scope:** `src/tarav/chatlas`, its CLI/runtime composition, direct consumers, tests, and
   architecture guidance whose contracts change with the reduction.
 - **Out of scope:** `Tarav.Diagram`, replacement semantic annotation machinery, rich search,
@@ -96,3 +95,21 @@ Normal.Model
   product vocabulary alive.
 - [IP] Exact resolution is retained only where capture, normalization, traceability, or their
   verification cannot function without it. Anything broader fails the deletion test.
+- [IP] The Normal Model is cached as one derived JSON document per exact Session identity.
+  This keeps the first implementation inspectable and rebuildable without restoring query
+  infrastructure.
+- [IP] Session identity includes provider, provider instance, and native session id. This
+  closes the former cross-instance collision while keeping exact resolution mechanical.
+- [IP] Chatlas no longer supplies an Anchory adapter, an Index touch source, or Skillware
+  support resolution. Those were semantic-consumer responsibilities, not capture,
+  normalization, or traceability.
+
+## Impl.Outcome
+
+- [OK] The maintained pipeline is `Provider.Home → Raw.Archive → Session.Index → Normal.Model`.
+- [OK] `lossless`, the parallel Session Model, Chatlas Anchory, Products, generalized queries,
+  views, heuristics, and convenience workflows were removed without compatibility aliases.
+- [OK] The public CLI is limited to `update`, `index redo/reset`, `raw sources`, and
+  `normal-model`.
+- [OK] Ruff passes, every retained Chatlas module imports, and the full maintained suite passes:
+  `1566 passed`.

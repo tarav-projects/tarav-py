@@ -1,4 +1,3 @@
-# $kw: --from Agentos.Hook --from Chatlas.Update.Pipeline --note [IMPL] agent.turn.stop defers the canonical targeted Chatlas update to the Agentos daemon --supp ^c20260811-50u ^c20260811-54u
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,7 +5,6 @@ from pathlib import Path
 from tarav.hooks import HookError, HookInvocation, HookRegistry
 
 from tarav.chatlas.core import chatlas_update
-from tarav.chatlas.trust_tier import set_trust_tier
 from tarav.chatlas.providers import supported_chatlas_provider_families
 
 
@@ -34,7 +32,6 @@ def update_chatlas_session_from_turn_stop(invocation: HookInvocation) -> None:
         raise HookError("Chatlas turn-stop refresh requires ctx.session_id")
 
     start_path = _existing_start_path(invocation.ctx.get("cwd"))
-    set_trust_tier("append")
     chatlas_update(
         providers=(provider,),
         session_ids=(session_id,),

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from tarav.agent.session_refs import BackingArtifact
 
-from tarav.chatlas.normalization.index_row import index_metadata
+from tarav.chatlas.index_metadata import index_metadata
 
 
 def _write_jsonl(path: Path, records: list[dict]) -> None:

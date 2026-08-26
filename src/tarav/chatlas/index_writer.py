@@ -1,9 +1,7 @@
-# $kw: --from Chatlas.Session.Index
 from __future__ import annotations
 
 import json
 from pathlib import Path
-import re
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
@@ -16,13 +14,10 @@ from tarav.chatlas.index_store import (
     session_index_shard_prefix,
 )
 from tarav.chatlas.index_time import chatlas_index_timestamp_sort_value
-from tarav.chatlas.normalization.session_model.hashes import session_identity_hash
-from tarav.chatlas.normalization.session_model.messages import visible_message_texts
+from tarav.chatlas.session_identity import session_identity_hash
 
 if TYPE_CHECKING:
     from tarav.chatlas.provider_home_adapter import ChatlasDiscoveredSession
-
-_SESSION_SUMMARY_EXCERPT_CHAR_LIMIT = 240
 
 _TRANSCRIPT_EXTRACTABLE_SUFFIXES = {
     "claude-code": {".json", ".jsonl"},
@@ -39,7 +34,6 @@ def _session_index_row(
     session: "ChatlasDiscoveredSession",
     *,
     provider_home: str | None | object = _USE_PROVIDER_INSTANCE_HOME,
-    chatlas_root: "Path | None" = None,
 ) -> dict[str, Any]:
     session_ref = session.session_ref
     backing_artifacts = session.backing_artifacts()
@@ -50,7 +44,7 @@ def _session_index_row(
     home_value = provider_home if isinstance(provider_home, str) else None
 
 
-    from tarav.chatlas.normalization.index_row import index_metadata
+    from tarav.chatlas.index_metadata import index_metadata
 
     meta = index_metadata(session.provider_instance.provider, backing_artifacts)
     if meta is None:
@@ -65,7 +59,7 @@ def _session_index_row(
             ),
             "last_activity_at": _format_stats_timestamp(session_ref.sort_timestamp()),
         }
-    row = {
+    return {
         "class": "agentos_chatlas.session",
         "schema_version": 1,
         "provider": session.provider_instance.provider,
@@ -93,62 +87,10 @@ def _session_index_row(
         "native": meta["native"],
         "identity_hash": session_identity_hash(
             provider=session.provider_instance.provider,
-            provider_session_id=session.session_id,
+            instance=session.provider_instance.instance,
+            session_id=session.session_id,
         ),
     }
-    row["summary"] = _session_index_summary(row, chatlas_root=chatlas_root)
-    return row
-
-
-def _session_index_summary(
-    row: dict[str, Any],
-    *,
-    chatlas_root: "Path | None" = None,
-) -> dict[str, object]:
-    try:
-        from tarav.chatlas.normalization.session_model import build_chatlas_session_model_from_index_row
-        session_model = build_chatlas_session_model_from_index_row(
-            row,
-            chatlas_root=chatlas_root,
-        )
-    except Exception:
-        return _empty_session_index_summary()
-    user_texts = visible_message_texts(session_model, normal_turn_kinds={"user"})
-    assistant_texts = visible_message_texts(session_model, producer_types={"assistant"})
-    all_texts = user_texts + assistant_texts
-    summary = _empty_session_index_summary()
-    summary.update(
-        {
-            "visible_user_turn_count": len(user_texts),
-            "visible_assistant_turn_count": len(assistant_texts),
-            "visible_message_count": len(all_texts),
-            "visible_user_text_char_count": sum(len(text) for text in user_texts),
-            "visible_assistant_text_char_count": sum(len(text) for text in assistant_texts),
-            "visible_text_char_count": sum(len(text) for text in all_texts),
-            "first_user_text_excerpt": _text_excerpt(user_texts[0]) if user_texts else None,
-            "last_user_text_excerpt": _text_excerpt(user_texts[-1]) if user_texts else None,
-            "last_assistant_text_excerpt": _text_excerpt(assistant_texts[-1]) if assistant_texts else None,
-        }
-    )
-    return summary
-
-
-def _empty_session_index_summary() -> dict[str, object]:
-    return {
-        "visible_user_turn_count": 0,
-        "visible_assistant_turn_count": 0,
-        "visible_message_count": 0,
-        "visible_user_text_char_count": 0,
-        "visible_assistant_text_char_count": 0,
-        "visible_text_char_count": 0,
-        "first_user_text_excerpt": None,
-        "last_user_text_excerpt": None,
-        "last_assistant_text_excerpt": None,
-    }
-
-
-def _text_excerpt(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()[:_SESSION_SUMMARY_EXCERPT_CHAR_LIMIT]
 
 
 def _session_project_path(native: dict[str, object]) -> str | None:

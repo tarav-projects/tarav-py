@@ -35,9 +35,10 @@ domain-owned semantic records rather than logging backends.
 
 - `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,
   and provider adapters under `tarav.agent.providers`.
-- `tarav.chatlas` owns the retained chat dataset. Its `lossless` package owns
-  normalization, the provider-neutral Normal Model, compact caches, and
-  content queries. It is a layer of Chatlas, not a second Chatlas product.
+- `tarav.chatlas` owns the chat data train from provider-native capture through
+  Session Index to the provider-neutral Normal Model. It preserves source
+  traceability but does not own search, interpretation, annotation,
+  contextualization, or workflow products.
 - `tarav.indexlab` owns the Index: an ordered stream of `Index.Record`s, the
   semantic projection folded from it, one `IndexResolver` that every consumer
   reads through, rendering, and lint execution. Its explicit `IndexLibrary`
@@ -97,16 +98,12 @@ directory. Annotated code is discovered through the project's `.skw/skw.json`.
 - POI class documentation may be an Index block naturally placed beside its
   emitting check. Static discovery reads annotations; it never imports checker
   modules merely to discover POIs.
-- The kernel declares ports and other subsystems provide the adapters:
-  `ChatlasTouchSource` lives in `chatlas.lossless`, and the composition root
-  injects it into the IndexLab CLI.
-- Chatlas consumers import the public `tarav.chatlas.lossless` package, not its
+- Chatlas consumers import the public `tarav.chatlas.normal_model` package, not its
   internal modules. Only Chatlas command composition reaches into that layer
   to register its CLI.
 
-Persisted `agentos.*` and `tarav.chatlas2.*` identifiers are storage contracts,
-not current Python namespace declarations. Renaming them requires an explicit
-data migration; prose and imports should use current `tarav.*` names.
+Retained Chatlas raw artifacts are authoritative evidence. Its Session Index
+and Normal Model cache are derived surfaces and may be rebuilt.
 
 `tests/test_architecture.py` enforces the import graph and the most important
 ownership boundaries.

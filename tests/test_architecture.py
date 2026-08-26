@@ -150,16 +150,14 @@ def test_tarav2_is_exposed_only_by_the_umbrella_cli_adapter() -> None:
     assert offenders == ["cli/cli.py"]
 
 
-def test_the_lossless_layer_sits_on_chatlas_and_not_the_other_way() -> None:
-    """`chatlas/lossless/` is the loss-preserving layer, not a second chatlas.
+def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
+    """The Normal Model consumes capture/index mechanics without reversing them.
 
-    It reads the archive, the session index, paths, and providers that
-    `chatlas/` owns. Nothing outside `lossless/` may import back into it, or the
-    layering is a circle and the storage side starts depending on the model
-    built from it.
+    Capture and Session Index remain useful without normalization. Only command
+    composition may reach upward to expose both layers through one CLI group.
     """
 
-    lossless = PACKAGE_ROOT / "chatlas" / "lossless"
+    normal_model = PACKAGE_ROOT / "chatlas" / "normal_model"
     reaches_down = False
     for path in (PACKAGE_ROOT / "chatlas").rglob("*.py"):
         source = path.read_text(encoding="utf-8")
@@ -169,36 +167,19 @@ def test_the_lossless_layer_sits_on_chatlas_and_not_the_other_way() -> None:
             for node in ast.walk(tree)
             if isinstance(node, ast.ImportFrom) and node.module is not None
         }
-        inside = lossless in path.parents
+        inside = normal_model in path.parents
         if inside:
             reaches_down |= any(
-                m.startswith("tarav.chatlas.") and not m.startswith("tarav.chatlas.lossless")
+                m.startswith("tarav.chatlas.") and not m.startswith("tarav.chatlas.normal_model")
                 for m in modules
             )
         elif path.name != "commands.py":
             # commands.py is the composition point: it builds the one `tarav chatlas`
             # group and hands its subparsers to the layer. Everything else in
             # chatlas/ must stay below the layer, not reach up into it.
-            assert not any(m.startswith("tarav.chatlas.lossless") for m in modules), path
-            assert "from .lossless" not in source, path
-    assert reaches_down, "the lossless layer should be using what chatlas owns"
-
-
-def test_chatlas2_text_anonymizer_has_no_model_or_provider_dependency() -> None:
-    path = PACKAGE_ROOT / "chatlas" / "lossless" / "anonymizer.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    imported = {
-        node.module
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module is not None
-    }
-    imported.update(
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    )
-    assert not any(name.startswith("tarav") for name in imported)
+            assert not any(m.startswith("tarav.chatlas.normal_model") for m in modules), path
+            assert "from .normal_model" not in source, path
+    assert reaches_down, "the Normal Model should use Chatlas capture/index mechanics"
 
 
 def test_hooks_foundation_does_not_import_daemon_adapters() -> None:
@@ -206,26 +187,14 @@ def test_hooks_foundation_does_not_import_daemon_adapters() -> None:
     assert "daemon" not in imports["hooks"]
 
 
-def test_consumers_import_the_lossless_package_and_not_its_submodules() -> None:
-    """The layer's public surface is `tarav.chatlas.lossless`, and only that.
+def test_consumers_import_the_normal_model_package_not_its_submodules() -> None:
+    """Only the package surface is a supported Normal Model dependency."""
 
-    Its `__init__` deliberately exports `provide_normal_model` -- the cache-transparent
-    reader -- while withholding the pipeline's direct builder, which neither reads nor
-    writes the cache. A consumer that imports `lossless.pipeline` walks around that
-    choice and gets the uncached path without ever asking for it, which is how
-    `index/chatlas.py` spent every session read re-deriving whole transcripts from raw
-    JSONL. The submodule split is layer-internal; binding to it makes a consumer's
-    behavior depend on where the layer happens to keep things.
-
-    Tests under `tests/chatlas_lossless/` are exempt by construction: this walks `src/`
-    only, because testing an internal is exactly what a unit test is for.
-    """
-
-    prefix = "tarav.chatlas.lossless"
-    lossless = PACKAGE_ROOT / "chatlas" / "lossless"
+    prefix = "tarav.chatlas.normal_model"
+    normal_model = PACKAGE_ROOT / "chatlas" / "normal_model"
     offenders: list[str] = []
     for path in PACKAGE_ROOT.rglob("*.py"):
-        if lossless in path.parents:
+        if normal_model in path.parents:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
@@ -238,7 +207,7 @@ def test_consumers_import_the_lossless_package_and_not_its_submodules() -> None:
                 if name.startswith(prefix + "."):
                     offenders.append(f"{path.relative_to(PACKAGE_ROOT)}: {name}")
     assert offenders == [], (
-        "import `tarav.chatlas.lossless` itself, not its submodules: "
+        "import `tarav.chatlas.normal_model`, not its submodules: "
         + "; ".join(sorted(offenders))
     )
 

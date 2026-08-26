@@ -1,4 +1,3 @@
-# $kw: --from Chatlas.Dataset --from Provider.Home
 from __future__ import annotations
 
 from pathlib import Path

@@ -95,7 +95,7 @@ def test_cold_session_cache_skips_normal_update_and_full_scan_bypasses(
     rollout_path = _write_codex_session(codex_home, session_id=session_id, timestamp=old_timestamp)
     _configure_chatlas(environment, codex_home)
 
-    assert main(["chatlas", "index", "update", "--provider", "codex", "--json"]) == 0
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
     first_payload = captured_json(capsys)
     first_entry = _cache_entry(first_payload, session_id)
     assert first_entry["scan_state"] == "cold"
@@ -106,7 +106,7 @@ def test_cold_session_cache_skips_normal_update_and_full_scan_bypasses(
 
     _write_codex_session(codex_home, session_id=session_id, timestamp=old_timestamp, text="changed")
 
-    assert main(["chatlas", "index", "update", "--provider", "codex", "--json"]) == 0
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
     skipped_payload = captured_json(capsys)
     skipped_entry = _cache_entry(skipped_payload, session_id)
     assert skipped_payload["cache"]["cold_skip_count"] == 1
@@ -116,13 +116,10 @@ def test_cold_session_cache_skips_normal_update_and_full_scan_bypasses(
     assert rollout_path.exists()
 
     assert main([
-        "chatlas",
-        "index",
-        "update",
+        "chatlas", "update",
         "--provider",
         "codex",
         "--full-scan",
-        "--json",
     ]) == 0
     full_scan_payload = captured_json(capsys)
     full_scan_entry = _cache_entry(full_scan_payload, session_id)
@@ -138,13 +135,10 @@ def test_cold_session_cache_skips_normal_update_and_full_scan_bypasses(
     _write_codex_session(codex_home, session_id=session_id, timestamp=recent_timestamp, text="active again")
 
     assert main([
-        "chatlas",
-        "index",
-        "update",
+        "chatlas", "update",
         "--provider",
         "codex",
         "--full-scan",
-        "--json",
     ]) == 0
     reactivated_payload = captured_json(capsys)
     reactivated_entry = _cache_entry(reactivated_payload, session_id)
@@ -166,7 +160,7 @@ def test_missing_scan_state_is_hot_and_recent_activity_writes_hot_entry(
     _write_codex_session(codex_home, session_id=session_id, timestamp=recent_timestamp)
     _configure_chatlas(environment, codex_home)
 
-    assert main(["chatlas", "update", "--provider", "codex", "--json"]) == 0
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
     first_payload = captured_json(capsys)
     first_entry = _cache_entry(first_payload, session_id)
     assert "scan_state" not in first_entry
@@ -174,7 +168,7 @@ def test_missing_scan_state_is_hot_and_recent_activity_writes_hot_entry(
 
     _write_codex_session(codex_home, session_id=session_id, timestamp=recent_timestamp, text="changed")
 
-    assert main(["chatlas", "update", "--provider", "codex", "--json"]) == 0
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
     changed_payload = captured_json(capsys)
     changed_entry = _cache_entry(changed_payload, session_id)
     assert changed_payload["cache"]["cold_skip_count"] == 0
@@ -198,7 +192,7 @@ def test_cold_session_cache_uses_configured_default_cutoff(
         chatlas_config={"cold_session_cache": {"cutoff": "45d"}},
     )
 
-    assert main(["chatlas", "index", "update", "--provider", "codex", "--json"]) == 0
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
     payload = captured_json(capsys)
     entry = _cache_entry(payload, session_id)
     assert payload["instances"][0]["cold_session_cutoff_seconds"] == 45 * 24 * 60 * 60
@@ -228,7 +222,7 @@ def test_cold_session_cache_provider_override_can_shorten_cutoff(
         },
     )
 
-    assert main(["chatlas", "index", "update", "--provider", "codex", "--json"]) == 0
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
     payload = captured_json(capsys)
     entry = _cache_entry(payload, session_id)
     assert payload["instances"][0]["cold_session_cutoff_seconds"] == 10 * 24 * 60 * 60

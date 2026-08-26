@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import json
 import os
 import time
 from pathlib import Path
@@ -8,11 +10,74 @@ import pytest
 
 from tarav.testing import TaravTestEnvironment
 from tarav.cli.cli import main
-from ._helpers import captured_json, read_json_file, write_chatlas_codex_source
-from .test_recent_window_update import _write_codex_session
+from ._helpers import (
+    captured_json,
+    read_json_file,
+    write_chatlas_codex_source,
+    write_text_file,
+)
 
 ALPHA_ID = "019ccafb-1111-7000-aaaa-000000000001"
 BETA_ID = "019ccafb-2222-7000-aaaa-000000000002"
+
+
+def _write_codex_session(
+    codex_home: Path,
+    *,
+    session_id: str,
+    timestamp: float,
+    text: str,
+    in_index: bool = True,
+) -> Path:
+    timestamp_text = (
+        datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+    rollout = (
+        codex_home
+        / "sessions"
+        / "2026"
+        / "03"
+        / "25"
+        / f"rollout-{session_id}.jsonl"
+    )
+    events = [
+        {
+            "timestamp": timestamp_text,
+            "type": "session_meta",
+            "payload": {"id": session_id, "originator": "codex_cli_rs", "cwd": "/tmp"},
+        },
+        {
+            "timestamp": timestamp_text,
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": text}],
+            },
+        },
+    ]
+    write_text_file(
+        rollout,
+        "\n".join(json.dumps(event) for event in events) + "\n",
+    )
+    os.utime(rollout, (timestamp, timestamp))
+    if in_index:
+        index_path = codex_home / "session_index.jsonl"
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        with index_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "id": session_id,
+                        "thread_name": text,
+                        "updated_at": timestamp_text,
+                    }
+                )
+                + "\n"
+            )
+    return rollout
 
 
 def _isolate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
@@ -45,7 +110,7 @@ def test_session_scoped_update_runs_standard_mechanics(
     maintenance — not a parallel path that skips them."""
     codex_home = _isolate(monkeypatch, tmp_path)
 
-    assert main(["chatlas", "index", "update", "--provider", "codex", "--json"]) == 0
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
     capsys.readouterr()
     entries_before = _derivation_cache_entries()
     assert set(entries_before) == {ALPHA_ID, BETA_ID}
@@ -59,7 +124,6 @@ def test_session_scoped_update_runs_standard_mechanics(
         "chatlas", "update",
         "--provider", "codex",
         "--session-id", ALPHA_ID,
-        "--json",
     ]) == 0
     payload = captured_json(capsys)
 
@@ -84,7 +148,7 @@ def test_session_scoped_update_agrees_with_following_bulk_run(
     """After a scoped refresh, a bulk run sees the session unchanged —
     scope narrows the candidates, never the mechanics."""
     codex_home = _isolate(monkeypatch, tmp_path)
-    assert main(["chatlas", "index", "update", "--provider", "codex", "--json"]) == 0
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
     capsys.readouterr()
 
     # advance only alpha's rollout; the shared session_index.jsonl stays
@@ -97,11 +161,11 @@ def test_session_scoped_update_agrees_with_following_bulk_run(
         in_index=False,
     )
     assert main([
-        "chatlas", "update", "--provider", "codex", "--session-id", ALPHA_ID, "--json",
+        "chatlas", "update", "--provider", "codex", "--session-id", ALPHA_ID,
     ]) == 0
     capsys.readouterr()
 
-    assert main(["chatlas", "index", "update", "--provider", "codex", "--json"]) == 0
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
     payload = captured_json(capsys)
     assert payload["native_scan"]["changed_session_count"] == 0
     assert payload["cache"]["hit_count"] == 2

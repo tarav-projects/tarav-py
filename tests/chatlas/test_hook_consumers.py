@@ -11,19 +11,12 @@ def test_turn_stop_refresh_is_registered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     update_calls: list[dict[str, object]] = []
-    trust_tiers: list[str] = []
 
     monkeypatch.setattr(
         hook_consumers,
         "chatlas_update",
         lambda **kwargs: update_calls.append(kwargs) or {"status": "ok"},
     )
-    monkeypatch.setattr(
-        hook_consumers,
-        "set_trust_tier",
-        trust_tiers.append,
-    )
-
     registry = HookRegistry()
     hook_consumers.register_chatlas_hook_callbacks(registry)
     invocation = HookInvocation(
@@ -34,7 +27,6 @@ def test_turn_stop_refresh_is_registered(
 
     registry.dispatch(invocation)
 
-    assert trust_tiers == ["append"]
     assert update_calls == [
         {
             "providers": ("codex",),

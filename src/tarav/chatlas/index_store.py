@@ -1,4 +1,3 @@
-# $kw: --from Chatlas.Session.Index
 from __future__ import annotations
 
 from collections import OrderedDict

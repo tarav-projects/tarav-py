@@ -1,4 +1,3 @@
-# $kw: ^chatlas-delta-scan --from Chatlas.Update.Pipeline --from Scan.Scope --from Provider.Home.Adapter --note [CT] update and redo discovery route through the provider-home adapter while preserving the Provider.Home to Raw.Archive to Session.Index lifecycle ^c20260714-2u --supp redo boundary cleanup authorized ^c20260730-34u
 from __future__ import annotations
 
 from copy import deepcopy
@@ -494,7 +493,6 @@ def _redo_provider_instance_index(
         _session_index_row(
             session,
             provider_home=manifest_home,
-            chatlas_root=raw_root.parent,
         )
         for session in sessions
     ]
@@ -539,7 +537,6 @@ def _derive_delta_index_rows_from_chatlas_raw(
         _session_index_row(
             session,
             provider_home=provider_instance_home(instance),
-            chatlas_root=raw_root.parent,
         )
         for session in archived_sessions
     ]

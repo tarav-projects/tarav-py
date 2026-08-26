@@ -86,9 +86,6 @@
   explicit `IndexLibrary`. Each workspace is also its Bloberia depot and Git
   repository root. Before changing or operating the kernel, read
   [the IndexLab developer guide](notes/live/746-indexlab-dev-guide.md).
-- The kernel declares ports; other subsystems provide adapters.
-  `ChatlasTouchSource` lives in `chatlas.lossless`, and the CLI takes a
-  touch-source factory from the composition root.
 - `tarav.index_model` is not the Index model. It holds the written form of an
   Index line — label grammar and the identity hashes Chatlas dossiers assert
   over the `Line.Type + body + anchor` triplet.
@@ -114,15 +111,17 @@
 
 ## Chatlas
 
-- `tarav.chatlas` owns archives, session indexes, and provider adapters.
-  `tarav.chatlas.lossless` owns the provider-neutral Normal Model and its cache.
-- Nothing in the lower Chatlas layer imports `lossless`; command composition is
-  the exception that registers the public `tarav chatlas` leaves.
-- Consumers import `tarav.chatlas.lossless`, not its internal modules.
-- Chat surfaces are immutable evidence. Stable derived surfaces are maintained
-  and may be corrected or deleted; stability is not immutability.
-- Persisted `tarav.chatlas2.*` identifiers remain valid historical storage
-  contracts until a dedicated migration changes them.
+- `tarav.chatlas` captures provider-native chat artifacts, indexes sessions,
+  materializes the provider-neutral Normal Model, and preserves traceability
+  from normalized objects to retained raw artifacts.
+- Chatlas does not own search, interpretation, annotation, contextualization,
+  or workflow products. Add such behavior in a consumer domain.
+- Capture and Session Index modules do not import `normal_model`; command
+  composition is the exception that registers the public `tarav chatlas`
+  leaves.
+- Consumers import `tarav.chatlas.normal_model`, not its internal modules.
+- Retained raw artifacts are the evidence surface. The Session Index and Normal
+  Model cache are derived, replaceable, and rebuildable.
 
 ## Operational logging
 
