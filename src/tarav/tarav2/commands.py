@@ -7,14 +7,34 @@ import json
 from pathlib import Path
 
 from tarav._core.errors import CliError
+from tarav._core.persistence import atomic_write_json
+from tarav._core.project import require_agentos_project
 
 from .archive import Archive, ArchiveError, RegisteredArtifact
+from .diagram import (
+    LINE_ANNOTATION_TYPE,
+    LINE_SUPPORT_ANNOTATION_TYPE,
+    CaptureManifest,
+    ChatlasEvidence,
+    DiagramConfiguration,
+    DiagramError,
+    DiagramModelError,
+    DiagramNamespace,
+    USER_TOUCHED_CHATLAS_INDEX,
+)
 
 
 def _archive_root(value: str | None) -> Path:
     if value is not None:
         return Path(value).expanduser().resolve()
     return (Path.home() / "Documents" / "tarav-archive").resolve()
+
+
+def _diagram_configuration(
+    value: str | None, *, create: bool = False
+) -> DiagramConfiguration:
+    path = Path(value).expanduser().resolve() if value is not None else None
+    return DiagramConfiguration.load(path, create=create)
 
 
 def _artifact_payload(artifact: RegisteredArtifact) -> dict[str, object]:
@@ -30,7 +50,9 @@ def _print_json(payload: dict[str, object]) -> None:
     print(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
-def _emit(args: argparse.Namespace, payload: dict[str, object], lines: tuple[str, ...]) -> int:
+def _emit(
+    args: argparse.Namespace, payload: dict[str, object], lines: tuple[str, ...]
+) -> int:
     if args.json:
         _print_json(payload)
     else:
@@ -253,6 +275,259 @@ def _cmd_reference_file(args: argparse.Namespace) -> int:
     return 0
 
 
+def _diagram_evidence(args: argparse.Namespace) -> ChatlasEvidence:
+    root = (
+        Path(args.chatlas_root).expanduser().resolve()
+        if args.chatlas_root is not None
+        else None
+    )
+    return ChatlasEvidence(chatlas_root=root)
+
+
+def _cmd_diagram_namespace_create(args: argparse.Namespace) -> int:
+    try:
+        if args.name == USER_TOUCHED_CHATLAS_INDEX:
+            namespace = DiagramNamespace.create_user_touched_chatlas_index(
+                Path(args.location)
+            )
+        else:
+            namespace = DiagramNamespace.create(Path(args.location), name=args.name)
+        if args.mount or args.default:
+            _diagram_configuration(args.diagram_config, create=True).mount(
+                namespace, default=args.default
+            )
+    except (DiagramError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    return _emit(
+        args,
+        {
+            "status": "ok",
+            "command": "tarav2 diagram namespace create",
+            "namespace": {
+                "id": namespace.id,
+                "name": namespace.name,
+                "location": str(namespace.root),
+            },
+        },
+        (
+            f"namespace: {namespace.name}",
+            f"id: {namespace.id}",
+            f"location: {namespace.root}",
+        ),
+    )
+
+
+def _cmd_diagram_namespace_mount(args: argparse.Namespace) -> int:
+    try:
+        namespace = DiagramNamespace.open(Path(args.location))
+        config = _diagram_configuration(args.diagram_config, create=True).mount(
+            namespace, default=args.default
+        )
+    except (DiagramError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    return _emit(
+        args,
+        {
+            "status": "ok",
+            "command": "tarav2 diagram namespace mount",
+            "namespace_id": namespace.id,
+            "diagram_config": str(config.path),
+        },
+        (f"mounted: {namespace.name}", f"config: {config.path}"),
+    )
+
+
+def _cmd_diagram_namespace_list(args: argparse.Namespace) -> int:
+    try:
+        config = _diagram_configuration(args.diagram_config)
+        namespaces = config.diagram().namespaces
+    except (DiagramError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    payload = [
+        {
+            "id": item.id,
+            "name": item.name,
+            "location": str(item.root),
+            "default": item.id == config.default_namespace_id,
+        }
+        for item in namespaces
+    ]
+    return _emit(
+        args,
+        {
+            "status": "ok",
+            "command": "tarav2 diagram namespace list",
+            "namespaces": payload,
+        },
+        tuple(
+            f"{('*' if item['default'] else '-')} {item['name']}  {item['id']}  {item['location']}"
+            for item in payload
+        ),
+    )
+
+
+def _capture_model(args: argparse.Namespace):
+    config = _diagram_configuration(args.diagram_config)
+    diagram = config.diagram()
+    if args.model_ship:
+        return diagram, diagram.model(args.model_ship)
+    project = require_agentos_project(project=args.project)
+    return diagram, diagram.ensure_project_model(project.root)
+
+
+def _cmd_diagram_capture_template(args: argparse.Namespace) -> int:
+    path = Path(args.manifest).expanduser().resolve()
+    if path.exists():
+        raise CliError(f"Capture.Manifest already exists: {path}")
+    try:
+        _, model = _capture_model(args)
+        manifest = CaptureManifest.template(
+            annotation_type=args.annotation_type,
+            model_ship=model.ship,
+            block_ship=args.block_ship,
+            line_ship=args.line_ship,
+        )
+        atomic_write_json(path, manifest.to_dict(), ensure_ascii=False)
+    except (DiagramError, DiagramModelError, OSError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    return _emit(
+        args,
+        {
+            "status": "ok",
+            "command": "tarav2 diagram capture template",
+            "manifest": str(path),
+            "capture": manifest.to_dict(),
+        },
+        (f"manifest: {path}",),
+    )
+
+
+def _cmd_diagram_capture_check(args: argparse.Namespace) -> int:
+    path = Path(args.manifest).expanduser().resolve()
+    try:
+        manifest = CaptureManifest.read(path)
+        model = (
+            _diagram_configuration(args.diagram_config)
+            .diagram()
+            .model(manifest.model_ship)
+        )
+        findings = manifest.check(model.namespace, evidence=_diagram_evidence(args))
+    except (DiagramError, DiagramModelError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    payload = {
+        "status": "poi" if findings else "ok",
+        "command": "tarav2 diagram capture check",
+        "manifest": str(path),
+        "findings": [finding.to_dict() for finding in findings],
+    }
+    return _emit(
+        args,
+        payload,
+        (
+            f"manifest: {path}",
+            f"findings: {len(findings)}",
+        ),
+    )
+
+
+def _cmd_diagram_capture_apply(args: argparse.Namespace) -> int:
+    path = Path(args.manifest).expanduser().resolve()
+    try:
+        manifest = CaptureManifest.read(path)
+        diagram = _diagram_configuration(args.diagram_config).diagram()
+        receipt = diagram.apply(
+            manifest,
+            evidence=_diagram_evidence(args),
+        )
+    except (DiagramError, DiagramModelError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    payload = {
+        "status": "poi" if receipt.findings else "ok",
+        "command": "tarav2 diagram capture apply",
+        "namespace_id": receipt.namespace_id,
+        "manifest": str(path),
+        "receipt": receipt.to_dict(),
+    }
+    return _emit(
+        args,
+        payload,
+        (
+            f"namespace: {receipt.namespace_id}",
+            f"created: {len(receipt.created)}",
+            f"existing: {len(receipt.existing)}",
+            f"findings: {len(receipt.findings)}",
+            f"commit: {receipt.commit}",
+        ),
+    )
+
+
+def _annotation_payload(annotation) -> dict[str, object]:
+    return {
+        "id": annotation.id,
+        **annotation.to_record(),
+        "assertions": list(annotation.assertions()),
+        "score_vector": annotation.score_vector(),
+        "standing": annotation.standing,
+    }
+
+
+def _cmd_diagram_annotation_show(args: argparse.Namespace) -> int:
+    try:
+        annotation = (
+            _diagram_configuration(args.diagram_config)
+            .diagram()
+            .annotation(args.annotation, namespace=args.namespace)
+        )
+        payload = {
+            "status": "ok",
+            "command": "tarav2 diagram annotation show",
+            "namespace_id": annotation.namespace.id,
+            "annotation": _annotation_payload(annotation),
+        }
+        if args.render_support:
+            payload["rendered_support"] = annotation.specialize().render_support(
+                _diagram_evidence(args)
+            )
+    except (DiagramError, DiagramModelError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    return _emit(
+        args,
+        payload,
+        (
+            f"annotation: {annotation.id}",
+            f"type: {annotation.type}",
+            f"standing: {annotation.standing}",
+        ),
+    )
+
+
+def _cmd_diagram_line_show(args: argparse.Namespace) -> int:
+    try:
+        annotations = (
+            _diagram_configuration(args.diagram_config)
+            .diagram()
+            .line(args.line_ship, namespace=args.namespace)
+        )
+    except (DiagramError, DiagramModelError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    payload = {
+        "status": "ok",
+        "command": "tarav2 diagram line show",
+        "line_ship": args.line_ship,
+        "annotations": [
+            _annotation_payload(annotation.annotation) for annotation in annotations
+        ],
+    }
+    return _emit(
+        args,
+        payload,
+        (
+            f"line: {args.line_ship}",
+            f"annotations: {len(annotations)}",
+        ),
+    )
+
+
 def _add_archive_option(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--archive",
@@ -273,14 +548,32 @@ def _add_common_output_options(parser: argparse.ArgumentParser) -> None:
     _add_json_option(parser)
 
 
+def _add_diagram_config_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--diagram-config",
+        help="Machine-local Diagram configuration; defaults to ~/.tarav/diagram.json.",
+    )
+
+
+def _add_chatlas_root_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--chatlas-root",
+        help="Chatlas root used to resolve producer and support Turn references.",
+    )
+
+
 def register_tarav2_commands(subparsers: argparse._SubParsersAction) -> None:
-    tarav2 = subparsers.add_parser("tarav2", help="Experimental Tarav redesign surfaces.")
+    tarav2 = subparsers.add_parser(
+        "tarav2", help="Experimental Tarav redesign surfaces."
+    )
     tarav2_commands = tarav2.add_subparsers(dest="tarav2_command", required=True)
     archive = tarav2_commands.add_parser(
         "archive",
         help="Register Artifacts and retain flat Records about them.",
     )
-    archive_commands = archive.add_subparsers(dest="tarav2_archive_command", required=True)
+    archive_commands = archive.add_subparsers(
+        dest="tarav2_archive_command", required=True
+    )
 
     initialize = archive_commands.add_parser("init", help="Initialize an Archive root.")
     _add_common_output_options(initialize)
@@ -301,7 +594,9 @@ def register_tarav2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     artifact_register.add_argument("--locator", required=True, help="Path or URI hint.")
     artifact_register.add_argument("--name", help="Unique public Artifact name.")
-    artifact_register.add_argument("--kind", default="Artifact", help="Artifact kind claim.")
+    artifact_register.add_argument(
+        "--kind", default="Artifact", help="Artifact kind claim."
+    )
     _add_common_output_options(artifact_register)
     artifact_register.set_defaults(handler=_cmd_artifact_register)
 
@@ -340,7 +635,9 @@ def register_tarav2_commands(subparsers: argparse._SubParsersAction) -> None:
         "add",
         help="Register one Artifact as an External.Descriptor of another.",
     )
-    descriptor_add.add_argument("--artifact", required=True, help="Target Artifact selector.")
+    descriptor_add.add_argument(
+        "--artifact", required=True, help="Target Artifact selector."
+    )
     descriptor_add.add_argument(
         "--descriptor",
         required=True,
@@ -444,9 +741,144 @@ def register_tarav2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     materialize.add_argument("--repository", required=True, help="Repository selector.")
     materialize.add_argument("--commit", required=True, help="Git commit or revision.")
-    materialize.add_argument("--path", required=True, help="Committed relative subpath.")
+    materialize.add_argument(
+        "--path", required=True, help="Committed relative subpath."
+    )
     _add_common_output_options(materialize)
     materialize.set_defaults(handler=_cmd_repository_materialize)
+
+    diagram = tarav2_commands.add_parser(
+        "diagram",
+        help="Capture grounded semantic Annotations over Chatlas turns.",
+    )
+    diagram_commands = diagram.add_subparsers(
+        dest="tarav2_diagram_command",
+        required=True,
+    )
+
+    namespace = diagram_commands.add_parser(
+        "namespace", help="Create, mount, and inspect Diagram Namespaces."
+    )
+    namespace_commands = namespace.add_subparsers(
+        dest="tarav2_diagram_namespace_command", required=True
+    )
+    namespace_create = namespace_commands.add_parser(
+        "create", help="Initialize one independent Namespace Git repository."
+    )
+    namespace_create.add_argument("--location", required=True)
+    namespace_create.add_argument("--name", required=True)
+    namespace_create.add_argument("--mount", action="store_true")
+    namespace_create.add_argument("--default", action="store_true")
+    _add_diagram_config_option(namespace_create)
+    _add_json_option(namespace_create)
+    namespace_create.set_defaults(handler=_cmd_diagram_namespace_create)
+    namespace_mount = namespace_commands.add_parser(
+        "mount", help="Add an existing Namespace to the machine load path."
+    )
+    namespace_mount.add_argument("--location", required=True)
+    namespace_mount.add_argument("--default", action="store_true")
+    _add_diagram_config_option(namespace_mount)
+    _add_json_option(namespace_mount)
+    namespace_mount.set_defaults(handler=_cmd_diagram_namespace_mount)
+    namespace_list = namespace_commands.add_parser(
+        "list", help="List mounted Namespaces in load order."
+    )
+    _add_diagram_config_option(namespace_list)
+    _add_json_option(namespace_list)
+    namespace_list.set_defaults(handler=_cmd_diagram_namespace_list)
+
+    capture = diagram_commands.add_parser(
+        "capture",
+        help="Develop, check, and apply Capture.Manifests.",
+    )
+    capture_commands = capture.add_subparsers(
+        dest="tarav2_diagram_capture_command",
+        required=True,
+    )
+    capture_template = capture_commands.add_parser(
+        "template",
+        help="Write one editable Capture.Manifest template.",
+    )
+    capture_template.add_argument("--manifest", required=True, help="Output JSON path.")
+    capture_template.add_argument(
+        "--annotation-type",
+        choices=(LINE_ANNOTATION_TYPE, LINE_SUPPORT_ANNOTATION_TYPE),
+        default=LINE_ANNOTATION_TYPE,
+        help="Initial Annotation type.",
+    )
+    capture_template.add_argument("--model-ship", help="Existing Model ship UUID.")
+    capture_template.add_argument(
+        "--project",
+        nargs="?",
+        const=".",
+        help="Project whose main Model should receive the capture.",
+    )
+    capture_template.add_argument("--block-ship", help="Existing Block ship UUID.")
+    capture_template.add_argument("--line-ship", help="Existing Line ship UUID.")
+    _add_diagram_config_option(capture_template)
+    _add_json_option(capture_template)
+    capture_template.set_defaults(handler=_cmd_diagram_capture_template)
+
+    capture_check = capture_commands.add_parser(
+        "check",
+        help="Report mechanical Capture.Manifest POIs.",
+    )
+    capture_check.add_argument("--manifest", required=True, help="Capture JSON path.")
+    _add_diagram_config_option(capture_check)
+    _add_chatlas_root_option(capture_check)
+    _add_json_option(capture_check)
+    capture_check.set_defaults(handler=_cmd_diagram_capture_check)
+
+    capture_apply = capture_commands.add_parser(
+        "apply",
+        help="Apply all structurally representable Annotations and report POIs.",
+    )
+    capture_apply.add_argument("--manifest", required=True, help="Capture JSON path.")
+    _add_diagram_config_option(capture_apply)
+    _add_chatlas_root_option(capture_apply)
+    _add_json_option(capture_apply)
+    capture_apply.set_defaults(handler=_cmd_diagram_capture_apply)
+
+    annotation = diagram_commands.add_parser(
+        "annotation",
+        help="Inspect Diagram Annotations.",
+    )
+    annotation_commands = annotation.add_subparsers(
+        dest="tarav2_diagram_annotation_command",
+        required=True,
+    )
+    annotation_show = annotation_commands.add_parser(
+        "show",
+        help="Show one Annotation and optionally render its selected support.",
+    )
+    annotation_show.add_argument("--annotation", required=True, help="Annotation UUID.")
+    annotation_show.add_argument(
+        "--namespace", help="Namespace id or name; otherwise use load order."
+    )
+    annotation_show.add_argument(
+        "--render-support",
+        action="store_true",
+        help="Resolve and render the selected Chatlas turns.",
+    )
+    _add_diagram_config_option(annotation_show)
+    _add_chatlas_root_option(annotation_show)
+    _add_json_option(annotation_show)
+    annotation_show.set_defaults(handler=_cmd_diagram_annotation_show)
+
+    line = diagram_commands.add_parser("line", help="Inspect one semantic Line ship.")
+    line_commands = line.add_subparsers(
+        dest="tarav2_diagram_line_command",
+        required=True,
+    )
+    line_show = line_commands.add_parser(
+        "show",
+        help="Show every captured Annotation on one Line ship.",
+    )
+    line_show.add_argument("--line-ship", required=True, help="Line ship UUID.")
+    line_show.add_argument("--namespace", help="Namespace id or name.")
+    _add_diagram_config_option(line_show)
+    _add_json_option(line_show)
+    line_show.set_defaults(handler=_cmd_diagram_line_show)
 
 
 __all__ = ["register_tarav2_commands"]

@@ -5,7 +5,7 @@
 - **Goal:** restore one directory per materialized Chatlas Normal Model, split its
   independently useful collections into JSONL files, and make `normal-model` print
   Events by default while adding other collections only through explicit flags.
-- **Status:** approved for implementation by the user's explicit `implement` instruction.
+- **Status:** implemented and verified; retained as the execution record.
 - **Scope:** Normal Model cache persistence and reader APIs, the `tarav chatlas
   normal-model` output contract, focused tests, and installed CLI verification.
 - **Out of scope:** incremental append mutation, generalized querying, pagination,
@@ -63,3 +63,23 @@
   boundary. Its query, View, Anchory, and semantic-product machinery remains deleted.
 - [IP] Product capture may end with a retryable gap because the old Chatlas grounding path
   was deliberately removed during the core reimplementation.
+- [OK] The cache envelope is `metadata.json`; it stores cache identity inputs, the cache
+  key, the compact model header, and collection counts. It stores no collection rows.
+- [OK] Materialization writes all five files into a temporary sibling directory and swaps
+  the complete directory into place under one Session identity.
+- [OK] The installed CLI returns only the header and 9,065 Events by default for the
+  retained verification session; `--all` returns 763 Messages, 531 Turns, and 1,728 Loaded
+  Contexts as additional collections.
+- [OK] Ruff, 92 focused Chatlas/architecture tests, and the full maintained suite pass:
+  `1568 passed`.
+
+## Impl.Outcome
+
+- [OK] The physical model boundary is independently streamable without restoring a query
+  subsystem.
+- [OK] The public `NormalModelCacheReader` streams each collection and reconstructs the
+  complete model on demand.
+- [OK] The CLI exposes additive `--messages`, `--turns`, `--loaded-contexts`, and `--all`
+  options while preserving uncached `--include-raw` behavior.
+- [OK] The superseded live single-file cache was removed and replaced by the verified
+  directory materialization; both repository changes remain uncommitted for review.

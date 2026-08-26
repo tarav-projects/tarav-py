@@ -4,7 +4,11 @@ from pathlib import Path
 
 from tarav.chatlas.session_resolver import resolve_session_index_row
 
-from .cache import provide_normal_model_from_row
+from .cache import (
+    NormalModelCacheReader,
+    provide_normal_model_from_row,
+    provide_normal_model_reader_from_row,
+)
 from .model import JsonObject
 from .pipeline import build_normal_model_from_row
 
@@ -32,6 +36,29 @@ def provide_normal_model(
     )
 
 
+def provide_normal_model_reader(
+    *,
+    session_id: str | None = None,
+    identity_hash: str | None = None,
+    provider: str | None = None,
+    instance: str | None = None,
+    chatlas_root: Path | None = None,
+    refresh: bool = False,
+) -> NormalModelCacheReader:
+    row = resolve_session_index_row(
+        session_id=session_id,
+        identity_hash=identity_hash,
+        provider=provider,
+        instance=instance,
+        chatlas_root=chatlas_root,
+    )
+    return provide_normal_model_reader_from_row(
+        row,
+        chatlas_root=chatlas_root,
+        refresh=refresh,
+    )
+
+
 def compute_normal_model(
     *,
     session_id: str | None = None,
@@ -51,4 +78,8 @@ def compute_normal_model(
     return build_normal_model_from_row(row, include_raw=include_raw)
 
 
-__all__ = ["compute_normal_model", "provide_normal_model"]
+__all__ = [
+    "compute_normal_model",
+    "provide_normal_model",
+    "provide_normal_model_reader",
+]

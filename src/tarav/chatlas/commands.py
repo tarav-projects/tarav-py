@@ -7,7 +7,10 @@ import sys
 
 from tarav.chatlas.core import chatlas_raw_sources, chatlas_update
 from tarav.chatlas.delta_scan import chatlas_index_redo, chatlas_index_reset
-from tarav.chatlas.normal_model import compute_normal_model, provide_normal_model
+from tarav.chatlas.normal_model import (
+    compute_normal_model,
+    provide_normal_model_reader,
+)
 
 
 def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
@@ -62,6 +65,27 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "--include-raw",
         action="store_true",
         help="Attach raw normalized fragments without caching.",
+    )
+    normal_model.add_argument(
+        "--messages",
+        action="store_true",
+        help="Add projected Messages to the default Event output.",
+    )
+    normal_model.add_argument(
+        "--turns",
+        action="store_true",
+        help="Add projected Turns to the default Event output.",
+    )
+    normal_model.add_argument(
+        "--loaded-contexts",
+        action="store_true",
+        help="Add Agent Loaded Contexts to the default Event output.",
+    )
+    normal_model.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_collections",
+        help="Add Messages, Turns, and Loaded Contexts.",
     )
     normal_model.set_defaults(handler=_cmd_normal_model)
 
@@ -153,11 +177,47 @@ def _cmd_raw_sources(args: argparse.Namespace) -> int:
 
 def _cmd_normal_model(args: argparse.Namespace) -> int:
     reference = _reference(args)
+    include_messages = args.messages or args.all_collections
+    include_turns = args.turns or args.all_collections
+    include_loaded_contexts = args.loaded_contexts or args.all_collections
     if args.include_raw:
         model = compute_normal_model(**reference, include_raw=True)
+        model = _project_computed_model(
+            model,
+            include_messages=include_messages,
+            include_turns=include_turns,
+            include_loaded_contexts=include_loaded_contexts,
+        )
     else:
-        model = provide_normal_model(**reference, refresh=args.refresh)
+        reader = provide_normal_model_reader(**reference, refresh=args.refresh)
+        model = reader.project(
+            include_messages=include_messages,
+            include_turns=include_turns,
+            include_loaded_contexts=include_loaded_contexts,
+        )
     return _print(model)
+
+
+def _project_computed_model(
+    model: dict[str, object],
+    *,
+    include_messages: bool,
+    include_turns: bool,
+    include_loaded_contexts: bool,
+) -> dict[str, object]:
+    projected = {
+        key: model[key]
+        for key in ("class", "schema_version", "metadata", "session", "sources", "events")
+    }
+    if include_messages:
+        projected["messages"] = model["messages"]
+    if include_turns:
+        projected["turns"] = model["turns"]
+    if include_loaded_contexts:
+        projected["loaded_contexts"] = model["loaded_contexts"]
+    if "raw" in model:
+        projected["raw"] = model["raw"]
+    return projected
 
 
 __all__ = ["register_chatlas_commands"]
