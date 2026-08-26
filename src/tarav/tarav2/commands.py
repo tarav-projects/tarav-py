@@ -219,6 +219,40 @@ def _cmd_repository_materialize(args: argparse.Namespace) -> int:
     )
 
 
+def _cmd_reference_repository(args: argparse.Namespace) -> int:
+    root = _archive_root(args.archive)
+    try:
+        reference = Archive.open(root).reference_repository(args.locator)
+    except (ArchiveError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    _print_json(reference)
+    return 0
+
+
+def _cmd_reference_git_file(args: argparse.Namespace) -> int:
+    root = _archive_root(args.archive)
+    try:
+        reference = Archive.open(root).reference_git_file(
+            args.repository,
+            commit=args.commit,
+            locator=args.locator,
+        )
+    except (ArchiveError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    _print_json(reference)
+    return 0
+
+
+def _cmd_reference_file(args: argparse.Namespace) -> int:
+    root = _archive_root(args.archive)
+    try:
+        reference = Archive.create(root).reference_file(args.locator)
+    except (ArchiveError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    _print_json(reference)
+    return 0
+
+
 def _add_archive_option(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--archive",
@@ -319,6 +353,60 @@ def register_tarav2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_common_output_options(descriptor_add)
     descriptor_add.set_defaults(handler=_cmd_descriptor_add)
+
+    reference = archive_commands.add_parser(
+        "reference",
+        help="Produce portable flat JSON Archive.References.",
+    )
+    reference_commands = reference.add_subparsers(
+        dest="tarav2_archive_reference_command",
+        required=True,
+    )
+    reference_repository = reference_commands.add_parser(
+        "repository",
+        help="Reference a registered Git Repository by a known locator.",
+    )
+    reference_repository.add_argument(
+        "--locator",
+        required=True,
+        help="Consumer-supplied Repository path or locator.",
+    )
+    _add_archive_option(reference_repository)
+    reference_repository.set_defaults(handler=_cmd_reference_repository)
+
+    reference_git_file = reference_commands.add_parser(
+        "git-file",
+        help="Reference one exact file version in a registered Git Repository.",
+    )
+    reference_git_file.add_argument(
+        "--repository",
+        required=True,
+        help="Repository name, ID, or unambiguous ID prefix.",
+    )
+    reference_git_file.add_argument(
+        "--commit",
+        required=True,
+        help="Exact commit or revision containing the file version.",
+    )
+    reference_git_file.add_argument(
+        "--locator",
+        required=True,
+        help="File path relative to the Repository.",
+    )
+    _add_archive_option(reference_git_file)
+    reference_git_file.set_defaults(handler=_cmd_reference_git_file)
+
+    reference_file = reference_commands.add_parser(
+        "file",
+        help="Reference one exact repoless local file version.",
+    )
+    reference_file.add_argument(
+        "--locator",
+        required=True,
+        help="Consumer-supplied local file path.",
+    )
+    _add_archive_option(reference_file)
+    reference_file.set_defaults(handler=_cmd_reference_file)
 
     repository = archive_commands.add_parser(
         "repository",

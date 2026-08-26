@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 
+from tarav._core.operational_logging import configure_operational_logging
 from tarav.runtime import TaravRuntime, create_runtime
 
 from .runtime import DaemonRuntime, DaemonRuntimeError
@@ -21,6 +22,7 @@ def run_daemon(runtime: TaravRuntime | None = None) -> int:
 
 
 def main() -> int:
+    configure_operational_logging()
     return run_daemon()
 
 

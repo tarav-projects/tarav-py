@@ -49,6 +49,7 @@ def test_tarav2_is_a_dedicated_top_level_help_branch(
         main(["tarav2", "archive", "--help"])
     output = capsys.readouterr().out
     assert "artifact" in output
+    assert "reference" in output
     assert "repository" in output
 
 
@@ -107,7 +108,7 @@ def test_repository_registration_and_generic_artifact_show(
         "branch": "main",
         "artifact": {
             "id": repository["id"],
-            "kind": "Repository",
+            "kind": "git-repository",
             "name": "tarav.chatlas",
             "recorded_at": repository["recorded_at"],
         },
@@ -183,7 +184,7 @@ def test_cli_materializes_one_requested_git_artifact(tmp_path: Path, capsys) -> 
     )
     materialized = json.loads(capsys.readouterr().out)
     assert materialized["command"] == "tarav2 archive repository materialize"
-    assert materialized["artifact"]["kind"] == "File.Version"
+    assert materialized["artifact"]["kind"] == "git-file-version"
     assert re.fullmatch(r"[0-9a-f]{64}", materialized["artifact"]["id"])
     assert len(list((root / "records" / "artifacts").iterdir())) == 2
 
@@ -292,3 +293,97 @@ def test_cli_rejects_positional_data_inputs(tmp_path: Path) -> None:
                 str(tmp_path / "archive"),
             ]
         )
+
+
+def test_cli_produces_bare_kind_defined_reference_json(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "archive"
+    source = _source_repository(tmp_path / "chatlas")
+    commit = _git(source, "rev-parse", "HEAD")
+    assert (
+        main(
+            [
+                "tarav2",
+                "archive",
+                "repository",
+                "register",
+                "--location",
+                str(source),
+                "--name",
+                "tarav.chatlas",
+                "--archive",
+                str(root),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    registered = json.loads(capsys.readouterr().out)["artifact"]
+
+    assert (
+        main(
+            [
+                "tarav2",
+                "archive",
+                "reference",
+                "repository",
+                "--locator",
+                str(source),
+                "--archive",
+                str(root),
+            ]
+        )
+        == 0
+    )
+    repository_reference = json.loads(capsys.readouterr().out)
+    assert repository_reference["kind"] == "git-repository"
+    assert repository_reference["archive_id"] == registered["id"]
+    assert repository_reference["locator"] == str(source)
+
+    assert (
+        main(
+            [
+                "tarav2",
+                "archive",
+                "reference",
+                "git-file",
+                "--repository",
+                "tarav.chatlas",
+                "--commit",
+                commit,
+                "--locator",
+                "chat.jsonl",
+                "--archive",
+                str(root),
+            ]
+        )
+        == 0
+    )
+    git_file_reference = json.loads(capsys.readouterr().out)
+    assert git_file_reference["kind"] == "git-file-version"
+    assert git_file_reference["repository_id"] == registered["id"]
+    assert git_file_reference["locator"] == "chat.jsonl"
+
+    external_file = tmp_path / "report.txt"
+    external_file.write_text("report\n", encoding="utf-8")
+    assert (
+        main(
+            [
+                "tarav2",
+                "archive",
+                "reference",
+                "file",
+                "--locator",
+                str(external_file),
+                "--archive",
+                str(root),
+            ]
+        )
+        == 0
+    )
+    file_reference = json.loads(capsys.readouterr().out)
+    assert file_reference["kind"] == "file-version"
+    assert file_reference["locator"] == str(external_file)
+    assert file_reference["recorded_at"]

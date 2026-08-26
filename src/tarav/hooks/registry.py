@@ -6,10 +6,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, TypeAlias
 
+from tarav._core.operational_logging import event_extra
+
 from .model import HookError, HookInvocation, validate_hook_name
 
 
-LOGGER = logging.getLogger("agentos.hooks")
+LOGGER = logging.getLogger(__name__)
 HookCallback: TypeAlias = Callable[[HookInvocation], object]
 HookFailureReporter: TypeAlias = Callable[[HookInvocation, str, BaseException], object]
 
@@ -65,6 +67,12 @@ class HookRegistry:
                     invocation.name,
                     registered.callback_id,
                     type(exc).__name__,
+                    extra=event_extra(
+                        "hooks.callback.failed",
+                        hook=invocation.name,
+                        callback=registered.callback_id,
+                        error_type=type(exc).__name__,
+                    ),
                 )
                 if failure_reporter is not None:
                     try:
@@ -80,6 +88,12 @@ class HookRegistry:
                             invocation.name,
                             registered.callback_id,
                             type(reporter_exc).__name__,
+                            extra=event_extra(
+                                "hooks.failure_reporter.failed",
+                                hook=invocation.name,
+                                callback=registered.callback_id,
+                                error_type=type(reporter_exc).__name__,
+                            ),
                         )
 
 

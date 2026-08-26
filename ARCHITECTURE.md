@@ -25,6 +25,12 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
   domains have demonstrated identical semantics.
 - Cross-domain imports must remain acyclic outside the composition root.
 
+`tarav._core.operational_logging` is the shared diagnostic transport used by
+multiple domains. Libraries emit namespaced records; Tarav CLI and daemon
+entrypoints configure private, best-effort JSONL persistence and quiet console
+reporting. Durable daemon, account, monitor, and activity event logs remain
+domain-owned semantic records rather than logging backends.
+
 ## Ownership map
 
 - `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,

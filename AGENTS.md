@@ -124,6 +124,17 @@
 - Persisted `tarav.chatlas2.*` identifiers remain valid historical storage
   contracts until a dedicated migration changes them.
 
+## Operational logging
+
+- Library modules emit through `logging.getLogger(__name__)` and never configure
+  handlers at import time. Tarav-owned entrypoints configure process logging.
+- Operational diagnostics are structured JSONL under
+  `~/.tarav/logs/operational/`; debug lifecycle stays there while warnings and
+  errors may also reach stderr.
+- Direct stdout/stderr remains appropriate for command results, progress, and
+  interactive UI. Durable domain event logs are semantic data, not operational
+  diagnostics, and retain their own schemas and locations.
+
 ## Editing and tests
 
 - Preserve unrelated changes in the shared worktree.

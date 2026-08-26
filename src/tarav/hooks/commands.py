@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from tarav._core.errors import CliError
+from tarav._core.operational_logging import event_extra
 
 from .model import HookError, HookInvocation
 
@@ -23,7 +24,7 @@ class HookInvocationSubmitter(Protocol):
 
 
 HookDeliveryFailureReporter = Callable[[HookInvocation, BaseException], object]
-LOGGER = logging.getLogger("agentos.hooks")
+LOGGER = logging.getLogger(__name__)
 
 
 def _unavailable_submitter(
@@ -43,6 +44,11 @@ def _log_delivery_failure(
         "hook delivery failed: hook=%s error_type=%s",
         invocation.name,
         type(error).__name__,
+        extra=event_extra(
+            "hooks.delivery.failed",
+            hook=invocation.name,
+            error_type=type(error).__name__,
+        ),
     )
 
 

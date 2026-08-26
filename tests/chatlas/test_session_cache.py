@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import redirect_stderr
-import io
+from contextlib import contextmanager
 import json
+import logging
 from pathlib import Path
 from threading import Event, Lock
 import time
+from typing import Iterator
 
 import pytest
 
@@ -14,6 +15,25 @@ from tarav.chatlas import session_cache
 
 
 SESSION = {"identity_hash": "a" * 64, "backing_artifacts": []}
+
+
+@contextmanager
+def _capture_lock_records() -> Iterator[list[logging.LogRecord]]:
+    records: list[logging.LogRecord] = []
+    handler = logging.Handler()
+    handler.emit = records.append  # type: ignore[method-assign]
+    logger = session_cache.LOGGER
+    previous_level = logger.level
+    previous_propagate = logger.propagate
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    logger.addHandler(handler)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+        logger.propagate = previous_propagate
 
 
 def test_cache_freshness_requires_materialization_revision(tmp_path: Path) -> None:
@@ -45,24 +65,26 @@ def test_session_model_lock_reports_lifecycle_and_releases_after_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     lock_path = session_cache.session_model_lock_path(SESSION, chatlas_root=tmp_path)
-    with pytest.raises(RuntimeError):
-        with session_cache.session_model_materialization_lock(
-            SESSION, chatlas_root=tmp_path
-        ):
-            raise RuntimeError("failure")
+    with _capture_lock_records() as records:
+        with pytest.raises(RuntimeError):
+            with session_cache.session_model_materialization_lock(
+                SESSION, chatlas_root=tmp_path
+            ):
+                raise RuntimeError("failure")
 
-    assert capsys.readouterr().err.splitlines() == [
-        f"[chatlas] acquiring session-model lock: {lock_path}",
-        f"[chatlas] acquired session-model lock: {lock_path}",
-        f"[chatlas] released session-model lock: {lock_path}",
+    assert capsys.readouterr().err == ""
+    assert [record.event for record in records] == [
+        "chatlas.session_model.lock.acquiring",
+        "chatlas.session_model.lock.acquired",
+        "chatlas.session_model.lock.released",
     ]
+    assert all(record.context["lock_path"] == str(lock_path) for record in records)
 
 
 def test_session_model_lock_serializes_same_identity_only(tmp_path: Path) -> None:
     first_acquired = Event()
     same_attempted = Event()
     release_first = Event()
-    output = io.StringIO()
     other = {**SESSION, "identity_hash": "b" * 64}
 
     def hold_first() -> None:
@@ -88,16 +110,24 @@ def test_session_model_lock_serializes_same_identity_only(tmp_path: Path) -> Non
         ):
             release_first.set()
 
-    with redirect_stderr(output), ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [executor.submit(fn) for fn in (hold_first, acquire_same, acquire_other)]
-        for future in futures:
-            future.result()
+    with _capture_lock_records() as records:
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [
+                executor.submit(fn)
+                for fn in (hold_first, acquire_same, acquire_other)
+            ]
+            for future in futures:
+                future.result()
 
     same_path = session_cache.session_model_lock_path(SESSION, chatlas_root=tmp_path)
     other_path = session_cache.session_model_lock_path(other, chatlas_root=tmp_path)
-    messages = output.getvalue().splitlines()
-    assert f"[chatlas] waiting for session-model lock: {same_path}" in messages
-    assert f"[chatlas] waiting for session-model lock: {other_path}" not in messages
+    waited_paths = {
+        record.context["lock_path"]
+        for record in records
+        if record.event == "chatlas.session_model.lock.waiting"
+    }
+    assert str(same_path) in waited_paths
+    assert str(other_path) not in waited_paths
 
 
 def test_concurrent_session_model_load_materializes_once(

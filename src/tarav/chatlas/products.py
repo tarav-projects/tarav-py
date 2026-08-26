@@ -8,12 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 import hashlib
 import json
+import logging
 import shutil
-import sys
+import time
 from typing import Any, Iterator
 from uuid import uuid4
 
 from tarav._core.errors import CliError
+from tarav._core.operational_logging import event_extra
 from filelock import FileLock, Timeout
 
 from tarav.chatlas._payload_helpers import dict_list
@@ -33,6 +35,7 @@ PRODUCTS_ROOT = "products"
 STAGING_ROOT = "_staging"
 LOCKS_ROOT = "locks"
 MANIFEST_FILENAME = "manifest.json"
+LOGGER = logging.getLogger(__name__)
 
 
 
@@ -569,18 +572,47 @@ def product_materialization_lock(
     lock_path = root / LOCKS_ROOT / PRODUCTS_ROOT / product / f"{identity_hash}.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock = FileLock(lock_path)
-    print(f"[chatlas] acquiring product lock: {lock_path}", file=sys.stderr)
+    context = {
+        "product": product,
+        "identity_hash": identity_hash,
+        "lock_path": str(lock_path),
+    }
+    LOGGER.debug(
+        "acquiring product lock",
+        extra=event_extra("chatlas.product.lock.acquiring", **context),
+    )
+    wait_started: float | None = None
     try:
         lock.acquire(timeout=0)
     except Timeout:
-        print(f"[chatlas] waiting for product lock: {lock_path}", file=sys.stderr)
+        wait_started = time.monotonic()
+        LOGGER.warning(
+            "waiting for product lock",
+            extra=event_extra("chatlas.product.lock.waiting", **context),
+        )
         lock.acquire()
-    print(f"[chatlas] acquired product lock: {lock_path}", file=sys.stderr)
+    if wait_started is None:
+        LOGGER.debug(
+            "acquired product lock",
+            extra=event_extra("chatlas.product.lock.acquired", **context),
+        )
+    else:
+        LOGGER.info(
+            "acquired product lock after waiting",
+            extra=event_extra(
+                "chatlas.product.lock.acquired_after_wait",
+                wait_seconds=time.monotonic() - wait_started,
+                **context,
+            ),
+        )
     try:
         yield
     finally:
         lock.release()
-        print(f"[chatlas] released product lock: {lock_path}", file=sys.stderr)
+        LOGGER.debug(
+            "released product lock",
+            extra=event_extra("chatlas.product.lock.released", **context),
+        )
 
 
 def _context_from_selector(

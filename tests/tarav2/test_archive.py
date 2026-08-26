@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -102,7 +103,7 @@ def test_registers_a_repository_as_timestamped_records_and_git_hint(
     repository = archive.register_repository(source, name="tarav.chatlas")
 
     assert re.fullmatch(r"[0-9a-f]{64}", repository.id)
-    assert repository.kind == "Repository"
+    assert repository.kind == "git-repository"
     assert repository.name == "tarav.chatlas"
     assert {path.name for path in archive.root.iterdir()} == {"records", "repositories"}
     assert list(archive.repositories_root.iterdir()) == []
@@ -118,7 +119,7 @@ def test_registers_a_repository_as_timestamped_records_and_git_hint(
         "class": "Tarav.Archive.Artifact.Registration.Record",
         "schema_version": 1,
         "id": repository.id,
-        "kind": "Repository",
+        "kind": "git-repository",
         "name": "tarav.chatlas",
         "recorded_at": repository.recorded_at,
         "identity": {
@@ -415,8 +416,8 @@ def test_materializes_only_requested_git_artifacts_with_deterministic_ids(
 
     assert repeated == initial
     assert initial.id != changed.id
-    assert initial.kind == changed.kind == "File.Version"
-    assert folder.kind == "Folder.Version"
+    assert initial.kind == changed.kind == "git-file-version"
+    assert folder.kind == "git-folder-version"
     assert initial.id == derive_git_artifact_id(
         repository_id=repository.id,
         object_format="sha1",
@@ -495,3 +496,96 @@ def test_missing_repository_data_leaves_records_inspectable(tmp_path: Path) -> N
             commit="main",
             path="nested/tracked.txt",
         )
+
+
+def test_repository_reference_is_flat_cheap_and_does_not_mutate_records(
+    tmp_path: Path,
+) -> None:
+    source = _source_repository(tmp_path / "chatlas")
+    remote = "git@example.test:owner/chatlas.git"
+    _git(source, "remote", "add", "origin", remote)
+    first_commit = _git(source, "rev-list", "--max-parents=0", "main")
+    archive = Archive.create(tmp_path / "tarav-archive")
+    repository = archive.register_repository(source, name="tarav.chatlas")
+    commits_before = _git(archive.records_root, "rev-list", "--count", "HEAD")
+
+    reference = archive.reference_repository(str(source))
+    remote_reference = archive.reference_repository(remote)
+
+    assert reference == {
+        "kind": "git-repository",
+        "archive_id": repository.id,
+        "locator": str(source),
+        "name": "tarav.chatlas",
+        "first_commit": first_commit,
+    }
+    assert remote_reference == {**reference, "locator": remote}
+    assert _git(archive.records_root, "rev-list", "--count", "HEAD") == commits_before
+
+
+def test_git_file_reference_materializes_one_exact_version(tmp_path: Path) -> None:
+    source = _source_repository(tmp_path / "chatlas")
+    commit = _git(source, "rev-parse", "HEAD")
+    blob = _git(source, "rev-parse", f"{commit}:nested/tracked.txt")
+    archive = Archive.create(tmp_path / "tarav-archive")
+    repository = archive.register_repository(source, name="tarav.chatlas")
+
+    reference = archive.reference_git_file(
+        "tarav.chatlas",
+        commit=commit,
+        locator="nested/tracked.txt",
+    )
+
+    assert reference == {
+        "kind": "git-file-version",
+        "archive_id": derive_git_artifact_id(
+            repository_id=repository.id,
+            object_format="sha1",
+            commit=commit,
+            path="nested/tracked.txt",
+        ),
+        "repository_id": repository.id,
+        "locator": "nested/tracked.txt",
+        "commit": commit,
+        "git_oid": blob,
+        "size": len("hello\n"),
+    }
+
+
+def test_repoless_file_reference_tracks_exact_versions_and_reuses_unchanged_bytes(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "report.txt"
+    source.write_text("first\n", encoding="utf-8")
+    archive = Archive.create(tmp_path / "tarav-archive")
+
+    first = archive.reference_file(str(source))
+    repeated = archive.reference_file(str(source))
+
+    assert repeated == first
+    assert first == {
+        "kind": "file-version",
+        "archive_id": first["archive_id"],
+        "locator": str(source),
+        "recorded_at": first["recorded_at"],
+        "sha256": hashlib.sha256(b"first\n").hexdigest(),
+        "size": len("first\n"),
+        "name": "report.txt",
+    }
+    dossier = archive.dossier(str(first["archive_id"]))
+    assert dossier.artifact.kind == "file-version"
+    assert dossier.records["file-version.json"] == {
+        "class": "Tarav.Archive.Artifact.FileVersion.Record",
+        "schema_version": 1,
+        "target": first["archive_id"],
+        "recorded_at": first["recorded_at"],
+        "sha256": first["sha256"],
+        "size": len("first\n"),
+    }
+
+    source.write_text("second\n", encoding="utf-8")
+    second = archive.reference_file(str(source))
+
+    assert second["archive_id"] != first["archive_id"]
+    assert second["sha256"] == hashlib.sha256(b"second\n").hexdigest()
+    assert second["locator"] == first["locator"]

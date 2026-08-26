@@ -4,7 +4,7 @@
 
 - **Goal:** implement portable, flat JSON `Archive.Reference`s for registered Git
   repositories, exact Git-contained file versions, and exact repoless file versions.
-- **Status:** approved for development.
+- **Status:** completed and verified.
 - **Scope:** the candidate Archive design, `tarav.tarav2` Archive API and option-only CLI,
   focused Tarav2 tests, and this implementation record.
 - **Out of scope:** reference consumption or schema policing, automatic recovery, semantic
@@ -60,7 +60,7 @@
 
 ### Vertical.Slice 1 — Reference model and repository reference
 
-**Status:** pending.
+**Status:** completed.
 
 - Amend the candidate Archive design with the flat reference contract and the three core
   kinds.
@@ -70,7 +70,7 @@
 
 ### Vertical.Slice 2 — Git-contained file-version reference
 
-**Status:** pending.
+**Status:** completed.
 
 - Produce a reference from a repository selector, exact commit, and repository-relative
   locator while reusing lazy Git Artifact materialization.
@@ -79,7 +79,7 @@
 
 ### Vertical.Slice 3 — Repoless file-version reference
 
-**Status:** pending.
+**Status:** completed.
 
 - Hash and register one exact local file version with its timestamped File Version Record.
 - Reuse an unchanged version and issue a new Artifact ID after content changes.
@@ -88,14 +88,39 @@
 
 ### Vertical.Slice 4 — Final integration audit
 
-**Status:** pending.
+**Status:** completed.
 
 - Run focused Tarav2 tests and Ruff, maintained architecture/CLI checks, the full suite,
   editable CLI reinstall, installed help smokes, diff checks, and Product.Surface audit.
 
 ## Impl.Log
 
+- [CT] The user authorized execution with `IMPLEMENT references`; evidence is
+  `Chat.Message` `02414803a4b3797df926dade6fb48e28f32614717e73f639ef642428c9f1c580`.
 - [IP] Reference validation and resolution are deliberately deferred. This slice produces
   references and the Archive Records necessary to support them without inventing consumer
   policy.
+- [IP] The required pre-execution checkpoints are `3033b9c` in `tarav-py` and `d200975`
+  in `tarav-md`; no final implementation commit was created.
+- [IP] The final Product.Surface audit found no additional maintenance-relevant annotation
+  beyond the candidate Archive design, these focused boundary tests, and this native
+  implementation record. Capture.Manifest placement remains unavailable because its
+  recording-kernel landing pipeline has not yet been implemented.
 
+## Outcome
+
+- Added flat JSON Reference production for the `git-repository`, `git-file-version`, and
+  `file-version` Artifact kinds.
+- Repository References echo the requested locator and retain only the public name and
+  first commit as cheap hints. Exact local and already-recorded Git remote locators resolve
+  without mutating Archive Records.
+- Git file References reuse lazy materialization and contain the Repository ID, exact
+  commit, repository-relative locator, Git blob object ID, and size.
+- Repoless file References register a random-ID exact file version with one timestamped
+  `file-version.json` Record containing SHA-256 and size. Unchanged bytes at the same
+  canonical locator reuse the Artifact; changed bytes create another Artifact version.
+- Added option-only `tarav tarav2 archive reference repository|git-file|file` commands.
+  Each prints the bare Reference JSON for direct consumer storage.
+- Verification passed: 24 focused Tarav2 tests; 111 Tarav2, architecture, and maintained
+  CLI tests; all 1,999 project tests; full `src`/`tests` Ruff; diff checks; editable CLI
+  reinstall; and installed Reference help smokes.

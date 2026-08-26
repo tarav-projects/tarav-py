@@ -100,17 +100,22 @@ def test_callback_failure_is_logged_without_context_and_dispatch_continues(
         callback_id="tests.after",
     )
 
-    with caplog.at_level(logging.ERROR, logger="agentos.hooks"):
-        assert (
-            registry.dispatch(
-                HookInvocation(
-                    name="agent.turn.stop",
-                    ctx={"secret": "provider-prompt"},
-                    ctx_type="claude-code",
+    logger = logging.getLogger("tarav.hooks.registry")
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.ERROR, logger=logger.name):
+            assert (
+                registry.dispatch(
+                    HookInvocation(
+                        name="agent.turn.stop",
+                        ctx={"secret": "provider-prompt"},
+                        ctx_type="claude-code",
+                    )
                 )
+                is None
             )
-            is None
-        )
+    finally:
+        logger.removeHandler(caplog.handler)
 
     assert seen == ["claude-code"]
     assert "agent.turn.stop" in caplog.text

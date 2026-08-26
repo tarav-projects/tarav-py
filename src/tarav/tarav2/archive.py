@@ -22,6 +22,7 @@ REGISTRATION_CLASS = "Tarav.Archive.Artifact.Registration.Record"
 LOCATOR_CLASS = "Tarav.Archive.Artifact.Locator.Record"
 GIT_HINT_CLASS = "Tarav.Archive.Artifact.GitHint.Record"
 GIT_COORDINATE_CLASS = "Tarav.Archive.Artifact.GitCoordinate.Record"
+FILE_VERSION_CLASS = "Tarav.Archive.Artifact.FileVersion.Record"
 EXTERNAL_DESCRIPTORS_CLASS = "Tarav.Archive.Artifact.ExternalDescriptors.Record"
 SCHEMA_VERSION = 1
 ARTIFACT_ID_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -31,6 +32,10 @@ SCP_GIT_LOCATOR_PATTERN = re.compile(
 DERIVED_ID_SCHEME = "tarav.archive.git-contained.v1"
 DEFAULT_REPOSITORY_BRANCH = "main"
 MAX_GIT_HINT_COMMITS = 10
+GIT_REPOSITORY_KIND = "git-repository"
+GIT_FILE_VERSION_KIND = "git-file-version"
+GIT_FOLDER_VERSION_KIND = "git-folder-version"
+FILE_VERSION_KIND = "file-version"
 
 
 class ArchiveError(RuntimeError):
@@ -227,7 +232,7 @@ class Archive:
         locator_matches = self._artifacts_at(local_locator, registered=registered)
         if locator_matches:
             existing = _require_one(locator_matches, selector=local_locator.value)
-            if existing.kind != "Repository" or existing.name != name:
+            if existing.kind != GIT_REPOSITORY_KIND or existing.name != name:
                 raise DuplicateArtifactLocatorError(
                     f"Artifact locator is already registered as {existing.kind} "
                     f"{existing.name or existing.id}: {local_locator.value}"
@@ -248,7 +253,7 @@ class Archive:
         )
         remote_locators, skipped_count = _repository_remote_locators(source_root)
         repository = self._register_root(
-            kind="Repository",
+            kind=GIT_REPOSITORY_KIND,
             name=name,
             locators=(local_locator, *remote_locators),
             git_hint=git_hint,
@@ -286,6 +291,123 @@ class Archive:
             message=f"archive(artifact): add locator {artifact.id[:12]}",
         )
         return True
+
+    def reference_repository(self, locator: str) -> dict[str, object]:
+        """Produce one flat Reference for an available registered Repository."""
+
+        if (
+            not isinstance(locator, str)
+            or not locator
+            or locator != locator.strip()
+            or "\x00" in locator
+        ):
+            raise ValueError("Artifact locator must be a non-empty trimmed string")
+        exact_matches: list[RegisteredArtifact] = []
+        for artifact in self._registered_artifacts():
+            record_path = self._artifact_root(artifact.id) / "locators.jsonl"
+            if not record_path.exists():
+                continue
+            if any(
+                candidate.get("value") == locator
+                for candidate in _read_jsonl_objects(record_path)
+            ):
+                exact_matches.append(artifact)
+        if exact_matches:
+            repository = _require_one(exact_matches, selector=locator)
+            if repository.kind != GIT_REPOSITORY_KIND:
+                raise ArtifactNotFoundError(f"Archive Repository not found: {locator}")
+        else:
+            normalized = _normalize_locator(locator)
+            if normalized.kind != "local-path":
+                raise ArtifactNotFoundError(f"Archive Repository not found: {locator}")
+            repository = self.resolve_repository(_git_top_level(Path(normalized.value)))
+
+        hint_path = self._artifact_root(repository.id) / "git-hint.json"
+        hint = _read_json_object(hint_path)
+        commits = hint.get("commits")
+        if not isinstance(commits, list) or not commits or not isinstance(commits[0], dict):
+            raise ArchiveError(f"Repository Git Hint has no first commit: {hint_path}")
+        first_commit = commits[0].get("hash")
+        if not isinstance(first_commit, str) or not first_commit:
+            raise ArchiveError(f"Repository Git Hint has no first commit: {hint_path}")
+        return {
+            "kind": GIT_REPOSITORY_KIND,
+            "archive_id": repository.id,
+            "locator": locator,
+            "name": repository.name,
+            "first_commit": first_commit,
+        }
+
+    def reference_git_file(
+        self,
+        repository_selector: str | Path,
+        *,
+        commit: str,
+        locator: str,
+    ) -> dict[str, object]:
+        """Produce one flat Reference for an exact Git-contained file version."""
+
+        repository = self.resolve_repository(repository_selector)
+        artifact = self.materialize_git_artifact(
+            repository.id,
+            commit=commit,
+            path=locator,
+        )
+        if artifact.kind != GIT_FILE_VERSION_KIND:
+            raise ArchiveError(f"Git Artifact is not a file version: {locator}")
+        coordinate = _read_json_object(
+            self._artifact_root(artifact.id) / "git-coordinate.json"
+        )
+        return {
+            "kind": GIT_FILE_VERSION_KIND,
+            "archive_id": artifact.id,
+            "repository_id": repository.id,
+            "locator": coordinate["path"],
+            "commit": coordinate["commit"],
+            "git_oid": coordinate["object_oid"],
+            "size": coordinate["size"],
+        }
+
+    def reference_file(self, locator: str) -> dict[str, object]:
+        """Produce one flat Reference for an exact repoless local file version."""
+
+        normalized = _normalize_locator(locator)
+        if normalized.kind != "local-path":
+            raise ValueError("File-version References currently require a local path")
+        source = Path(normalized.value)
+        if not source.is_file():
+            raise ArtifactNotFoundError(f"File Artifact not found: {locator}")
+        content_hash, size = _hash_file(source)
+        matches: list[RegisteredArtifact] = []
+        for artifact in self._artifacts_at(
+            normalized,
+            registered=self._registered_artifacts(),
+        ):
+            if artifact.kind != FILE_VERSION_KIND:
+                continue
+            record_path = self._artifact_root(artifact.id) / "file-version.json"
+            if not record_path.exists():
+                continue
+            record = _read_json_object(record_path)
+            if record.get("sha256") == content_hash and record.get("size") == size:
+                matches.append(artifact)
+        if matches:
+            artifact = _require_one(matches, selector=normalized.value)
+        else:
+            artifact = self._register_file_version(
+                locator=normalized,
+                content_hash=content_hash,
+                size=size,
+            )
+        return {
+            "kind": FILE_VERSION_KIND,
+            "archive_id": artifact.id,
+            "locator": locator,
+            "recorded_at": artifact.recorded_at,
+            "sha256": content_hash,
+            "size": size,
+            "name": source.name,
+        }
 
     def materialize_git_artifact(
         self,
@@ -463,7 +585,7 @@ class Archive:
 
     def resolve_repository(self, selector: str | Path) -> RegisteredArtifact:
         artifact = self.resolve_artifact(selector)
-        if artifact.kind != "Repository":
+        if artifact.kind != GIT_REPOSITORY_KIND:
             raise ArtifactNotFoundError(f"Archive Repository not found: {selector}")
         return artifact
 
@@ -522,6 +644,56 @@ class Archive:
             self.records_root,
             (object_root.relative_to(self.records_root),),
             message=f"archive(artifact): register {name or artifact.id[:12]}",
+        )
+        return artifact
+
+    def _register_file_version(
+        self,
+        *,
+        locator: _Locator,
+        content_hash: str,
+        size: int,
+    ) -> RegisteredArtifact:
+        recorded_at = _timestamp()
+        artifact = RegisteredArtifact(
+            id=_random_artifact_id(),
+            kind=FILE_VERSION_KIND,
+            name=None,
+            recorded_at=recorded_at,
+        )
+        object_root = self._artifact_root(artifact.id)
+        if object_root.exists():
+            raise ArchiveError(f"random Artifact ID collision: {artifact.id}")
+        atomic_write_json(
+            object_root / "registration.json",
+            _registration_payload(
+                artifact,
+                identity={
+                    "method": "issued",
+                    "algorithm": "random",
+                    "bits": 256,
+                },
+            ),
+        )
+        _write_jsonl(
+            object_root / "locators.jsonl",
+            [_locator_record(target=artifact.id, locator=locator, recorded_at=recorded_at)],
+        )
+        atomic_write_json(
+            object_root / "file-version.json",
+            {
+                "class": FILE_VERSION_CLASS,
+                "schema_version": SCHEMA_VERSION,
+                "target": artifact.id,
+                "recorded_at": recorded_at,
+                "sha256": content_hash,
+                "size": size,
+            },
+        )
+        _commit_paths(
+            self.records_root,
+            (object_root.relative_to(self.records_root),),
+            message=f"archive(artifact): register {artifact.id[:12]}",
         )
         return artifact
 
@@ -899,10 +1071,23 @@ def _git_entry(repository: Path, *, commit: str, path: str) -> _GitEntry:
 
 def _git_artifact_kind(object_type: str) -> str:
     return {
-        "blob": "File.Version",
-        "tree": "Folder.Version",
-        "commit": "Gitlink.Version",
-    }.get(object_type, "Git.Artifact.Version")
+        "blob": GIT_FILE_VERSION_KIND,
+        "tree": GIT_FOLDER_VERSION_KIND,
+        "commit": "gitlink-version",
+    }.get(object_type, "git-artifact-version")
+
+
+def _hash_file(path: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+                size += len(chunk)
+    except OSError as exc:
+        raise ArchiveError(f"cannot read File Artifact: {path}") from exc
+    return digest.hexdigest(), size
 
 
 def _timestamp() -> str:

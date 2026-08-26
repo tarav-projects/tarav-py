@@ -5,12 +5,14 @@ from contextlib import contextmanager
 from pathlib import Path
 import hashlib
 import json
+import logging
 import shutil
-import sys
+import time
 from typing import Any, Iterator
 from uuid import uuid4
 
 from tarav._core.errors import CliError
+from tarav._core.operational_logging import event_extra
 from filelock import FileLock, Timeout
 
 from tarav.chatlas._payload_helpers import dict_list
@@ -28,6 +30,7 @@ SESSION_MODELS_ROOT = "session-models"
 MANIFEST_FILENAME = "manifest.json"
 LOCKS_ROOT = "locks"
 SESSION_MODEL_MATERIALIZATION_REVISION = "stable-event-place-v2"
+LOGGER = logging.getLogger(__name__)
 
 
 def session_model_cache_path(
@@ -57,18 +60,43 @@ def session_model_materialization_lock(
     lock_path = session_model_lock_path(session, chatlas_root=chatlas_root)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock = FileLock(lock_path)
-    print(f"[chatlas] acquiring session-model lock: {lock_path}", file=sys.stderr)
+    context = {"identity_hash": lock_path.stem, "lock_path": str(lock_path)}
+    LOGGER.debug(
+        "acquiring session-model lock",
+        extra=event_extra("chatlas.session_model.lock.acquiring", **context),
+    )
+    wait_started: float | None = None
     try:
         lock.acquire(timeout=0)
     except Timeout:
-        print(f"[chatlas] waiting for session-model lock: {lock_path}", file=sys.stderr)
+        wait_started = time.monotonic()
+        LOGGER.warning(
+            "waiting for session-model lock",
+            extra=event_extra("chatlas.session_model.lock.waiting", **context),
+        )
         lock.acquire()
-    print(f"[chatlas] acquired session-model lock: {lock_path}", file=sys.stderr)
+    if wait_started is None:
+        LOGGER.debug(
+            "acquired session-model lock",
+            extra=event_extra("chatlas.session_model.lock.acquired", **context),
+        )
+    else:
+        LOGGER.info(
+            "acquired session-model lock after waiting",
+            extra=event_extra(
+                "chatlas.session_model.lock.acquired_after_wait",
+                wait_seconds=time.monotonic() - wait_started,
+                **context,
+            ),
+        )
     try:
         yield
     finally:
         lock.release()
-        print(f"[chatlas] released session-model lock: {lock_path}", file=sys.stderr)
+        LOGGER.debug(
+            "released session-model lock",
+            extra=event_extra("chatlas.session_model.lock.released", **context),
+        )
 
 
 def load_chatlas_session_model(
