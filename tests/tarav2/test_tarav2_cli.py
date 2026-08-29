@@ -79,7 +79,7 @@ def test_repository_registration_and_generic_artifact_show(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     source = _source_repository(tmp_path / "chatlas")
-    expected_archive = home / "Documents" / "tarav-archive"
+    expected_archive = home / "Documents" / "tarav" / "archive"
 
     assert (
         main(

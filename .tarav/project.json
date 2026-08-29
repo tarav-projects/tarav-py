@@ -1,10 +1,13 @@
 {
   "class": "agentos.project",
-  "schema_version": 1,
-  "project_id": "e308d11f-d709-4f23-b8c7-f214e28b3f11",
   "created_at": "2026-04-12T19:21:49Z",
+  "diagram": {
+    "main_model": "b7b78eab-e5c2-4610-9bf5-1b704a106f34"
+  },
   "index": {
     "library": "../index-library-2208",
     "workspace": "index-2208"
-  }
+  },
+  "project_id": "e308d11f-d709-4f23-b8c7-f214e28b3f11",
+  "schema_version": 1
 }

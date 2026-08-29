@@ -31,6 +31,11 @@ entrypoints configure private, best-effort JSONL persistence and quiet console
 reporting. Durable daemon, account, monitor, and activity event logs remain
 domain-owned semantic records rather than logging backends.
 
+`tarav._core.data_root` supplies the common default physical depot
+`~/Documents/tarav/`. Its use by several domains does not make that directory
+one repository or authority; each child system retains its own storage
+contract and Git boundaries.
+
 ## Ownership map
 
 - `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,

@@ -93,7 +93,12 @@ def _isolate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 def _derivation_cache_entries() -> dict[str, dict]:
     cache_root = (
-        Path(os.environ["HOME"]) / "Documents" / "chatlas" / "cache" / "session-index-derivations-v2"
+        Path(os.environ["HOME"])
+        / "Documents"
+        / "tarav"
+        / "chatlas"
+        / "cache"
+        / "session-index-derivations-v2"
     )
     partitions = sorted(cache_root.glob("codex/*/sessions.json"))
     assert len(partitions) == 1, f"expected one codex cache partition, found {partitions}"

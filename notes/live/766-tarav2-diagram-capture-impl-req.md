@@ -85,10 +85,50 @@ status: Complete
    Namespace create, mount, and list commands.
 6. Bootstrap a project's main Model into `.tarav/project.json` when capture
    first targets that project.
+7. Permit several Projects to point at the same existing Model; the Project
+   marker is an association and does not imply ownership or copy Model data.
 
 Acceptance: two Namespace repositories remain independent; a project capture
 resolves its Model and writes only to that Model's Namespace; unsupported or
 low-confidence semantic states remain writable and surface POIs.
+
+### Vertical.Slice::Approval.Gated.Capture
+
+status: Complete
+
+1. Keep semantic proposal, revision, and approval in chat; create no Manifest
+   before explicit `::land`.
+2. Add read-only Model inspection and Capture.Context commands returning the
+   shared target Model and manifest-ready Chatlas Turn references.
+3. Restore support-neighborhood resolution and producer-context inclusion
+   checks.
+4. Surface missing Assertion scores and unavailable Chatlas-to-Archive
+   grounding as non-blocking POIs.
+5. Create and advertise the fresh `tarav-pkg --capture` operating module.
+
+### Vertical.Slice::Verbatim.Gate.Review
+
+status: Complete
+
+1. Parse `Verbatim.Gate` instance data from both newly captured Line
+   Annotations and gate-only Annotations targeting immutable existing Lines.
+2. Resolve exact Agent proposal and User approval Chatlas Turn references and
+   mechanically assess roles, shared opaque token, event order, and materially
+   equivalent Line wording.
+3. Derive Line-ship `Reviewed` standing only when at least one exact wording
+   Annotation has a passing Gate; retain failures and unassessable evidence as
+   POIs.
+4. Keep review orchestration out of the CLI. An Agent compiles one ordinary
+   `Capture.Manifest` containing an independently assessable typed Annotation
+   per existing Line wording; the Annotation specialization owns Gate parsing,
+   Assertions, and findings.
+5. Project gate-only Annotations through Line, Block, Model, and named Renderer
+   surfaces without modifying their targets.
+
+Acceptance: an Agent can present an existing rendered Block with one opaque
+token, resolve the later User approval from Chatlas, land a review Manifest,
+and mechanically verify every Line ship as reviewed while the original Line
+records remain unchanged.
 
 ## Impl.Log
 
@@ -107,3 +147,9 @@ low-confidence semantic states remain writable and surface POIs.
 - Annotation type specialization remains an explicit library operation. The
   generic loader does not silently specialize or choose error recovery for its
   consumer.
+- Gate review is a new Annotation layer rather than a mutation of previously
+  captured wording. Gate standing is recomputed from retained Chatlas evidence;
+  no authoritative passed flag is stored.
+- `Capture.Manifest` has no Gate-specific behavior. It transports typed
+  Annotation records, applies generic batch checks, and delegates type meaning
+  and checks to Tarav's registered Annotation classes.

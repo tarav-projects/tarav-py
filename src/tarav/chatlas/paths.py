@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tarav._core.data_root import default_tarav_data_root
+
 
 CHATLAS_DIRNAME = "chatlas"
 SESSION_INDEX_ROOT = Path("index") / "sessions"
@@ -9,7 +11,7 @@ SESSION_INDEX_DERIVATIONS_CACHE_DIR = Path("cache") / "session-index-derivations
 
 
 def default_chatlas_root() -> Path:
-    return Path.home().expanduser().resolve() / "Documents" / CHATLAS_DIRNAME
+    return default_tarav_data_root() / CHATLAS_DIRNAME
 
 
 __all__ = [
