@@ -26,8 +26,6 @@ from ._build_core import (
     load_skillware,
     parse_skw_config,
     resolve_build_root,
-    resolve_dotted_name_canonical,
-    resolve_mentions,
     unlock_requirements,
 )
 from ._code_model import (
@@ -52,7 +50,6 @@ from ._build_operations import (
     CheckEntry,
     CheckReport,
     ProjectCheckReport,
-    _SkwSurfaceProvider,
     bless_pois_by_kind,
     bless_skill,
     build_skill,
@@ -97,8 +94,6 @@ __all__ = [
     "check_code_surfaces",
     "extract_mentions",
     "expand_code_surfaces",
-    "resolve_dotted_name_canonical",
-    "resolve_mentions",
     "unlock_requirements",
 ]
 
@@ -112,7 +107,6 @@ _DIRECT_EXPORTS = (
     EditionHistoryConfig,
     ProjectCheckReport,
     SkwConfig,
-    _SkwSurfaceProvider,
     _resolve_locator,
     check_project,
     discover_packages,

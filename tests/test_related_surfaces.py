@@ -5,7 +5,6 @@ from pathlib import Path
 
 from tarav.skillware.related_surfaces import RelatedSurfaceResolver
 from tarav.wayfinder import Wayfinder, WayfinderReferenceRoot, WayfinderRegistry
-from tarav.skillware.index_wayfinder import resolve_index_block_reference
 from tarav.skillware.managed_blocks import resolve_managed_block_reference
 from tarav.wayfinder.model import managed_block_reference
 
@@ -46,15 +45,6 @@ def _write_project(root: Path, source: str) -> tuple[str, Path]:
     return project_id, target
 
 
-def _write_depot(root: Path, *, block: str) -> Path:
-    """A project whose Index records hold one guidance block."""
-    from _skillware_helpers import write_index
-
-    root.mkdir(parents=True, exist_ok=True)
-    write_index(root, ((f"demo/design#{block}", (("DF", "related guidance"),), ()),))
-    return root
-
-
 def test_related_surfaces_are_lazy_bounded_cycle_safe_and_keep_diagnostics(
     tmp_path: Path,
 ) -> None:
@@ -62,24 +52,24 @@ def test_related_surfaces_are_lazy_bounded_cycle_safe_and_keep_diagnostics(
         tmp_path / "project",
         """# $kw: --from Design.Root
 
-# $kw: Check.Root --cite index://demo-pkg/Guide.One --cite index://demo-pkg/Missing
+# $kw: Check.Root --cite Guide.One --cite Missing
 # --note [DF] local root guidance ^c20260820-5u
 def check() -> None:
     pass
+
+# $kw: Guide.One --note [DF] related guidance ^c20260820-5u
+def guide() -> None:
+    pass
 """,
     )
-    depot = _write_depot(tmp_path / "depot", block="Guide.One")
     registry = WayfinderRegistry(tmp_path / "registry.json")
     registry.register(
         WayfinderReferenceRoot(type="agentos.project", id=project_id),
         tmp_path / "project",
     )
-    registry.register(
-        WayfinderReferenceRoot(type="package.skill", id="demo-pkg"), depot
-    )
     wayfinder = Wayfinder(
         registry,
-        resolvers=(resolve_managed_block_reference, resolve_index_block_reference),
+        resolvers=(resolve_managed_block_reference,),
     )
     resolver = RelatedSurfaceResolver(wayfinder)
     root = managed_block_reference(project_id, "Check.Root")

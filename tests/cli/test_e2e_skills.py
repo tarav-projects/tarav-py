@@ -22,7 +22,7 @@ def _make_project(path: Path) -> None:
 
 
 def _skills(argv: list[str]) -> list[str]:
-    return [*argv, "--project"]
+    return ["project", *argv, "--project"]
 
 
 def test_skills_list_and_path_use_selected_profile(
@@ -273,10 +273,10 @@ def test_skills_surface_only_exposes_supported_commands(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     parser = build_parser()
-    assert parser.parse_args(["skills", "status"]).skills_command == "status"
+    assert parser.parse_args(["project", "skills", "status"]).skills_command == "status"
 
     with pytest.raises(SystemExit) as excinfo:
-        parser.parse_args(["skills", "query"])
+        parser.parse_args(["project", "skills", "query"])
     assert excinfo.value.code == 2
     assert "invalid choice: 'query'" in capsys.readouterr().err
 

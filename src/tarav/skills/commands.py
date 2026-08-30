@@ -210,7 +210,7 @@ def _record_skills_project_command(args: argparse.Namespace) -> TaravProjectHand
     project = require_explicit_agentos_project(
         project=args.project,
         project_base=args.project_base,
-        command_name="tarav skills",
+        command_name="tarav project skills",
     )
     record_project_command_from_args(
         project=project,
@@ -266,7 +266,7 @@ def _cmd_skills_import_recursive(args: argparse.Namespace) -> int:
     require_explicit_project_selector(
         args.project,
         args.project_base,
-        command_name="tarav skills",
+        command_name="tarav project skills",
     )
     scan_root = normalize_project_target(
         args.project if args.project is not None else Path.cwd()

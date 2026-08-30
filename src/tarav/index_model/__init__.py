@@ -5,8 +5,8 @@ An Index line still has a syntax — a `Line.Type` code, a body, and a trailing 
 wherever one is written or cited, and Chatlas dossiers assert identity over exactly that
 triplet. That grammar is what lives here.
 
-It is not the Index. The Index is the record stream in an `Index.Workspace`; read it
-through `tarav.indexlab`.
+It does not provide an Index or a record store. It only preserves the written-form
+grammar still consumed by retained Chatlas and POI surfaces.
 """
 
 from .identity import (

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tarav._core.project import TARAV_PROJECT_ID
-from tarav.indexlab import IndexResolutionError, IndexResolver
 from tarav.skillware._build_core import load_project_skw_config
 from tarav.skillware._code_surfaces import (
     DEFAULT_CODE_BACKENDS,
@@ -66,8 +65,6 @@ def create_tarav_wayfinder(
     the normal Wayfinder workflow.
     """
 
-    from tarav.skillware.index_wayfinder import resolve_index_block_reference
-
     selected = registry or WayfinderRegistry()
     if project_root is not None:
         root = WayfinderReferenceRoot(type=PROJECT_ROOT_TYPE, id=TARAV_PROJECT_ID)
@@ -75,7 +72,7 @@ def create_tarav_wayfinder(
             selected.register(root, project_root)
     return Wayfinder(
         registry=selected,
-        resolvers=(_cached_resolver(), resolve_index_block_reference),
+        resolvers=(_cached_resolver(),),
     )
 
 
@@ -299,29 +296,6 @@ def _discover(project_root: Path) -> tuple[_HostedBlock, ...]:
                     host_name=point[1],
                     content="\n\n".join(content_lines),
                     relationships=relationships,
-                )
-            )
-    from tarav.skillware.index_wayfinder import resolved_index_block_target
-
-    try:
-        resolver = IndexResolver.for_project(project_root)
-    except IndexResolutionError:
-        resolver = None
-    if resolver is not None:
-        for block in resolver.blocks():
-            target = resolved_index_block_target(resolver, block)
-            # A managed-block reference carries a bare Dotted.Name, so an Index
-            # block competes on its concept while the host still names its address.
-            found.append(
-                _HostedBlock(
-                    path=None,
-                    address=block.name.partition("#")[2] or block.name,
-                    line=None,
-                    end_line=None,
-                    host_kind="index.block",
-                    host_name=block.name,
-                    content=str(target["content"]),
-                    relationships=(),
                 )
             )
     return tuple(sorted(found, key=lambda item: (str(item.path or ""), item.line or 0)))

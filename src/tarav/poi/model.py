@@ -102,9 +102,7 @@ class POIInstance:
 def reference_sugar(reference: WayfinderReference) -> str:
     if not isinstance(reference.address, str):
         return reference.to_json()
-    if reference.type == "index.block":
-        scheme = "index"
-    elif reference.type == "managed.block":
+    if reference.type == "managed.block":
         scheme = "block"
     else:
         return reference.to_json()

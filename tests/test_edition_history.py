@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.bloberia.core import BloberiaDepot
+from tarav._core.record_depot import OpaqueRecordDepot
 from tarav.skillware.edition_history import (
     DEFAULT_EDITION_HISTORY_DEPOT,
     EditionFile,
@@ -26,7 +26,7 @@ def _accept_support(_support: dict[str, object]) -> None:
     return None
 
 
-def _service(depot: BloberiaDepot) -> EditionHistoryService:
+def _service(depot: OpaqueRecordDepot) -> EditionHistoryService:
     return EditionHistoryService(
         depot,
         support_resolver=_accept_support,
@@ -126,7 +126,7 @@ def test_record_is_idempotent_and_list_groups_deterministically(
         "second",
     )
     second_commit = _git(root, "rev-parse", "HEAD")
-    service = _service(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(OpaqueRecordDepot(tmp_path / "record-depot"))
 
     first = service.record(
         source,
@@ -180,7 +180,7 @@ def test_list_keeps_git_editions_without_session_support(tmp_path: Path) -> None
     _git(root, "add", ".")
     _git(root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "second")
     second_commit = _git(root, "rev-parse", "HEAD")
-    service = _service(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(OpaqueRecordDepot(tmp_path / "record-depot"))
     service.record(
         source,
         second_commit,
@@ -201,7 +201,7 @@ def test_list_keeps_git_editions_without_session_support(tmp_path: Path) -> None
 
 def test_amend_replaces_support_and_session_start_time(tmp_path: Path) -> None:
     _root, source, commit = _project(tmp_path)
-    depot = BloberiaDepot(tmp_path / "bloberia")
+    depot = OpaqueRecordDepot(tmp_path / "record-depot")
     service = _service(depot)
     recorded = service.record(
         source,
@@ -238,7 +238,7 @@ def test_amend_rejects_wrong_file_without_mutation(tmp_path: Path) -> None:
     root, source, commit = _project(tmp_path)
     other = root / "src" / "other.py"
     other.write_text("other = 1\n", encoding="utf-8")
-    depot = BloberiaDepot(tmp_path / "bloberia")
+    depot = OpaqueRecordDepot(tmp_path / "record-depot")
     service = _service(depot)
     recorded = service.record(
         source,
@@ -259,7 +259,7 @@ def test_amend_rejects_wrong_file_without_mutation(tmp_path: Path) -> None:
 
 def test_record_rejects_invalid_session_metadata(tmp_path: Path) -> None:
     _root, source, commit = _project(tmp_path)
-    service = _service(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(OpaqueRecordDepot(tmp_path / "record-depot"))
 
     with pytest.raises(EditionHistoryError, match="session id"):
         service.record(source, commit, " ", support=_support("session"))
@@ -275,7 +275,7 @@ def test_record_rejects_invalid_session_metadata(tmp_path: Path) -> None:
 
 def test_record_requires_support(tmp_path: Path) -> None:
     _root, source, commit = _project(tmp_path)
-    service = _service(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(OpaqueRecordDepot(tmp_path / "record-depot"))
 
     with pytest.raises(TypeError, match="support"):
         service.record(source, commit, "session")
@@ -311,7 +311,7 @@ def test_record_rejects_invalid_support(
     message: str,
 ) -> None:
     _root, source, commit = _project(tmp_path)
-    service = _service(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(OpaqueRecordDepot(tmp_path / "record-depot"))
 
     with pytest.raises(EditionHistoryError, match=message):
         service.record(source, commit, "session", support=support)  # type: ignore[arg-type]
@@ -319,7 +319,7 @@ def test_record_rejects_invalid_support(
 
 def test_record_requires_resolvable_support(tmp_path: Path) -> None:
     _root, source, commit = _project(tmp_path)
-    depot = BloberiaDepot(tmp_path / "bloberia")
+    depot = OpaqueRecordDepot(tmp_path / "record-depot")
 
     with pytest.raises(EditionHistoryError, match="support resolver is required"):
         EditionHistoryService(depot).record(
@@ -336,7 +336,7 @@ def test_list_rejects_and_check_reports_unresolvable_support(
     tmp_path: Path,
 ) -> None:
     _root, source, commit = _project(tmp_path)
-    depot = BloberiaDepot(tmp_path / "bloberia")
+    depot = OpaqueRecordDepot(tmp_path / "record-depot")
     _service(depot).record(
         source,
         commit,
@@ -364,7 +364,7 @@ def test_list_rejects_and_check_reports_unresolvable_support(
 
 def test_list_rejects_malformed_matching_record(tmp_path: Path) -> None:
     _root, source, _commit = _project(tmp_path)
-    depot = BloberiaDepot(tmp_path / "bloberia")
+    depot = OpaqueRecordDepot(tmp_path / "record-depot")
     depot.insert(
         {
             "record_id": "malformed-1",
@@ -391,7 +391,7 @@ def test_check_requires_history_for_each_explicit_target(tmp_path: Path) -> None
     root, source, commit = _project(tmp_path)
     other = root / "src" / "other.py"
     other.write_text("other = 1\n", encoding="utf-8")
-    service = _service(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(OpaqueRecordDepot(tmp_path / "record-depot"))
     service.record(source, commit, "session", support=_support("session"))
 
     result = service.check([source, other])
@@ -411,7 +411,7 @@ def test_complete_check_reports_each_unsupported_git_edition(
     _git(root, "add", ".")
     _git(root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "second")
     second_commit = _git(root, "rev-parse", "HEAD")
-    service = _service(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(OpaqueRecordDepot(tmp_path / "record-depot"))
     service.record(
         source,
         second_commit,
@@ -432,7 +432,7 @@ def test_check_reports_duplicate_and_malformed_associations(
     tmp_path: Path,
 ) -> None:
     _root, source, commit = _project(tmp_path)
-    depot = BloberiaDepot(tmp_path / "bloberia")
+    depot = OpaqueRecordDepot(tmp_path / "record-depot")
     service = _service(depot)
     service.record(source, commit, "session", support=_support("session"))
     valid_record = depot.first(
@@ -466,22 +466,22 @@ def test_check_reports_duplicate_and_malformed_associations(
     }
 
 
-def test_check_surfaces_bloberia_corruption(tmp_path: Path) -> None:
+def test_check_surfaces_record_depot_corruption(tmp_path: Path) -> None:
     """Depot-level corruption is reported, not swallowed into a record-level finding.
 
     The trigger moved with the contract: an odd filename is no longer a defect, because
     nothing resolves by filename. A record that will not parse still is.
     """
     _root, source, _commit = _project(tmp_path)
-    depot_root = tmp_path / "bloberia"
+    depot_root = tmp_path / "record-depot"
     records = depot_root / "records"
     records.mkdir(parents=True)
     (records / "unparseable.json").write_text("{not json", encoding="utf-8")
 
-    result = _service(BloberiaDepot(depot_root)).check([source])
+    result = _service(OpaqueRecordDepot(depot_root)).check([source])
 
     assert result.ok is False
-    assert [finding.code for finding in result.findings] == ["bloberia-invalid-json"]
+    assert [finding.code for finding in result.findings] == ["record-depot-invalid-json"]
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -498,7 +498,7 @@ def test_cli_record_list_and_check_round_trip(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     root, source, commit = _project(tmp_path)
-    depot = tmp_path / "bloberia"
+    depot = tmp_path / "record-depot"
     parser = _parser()
 
     record_args = [
@@ -664,7 +664,7 @@ def test_project_check_enforces_configured_edition_history(
     _git(root, "add", ".")
     _git(root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "second")
     second_commit = _git(root, "rev-parse", "HEAD")
-    service = _service(BloberiaDepot(root / DEFAULT_EDITION_HISTORY_DEPOT))
+    service = _service(OpaqueRecordDepot(root / DEFAULT_EDITION_HISTORY_DEPOT))
     service.record(
         source,
         second_commit,
@@ -722,7 +722,7 @@ def test_cli_record_requires_support(tmp_path: Path) -> None:
                 "--session",
                 "session",
                 "--depot",
-                str(tmp_path / "bloberia"),
+                str(tmp_path / "record-depot"),
             ]
         )
 

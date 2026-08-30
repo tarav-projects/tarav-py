@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 
 from tarav._core.errors import CliError
 from tarav.hooks import HookRegistry
@@ -29,6 +30,7 @@ from .runtime import DaemonRuntime, DaemonRuntimeError
 
 DAEMON_START_TIMEOUT_SECONDS = LAUNCH_AGENT_THROTTLE_SECONDS + 2.0
 DAEMON_START_POLL_SECONDS = 0.05
+CommandRegistrar = Callable[[argparse._SubParsersAction], None]
 
 
 def _cmd_run(registry: HookRegistry) -> int:
@@ -225,6 +227,7 @@ def register_daemon_commands(
     subparsers: argparse._SubParsersAction,
     *,
     registry: HookRegistry,
+    hook_registrar: CommandRegistrar | None = None,
 ) -> None:
     parser = subparsers.add_parser(
         "daemon",
@@ -263,6 +266,9 @@ def register_daemon_commands(
     )
     uninstall_parser.add_argument("--json", action="store_true")
     uninstall_parser.set_defaults(handler=_cmd_uninstall)
+
+    if hook_registrar is not None:
+        hook_registrar(commands)
 
 
 __all__ = ["register_daemon_commands"]

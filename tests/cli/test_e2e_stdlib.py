@@ -16,7 +16,7 @@ def _init_project(
 ) -> Path:
     environment = TaravTestEnvironment.create(root / "agentos-home")
     environment.apply_environment(monkeypatch.setenv)
-    assert main(["init", "--scope", "project", "--project", str(root)]) == 0
+    assert main(["project", "init", "--scope", "project", "--project", str(root)]) == 0
     capsys.readouterr()
     monkeypatch.chdir(root)
     return root
@@ -126,7 +126,7 @@ def test_tmp_folder_new_allocates_project_tmp_and_logs_command(
     environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     tarav_home = environment.tarav_home
-    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
+    assert main(["project", "init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
     monkeypatch.chdir(tmp_path)
 

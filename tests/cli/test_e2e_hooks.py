@@ -16,7 +16,7 @@ from tarav.cli.cli import build_parser, main
 from tarav.runtime import TaravRuntime, create_runtime
 
 
-def test_top_level_hook_command_accepts_inline_json(monkeypatch, capsys) -> None:
+def test_daemon_hook_command_accepts_inline_json(monkeypatch, capsys) -> None:
     submitted: list[HookInvocation] = []
     monkeypatch.setattr(
         daemon_client,
@@ -24,7 +24,19 @@ def test_top_level_hook_command_accepts_inline_json(monkeypatch, capsys) -> None
         lambda invocation, *, wait=False: submitted.append(invocation),
     )
 
-    assert main(["hook", "--name", "agent.session.start", "--ctx", "{}"]) == 0
+    assert (
+        main(
+            [
+                "daemon",
+                "hook",
+                "--name",
+                "agent.session.start",
+                "--ctx",
+                "{}",
+            ]
+        )
+        == 0
+    )
     assert submitted == [HookInvocation(name="agent.session.start", ctx={})]
     assert capsys.readouterr().out == ""
 
@@ -66,6 +78,7 @@ def test_cli_composition_does_not_run_subsystem_callbacks_locally(monkeypatch) -
     parser = build_parser(hook_registrars=(subsystem_hooks,))
     args = parser.parse_args(
         [
+            "daemon",
             "hook",
             "--name",
             "agent.session.start",
@@ -109,7 +122,7 @@ def test_cli_adapter_delegates_command_composition_to_runtime() -> None:
     assert registered == ["called"]
 
 
-def test_top_level_cli_samples_codex_prompt_submission(
+def test_daemon_hook_samples_codex_prompt_submission(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -130,6 +143,7 @@ def test_top_level_cli_samples_codex_prompt_submission(
         assert (
             main(
                 [
+                    "daemon",
                     "hook",
                     "--name",
                     "agent.prompt.submit",

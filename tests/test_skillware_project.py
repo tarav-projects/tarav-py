@@ -21,57 +21,31 @@ from tarav.skillware.commands import (
     _cmd_skillware_status,
     register_skillware_commands,
 )
-from _skillware_helpers import (
-    _write_skill,
-    write_index,
-)
+from _skillware_helpers import _write_skill
 
 
 def _write_project(root: Path) -> Path:
-    """A project whose Index records hold a shared block one package depends on."""
-    write_index(
-        root,
-        (("shared/design#Shared.Block", (("CT", "shared across packages"),), ()),),
-    )
-    (root / ".skw").mkdir()
+    """A project containing one built Skillware package."""
+    (root / ".skw").mkdir(parents=True)
     (root / ".skw" / "skw.json").write_text(json.dumps({}), encoding="utf-8")
     pkg_a_src = root / "packages" / "pkgA" / ".skw" / "src"
     pkg_a_src.mkdir(parents=True)
     (pkg_a_src / "mod.skw.md").write_text(
-        "# mod\n\n> $kw: --from Shared.Block\n\nUses `Shared.Block`.\n",
+        "# mod\n\nPackage content.\n",
         encoding="utf-8",
     )
     build_skill(root / "packages" / "pkgA")  # a real package is built
     return root
 
 
-def test_project_check_catches_cross_package_dangling(tmp_path: Path) -> None:
-    """The project-scope payoff: renaming a shared block breaks pkgA's declared
-    dependency, caught by `check_project` without targeting pkgA."""
+def test_project_check_discovers_built_packages(tmp_path: Path) -> None:
     from tarav.skillware.build import check_project
 
     proj = _write_project(tmp_path)
 
-    # GREEN: the shared block resolves against the project's Index records.
     report = check_project(proj)
     assert report.poi_count == 0
     assert any("pkgA" in str(pkg) for pkg, _ in report.packages)
-
-    # RED: rename the shared block without an alias — pkgA's --from dangles.
-    write_index(
-        proj,
-        (("shared/design#Renamed.Block", (("CT", "shared across packages"),), ()),),
-    )
-    report = check_project(proj)
-    dangling = [
-        (pkg, poi)
-        for pkg, pr in report.packages
-        for poi in pr.pois
-        if poi.kind == "dangling-dependency"
-    ]
-    assert len(dangling) == 1
-    pkg, poi = dangling[0]
-    assert "pkgA" in str(pkg) and poi.key == "Shared.Block"
 
 
 def test_project_check_honors_exclude(tmp_path: Path) -> None:
@@ -115,7 +89,6 @@ def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(
     assert config.id == "tarav-pkg"
     assert config.projects == ("../sib",)
     assert any("mystery" in w for w in config.warnings)
-    # `depots` configured concept resolution; one workspace holds the Index whole.
     assert any("depots" in w for w in config.warnings)
 
     bad = tmp_path / "bad.json"

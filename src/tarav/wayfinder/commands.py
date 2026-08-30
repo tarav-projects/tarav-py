@@ -33,11 +33,7 @@ WayfinderCheckReportBuilder = Callable[
 
 def _cmd_register(args: argparse.Namespace) -> int:
     try:
-        root = (
-            WayfinderReferenceRoot(type="package.skill", id=args.package)
-            if args.package
-            else WayfinderReferenceRoot.from_dict(_load_json(args.root_json, "root"))
-        )
+        root = WayfinderReferenceRoot.from_dict(_load_json(args.root_json, "root"))
         hints = tuple(args.hint) + tuple(
             _load_json(value, "relocation hint") for value in args.hint_json
         )
@@ -104,22 +100,18 @@ def register_wayfinder_commands(
     check_report_builder: WayfinderCheckReportBuilder,
 ) -> None:
     parser = subparsers.add_parser(
-        "wayfinder",
+        "reference",
         help="Resolve portable Tarav references through registered roots.",
     )
-    commands = parser.add_subparsers(dest="wayfinder_command", required=True)
+    commands = parser.add_subparsers(dest="reference_command", required=True)
 
     register = commands.add_parser(
         "register",
         help="Remember the verified location of a reference root.",
     )
-    root = register.add_mutually_exclusive_group(required=True)
-    root.add_argument(
-        "--package",
-        help="Package.Skill identity to register.",
-    )
-    root.add_argument(
+    register.add_argument(
         "--root-json",
+        required=True,
         help="Canonical Wayfinder.Reference.Root JSON object.",
     )
     register.add_argument("--path", required=True, help="Reachable root directory.")
@@ -143,12 +135,12 @@ def register_wayfinder_commands(
 
     resolve = commands.add_parser(
         "resolve",
-        help="Resolve an index:// sugar reference or canonical reference JSON.",
+        help="Resolve a block:// sugar reference or canonical reference JSON.",
     )
     resolve.add_argument(
         "reference",
         nargs="?",
-        help="Portable reference sugar, currently index://package/block.",
+        help="Portable block://project/block reference sugar.",
     )
     resolve.add_argument(
         "--reference-json",

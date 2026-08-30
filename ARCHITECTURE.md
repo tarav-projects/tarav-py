@@ -44,11 +44,13 @@ contract and Git boundaries.
   Session Index to the provider-neutral Normal Model. It preserves source
   traceability but does not own search, interpretation, annotation,
   contextualization, or workflow products.
-- `tarav.indexlab` owns the Index: an ordered stream of `Index.Record`s, the
-  semantic projection folded from it, one `IndexResolver` that every consumer
-  reads through, rendering, and lint execution. Its explicit `IndexLibrary`
-  resolves independently configured `IndexWorkspace` roots; each workspace is
-  also its Bloberia depot and Git repository root.
+- `tarav.archive` owns stable Artifact identity, retained Archive Records, and
+  portable references to retained or externally located data.
+- `tarav.diagram` owns the flat Namespace annotation tape, typed projections,
+  Assertion evaluation, and read-only renderers over Archive-grounded data.
+- `tarav.bloberia` owns the hosted global `Tarav.Bloberia` registry. The public
+  `tarav bloberia` command addresses that registry directly; its private JSON
+  storage is not a second Tarav system or command surface.
 - `tarav.index_model` owns only the written form of an Index line: label grammar
   and the identity hashes asserted over the `Line.Type + body + anchor` triplet.
   It does not model the Index.
@@ -63,20 +65,18 @@ contract and Git boundaries.
   retain their check classes and POI class definitions. The shared runner
   instantiates selected checks with one domain context; ordinary earlier check
   results express execution dependencies.
-- `tarav.anchory`, `tarav.bloberia`, and `tarav.wayfinder` own anchor,
-  record-depot, and portable-reference primitives respectively.
+- `tarav.anchory` remains a legacy importable primitive for retained consumers;
+  it has no public umbrella-CLI command.
 - `tarav.stdlib` contains reusable `mdblocks`, `prefix`, `refs`, and `utils`
   primitives matching the `tarav stdlib` CLI.
-- `tarav.canvas`, `tarav.hooks`, `tarav.daemon`, `tarav.skills`,
-  `tarav.tournament`, and `tarav.workspaces` are cohesive domains.
+- `tarav.project` owns the public `tarav project` namespace and composes its
+  initialization, discovery, resolution, verification, and project-local
+  Skills operations. `tarav.skills` remains the cohesive domain that owns
+  Skills behavior.
+- `tarav.hooks`, `tarav.daemon`, `tarav.tournament`, and `tarav.workspaces` are
+  cohesive domains.
 - `tarav.iterante` and `tarav.iterante2` are separate runtimes; only behavior
   proven identical belongs in `tarav.iterante._shared`.
-- `tarav.tarav2` is the isolated experimental redesign namespace. Existing
-  domains and `tarav.runtime` do not import it; only the umbrella CLI adapter
-  exposes it through the dedicated `tarav tarav2` command branch.
-- `tarav.tarav2.bloberia` owns the hosted global `Tarav.Bloberia` registry and
-  full-record text search. It uses `tarav.bloberia` for opaque storage, locking,
-  and Git checkpointing and adds no fields or domain semantics to its cargo.
 
 ## Project and surface resolution
 
@@ -88,27 +88,22 @@ file's syntax. Project-aware discovery supplies context and surface membership.
 Domain adapters interpret those facts. A file parser must not infer domain
 meaning from its path or current working directory.
 
-Index reads resolve through the library and workspace named by
-`.tarav/project.json`. Resolution is global within that one workspace, so the
-same records must produce the same answer regardless of the reader's working
-directory. Annotated code is discovered through the project's `.skw/skw.json`.
+Annotated code is discovered through the project's `.skw/skw.json`.
 
 ## Integration boundaries
 
-- Hooks owns validation and dispatch; runtime injects daemon delivery.
-- Wayfinder owns generic reference resolution; domains provide resolvers for
-  the resources they understand.
-- Skillware consumes native surface models through adapters and reads the Index
-  through `IndexResolver`. Nothing reparses Python, and nothing parses Markdown
-  as the Index.
-- Index findings use the shared POI runtime model. One JSON-serializable run
-  model drives every renderer and limit/filter contract.
-- POI class documentation may be an Index block naturally placed beside its
-  emitting check. Static discovery reads annotations; it never imports checker
-  modules merely to discover POIs.
+- Hooks owns validation and dispatch; runtime injects daemon delivery and
+  exposes submission as `tarav daemon hook`.
+- Wayfinder owns generic reference resolution and is exposed publicly as
+  `tarav reference`; domains provide resolvers for the resources they
+  understand.
+- Skillware consumes native surface models through adapters. Nothing reparses
+  Python.
 - Chatlas consumers import the public `tarav.chatlas.normal_model` package, not its
   internal modules. Only Chatlas command composition reaches into that layer
   to register its CLI.
+- Diagram consumes Chatlas's public Normal Model for producer and support
+  evidence. Chatlas does not import Diagram.
 
 Retained Chatlas raw artifacts are authoritative evidence. Its Session Index
 and Normal Model cache are derived surfaces and may be rebuilt.

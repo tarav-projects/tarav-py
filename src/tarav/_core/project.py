@@ -302,7 +302,7 @@ def build_not_inside_project_message(
     message = "not inside a tarav project (missing .tarav/project.json)"
     hints: list[str] = []
     if include_init_hint:
-        hints.append("run `tarav init`")
+        hints.append("run `tarav project init`")
     if extra_hint is not None:
         hints.append(str(extra_hint))
 

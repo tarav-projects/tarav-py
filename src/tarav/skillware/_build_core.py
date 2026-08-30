@@ -9,7 +9,6 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tarav.indexlab import IndexResolutionError, IndexResolver
 from tarav.surfaces.markdown import normalize_markdown
 from tarav.skillware.model import (
     SkwFinding,
@@ -817,72 +816,7 @@ def _resolve_locator(
             return None, f"region not found: #{region}"
         return body, None
 
-    resolver = _index_resolver(skillware)
-    if resolver is None:
-        return None, "Dotted.Name target needs Index records; see .tarav/project.json"
-    block = resolver.block_by_locator(locator)
-    if block is None:
-        return None, "block not found in the Index records"
-    return list(render_block_body(resolver, block)), None
-
-
-# $kw: --note [CT] one resolver per Skillware run is cached on the run, because folding the record stream per locator would refold the whole corpus for every Dotted.Name a build materializes
-def _index_resolver(skillware: Skillware) -> IndexResolver | None:
-    key = ("index-resolver",)
-    if key in skillware._depot_cache:
-        return skillware._depot_cache[key]
-    try:
-        resolver = IndexResolver.for_path(skillware.skill_root)
-    except IndexResolutionError:
-        resolver = None
-    skillware._depot_cache[key] = resolver
-    return resolver
-
-
-def render_block_body(resolver: IndexResolver, block) -> list[str]:
-    """A block's lines as Index source: type code, text, and the citable label."""
-    from tarav.indexlab import line_type
-
-    return [
-        f"- [{line_type(line)}] {line.text} {line.label}"
-        for line in resolver.content_lines(block.name)
-    ]
-
-
-_DOTTED_NAME_RE = re.compile(
-    r"^[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+(?:::[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+)?$"
-)
-
-
-def _is_dotted_name_locator(locator: str) -> bool:
-    return bool(_DOTTED_NAME_RE.match(locator.strip()))
-
-
-def _resolved_dotted_names(skillware: Skillware, names: set[str]) -> dict[str, str]:
-    resolved: dict[str, str] = {}
-    for name in sorted(names):
-        lines, detail = _resolve_locator(skillware, name, stack=(Path("."),))
-        if lines is not None:
-            resolved[name] = content_hash(lines)
-        elif detail is not None:
-            resolved[name] = f"unresolved:{detail}"
-    return resolved
-
-
-def resolve_mentions(skillware: Skillware, names: set[str]) -> set[str]:
-    return {
-        name
-        for name, resolution in _resolved_dotted_names(skillware, names).items()
-        if not resolution.startswith("unresolved:")
-    }
-
-
-def resolve_dotted_name_canonical(skillware: Skillware, name: str) -> str | None:
-    resolver = _index_resolver(skillware)
-    if resolver is None:
-        return None
-    block = resolver.block_by_locator(name)
-    return block.name if block is not None else None
+    return None, f"locator does not resolve to a Skillware source or file: {locator}"
 
 
 def _labeled_span(

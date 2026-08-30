@@ -1,10 +1,10 @@
-# $kw: ^tournament-store --from Agentos.Tournament --from Tournament.Verdict --from Tournament.Depot --from Tournament.Label --from Bloberia.Record.Namespace --note [CT] append-only is a Tournament-layer rule; BloberiaDepot.replace exists and this store never calls it --supp ^c20260806-28u ^<anchor-on-landing>
-"""Bloberia-backed tournament and verdict storage.
+# Tournament-owned storage for tournaments and verdicts.
+"""Tournament and verdict storage over the shared internal record depot.
 
-Append-only is enforced here, not by Bloberia: ``BloberiaDepot.replace`` overwrites in
+Append-only is enforced here: ``OpaqueRecordDepot.replace`` overwrites in
 place, so this store exposes creation and reading and never reaches for it.
 
-The store mints its own ``record_id``. Bloberia stores cargo verbatim and hands back no
+The store mints its own ``record_id``. The depot stores cargo verbatim and hands back no
 identity, so a verdict that must be addressable carries its id in its own schema.
 """
 
@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from tarav._core.clock import iso_z, utc_now_iso
 from tarav._core.ids import generate_uuid4_string
-from tarav.bloberia.core import BloberiaDepot
+from tarav._core.record_depot import OpaqueRecordDepot
 from tarav.tournament.depot import DEFINITIONS_DIRNAME, resolve_depot_root
 from tarav.tournament.model import (
     ENVELOPE_KEY,
@@ -43,7 +43,7 @@ class TournamentStore:
 
     def __init__(self, root: Path | str | None = None) -> None:
         self.root = resolve_depot_root(root)
-        self.depot = BloberiaDepot(self.root)
+        self.depot = OpaqueRecordDepot(self.root)
 
     def definition_dir(self, tournament_id: str) -> Path:
         return self.root / DEFINITIONS_DIRNAME / tournament_id

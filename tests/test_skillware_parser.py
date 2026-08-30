@@ -13,7 +13,6 @@ from tarav.skillware.build import (
 )
 from tarav.skillware.model import parse_skw_source
 from _skillware_helpers import (
-    write_index,
     SRC,
     _entry,
     _write_skill,
@@ -31,7 +30,7 @@ def test_parse_recipes_fields_and_spans() -> None:
     assert copy.body_text() == "- copied body line"
 
     derived = source.recipes[1]
-    assert derived.froms == ("references/lib.skw.md#Alpha", "Concept.One")
+    assert derived.froms == ("references/lib.skw.md#Alpha",)
     assert derived.intent == "reshape alpha for this consumer"
     assert derived.body_text() == "- derived body"
 
@@ -661,7 +660,8 @@ def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
     src.write_text(
         "# mod\n\n## Pair\n\n"
         "> $kw: --derived --from references/lib.skw.md#Alpha --intent first\n\n- one\n\n> $kw. end\n\n"
-        "> $kw: --derived --from Concept.One --intent second\n\n- two\n\n> $kw. end\n",
+        "> $kw: --derived --from references/base.skw.md#Root --intent second\n\n"
+        "- two\n\n> $kw. end\n",
         encoding="utf-8",
     )
     skillware = load_skillware(skill)
@@ -672,9 +672,11 @@ def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
     check = check_skill(skill)
     assert not check.pois
 
-    # editing the second recipe's dep flags only Pair@1
-    write_index(
-        tmp_path, (("depot/design#Concept.One", (("CT", "concept line v2"),), ()),)
+    # editing the second recipe's dependency flags only Pair@1
+    base = skill / ".skw" / "src" / "references" / "base.skw.md"
+    base.write_text(
+        base.read_text(encoding="utf-8").replace("- root line", "- root line v2"),
+        encoding="utf-8",
     )
     check = check_skill(skill)
     entry = _entry(check, "references/mod.md")
@@ -836,7 +838,8 @@ def test_ordinal_shift_does_not_bless_stale_derived(tmp_path: Path) -> None:
     # insert a NEW derived above the stale one under the same heading; rebuild
     src.write_text(
         "# mod\n\n## Pair\n\n"
-        "> $kw: --derived --from Concept.One --intent new first\n\n- new solution\n\n> $kw. end\n\n"
+        "> $kw: --derived --from references/base.skw.md#Root --intent new first\n\n"
+        "- new solution\n\n> $kw. end\n\n"
         "> $kw: --derived --from references/lib.skw.md#Alpha --intent i\n\n- solution\n\n> $kw. end\n",
         encoding="utf-8",
     )

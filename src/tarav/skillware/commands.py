@@ -8,7 +8,7 @@ from pathlib import Path
 
 from tarav._core.errors import CliError
 from tarav._core.json_input import load_json_object_arg
-from tarav.bloberia.core import BloberiaDepot
+from tarav._core.record_depot import OpaqueRecordDepot
 from tarav.skillware.managed_blocks import create_tarav_wayfinder
 from tarav.poi import (
     POILinterReport,
@@ -145,7 +145,7 @@ def _edition_history_project_pois(
         else project_root / DEFAULT_EDITION_HISTORY_DEPOT
     )
     result = EditionHistoryService(
-        BloberiaDepot(depot),
+        OpaqueRecordDepot(depot),
         support_resolver=support_resolver,
     ).check(targets, require_complete=require_complete)
     return edition_history_findings_to_pois(result.findings)
@@ -619,7 +619,7 @@ def _edition_history_service(
             )
         depot = depots.pop()
     return EditionHistoryService(
-        BloberiaDepot(depot),
+        OpaqueRecordDepot(depot),
         support_resolver=args.edition_history_support_resolver,
     )
 

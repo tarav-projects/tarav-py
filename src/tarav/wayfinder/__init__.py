@@ -1,8 +1,6 @@
 # $kw: --from Agentos.Wayfinder
 from .model import (
-    INDEX_BLOCK_TYPE,
     MANAGED_BLOCK_TYPE,
-    PACKAGE_SKILL_ROOT_TYPE,
     PROJECT_ROOT_TYPE,
     REFERENCE_SCHEMA,
     InvalidWayfinderReference,
@@ -13,10 +11,8 @@ from .model import (
     WayfinderResolutionPOI,
     WayfinderResolutionResult,
     WayfinderTraceStep,
-    index_block_reference,
     managed_block_reference,
     parse_reference,
-    poi_class_reference,
 )
 from .registry import (
     CorruptWayfinderRegistry,
@@ -29,10 +25,8 @@ from .resolver import Wayfinder, WayfinderReferenceResolver
 
 __all__ = [
     "CorruptWayfinderRegistry",
-    "INDEX_BLOCK_TYPE",
     "MANAGED_BLOCK_TYPE",
     "InvalidWayfinderReference",
-    "PACKAGE_SKILL_ROOT_TYPE",
     "PROJECT_ROOT_TYPE",
     "REFERENCE_SCHEMA",
     "UnsupportedWayfinderReference",
@@ -48,8 +42,6 @@ __all__ = [
     "WayfinderResolutionPOI",
     "WayfinderResolutionResult",
     "WayfinderTraceStep",
-    "index_block_reference",
     "managed_block_reference",
     "parse_reference",
-    "poi_class_reference",
 ]

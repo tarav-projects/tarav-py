@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tarav.poi import POIDiagnostic
-from tarav.skw.network import extract_mentions, run_dependency_sync
 from tarav.surfaces.markdown import normalize_markdown
 from tarav.skillware.model import (
     SkwFinding,
@@ -24,8 +23,6 @@ from ._build_core import (
     Expansion,
     Skillware,
     SkillwareError,
-    _is_dotted_name_locator,
-    _resolved_dotted_names,
     _role_edges,
     _trim,
     content_hash,
@@ -35,11 +32,10 @@ from ._build_core import (
     unlock_requirements,
 )
 from ._code_model import CodeCheckReport
-from ._code_index import index_code_dependency_resolver
+from ._code_dependencies import code_dependency_resolver
 from ._code_surfaces import check_code_surfaces
 from .poi import (
     SkillwarePOIInstance,
-    network_finding_to_poi,
     parser_diagnostics,
     skillware_poi as _poi,
     suppress_blessed as _suppress_blessed,
@@ -412,73 +408,15 @@ def _legacy_callout_pois(
     return pois
 
 
-class _SkwSurfaceProvider:
-    """The skw-skills backend's binding into the dependency-sync engine.
-
-    Extracts declared edges from a `SkwSource`'s dependencies and recipes, its
-    mentions from the compiled (`Expansion`) text, and resolves names against
-    the project's Index records — the `SurfaceProvider` the core drives.
-    """
-
-    def __init__(
-        self, skillware: "Skillware", source: SkwSource, expansion: "Expansion"
-    ) -> None:
-        self._skillware = skillware
-        self._source = source
-        self._expansion = expansion
-
-    def declared_edges(self) -> tuple[set[str], set[str]]:
-        declared: set[str] = set()
-        declared_from_depends: set[str] = set()
-        for dependency in self._source.dependencies:
-            for locator in dependency.froms:
-                if _is_dotted_name_locator(locator):
-                    declared.add(locator)
-                    declared_from_depends.add(locator)
-            for locator in (*dependency.dev_froms, *dependency.cites):
-                if _is_dotted_name_locator(locator):
-                    declared.add(locator)
-        for recipe in self._source.recipes:
-            for _role, locator in _role_edges(recipe):
-                if _is_dotted_name_locator(locator):
-                    declared.add(locator)
-        for construct in self._source.constructs:
-            for _role, locator in _role_edges(construct):
-                if _is_dotted_name_locator(locator):
-                    declared.add(locator)
-        return declared, declared_from_depends
-
-    def mentions(self) -> set[str]:
-        return extract_mentions("\n".join(self._expansion.fresh_lines))
-
-    def resolve(self, names: set[str]) -> dict[str, str]:
-        return _resolved_dotted_names(self._skillware, names)
-
-
-def _dependency_sync_pois(
-    skillware: Skillware, target_rel: Path, source: SkwSource, expansion: Expansion
-) -> list[SkillwarePOIInstance]:
-    provider = _SkwSurfaceProvider(skillware, source, expansion)
-    return [
-        network_finding_to_poi(finding)
-        for finding in run_dependency_sync(target_rel, provider)
-    ]
-
-
 def _citation_pois(
     target_rel: Path, source: SkwSource, expansion: Expansion
 ) -> list[SkillwarePOIInstance]:
     text = "\n".join(expansion.fresh_lines)
-    mentions = extract_mentions(text)
     pois: list[SkillwarePOIInstance] = []
     blocks = (*source.dependencies, *source.recipes, *source.constructs)
     for block in blocks:
         for locator in block.cites:
-            visible = (
-                locator in mentions
-                if _is_dotted_name_locator(locator)
-                else locator in text
-            )
+            visible = locator in text
             if not visible:
                 pois.append(
                     _poi(
@@ -701,7 +639,6 @@ def check_skill(skill_root: Path) -> CheckReport:
             derived_stale=tuple(derived_stale),
         )
         entries.append(entry)
-        pois.extend(_dependency_sync_pois(skillware, target_rel, source, expansion))
         pois.extend(_citation_pois(target_rel, source, expansion))
         pois.extend(
             _context_assembly_bypass_pois(
@@ -802,7 +739,7 @@ def check_project(project_root: Path) -> ProjectCheckReport:
         code=check_code_surfaces(
             project_root,
             config.code_surfaces,
-            dependency_resolver=index_code_dependency_resolver(project_root),
+            dependency_resolver=code_dependency_resolver(project_root),
         ),
     )
 

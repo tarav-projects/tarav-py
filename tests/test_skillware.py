@@ -20,10 +20,6 @@ from tarav.skillware.commands import (
     _cmd_skillware_status,
 )
 from _skillware_helpers import (
-    DEPOT_ALIAS_BLOCKS,
-    DEPOT_BLOCKS,
-    add_index_block,
-    write_index,
     MOD_COMPILED,
     _entry,
     _write_skill,
@@ -49,7 +45,7 @@ def test_expand_records_dep_hashes(tmp_path: Path) -> None:
     skillware = load_skillware(skill)
     expansion = expand_file(skillware, Path("references/mod.skw.md"))
     derived_deps = expansion.dep_hashes["Derived"]
-    assert set(derived_deps) == {"references/lib.skw.md#Alpha", "Concept.One"}
+    assert set(derived_deps) == {"references/lib.skw.md#Alpha"}
     assert all(isinstance(value, str) for value in derived_deps.values())
 
 
@@ -104,43 +100,6 @@ def test_extract_mentions_from_backticked_dotted_names() -> None:
     }
 
 
-def test_resolve_mentions_keeps_only_depot_resolving_names(tmp_path: Path) -> None:
-    from tarav.skillware.build import resolve_mentions
-
-    skill = _write_skill(tmp_path)
-    skillware = load_skillware(skill)
-    assert resolve_mentions(skillware, {"Concept.One", "Concept.Missing"}) == {
-        "Concept.One"
-    }
-
-
-def test_dotted_name_locator_resolves_meta_aliases(tmp_path: Path) -> None:
-    skill = _write_skill(tmp_path)
-    write_index(tmp_path, DEPOT_ALIAS_BLOCKS)
-    skillware = load_skillware(skill)
-
-    canonical = expand_file(skillware, Path("references/mod.skw.md"))
-    assert not canonical.findings
-
-    alias_lines, alias_detail = __import__(
-        "tarav.skillware.build", fromlist=["_resolve_locator"]
-    )._resolve_locator(
-        skillware, "Concept.Alias", stack=(Path("references/mod.skw.md"),)
-    )
-    canonical_lines, canonical_detail = __import__(
-        "tarav.skillware.build", fromlist=["_resolve_locator"]
-    )._resolve_locator(skillware, "Concept.One", stack=(Path("references/mod.skw.md"),))
-    collision_lines, collision_detail = __import__(
-        "tarav.skillware.build", fromlist=["_resolve_locator"]
-    )._resolve_locator(
-        skillware, "Concept.Taken", stack=(Path("references/mod.skw.md"),)
-    )
-
-    assert (
-        alias_detail is None and canonical_detail is None and collision_detail is None
-    )
-    assert alias_lines == canonical_lines == ["- [CT] canonical line ^lin_a_1"]
-    assert collision_lines == ["- [CT] taken canonical line ^lin_a_4"]
 
 
 def test_build_then_check_ok(tmp_path: Path) -> None:
@@ -360,51 +319,6 @@ def test_copy_drift_and_derived_stale_on_dep_edit(tmp_path: Path) -> None:
     assert _entry(check, "references/mod.md").derived_stale == ()
 
 
-def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
-    skill = _write_skill(tmp_path)
-    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
-    add_index_block(tmp_path, "depot/design#Concept.Two", (("CT", "concept two"),))
-    src.write_text(
-        "# mod\n\n"
-        "Mentions `Concept.Two` without declaring it.\n\n"
-        "> $kw: --from Concept.Missing\n\n"
-        "## Copy\n\n> $kw: --copy --from Concept.One\n\n- stale\n\n> $kw. end\n",
-        encoding="utf-8",
-    )
-
-    check = check_skill(skill)
-    kinds = {(poi.kind, poi.key) for poi in check.pois}
-    assert ("undeclared-dependency", "Concept.Two") in kinds
-    # Concept.Missing is declared but does not resolve — it is dangling, not
-    # unhonored (unhonored means declared-and-resolving but unmentioned).
-    assert ("dangling-dependency", "Concept.Missing") in kinds
-    assert not any(
-        poi.kind == "unhonored-dependency" and poi.key == "Concept.Missing"
-        for poi in check.pois
-    )
-    assert not any(
-        poi.kind == "unhonored-dependency" and poi.key == "Concept.One"
-        for poi in check.pois
-    )
-
-    first = next(p for p in check.pois if p.kind == "undeclared-dependency")
-    second = next(
-        p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"
-    )
-    assert first.poi_hash == second.poi_hash
-
-    src.write_text(
-        src.read_text(encoding="utf-8").replace("Concept.Two", "Concept.Three"),
-        encoding="utf-8",
-    )
-    add_index_block(
-        tmp_path, "depot/design#Concept.Three", (("CT", "concept three"),)
-    )
-    changed = next(
-        p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"
-    )
-    assert changed.poi_hash != first.poi_hash
-
 
 def test_dependency_roles_resolve_and_citations_must_be_visible(
     tmp_path: Path,
@@ -414,7 +328,7 @@ def test_dependency_roles_resolve_and_citations_must_be_visible(
     src.write_text(
         "# mod\n\n"
         "> $kw: --dev-from references/missing.skw.md\n"
-        "> --cite Concept.One\n\n"
+        "> --cite references/context.skw.md\n\n"
         "No visible citation.\n",
         encoding="utf-8",
     )
@@ -429,20 +343,21 @@ def test_dependency_roles_resolve_and_citations_must_be_visible(
     src.write_text(
         "# mod\n\n"
         "> $kw: --dev-from references/context.skw.md\n"
-        "> --cite Concept.One\n\n"
+        "> --cite references/context.skw.md\n\n"
         "No visible citation.\n",
         encoding="utf-8",
     )
     build_skill(skill)
     check = check_skill(skill)
     assert any(
-        poi.kind == "uncited-dependency" and poi.key == "Concept.One"
+        poi.kind == "uncited-dependency"
+        and poi.key == "references/context.skw.md"
         for poi in check.pois
     )
 
     src.write_text(
         src.read_text(encoding="utf-8").replace(
-            "No visible citation.", "Uses `Concept.One` explicitly."
+            "No visible citation.", "Uses `references/context.skw.md` explicitly."
         ),
         encoding="utf-8",
     )
@@ -458,7 +373,7 @@ def test_dev_from_participates_in_derived_staleness(tmp_path: Path) -> None:
     src.write_text(
         "# mod\n\n"
         "## Derived\n\n"
-        "> $kw: --derived --from Concept.One\n"
+        "> $kw: --derived --from references/lib.skw.md#Alpha\n"
         "> --dev-from references/context.skw.md\n\n"
         "- derived solution\n\n"
         "> $kw. end\n",
@@ -480,14 +395,15 @@ def test_context_assembly_bypass_requires_companion_dev_from(
     skill = _write_skill(tmp_path)
     context = skill / ".skw" / "src" / "references" / "context.skw.md"
     context.write_text(
-        "> $kw: --context-assembly --from Concept.One\n\n"
+        "> $kw: --context-assembly --from references/lib.skw.md#Alpha\n\n"
         "# Context\n\n"
-        "Curates `Concept.One` for builders.\n",
+        "Curates `references/lib.skw.md#Alpha` for builders.\n",
         encoding="utf-8",
     )
     src = skill / ".skw" / "src" / "references" / "mod.skw.md"
     src.write_text(
-        "# mod\n\n> $kw: --cite Concept.One\n\nUses `Concept.One` explicitly.\n",
+        "# mod\n\n> $kw: --cite references/lib.skw.md#Alpha\n\n"
+        "Uses `references/lib.skw.md#Alpha` explicitly.\n",
         encoding="utf-8",
     )
     build_skill(skill)
@@ -496,7 +412,7 @@ def test_context_assembly_bypass_requires_companion_dev_from(
         poi for poi in check_skill(skill).pois if poi.kind == "context-assembly-bypass"
     ]
     assert len(bypass) == 1
-    assert bypass[0].key == "Concept.One"
+    assert bypass[0].key == "references/lib.skw.md#Alpha"
     assert "is covered by" in bypass[0].detail
     assert "claimed by" not in bypass[0].detail
     assert "references/context.skw.md" in bypass[0].detail
@@ -510,8 +426,9 @@ def test_context_assembly_bypass_requires_companion_dev_from(
 
     src.write_text(
         src.read_text(encoding="utf-8").replace(
-            "> $kw: --cite Concept.One",
-            "> $kw: --cite Concept.One\n> --dev-from references/context.skw.md",
+            "> $kw: --cite references/lib.skw.md#Alpha",
+            "> $kw: --cite references/lib.skw.md#Alpha\n"
+            "> --dev-from references/context.skw.md",
         ),
         encoding="utf-8",
     )
@@ -540,96 +457,7 @@ def test_malformed_note_pois(tmp_path: Path) -> None:
     assert ("malformed-note", "#good") not in keys
 
 
-def test_alias_mentions_remain_literal_dependency_sync_pois(tmp_path: Path) -> None:
-    skill = _write_skill(tmp_path)
-    write_index(tmp_path, DEPOT_ALIAS_BLOCKS)
-    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
-    src.write_text(
-        "# mod\n\n> $kw: --from Concept.One\n\nMentions `Concept.Alias`.\n",
-        encoding="utf-8",
-    )
 
-    check = check_skill(skill)
-    kinds = {(poi.kind, poi.key) for poi in check.pois}
-    assert ("undeclared-dependency", "Concept.Alias") in kinds
-    assert ("unhonored-dependency", "Concept.One") in kinds
-
-    first = next(p for p in check.pois if p.kind == "undeclared-dependency")
-    second = next(
-        p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"
-    )
-    assert first.poi_hash == second.poi_hash
-
-    from tarav.skillware.build import bless_skill
-
-    bless_skill(skill, first.poi_hash)
-    assert not any(
-        p.kind == "undeclared-dependency" and p.key == "Concept.Alias"
-        for p in check_skill(skill).pois
-    )
-
-    revised = (
-        (
-            "depot/design#Concept.One",
-            (("CT", "canonical line v2"),),
-            ("Concept.Alias", "Concept.Taken"),
-        ),
-        DEPOT_ALIAS_BLOCKS[1],
-    )
-    write_index(tmp_path, revised)
-    reminted = next(
-        p
-        for p in check_skill(skill).pois
-        if p.kind == "undeclared-dependency" and p.key == "Concept.Alias"
-    )
-    assert reminted.poi_hash != first.poi_hash
-
-
-def test_dangling_dependency_catches_unaliased_rename(tmp_path: Path) -> None:
-    """RED->GREEN guard for the 591 silent-drift scenario: a declared `--from`
-    whose target is renamed without an alias must break loudly."""
-    skill = _write_skill(tmp_path)
-    old = ("depot/design#Old.Name", (("CT", "old body"),), ())
-    write_index(tmp_path, (*DEPOT_BLOCKS, old))
-    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
-    src.write_text(
-        "# mod\n\n> $kw: --from Old.Name\n\nUses `Old.Name` here.\n",
-        encoding="utf-8",
-    )
-
-    # GREEN baseline: the declared target resolves, no dangling POI.
-    assert not any(p.kind == "dangling-dependency" for p in check_skill(skill).pois)
-
-    # RED: rename the block without leaving an alias — the declaration dangles.
-    renamed = ("depot/design#New.Name", (("CT", "old body"),), ())
-    write_index(tmp_path, (*DEPOT_BLOCKS, renamed))
-    dangling = [p for p in check_skill(skill).pois if p.kind == "dangling-dependency"]
-    assert [p.key for p in dangling] == ["Old.Name"]
-    # A dangling name is not also reported as unhonored.
-    assert not any(
-        p.kind == "unhonored-dependency" and p.key == "Old.Name"
-        for p in check_skill(skill).pois
-    )
-
-    # GREEN again: restore the name as a declared alias — the binding resolves.
-    aliased = ("depot/design#New.Name", (("CT", "old body"),), ("Old.Name",))
-    write_index(tmp_path, (*DEPOT_BLOCKS, aliased))
-    assert not any(p.kind == "dangling-dependency" for p in check_skill(skill).pois)
-
-
-def test_dangling_dependency_is_blessable(tmp_path: Path) -> None:
-    skill = _write_skill(tmp_path)
-    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
-    src.write_text(
-        "# mod\n\n> $kw: --from Gone.Block\n\nMentions `Gone.Block`.\n",
-        encoding="utf-8",
-    )
-    from tarav.skillware.build import bless_skill
-
-    poi = next(p for p in check_skill(skill).pois if p.kind == "dangling-dependency")
-    assert poi.key == "Gone.Block"
-    bless_skill(skill, poi.poi_hash)
-    assert not any(p.kind == "dangling-dependency" for p in check_skill(skill).pois)
 
 
 def test_unresolved_recipe_from_is_caught_as_unresolvable(tmp_path: Path) -> None:
@@ -694,8 +522,10 @@ def test_parse_errors_gate_semantic_checks_per_file(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     build_skill(skill)
     # make mod's derived stale AND break a standalone file with a parse error
-    write_index(
-        tmp_path, (("depot/design#Concept.One", (("CT", "concept line v2"),), ()),)
+    lib = skill / ".skw" / "src" / "references" / "lib.skw.md"
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- alpha one", "- alpha one v2"),
+        encoding="utf-8",
     )
     extra = skill / ".skw" / "src" / "references" / "extra.skw.md"
     extra.write_text(
@@ -720,7 +550,6 @@ def test_parse_errors_gate_semantic_checks_per_file(tmp_path: Path) -> None:
     assert "Derived" in mod_entry.derived_stale
     assert any(p.kind == "derived-stale" and p.key == "Derived" for p in check.pois)
     # a parse-broken file poisons its importers as unresolvable, not silently
-    lib = skill / ".skw" / "src" / "references" / "lib.skw.md"
     lib.write_text(
         lib.read_text(encoding="utf-8") + "\n> $kw: --derived --from X.Y\n\nopen\n",
         encoding="utf-8",
@@ -924,37 +753,6 @@ def test_cli_bless_round_trip(
         )
 
 
-def test_cli_bulk_bless_clears_kind_only_for_current_situations(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from tarav.skillware.commands import _cmd_skillware_bless
-
-    skill = _write_skill(tmp_path)
-    src = skill / ".skw" / "src" / "references" / "mod.skw.md"
-    src.write_text("# mod\n\nUses `Concept.One`.\n", encoding="utf-8")
-
-    assert any(p.kind == "undeclared-dependency" for p in check_skill(skill).pois)
-    args = argparse.Namespace(
-        skill=str(skill),
-        poi=None,
-        kind="undeclared-dependency",
-        all=True,
-        json=True,
-    )
-    assert _cmd_skillware_bless(args) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["summary"]["blessed"] == 1
-    assert not any(p.kind == "undeclared-dependency" for p in check_skill(skill).pois)
-    build_skill(skill)
-    assert not any(p.kind == "undeclared-dependency" for p in check_skill(skill).pois)
-
-    add_index_block(tmp_path, "depot/design#Concept.Two", (("CT", "concept two"),))
-    src.write_text(
-        src.read_text(encoding="utf-8") + "\nAlso `Concept.Two`.\n", encoding="utf-8"
-    )
-    fresh = [p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"]
-    assert [poi.key for poi in fresh] == ["Concept.Two"]
-
 
 def test_crlf_target_reads_ok(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
@@ -966,14 +764,6 @@ def test_crlf_target_reads_ok(tmp_path: Path) -> None:
     check = check_skill(skill)
     assert _entry(check, "references/mod.md").status == "ok"
 
-
-def test_skw_backend_satisfies_surface_provider_protocol() -> None:
-    # The skw-skills backend binds into the shared dependency-sync engine
-    # through the SurfaceProvider protocol (Impl.Req 700, slice 2).
-    from tarav.skillware.build import _SkwSurfaceProvider
-    from tarav.skw import SurfaceProvider
-
-    assert issubclass(_SkwSurfaceProvider, SurfaceProvider)
 
 
 def test_dependency_sync_findings_are_advisory() -> None:

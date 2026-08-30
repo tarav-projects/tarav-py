@@ -132,22 +132,15 @@ def test_subsystem_import_graph_is_acyclic() -> None:
     assert _strongly_connected_components(graph) == ()
 
 
-def test_tarav2_is_exposed_only_by_the_umbrella_cli_adapter() -> None:
-    tarav2 = PACKAGE_ROOT / "tarav2"
-    offenders: list[str] = []
-    for path in PACKAGE_ROOT.rglob("*.py"):
-        if tarav2 in path.parents:
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            modules: tuple[str, ...] = ()
-            if isinstance(node, ast.Import):
-                modules = tuple(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module is not None:
-                modules = (node.module,)
-            if any(module.startswith("tarav.tarav2") for module in modules):
-                offenders.append(str(path.relative_to(PACKAGE_ROOT)))
-    assert offenders == ["cli/cli.py"]
+def test_promoted_tarav_domains_have_normal_package_ownership() -> None:
+    assert (PACKAGE_ROOT / "archive" / "commands.py").is_file()
+    assert (PACKAGE_ROOT / "diagram" / "commands.py").is_file()
+    assert (PACKAGE_ROOT / "bloberia" / "hosted.py").is_file()
+    assert (PACKAGE_ROOT / "_core" / "record_depot.py").is_file()
+    assert not (PACKAGE_ROOT / "tarav2").exists()
+    assert not (PACKAGE_ROOT / "indexlab").exists()
+    assert not (PACKAGE_ROOT / "mission").exists()
+    assert not (PACKAGE_ROOT / "canvas").exists()
 
 
 def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
@@ -170,14 +163,17 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
         inside = normal_model in path.parents
         if inside:
             reaches_down |= any(
-                m.startswith("tarav.chatlas.") and not m.startswith("tarav.chatlas.normal_model")
+                m.startswith("tarav.chatlas.")
+                and not m.startswith("tarav.chatlas.normal_model")
                 for m in modules
             )
         elif path.name != "commands.py":
             # commands.py is the composition point: it builds the one `tarav chatlas`
             # group and hands its subparsers to the layer. Everything else in
             # chatlas/ must stay below the layer, not reach up into it.
-            assert not any(m.startswith("tarav.chatlas.normal_model") for m in modules), path
+            assert not any(
+                m.startswith("tarav.chatlas.normal_model") for m in modules
+            ), path
             assert "from .normal_model" not in source, path
     assert reaches_down, "the Normal Model should use Chatlas capture/index mechanics"
 
@@ -247,7 +243,9 @@ def test_the_caret_address_grammar_is_compiled_in_exactly_one_module() -> None:
             if not compiled or not node.args:
                 continue
             pattern = node.args[0]
-            if not isinstance(pattern, ast.Constant) or not isinstance(pattern.value, str):
+            if not isinstance(pattern, ast.Constant) or not isinstance(
+                pattern.value, str
+            ):
                 continue
             if any(tell in pattern.value for tell in TELLS):
                 offenders.append(
@@ -265,18 +263,10 @@ _POI_CLASS = re.compile(r'"([A-Z][A-Za-z]+\.Linter/[A-Za-z][A-Za-z.]*[A-Za-z])"'
 _POI_BLOCK = re.compile(r"\$kw:\s*([A-Z][A-Za-z]+\.Linter/[A-Za-z][A-Za-z.]*)")
 
 
-#: Retired class names kept only so `POI.Instance`s emitted before the Index redesign still
-#: resolve. Nothing produces them, so `Current.Model.Only` -- a constraint on what a checker
-#: asserts -- does not reach them. Derived from the module, not from a maintained list.
-_RESOLUTION_ONLY = "index/historical_poi.py"
-
-
-def _poi_classes(*, producers_only: bool = False) -> tuple[dict[str, set[str]], set[str]]:
+def _poi_classes() -> tuple[dict[str, set[str]], set[str]]:
     emitted: dict[str, set[str]] = defaultdict(set)
     declared: set[str] = set()
     for path in PACKAGE_ROOT.rglob("*.py"):
-        if producers_only and path.relative_to(PACKAGE_ROOT).as_posix() == _RESOLUTION_ONLY:
-            continue
         source = path.read_text(encoding="utf-8")
         for name in _POI_CLASS.findall(source):
             emitted[name].add(str(path.relative_to(PACKAGE_ROOT)))
@@ -295,10 +285,14 @@ def test_every_poi_class_is_defined_beside_the_code_that_emits_it() -> None:
     """
 
     emitted, declared = _poi_classes()
-    undeclared = {name: sorted(files) for name, files in emitted.items() if name not in declared}
+    undeclared = {
+        name: sorted(files) for name, files in emitted.items() if name not in declared
+    }
     assert undeclared == {}, (
         "these POI classes are emitted with no `$kw` block beside their definition: "
-        + "; ".join(f"{name} ({', '.join(files)})" for name, files in sorted(undeclared.items()))
+        + "; ".join(
+            f"{name} ({', '.join(files)})" for name, files in sorted(undeclared.items())
+        )
     )
 
 
@@ -336,26 +330,7 @@ def test_every_poi_class_resolves_to_exactly_one_managed_block() -> None:
     assert unresolved == [], "\n".join(unresolved)
 
 
-def test_indexlab_tripwire_poi_documents_the_executable_check() -> None:
-    from tarav.poi import tarav_poi_class_reference
-    from tarav.skillware._build_core import find_project_root
-    from tarav.skillware.managed_blocks import create_tarav_wayfinder
-    from tarav.wayfinder import WayfinderResolutionResult
 
-    wayfinder = create_tarav_wayfinder(project_root=find_project_root(PACKAGE_ROOT))
-    result = wayfinder.resolve(
-        tarav_poi_class_reference("IndexLab.Linter/Tripwire.Hit")
-    )
-
-    assert isinstance(result, WayfinderResolutionResult)
-    content = result.target["content"]
-    assert isinstance(content, str)
-    assert "class TripwireCheck" in content
-    assert "def run(self)" in content
-    assert "_substring_offsets(value, tripwire)" in content
-
-
-# $kw: --from Current.Model.Only --note [CT] a POI class names the mechanical failure, never the superseded model that produced it
 def test_no_poi_class_names_a_superseded_model() -> None:
     """`Current.Model.Only`: "does not resolve" is a check result, "is legacy" is history.
 
@@ -365,10 +340,8 @@ def test_no_poi_class_names_a_superseded_model() -> None:
     """
 
     history = ("Legacy", "Deprecated", "Obsolete", "Chatlas1", "Tarav1", "Old")
-    _emitted, declared = _poi_classes(producers_only=True)
-    named = sorted(
-        name for name in declared if any(word in name for word in history)
-    )
+    _emitted, declared = _poi_classes()
+    named = sorted(name for name in declared if any(word in name for word in history))
     assert named == [], (
         "these POI classes name a superseded model rather than a check result: "
         + ", ".join(named)

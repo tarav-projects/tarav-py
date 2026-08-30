@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from tarav._core.project import (
@@ -20,7 +21,7 @@ from tarav._core.project import (
 )
 
 
-def _rev_parse_not_inside_project() -> int:
+def _resolve_not_inside_project() -> int:
     print(build_not_inside_project_message(git_style=True), file=sys.stderr)
     return 128
 
@@ -30,7 +31,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
         payload = initialize_global_layout(ensure=args.ensure)
         output = {
             "status": "ok",
-            "command": "init",
+            "command": "project init",
             "scope": "global",
             "tarav_dir": str(payload["tarav_dir"]),
             "config_path": str(payload["config_path"]),
@@ -40,7 +41,10 @@ def _cmd_init(args: argparse.Namespace) -> int:
         print(json.dumps(output, indent=2))
         return 0
 
-    project_target = require_explicit_project_target(args.project, command_name="tarav init")
+    project_target = require_explicit_project_target(
+        args.project,
+        command_name="tarav project init",
+    )
     root = project_target.expanduser().resolve()
     payload = initialize_project_layout(
         root,
@@ -50,7 +54,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     )
     output = {
         "status": "ok",
-        "command": "init",
+        "command": "project init",
         "scope": "project",
         "project_root": str(payload["project_root"]),
         "tarav_dir": str(payload["tarav_dir"]),
@@ -65,21 +69,21 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_rev_parse(args: argparse.Namespace) -> int:
+def _cmd_project_resolve(args: argparse.Namespace) -> int:
     project_root = find_agentos_project_root(args.path_hint)
     if args.is_inside_agentos_project:
         if project_root is None:
-            return _rev_parse_not_inside_project()
+            return _resolve_not_inside_project()
         print("true")
         return 0
 
     if args.show_toplevel:
         if project_root is None:
-            return _rev_parse_not_inside_project()
+            return _resolve_not_inside_project()
         print(str(project_root))
         return 0
 
-    raise SystemExit("error: missing rev-parse mode")
+    raise SystemExit("error: missing project resolve mode")
 
 
 def _project_list_record(project_root: Path) -> dict[str, object]:
@@ -93,7 +97,7 @@ def _project_list_record(project_root: Path) -> dict[str, object]:
     }
 
 
-def _cmd_projects_list(args: argparse.Namespace) -> int:
+def _cmd_project_list(args: argparse.Namespace) -> int:
     project_roots = find_agentos_project_roots_under(args.root)
     if args.json_output:
         print(json.dumps([_project_list_record(root) for root in project_roots], indent=2))
@@ -104,7 +108,7 @@ def _cmd_projects_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_projects_resolve(args: argparse.Namespace) -> int:
+def _cmd_project_verify(args: argparse.Namespace) -> int:
     project = require_agentos_project(
         start_path=Path.cwd(),
         project=args.project,
@@ -115,8 +119,24 @@ def _cmd_projects_resolve(args: argparse.Namespace) -> int:
     return 0
 
 
-def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
-    init_parser = subparsers.add_parser(
+CommandRegistrar = Callable[[argparse._SubParsersAction], None]
+
+
+def register_project_commands(
+    subparsers: argparse._SubParsersAction,
+    *,
+    skills_registrar: CommandRegistrar,
+) -> None:
+    project_parser = subparsers.add_parser(
+        "project",
+        help="Initialize, discover, resolve, verify, and manage Tarav projects.",
+    )
+    project_subparsers = project_parser.add_subparsers(
+        dest="project_command",
+        required=True,
+    )
+
+    init_parser = project_subparsers.add_parser(
         "init",
         help="Initialize a project target or the global tarav home.",
     )
@@ -151,41 +171,7 @@ def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     init_parser.set_defaults(handler=_cmd_init)
 
-    rev_parse_parser = subparsers.add_parser(
-        "rev-parse",
-        help="Inspect Agentos.Project resolution state without requiring an existing project.",
-    )
-    rev_parse_flags = rev_parse_parser.add_mutually_exclusive_group(required=True)
-    rev_parse_flags.add_argument(
-        "--is-inside-tarav-project",
-        action="store_true",
-        dest="is_inside_agentos_project",
-        help="Print true when executed inside a tarav project.",
-    )
-    rev_parse_flags.add_argument(
-        "--show-toplevel",
-        action="store_true",
-        dest="show_toplevel",
-        help="Print absolute project root path.",
-    )
-    rev_parse_parser.add_argument(
-        "--path",
-        default=".",
-        dest="path_hint",
-        help="Start path for parent-walk discovery (default: current directory).",
-    )
-    rev_parse_parser.set_defaults(handler=_cmd_rev_parse)
-
-    projects_parser = subparsers.add_parser(
-        "projects",
-        help="Discover and verify Agentos.Project roots.",
-    )
-    projects_subparsers = projects_parser.add_subparsers(
-        dest="projects_command",
-        required=True,
-    )
-
-    projects_list_parser = projects_subparsers.add_parser(
+    projects_list_parser = project_subparsers.add_parser(
         "list",
         help="List Tarav projects under a root.",
     )
@@ -201,13 +187,13 @@ def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="json_output",
         help="Emit discovered project roots and marker metadata as JSON.",
     )
-    projects_list_parser.set_defaults(handler=_cmd_projects_list)
+    projects_list_parser.set_defaults(handler=_cmd_project_list)
 
-    projects_resolve_parser = projects_subparsers.add_parser(
-        "resolve",
+    projects_verify_parser = project_subparsers.add_parser(
+        "verify",
         help="Resolve a Tarav project and assert its root basename.",
     )
-    projects_resolve_parser.add_argument(
+    projects_verify_parser.add_argument(
         "--project",
         nargs="?",
         type=Path,
@@ -218,9 +204,36 @@ def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
             "Requires an existing project."
         ),
     )
-    projects_resolve_parser.add_argument(
+    projects_verify_parser.add_argument(
         "--project-base",
         required=True,
         help="Required assertion for the resolved project root basename.",
     )
-    projects_resolve_parser.set_defaults(handler=_cmd_projects_resolve)
+    projects_verify_parser.set_defaults(handler=_cmd_project_verify)
+
+    resolve_parser = project_subparsers.add_parser(
+        "resolve",
+        help="Inspect Agentos.Project resolution state without requiring an existing project.",
+    )
+    resolve_flags = resolve_parser.add_mutually_exclusive_group(required=True)
+    resolve_flags.add_argument(
+        "--is-inside-tarav-project",
+        action="store_true",
+        dest="is_inside_agentos_project",
+        help="Print true when executed inside a tarav project.",
+    )
+    resolve_flags.add_argument(
+        "--show-toplevel",
+        action="store_true",
+        dest="show_toplevel",
+        help="Print absolute project root path.",
+    )
+    resolve_parser.add_argument(
+        "--path",
+        default=".",
+        dest="path_hint",
+        help="Start path for parent-walk discovery (default: current directory).",
+    )
+    resolve_parser.set_defaults(handler=_cmd_project_resolve)
+
+    skills_registrar(project_subparsers)

@@ -11,9 +11,7 @@ from tarav._core.project import TARAV_PROJECT_ID
 REFERENCE_SCHEMA = "tarav.wayfinder.reference.v1"
 REFERENCE_KEYS = frozenset({"schema", "type", "root", "address"})
 ROOT_KEYS = frozenset({"type", "id"})
-INDEX_BLOCK_TYPE = "index.block"
 MANAGED_BLOCK_TYPE = "managed.block"
-PACKAGE_SKILL_ROOT_TYPE = "package.skill"
 PROJECT_ROOT_TYPE = "agentos.project"
 
 
@@ -177,16 +175,6 @@ class WayfinderResolutionPOI:
         }
 
 
-def index_block_reference(package_id: str, block_path: str) -> WayfinderReference:
-    _require_string(package_id, "package id")
-    _require_string(block_path, "Index block path")
-    return WayfinderReference(
-        type=INDEX_BLOCK_TYPE,
-        root=WayfinderReferenceRoot(type=PACKAGE_SKILL_ROOT_TYPE, id=package_id),
-        address=block_path,
-    )
-
-
 def managed_block_reference(project_id: str, block_path: str) -> WayfinderReference:
     _require_string(project_id, "project id")
     _require_string(block_path, "managed block path")
@@ -197,40 +185,24 @@ def managed_block_reference(project_id: str, block_path: str) -> WayfinderRefere
     )
 
 
-def poi_class_reference(package_id: str, class_name: str) -> WayfinderReference:
-    return index_block_reference(package_id, class_name)
-
-
 def parse_reference(value: str) -> WayfinderReference:
     stripped = value.strip()
     if stripped.startswith("{"):
         return WayfinderReference.from_json(stripped)
     parsed = urlsplit(stripped)
-    if parsed.scheme not in {"index", "block"} or not parsed.netloc:
+    if parsed.scheme != "block" or not parsed.netloc:
         raise InvalidWayfinderReference(
-            "reference sugar must be index://<package-id>/<block-path> or "
-            "block://<project-id>/<block-path>"
+            "reference sugar must be block://<project-id>/<block-path>"
         )
     if parsed.query or parsed.fragment:
         raise InvalidWayfinderReference(
             "reference sugar cannot carry query or fragment"
         )
     block_path = unquote(parsed.path.lstrip("/"))
-    if parsed.scheme == "index":
-        return index_block_reference(unquote(parsed.netloc), block_path)
     return managed_block_reference(unquote(parsed.netloc), block_path)
 
 
-def _index_reference_sugar(reference: WayfinderReference) -> str:
-    return (
-        f"index://{quote(reference.root.id, safe='')}/"
-        f"{quote(str(reference.address), safe='/.')}"
-    )
-
-
 def _reference_sugar(reference: WayfinderReference) -> str:
-    if reference.type == INDEX_BLOCK_TYPE:
-        return _index_reference_sugar(reference)
     if reference.type == MANAGED_BLOCK_TYPE:
         return (
             f"block://{quote(reference.root.id, safe='')}/"
@@ -274,10 +246,8 @@ def _canonical_json(value: object) -> str:
 
 
 __all__ = [
-    "INDEX_BLOCK_TYPE",
     "MANAGED_BLOCK_TYPE",
     "InvalidWayfinderReference",
-    "PACKAGE_SKILL_ROOT_TYPE",
     "PROJECT_ROOT_TYPE",
     "REFERENCE_SCHEMA",
     "UnsupportedWayfinderReference",
@@ -287,8 +257,6 @@ __all__ = [
     "WayfinderResolutionPOI",
     "WayfinderResolutionResult",
     "WayfinderTraceStep",
-    "index_block_reference",
     "managed_block_reference",
     "parse_reference",
-    "poi_class_reference",
 ]

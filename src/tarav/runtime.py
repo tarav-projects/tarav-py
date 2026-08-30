@@ -40,23 +40,20 @@ class TaravRuntime:
         every feature command module.
         """
         from tarav.agent import register_agent_commands
-        from tarav.anchory.commands import register_anchory_commands
+        from tarav.archive.commands import register_archive_commands
         from tarav.bloberia.commands import register_bloberia_commands
-        from tarav.canvas import register_canvas_commands
         from tarav.chatlas import register_chatlas_commands
         from tarav.daemon import register_daemon_commands
         from tarav.daemon.client import submit_hook_invocation
         from tarav.daemon.log import report_hook_delivery_failure
         from tarav.forum import register_forum_commands
         from tarav.hooks import register_hook_commands
-        from tarav.indexlab.commands import register_indexlab_commands
+        from tarav.diagram.commands import register_diagram_commands
         from tarav.skillware._build_core import find_project_root
         from tarav.skillware.managed_blocks import create_tarav_wayfinder
         from tarav.skillware.related_surfaces import RelatedSurfaceResolver
         from tarav.stdlib.mdblocks.commands import register_mdblocks_commands
-        from tarav.mission import register_mission_commands
         from tarav.poi.commands import register_poi_commands
-        from tarav.poi.adapters.bloberia import build_bloberia_linter_report
         from tarav.poi.adapters.mdblocks import build_mdblocks_linter_report
         from tarav.poi.adapters.wayfinder import (
             build_wayfinder_registry_linter_report,
@@ -77,23 +74,22 @@ class TaravRuntime:
         wayfinder = create_tarav_wayfinder(project_root=project_root)
 
         register_agent_commands(subparsers)
-        register_hook_commands(
+        register_daemon_commands(
             subparsers,
-            submitter=submit_hook_invocation,
-            delivery_failure_reporter=report_hook_delivery_failure,
-        )
-        register_daemon_commands(subparsers, registry=self.hooks)
-        register_anchory_commands(subparsers)
-        register_bloberia_commands(
-            subparsers,
-            check_report_builder=lambda result, depot: build_bloberia_linter_report(
-                result,
-                depot=depot,
-                wayfinder=wayfinder,
+            registry=self.hooks,
+            hook_registrar=partial(
+                register_hook_commands,
+                submitter=submit_hook_invocation,
+                delivery_failure_reporter=report_hook_delivery_failure,
             ),
         )
-        register_canvas_commands(subparsers)
-        register_project_commands(subparsers)
+        register_archive_commands(subparsers)
+        register_diagram_commands(subparsers)
+        register_bloberia_commands(subparsers)
+        register_project_commands(
+            subparsers,
+            skills_registrar=register_skills_commands,
+        )
         register_system_commands(subparsers)
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
@@ -113,7 +109,6 @@ class TaravRuntime:
                 register_utils_commands,
             ),
         )
-        register_skills_commands(subparsers)
         register_wayfinder_commands(
             subparsers,
             wayfinder=wayfinder,
@@ -133,8 +128,6 @@ class TaravRuntime:
             related_resolver=RelatedSurfaceResolver(wayfinder),
         )
         register_skillware_commands(subparsers)
-        register_indexlab_commands(subparsers)
-        register_mission_commands(subparsers)
 
 
 CommandRegistrar = Callable[["argparse._SubParsersAction"], None]

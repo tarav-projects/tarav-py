@@ -11,7 +11,6 @@ from tarav.wayfinder import (
     managed_block_reference,
     parse_reference,
 )
-from _skillware_helpers import write_index
 from tarav.skillware.managed_blocks import create_managed_wayfinder
 
 
@@ -120,32 +119,3 @@ def second() -> None:
     assert isinstance(result, WayfinderResolutionPOI)
     assert result.kind == "ambiguous"
     assert len(result.candidates) == 2
-
-
-def test_managed_block_resolution_rejects_code_and_markdown_duplicate(
-    tmp_path: Path,
-) -> None:
-    source = """# $kw: --from Design.Root
-
-# $kw: Shared.Block --note [DF] code root ^c20260820-2u
-def check() -> None:
-    pass
-"""
-    project_root = tmp_path / "project"
-    project_id, _ = _write_project(project_root, source)
-    write_index(
-        project_root,
-        (("depot/design#Shared.Block", (("DF", "Index root"),), ()),),
-    )
-    registry = _registry(tmp_path, project_id, project_root)
-
-    result = create_managed_wayfinder(registry).resolve(
-        managed_block_reference(project_id, "Shared.Block")
-    )
-
-    assert isinstance(result, WayfinderResolutionPOI)
-    assert result.kind == "ambiguous"
-    assert {candidate["host"]["kind"] for candidate in result.candidates} == {
-        "function",
-        "index.block",
-    }

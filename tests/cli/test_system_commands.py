@@ -11,7 +11,7 @@ def test_init_project_storage_dirs_exclude_legacy_tapes(
     tmp_path: Path,
     capsys,
 ) -> None:
-    assert main(["init", "--project", str(tmp_path)]) == 0
+    assert main(["project", "init", "--project", str(tmp_path)]) == 0
     payload = captured_json(capsys)
 
     assert sorted(payload["dirs"]) == ["indexes", "state", "tmp"]
@@ -27,7 +27,7 @@ def test_init_global_storage_dirs_exclude_legacy_tapes(
     environment.apply_environment(monkeypatch.setenv)
     home_dir = environment.tarav_home
 
-    assert main(["init", "--scope", "global"]) == 0
+    assert main(["project", "init", "--scope", "global"]) == 0
     payload = captured_json(capsys)
 
     assert sorted(payload["dirs"]) == ["cache", "indexes", "tmp"]

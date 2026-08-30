@@ -1,22 +1,21 @@
-# $kw: ^bloberia-public --from Agentos.Bloberia --note [DF] the public import surface for depot-scoped opaque-cargo storage ^c20260724-31u
-"""Depot-scoped storage for opaque JSON records."""
+"""Public Tarav.Bloberia library surface."""
 
-from .core import (
-    BloberiaDepot,
-    BloberiaError,
-    CorruptBloberiaDepotError,
-    InvalidBloberiaInputError,
-    PUBLIC_DEPOT_ROOT,
-    TYPE_FILES,
-    TYPE_SHARDS,
+from .hosted import (
+    BLOBERIA_CLASS,
+    BLOBERIA_SCHEMA_VERSION,
+    InvalidTaravBloberiaInputError,
+    TaravBloberia,
+    TaravBloberiaError,
+    TaravBloberiaNotInitializedError,
+    default_tarav_bloberia_root,
 )
 
 __all__ = [
-    "BloberiaDepot",
-    "BloberiaError",
-    "CorruptBloberiaDepotError",
-    "InvalidBloberiaInputError",
-    "PUBLIC_DEPOT_ROOT",
-    "TYPE_FILES",
-    "TYPE_SHARDS",
+    "BLOBERIA_CLASS",
+    "BLOBERIA_SCHEMA_VERSION",
+    "InvalidTaravBloberiaInputError",
+    "TaravBloberia",
+    "TaravBloberiaError",
+    "TaravBloberiaNotInitializedError",
+    "default_tarav_bloberia_root",
 ]
