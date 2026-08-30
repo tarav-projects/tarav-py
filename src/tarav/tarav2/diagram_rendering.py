@@ -19,6 +19,7 @@ from .diagram import (
     DiagramLineShip,
     DiagramModel,
     Finding,
+    IssueBlock,
     LineAnnotation,
     LineGateAnnotation,
     TypedAnnotation,
@@ -370,6 +371,10 @@ def _render_block(
             )
         )
     sections = [f"{'#' * heading_level} {label}"]
+    if isinstance(projection, IssueBlock):
+        issue = projection.assess(context.assertions)
+        sections.append(f"**Issue.State:** `{issue.state}`")
+        findings.extend(issue.findings)
     if not projection.lines:
         findings.append(
             Finding(

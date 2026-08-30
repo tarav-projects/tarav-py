@@ -9,6 +9,7 @@ from tarav.tarav2.diagram import (
     BLOCK_ANNOTATION_TYPE,
     DESIGN_BLOCK_OBJECT_TYPE,
     DESIGN_LINE_PRINCIPLE_TYPE,
+    ISSUE_BLOCK_OBJECT_TYPE,
     LINE_ANNOTATION_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
     AnnotationDraft,
@@ -150,6 +151,46 @@ def test_block_and_model_renderers_project_the_flat_tape(tmp_path: Path) -> None
     assert rendered_model.content.startswith("# Tarav")
     assert "## Diagram.Rendering" in rendered_model.content
     assert "[PR] Renderers are named read-only projections." in rendered_model.content
+
+
+def test_issue_block_renderer_exposes_open_state_and_poi(tmp_path: Path) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    line_ship = str(uuid4())
+    block = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_ANNOTATION_TYPE,
+            "block_type": ISSUE_BLOCK_OBJECT_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "data": {"label": "Issue.Rendering"},
+        },
+    )
+    line = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": LINE_ANNOTATION_TYPE,
+            "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
+            "producer": AGENT_REF,
+            "support": [{"root": USER_REF, "neighborhood": []}],
+            "location": DiagramLocation(
+                model.ship, block_ship, line_ship
+            ).to_dict(),
+            "data": {"text": "Open Issues surface attention without blocking work."},
+        },
+    )
+    namespace.apply(CaptureManifest(model.ship, (block, line)))
+    diagram = Diagram((namespace,), namespace.id)
+
+    result = renderer("Kernel.Writing.Block").render(
+        block_render_target(diagram, block_ship)
+    )
+
+    assert result.content.startswith("## Issue.Rendering")
+    assert "**Issue.State:** `Open`" in result.content
+    assert "[PR] Open Issues surface attention without blocking work." in result.content
+    assert "issue-open" in {item.code for item in result.findings}
 
 
 def test_ambiguous_line_renderer_surfaces_all_wording_variants(

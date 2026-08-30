@@ -38,6 +38,7 @@ VERBATIM_GATE_TYPE = "Verbatim.Gate"
 DIAGRAM_BLOCK_OBJECT_TYPE = "Diagram.Block"
 DESIGN_BLOCK_OBJECT_TYPE = "Design.Block"
 IMPL_REQ_BLOCK_OBJECT_TYPE = "Impl.Req.Block"
+ISSUE_BLOCK_OBJECT_TYPE = "Issue.Block"
 DIAGRAM_LINE_OBJECT_TYPE = "Diagram.Line"
 DESIGN_LINE_DEFINITION_TYPE = "Design.Line.Definition"
 DESIGN_LINE_DECISION_TYPE = "Design.Line.Decision"
@@ -46,6 +47,7 @@ DESIGN_LINE_REJECTION_TYPE = "Design.Line.Rejection"
 DESIGN_LINE_PRINCIPLE_TYPE = "Design.Line.Principle"
 DESIGN_LINE_FREEDOM_TYPE = "Design.Line.Freedom"
 DESIGN_LINE_EXAMPLE_TYPE = "Design.Line.Example"
+ISSUE_LINE_RESOLVE_TYPE = "Issue.Line.Resolve"
 DESIGN_LINE_OBJECT_TYPES = (
     DESIGN_LINE_DEFINITION_TYPE,
     DESIGN_LINE_DECISION_TYPE,
@@ -63,6 +65,12 @@ DESIGN_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = (
 )
 IMPL_REQ_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = (
     "f6dfcbcb-6eb5-468c-a3f8-7f7034334b94"
+)
+ISSUE_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = (
+    "4864c2cc-9542-49ea-8295-a566eea29164"
+)
+ISSUE_LINE_RESOLVE_TYPE_DEFINITION_BLOCK_SHIP = (
+    "3753a425-04e7-4d62-9d44-01f42af5b5e4"
 )
 DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS = {
     DESIGN_LINE_DEFINITION_TYPE: "00a33f68-90a7-4a92-87c4-c3862e879bc5",
@@ -222,6 +230,24 @@ class LineReview:
             "line_ship": self.line_ship,
             "standing": self.standing,
             "assessments": [item.to_dict() for item in self.assessments],
+            "findings": [item.to_dict() for item in self.findings],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class IssueAssessment:
+    block_ship: str
+    state: str
+    resolution_line_ships: tuple[str, ...]
+    gate_assessments: tuple[GateAssessment, ...]
+    findings: tuple[Finding, ...]
+
+    def to_dict(self) -> JsonObject:
+        return {
+            "block_ship": self.block_ship,
+            "state": self.state,
+            "resolution_line_ships": list(self.resolution_line_ships),
+            "gate_assessments": [item.to_dict() for item in self.gate_assessments],
             "findings": [item.to_dict() for item in self.findings],
         }
 
@@ -867,6 +893,10 @@ class DesignLineExample(DiagramLineEdition):
     pass
 
 
+class IssueLineResolve(DiagramLineEdition):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class DiagramLineShip:
     ship: str
@@ -916,6 +946,10 @@ class DesignExampleLineShip(DesignLineShip):
     pass
 
 
+class IssueResolveLineShip(DiagramLineShip):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class DiagramBlock:
     ship: str
@@ -943,6 +977,11 @@ class DiagramBlock:
             )
         )
 
+    def mechanical_findings(
+        self, assertion_engine: AssertionEngine
+    ) -> tuple[Finding, ...]:
+        return ()
+
 
 class DesignBlock(DiagramBlock):
     pass
@@ -950,6 +989,45 @@ class DesignBlock(DiagramBlock):
 
 class ImplReqBlock(DiagramBlock):
     pass
+
+
+class IssueBlock(DiagramBlock):
+    def assess(self, assertion_engine: AssertionEngine) -> IssueAssessment:
+        resolution_lines = tuple(
+            line for line in self.lines if isinstance(line, IssueResolveLineShip)
+        )
+        assessments = tuple(
+            gate_assessment
+            for line in resolution_lines
+            for annotation in line.annotations
+            if isinstance(annotation, (LineAnnotation, LineGateAnnotation))
+            for gate_assessment in assertion_engine.assess(annotation).gate_assessments
+        )
+        closed = any(item.standing == "Passed" for item in assessments)
+        findings = tuple(
+            finding for assessment in assessments for finding in assessment.findings
+        )
+        if not closed:
+            findings = (
+                *findings,
+                Finding(
+                    "issue-open",
+                    f"block.{self.ship}",
+                    "Issue.Block has no reviewed Issue.Line.Resolve with a passing Verbatim.Gate.",
+                ),
+            )
+        return IssueAssessment(
+            self.ship,
+            "Closed" if closed else "Open",
+            tuple(line.ship for line in resolution_lines),
+            assessments,
+            _dedupe_findings(findings),
+        )
+
+    def mechanical_findings(
+        self, assertion_engine: AssertionEngine
+    ) -> tuple[Finding, ...]:
+        return self.assess(assertion_engine).findings
 
 
 @dataclass(frozen=True, slots=True)
@@ -1293,6 +1371,13 @@ def default_diagram_object_types() -> DiagramObjectTypeRegistry:
             DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS[DESIGN_LINE_EXAMPLE_TYPE],
         ),
     )
+    issue_resolve = DiagramLineType(
+        ISSUE_LINE_RESOLVE_TYPE,
+        "RESOLVE",
+        IssueLineResolve,
+        IssueResolveLineShip,
+        ISSUE_LINE_RESOLVE_TYPE_DEFINITION_BLOCK_SHIP,
+    )
     return DiagramObjectTypeRegistry(
         (
             DiagramBlockType(
@@ -1312,6 +1397,12 @@ def default_diagram_object_types() -> DiagramObjectTypeRegistry:
                 ImplReqBlock,
                 design_lines,
                 definition_block_ship=IMPL_REQ_BLOCK_TYPE_DEFINITION_BLOCK_SHIP,
+            ),
+            DiagramBlockType(
+                ISSUE_BLOCK_OBJECT_TYPE,
+                IssueBlock,
+                (*design_lines, issue_resolve),
+                definition_block_ship=ISSUE_BLOCK_TYPE_DEFINITION_BLOCK_SHIP,
             ),
         )
     )
@@ -1455,6 +1546,12 @@ class CaptureManifest:
                 )
         projection = namespace.project(self.model_ship, extra=draft_annotations)
         findings.extend(projection.findings)
+        assertion_engine = namespace.assertion_engine(evidence=evidence)
+        findings.extend(
+            finding
+            for block in projection.blocks
+            for finding in block.mechanical_findings(assertion_engine)
+        )
         return _dedupe_findings(findings)
 
 
@@ -1982,6 +2079,7 @@ class DiagramNamespace:
                 DIAGRAM_BLOCK_OBJECT_TYPE,
                 DESIGN_BLOCK_OBJECT_TYPE,
                 IMPL_REQ_BLOCK_OBJECT_TYPE,
+                ISSUE_BLOCK_OBJECT_TYPE,
             ),
             require_block_type=True,
         )
@@ -1996,6 +2094,7 @@ class DiagramNamespace:
                 DIAGRAM_BLOCK_OBJECT_TYPE,
                 DESIGN_BLOCK_OBJECT_TYPE,
                 IMPL_REQ_BLOCK_OBJECT_TYPE,
+                ISSUE_BLOCK_OBJECT_TYPE,
             ),
             require_block_type=True,
         )
@@ -2017,6 +2116,7 @@ class DiagramNamespace:
                 DIAGRAM_BLOCK_OBJECT_TYPE,
                 DESIGN_BLOCK_OBJECT_TYPE,
                 IMPL_REQ_BLOCK_OBJECT_TYPE,
+                ISSUE_BLOCK_OBJECT_TYPE,
             )
             if name in CHATLAS_INDEX_NAMESPACES
             else ()
@@ -2970,6 +3070,7 @@ __all__ = [
         "ChatlasTurnReference",
         "Finding",
         "GateAssessment",
+        "IssueAssessment",
         "LineReview",
         "SupportMember",
         "SupportSet",
@@ -2999,6 +3100,8 @@ __all__ = [
         "DESIGN_LINE_PRINCIPLE_TYPE",
         "DESIGN_LINE_REJECTION_TYPE",
         "IMPL_REQ_BLOCK_OBJECT_TYPE",
+        "ISSUE_BLOCK_OBJECT_TYPE",
+        "ISSUE_LINE_RESOLVE_TYPE",
         "DIAGRAM_ATTIC",
         "LINE_ANNOTATION_TYPE",
         "LINE_GATE_ANNOTATION_TYPE",
@@ -3008,6 +3111,9 @@ __all__ = [
         "USER_TOUCHED_CHATLAS_INDEX",
         "VERBATIM_GATE_TYPE",
         "ImplReqBlock",
+        "IssueBlock",
+        "IssueLineResolve",
+        "IssueResolveLineShip",
         "default_diagram_object_types",
     }
 ]

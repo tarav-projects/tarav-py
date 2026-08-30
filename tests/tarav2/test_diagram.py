@@ -13,9 +13,12 @@ from tarav.tarav2.diagram import (
     BLOCK_ANNOTATION_TYPE,
     BLOCK_TYPE_ANNOTATION_TYPE,
     DESIGN_BLOCK_OBJECT_TYPE,
+    DESIGN_LINE_EXAMPLE_TYPE,
     DESIGN_LINE_PRINCIPLE_TYPE,
     DIAGRAM_ATTIC,
     IMPL_REQ_BLOCK_OBJECT_TYPE,
+    ISSUE_BLOCK_OBJECT_TYPE,
+    ISSUE_LINE_RESOLVE_TYPE,
     LINE_ANNOTATION_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
     LINE_TYPE_ANNOTATION_TYPE,
@@ -40,6 +43,9 @@ from tarav.tarav2.diagram import (
     DesignLinePrinciple,
     DesignPrincipleLineShip,
     ImplReqBlock,
+    IssueBlock,
+    IssueLineResolve,
+    IssueResolveLineShip,
     LineAnnotation,
     LineGateAnnotation,
     LineTypeAnnotation,
@@ -110,6 +116,7 @@ def test_legacy_null_namespace_object_type_policy_uses_builtin_defaults(
         "Diagram.Block",
         "Design.Block",
         "Impl.Req.Block",
+        "Issue.Block",
     )
     assert reopened.require_block_type is True
 
@@ -353,6 +360,167 @@ def test_impl_req_block_reuses_design_line_types_without_becoming_design_block(
         "block-type-not-allowed",
         "line-type-not-allowed-by-block",
     } & {item.code for item in receipt.findings}
+
+
+def test_issue_block_is_open_and_surfaces_a_nonblocking_poi(tmp_path: Path) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    line = _line(model.ship)
+    line.record["location"] = DiagramLocation(
+        model.ship, block_ship, str(uuid4())
+    ).to_dict()
+    line.record["line_type"] = DESIGN_LINE_PRINCIPLE_TYPE
+    block = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_ANNOTATION_TYPE,
+            "block_type": ISSUE_BLOCK_OBJECT_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "data": {"label": "Parking.Workflow"},
+        },
+    )
+
+    receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
+    projected = model.project().block(block_ship)
+    assessment = projected.assess(AssertionEngine())
+
+    assert isinstance(projected, IssueBlock)
+    assert projected.object_type == ISSUE_BLOCK_OBJECT_TYPE
+    assert assessment.state == "Open"
+    assert assessment.resolution_line_ships == ()
+    assert "issue-open" in {item.code for item in receipt.findings}
+    assert receipt.created == (block.id, line.id)
+
+
+def test_issue_block_closes_only_with_a_passing_reviewed_resolve_line(
+    tmp_path: Path,
+) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    resolution_ship = str(uuid4())
+    identity = "d" * 64
+    token = "review:issue-resolved"
+    text = "The Issue is resolved."
+    normal_model = _normal_model(
+        identity,
+        ("user", "The implementation now resolves the parked concern."),
+        ("agent", f"{text}\n\n::approve {token}"),
+        ("user", f"::approve {token}"),
+    )
+    user_ref = {
+        "session_identity": identity,
+        "turn_address": "1" * 64,
+        "turn_hash": "2" * 64,
+    }
+    producer_ref = {
+        "session_identity": identity,
+        "turn_address": "5" * 64,
+        "turn_hash": "6" * 64,
+    }
+    block = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_ANNOTATION_TYPE,
+            "block_type": ISSUE_BLOCK_OBJECT_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "data": {"label": "Issue.Lifecycle"},
+        },
+    )
+    resolution = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": LINE_ANNOTATION_TYPE,
+            "line_type": ISSUE_LINE_RESOLVE_TYPE,
+            "producer": producer_ref,
+            "support": [{"root": user_ref, "neighborhood": []}],
+            "location": DiagramLocation(
+                model.ship, block_ship, resolution_ship
+            ).to_dict(),
+            "data": {"text": text},
+            "gates": [
+                VerbatimGate(
+                    token,
+                    ChatlasTurnReference(identity, "5" * 64, "6" * 64),
+                    ChatlasTurnReference(identity, "9" * 64, "a" * 64),
+                ).to_dict()
+            ],
+        },
+    )
+    evidence = ChatlasEvidence(model_loader=lambda _: normal_model)
+
+    receipt = namespace.apply(
+        CaptureManifest(model.ship, (block, resolution)), evidence=evidence
+    )
+    projected = model.project().block(block_ship)
+    projected_resolution = model.project().line(resolution_ship)
+    assessment = projected.assess(AssertionEngine(evidence=evidence))
+
+    assert isinstance(projected, IssueBlock)
+    assert isinstance(projected_resolution, IssueResolveLineShip)
+    assert isinstance(projected_resolution.editions[0], IssueLineResolve)
+    assert assessment.state == "Closed"
+    assert assessment.resolution_line_ships == (resolution_ship,)
+    assert assessment.gate_assessments[0].standing == "Passed"
+    assert "issue-open" not in {item.code for item in receipt.findings}
+
+    followup = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": LINE_ANNOTATION_TYPE,
+            "line_type": DESIGN_LINE_EXAMPLE_TYPE,
+            "producer": producer_ref,
+            "support": [{"root": user_ref, "neighborhood": []}],
+            "location": DiagramLocation(
+                model.ship, block_ship, str(uuid4())
+            ).to_dict(),
+            "data": {"text": "Later Issue material does not stale its resolution."},
+        },
+    )
+    later = namespace.apply(
+        CaptureManifest(model.ship, (followup,)), evidence=evidence
+    )
+
+    assert model.project().block(block_ship).assess(
+        AssertionEngine(evidence=evidence)
+    ).state == "Closed"
+    assert "issue-open" not in {item.code for item in later.findings}
+
+
+def test_unassessable_resolve_gate_leaves_issue_open(tmp_path: Path) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    resolution = _line(model.ship)
+    resolution.record["location"] = DiagramLocation(
+        model.ship, block_ship, str(uuid4())
+    ).to_dict()
+    resolution.record["line_type"] = ISSUE_LINE_RESOLVE_TYPE
+    resolution.record["data"] = {"text": "The Issue is resolved."}
+    resolution.record["gates"] = [
+        VerbatimGate(
+            "review:unassessable",
+            ChatlasTurnReference("d" * 64, "1" * 64, "2" * 64),
+            ChatlasTurnReference("d" * 64, "5" * 64, "6" * 64),
+        ).to_dict()
+    ]
+    block = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_ANNOTATION_TYPE,
+            "block_type": ISSUE_BLOCK_OBJECT_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "data": {"label": "Issue.Unassessable.Resolution"},
+        },
+    )
+
+    receipt = namespace.apply(CaptureManifest(model.ship, (block, resolution)))
+    assessment = model.project().block(block_ship).assess(AssertionEngine())
+
+    assert assessment.state == "Open"
+    assert assessment.gate_assessments[0].standing == "Unassessable"
+    assert "issue-open" in {item.code for item in receipt.findings}
 
 
 def test_type_annotations_classify_existing_objects_without_user_support(
@@ -672,6 +840,7 @@ def test_capture_context_returns_model_and_manifest_ready_turn_references(
     block_types = payload["model"]["object_types"]["block_types"]
     design = next(item for item in block_types if item["id"] == "Design.Block")
     impl_req = next(item for item in block_types if item["id"] == "Impl.Req.Block")
+    issue = next(item for item in block_types if item["id"] == "Issue.Block")
     generic = next(item for item in block_types if item["id"] == "Diagram.Block")
     assert generic["definition_block_ship"] == (
         "7b2bb6ef-37b8-47e0-8c6b-2ff5ccbdd82d"
@@ -696,6 +865,18 @@ def test_capture_context_returns_model_and_manifest_ready_turn_references(
         "f6dfcbcb-6eb5-468c-a3f8-7f7034334b94"
     )
     assert impl_req["line_types"] == design["line_types"]
+    assert issue["class"] == "IssueBlock"
+    assert issue["definition_block_ship"] == (
+        "4864c2cc-9542-49ea-8295-a566eea29164"
+    )
+    assert issue["line_types"][:-1] == design["line_types"]
+    assert issue["line_types"][-1] == {
+        "id": "Issue.Line.Resolve",
+        "short_code": "RESOLVE",
+        "edition_class": "IssueLineResolve",
+        "ship_class": "IssueResolveLineShip",
+        "definition_block_ship": "3753a425-04e7-4d62-9d44-01f42af5b5e4",
+    }
     assert {
         item["id"]: item["definition_block_ship"]
         for item in design["line_types"]
@@ -708,7 +889,7 @@ def test_capture_context_returns_model_and_manifest_ready_turn_references(
         "Design.Line.Freedom": "1894d99c-ddca-491d-a586-1a7a53e9c4b0",
         "Design.Line.Example": "1366fc61-a9fe-4ef5-91dc-6f13f0447e30",
     }
-    assert len(payload["model"]["object_types"]["findings"]) == 11
+    assert len(payload["model"]["object_types"]["findings"]) == 13
     assert {
         item["code"] for item in payload["model"]["object_types"]["findings"]
     } == {"object-type-definition-block-unresolved"}
