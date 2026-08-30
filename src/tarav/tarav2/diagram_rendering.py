@@ -8,16 +8,15 @@ import json
 from typing import Any
 
 from .diagram import (
-    BLOCK_ANNOTATION_TYPE,
-    LINE_ANNOTATION_TYPE,
-    LINE_GATE_ANNOTATION_TYPE,
     AnnotationAssessment,
     AssertionEngine,
     BlockAnnotation,
     ChatlasEvidence,
     Diagram,
     DiagramAnnotation,
+    DiagramBlock,
     DiagramError,
+    DiagramLineShip,
     DiagramModel,
     Finding,
     LineAnnotation,
@@ -118,12 +117,6 @@ class DiagramRenderResult:
         }
 
 
-@dataclass(frozen=True, slots=True)
-class BlockProjection:
-    ship: str
-    annotations: tuple[DiagramAnnotation, ...]
-
-
 def annotation_render_target(
     diagram: Diagram, annotation_id: str, *, namespace: str | None = None
 ) -> DiagramRenderTarget:
@@ -136,32 +129,30 @@ def annotation_render_target(
 def line_render_target(
     diagram: Diagram, line_ship: str, *, namespace: str | None = None
 ) -> DiagramRenderTarget:
-    annotations = diagram.line(line_ship, namespace=namespace)
-    if not annotations:
-        raise DiagramRenderError(f"Diagram Line not found: {line_ship}")
+    line = diagram.projected_line(line_ship, namespace=namespace)
+    annotations = line.annotations
     namespace_ids = {item.annotation.namespace.id for item in annotations}
-    if len(namespace_ids) != 1:
-        raise DiagramRenderError(
-            f"Diagram Line does not resolve to one Namespace: {line_ship}"
-        )
     return DiagramRenderTarget(
-        "line", line_ship, next(iter(namespace_ids)), annotations
+        "line", line_ship, next(iter(namespace_ids)), line
     )
 
 
 def block_render_target(
     diagram: Diagram, block_ship: str, *, namespace: str | None = None
 ) -> DiagramRenderTarget:
-    annotations = diagram.block_annotations(block_ship, namespace=namespace)
-    namespace_ids = {item.namespace.id for item in annotations}
-    if len(namespace_ids) != 1:
-        raise DiagramRenderError(f"Diagram Block does not resolve: {block_ship}")
-    namespace_id = next(iter(namespace_ids))
+    block = diagram.projected_block(block_ship, namespace=namespace)
+    namespace_ids = {item.annotation.namespace.id for item in block.annotations}
+    if not namespace_ids:
+        namespace_ids = {
+            item.annotation.namespace.id
+            for line in block.lines
+            for item in line.annotations
+        }
     return DiagramRenderTarget(
         "block",
         block_ship,
-        namespace_id,
-        BlockProjection(block_ship, annotations),
+        next(iter(namespace_ids)),
+        block,
     )
 
 
@@ -257,12 +248,13 @@ def _render_line(
     with_support: bool,
     context: DiagramRenderContext,
 ) -> tuple[str, tuple[Finding, ...]]:
-    wordings = [
-        item for item in _typed_annotations(target) if isinstance(item, LineAnnotation)
-    ]
+    line = target.subject
+    if not isinstance(line, DiagramLineShip):
+        raise DiagramRenderError("Line renderer received another target")
+    wordings = [item for item in line.annotations if isinstance(item, LineAnnotation)]
     if not wordings:
         raise DiagramRenderError(f"Diagram Line has no wording: {target.identity}")
-    findings: list[Finding] = []
+    findings: list[Finding] = list(line.findings)
     ambiguous = len(wordings) > 1
     if ambiguous:
         findings.append(
@@ -274,7 +266,7 @@ def _render_line(
         )
     sections: list[str] = []
     any_reviewed = False
-    typed_annotations = _typed_annotations(target)
+    typed_annotations = line.annotations
     for wording in _sort_typed(wordings):
         annotation_assessment = context.assertions.assess(wording)
         assessments = annotation_assessment.gate_assessments
@@ -303,7 +295,16 @@ def _render_line(
             ambiguous=ambiguous,
             review_standing=review_standing,
         )
-        sections.append(f"- {wording.text} {marker}")
+        line_type = next(
+            (
+                edition.object_type
+                for edition in line.editions
+                if edition.annotation.id == wording.id
+            ),
+            None,
+        )
+        prefix = f"[{line_type.short_code}] " if line_type and line_type.short_code else ""
+        sections.append(f"- {prefix}{wording.text} {marker}")
         findings.extend(
             finding for assessment in assessments for finding in assessment.findings
         )
@@ -324,7 +325,7 @@ def _render_line(
                 "Line ship has no Annotation with a passing Verbatim.Gate.",
             )
         )
-    return "\n\n".join(sections), tuple(findings)
+    return "\n\n".join(sections), _dedupe_findings(findings)
 
 
 def _kernel_block(
@@ -351,11 +352,12 @@ def _render_block(
     heading_level: int = 2,
 ) -> tuple[str, tuple[Finding, ...]]:
     projection = target.subject
-    if not isinstance(projection, BlockProjection):
+    if not isinstance(projection, DiagramBlock):
         raise DiagramRenderError("Block renderer received another target")
-    typed = _specialize_known(projection.annotations)
-    blocks = [item for item in typed if isinstance(item, BlockAnnotation)]
-    findings: list[Finding] = []
+    blocks = [
+        item for item in projection.annotations if isinstance(item, BlockAnnotation)
+    ]
+    findings: list[Finding] = list(projection.findings)
     if len(blocks) == 1:
         label = blocks[0].label
     else:
@@ -368,8 +370,7 @@ def _render_block(
             )
         )
     sections = [f"{'#' * heading_level} {label}"]
-    groups = _line_groups(typed)
-    if not groups:
+    if not projection.lines:
         findings.append(
             Finding(
                 "block-has-no-lines",
@@ -378,9 +379,9 @@ def _render_block(
             )
         )
     rendered_lines: list[str] = []
-    for line_ship, line_annotations in groups:
+    for line in projection.lines:
         line_target = DiagramRenderTarget(
-            "line", line_ship, target.namespace_id, line_annotations
+            "line", line.ship, target.namespace_id, line
         )
         content, line_findings = _render_line(
             line_target, with_support=with_support, context=context
@@ -389,7 +390,7 @@ def _render_block(
         findings.extend(line_findings)
     if rendered_lines:
         sections.append(("\n\n" if with_support else "\n").join(rendered_lines))
-    return "\n\n".join(sections), tuple(findings)
+    return "\n\n".join(sections), _dedupe_findings(findings)
 
 
 def _kernel_model(
@@ -402,31 +403,22 @@ def _kernel_model(
     data = root.record.get("data")
     label = data.get("label") if isinstance(data, dict) else None
     title = label if isinstance(label, str) and label else f"Model.{model.ship[:8]}"
-    annotations = model.annotations()
-    block_ships = []
-    for item in _sort_annotations(annotations):
-        if item.type != BLOCK_ANNOTATION_TYPE:
-            continue
-        location = item.record.get("location")
-        ship = location.get("block_ship") if isinstance(location, dict) else None
-        if isinstance(ship, str) and ship not in block_ships:
-            block_ships.append(ship)
+    projection = model.project()
     sections = [f"# {title}"]
-    findings: list[Finding] = []
-    for block_ship in block_ships:
-        block_annotations = model.namespace.block_annotations(block_ship)
+    findings: list[Finding] = list(projection.findings)
+    for block in projection.blocks:
         block_target = DiagramRenderTarget(
             "block",
-            block_ship,
+            block.ship,
             target.namespace_id,
-            BlockProjection(block_ship, block_annotations),
+            block,
         )
         content, block_findings = _render_block(
             block_target, with_support=False, context=context, heading_level=2
         )
         sections.append(content)
         findings.extend(block_findings)
-    if not block_ships:
+    if not projection.blocks:
         findings.append(
             Finding(
                 "model-has-no-blocks",
@@ -434,57 +426,16 @@ def _kernel_model(
                 "Model contains no Block Annotations.",
             )
         )
-    return "\n\n".join(sections), tuple(findings)
+    return "\n\n".join(sections), _dedupe_findings(findings)
 
 
 def _typed_annotations(target: DiagramRenderTarget) -> tuple[TypedAnnotation, ...]:
     values = target.subject
-    if not isinstance(values, tuple) or not all(
-        isinstance(item, TypedAnnotation) for item in values
-    ):
+    if isinstance(values, DiagramLineShip):
+        return values.annotations
+    if not isinstance(values, tuple) or not all(isinstance(item, TypedAnnotation) for item in values):
         raise DiagramRenderError(f"Renderer received an invalid {target.kind} target")
     return values
-
-
-def _specialize_known(
-    annotations: Iterable[DiagramAnnotation],
-) -> tuple[TypedAnnotation, ...]:
-    typed: list[TypedAnnotation] = []
-    for annotation in annotations:
-        if annotation.type in (
-            BLOCK_ANNOTATION_TYPE,
-            LINE_ANNOTATION_TYPE,
-            LINE_GATE_ANNOTATION_TYPE,
-        ):
-            typed.append(annotation.specialize())
-    return tuple(typed)
-
-
-def _line_groups(
-    annotations: Iterable[TypedAnnotation],
-) -> tuple[tuple[str, tuple[TypedAnnotation, ...]], ...]:
-    groups: dict[str, list[TypedAnnotation]] = {}
-    ordered = _sort_typed(annotations)
-    for item in ordered:
-        if isinstance(item, LineAnnotation):
-            groups.setdefault(item.location.line_ship, []).append(item)
-    for item in ordered:
-        if isinstance(item, LineGateAnnotation):
-            ship = item.location.line_ship
-            if ship in groups:
-                groups[ship].append(item)
-    return tuple((ship, tuple(items)) for ship, items in groups.items())
-
-
-def _sort_annotations(
-    annotations: Iterable[DiagramAnnotation],
-) -> tuple[DiagramAnnotation, ...]:
-    return tuple(
-        sorted(
-            annotations,
-            key=lambda item: (str(item.record.get("recorded_at", "")), item.id),
-        )
-    )
 
 
 def _sort_typed(
@@ -498,6 +449,15 @@ def _sort_typed(
                 item.id,
             ),
         )
+    )
+
+
+def _dedupe_findings(findings: Iterable[Finding]) -> tuple[Finding, ...]:
+    return tuple(
+        {
+            (item.code, item.path, item.message): item
+            for item in findings
+        }.values()
     )
 
 
@@ -653,7 +613,6 @@ _RENDERERS = {
 
 
 __all__ = [
-    "BlockProjection",
     "DiagramRenderError",
     "DiagramRenderResult",
     "DiagramRenderTarget",

@@ -29,15 +29,57 @@ USER_TOUCHED_CHATLAS_INDEX = "User.Touched.Chatlas.Index"
 DIAGRAM_ATTIC = "Diagram.Attic"
 MODEL_ANNOTATION_TYPE = "Diagram.Model.Annotation"
 BLOCK_ANNOTATION_TYPE = "Diagram.Block.Annotation"
+BLOCK_TYPE_ANNOTATION_TYPE = "Diagram.Block.Type.Annotation"
 LINE_ANNOTATION_TYPE = "Diagram.Line.Annotation"
+LINE_TYPE_ANNOTATION_TYPE = "Diagram.Line.Type.Annotation"
 LINE_SUPPORT_ANNOTATION_TYPE = "Diagram.Line.Support.Annotation"
 LINE_GATE_ANNOTATION_TYPE = "Diagram.Line.Gate.Annotation"
 VERBATIM_GATE_TYPE = "Verbatim.Gate"
+DIAGRAM_BLOCK_OBJECT_TYPE = "Diagram.Block"
+DESIGN_BLOCK_OBJECT_TYPE = "Design.Block"
+IMPL_REQ_BLOCK_OBJECT_TYPE = "Impl.Req.Block"
+DIAGRAM_LINE_OBJECT_TYPE = "Diagram.Line"
+DESIGN_LINE_DEFINITION_TYPE = "Design.Line.Definition"
+DESIGN_LINE_DECISION_TYPE = "Design.Line.Decision"
+DESIGN_LINE_CONSTRAINT_TYPE = "Design.Line.Constraint"
+DESIGN_LINE_REJECTION_TYPE = "Design.Line.Rejection"
+DESIGN_LINE_PRINCIPLE_TYPE = "Design.Line.Principle"
+DESIGN_LINE_FREEDOM_TYPE = "Design.Line.Freedom"
+DESIGN_LINE_EXAMPLE_TYPE = "Design.Line.Example"
+DESIGN_LINE_OBJECT_TYPES = (
+    DESIGN_LINE_DEFINITION_TYPE,
+    DESIGN_LINE_DECISION_TYPE,
+    DESIGN_LINE_CONSTRAINT_TYPE,
+    DESIGN_LINE_REJECTION_TYPE,
+    DESIGN_LINE_PRINCIPLE_TYPE,
+    DESIGN_LINE_FREEDOM_TYPE,
+    DESIGN_LINE_EXAMPLE_TYPE,
+)
+DIAGRAM_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = (
+    "7b2bb6ef-37b8-47e0-8c6b-2ff5ccbdd82d"
+)
+DESIGN_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = (
+    "aa26bfa3-49f6-406d-b74f-f071ec3d11fa"
+)
+IMPL_REQ_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = (
+    "f6dfcbcb-6eb5-468c-a3f8-7f7034334b94"
+)
+DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS = {
+    DESIGN_LINE_DEFINITION_TYPE: "00a33f68-90a7-4a92-87c4-c3862e879bc5",
+    DESIGN_LINE_DECISION_TYPE: "7cf2af24-e6d9-46b7-a09a-c43db69ccd68",
+    DESIGN_LINE_CONSTRAINT_TYPE: "9b0bea0f-1408-483e-85cf-504e2009ad25",
+    DESIGN_LINE_REJECTION_TYPE: "2d3dd161-b4c2-4810-9e2b-4fda1a6c8743",
+    DESIGN_LINE_PRINCIPLE_TYPE: "6c43fce3-dd2d-40d3-b676-4e58df8195ee",
+    DESIGN_LINE_FREEDOM_TYPE: "1894d99c-ddca-491d-a586-1a7a53e9c4b0",
+    DESIGN_LINE_EXAMPLE_TYPE: "1366fc61-a9fe-4ef5-91dc-6f13f0447e30",
+}
 CHATLAS_INDEX_NAMESPACES = frozenset((USER_TOUCHED_CHATLAS_INDEX, DIAGRAM_ATTIC))
 CHATLAS_INDEX_ANNOTATION_TYPES = (
     MODEL_ANNOTATION_TYPE,
     BLOCK_ANNOTATION_TYPE,
+    BLOCK_TYPE_ANNOTATION_TYPE,
     LINE_ANNOTATION_TYPE,
+    LINE_TYPE_ANNOTATION_TYPE,
     LINE_SUPPORT_ANNOTATION_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
 )
@@ -367,6 +409,11 @@ class TypedAnnotation:
     ) -> tuple[Finding, ...]:
         return ()
 
+    def contribute(self, projector: DiagramProjectionBuilder) -> None:
+        """Contribute this Annotation to the canonical object projection."""
+
+        return None
+
 
 @dataclass(frozen=True, slots=True)
 class ModelAnnotation(TypedAnnotation):
@@ -427,6 +474,11 @@ class LineAnnotation(UserTouchedAnnotation):
     def gates(self) -> tuple[VerbatimGate, ...]:
         return _verbatim_gates(self.record.get("gates", []))
 
+    @property
+    def line_type(self) -> str | None:
+        value = self.record.get("line_type")
+        return _string(value, field="line_type") if value is not None else None
+
     def model_location(self) -> tuple[str, str]:
         return self.location.model_ship, "location.model_ship"
 
@@ -441,7 +493,12 @@ class LineAnnotation(UserTouchedAnnotation):
         )
         if self.gates:
             assertions += tuple({"type": kind} for kind in VERBATIM_GATE_ASSERTIONS)
+        if self.line_type is not None:
+            assertions += ({"type": "Line.Type.Conformance.Assertion"},)
         return assertions
+
+    def contribute(self, projector: DiagramProjectionBuilder) -> None:
+        projector.add_line_annotation(self)
 
     def type_findings(
         self,
@@ -474,17 +531,56 @@ class BlockAnnotation(TypedAnnotation):
             field="data.label",
         )
 
+    @property
+    def block_type(self) -> str | None:
+        value = self.record.get("block_type")
+        return _string(value, field="block_type") if value is not None else None
+
     def model_location(self) -> tuple[str, str]:
         return self.location.model_ship, "location.model_ship"
 
     def type_assertions(self) -> tuple[JsonObject, ...]:
-        return tuple(
+        assertions = tuple(
             {"type": kind}
             for kind in (
                 "Block.Continuity.Assertion",
                 "Model.Scope.Assertion",
             )
         )
+        if self.block_type is not None:
+            assertions += ({"type": "Block.Type.Conformance.Assertion"},)
+        return assertions
+
+    def contribute(self, projector: DiagramProjectionBuilder) -> None:
+        projector.add_block_annotation(self)
+
+
+@dataclass(frozen=True, slots=True)
+class BlockTypeAnnotation(TypedAnnotation):
+    """Assigns an Object.Type to an existing Block without adding content."""
+
+    def __post_init__(self) -> None:
+        if self.type != BLOCK_TYPE_ANNOTATION_TYPE:
+            raise DiagramModelError(f"not a Block Type Annotation: {self.type}")
+        DiagramBlockLocation.from_dict(self.record.get("location"))
+        _string(self.record.get("block_type"), field="block_type")
+
+    @property
+    def location(self) -> DiagramBlockLocation:
+        return DiagramBlockLocation.from_dict(self.record.get("location"))
+
+    @property
+    def block_type(self) -> str:
+        return _string(self.record.get("block_type"), field="block_type")
+
+    def model_location(self) -> tuple[str, str]:
+        return self.location.model_ship, "location.model_ship"
+
+    def type_assertions(self) -> tuple[JsonObject, ...]:
+        return ({"type": "Block.Type.Conformance.Assertion"},)
+
+    def contribute(self, projector: DiagramProjectionBuilder) -> None:
+        projector.add_block_annotation(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -510,6 +606,37 @@ class LineSupportAnnotation(UserTouchedAnnotation):
                 "Model.Scope.Assertion",
             )
         )
+
+    def contribute(self, projector: DiagramProjectionBuilder) -> None:
+        projector.add_line_annotation(self)
+
+
+@dataclass(frozen=True, slots=True)
+class LineTypeAnnotation(TypedAnnotation):
+    """Assigns an Object.Type to an existing Line without adding wording."""
+
+    def __post_init__(self) -> None:
+        if self.type != LINE_TYPE_ANNOTATION_TYPE:
+            raise DiagramModelError(f"not a Line Type Annotation: {self.type}")
+        DiagramLocation.from_dict(self.record.get("location"))
+        _string(self.record.get("line_type"), field="line_type")
+
+    @property
+    def location(self) -> DiagramLocation:
+        return DiagramLocation.from_dict(self.record.get("location"))
+
+    @property
+    def line_type(self) -> str:
+        return _string(self.record.get("line_type"), field="line_type")
+
+    def model_location(self) -> tuple[str, str]:
+        return self.location.model_ship, "location.model_ship"
+
+    def type_assertions(self) -> tuple[JsonObject, ...]:
+        return ({"type": "Line.Type.Conformance.Assertion"},)
+
+    def contribute(self, projector: DiagramProjectionBuilder) -> None:
+        projector.add_line_annotation(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -574,6 +701,671 @@ class LineGateAnnotation(TypedAnnotation):
             ),
         )
 
+    def contribute(self, projector: DiagramProjectionBuilder) -> None:
+        projector.add_line_gate_annotation(self)
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramObjectAssertion:
+    """One assertion exposed by a projected object without duplicating evaluation."""
+
+    annotation_id: str
+    assertion_type: str
+
+    @property
+    def id(self) -> str:
+        return f"annotation:{self.annotation_id}:{self.assertion_type}"
+
+    def to_dict(self) -> JsonObject:
+        return {
+            "id": self.id,
+            "annotation_id": self.annotation_id,
+            "type": self.assertion_type,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramLineType:
+    id: str
+    short_code: str
+    edition_class: type[DiagramLineEdition]
+    ship_class: type[DiagramLineShip]
+    definition_block_ship: str | None = None
+
+    def to_dict(self) -> JsonObject:
+        return {
+            "id": self.id,
+            "short_code": self.short_code,
+            "edition_class": self.edition_class.__name__,
+            "ship_class": self.ship_class.__name__,
+            "definition_block_ship": self.definition_block_ship,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramBlockType:
+    id: str
+    block_class: type[DiagramBlock]
+    line_types: tuple[DiagramLineType, ...]
+    require_line_type: bool = True
+    definition_block_ship: str | None = None
+
+    def line_type(self, type_id: str) -> DiagramLineType | None:
+        return next((item for item in self.line_types if item.id == type_id), None)
+
+    def to_dict(self) -> JsonObject:
+        return {
+            "id": self.id,
+            "class": self.block_class.__name__,
+            "definition_block_ship": self.definition_block_ship,
+            "require_line_type": self.require_line_type,
+            "line_types": [item.to_dict() for item in self.line_types],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramObjectTypeRegistry:
+    block_types: tuple[DiagramBlockType, ...]
+
+    def block_type(self, type_id: str) -> DiagramBlockType | None:
+        return next((item for item in self.block_types if item.id == type_id), None)
+
+    def line_type(self, type_id: str) -> DiagramLineType | None:
+        return next(
+            (
+                line_type
+                for block_type in self.block_types
+                for line_type in block_type.line_types
+                if line_type.id == type_id
+            ),
+            None,
+        )
+
+    def types(self) -> tuple[DiagramBlockType | DiagramLineType, ...]:
+        return tuple(
+            dict.fromkeys(
+                (
+                    *self.block_types,
+                    *(
+                        line_type
+                        for block_type in self.block_types
+                        for line_type in block_type.line_types
+                    ),
+                )
+            )
+        )
+
+    def definition_findings(
+        self, resolve_block: Callable[[str], object]
+    ) -> tuple[Finding, ...]:
+        findings: list[Finding] = []
+        for object_type in self.types():
+            path = f"object_type.{object_type.id}.definition_block_ship"
+            if object_type.definition_block_ship is None:
+                findings.append(
+                    Finding(
+                        "object-type-definition-block-missing",
+                        path,
+                        f"Object.Type {object_type.id} has no Definition.Block.",
+                    )
+                )
+                continue
+            try:
+                resolve_block(object_type.definition_block_ship)
+            except DiagramError:
+                findings.append(
+                    Finding(
+                        "object-type-definition-block-unresolved",
+                        path,
+                        (
+                            f"Definition.Block does not resolve for Object.Type "
+                            f"{object_type.id}: {object_type.definition_block_ship}."
+                        ),
+                    )
+                )
+        return tuple(findings)
+
+    def to_dict(self) -> JsonObject:
+        return {"block_types": [item.to_dict() for item in self.block_types]}
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramLineEdition:
+    annotation: LineAnnotation
+    object_type: DiagramLineType
+
+    @property
+    def text(self) -> str:
+        return self.annotation.text
+
+
+class DesignLineDefinition(DiagramLineEdition):
+    pass
+
+
+class DesignLineDecision(DiagramLineEdition):
+    pass
+
+
+class DesignLineConstraint(DiagramLineEdition):
+    pass
+
+
+class DesignLineRejection(DiagramLineEdition):
+    pass
+
+
+class DesignLinePrinciple(DiagramLineEdition):
+    pass
+
+
+class DesignLineFreedom(DiagramLineEdition):
+    pass
+
+
+class DesignLineExample(DiagramLineEdition):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramLineShip:
+    ship: str
+    block_ship: str
+    annotations: tuple[TypedAnnotation, ...]
+    editions: tuple[DiagramLineEdition, ...]
+    type_ids: tuple[str, ...]
+    findings: tuple[Finding, ...]
+
+    @property
+    def object_type(self) -> str | None:
+        return self.type_ids[-1] if len(self.type_ids) == 1 else None
+
+    def assertions(self) -> tuple[DiagramObjectAssertion, ...]:
+        return _object_assertions(self.annotations)
+
+
+class DesignLineShip(DiagramLineShip):
+    pass
+
+
+class DesignDefinitionLineShip(DesignLineShip):
+    pass
+
+
+class DesignDecisionLineShip(DesignLineShip):
+    pass
+
+
+class DesignConstraintLineShip(DesignLineShip):
+    pass
+
+
+class DesignRejectionLineShip(DesignLineShip):
+    pass
+
+
+class DesignPrincipleLineShip(DesignLineShip):
+    pass
+
+
+class DesignFreedomLineShip(DesignLineShip):
+    pass
+
+
+class DesignExampleLineShip(DesignLineShip):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramBlock:
+    ship: str
+    model_ship: str
+    annotations: tuple[TypedAnnotation, ...]
+    lines: tuple[DiagramLineShip, ...]
+    type_ids: tuple[str, ...]
+    findings: tuple[Finding, ...]
+
+    @property
+    def object_type(self) -> str | None:
+        return self.type_ids[-1] if len(self.type_ids) == 1 else None
+
+    @property
+    def labels(self) -> tuple[str, ...]:
+        return tuple(
+            item.label for item in self.annotations if isinstance(item, BlockAnnotation)
+        )
+
+    def assertions(self) -> tuple[DiagramObjectAssertion, ...]:
+        return _dedupe_object_assertions(
+            (
+                *_object_assertions(self.annotations),
+                *(assertion for line in self.lines for assertion in line.assertions()),
+            )
+        )
+
+
+class DesignBlock(DiagramBlock):
+    pass
+
+
+class ImplReqBlock(DiagramBlock):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramProjection:
+    model_ship: str
+    namespace_id: str
+    blocks: tuple[DiagramBlock, ...]
+    findings: tuple[Finding, ...]
+
+    def block(self, block_ship: str) -> DiagramBlock:
+        matches = tuple(item for item in self.blocks if item.ship == block_ship)
+        if len(matches) != 1:
+            raise DiagramError(f"Projected Block does not resolve: {block_ship}")
+        return matches[0]
+
+    def line(self, line_ship: str) -> DiagramLineShip:
+        matches = tuple(
+            line for block in self.blocks for line in block.lines if line.ship == line_ship
+        )
+        if len(matches) != 1:
+            raise DiagramError(f"Projected Line does not resolve: {line_ship}")
+        return matches[0]
+
+    def to_dict(self) -> JsonObject:
+        return {
+            "model_ship": self.model_ship,
+            "namespace_id": self.namespace_id,
+            "blocks": [
+                {
+                    "ship": block.ship,
+                    "object_type": block.object_type,
+                    "labels": list(block.labels),
+                    "lines": [
+                        {
+                            "ship": line.ship,
+                            "object_type": line.object_type,
+                            "type_history": list(line.type_ids),
+                            "annotations": [item.id for item in line.annotations],
+                        }
+                        for line in block.lines
+                    ],
+                    "annotations": [item.id for item in block.annotations],
+                }
+                for block in self.blocks
+            ],
+            "findings": [item.to_dict() for item in self.findings],
+        }
+
+
+class DiagramProjectionBuilder:
+    """Canonical full projector. Annotation classes own their contributions."""
+
+    def __init__(
+        self,
+        namespace: DiagramNamespace,
+        model_ship: str,
+        annotations: Iterable[TypedAnnotation],
+    ) -> None:
+        self.namespace = namespace
+        self.model_ship = model_ship
+        self.registry = namespace.object_types()
+        self.typed_by_id = {item.id: item for item in annotations}
+        self.block_annotations: dict[str, list[TypedAnnotation]] = {}
+        self.line_annotations: dict[tuple[str, str], list[TypedAnnotation]] = {}
+        self.findings: list[Finding] = []
+
+    def add_block_annotation(
+        self, annotation: BlockAnnotation | BlockTypeAnnotation
+    ) -> None:
+        self.block_annotations.setdefault(annotation.location.block_ship, []).append(
+            annotation
+        )
+
+    def add_line_annotation(
+        self,
+        annotation: LineAnnotation | LineSupportAnnotation | LineTypeAnnotation,
+    ) -> None:
+        location = annotation.location
+        self.line_annotations.setdefault(
+            (location.block_ship, location.line_ship), []
+        ).append(annotation)
+
+    def add_line_gate_annotation(self, annotation: LineGateAnnotation) -> None:
+        target = self.typed_by_id.get(annotation.target_annotation_id)
+        if target is None:
+            try:
+                target = self.namespace.annotation(
+                    annotation.target_annotation_id
+                ).specialize()
+            except (DiagramError, DiagramModelError):
+                target = None
+        if not isinstance(target, LineAnnotation):
+            self.findings.append(
+                Finding(
+                    "line-gate-target-unresolved",
+                    f"annotation.{annotation.id}.target_annotation",
+                    "Line Gate target does not resolve to a Line Annotation.",
+                )
+            )
+            return
+        location = target.location
+        self.line_annotations.setdefault(
+            (location.block_ship, location.line_ship), []
+        ).append(annotation)
+
+    def build(self) -> DiagramProjection:
+        block_ships = tuple(
+            dict.fromkeys(
+                (*self.block_annotations, *(key[0] for key in self.line_annotations))
+            )
+        )
+        blocks = tuple(self._block(ship) for ship in block_ships)
+        findings = _dedupe_findings(
+            (
+                *self.findings,
+                *(finding for block in blocks for finding in block.findings),
+                *(
+                    finding
+                    for block in blocks
+                    for line in block.lines
+                    for finding in line.findings
+                ),
+            )
+        )
+        return DiagramProjection(
+            self.model_ship, self.namespace.id, blocks, findings
+        )
+
+    def _block(self, ship: str) -> DiagramBlock:
+        annotations = _sort_typed(self.block_annotations.get(ship, ()))
+        declarations = tuple(
+            item for item in annotations if isinstance(item, BlockAnnotation)
+        )
+        type_annotations = tuple(
+            item for item in annotations if isinstance(item, BlockTypeAnnotation)
+        )
+        findings: list[Finding] = []
+        type_ids = tuple(
+            dict.fromkeys(
+                item.block_type
+                for item in (*declarations, *type_annotations)
+                if item.block_type is not None
+            )
+        )
+        if not declarations:
+            findings.append(
+                Finding(
+                    "block-declaration-missing",
+                    f"block.{ship}",
+                    "Lines name a Block ship with no Block Annotation.",
+                )
+            )
+        if declarations and not type_ids and self.namespace.require_block_type:
+            findings.append(
+                Finding(
+                    "block-type-missing",
+                    f"block.{ship}",
+                    "Block Annotations do not retain a Block.Type.",
+                )
+            )
+        if len(type_ids) > 1:
+            findings.append(
+                Finding(
+                    "block-type-selection-unresolved",
+                    f"block.{ship}",
+                    "Block lineage contains several Block.Types.",
+                )
+            )
+        selected_id = type_ids[-1] if len(type_ids) == 1 else DIAGRAM_BLOCK_OBJECT_TYPE
+        block_type = self.registry.block_type(selected_id)
+        if block_type is None:
+            findings.append(
+                Finding(
+                    "block-type-unknown",
+                    f"block.{ship}.block_type",
+                    f"Block.Type is not registered: {selected_id}.",
+                )
+            )
+            block_type = self.registry.block_type(DIAGRAM_BLOCK_OBJECT_TYPE)
+        if (
+            type_ids
+            and self.namespace.allowed_block_types
+            and selected_id not in self.namespace.allowed_block_types
+        ):
+            findings.append(
+                Finding(
+                    "block-type-not-allowed",
+                    f"block.{ship}.block_type",
+                    f"Namespace {self.namespace.name} does not allow Block.Type {selected_id}.",
+                )
+            )
+        assert block_type is not None
+        lines = tuple(
+            self._line(ship, line_ship, block_type)
+            for block_ship, line_ship in self.line_annotations
+            if block_ship == ship
+        )
+        return block_type.block_class(
+            ship,
+            self.model_ship,
+            annotations,
+            lines,
+            type_ids,
+            tuple(findings),
+        )
+
+    def _line(
+        self, block_ship: str, ship: str, block_type: DiagramBlockType
+    ) -> DiagramLineShip:
+        annotations = _sort_typed(self.line_annotations[(block_ship, ship)])
+        wordings = tuple(
+            item for item in annotations if isinstance(item, LineAnnotation)
+        )
+        type_annotations = tuple(
+            item for item in annotations if isinstance(item, LineTypeAnnotation)
+        )
+        findings: list[Finding] = []
+        type_ids = tuple(
+            dict.fromkeys(
+                item.line_type
+                for item in (*wordings, *type_annotations)
+                if item.line_type is not None
+            )
+        )
+        if not wordings:
+            findings.append(
+                Finding(
+                    "line-wording-missing",
+                    f"line.{ship}",
+                    "Line annotations name a Line ship with no wording Annotation.",
+                )
+            )
+        if wordings and not type_ids and block_type.require_line_type:
+            findings.append(
+                Finding(
+                    "line-type-missing",
+                    f"line.{ship}",
+                    "Line Annotations do not retain a Line.Type.",
+                )
+            )
+        if len(type_ids) > 1:
+            findings.append(
+                Finding(
+                    "line-type-selection-unresolved",
+                    f"line.{ship}",
+                    "Line lineage contains several Line.Types.",
+                )
+            )
+        line_type = None
+        if len(type_ids) == 1:
+            selected_id = type_ids[0]
+            line_type = block_type.line_type(selected_id)
+            if line_type is None:
+                known = self.registry.line_type(selected_id)
+                findings.append(
+                    Finding(
+                        (
+                            "line-type-not-allowed-by-block"
+                            if known
+                            else "line-type-unknown"
+                        ),
+                        f"line.{ship}.line_type",
+                        (
+                            f"Block.Type {block_type.id} does not allow "
+                            f"Line.Type {selected_id}."
+                            if known
+                            else f"Line.Type is not registered: {selected_id}."
+                        ),
+                    )
+                )
+        if line_type is None:
+            line_type = self.registry.line_type(DIAGRAM_LINE_OBJECT_TYPE)
+        assert line_type is not None
+        editions = tuple(line_type.edition_class(item, line_type) for item in wordings)
+        return line_type.ship_class(
+            ship,
+            block_ship,
+            annotations,
+            editions,
+            type_ids,
+            tuple(findings),
+        )
+
+
+def default_diagram_object_types() -> DiagramObjectTypeRegistry:
+    generic_line = DiagramLineType(
+        DIAGRAM_LINE_OBJECT_TYPE,
+        "",
+        DiagramLineEdition,
+        DiagramLineShip,
+        DIAGRAM_BLOCK_TYPE_DEFINITION_BLOCK_SHIP,
+    )
+    design_lines = (
+        DiagramLineType(
+            DESIGN_LINE_DEFINITION_TYPE,
+            "DF",
+            DesignLineDefinition,
+            DesignDefinitionLineShip,
+            DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS[DESIGN_LINE_DEFINITION_TYPE],
+        ),
+        DiagramLineType(
+            DESIGN_LINE_DECISION_TYPE,
+            "DC",
+            DesignLineDecision,
+            DesignDecisionLineShip,
+            DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS[DESIGN_LINE_DECISION_TYPE],
+        ),
+        DiagramLineType(
+            DESIGN_LINE_CONSTRAINT_TYPE,
+            "CT",
+            DesignLineConstraint,
+            DesignConstraintLineShip,
+            DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS[DESIGN_LINE_CONSTRAINT_TYPE],
+        ),
+        DiagramLineType(
+            DESIGN_LINE_REJECTION_TYPE,
+            "RJ",
+            DesignLineRejection,
+            DesignRejectionLineShip,
+            DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS[DESIGN_LINE_REJECTION_TYPE],
+        ),
+        DiagramLineType(
+            DESIGN_LINE_PRINCIPLE_TYPE,
+            "PR",
+            DesignLinePrinciple,
+            DesignPrincipleLineShip,
+            DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS[DESIGN_LINE_PRINCIPLE_TYPE],
+        ),
+        DiagramLineType(
+            DESIGN_LINE_FREEDOM_TYPE,
+            "FR",
+            DesignLineFreedom,
+            DesignFreedomLineShip,
+            DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS[DESIGN_LINE_FREEDOM_TYPE],
+        ),
+        DiagramLineType(
+            DESIGN_LINE_EXAMPLE_TYPE,
+            "EX",
+            DesignLineExample,
+            DesignExampleLineShip,
+            DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS[DESIGN_LINE_EXAMPLE_TYPE],
+        ),
+    )
+    return DiagramObjectTypeRegistry(
+        (
+            DiagramBlockType(
+                DIAGRAM_BLOCK_OBJECT_TYPE,
+                DiagramBlock,
+                (generic_line,),
+                definition_block_ship=DIAGRAM_BLOCK_TYPE_DEFINITION_BLOCK_SHIP,
+            ),
+            DiagramBlockType(
+                DESIGN_BLOCK_OBJECT_TYPE,
+                DesignBlock,
+                design_lines,
+                definition_block_ship=DESIGN_BLOCK_TYPE_DEFINITION_BLOCK_SHIP,
+            ),
+            DiagramBlockType(
+                IMPL_REQ_BLOCK_OBJECT_TYPE,
+                ImplReqBlock,
+                design_lines,
+                definition_block_ship=IMPL_REQ_BLOCK_TYPE_DEFINITION_BLOCK_SHIP,
+            ),
+        )
+    )
+
+
+def _object_assertions(
+    annotations: Iterable[TypedAnnotation],
+) -> tuple[DiagramObjectAssertion, ...]:
+    return _dedupe_object_assertions(
+        tuple(
+            DiagramObjectAssertion(item.id, assertion_type)
+            for item in annotations
+            for assertion in item.annotation.assertions()
+            if isinstance((assertion_type := assertion.get("type")), str)
+        )
+    )
+
+
+def _dedupe_object_assertions(
+    assertions: Iterable[DiagramObjectAssertion],
+) -> tuple[DiagramObjectAssertion, ...]:
+    return tuple({item.id: item for item in assertions}.values())
+
+
+def _dedupe_findings(findings: Iterable[Finding]) -> tuple[Finding, ...]:
+    return tuple(
+        {
+            (item.code, item.path, item.message): item
+            for item in findings
+        }.values()
+    )
+
+
+def _sort_annotations(
+    annotations: Iterable[DiagramAnnotation],
+) -> tuple[DiagramAnnotation, ...]:
+    return tuple(
+        sorted(
+            annotations,
+            key=lambda item: (str(item.record.get("recorded_at", "")), item.id),
+        )
+    )
+
+
+def _sort_typed(
+    annotations: Iterable[TypedAnnotation],
+) -> tuple[TypedAnnotation, ...]:
+    return tuple(
+        sorted(
+            annotations,
+            key=lambda item: (str(item.record.get("recorded_at", "")), item.id),
+        )
+    )
+
 
 @dataclass(frozen=True, slots=True)
 class CaptureManifest:
@@ -624,6 +1416,7 @@ class CaptureManifest:
     ) -> tuple[Finding, ...]:
         findings: list[Finding] = []
         seen: dict[str, JsonObject] = {}
+        draft_annotations: list[DiagramAnnotation] = []
         for index, draft in enumerate(self.annotations):
             path = f"annotations[{index}]"
             if draft.id in seen:
@@ -644,6 +1437,7 @@ class CaptureManifest:
                     )
             seen[draft.id] = draft.record
             annotation = DiagramAnnotation(draft.id, namespace, draft.record)
+            draft_annotations.append(annotation)
             findings.extend(
                 namespace.findings(annotation, path=path, evidence=evidence)
             )
@@ -659,7 +1453,9 @@ class CaptureManifest:
                         "Annotation is not located in the Capture.Manifest Model.",
                     )
                 )
-        return tuple(findings)
+        projection = namespace.project(self.model_ship, extra=draft_annotations)
+        findings.extend(projection.findings)
+        return _dedupe_findings(findings)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1133,6 +1929,8 @@ class DiagramNamespace:
     id: str
     name: str
     allowed_types: tuple[str, ...]
+    allowed_block_types: tuple[str, ...] = ()
+    require_block_type: bool = False
 
     @property
     def annotations_root(self) -> Path:
@@ -1146,6 +1944,8 @@ class DiagramNamespace:
         name: str,
         namespace_id: str | None = None,
         allowed_types: Iterable[str] = (),
+        allowed_block_types: Iterable[str] = (),
+        require_block_type: bool = False,
     ) -> DiagramNamespace:
         resolved = root.expanduser().resolve()
         if resolved.exists() and any(resolved.iterdir()):
@@ -1161,6 +1961,8 @@ class DiagramNamespace:
                 "id": namespace_id or str(uuid4()),
                 "name": name,
                 "allowed_types": list(allowed_types),
+                "allowed_block_types": list(allowed_block_types),
+                "require_block_type": require_block_type,
             },
         )
         _commit_paths(
@@ -1176,6 +1978,12 @@ class DiagramNamespace:
             root,
             name=USER_TOUCHED_CHATLAS_INDEX,
             allowed_types=CHATLAS_INDEX_ANNOTATION_TYPES,
+            allowed_block_types=(
+                DIAGRAM_BLOCK_OBJECT_TYPE,
+                DESIGN_BLOCK_OBJECT_TYPE,
+                IMPL_REQ_BLOCK_OBJECT_TYPE,
+            ),
+            require_block_type=True,
         )
 
     @classmethod
@@ -1184,6 +1992,12 @@ class DiagramNamespace:
             root,
             name=DIAGRAM_ATTIC,
             allowed_types=CHATLAS_INDEX_ANNOTATION_TYPES,
+            allowed_block_types=(
+                DIAGRAM_BLOCK_OBJECT_TYPE,
+                DESIGN_BLOCK_OBJECT_TYPE,
+                IMPL_REQ_BLOCK_OBJECT_TYPE,
+            ),
+            require_block_type=True,
         )
 
     @classmethod
@@ -1197,15 +2011,40 @@ class DiagramNamespace:
             or data.get("schema_version") != SCHEMA_VERSION
         ):
             raise DiagramError(f"Diagram Namespace definition is invalid: {resolved}")
+        name = _string(data.get("name"), field="Namespace.name")
+        default_block_types = (
+            (
+                DIAGRAM_BLOCK_OBJECT_TYPE,
+                DESIGN_BLOCK_OBJECT_TYPE,
+                IMPL_REQ_BLOCK_OBJECT_TYPE,
+            )
+            if name in CHATLAS_INDEX_NAMESPACES
+            else ()
+        )
         return cls(
             resolved,
             _uuid(data.get("id"), field="Namespace.id"),
-            _string(data.get("name"), field="Namespace.name"),
+            name,
             tuple(
                 _string(item, field="allowed_types[]")
                 for item in _array(data.get("allowed_types", []), field="allowed_types")
             ),
+            tuple(
+                _string(item, field="allowed_block_types[]")
+                for item in _array(
+                    data.get("allowed_block_types") or list(default_block_types),
+                    field="allowed_block_types",
+                )
+            ),
+            (
+                bool(data["require_block_type"])
+                if data.get("require_block_type") is not None
+                else name in CHATLAS_INDEX_NAMESPACES
+            ),
         )
+
+    def object_types(self) -> DiagramObjectTypeRegistry:
+        return default_diagram_object_types()
 
     def annotation(self, annotation_id: str) -> DiagramAnnotation:
         annotation_id = _uuid(annotation_id, field="Annotation.id")
@@ -1243,7 +2082,9 @@ class DiagramNamespace:
             {
                 MODEL_ANNOTATION_TYPE: ModelAnnotation,
                 BLOCK_ANNOTATION_TYPE: BlockAnnotation,
+                BLOCK_TYPE_ANNOTATION_TYPE: BlockTypeAnnotation,
                 LINE_ANNOTATION_TYPE: LineAnnotation,
+                LINE_TYPE_ANNOTATION_TYPE: LineTypeAnnotation,
                 LINE_SUPPORT_ANNOTATION_TYPE: LineSupportAnnotation,
                 LINE_GATE_ANNOTATION_TYPE: LineGateAnnotation,
             }
@@ -1440,6 +2281,33 @@ class DiagramNamespace:
         )
         return self._with_line_gate_annotations(direct)
 
+    def project(
+        self,
+        model_ship: str,
+        *,
+        extra: Iterable[DiagramAnnotation] = (),
+    ) -> DiagramProjection:
+        ship = _uuid(model_ship, field="Model.ship")
+        combined = {
+            item.id: item for item in (*self.model_annotations(ship), *tuple(extra))
+        }
+        typed: list[TypedAnnotation] = []
+        for annotation in _sort_annotations(combined.values()):
+            try:
+                specialized = self.specialize(annotation)
+            except DiagramAnnotationSpecializationError:
+                continue
+            try:
+                location = specialized.model_location()
+            except (DiagramError, DiagramModelError):
+                location = None
+            if location is None or location[0] == ship:
+                typed.append(specialized)
+        builder = DiagramProjectionBuilder(self, ship, typed)
+        for annotation in typed:
+            annotation.contribute(builder)
+        return builder.build()
+
     def block_annotations(self, block_ship: str) -> tuple[DiagramAnnotation, ...]:
         ship = _uuid(block_ship, field="Block.ship")
         direct = tuple(
@@ -1468,6 +2336,7 @@ class DiagramNamespace:
         for annotation in self.annotations():
             if annotation.type in (
                 LINE_ANNOTATION_TYPE,
+                LINE_TYPE_ANNOTATION_TYPE,
                 LINE_SUPPORT_ANNOTATION_TYPE,
                 LINE_GATE_ANNOTATION_TYPE,
             ):
@@ -1475,7 +2344,12 @@ class DiagramNamespace:
                 if (
                     isinstance(
                         typed,
-                        (LineAnnotation, LineSupportAnnotation, LineGateAnnotation),
+                        (
+                            LineAnnotation,
+                            LineTypeAnnotation,
+                            LineSupportAnnotation,
+                            LineGateAnnotation,
+                        ),
                     )
                     and typed.location.line_ship == ship
                 ):
@@ -1529,6 +2403,9 @@ class DiagramModel:
 
     def annotations(self) -> tuple[DiagramAnnotation, ...]:
         return self.namespace.model_annotations(self.ship)
+
+    def project(self) -> DiagramProjection:
+        return self.namespace.project(self.ship)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1627,6 +2504,12 @@ class Diagram:
     ) -> AssertionEngine:
         return AssertionEngine(evidence=evidence)
 
+    def object_type_definition_findings(
+        self, registry: DiagramObjectTypeRegistry | None = None
+    ) -> tuple[Finding, ...]:
+        active_registry = registry or default_diagram_object_types()
+        return active_registry.definition_findings(self.projected_block)
+
     def annotation(
         self, annotation_id: str, *, namespace: str | None = None
     ) -> DiagramAnnotation:
@@ -1676,6 +2559,21 @@ class Diagram:
         spaces = (self.namespace(namespace),) if namespace else self.namespaces
         return tuple(item for space in spaces for item in space.line(line_ship))
 
+    def projected_line(
+        self, line_ship: str, *, namespace: str | None = None
+    ) -> DiagramLineShip:
+        spaces = (self.namespace(namespace),) if namespace else self.namespaces
+        matches: list[DiagramLineShip] = []
+        for space in spaces:
+            for model in space.models():
+                try:
+                    matches.append(model.project().line(line_ship))
+                except DiagramError:
+                    pass
+        if len(matches) != 1:
+            raise DiagramError(f"Diagram Line does not resolve uniquely: {line_ship}")
+        return matches[0]
+
     def block_annotations(
         self, block_ship: str, *, namespace: str | None = None
     ) -> tuple[DiagramAnnotation, ...]:
@@ -1687,6 +2585,21 @@ class Diagram:
         if len(populated) != 1:
             raise DiagramError(f"Diagram Block does not resolve uniquely: {block_ship}")
         return populated[0][1]
+
+    def projected_block(
+        self, block_ship: str, *, namespace: str | None = None
+    ) -> DiagramBlock:
+        spaces = (self.namespace(namespace),) if namespace else self.namespaces
+        matches: list[DiagramBlock] = []
+        for space in spaces:
+            for model in space.models():
+                try:
+                    matches.append(model.project().block(block_ship))
+                except DiagramError:
+                    pass
+        if len(matches) != 1:
+            raise DiagramError(f"Diagram Block does not resolve uniquely: {block_ship}")
+        return matches[0]
 
     def line_review(
         self,
@@ -2044,7 +2957,7 @@ def _timestamp() -> str:
 __all__ = [
     name
     for name in globals()
-    if name.startswith("Diagram")
+    if name.startswith(("Diagram", "Design"))
     or name
     in {
         "AnnotationDraft",
@@ -2063,20 +2976,38 @@ __all__ = [
         "TypedAnnotation",
         "UserTouchedAnnotation",
         "BlockAnnotation",
+        "BlockTypeAnnotation",
         "LineAnnotation",
         "LineGateAnnotation",
         "LineSupportAnnotation",
+        "LineTypeAnnotation",
         "ModelAnnotation",
         "MechanicalAssertionEvaluator",
         "VerbatimGate",
         "VerbatimGateAssertionEvaluator",
         "BLOCK_ANNOTATION_TYPE",
+        "BLOCK_TYPE_ANNOTATION_TYPE",
+        "DIAGRAM_BLOCK_OBJECT_TYPE",
+        "DIAGRAM_LINE_OBJECT_TYPE",
+        "DESIGN_BLOCK_OBJECT_TYPE",
+        "DESIGN_LINE_CONSTRAINT_TYPE",
+        "DESIGN_LINE_DECISION_TYPE",
+        "DESIGN_LINE_DEFINITION_TYPE",
+        "DESIGN_LINE_EXAMPLE_TYPE",
+        "DESIGN_LINE_FREEDOM_TYPE",
+        "DESIGN_LINE_OBJECT_TYPES",
+        "DESIGN_LINE_PRINCIPLE_TYPE",
+        "DESIGN_LINE_REJECTION_TYPE",
+        "IMPL_REQ_BLOCK_OBJECT_TYPE",
         "DIAGRAM_ATTIC",
         "LINE_ANNOTATION_TYPE",
         "LINE_GATE_ANNOTATION_TYPE",
         "LINE_SUPPORT_ANNOTATION_TYPE",
+        "LINE_TYPE_ANNOTATION_TYPE",
         "MODEL_ANNOTATION_TYPE",
         "USER_TOUCHED_CHATLAS_INDEX",
         "VERBATIM_GATE_TYPE",
+        "ImplReqBlock",
+        "default_diagram_object_types",
     }
 ]

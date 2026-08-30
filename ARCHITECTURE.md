@@ -74,6 +74,9 @@ contract and Git boundaries.
 - `tarav.tarav2` is the isolated experimental redesign namespace. Existing
   domains and `tarav.runtime` do not import it; only the umbrella CLI adapter
   exposes it through the dedicated `tarav tarav2` command branch.
+- `tarav.tarav2.bloberia` owns the hosted global `Tarav.Bloberia` registry and
+  full-record text search. It uses `tarav.bloberia` for opaque storage, locking,
+  and Git checkpointing and adds no fields or domain semantics to its cargo.
 
 ## Project and surface resolution
 

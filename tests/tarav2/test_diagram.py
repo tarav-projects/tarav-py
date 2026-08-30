@@ -11,15 +11,21 @@ from tarav.cli.cli import main
 from tarav.tarav2 import commands as tarav2_commands
 from tarav.tarav2.diagram import (
     BLOCK_ANNOTATION_TYPE,
+    BLOCK_TYPE_ANNOTATION_TYPE,
+    DESIGN_BLOCK_OBJECT_TYPE,
+    DESIGN_LINE_PRINCIPLE_TYPE,
     DIAGRAM_ATTIC,
+    IMPL_REQ_BLOCK_OBJECT_TYPE,
     LINE_ANNOTATION_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
+    LINE_TYPE_ANNOTATION_TYPE,
     MODEL_ANNOTATION_TYPE,
     USER_TOUCHED_CHATLAS_INDEX,
     AnnotationDraft,
     AssertionEngine,
     AssertionEvaluation,
     BlockAnnotation,
+    BlockTypeAnnotation,
     CaptureManifest,
     ChatlasEvidence,
     ChatlasTurnReference,
@@ -30,8 +36,13 @@ from tarav.tarav2.diagram import (
     DiagramBlockLocation,
     DiagramLocation,
     DiagramNamespace,
+    DesignBlock,
+    DesignLinePrinciple,
+    DesignPrincipleLineShip,
+    ImplReqBlock,
     LineAnnotation,
     LineGateAnnotation,
+    LineTypeAnnotation,
     VerbatimGate,
 )
 
@@ -81,6 +92,26 @@ def test_namespace_is_an_independent_flat_git_annotation_tape(tmp_path: Path) ->
     assert (namespace.root / "annotations").is_dir()
     assert not (namespace.root / "models").exists()
     assert namespace.name == USER_TOUCHED_CHATLAS_INDEX
+
+
+def test_legacy_null_namespace_object_type_policy_uses_builtin_defaults(
+    tmp_path: Path,
+) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    path = namespace.root / "namespace.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["allowed_block_types"] = None
+    data["require_block_type"] = None
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    reopened = DiagramNamespace.open(namespace.root)
+
+    assert reopened.allowed_block_types == (
+        "Diagram.Block",
+        "Design.Block",
+        "Impl.Req.Block",
+    )
+    assert reopened.require_block_type is True
 
 
 def test_only_type_is_universal_and_specialization_is_explicit(tmp_path: Path) -> None:
@@ -147,6 +178,8 @@ def test_capture_reports_pois_but_remains_writable(tmp_path: Path) -> None:
         "annotation-unasserted",
         "archive-grounding-unassessable",
         "empty-support-set",
+        "block-declaration-missing",
+        "line-type-missing",
     }
     assert namespace.annotation(line.id).standing == "UnAsserted"
 
@@ -239,6 +272,207 @@ def test_diagram_attic_uses_chatlas_index_record_policy(tmp_path: Path) -> None:
     assert {item.code for item in receipt.findings} == {
         "annotation-unasserted",
         "archive-grounding-unassessable",
+        "block-declaration-missing",
+        "line-type-missing",
+    }
+
+
+def test_full_projector_specializes_design_block_and_full_line_type(
+    tmp_path: Path,
+) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    line_ship = str(uuid4())
+    block = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_ANNOTATION_TYPE,
+            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "data": {"label": "Diagram.Object.Type"},
+        },
+    )
+    line = _line(model.ship)
+    line.record["location"] = DiagramLocation(
+        model.ship, block_ship, line_ship
+    ).to_dict()
+    line.record["line_type"] = DESIGN_LINE_PRINCIPLE_TYPE
+
+    receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
+    projection = model.project()
+    projected_block = projection.block(block_ship)
+    projected_line = projection.line(line_ship)
+
+    assert isinstance(projected_block, DesignBlock)
+    assert projected_block.object_type == DESIGN_BLOCK_OBJECT_TYPE
+    assert projected_line.object_type == DESIGN_LINE_PRINCIPLE_TYPE
+    assert isinstance(projected_line, DesignPrincipleLineShip)
+    assert isinstance(projected_line.editions[0], DesignLinePrinciple)
+    assert not {
+        "block-type-missing",
+        "line-type-missing",
+        "line-type-not-allowed-by-block",
+    } & {item.code for item in receipt.findings}
+    assertion_ids = [item.id for item in projected_block.assertions()]
+    assert len(assertion_ids) == len(set(assertion_ids))
+
+
+def test_impl_req_block_reuses_design_line_types_without_becoming_design_block(
+    tmp_path: Path,
+) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    line_ship = str(uuid4())
+    block = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_ANNOTATION_TYPE,
+            "block_type": IMPL_REQ_BLOCK_OBJECT_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "data": {"label": "502.Impl.Req"},
+        },
+    )
+    line = _line(model.ship)
+    line.record["location"] = DiagramLocation(
+        model.ship, block_ship, line_ship
+    ).to_dict()
+    line.record["line_type"] = DESIGN_LINE_PRINCIPLE_TYPE
+
+    receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
+    projected_block = model.project().block(block_ship)
+    projected_line = model.project().line(line_ship)
+
+    assert isinstance(projected_block, ImplReqBlock)
+    assert not isinstance(projected_block, DesignBlock)
+    assert projected_block.object_type == IMPL_REQ_BLOCK_OBJECT_TYPE
+    assert projected_block.labels == ("502.Impl.Req",)
+    assert isinstance(projected_line, DesignPrincipleLineShip)
+    assert not {
+        "block-type-not-allowed",
+        "line-type-not-allowed-by-block",
+    } & {item.code for item in receipt.findings}
+
+
+def test_type_annotations_classify_existing_objects_without_user_support(
+    tmp_path: Path,
+) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    line_ship = str(uuid4())
+    block = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_ANNOTATION_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "data": {"label": "Capture.First"},
+        },
+    )
+    line = _line(model.ship)
+    line.record["location"] = DiagramLocation(
+        model.ship, block_ship, line_ship
+    ).to_dict()
+    namespace.apply(CaptureManifest(model.ship, (block, line)))
+    block_type = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_TYPE_ANNOTATION_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
+        },
+    )
+    line_type = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": LINE_TYPE_ANNOTATION_TYPE,
+            "location": DiagramLocation(model.ship, block_ship, line_ship).to_dict(),
+            "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
+        },
+    )
+
+    receipt = namespace.apply(CaptureManifest(model.ship, (block_type, line_type)))
+    projection = model.project()
+    projected_block = projection.block(block_ship)
+    projected_line = projection.line(line_ship)
+    typed_block_annotation = namespace.annotation(block_type.id).specialize()
+    typed_line_annotation = namespace.annotation(line_type.id).specialize()
+
+    assert isinstance(typed_block_annotation, BlockTypeAnnotation)
+    assert isinstance(typed_line_annotation, LineTypeAnnotation)
+    assert "support" not in typed_block_annotation.record
+    assert "producer" not in typed_block_annotation.record
+    assert "support" not in typed_line_annotation.record
+    assert "producer" not in typed_line_annotation.record
+    assert typed_block_annotation.annotation.assertions() == (
+        {"type": "Annotation.Representation.Assertion"},
+        {"type": "Block.Type.Conformance.Assertion"},
+    )
+    assert typed_line_annotation.annotation.assertions() == (
+        {"type": "Annotation.Representation.Assertion"},
+        {"type": "Line.Type.Conformance.Assertion"},
+    )
+    assert isinstance(projected_block, DesignBlock)
+    assert projected_block.object_type == DESIGN_BLOCK_OBJECT_TYPE
+    assert isinstance(projected_line, DesignPrincipleLineShip)
+    assert projected_line.object_type == DESIGN_LINE_PRINCIPLE_TYPE
+    assert {item.code for item in receipt.findings} == {"annotation-unasserted"}
+
+
+def test_untyped_line_in_design_block_uses_generic_recovery_without_disallowed_poi(
+    tmp_path: Path,
+) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    block = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_ANNOTATION_TYPE,
+            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "data": {"label": "Unsettled.Type"},
+        },
+    )
+    line = _line(model.ship)
+    line.record["location"] = DiagramLocation(
+        model.ship, block_ship, str(uuid4())
+    ).to_dict()
+
+    receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
+    codes = {item.code for item in receipt.findings}
+
+    assert "line-type-missing" in codes
+    assert "line-type-not-allowed-by-block" not in codes
+
+
+def test_unknown_object_types_remain_writable_and_surface_projection_pois(
+    tmp_path: Path,
+) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model()
+    block_ship = str(uuid4())
+    line = _line(model.ship)
+    line.record["location"] = DiagramLocation(
+        model.ship, block_ship, line.record["location"]["line_ship"]
+    ).to_dict()
+    line.record["line_type"] = "Unknown.Line.Type"
+    block = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_ANNOTATION_TYPE,
+            "block_type": "Unknown.Block.Type",
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "data": {"label": "Unknown"},
+        },
+    )
+
+    receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
+
+    assert receipt.created == (block.id, line.id)
+    assert {"block-type-unknown", "block-type-not-allowed", "line-type-unknown"} <= {
+        item.code for item in receipt.findings
     }
 
 
@@ -435,6 +669,49 @@ def test_capture_context_returns_model_and_manifest_ready_turn_references(
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["model"]["ship"] == model.ship
+    block_types = payload["model"]["object_types"]["block_types"]
+    design = next(item for item in block_types if item["id"] == "Design.Block")
+    impl_req = next(item for item in block_types if item["id"] == "Impl.Req.Block")
+    generic = next(item for item in block_types if item["id"] == "Diagram.Block")
+    assert generic["definition_block_ship"] == (
+        "7b2bb6ef-37b8-47e0-8c6b-2ff5ccbdd82d"
+    )
+    assert generic["line_types"][0]["definition_block_ship"] == (
+        "7b2bb6ef-37b8-47e0-8c6b-2ff5ccbdd82d"
+    )
+    assert design["definition_block_ship"] == (
+        "aa26bfa3-49f6-406d-b74f-f071ec3d11fa"
+    )
+    assert [item["id"] for item in design["line_types"]] == [
+        "Design.Line.Definition",
+        "Design.Line.Decision",
+        "Design.Line.Constraint",
+        "Design.Line.Rejection",
+        "Design.Line.Principle",
+        "Design.Line.Freedom",
+        "Design.Line.Example",
+    ]
+    assert impl_req["class"] == "ImplReqBlock"
+    assert impl_req["definition_block_ship"] == (
+        "f6dfcbcb-6eb5-468c-a3f8-7f7034334b94"
+    )
+    assert impl_req["line_types"] == design["line_types"]
+    assert {
+        item["id"]: item["definition_block_ship"]
+        for item in design["line_types"]
+    } == {
+        "Design.Line.Definition": "00a33f68-90a7-4a92-87c4-c3862e879bc5",
+        "Design.Line.Decision": "7cf2af24-e6d9-46b7-a09a-c43db69ccd68",
+        "Design.Line.Constraint": "9b0bea0f-1408-483e-85cf-504e2009ad25",
+        "Design.Line.Rejection": "2d3dd161-b4c2-4810-9e2b-4fda1a6c8743",
+        "Design.Line.Principle": "6c43fce3-dd2d-40d3-b676-4e58df8195ee",
+        "Design.Line.Freedom": "1894d99c-ddca-491d-a586-1a7a53e9c4b0",
+        "Design.Line.Example": "1366fc61-a9fe-4ef5-91dc-6f13f0447e30",
+    }
+    assert len(payload["model"]["object_types"]["findings"]) == 11
+    assert {
+        item["code"] for item in payload["model"]["object_types"]["findings"]
+    } == {"object-type-definition-block-unresolved"}
     assert [item["side"] for item in payload["chat"]["turns"]] == ["user", "agent"]
     assert payload["chat"]["turns"][0]["text"] == "Approve this line."
     assert payload["chat"]["turns"][0]["reference"]["session_identity"] == identity

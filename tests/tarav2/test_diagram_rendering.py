@@ -7,6 +7,8 @@ from uuid import uuid4
 from tarav.cli.cli import main
 from tarav.tarav2.diagram import (
     BLOCK_ANNOTATION_TYPE,
+    DESIGN_BLOCK_OBJECT_TYPE,
+    DESIGN_LINE_PRINCIPLE_TYPE,
     LINE_ANNOTATION_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
     AnnotationDraft,
@@ -51,6 +53,7 @@ def _diagram_with_line(tmp_path: Path):
         str(uuid4()),
         {
             "type": BLOCK_ANNOTATION_TYPE,
+            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
             "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
             "data": {"label": "Diagram.Rendering"},
         },
@@ -59,6 +62,7 @@ def _diagram_with_line(tmp_path: Path):
         str(uuid4()),
         {
             "type": LINE_ANNOTATION_TYPE,
+            "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
             "producer": AGENT_REF,
             "support": [{"root": USER_REF, "neighborhood": []}],
             "location": DiagramLocation(model.ship, block_ship, line_ship).to_dict(),
@@ -142,9 +146,10 @@ def test_block_and_model_renderers_project_the_flat_tape(tmp_path: Path) -> None
     rendered_model = renderer("Kernel.Writing.Model").render(model_render_target(model))
 
     assert block.content.startswith("## Diagram.Rendering")
-    assert "Renderers are named read-only projections." in block.content
+    assert "[PR] Renderers are named read-only projections." in block.content
     assert rendered_model.content.startswith("# Tarav")
     assert "## Diagram.Rendering" in rendered_model.content
+    assert "[PR] Renderers are named read-only projections." in rendered_model.content
 
 
 def test_ambiguous_line_renderer_surfaces_all_wording_variants(
@@ -155,6 +160,7 @@ def test_ambiguous_line_renderer_surfaces_all_wording_variants(
         str(uuid4()),
         {
             "type": LINE_ANNOTATION_TYPE,
+            "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
             "producer": AGENT_REF,
             "support": [{"root": USER_REF, "neighborhood": []}],
             "location": DiagramLocation(model.ship, block_ship, line_ship).to_dict(),

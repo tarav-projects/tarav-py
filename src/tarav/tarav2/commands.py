@@ -33,6 +33,7 @@ from .diagram_rendering import (
     renderer,
     renderers,
 )
+from .bloberia_commands import register_bloberia_commands
 
 
 def _archive_root(value: str | None) -> Path:
@@ -403,20 +404,34 @@ def _cmd_diagram_project_set_main_model(args: argparse.Namespace) -> int:
     )
 
 
-def _read_model(args: argparse.Namespace):
+def _read_diagram_model(args: argparse.Namespace):
     diagram = _diagram_configuration(args.diagram_config).diagram()
     if args.model_ship:
-        return diagram.model(args.model_ship)
+        return diagram, diagram.model(args.model_ship)
     project = require_agentos_project(project=args.project)
-    return diagram.project_model(project.root)
+    return diagram, diagram.project_model(project.root)
 
 
-def _model_payload(model) -> dict[str, object]:
+def _read_model(args: argparse.Namespace):
+    return _read_diagram_model(args)[1]
+
+
+def _model_payload(model, *, diagram=None) -> dict[str, object]:
+    projection = model.project()
+    object_types = model.namespace.object_types()
+    object_types_payload = object_types.to_dict()
+    if diagram is not None:
+        object_types_payload["findings"] = [
+            item.to_dict()
+            for item in diagram.object_type_definition_findings(object_types)
+        ]
     return {
         "ship": model.ship,
         "namespace_id": model.namespace.id,
         "namespace_name": model.namespace.name,
         "root_annotation_id": model.root_annotation_id,
+        "object_types": object_types_payload,
+        "projection": projection.to_dict(),
         "annotations": [
             _annotation_payload(annotation) for annotation in model.annotations()
         ],
@@ -425,7 +440,7 @@ def _model_payload(model) -> dict[str, object]:
 
 def _cmd_diagram_model_show(args: argparse.Namespace) -> int:
     try:
-        model = _read_model(args)
+        diagram, model = _read_diagram_model(args)
     except (DiagramError, ValueError) as exc:
         raise CliError(str(exc)) from exc
     return _emit(
@@ -433,7 +448,7 @@ def _cmd_diagram_model_show(args: argparse.Namespace) -> int:
         {
             "status": "ok",
             "command": "tarav2 diagram model show",
-            "model": _model_payload(model),
+            "model": _model_payload(model, diagram=diagram),
         },
         (
             f"model: {model.ship}",
@@ -449,7 +464,7 @@ def _cmd_diagram_model_list(args: argparse.Namespace) -> int:
         models = diagram.models(namespace=args.namespace)
     except (DiagramError, ValueError) as exc:
         raise CliError(str(exc)) from exc
-    payload = [_model_payload(model) for model in models]
+    payload = [_model_payload(model, diagram=diagram) for model in models]
     return _emit(
         args,
         {
@@ -475,7 +490,7 @@ def _cmd_diagram_model_create(args: argparse.Namespace) -> int:
         {
             "status": "ok",
             "command": "tarav2 diagram model create",
-            "model": _model_payload(model),
+            "model": _model_payload(model, diagram=diagram),
         },
         (
             f"model: {model.ship}",
@@ -488,7 +503,7 @@ def _cmd_diagram_capture_context(args: argparse.Namespace) -> int:
     try:
         if args.turn_limit < 1:
             raise DiagramModelError("--turn-limit must be positive")
-        model = _read_model(args)
+        diagram, model = _read_diagram_model(args)
         chatlas_root = (
             Path(args.chatlas_root).expanduser().resolve()
             if args.chatlas_root
@@ -534,7 +549,7 @@ def _cmd_diagram_capture_context(args: argparse.Namespace) -> int:
         {
             "status": "ok",
             "command": "tarav2 diagram capture context",
-            "model": _model_payload(model),
+            "model": _model_payload(model, diagram=diagram),
             "chat": {
                 "session": session,
                 "turn_count": len(turns),
@@ -836,6 +851,8 @@ def register_tarav2_commands(subparsers: argparse._SubParsersAction) -> None:
         "tarav2", help="Experimental Tarav redesign surfaces."
     )
     tarav2_commands = tarav2.add_subparsers(dest="tarav2_command", required=True)
+    register_bloberia_commands(tarav2_commands)
+
     archive = tarav2_commands.add_parser(
         "archive",
         help="Register Artifacts and retain flat Records about them.",
