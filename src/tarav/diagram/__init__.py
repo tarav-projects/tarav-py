@@ -903,6 +903,19 @@ class DiagramLineShip:
     def assertions(self) -> tuple[DiagramObjectAssertion, ...]:
         return _object_assertions(self.annotations)
 
+    def inlined_dependencies(self, labels: Iterable[str]) -> tuple[str, ...]:
+        """Return exact known Block labels named by any retained wording."""
+
+        texts = tuple(edition.text for edition in self.editions)
+        return tuple(
+            label
+            for label in labels
+            if any(
+                re.search(rf"(?<![\w.]){re.escape(label)}(?![\w.])", text)
+                for text in texts
+            )
+        )
+
 
 class DesignLineShip(DiagramLineShip):
     pass
@@ -966,6 +979,25 @@ class DiagramBlock:
                 *(assertion for line in self.lines for assertion in line.assertions()),
             )
         )
+
+    def inlined_dependencies(self, labels: Iterable[str]) -> tuple[str, ...]:
+        """Return exact known Block labels named by contained Line wordings."""
+
+        own_labels = set(self.labels)
+        return tuple(
+            dict.fromkeys(
+                label
+                for line in self.lines
+                for label in line.inlined_dependencies(labels)
+                if label not in own_labels
+            )
+        )
+
+    @classmethod
+    def disclosure_ladder(cls) -> tuple[str, ...]:
+        """Return the generic context disclosure levels owned by this Block type."""
+
+        return ("collapsed", "lines", "support", "deep-support")
 
     def mechanical_findings(
         self, assertion_engine: AssertionEngine

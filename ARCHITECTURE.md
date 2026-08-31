@@ -47,7 +47,9 @@ contract and Git boundaries.
 - `tarav.archive` owns stable Artifact identity, retained Archive Records, and
   portable references to retained or externally located data.
 - `tarav.diagram` owns the flat Namespace annotation tape, typed projections,
-  Assertion evaluation, and read-only renderers over Archive-grounded data.
+  Assertion evaluation, read-only renderers over Archive-grounded data, and
+  retained `Diagram.View` context selections. Views are separate Git-backed WIP
+  surfaces: they materialize Diagram data but never mutate the annotation tape.
 - `tarav.bloberia` owns the hosted global `Tarav.Bloberia` registry. The public
   `tarav bloberia` command addresses that registry directly; its private JSON
   storage is not a second Tarav system or command surface.

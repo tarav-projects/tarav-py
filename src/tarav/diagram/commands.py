@@ -31,6 +31,7 @@ from .rendering import (
     renderer,
     renderers,
 )
+from .view_commands import register_view_commands
 
 
 def _diagram_configuration(
@@ -854,6 +855,8 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_chatlas_root_option(render)
     _add_json_option(render)
     render.set_defaults(handler=_cmd_diagram_render)
+
+    register_view_commands(diagram_commands)
 
 
 __all__ = ["register_diagram_commands"]
