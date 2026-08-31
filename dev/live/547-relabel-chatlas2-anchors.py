@@ -24,6 +24,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from tarav.chatlas.paths import default_chatlas_root
+
 PROJECT_ROOT = Path("/Users/pereiro/projects/taravangian-project")
 SKIP_PARTS = ("/.skw/", "_DEPRECATED", "/.git/", "/node_modules/")
 ANCHOR_RE = re.compile(r"(?P<prefix>[a-z])(?P<date>\d{8})-(?P<seq>\d+)(?P<tag>[a-z]?)")
@@ -100,7 +102,7 @@ def rewrite_surfaces(mapping: dict[str, str], *, apply: bool) -> tuple[int, int]
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--chatlas-root", type=Path, default=Path.home() / "Documents/chatlas")
+    parser.add_argument("--chatlas-root", type=Path, default=default_chatlas_root())
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
 
