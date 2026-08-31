@@ -1020,6 +1020,19 @@ def _git(repo: Path, *args: str) -> str:
 def _commit(repo: Path, paths: Iterable[Path], message: str) -> str:
     values = tuple(path.as_posix() for path in paths)
     _git(repo, "add", "--", *values)
+    staged = subprocess.run(
+        ("git", "-C", str(repo), "diff", "--cached", "--quiet", "--", *values),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if staged.returncode == 0:
+        return _git(repo, "rev-parse", "HEAD")
+    if staged.returncode != 1:
+        raise DiagramViewError(
+            f"Git failed for {repo}: "
+            f"{staged.stderr.strip() or staged.stdout.strip()}"
+        )
     _git(
         repo,
         "-c",

@@ -19,6 +19,7 @@ from tarav.diagram import (
     DiagramNamespace,
 )
 from tarav.diagram import view_commands
+from tarav.diagram import views
 from tarav.diagram.views import (
     DiagramViewConfiguration,
     DiagramViewRepository,
@@ -183,6 +184,57 @@ def test_view_disclosure_and_line_selection_are_cli_managed(tmp_path: Path) -> N
     line = expanded.view.state["blocks"][0]["disclosure"]["lines"][0]
     assert expanded.view.state["blocks"][0]["disclosure_name"] == "support"
     assert line["support"][0]["members"][0]["root"] == REF
+
+
+def test_view_full_expansion_is_an_idempotent_no_op(tmp_path: Path) -> None:
+    diagram, _, _, provider_block, first_line, second_line = _diagram(tmp_path)
+    repository = DiagramViewRepository.create(tmp_path / "views")
+    view = repository.create_view(
+        diagram,
+        block_ships=(provider_block,),
+        configuration=DiagramViewConfiguration(bootstrap_visible_lines=1),
+    ).view
+
+    expanded = repository.disclose(
+        view.ship,
+        diagram,
+        block_ship=provider_block,
+        steps=1000,
+        full=True,
+    )
+    assert set(expanded.view.state["blocks"][0]["selected_line_ships"]) == {
+        first_line,
+        second_line,
+    }
+    commit = expanded.commit
+
+    repeated = repository.disclose(
+        view.ship,
+        diagram,
+        block_ship=provider_block,
+        steps=1000,
+        full=True,
+    )
+
+    assert repeated.changes == ()
+    assert repeated.commit == commit
+    assert repeated.view.edition()["commit"] == commit
+
+
+def test_view_commit_reuses_head_when_target_paths_are_unchanged(
+    tmp_path: Path,
+) -> None:
+    repository = DiagramViewRepository.create(tmp_path / "views")
+    commit = views._git(repository.root, "rev-parse", "HEAD")
+
+    repeated = views._commit(
+        repository.root,
+        (Path("repository.json"),),
+        "diagram(view): unchanged repository",
+    )
+
+    assert repeated == commit
+    assert views._git(repository.root, "rev-list", "--count", "HEAD") == "1"
 
 
 def test_view_check_surfaces_stale_source_until_sync(tmp_path: Path) -> None:
