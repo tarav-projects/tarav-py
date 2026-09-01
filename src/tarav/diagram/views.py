@@ -132,10 +132,8 @@ class DiagramViewChange:
         }
 
     def render(self) -> str:
-        marker = {"add": "+", "remove": "-", "change": "~"}.get(
-            self.operation, " "
-        )
-        return f"{marker} {self.target}  {self.detail}"
+        marker = {"add": "+", "remove": "-", "change": "~"}.get(self.operation, " ")
+        return f"{marker} {_short_identifier(self.target)}  {self.detail}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,9 +309,15 @@ class DiagramView:
                         retained = _object(raw_finding, field="Finding")
                         findings.append(
                             Finding(
-                                str(retained.get("code", "diagram-view-materialization-poi")),
+                                str(
+                                    retained.get(
+                                        "code", "diagram-view-materialization-poi"
+                                    )
+                                ),
                                 f"view.blocks[{index}].disclosure.lines[{line_index}]",
-                                str(retained.get("message", "View materialization POI.")),
+                                str(
+                                    retained.get("message", "View materialization POI.")
+                                ),
                             )
                         )
             for dependency_index, dependency_value in enumerate(
@@ -365,43 +369,48 @@ class DiagramView:
 
     def render(self) -> str:
         state = self.state
-        lines = [f"# Diagram.View `{self.ship}`", ""]
+        lines = [f"# Diagram.View `{_short_identifier(self.ship)}`", ""]
+        rendered_support_roots: set[str] = set()
         if self.about:
-            lines.extend(("## About", "", "```json", json.dumps(self.about, indent=2, ensure_ascii=False), "```", ""))
-        for value in _array(state.get("blocks"), field="View.blocks"):
-            block = _object(value, field="View.Block")
-            label = _string(block.get("label"), field="View.Block.label")
-            block_type = block.get("block_type") or "Diagram.Block"
-            lines.append(f"## {label}")
-            lines.append("")
-            lines.append(
-                f"`{str(block_type)}` · `{str(block['block_ship'])[:12]}` · "
-                f"{block.get('disclosure_name', DISCLOSURE_LEVELS[int(block['disclosure_level'])])}"
-            )
-            dependencies = _array(block.get("dependencies", []), field="dependencies")
-            if dependencies:
-                rendered = ", ".join(
-                    f"`{_object(item, field='dependency').get('label')}`"
-                    for item in dependencies
+            lines.extend(
+                (
+                    "## About",
+                    "",
+                    "```json",
+                    json.dumps(
+                        _compact_identifiers(self.about),
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                    "```",
+                    "",
                 )
-                lines.extend(("", f"Dependencies: {rendered}"))
-            disclosure = _object(block.get("disclosure", {}), field="disclosure")
-            for line in _array(disclosure.get("lines", []), field="disclosure.lines"):
-                item = _object(line, field="View.Line")
-                line_type = item.get("line_type") or "Diagram.Line"
-                for edition in _array(item.get("editions", []), field="editions"):
-                    wording = _object(edition, field="edition")
-                    lines.extend(("", f"- [{line_type}] {wording.get('text', '')}"))
-                if "support" in item:
-                    lines.append(
-                        f"  - Support: {json.dumps(item['support'], ensure_ascii=False)}"
-                    )
-                if "support_content" in item:
-                    lines.append(
-                        f"  - Support.Content: {json.dumps(item['support_content'], ensure_ascii=False)}"
-                    )
-            lines.append("")
+            )
+        for value in _array(state.get("blocks"), field="View.blocks"):
+            lines.extend(
+                _render_block(
+                    _object(value, field="View.Block"),
+                    seen_support_roots=rendered_support_roots,
+                )
+            )
         return "\n".join(lines).rstrip() + "\n"
+
+    def render_blocks(self, block_ships: Iterable[str]) -> str:
+        """Render complete current materializations for selected View Blocks."""
+
+        blocks = _array(self.state.get("blocks"), field="View.blocks")
+        selected = tuple(dict.fromkeys(block_ships))
+        rendered_support_roots: set[str] = set()
+        lines: list[str] = []
+        for block_ship in selected:
+            try:
+                block = _one_block(blocks, block_ship)
+            except DiagramViewError:
+                continue
+            lines.extend(
+                _render_block(block, seen_support_roots=rendered_support_roots)
+            )
+        return "\n".join(lines).rstrip() + ("\n" if lines else "")
 
 
 @dataclass(frozen=True, slots=True)
@@ -427,14 +436,20 @@ class DiagramViewRepository:
                 "schema_version": VIEW_SCHEMA_VERSION,
             },
         )
-        _commit(resolved, (Path(VIEW_REPOSITORY_FILENAME),), "diagram(view): initialize repository")
+        _commit(
+            resolved,
+            (Path(VIEW_REPOSITORY_FILENAME),),
+            "diagram(view): initialize repository",
+        )
         return cls.open(resolved)
 
     @classmethod
     def open(cls, root: Path | None = None) -> DiagramViewRepository:
         resolved = (root or default_diagram_views_root()).expanduser().resolve()
         if not (resolved / ".git").is_dir():
-            raise DiagramViewError(f"Diagram.View repository is not initialized: {resolved}")
+            raise DiagramViewError(
+                f"Diagram.View repository is not initialized: {resolved}"
+            )
         definition = _read_json(resolved / VIEW_REPOSITORY_FILENAME)
         if definition != {
             "class": VIEW_REPOSITORY_CLASS,
@@ -456,7 +471,9 @@ class DiagramViewRepository:
             return DiagramView(exact)
         matches = tuple(item for item in self.views() if item.ship.startswith(selector))
         if len(matches) != 1:
-            raise DiagramViewError(f"Diagram.View does not resolve uniquely: {selector}")
+            raise DiagramViewError(
+                f"Diagram.View does not resolve uniquely: {selector}"
+            )
         return matches[0]
 
     def create_view(
@@ -471,7 +488,9 @@ class DiagramViewRepository:
     ) -> DiagramViewMutation:
         scopes = _resolve_scopes(diagram, model_ships, block_ships)
         if not scopes:
-            raise DiagramViewError("Diagram.View requires at least one Model or Block scope")
+            raise DiagramViewError(
+                "Diagram.View requires at least one Model or Block scope"
+            )
         ship = str(uuid4())
         root = self.root / ship
         root.mkdir()
@@ -502,7 +521,15 @@ class DiagramViewRepository:
         view = DiagramView(root)
         return DiagramViewMutation(
             view,
-            (DiagramViewChange("add", ship, f"{len(state['blocks'])} scoped Blocks"),),
+            tuple(
+                DiagramViewChange(
+                    "add",
+                    _string(block.get("block_ship"), field="View.Block.block_ship"),
+                    _string(block.get("label"), field="View.Block.label"),
+                )
+                for value in _array(state.get("blocks"), field="View.blocks")
+                for block in (_object(value, field="View.Block"),)
+            ),
             commit,
         )
 
@@ -548,6 +575,7 @@ class DiagramViewRepository:
         state = view.state
         blocks = _array(state.get("blocks"), field="View.blocks")
         target = _one_block(blocks, block_ship)
+        block_ship = _string(target.get("block_ship"), field="View.Block.block_ship")
         old_level = _integer(target.get("disclosure_level"), field="disclosure_level")
         _, projected_block = _resolve_block(diagram, block_ship)
         ladder = projected_block.disclosure_ladder()
@@ -592,21 +620,23 @@ class DiagramViewRepository:
     ) -> DiagramViewMutation:
         view = self.view(selector)
         state = view.state
-        target = _one_block(_array(state.get("blocks"), field="View.blocks"), block_ship)
+        target = _one_block(
+            _array(state.get("blocks"), field="View.blocks"), block_ship
+        )
+        block_ship = _string(target.get("block_ship"), field="View.Block.block_ship")
         _, projected_block = _resolve_block(diagram, block_ship)
-        if line_ship not in {line.ship for line in projected_block.lines}:
-            raise DiagramViewError(
-                f"Line {line_ship} does not belong to View Block {block_ship}"
-            )
+        line_ship = _resolve_identifier(
+            line_ship,
+            (line.ship for line in projected_block.lines),
+            kind=f"Line in View Block {block_ship}",
+        )
         selection = list(
             _array(target.get("selected_line_ships", []), field="selected_line_ships")
         )
         if selected and line_ship not in selection:
             selection.append(line_ship)
-            operation = "add"
         elif not selected and line_ship in selection:
             selection.remove(line_ship)
-            operation = "remove"
         else:
             return DiagramViewMutation(view, (), _git(self.root, "rev-parse", "HEAD"))
         target["selected_line_ships"] = selection
@@ -621,7 +651,11 @@ class DiagramViewRepository:
         )
         refreshed["view_ship"] = view.ship
         atomic_write_json(view.state_path, refreshed, ensure_ascii=False)
-        change = DiagramViewChange(operation, line_ship, f"Block {block_ship[:12]}")
+        change = DiagramViewChange(
+            "change",
+            block_ship,
+            f"{'included' if selected else 'excluded'} Line {line_ship[:12]}",
+        )
         commit = _commit(
             self.root,
             (view.state_path.relative_to(self.root),),
@@ -647,13 +681,16 @@ def _resolve_scopes(
     return tuple(dict.fromkeys(scopes))
 
 
-def _resolve_block(diagram: Diagram, block_ship: str) -> tuple[DiagramModel, DiagramBlock]:
+def _resolve_block(
+    diagram: Diagram, block_ship: str
+) -> tuple[DiagramModel, DiagramBlock]:
     matches: list[tuple[DiagramModel, DiagramBlock]] = []
     for model in diagram.models():
-        try:
-            matches.append((model, model.project().block(block_ship)))
-        except DiagramError:
-            pass
+        matches.extend(
+            (model, block)
+            for block in model.project().blocks
+            if block.ship.startswith(block_ship)
+        )
     if len(matches) != 1:
         raise DiagramViewError(f"Diagram Block does not resolve uniquely: {block_ship}")
     return matches[0]
@@ -697,21 +734,32 @@ def _materialize(
     if previous is not None:
         for value in _array(previous.get("blocks", []), field="View.blocks"):
             item = _object(value, field="View.Block")
-            prior_blocks[(str(item.get("namespace_id")), str(item.get("block_ship")))] = item
+            prior_blocks[
+                (str(item.get("namespace_id")), str(item.get("block_ship")))
+            ] = item
 
     blocks: list[JsonObject] = []
     for identity, (model, block) in unique.items():
         prior = prior_blocks.get(identity)
         ranked = _rank_lines(diagram, model, block, evidence=evidence)
         selected = (
-            [str(item) for item in _array(prior.get("selected_line_ships", []), field="selected_line_ships")]
+            [
+                str(item)
+                for item in _array(
+                    prior.get("selected_line_ships", []), field="selected_line_ships"
+                )
+            ]
             if prior is not None
             else [line.ship for line in ranked[: configuration.bootstrap_visible_lines]]
         )
         valid_ships = {line.ship for line in block.lines}
         selected_set = {ship for ship in selected if ship in valid_ships}
         selected = [line.ship for line in block.lines if line.ship in selected_set]
-        level = int(prior.get("disclosure_level", 1 if selected else 0)) if prior else (1 if selected else 0)
+        level = (
+            int(prior.get("disclosure_level", 1 if selected else 0))
+            if prior
+            else (1 if selected else 0)
+        )
         entry = _block_entry(
             diagram,
             model,
@@ -723,13 +771,17 @@ def _materialize(
         )
         blocks.append(entry)
 
-    namespace_ids = tuple(dict.fromkeys(model.namespace.id for model, _ in unique.values()))
+    namespace_ids = tuple(
+        dict.fromkeys(model.namespace.id for model, _ in unique.values())
+    )
     return {
         "class": VIEW_CLASS,
         "schema_version": VIEW_SCHEMA_VERSION,
         "view_ship": previous.get("view_ship") if previous else None,
         "source_editions": {
-            namespace_id: _git(diagram.namespace(namespace_id).root, "rev-parse", "HEAD")
+            namespace_id: _git(
+                diagram.namespace(namespace_id).root, "rev-parse", "HEAD"
+            )
             for namespace_id in namespace_ids
         },
         "scope": [item.to_dict() for item in scopes],
@@ -754,12 +806,30 @@ def _block_entry(
     support_members = 0
     selected_set = set(selected)
     rendered_lines: list[JsonObject] = []
+    reviewed_lines = {
+        line.ship: _is_reviewed(diagram, model, line, evidence=evidence)
+        for line in block.lines
+    }
+    line_types = model.namespace.object_types()
     for line in block.lines:
         support_members += _support_count(line)
-        if _is_reviewed(diagram, model, line, evidence=evidence):
+        if reviewed_lines[line.ship]:
             reviewed += 1
         if level >= 1 and line.ship in selected_set:
-            rendered_lines.append(_line_entry(line, level=level, evidence=evidence))
+            line_type = (
+                line_types.line_type(line.object_type)
+                if line.object_type is not None
+                else None
+            )
+            rendered_lines.append(
+                _line_entry(
+                    line,
+                    level=level,
+                    evidence=evidence,
+                    reviewed=reviewed_lines[line.ship],
+                    line_type_code=line_type.short_code if line_type else None,
+                )
+            )
     label = block.labels[-1] if block.labels else f"Block.{block.ship[:12]}"
     return {
         "namespace_id": model.namespace.id,
@@ -788,43 +858,31 @@ def _line_entry(
     *,
     level: int,
     evidence: ChatlasEvidence | None,
+    reviewed: bool,
+    line_type_code: str | None,
 ) -> JsonObject:
     editions: list[JsonObject] = []
-    support: list[JsonObject] = []
     support_content: list[JsonObject] = []
+    support_findings: list[JsonObject] = []
     for item in line.editions:
         annotation = item.annotation
         editions.append({"annotation_id": annotation.id, "text": item.text})
-    if level >= 2:
-        for typed in line.annotations:
-            if isinstance(typed, UserTouchedAnnotation):
-                support.append(
-                    {
-                        "annotation_id": typed.id,
-                        "producer": typed.producer.to_dict(),
-                        "members": typed.support.to_list(),
-                    }
-                )
     if level >= 3 and evidence is not None:
         for typed in line.annotations:
             if isinstance(typed, UserTouchedAnnotation):
                 try:
                     members = typed.render_support(evidence)
                 except DiagramError as exc:
-                    support_content.append(
-                        {
-                            "annotation_id": typed.id,
-                            "members": [],
-                            "finding": Finding(
-                                "diagram-view-deep-support-unresolved",
-                                f"annotation.{typed.id}.support",
-                                str(exc),
-                            ).to_dict(),
-                        }
+                    support_findings.append(
+                        Finding(
+                            "diagram-view-deep-support-unresolved",
+                            f"annotation.{typed.id}.support",
+                            str(exc),
+                        ).to_dict()
                     )
                 else:
-                    support_content.append(
-                        {"annotation_id": typed.id, "members": members}
+                    support_content.extend(
+                        _compact_support_member(item) for item in members
                     )
     result: JsonObject = {
         "line_ship": line.ship,
@@ -832,12 +890,20 @@ def _line_entry(
         "editions": editions,
         "stats": {
             "edition_count": len(editions),
-            "support_member_count": _support_count(line),
             "finding_count": len(line.findings),
         },
     }
+    if line_type_code is not None:
+        result["line_type_code"] = line_type_code
     if level >= 2:
-        result["support"] = support
+        support_roots, support_turns = _support_stats(line)
+        result["stats"].update(
+            {
+                "support_root_count": support_roots,
+                "support_turn_count": support_turns,
+                "reviewed": reviewed,
+            }
+        )
     if level >= 3:
         result["support_content"] = support_content
         if evidence is None:
@@ -849,11 +915,7 @@ def _line_entry(
                 ).to_dict()
             ]
         else:
-            result["materialization_findings"] = [
-                item["finding"]
-                for item in support_content
-                if isinstance(item.get("finding"), dict)
-            ]
+            result["materialization_findings"] = support_findings
     return result
 
 
@@ -900,17 +962,190 @@ def _is_reviewed(
 
 
 def _support_count(line: DiagramLineShip) -> int:
-    roots = {
-        (
-            member.root.session_identity,
-            member.root.turn_address,
-            member.root.turn_hash,
+    return _support_stats(line)[0]
+
+
+def _support_stats(line: DiagramLineShip) -> tuple[int, int]:
+    roots: set[tuple[str, str, str]] = set()
+    turns: set[tuple[str, str, str]] = set()
+    for annotation in line.annotations:
+        if not isinstance(annotation, UserTouchedAnnotation):
+            continue
+        for member in annotation.support.members:
+            root = (
+                member.root.session_identity,
+                member.root.turn_address,
+                member.root.turn_hash,
+            )
+            roots.add(root)
+            turns.add(root)
+            turns.update(
+                (
+                    reference.session_identity,
+                    reference.turn_address,
+                    reference.turn_hash,
+                )
+                for reference in member.neighborhood
+            )
+    return len(roots), len(turns)
+
+
+def _render_block(
+    block: Mapping[str, Any], *, seen_support_roots: set[str]
+) -> list[str]:
+    label = _string(block.get("label"), field="View.Block.label")
+    block_type = block.get("block_type") or "Diagram.Block"
+    level = _integer(block.get("disclosure_level"), field="View.Block.disclosure_level")
+    stats = _object(block.get("stats", {}), field="View.Block.stats")
+    lines = [
+        f"## {label}",
+        "",
+        f"`{str(block_type)}` · "
+        f"`{_short_identifier(str(block['block_ship']))}` · "
+        f"{block.get('disclosure_name', DISCLOSURE_LEVELS[level])} · "
+        f"{stats.get('line_count', 0)} lines · "
+        f"{stats.get('reviewed_line_count', 0)} reviewed · "
+        f"{stats.get('finding_count', 0)} POIs",
+    ]
+    dependencies = _array(block.get("dependencies", []), field="dependencies")
+    if dependencies:
+        rendered = ", ".join(
+            f"`{_object(item, field='dependency').get('label')}`"
+            for item in dependencies
         )
-        for annotation in line.annotations
-        if isinstance(annotation, UserTouchedAnnotation)
-        for member in annotation.support.members
+        lines.extend(("", f"Dependencies: {rendered}"))
+    disclosure = _object(block.get("disclosure", {}), field="disclosure")
+    for line in _array(disclosure.get("lines", []), field="disclosure.lines"):
+        item = _object(line, field="View.Line")
+        line_type = (
+            item.get("line_type_code") or item.get("line_type") or "Diagram.Line"
+        )
+        line_ship = _short_identifier(
+            _string(item.get("line_ship"), field="View.Line.line_ship")
+        )
+        for edition in _array(item.get("editions", []), field="editions"):
+            wording = _object(edition, field="edition")
+            lines.extend(
+                (
+                    "",
+                    f"- [{line_type}] {wording.get('text', '')} [`{line_ship}`]",
+                )
+            )
+        if level >= 2:
+            lines.append(f"  - {_line_stats(item)}")
+        if level >= 3:
+            lines.extend(_support_content_lines(item, seen=seen_support_roots))
+    lines.append("")
+    return lines
+
+
+def _line_stats(line: Mapping[str, Any]) -> str:
+    stats = _object(line.get("stats", {}), field="View.Line.stats")
+    root_count = int(stats.get("support_root_count", 0))
+    turn_count = int(stats.get("support_turn_count", 0))
+    finding_count = int(stats.get("finding_count", 0))
+    review = "reviewed" if stats.get("reviewed") else "unreviewed"
+    return " · ".join(
+        (
+            review,
+            f"{root_count} support root{'s' if root_count != 1 else ''}",
+            f"{turn_count} support turn{'s' if turn_count != 1 else ''}",
+            f"{finding_count} POI{'s' if finding_count != 1 else ''}",
+        )
+    )
+
+
+def _support_content_lines(line: Mapping[str, Any], *, seen: set[str]) -> list[str]:
+    rendered: list[str] = []
+    for member_value in _array(
+        line.get("support_content", []), field="View.Line.support_content"
+    ):
+        member = _object(member_value, field="View.Support.Member")
+        source = _string(member.get("source"), field="View.Support.Member.source")
+        if source in seen:
+            continue
+        seen.add(source)
+        rendered.append(f"  - Support `{source}`")
+        for turn_value in _array(
+            member.get("turns", []), field="View.Support.Member.turns"
+        ):
+            support_turn = _object(turn_value, field="View.Support.Turn")
+            side = str(support_turn.get("side") or "turn").title()
+            marker = " (root)" if support_turn.get("root") else ""
+            rendered.append(f"    - **{side}{marker}:**")
+            text = str(support_turn.get("text") or "")
+            rendered.extend(_fenced_verbatim_lines(text, indent="      "))
+    return rendered
+
+
+def _fenced_verbatim_lines(text: str, *, indent: str) -> list[str]:
+    longest_run = 0
+    current_run = 0
+    for character in text:
+        if character == "`":
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+    fence = "`" * max(5, longest_run + 1)
+    return [
+        f"{indent}{fence}text",
+        *(f"{indent}{part}" for part in text.splitlines() or ("",)),
+        f"{indent}{fence}",
+    ]
+
+
+def _compact_support_member(value: object) -> JsonObject:
+    member = _object(value, field="Support.Member")
+    root = _object(member.get("root", {}), field="Support.Member.root")
+    source = "/".join(
+        (
+            _short_identifier(str(root.get("session_identity", "unknown"))),
+            _short_identifier(str(root.get("turn_address", "unknown"))),
+        )
+    )
+    return {
+        "source": source,
+        "turns": [
+            {
+                "side": turn.get("side"),
+                "text": turn.get("text"),
+                "root": bool(turn.get("root")),
+            }
+            for turn_value in _array(
+                member.get("turns", []), field="Support.Member.turns"
+            )
+            for turn in (_object(turn_value, field="Support.Turn"),)
+        ],
     }
-    return len(roots)
+
+
+def _short_identifier(value: str) -> str:
+    compact = value.replace("-", "")
+    if len(compact) >= 32 and all(
+        character in "0123456789abcdefABCDEF" for character in compact
+    ):
+        return value[:12]
+    return value
+
+
+def _compact_identifiers(value: object) -> object:
+    if isinstance(value, str):
+        return _short_identifier(value)
+    if isinstance(value, list):
+        return [_compact_identifiers(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _compact_identifiers(item) for key, item in value.items()}
+    return value
+
+
+def _resolve_identifier(selector: str, candidates: Iterable[str], *, kind: str) -> str:
+    matches = tuple(
+        candidate for candidate in candidates if candidate.startswith(selector)
+    )
+    if len(matches) != 1:
+        raise DiagramViewError(f"{kind} does not resolve uniquely: {selector}")
+    return matches[0]
 
 
 def _block_dependencies(
@@ -951,12 +1186,20 @@ def _state_changes(
     }
     changes: list[DiagramViewChange] = []
     for identity in new.keys() - old.keys():
-        changes.append(DiagramViewChange("add", identity[1], str(new[identity].get("label"))))
+        changes.append(
+            DiagramViewChange("add", identity[1], str(new[identity].get("label")))
+        )
     for identity in old.keys() - new.keys():
-        changes.append(DiagramViewChange("remove", identity[1], str(old[identity].get("label"))))
+        changes.append(
+            DiagramViewChange("remove", identity[1], str(old[identity].get("label")))
+        )
     for identity in new.keys() & old.keys():
         if new[identity] != old[identity]:
-            changes.append(DiagramViewChange("change", identity[1], str(new[identity].get("label"))))
+            changes.append(
+                DiagramViewChange(
+                    "change", identity[1], str(new[identity].get("label"))
+                )
+            )
     return tuple(changes)
 
 
@@ -974,11 +1217,9 @@ def _source_editions(state: Mapping[str, Any]) -> dict[str, str]:
 def _one_block(blocks: list[object], block_ship: str) -> JsonObject:
     matches: list[JsonObject] = []
     for item in blocks:
-        if not isinstance(item, dict) or not all(
-            isinstance(key, str) for key in item
-        ):
+        if not isinstance(item, dict) or not all(isinstance(key, str) for key in item):
             raise DiagramViewError("View.Block must be a JSON object")
-        if item.get("block_ship") == block_ship:
+        if str(item.get("block_ship", "")).startswith(block_ship):
             matches.append(item)
     if len(matches) != 1:
         raise DiagramViewError(f"View Block does not resolve uniquely: {block_ship}")
@@ -1030,8 +1271,7 @@ def _commit(repo: Path, paths: Iterable[Path], message: str) -> str:
         return _git(repo, "rev-parse", "HEAD")
     if staged.returncode != 1:
         raise DiagramViewError(
-            f"Git failed for {repo}: "
-            f"{staged.stderr.strip() or staged.stdout.strip()}"
+            f"Git failed for {repo}: {staged.stderr.strip() or staged.stdout.strip()}"
         )
     _git(
         repo,

@@ -49,12 +49,18 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
         )
 
     def discover_session_refs(self) -> tuple[ClaudeSessionRef, ...]:
-        direct_targets, _ = agent_session_paths(self)
+        direct_targets = self._session_discovery_targets()
         return discover_claude_session_refs(targets=direct_targets)
 
     def find_session_ref_by_id(self, session_id: str) -> ClaudeSessionRef | None:
-        direct_targets, _ = agent_session_paths(self)
+        direct_targets = self._session_discovery_targets()
         return find_claude_session_ref_by_id(targets=direct_targets, session_id=session_id)
+
+    def _session_discovery_targets(self) -> tuple[Path, ...]:
+        direct_targets, _ = agent_session_paths(self)
+        if self.home is None:
+            return direct_targets
+        return tuple(dict.fromkeys((*direct_targets, self.home / "archive")))
 
     def load_session(self, session_ref: ClaudeSessionRef) -> ClaudeSession:
         return load_claude_session(session_ref)

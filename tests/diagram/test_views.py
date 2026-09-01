@@ -12,6 +12,7 @@ from tarav.diagram import (
     LINE_ANNOTATION_TYPE,
     AnnotationDraft,
     CaptureManifest,
+    ChatlasEvidence,
     Diagram,
     DiagramBlockLocation,
     DiagramConfiguration,
@@ -30,6 +31,11 @@ REF = {
     "session_identity": "a" * 64,
     "turn_address": "b" * 64,
     "turn_hash": "c" * 64,
+}
+AGENT_REF = {
+    "session_identity": "a" * 64,
+    "turn_address": "d" * 64,
+    "turn_hash": "e" * 64,
 }
 
 
@@ -64,7 +70,7 @@ def _diagram(tmp_path: Path):
             {
                 "type": LINE_ANNOTATION_TYPE,
                 "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
-                "producer": REF,
+                "producer": AGENT_REF,
                 "support": [{"root": REF, "neighborhood": []}],
                 "location": DiagramLocation(
                     model.ship, provider_block, first_line
@@ -79,7 +85,7 @@ def _diagram(tmp_path: Path):
             {
                 "type": LINE_ANNOTATION_TYPE,
                 "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
-                "producer": REF,
+                "producer": AGENT_REF,
                 "support": [{"root": REF, "neighborhood": []}],
                 "location": DiagramLocation(
                     model.ship, provider_block, second_line
@@ -161,8 +167,8 @@ def test_view_disclosure_and_line_selection_are_cli_managed(tmp_path: Path) -> N
     included = repository.select_line(
         view.ship,
         diagram,
-        block_ship=provider_block,
-        line_ship=second_line,
+        block_ship=provider_block[:12],
+        line_ship=second_line[:12],
         selected=True,
     )
     block = included.view.state["blocks"][0]
@@ -170,7 +176,7 @@ def test_view_disclosure_and_line_selection_are_cli_managed(tmp_path: Path) -> N
     assert len(block["disclosure"]["lines"]) == 2
 
     collapsed = repository.disclose(
-        view.ship, diagram, block_ship=provider_block, steps=-1000
+        view.ship, diagram, block_ship=provider_block[:12], steps=-1000
     )
     block = collapsed.view.state["blocks"][0]
     assert block["disclosure_name"] == "collapsed"
@@ -179,11 +185,117 @@ def test_view_disclosure_and_line_selection_are_cli_managed(tmp_path: Path) -> N
     assert block["dependencies"]
 
     expanded = repository.disclose(
-        view.ship, diagram, block_ship=provider_block, steps=2
+        view.ship, diagram, block_ship=provider_block[:12], steps=2
     )
     line = expanded.view.state["blocks"][0]["disclosure"]["lines"][0]
     assert expanded.view.state["blocks"][0]["disclosure_name"] == "support"
-    assert line["support"][0]["members"][0]["root"] == REF
+    assert line["stats"]["support_root_count"] == 1
+    assert line["stats"]["support_turn_count"] == 1
+    assert "support" not in line
+
+    rendered = expanded.view.render()
+    assert f"`{provider_block[:12]}`" in rendered
+    assert f"`{first_line[:12]}`" in rendered
+    assert provider_block not in rendered
+    assert first_line not in rendered
+    assert expanded.view.ship not in rendered
+    assert (
+        "[PR] Diagram.View is operated through Context.Provider mechanics." in rendered
+    )
+    assert "1 support root" in rendered
+    assert "session_identity" not in rendered
+
+
+def test_view_deep_support_renders_content_without_raw_reference_json(
+    tmp_path: Path,
+) -> None:
+    diagram, _, _, provider_block, _, _ = _diagram(tmp_path)
+    repository = DiagramViewRepository.create(tmp_path / "views")
+    evidence = ChatlasEvidence(model_loader=lambda _: _normal_model())
+    view = repository.create_view(
+        diagram,
+        block_ships=(provider_block,),
+        configuration=DiagramViewConfiguration(bootstrap_visible_lines=1),
+        evidence=evidence,
+    ).view
+
+    expanded = repository.disclose(
+        view.ship,
+        diagram,
+        block_ship=provider_block,
+        steps=1000,
+        full=True,
+        evidence=evidence,
+    )
+    rendered = expanded.view.render()
+    retained = json.dumps(expanded.view.state["blocks"][0]["disclosure"])
+
+    assert rendered.count("Please keep context selection Agent-operated.") == 1
+    assert "    - **User (root):**\n      `````text\n" in rendered
+    assert "\n      `````" in rendered
+    assert "Support.Content" not in rendered
+    assert "session_identity" not in rendered
+    assert REF["session_identity"] not in rendered
+    assert REF["turn_address"] not in rendered
+    assert REF["session_identity"][:12] in rendered
+    assert "session_identity" not in retained
+    assert "turn_address" not in retained
+    assert "turn_hash" not in retained
+    assert REF["session_identity"] not in retained
+
+
+def test_view_verbatim_fence_is_collision_free() -> None:
+    assert views._fenced_verbatim_lines("plain", indent="  ") == [
+        "  `````text",
+        "  plain",
+        "  `````",
+    ]
+    assert views._fenced_verbatim_lines("before\n`````\nafter", indent="  ") == [
+        "  ``````text",
+        "  before",
+        "  `````",
+        "  after",
+        "  ``````",
+    ]
+
+
+def _normal_model() -> dict[str, object]:
+    return {
+        "session": {"identity_hash": REF["session_identity"]},
+        "events": [],
+        "messages": [
+            {
+                "message_address": "f" * 64,
+                "message_hash": "0" * 64,
+                "side": "user",
+                "text": "Please keep context selection Agent-operated.",
+            },
+            {
+                "message_address": "1" * 64,
+                "message_hash": "2" * 64,
+                "side": "agent",
+                "text": "Settled compact View context.",
+            },
+        ],
+        "turns": [
+            {
+                **REF,
+                "side": "user",
+                "message_refs": [
+                    {"message_address": "f" * 64, "message_hash": "0" * 64}
+                ],
+                "event_refs": [],
+            },
+            {
+                **AGENT_REF,
+                "side": "agent",
+                "message_refs": [
+                    {"message_address": "1" * 64, "message_hash": "2" * 64}
+                ],
+                "event_refs": [],
+            },
+        ],
+    }
 
 
 def test_view_full_expansion_is_an_idempotent_no_op(tmp_path: Path) -> None:
@@ -322,6 +434,47 @@ def test_view_cli_creates_and_renders_a_retained_view(
     rendered = capsys.readouterr().out
     assert "# Diagram.View" in rendered
     assert "## Diagram.View" in rendered
+
+
+def test_view_cli_mutation_renders_the_complete_affected_block(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    diagram, model, _, provider_block, _, _ = _diagram(tmp_path)
+    config = DiagramConfiguration.load(tmp_path / "diagram.json", create=True).mount(
+        model.namespace, default=True
+    )
+    repository = DiagramViewRepository.create(tmp_path / "views")
+    view = repository.create_view(
+        diagram,
+        model_ships=(model.ship,),
+        configuration=DiagramViewConfiguration(bootstrap_visible_lines=1),
+    ).view
+    monkeypatch.setattr(view_commands, "_evidence", lambda _: None)
+
+    assert (
+        main(
+            [
+                "diagram",
+                "view",
+                "expand",
+                "--view",
+                view.ship[:12],
+                "--block-ship",
+                provider_block[:12],
+                "--diagram-config",
+                str(config.path),
+                "--views-root",
+                str(repository.root),
+            ]
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out
+    assert "## Diagram.View" in output
+    assert "## Context.Provider" not in output
+    assert "Diagram.View is operated through Context.Provider mechanics." in output
+    assert "support · 2 lines" in output
 
 
 def test_view_list_filters_open_about_metadata_and_reports_exact_edition(

@@ -28,13 +28,19 @@ def _configuration(args: argparse.Namespace) -> DiagramConfiguration:
     return DiagramConfiguration.load(path)
 
 
-def _repository(args: argparse.Namespace, *, create: bool = False) -> DiagramViewRepository:
+def _repository(
+    args: argparse.Namespace, *, create: bool = False
+) -> DiagramViewRepository:
     root = (
         Path(args.views_root).expanduser().resolve()
         if args.views_root is not None
         else None
     )
-    return DiagramViewRepository.create(root) if create else DiagramViewRepository.open(root)
+    return (
+        DiagramViewRepository.create(root)
+        if create
+        else DiagramViewRepository.open(root)
+    )
 
 
 def _evidence(args: argparse.Namespace) -> ChatlasEvidence:
@@ -52,16 +58,23 @@ def _print_json(value: object) -> None:
 
 def _emit_mutation(args: argparse.Namespace, mutation: DiagramViewMutation) -> int:
     payload = mutation.to_dict()
+    rendered_blocks = mutation.view.render_blocks(
+        change.target for change in mutation.changes
+    )
     if args.json:
+        payload["rendered_blocks"] = rendered_blocks
         _print_json(payload)
     else:
-        print(f"view: {mutation.view.ship}")
-        print(f"commit: {mutation.commit}")
-        if mutation.changes:
+        print(f"view: {mutation.view.ship[:12]}")
+        print(f"commit: {mutation.commit[:12]}")
+        if rendered_blocks:
+            print()
+            print(rendered_blocks, end="")
+        elif not mutation.changes:
+            print("  no changes")
+        else:
             for change in mutation.changes:
                 print(change.render())
-        else:
-            print("  no changes")
         findings = mutation.view.check()
         if findings:
             print(f"POIs: {len(findings)}")
@@ -125,7 +138,10 @@ def _cmd_list(args: argparse.Namespace) -> int:
         _print_json({"views": payload})
     else:
         for item in payload:
-            print(f"{item['view_ship']}  {len(item['scope'])} scope roots  {item['path']}")
+            print(
+                f"{str(item['view_ship'])[:12]}  "
+                f"{len(item['scope'])} scope roots  {item['path']}"
+            )
     return 0
 
 
@@ -214,7 +230,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
             }
         )
     else:
-        print(f"view: {view.ship}")
+        print(f"view: {view.ship[:12]}")
         print(f"POIs: {len(findings)}")
         for finding in findings:
             print(f"- {finding.code}: {finding.message}")
@@ -236,7 +252,9 @@ def _cmd_render(args: argparse.Namespace) -> int:
                 "view_ship": view.ship,
                 "media_type": "text/markdown",
                 "content": content,
-                "output": str(Path(args.output).expanduser().resolve()) if args.output else None,
+                "output": str(Path(args.output).expanduser().resolve())
+                if args.output
+                else None,
             }
         )
     elif args.output is None:
@@ -247,7 +265,9 @@ def _cmd_render(args: argparse.Namespace) -> int:
 
 
 def _json(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument(
+        "--json", action="store_true", help="Print machine-readable JSON."
+    )
 
 
 def _about_filters(values: list[str] | None) -> tuple[tuple[str, str], ...]:
@@ -277,11 +297,15 @@ def _diagram(parser: argparse.ArgumentParser) -> None:
 
 
 def _chatlas(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--chatlas-root", help="Chatlas depot for review and support evidence.")
+    parser.add_argument(
+        "--chatlas-root", help="Chatlas depot for review and support evidence."
+    )
 
 
 def _mutation_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--view", required=True, help="View UUID or unambiguous prefix.")
+    parser.add_argument(
+        "--view", required=True, help="View UUID or unambiguous prefix."
+    )
     _root(parser)
     _diagram(parser)
     _chatlas(parser)
@@ -294,9 +318,15 @@ def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None
     )
     commands = view.add_subparsers(dest="diagram_view_command", required=True)
 
-    create = commands.add_parser("create", help="Bootstrap a View from Model or Block scope.")
-    create.add_argument("--model-ship", action="append", help="Model scope root; repeatable.")
-    create.add_argument("--block-ship", action="append", help="Block scope root; repeatable.")
+    create = commands.add_parser(
+        "create", help="Bootstrap a View from Model or Block scope."
+    )
+    create.add_argument(
+        "--model-ship", action="append", help="Model scope root; repeatable."
+    )
+    create.add_argument(
+        "--block-ship", action="append", help="Block scope root; repeatable."
+    )
     create.add_argument(
         "--project",
         nargs="?",
@@ -335,12 +365,16 @@ def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None
     _json(show)
     show.set_defaults(handler=_cmd_show)
 
-    sync = commands.add_parser("sync", help="Refresh one View against current Diagram editions.")
+    sync = commands.add_parser(
+        "sync", help="Refresh one View against current Diagram editions."
+    )
     _mutation_options(sync)
     sync.set_defaults(handler=_cmd_sync)
 
     for direction in ("expand", "collapse"):
-        parser = commands.add_parser(direction, help=f"{direction.capitalize()} one scoped Block.")
+        parser = commands.add_parser(
+            direction, help=f"{direction.capitalize()} one scoped Block."
+        )
         parser.add_argument("--block-ship", required=True)
         parser.add_argument("--steps", type=int, default=1)
         parser.add_argument("--full", action="store_true")
@@ -357,14 +391,18 @@ def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None
         _mutation_options(parser)
         parser.set_defaults(handler=_cmd_line_selection, operation=operation)
 
-    check = commands.add_parser("check", help="Report View consistency and staleness POIs.")
+    check = commands.add_parser(
+        "check", help="Report View consistency and staleness POIs."
+    )
     check.add_argument("--view", required=True)
     _root(check)
     _diagram(check)
     _json(check)
     check.set_defaults(handler=_cmd_check)
 
-    render = commands.add_parser("render", help="Render one View as Kernel.Writing Markdown.")
+    render = commands.add_parser(
+        "render", help="Render one View as Kernel.Writing Markdown."
+    )
     render.add_argument("--view", required=True)
     render.add_argument("--output", help="Optional derived Markdown output path.")
     _root(render)

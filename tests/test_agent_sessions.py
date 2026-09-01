@@ -35,6 +35,20 @@ def test_normal_claude_projects_target_is_discovered(tmp_path: Path) -> None:
     assert sessions[0].primary_artifact_path() == transcript_path
 
 
+def test_native_claude_archive_target_is_discovered(tmp_path: Path) -> None:
+    session_id = "c8b8c77f-1150-4032-b0f4-5a9f088f9b18"
+    home = tmp_path / "claude"
+    transcript_path = _write_claude_session_at(
+        home / "archive",
+        session_id=session_id,
+    )
+
+    sessions = _discover_direct_provider_sessions(_claude_context(home))
+
+    assert [session.session_id for session in sessions] == [session_id]
+    assert sessions[0].primary_artifact_path() == transcript_path
+
+
 def test_only_non_linked_claude_direct_targets_are_discovered(tmp_path: Path) -> None:
     linked_session_id = "67b706eb-d233-446f-96ce-926f52560eab"
     normal_session_id = "0553e855-0121-42d9-8624-91bd575dc09c"
