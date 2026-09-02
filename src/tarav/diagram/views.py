@@ -6,8 +6,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import re
 import subprocess
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 from tarav._core.data_root import default_tarav_data_root
@@ -28,6 +29,9 @@ from . import (
 VIEW_REPOSITORY_CLASS = "Tarav.Diagram.View.Repository"
 VIEW_MANIFEST_TYPE = "Diagram.View.Annotation"
 VIEW_CLASS = "Tarav.Diagram.View"
+DIAGRAM_VIEW_TYPE = "Diagram.View"
+SESSION_DIAGRAM_VIEW_TYPE = "Session.Diagram.View"
+PROJECT_DIAGRAM_VIEW_TYPE = "Project.Diagram.View"
 VIEW_CONFIGURATION_CLASS = "Tarav.Diagram.View.Configuration"
 VIEW_SCHEMA_VERSION = 1
 VIEW_REPOSITORY_FILENAME = "repository.json"
@@ -153,6 +157,7 @@ class DiagramViewMutation:
 
 @dataclass(frozen=True, slots=True)
 class DiagramView:
+    type_id: ClassVar[str] = DIAGRAM_VIEW_TYPE
     root: Path
 
     @property
@@ -196,6 +201,10 @@ class DiagramView:
         return _uuid(self.manifest.get("id"), field="View.id")
 
     @property
+    def view_type(self) -> str:
+        return _string(self.manifest.get("view_type"), field="View.view_type")
+
+    @property
     def scopes(self) -> tuple[DiagramViewScope, ...]:
         return tuple(
             DiagramViewScope.from_dict(item)
@@ -212,10 +221,20 @@ class DiagramView:
             "path": f"{self.root.name}/view.json",
         }
 
-    def check(self, diagram: Diagram | None = None) -> tuple[Finding, ...]:
+    def check(
+        self,
+        diagram: Diagram | None = None,
+        *,
+        evidence: ChatlasEvidence | None = None,
+    ) -> tuple[Finding, ...]:
+        del evidence
         findings: list[Finding] = []
         try:
-            _validate_manifest(self.manifest, expected_ship=self.root.name)
+            _validate_manifest(
+                self.manifest,
+                expected_ship=self.root.name,
+                expected_type=self.type_id,
+            )
             state = self.state
             if (
                 state.get("class") != VIEW_CLASS
@@ -414,6 +433,146 @@ class DiagramView:
 
 
 @dataclass(frozen=True, slots=True)
+class SessionDiagramView(DiagramView):
+    type_id: ClassVar[str] = SESSION_DIAGRAM_VIEW_TYPE
+
+    @property
+    def session_identity(self) -> str | None:
+        value = self.about.get("chatlas_session_identity")
+        return value if isinstance(value, str) and value else None
+
+    @property
+    def project_id(self) -> str | None:
+        value = self.about.get("project_id")
+        return value if isinstance(value, str) and value else None
+
+    def mentions(
+        self, diagram: Diagram, evidence: ChatlasEvidence
+    ) -> tuple[JsonObject, ...]:
+        identity = self.session_identity
+        if identity is None:
+            raise DiagramViewError(
+                "Session.Diagram.View has no Chatlas session identity"
+            )
+        model = evidence.model(identity)
+        texts = tuple(
+            str(message.get("text") or "")
+            for value in _array(model.get("messages", []), field="Chatlas.messages")
+            for message in (_object(value, field="Chatlas.Message"),)
+            if message.get("side") in ("user", "agent")
+        )
+        visible_blocks = {
+            (
+                _uuid(block.get("namespace_id"), field="View.Block.namespace_id"),
+                _uuid(block.get("block_ship"), field="View.Block.block_ship"),
+            )
+            for value in _array(self.state.get("blocks"), field="View.blocks")
+            for block in (_object(value, field="View.Block"),)
+        }
+        candidates: dict[tuple[str, str], JsonObject] = {}
+        labels: dict[str, list[tuple[str, str]]] = {}
+        for diagram_model in diagram.models():
+            for block in diagram_model.project().blocks:
+                identity_key = (diagram_model.namespace.id, block.ship)
+                label = block.labels[-1] if block.labels else None
+                candidates[identity_key] = {
+                    "namespace_id": diagram_model.namespace.id,
+                    "model_ship": diagram_model.ship,
+                    "block_ship": block.ship,
+                    "label": label,
+                }
+                if label:
+                    labels.setdefault(label, []).append(identity_key)
+
+        matches: list[JsonObject] = []
+        combined_text = "\n".join(texts)
+        for identity_key, candidate in candidates.items():
+            match_kinds: list[str] = []
+            count = 0
+            label = candidate["label"]
+            if isinstance(label, str) and len(labels[label]) == 1:
+                label_count = _exact_mention_count(combined_text, label)
+                if label_count:
+                    match_kinds.append("label")
+                    count += label_count
+            ship = _string(candidate["block_ship"], field="Block.ship")
+            ship_count = combined_text.count(ship)
+            prefix_count = 0 if ship_count else combined_text.count(ship[:12])
+            if ship_count or prefix_count:
+                match_kinds.append("ship")
+                count += ship_count + prefix_count
+            if not match_kinds:
+                continue
+            matches.append(
+                {
+                    **candidate,
+                    "mention_count": count,
+                    "matched_by": match_kinds,
+                    "present_in_view": identity_key in visible_blocks,
+                }
+            )
+        return tuple(
+            sorted(
+                matches,
+                key=lambda item: (
+                    bool(item["present_in_view"]),
+                    -int(item["mention_count"]),
+                    str(item["label"] or item["block_ship"]),
+                ),
+            )
+        )
+
+    def check(
+        self,
+        diagram: Diagram | None = None,
+        *,
+        evidence: ChatlasEvidence | None = None,
+    ) -> tuple[Finding, ...]:
+        findings = list(DiagramView.check(self, diagram, evidence=evidence))
+        if self.session_identity is None:
+            findings.append(
+                Finding(
+                    "diagram-view-session-identity-missing",
+                    "about.chatlas_session_identity",
+                    "Session.Diagram.View has no Chatlas session identity.",
+                )
+            )
+        elif diagram is not None and evidence is not None:
+            try:
+                mentions = self.mentions(diagram, evidence)
+            except DiagramError as exc:
+                findings.append(
+                    Finding(
+                        "diagram-view-mention-check-unassessable",
+                        "about.chatlas_session_identity",
+                        str(exc),
+                    )
+                )
+            else:
+                findings.extend(
+                    Finding(
+                        "diagram-view-mentioned-block-absent",
+                        f"mentions.{mention['block_ship']}",
+                        f"Session mentions Block {mention['label'] or mention['block_ship']}, but it is outside this View.",
+                    )
+                    for mention in mentions
+                    if not mention["present_in_view"]
+                )
+        return tuple(findings)
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectDiagramView(DiagramView):
+    type_id: ClassVar[str] = PROJECT_DIAGRAM_VIEW_TYPE
+
+
+VIEW_TYPES: dict[str, type[DiagramView]] = {
+    item.type_id: item
+    for item in (DiagramView, SessionDiagramView, ProjectDiagramView)
+}
+
+
+@dataclass(frozen=True, slots=True)
 class DiagramViewRepository:
     root: Path
 
@@ -460,7 +619,7 @@ class DiagramViewRepository:
 
     def views(self) -> tuple[DiagramView, ...]:
         return tuple(
-            DiagramView(path)
+            _load_view(path)
             for path in sorted(self.root.iterdir())
             if path.is_dir() and (path / "manifest.json").is_file()
         )
@@ -468,7 +627,7 @@ class DiagramViewRepository:
     def view(self, selector: str) -> DiagramView:
         exact = self.root / selector
         if exact.is_dir():
-            return DiagramView(exact)
+            return _load_view(exact)
         matches = tuple(item for item in self.views() if item.ship.startswith(selector))
         if len(matches) != 1:
             raise DiagramViewError(
@@ -476,12 +635,72 @@ class DiagramViewRepository:
             )
         return matches[0]
 
+    def session_peer_hints(self, selector: str) -> tuple[JsonObject, ...]:
+        view = self.view(selector)
+        if not isinstance(view, SessionDiagramView):
+            raise DiagramViewError(
+                "Peer attention hints require a Session.Diagram.View"
+            )
+        model_ships = {scope.model_ship for scope in view.scopes}
+        hints: list[JsonObject] = []
+        for candidate in self.views():
+            if candidate.ship == view.ship or not isinstance(
+                candidate, SessionDiagramView
+            ):
+                continue
+            shared_models = sorted(
+                model_ships.intersection(scope.model_ship for scope in candidate.scopes)
+            )
+            shared_project = bool(
+                view.project_id
+                and candidate.project_id
+                and view.project_id == candidate.project_id
+            )
+            if not shared_models and not shared_project:
+                continue
+            selected_blocks = []
+            for value in _array(candidate.state.get("blocks"), field="View.blocks"):
+                block = _object(value, field="View.Block")
+                selected_lines = _array(
+                    block.get("selected_line_ships", []),
+                    field="View.Block.selected_line_ships",
+                )
+                if not selected_lines:
+                    continue
+                selected_blocks.append(
+                    {
+                        "block_ship": _uuid(
+                            block.get("block_ship"), field="View.Block.block_ship"
+                        ),
+                        "label": _string(
+                            block.get("label"), field="View.Block.label"
+                        ),
+                        "disclosure": _string(
+                            block.get("disclosure_name"),
+                            field="View.Block.disclosure_name",
+                        ),
+                        "selected_line_count": len(selected_lines),
+                    }
+                )
+            hints.append(
+                {
+                    "view_ship": candidate.ship,
+                    "session_identity": candidate.session_identity,
+                    "shared_project": shared_project,
+                    "shared_models": shared_models,
+                    "selected_blocks": selected_blocks,
+                    "edition": candidate.edition(),
+                }
+            )
+        return tuple(hints)
+
     def create_view(
         self,
         diagram: Diagram,
         *,
         model_ships: Iterable[str] = (),
         block_ships: Iterable[str] = (),
+        view_type: str = DIAGRAM_VIEW_TYPE,
         about: Mapping[str, Any] | None = None,
         configuration: DiagramViewConfiguration | None = None,
         evidence: ChatlasEvidence | None = None,
@@ -491,6 +710,7 @@ class DiagramViewRepository:
             raise DiagramViewError(
                 "Diagram.View requires at least one Model or Block scope"
             )
+        view_class = _view_class(view_type)
         ship = str(uuid4())
         root = self.root / ship
         root.mkdir()
@@ -500,6 +720,7 @@ class DiagramViewRepository:
             {
                 "id": str(uuid4()),
                 "type": VIEW_MANIFEST_TYPE,
+                "view_type": view_type,
                 "schema_version": VIEW_SCHEMA_VERSION,
                 "view_ship": ship,
             },
@@ -518,7 +739,7 @@ class DiagramViewRepository:
         atomic_write_json(root / "view.json", state, ensure_ascii=False)
         paths = tuple(path.relative_to(self.root) for path in sorted(root.iterdir()))
         commit = _commit(self.root, paths, f"diagram(view): create {ship}")
-        view = DiagramView(root)
+        view = view_class(root)
         return DiagramViewMutation(
             view,
             tuple(
@@ -1129,6 +1350,14 @@ def _short_identifier(value: str) -> str:
     return value
 
 
+def _exact_mention_count(text: str, value: str) -> int:
+    pattern = (
+        rf"(?<![A-Za-z0-9_.-]){re.escape(value)}"
+        rf"(?![A-Za-z0-9_-]|\.[A-Za-z0-9_])"
+    )
+    return len(re.findall(pattern, text))
+
+
 def _compact_identifiers(value: object) -> object:
     if isinstance(value, str):
         return _short_identifier(value)
@@ -1226,9 +1455,25 @@ def _one_block(blocks: list[object], block_ship: str) -> JsonObject:
     return matches[0]
 
 
-def _validate_manifest(data: Mapping[str, Any], *, expected_ship: str) -> None:
+def _view_class(view_type: str) -> type[DiagramView]:
+    try:
+        return VIEW_TYPES[view_type]
+    except KeyError as exc:
+        raise DiagramViewError(f"Unsupported Diagram.View Type: {view_type}") from exc
+
+
+def _load_view(root: Path) -> DiagramView:
+    manifest = _read_json(root / "manifest.json")
+    view_type = _string(manifest.get("view_type"), field="View.view_type")
+    return _view_class(view_type)(root)
+
+
+def _validate_manifest(
+    data: Mapping[str, Any], *, expected_ship: str, expected_type: str
+) -> None:
     if (
         data.get("type") != VIEW_MANIFEST_TYPE
+        or data.get("view_type") != expected_type
         or data.get("schema_version") != VIEW_SCHEMA_VERSION
         or data.get("view_ship") != expected_ship
     ):

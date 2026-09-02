@@ -22,8 +22,14 @@ from tarav.diagram import (
 from tarav.diagram import view_commands
 from tarav.diagram import views
 from tarav.diagram.views import (
+    DIAGRAM_VIEW_TYPE,
+    PROJECT_DIAGRAM_VIEW_TYPE,
+    SESSION_DIAGRAM_VIEW_TYPE,
+    DiagramView,
     DiagramViewConfiguration,
     DiagramViewRepository,
+    ProjectDiagramView,
+    SessionDiagramView,
 )
 
 
@@ -125,6 +131,9 @@ def test_view_repository_materializes_agent_readable_context(tmp_path: Path) -> 
         "view.json",
     }
     assert view.manifest["type"] == "Diagram.View.Annotation"
+    assert view.manifest["view_type"] == DIAGRAM_VIEW_TYPE
+    assert isinstance(view, DiagramView)
+    assert type(view) is DiagramView
     assert view.about == {"workflow": "ground", "session_id": "session-one"}
     state = view.state
     assert state["scope"] == [
@@ -153,6 +162,85 @@ def test_view_repository_materializes_agent_readable_context(tmp_path: Path) -> 
         }
     ]
     assert view.check(diagram) == ()
+
+
+def test_view_manifest_type_selects_runtime_view_class(tmp_path: Path) -> None:
+    diagram, model, _, _, _, _ = _diagram(tmp_path)
+    repository = DiagramViewRepository.create(tmp_path / "views")
+
+    session = repository.create_view(
+        diagram,
+        model_ships=(model.ship,),
+        view_type=SESSION_DIAGRAM_VIEW_TYPE,
+        about={"chatlas_session_identity": REF["session_identity"]},
+    ).view
+    project = repository.create_view(
+        diagram,
+        model_ships=(model.ship,),
+        view_type=PROJECT_DIAGRAM_VIEW_TYPE,
+    ).view
+
+    assert isinstance(session, SessionDiagramView)
+    assert session.session_identity == REF["session_identity"]
+    assert isinstance(project, ProjectDiagramView)
+    assert isinstance(repository.view(session.ship), SessionDiagramView)
+    assert isinstance(repository.view(project.ship), ProjectDiagramView)
+
+
+def test_session_view_peer_hints_expose_related_selections(tmp_path: Path) -> None:
+    diagram, model, _, provider_block, _, _ = _diagram(tmp_path)
+    repository = DiagramViewRepository.create(tmp_path / "views")
+    first = repository.create_view(
+        diagram,
+        model_ships=(model.ship,),
+        view_type=SESSION_DIAGRAM_VIEW_TYPE,
+        about={"chatlas_session_identity": "session-one"},
+    ).view
+    second = repository.create_view(
+        diagram,
+        model_ships=(model.ship,),
+        view_type=SESSION_DIAGRAM_VIEW_TYPE,
+        about={"chatlas_session_identity": "session-two"},
+    ).view
+
+    hints = repository.session_peer_hints(first.ship)
+
+    assert len(hints) == 1
+    assert hints[0]["view_ship"] == second.ship
+    assert hints[0]["shared_models"] == [model.ship]
+    assert any(
+        block["block_ship"] == provider_block
+        for block in hints[0]["selected_blocks"]
+    )
+
+
+def test_session_view_mentions_surface_blocks_outside_the_view(tmp_path: Path) -> None:
+    diagram, _, context_block, provider_block, _, _ = _diagram(tmp_path)
+    repository = DiagramViewRepository.create(tmp_path / "views")
+    normal_model = _normal_model()
+    normal_model["messages"][0]["text"] = (
+        "Diagram.View depends on Context.Provider for this session."
+    )
+    evidence = ChatlasEvidence(model_loader=lambda _: normal_model)
+    view = repository.create_view(
+        diagram,
+        block_ships=(provider_block,),
+        view_type=SESSION_DIAGRAM_VIEW_TYPE,
+        about={"chatlas_session_identity": REF["session_identity"]},
+        evidence=evidence,
+    ).view
+    assert isinstance(view, SessionDiagramView)
+
+    mentions = view.mentions(diagram, evidence)
+    by_ship = {mention["block_ship"]: mention for mention in mentions}
+
+    assert by_ship[provider_block]["present_in_view"] is True
+    assert by_ship[context_block]["present_in_view"] is False
+    assert any(
+        finding.code == "diagram-view-mentioned-block-absent"
+        and context_block in finding.path
+        for finding in view.check(diagram, evidence=evidence)
+    )
 
 
 def test_view_disclosure_and_line_selection_are_cli_managed(tmp_path: Path) -> None:
@@ -401,6 +489,8 @@ def test_view_cli_creates_and_renders_a_retained_view(
                 str(config.path),
                 "--views-root",
                 str(views_root),
+                "--view-type",
+                SESSION_DIAGRAM_VIEW_TYPE,
                 "--about-field",
                 "workflow=tarav-hugentics.ground",
                 "--about-field",
@@ -412,7 +502,9 @@ def test_view_cli_creates_and_renders_a_retained_view(
     )
     created = json.loads(capsys.readouterr().out)
     view_ship = created["view_ship"]
-    assert DiagramViewRepository.open(views_root).view(view_ship).about == {
+    loaded = DiagramViewRepository.open(views_root).view(view_ship)
+    assert isinstance(loaded, SessionDiagramView)
+    assert loaded.about == {
         "workflow": "tarav-hugentics.ground",
         "chatlas_session_identity": "session-one",
     }
@@ -521,3 +613,73 @@ def test_view_list_filters_open_about_metadata_and_reports_exact_edition(
     assert [item["view_ship"] for item in payload["views"]] == [selected.ship]
     assert payload["views"][0]["about"]["chatlas_session_identity"] == "session-one"
     assert payload["views"][0]["edition"] == selected.edition()
+
+
+def test_session_view_cli_reports_peers_and_mentions(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    diagram, model, _, provider_block, _, _ = _diagram(tmp_path)
+    config = DiagramConfiguration.load(tmp_path / "diagram.json", create=True).mount(
+        model.namespace, default=True
+    )
+    repository = DiagramViewRepository.create(tmp_path / "views")
+    first = repository.create_view(
+        diagram,
+        block_ships=(provider_block,),
+        view_type=SESSION_DIAGRAM_VIEW_TYPE,
+        about={"chatlas_session_identity": REF["session_identity"]},
+    ).view
+    second = repository.create_view(
+        diagram,
+        model_ships=(model.ship,),
+        view_type=SESSION_DIAGRAM_VIEW_TYPE,
+        about={"chatlas_session_identity": "session-two"},
+    ).view
+    normal_model = _normal_model()
+    normal_model["messages"][0]["text"] = "Diagram.View uses Context.Provider."
+    monkeypatch.setattr(
+        view_commands,
+        "_evidence",
+        lambda _: ChatlasEvidence(model_loader=lambda __: normal_model),
+    )
+
+    assert (
+        main(
+            [
+                "diagram",
+                "view",
+                "peers",
+                "--view",
+                first.ship[:12],
+                "--views-root",
+                str(repository.root),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    peers = json.loads(capsys.readouterr().out)
+    assert [item["view_ship"] for item in peers["peers"]] == [second.ship]
+
+    assert (
+        main(
+            [
+                "diagram",
+                "view",
+                "mentions",
+                "--view",
+                first.ship[:12],
+                "--views-root",
+                str(repository.root),
+                "--diagram-config",
+                str(config.path),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    mentions = json.loads(capsys.readouterr().out)["mentions"]
+    assert {item["label"] for item in mentions} == {
+        "Context.Provider",
+        "Diagram.View",
+    }

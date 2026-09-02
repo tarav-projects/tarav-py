@@ -12,10 +12,13 @@ from tarav._core.project import require_agentos_project
 
 from . import ChatlasEvidence, DiagramConfiguration, DiagramError
 from .views import (
+    DIAGRAM_VIEW_TYPE,
     DiagramViewConfiguration,
     DiagramViewError,
     DiagramViewMutation,
     DiagramViewRepository,
+    SessionDiagramView,
+    VIEW_TYPES,
 )
 
 
@@ -99,6 +102,7 @@ def _cmd_create(args: argparse.Namespace) -> int:
             diagram,
             model_ships=models,
             block_ships=args.block_ship or (),
+            view_type=args.view_type,
             about=about,
             configuration=DiagramViewConfiguration(
                 args.bootstrap_visible_lines,
@@ -126,6 +130,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
     payload = [
         {
             "view_ship": view.ship,
+            "view_type": view.view_type,
             "annotation_id": view.annotation_id,
             "scope": [item.to_dict() for item in view.scopes],
             "about": view.about,
@@ -163,6 +168,67 @@ def _cmd_show(args: argparse.Namespace) -> int:
         )
     else:
         print(view.render(), end="")
+    return 0
+
+
+def _cmd_peers(args: argparse.Namespace) -> int:
+    try:
+        repository = _repository(args)
+        view = repository.view(args.view)
+        hints = repository.session_peer_hints(view.ship)
+    except DiagramError as exc:
+        raise CliError(str(exc)) from exc
+    if args.json:
+        _print_json(
+            {
+                "view_ship": view.ship,
+                "view_type": view.view_type,
+                "peers": list(hints),
+            }
+        )
+    else:
+        print(f"view: {view.ship[:12]}")
+        print(f"peer attention hints: {len(hints)}")
+        for hint in hints:
+            print(f"- view {str(hint['view_ship'])[:12]}")
+            for block in hint["selected_blocks"]:
+                print(
+                    f"  - {block['label']} [{str(block['block_ship'])[:12]}] "
+                    f"· {block['disclosure']} · "
+                    f"{block['selected_line_count']} selected lines"
+                )
+    return 0
+
+
+def _cmd_mentions(args: argparse.Namespace) -> int:
+    try:
+        diagram = _configuration(args).diagram()
+        view = _repository(args).view(args.view)
+        if not isinstance(view, SessionDiagramView):
+            raise DiagramViewError(
+                "Mention inspection requires a Session.Diagram.View"
+            )
+        mentions = view.mentions(diagram, _evidence(args))
+    except DiagramError as exc:
+        raise CliError(str(exc)) from exc
+    if args.json:
+        _print_json(
+            {
+                "view_ship": view.ship,
+                "view_type": view.view_type,
+                "mentions": list(mentions),
+            }
+        )
+    else:
+        print(f"view: {view.ship[:12]}")
+        print(f"Diagram mentions: {len(mentions)}")
+        for mention in mentions:
+            standing = "present" if mention["present_in_view"] else "outside View"
+            print(
+                f"- {mention['label'] or mention['block_ship']} "
+                f"[{str(mention['block_ship'])[:12]}] · "
+                f"{mention['mention_count']} mentions · {standing}"
+            )
     return 0
 
 
@@ -218,7 +284,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
     try:
         diagram = _configuration(args).diagram()
         view = _repository(args).view(args.view)
-        findings = view.check(diagram)
+        findings = view.check(diagram, evidence=_evidence(args))
     except DiagramError as exc:
         raise CliError(str(exc)) from exc
     if args.json:
@@ -333,6 +399,12 @@ def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None
         const=".",
         help="Add the selected Project's main Model to View scope.",
     )
+    create.add_argument(
+        "--view-type",
+        choices=tuple(VIEW_TYPES),
+        default=DIAGRAM_VIEW_TYPE,
+        help="Runtime Diagram.View Type retained by the View manifest.",
+    )
     create.add_argument("--about", help="Open integration metadata JSON object.")
     create.add_argument(
         "--about-field",
@@ -364,6 +436,26 @@ def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None
     _root(show)
     _json(show)
     show.set_defaults(handler=_cmd_show)
+
+    peers = commands.add_parser(
+        "peers",
+        help="Show selections from related Session Views as attention hints.",
+    )
+    peers.add_argument("--view", required=True)
+    _root(peers)
+    _json(peers)
+    peers.set_defaults(handler=_cmd_peers)
+
+    mentions = commands.add_parser(
+        "mentions",
+        help="Compare one Session View with exact Diagram mentions in its chat.",
+    )
+    mentions.add_argument("--view", required=True)
+    _root(mentions)
+    _diagram(mentions)
+    _chatlas(mentions)
+    _json(mentions)
+    mentions.set_defaults(handler=_cmd_mentions)
 
     sync = commands.add_parser(
         "sync", help="Refresh one View against current Diagram editions."
@@ -397,6 +489,7 @@ def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None
     check.add_argument("--view", required=True)
     _root(check)
     _diagram(check)
+    _chatlas(check)
     _json(check)
     check.set_defaults(handler=_cmd_check)
 
