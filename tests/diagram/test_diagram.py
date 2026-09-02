@@ -10,7 +10,7 @@ import pytest
 from tarav.cli.cli import main
 from tarav.diagram import commands as diagram_commands
 from tarav.diagram import (
-    BLOCK_ANNOTATION_TYPE,
+    BLOCK_SHIP_TYPE,
     BLOCK_TYPE_ANNOTATION_TYPE,
     DESIGN_BLOCK_OBJECT_TYPE,
     DESIGN_LINE_EXAMPLE_TYPE,
@@ -19,15 +19,17 @@ from tarav.diagram import (
     IMPL_REQ_BLOCK_OBJECT_TYPE,
     ISSUE_BLOCK_OBJECT_TYPE,
     ISSUE_LINE_RESOLVE_TYPE,
-    LINE_ANNOTATION_TYPE,
+    LINE_EDITION_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
+    LINE_SHIP_TYPE,
     LINE_TYPE_ANNOTATION_TYPE,
-    MODEL_ANNOTATION_TYPE,
+    MODEL_EDITION_TYPE,
+    MODEL_SHIP_TYPE,
     USER_TOUCHED_CHATLAS_INDEX,
     AnnotationDraft,
     AssertionEngine,
     AssertionEvaluation,
-    BlockAnnotation,
+    BlockEditionRecord,
     BlockTypeAnnotation,
     CaptureManifest,
     ChatlasEvidence,
@@ -46,31 +48,80 @@ from tarav.diagram import (
     IssueBlock,
     IssueLineResolve,
     IssueResolveLineShip,
-    LineAnnotation,
+    LineEditionRecord,
     LineGateAnnotation,
     LineTypeAnnotation,
+    ShipDraft,
     VerbatimGate,
 )
+from tarav.diagram.migration import migrate_namespace_v1
 
 
 def _line(
-    model_ship: str, *, annotation_id: str | None = None, support: bool = True
-) -> AnnotationDraft:
+    model_ship: str,
+    *,
+    edition_id: str | None = None,
+    support: bool = True,
+    block_ship: str | None = None,
+    line_ship: str | None = None,
+    line_type: str | None = None,
+    text: str = "Capture concerns only the present Model.",
+    gates: list[dict[str, object]] | None = None,
+) -> ShipDraft:
     ref = {
         "session_identity": "a" * 64,
         "turn_address": "b" * 64,
         "turn_hash": "c" * 64,
     }
-    return AnnotationDraft(
-        annotation_id or str(uuid4()),
+    edition: dict[str, object] = {
+        "id": edition_id or str(uuid4()),
+        "producer": ref,
+        "support": [{"root": ref, "neighborhood": []}] if support else [],
+        "data": {"text": text},
+    }
+    if line_type is not None:
+        edition["line_type"] = line_type
+    if gates is not None:
+        edition["gates"] = gates
+    return ShipDraft(
+        line_ship or str(uuid4()),
         {
-            "type": LINE_ANNOTATION_TYPE,
-            "producer": ref,
-            "support": [{"root": ref, "neighborhood": []}] if support else [],
-            "location": DiagramLocation(
-                model_ship, str(uuid4()), str(uuid4())
-            ).to_dict(),
-            "data": {"text": "Capture concerns only the present Model."},
+            "type": LINE_SHIP_TYPE,
+            "model_ship": model_ship,
+            "block_ship": block_ship or str(uuid4()),
+            "editions": [edition],
+        },
+    )
+
+
+def _edition(ship: ShipDraft) -> dict[str, object]:
+    return ship.record["editions"][0]
+
+
+def _edition_id(ship: ShipDraft) -> str:
+    return str(_edition(ship)["id"])
+
+
+def _block(
+    model_ship: str,
+    *,
+    block_ship: str | None = None,
+    edition_id: str | None = None,
+    label: str,
+    block_type: str | None = None,
+) -> ShipDraft:
+    edition: dict[str, object] = {
+        "id": edition_id or str(uuid4()),
+        "data": {"label": label},
+    }
+    if block_type is not None:
+        edition["block_type"] = block_type
+    return ShipDraft(
+        block_ship or str(uuid4()),
+        {
+            "type": BLOCK_SHIP_TYPE,
+            "model_ship": model_ship,
+            "editions": [edition],
         },
     )
 
@@ -90,11 +141,12 @@ def _project(root: Path) -> Path:
     return root
 
 
-def test_namespace_is_an_independent_flat_git_annotation_tape(tmp_path: Path) -> None:
+def test_namespace_is_an_independent_flat_git_semantic_database(tmp_path: Path) -> None:
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
 
     assert (namespace.root / ".git").is_dir()
     assert (namespace.root / "namespace.json").is_file()
+    assert (namespace.root / "ships").is_dir()
     assert (namespace.root / "annotations").is_dir()
     assert not (namespace.root / "models").exists()
     assert namespace.name == USER_TOUCHED_CHATLAS_INDEX
@@ -133,7 +185,7 @@ def test_only_type_is_universal_and_specialization_is_explicit(tmp_path: Path) -
         annotation.specialize()
 
 
-def test_models_are_root_annotations_and_project_to_the_flat_tape(
+def test_models_are_typed_ships_and_project_their_editions(
     tmp_path: Path,
 ) -> None:
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
@@ -141,32 +193,194 @@ def test_models_are_root_annotations_and_project_to_the_flat_tape(
     line = _line(model.ship)
     namespace.apply(CaptureManifest(model.ship, (line,)))
 
-    assert namespace.annotation(model.root_annotation_id).type == MODEL_ANNOTATION_TYPE
-    assert [item.id for item in model.annotations()] == [line.id]
-    assert isinstance(namespace.annotation(line.id).specialize(), LineAnnotation)
+    assert namespace.edition(model.current_edition_id).type == MODEL_EDITION_TYPE
+    assert [item.id for item in model.projection_records()] == [_edition_id(line)]
+    assert model.annotations() == ()
+    assert isinstance(
+        namespace.edition(_edition_id(line)).specialize(), LineEditionRecord
+    )
+
+
+def test_native_capture_stores_entities_as_typed_ships(tmp_path: Path) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    block_edition = str(uuid4())
+    line_ship = str(uuid4())
+    line_edition = str(uuid4())
+    ref = {
+        "session_identity": "a" * 64,
+        "turn_address": "b" * 64,
+        "turn_hash": "c" * 64,
+    }
+    manifest = CaptureManifest(
+        model.ship,
+        ships=(
+            ShipDraft(
+                block_ship,
+                {
+                    "type": BLOCK_SHIP_TYPE,
+                    "model_ship": model.ship,
+                    "editions": [
+                        {
+                            "id": block_edition,
+                            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
+                            "data": {"label": "Storage.Model"},
+                        }
+                    ],
+                },
+            ),
+            ShipDraft(
+                line_ship,
+                {
+                    "type": LINE_SHIP_TYPE,
+                    "model_ship": model.ship,
+                    "block_ship": block_ship,
+                    "editions": [
+                        {
+                            "id": line_edition,
+                            "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
+                            "producer": ref,
+                            "support": [{"root": ref, "neighborhood": []}],
+                            "data": {"text": "Ships create semantic entities."},
+                        }
+                    ],
+                },
+            ),
+        ),
+    )
+
+    receipt = namespace.apply(manifest)
+
+    assert receipt.created_ships == (block_ship, line_ship)
+    assert receipt.created == (block_edition, line_edition)
+    assert (namespace.ships_root / f"{block_ship}.json").is_file()
+    assert (namespace.ships_root / f"{line_ship}.json").is_file()
+    assert tuple(namespace.annotations_root.iterdir()) == ()
+    assert namespace.ship(line_ship).type == LINE_SHIP_TYPE
+    assert namespace.edition(line_edition).type == LINE_EDITION_TYPE
+    assert model.project().line(line_ship).editions[0].text == (
+        "Ships create semantic entities."
+    )
+
+
+def test_ship_editions_grow_one_semantic_lineage_without_rebinding(
+    tmp_path: Path,
+) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Old.Name")
+    new_edition = str(uuid4())
+
+    receipt = namespace.apply(
+        CaptureManifest(
+            model.ship,
+            ships=(
+                ShipDraft(
+                    model.ship,
+                    {
+                        "type": MODEL_SHIP_TYPE,
+                        "editions": [
+                            {"id": new_edition, "data": {"label": "New.Name"}}
+                        ],
+                    },
+                ),
+            ),
+        )
+    )
+
+    assert receipt.created_ships == ()
+    assert receipt.updated_ships == (model.ship,)
+    assert namespace.model(model.ship).current_edition_id == new_edition
+    assert [item["data"]["label"] for item in model.record.editions] == [
+        "Old.Name",
+        "New.Name",
+    ]
+
+    with pytest.raises(DiagramError, match="edition identity cannot be rebound"):
+        namespace.apply(
+            CaptureManifest(
+                model.ship,
+                ships=(
+                    ShipDraft(
+                        model.ship,
+                        {
+                            "type": MODEL_SHIP_TYPE,
+                            "editions": [
+                                {"id": new_edition, "data": {"label": "Other"}}
+                            ],
+                        },
+                    ),
+                ),
+            )
+        )
+
+
+def test_annotations_make_claims_about_existing_ships_without_creating_them(
+    tmp_path: Path,
+) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    block_ship = str(uuid4())
+    block = _block(model.ship, block_ship=block_ship, label="Claims")
+    namespace.apply(CaptureManifest(model.ship, (block,)))
+    claim = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": BLOCK_TYPE_ANNOTATION_TYPE,
+            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
+            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
+        },
+    )
+
+    namespace.apply(CaptureManifest(model.ship, annotations=(claim,)))
+
+    assert (namespace.annotations_root / f"{claim.id}.json").is_file()
+    assert not (namespace.ships_root / f"{claim.id}.json").exists()
+    assert namespace.ship(block_ship).type == BLOCK_SHIP_TYPE
+
+
+def test_annotation_collection_rejects_ship_editions(tmp_path: Path) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    invalid = AnnotationDraft(
+        str(uuid4()),
+        {
+            "type": LINE_EDITION_TYPE,
+            "producer": {
+                "session_identity": "a" * 64,
+                "turn_address": "b" * 64,
+                "turn_hash": "c" * 64,
+            },
+            "support": [],
+            "location": DiagramLocation(
+                model.ship, str(uuid4()), str(uuid4())
+            ).to_dict(),
+            "data": {"text": "This does not create a Line Ship."},
+        },
+    )
+    manifest = CaptureManifest(model.ship, annotations=(invalid,))
+
+    assert "ship-edition-in-annotation-collection" in {
+        finding.code for finding in manifest.check(namespace)
+    }
+    with pytest.raises(DiagramError, match="cannot be stored in annotations"):
+        namespace.apply(manifest)
 
 
 def test_block_annotation_is_a_structural_attachment_point(tmp_path: Path) -> None:
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Kernel.Writing"},
-        },
-    )
+    block = _block(model.ship, block_ship=block_ship, label="Kernel.Writing")
 
     receipt = namespace.apply(CaptureManifest(model.ship, (block,)))
-    typed = namespace.annotation(block.id).specialize()
+    typed = namespace.edition(_edition_id(block)).specialize()
 
-    assert receipt.created == (block.id,)
+    assert receipt.created == (_edition_id(block),)
     assert receipt.committed is True
     assert receipt.commit is not None
     assert receipt.commit != receipt.base_commit
-    assert isinstance(typed, BlockAnnotation)
+    assert isinstance(typed, BlockEditionRecord)
     assert typed.location.block_ship == block_ship
     assert typed.label == "Kernel.Writing"
     assert "producer" not in typed.record
@@ -180,15 +394,15 @@ def test_capture_reports_pois_but_remains_writable(tmp_path: Path) -> None:
 
     receipt = namespace.apply(CaptureManifest(model.ship, (line,)))
 
-    assert receipt.created == (line.id,)
+    assert receipt.created == (_edition_id(line),)
     assert {item.code for item in receipt.findings} == {
-        "annotation-unasserted",
+        "semantic-record-unasserted",
         "archive-grounding-unassessable",
         "empty-support-set",
         "block-declaration-missing",
         "line-type-missing",
     }
-    assert namespace.annotation(line.id).standing == "UnAsserted"
+    assert namespace.edition(_edition_id(line)).standing == "UnAsserted"
 
 
 def test_capture_apply_cli_can_write_without_committing(
@@ -247,7 +461,8 @@ def test_capture_apply_cli_can_write_without_committing(
     assert receipt["base_commit"] == base_commit
     assert receipt["commit"] is None
     assert head == base_commit
-    assert status == f"?? annotations/{line.id}.json"
+    line_ship = line.id
+    assert status == f"?? ships/{line_ship}.json"
 
 
 def test_capture_model_resolves_the_only_writable_namespace(tmp_path: Path) -> None:
@@ -260,8 +475,9 @@ def test_capture_model_resolves_the_only_writable_namespace(tmp_path: Path) -> N
     receipt = diagram.apply(CaptureManifest(model.ship, (line,)))
 
     assert receipt.namespace_id == first.id
-    assert (first.annotations_root / f"{line.id}.json").is_file()
-    assert not (second.annotations_root / f"{line.id}.json").exists()
+    line_ship = line.id
+    assert (first.ships_root / f"{line_ship}.json").is_file()
+    assert not (second.ships_root / f"{line_ship}.json").exists()
 
 
 def test_diagram_attic_uses_chatlas_index_record_policy(tmp_path: Path) -> None:
@@ -270,13 +486,13 @@ def test_diagram_attic_uses_chatlas_index_record_policy(tmp_path: Path) -> None:
     line = _line(model.ship)
 
     receipt = namespace.apply(CaptureManifest(model.ship, (line,)))
-    typed = namespace.annotation(line.id).specialize()
+    typed = namespace.edition(_edition_id(line)).specialize()
 
     assert namespace.name == DIAGRAM_ATTIC
-    assert isinstance(typed, LineAnnotation)
-    assert receipt.created == (line.id,)
+    assert isinstance(typed, LineEditionRecord)
+    assert receipt.created == (_edition_id(line),)
     assert {item.code for item in receipt.findings} == {
-        "annotation-unasserted",
+        "semantic-record-unasserted",
         "archive-grounding-unassessable",
         "block-declaration-missing",
         "line-type-missing",
@@ -290,20 +506,18 @@ def test_full_projector_specializes_design_block_and_full_line_type(
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
     line_ship = str(uuid4())
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Diagram.Object.Type"},
-        },
+    block = _block(
+        model.ship,
+        block_ship=block_ship,
+        label="Diagram.Object.Type",
+        block_type=DESIGN_BLOCK_OBJECT_TYPE,
     )
-    line = _line(model.ship)
-    line.record["location"] = DiagramLocation(
-        model.ship, block_ship, line_ship
-    ).to_dict()
-    line.record["line_type"] = DESIGN_LINE_PRINCIPLE_TYPE
+    line = _line(
+        model.ship,
+        block_ship=block_ship,
+        line_ship=line_ship,
+        line_type=DESIGN_LINE_PRINCIPLE_TYPE,
+    )
 
     receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
     projection = model.project()
@@ -331,20 +545,18 @@ def test_impl_req_block_reuses_design_line_types_without_becoming_design_block(
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
     line_ship = str(uuid4())
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "block_type": IMPL_REQ_BLOCK_OBJECT_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "502.Impl.Req"},
-        },
+    block = _block(
+        model.ship,
+        block_ship=block_ship,
+        label="502.Impl.Req",
+        block_type=IMPL_REQ_BLOCK_OBJECT_TYPE,
     )
-    line = _line(model.ship)
-    line.record["location"] = DiagramLocation(
-        model.ship, block_ship, line_ship
-    ).to_dict()
-    line.record["line_type"] = DESIGN_LINE_PRINCIPLE_TYPE
+    line = _line(
+        model.ship,
+        block_ship=block_ship,
+        line_ship=line_ship,
+        line_type=DESIGN_LINE_PRINCIPLE_TYPE,
+    )
 
     receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
     projected_block = model.project().block(block_ship)
@@ -365,19 +577,16 @@ def test_issue_block_is_open_and_surfaces_a_nonblocking_poi(tmp_path: Path) -> N
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
-    line = _line(model.ship)
-    line.record["location"] = DiagramLocation(
-        model.ship, block_ship, str(uuid4())
-    ).to_dict()
-    line.record["line_type"] = DESIGN_LINE_PRINCIPLE_TYPE
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "block_type": ISSUE_BLOCK_OBJECT_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Parking.Workflow"},
-        },
+    line = _line(
+        model.ship,
+        block_ship=block_ship,
+        line_type=DESIGN_LINE_PRINCIPLE_TYPE,
+    )
+    block = _block(
+        model.ship,
+        block_ship=block_ship,
+        label="Parking.Workflow",
+        block_type=ISSUE_BLOCK_OBJECT_TYPE,
     )
 
     receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
@@ -389,7 +598,7 @@ def test_issue_block_is_open_and_surfaces_a_nonblocking_poi(tmp_path: Path) -> N
     assert assessment.state == "Open"
     assert assessment.resolution_line_ships == ()
     assert "issue-open" in {item.code for item in receipt.findings}
-    assert receipt.created == (block.id, line.id)
+    assert receipt.created == (_edition_id(block), _edition_id(line))
 
 
 def test_issue_block_closes_only_with_a_passing_reviewed_resolve_line(
@@ -418,32 +627,33 @@ def test_issue_block_closes_only_with_a_passing_reviewed_resolve_line(
         "turn_address": "5" * 64,
         "turn_hash": "6" * 64,
     }
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "block_type": ISSUE_BLOCK_OBJECT_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Issue.Lifecycle"},
-        },
+    block = _block(
+        model.ship,
+        block_ship=block_ship,
+        label="Issue.Lifecycle",
+        block_type=ISSUE_BLOCK_OBJECT_TYPE,
     )
-    resolution = AnnotationDraft(
-        str(uuid4()),
+    resolution = ShipDraft(
+        resolution_ship,
         {
-            "type": LINE_ANNOTATION_TYPE,
-            "line_type": ISSUE_LINE_RESOLVE_TYPE,
-            "producer": producer_ref,
-            "support": [{"root": user_ref, "neighborhood": []}],
-            "location": DiagramLocation(
-                model.ship, block_ship, resolution_ship
-            ).to_dict(),
-            "data": {"text": text},
-            "gates": [
-                VerbatimGate(
-                    token,
-                    ChatlasTurnReference(identity, "5" * 64, "6" * 64),
-                    ChatlasTurnReference(identity, "9" * 64, "a" * 64),
-                ).to_dict()
+            "type": LINE_SHIP_TYPE,
+            "model_ship": model.ship,
+            "block_ship": block_ship,
+            "editions": [
+                {
+                    "id": str(uuid4()),
+                    "line_type": ISSUE_LINE_RESOLVE_TYPE,
+                    "producer": producer_ref,
+                    "support": [{"root": user_ref, "neighborhood": []}],
+                    "data": {"text": text},
+                    "gates": [
+                        VerbatimGate(
+                            token,
+                            ChatlasTurnReference(identity, "5" * 64, "6" * 64),
+                            ChatlasTurnReference(identity, "9" * 64, "a" * 64),
+                        ).to_dict()
+                    ],
+                }
             ],
         },
     )
@@ -464,15 +674,23 @@ def test_issue_block_closes_only_with_a_passing_reviewed_resolve_line(
     assert assessment.gate_assessments[0].standing == "Passed"
     assert "issue-open" not in {item.code for item in receipt.findings}
 
-    followup = AnnotationDraft(
+    followup = ShipDraft(
         str(uuid4()),
         {
-            "type": LINE_ANNOTATION_TYPE,
-            "line_type": DESIGN_LINE_EXAMPLE_TYPE,
-            "producer": producer_ref,
-            "support": [{"root": user_ref, "neighborhood": []}],
-            "location": DiagramLocation(model.ship, block_ship, str(uuid4())).to_dict(),
-            "data": {"text": "Later Issue material does not stale its resolution."},
+            "type": LINE_SHIP_TYPE,
+            "model_ship": model.ship,
+            "block_ship": block_ship,
+            "editions": [
+                {
+                    "id": str(uuid4()),
+                    "line_type": DESIGN_LINE_EXAMPLE_TYPE,
+                    "producer": producer_ref,
+                    "support": [{"root": user_ref, "neighborhood": []}],
+                    "data": {
+                        "text": "Later Issue material does not stale its resolution."
+                    },
+                }
+            ],
         },
     )
     later = namespace.apply(CaptureManifest(model.ship, (followup,)), evidence=evidence)
@@ -491,27 +709,24 @@ def test_unassessable_resolve_gate_leaves_issue_open(tmp_path: Path) -> None:
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
-    resolution = _line(model.ship)
-    resolution.record["location"] = DiagramLocation(
-        model.ship, block_ship, str(uuid4())
-    ).to_dict()
-    resolution.record["line_type"] = ISSUE_LINE_RESOLVE_TYPE
-    resolution.record["data"] = {"text": "The Issue is resolved."}
-    resolution.record["gates"] = [
-        VerbatimGate(
-            "review:unassessable",
-            ChatlasTurnReference("d" * 64, "1" * 64, "2" * 64),
-            ChatlasTurnReference("d" * 64, "5" * 64, "6" * 64),
-        ).to_dict()
-    ]
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "block_type": ISSUE_BLOCK_OBJECT_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Issue.Unassessable.Resolution"},
-        },
+    resolution = _line(
+        model.ship,
+        block_ship=block_ship,
+        line_type=ISSUE_LINE_RESOLVE_TYPE,
+        text="The Issue is resolved.",
+        gates=[
+            VerbatimGate(
+                "review:unassessable",
+                ChatlasTurnReference("d" * 64, "1" * 64, "2" * 64),
+                ChatlasTurnReference("d" * 64, "5" * 64, "6" * 64),
+            ).to_dict()
+        ],
+    )
+    block = _block(
+        model.ship,
+        block_ship=block_ship,
+        label="Issue.Unassessable.Resolution",
+        block_type=ISSUE_BLOCK_OBJECT_TYPE,
     )
 
     receipt = namespace.apply(CaptureManifest(model.ship, (block, resolution)))
@@ -529,18 +744,8 @@ def test_type_annotations_classify_existing_objects_without_user_support(
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
     line_ship = str(uuid4())
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Capture.First"},
-        },
-    )
-    line = _line(model.ship)
-    line.record["location"] = DiagramLocation(
-        model.ship, block_ship, line_ship
-    ).to_dict()
+    block = _block(model.ship, block_ship=block_ship, label="Capture.First")
+    line = _line(model.ship, block_ship=block_ship, line_ship=line_ship)
     namespace.apply(CaptureManifest(model.ship, (block, line)))
     block_type = AnnotationDraft(
         str(uuid4()),
@@ -559,7 +764,9 @@ def test_type_annotations_classify_existing_objects_without_user_support(
         },
     )
 
-    receipt = namespace.apply(CaptureManifest(model.ship, (block_type, line_type)))
+    receipt = namespace.apply(
+        CaptureManifest(model.ship, annotations=(block_type, line_type))
+    )
     projection = model.project()
     projected_block = projection.block(block_ship)
     projected_line = projection.line(line_ship)
@@ -573,18 +780,23 @@ def test_type_annotations_classify_existing_objects_without_user_support(
     assert "support" not in typed_line_annotation.record
     assert "producer" not in typed_line_annotation.record
     assert typed_block_annotation.annotation.assertions() == (
-        {"type": "Annotation.Representation.Assertion"},
+        {"type": "Semantic.Record.Representation.Assertion"},
         {"type": "Block.Type.Conformance.Assertion"},
     )
     assert typed_line_annotation.annotation.assertions() == (
-        {"type": "Annotation.Representation.Assertion"},
+        {"type": "Semantic.Record.Representation.Assertion"},
         {"type": "Line.Type.Conformance.Assertion"},
     )
     assert isinstance(projected_block, DesignBlock)
     assert projected_block.object_type == DESIGN_BLOCK_OBJECT_TYPE
     assert isinstance(projected_line, DesignPrincipleLineShip)
     assert projected_line.object_type == DESIGN_LINE_PRINCIPLE_TYPE
-    assert {item.code for item in receipt.findings} == {"annotation-unasserted"}
+    projected_record = projection.to_dict()["blocks"][0]
+    assert projected_record["editions"] == [_edition_id(block)]
+    assert projected_record["annotations"] == [block_type.id]
+    assert projected_record["lines"][0]["editions"] == [_edition_id(line)]
+    assert projected_record["lines"][0]["annotations"] == [line_type.id]
+    assert {item.code for item in receipt.findings} == {"semantic-record-unasserted"}
 
 
 def test_untyped_line_in_design_block_uses_generic_recovery_without_disallowed_poi(
@@ -593,19 +805,13 @@ def test_untyped_line_in_design_block_uses_generic_recovery_without_disallowed_p
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Unsettled.Type"},
-        },
+    block = _block(
+        model.ship,
+        block_ship=block_ship,
+        label="Unsettled.Type",
+        block_type=DESIGN_BLOCK_OBJECT_TYPE,
     )
-    line = _line(model.ship)
-    line.record["location"] = DiagramLocation(
-        model.ship, block_ship, str(uuid4())
-    ).to_dict()
+    line = _line(model.ship, block_ship=block_ship)
 
     receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
     codes = {item.code for item in receipt.findings}
@@ -620,24 +826,21 @@ def test_unknown_object_types_remain_writable_and_surface_projection_pois(
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model()
     block_ship = str(uuid4())
-    line = _line(model.ship)
-    line.record["location"] = DiagramLocation(
-        model.ship, block_ship, line.record["location"]["line_ship"]
-    ).to_dict()
-    line.record["line_type"] = "Unknown.Line.Type"
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "block_type": "Unknown.Block.Type",
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Unknown"},
-        },
+    line = _line(
+        model.ship,
+        block_ship=block_ship,
+        line_type="Unknown.Line.Type",
+    )
+    block = _block(
+        model.ship,
+        block_ship=block_ship,
+        label="Unknown",
+        block_type="Unknown.Block.Type",
     )
 
     receipt = namespace.apply(CaptureManifest(model.ship, (block, line)))
 
-    assert receipt.created == (block.id, line.id)
+    assert receipt.created == (_edition_id(block), _edition_id(line))
     assert {"block-type-unknown", "block-type-not-allowed", "line-type-unknown"} <= {
         item.code for item in receipt.findings
     }
@@ -649,6 +852,114 @@ def test_annotation_identity_is_non_rebinding(tmp_path: Path) -> None:
     namespace.append((AnnotationDraft(annotation_id, {"type": "Example.One"}),))
     with pytest.raises(DiagramError, match="cannot be rebound"):
         namespace.append((AnnotationDraft(annotation_id, {"type": "Example.Two"}),))
+
+
+def test_v1_migration_retains_raw_tape_and_builds_typed_ships(tmp_path: Path) -> None:
+    root = tmp_path / "legacy-index"
+    annotations = root / "annotations"
+    annotations.mkdir(parents=True)
+    subprocess.run(("git", "-C", str(root), "init", "-q"), check=True)
+    namespace_id = str(uuid4())
+    model_ship = str(uuid4())
+    model_edition = str(uuid4())
+    block_ship = str(uuid4())
+    block_edition = str(uuid4())
+    line_ship = str(uuid4())
+    line_edition = str(uuid4())
+    type_claim = str(uuid4())
+    records = {
+        model_edition: {
+            "type": "Diagram.Model.Annotation",
+            "model_ship": model_ship,
+            "data": {"label": "Legacy.Model"},
+            "recorded_at": "2026-01-01T00:00:00Z",
+        },
+        block_edition: {
+            "type": "Diagram.Block.Annotation",
+            "location": DiagramBlockLocation(model_ship, block_ship).to_dict(),
+            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
+            "data": {"label": "Legacy.Block"},
+            "recorded_at": "2026-01-01T00:01:00Z",
+        },
+        line_edition: {
+            "type": "Diagram.Line.Annotation",
+            "location": DiagramLocation(model_ship, block_ship, line_ship).to_dict(),
+            "producer": {
+                "session_identity": "a" * 64,
+                "turn_address": "b" * 64,
+                "turn_hash": "c" * 64,
+            },
+            "support": [],
+            "data": {"text": "Legacy content remains addressable."},
+            "recorded_at": "2026-01-01T00:02:00Z",
+        },
+        type_claim: {
+            "type": BLOCK_TYPE_ANNOTATION_TYPE,
+            "location": DiagramBlockLocation(model_ship, block_ship).to_dict(),
+            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
+            "recorded_at": "2026-01-01T00:03:00Z",
+        },
+    }
+    (root / "namespace.json").write_text(
+        json.dumps(
+            {
+                "class": "Tarav.Diagram.Namespace",
+                "schema_version": 1,
+                "id": namespace_id,
+                "name": USER_TOUCHED_CHATLAS_INDEX,
+                "allowed_types": [
+                    "Diagram.Model.Annotation",
+                    "Diagram.Block.Annotation",
+                    "Diagram.Line.Annotation",
+                    BLOCK_TYPE_ANNOTATION_TYPE,
+                ],
+                "allowed_block_types": [DESIGN_BLOCK_OBJECT_TYPE],
+                "require_block_type": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    for record_id, record in records.items():
+        (annotations / f"{record_id}.json").write_text(
+            json.dumps(record), encoding="utf-8"
+        )
+    subprocess.run(("git", "-C", str(root), "add", "."), check=True)
+    subprocess.run(
+        (
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Tarav Test",
+            "-c",
+            "user.email=tarav@example.invalid",
+            "commit",
+            "-qm",
+            "legacy",
+        ),
+        check=True,
+    )
+    backup = tmp_path / "attic" / "legacy" / "index-v1"
+
+    report = migrate_namespace_v1(root, backup=backup)
+    migrated = DiagramNamespace.open(root)
+
+    assert report.namespace_id == namespace_id
+    assert report.ships == 3
+    assert report.editions == 3
+    assert report.annotations == 1
+    assert (backup / "migration.json").is_file()
+    assert (
+        json.loads((backup / "annotations" / f"{line_edition}.json").read_text())
+        == records[line_edition]
+    )
+    assert migrated.ship(model_ship).type == MODEL_SHIP_TYPE
+    assert migrated.ship(block_ship).type == BLOCK_SHIP_TYPE
+    assert migrated.ship(line_ship).type == LINE_SHIP_TYPE
+    assert migrated.annotation(type_claim).type == BLOCK_TYPE_ANNOTATION_TYPE
+    assert migrated.edition(line_edition).specialize().text == (
+        "Legacy content remains addressable."
+    )
 
 
 def test_project_main_model_bootstraps_in_default_user_namespace(
@@ -685,7 +996,8 @@ def test_several_projects_can_share_one_main_model(tmp_path: Path) -> None:
         marker = json.loads((project / ".tarav" / "project.json").read_text())
         assert marker["diagram"] == {"main_model": model.ship}
         assert marker["preserved"] is True
-    assert len(namespace.annotations()) == 1
+    assert len(namespace.ships()) == 1
+    assert namespace.annotations() == ()
 
 
 def test_project_main_model_is_not_changed_when_model_is_missing(
@@ -757,8 +1069,60 @@ def test_namespace_cli_and_project_capture_template(tmp_path: Path, capsys) -> N
     project_marker = json.loads((project / ".tarav" / "project.json").read_text())
     assert payload["status"] == "ok"
     assert capture["model_ship"] == project_marker["diagram"]["main_model"]
+    assert capture["ships"] == []
     assert capture["annotations"] == []
+
+    assert (
+        main(
+            [
+                "diagram",
+                "ship",
+                "show",
+                "--ship",
+                capture["model_ship"],
+                "--diagram-config",
+                str(config),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    ship_payload = json.loads(capsys.readouterr().out)
+    assert ship_payload["ship"]["type"] == MODEL_SHIP_TYPE
+    assert len(ship_payload["ship"]["editions"]) == 1
     assert DiagramConfiguration.load(config).default_namespace_id is not None
+
+
+def test_line_show_cli_separates_ship_editions_from_annotations(
+    tmp_path: Path, capsys
+) -> None:
+    config_path = tmp_path / "diagram.json"
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    line = _line(model.ship)
+    line_ship = line.id
+    namespace.apply(CaptureManifest(model.ship, (line,)))
+    DiagramConfiguration.load(config_path, create=True).mount(namespace, default=True)
+
+    assert (
+        main(
+            [
+                "diagram",
+                "line",
+                "show",
+                "--line-ship",
+                line_ship,
+                "--diagram-config",
+                str(config_path),
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert [edition["id"] for edition in payload["editions"]] == [_edition_id(line)]
+    assert payload["annotations"] == []
 
 
 def test_project_set_main_model_cli_associates_an_existing_model(
@@ -947,7 +1311,7 @@ def test_gate_only_annotation_reviews_an_existing_line_without_rebinding_it(
     model = namespace.create_model(label="Tarav")
     line = _line(model.ship)
     namespace.apply(CaptureManifest(model.ship, (line,)))
-    original = namespace.annotation(line.id).to_record()
+    original = namespace.edition(_edition_id(line)).to_record()
     identity = "d" * 64
     normal_model = _normal_model(
         identity,
@@ -967,33 +1331,33 @@ def test_gate_only_annotation_reviews_an_existing_line_without_rebinding_it(
         str(uuid4()),
         {
             "type": LINE_GATE_ANNOTATION_TYPE,
-            "target_annotation": line.id,
+            "target_edition": _edition_id(line),
             "gates": [gate.to_dict()],
         },
     )
     evidence = ChatlasEvidence(model_loader=lambda _: normal_model)
     other_model = namespace.create_model(label="Other")
 
-    mismatch = CaptureManifest(other_model.ship, (gate_draft,)).check(
+    mismatch = CaptureManifest(other_model.ship, annotations=(gate_draft,)).check(
         namespace, evidence=evidence
     )
     mismatch_finding = next(
         item for item in mismatch if item.code == "capture-model-mismatch"
     )
-    assert mismatch_finding.path == "annotations[0].target_annotation"
+    assert mismatch_finding.path == "annotations[0].target_edition"
 
     receipt = namespace.apply(
-        CaptureManifest(model.ship, (gate_draft,)), evidence=evidence
+        CaptureManifest(model.ship, annotations=(gate_draft,)), evidence=evidence
     )
     typed = namespace.annotation(gate_draft.id).specialize()
     review = namespace.line_review(
-        namespace.annotation(line.id).specialize().location.line_ship,
+        namespace.edition(_edition_id(line)).specialize().location.line_ship,
         evidence=evidence,
     )
 
     assert isinstance(typed, LineGateAnnotation)
-    assert typed.target.id == line.id
-    assert namespace.annotation(line.id).to_record() == original
+    assert typed.target.id == _edition_id(line)
+    assert namespace.edition(_edition_id(line)).to_record() == original
     assert review.standing == "Reviewed"
     assert review.assessments[0].standing == "Passed"
     assert set(review.assessments[0].scores.values()) == {True}
@@ -1025,7 +1389,7 @@ def test_assertion_engine_recomputes_gate_scores_without_mutating_the_record(
         str(uuid4()),
         {
             "type": LINE_GATE_ANNOTATION_TYPE,
-            "target_annotation": line.id,
+            "target_edition": _edition_id(line),
             "gates": [
                 VerbatimGate(
                     token,
@@ -1035,7 +1399,7 @@ def test_assertion_engine_recomputes_gate_scores_without_mutating_the_record(
             ],
         },
     )
-    namespace.apply(CaptureManifest(model.ship, (gate,)))
+    namespace.apply(CaptureManifest(model.ship, annotations=(gate,)))
     annotation = namespace.annotation(gate.id)
     retained_before = annotation.to_record()
 
@@ -1050,7 +1414,7 @@ def test_assertion_engine_recomputes_gate_scores_without_mutating_the_record(
         if assertion_type.startswith("Verbatim.Gate.")
     )
     assert (
-        assessment.assertion_state("Annotation.Representation.Assertion")
+        assessment.assertion_state("Semantic.Record.Representation.Assertion")
         == "NotEvaluated"
     )
     assert annotation.score_vector() == {}
@@ -1063,7 +1427,7 @@ def test_assertion_engine_distinguishes_unassessable_from_not_evaluated(
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model(label="Tarav")
     line = _line(model.ship)
-    line.record["gates"] = [
+    _edition(line)["gates"] = [
         VerbatimGate(
             "review:no-evidence",
             ChatlasTurnReference("d" * 64, "1" * 64, "2" * 64),
@@ -1072,7 +1436,7 @@ def test_assertion_engine_distinguishes_unassessable_from_not_evaluated(
     ]
     namespace.apply(CaptureManifest(model.ship, (line,)))
 
-    assessment = AssertionEngine().assess(namespace.annotation(line.id))
+    assessment = AssertionEngine().assess(namespace.edition(_edition_id(line)))
 
     assert assessment.assertion_state("Verbatim.Gate.Token.Assertion") == "Unassessable"
     assert assessment.assertion_state("Line.Continuity.Assertion") == "NotEvaluated"
@@ -1095,7 +1459,7 @@ def test_assertion_engine_accepts_registered_evaluators(tmp_path: Path) -> None:
             return AssertionEvaluation(self.name, {"Line.Continuity.Assertion": True})
 
     assessment = AssertionEngine(evaluators=(ContinuityEvaluator(),)).assess(
-        namespace.annotation(line.id)
+        namespace.edition(_edition_id(line))
     )
 
     assert assessment.assertion_state("Line.Continuity.Assertion") == "Passed"
@@ -1119,14 +1483,14 @@ def test_embedded_gate_reviews_a_new_line_and_bad_wording_remains_a_poi(
         ChatlasTurnReference(identity, "5" * 64, "6" * 64),
     )
     line = _line(model.ship)
-    line.record["gates"] = [gate.to_dict()]
+    _edition(line)["gates"] = [gate.to_dict()]
     evidence = ChatlasEvidence(model_loader=lambda _: normal_model)
 
     receipt = namespace.apply(CaptureManifest(model.ship, (line,)), evidence=evidence)
-    typed = namespace.annotation(line.id).specialize()
+    typed = namespace.edition(_edition_id(line)).specialize()
     review = namespace.line_review(typed.location.line_ship, evidence=evidence)
 
-    assert isinstance(typed, LineAnnotation)
+    assert isinstance(typed, LineEditionRecord)
     assert typed.gates == (gate,)
     assert review.standing == "Unreviewed"
     assert "verbatim-gate-content-mismatch" in {item.code for item in receipt.findings}
@@ -1175,7 +1539,7 @@ def test_verbatim_gate_surfaces_protocol_failures(
     model = namespace.create_model(label="Tarav")
     line = _line(model.ship)
     namespace.apply(CaptureManifest(model.ship, (line,)))
-    typed = namespace.annotation(line.id).specialize()
+    typed = namespace.edition(_edition_id(line)).specialize()
     identity = "d" * 64
     normal_model = _normal_model(identity, *turns)
     hashes = {"1": "2", "5": "6"}
@@ -1193,11 +1557,11 @@ def test_verbatim_gate_surfaces_protocol_failures(
         str(uuid4()),
         {
             "type": LINE_GATE_ANNOTATION_TYPE,
-            "target_annotation": typed.id,
+            "target_edition": typed.id,
             "gates": [gate.to_dict()],
         },
     )
-    namespace.apply(CaptureManifest(model.ship, (gate_annotation,)))
+    namespace.apply(CaptureManifest(model.ship, annotations=(gate_annotation,)))
     assessment = (
         AssertionEngine(evidence=ChatlasEvidence(model_loader=lambda _: normal_model))
         .assess(namespace.annotation(gate_annotation.id))

@@ -567,8 +567,7 @@ class ProjectDiagramView(DiagramView):
 
 
 VIEW_TYPES: dict[str, type[DiagramView]] = {
-    item.type_id: item
-    for item in (DiagramView, SessionDiagramView, ProjectDiagramView)
+    item.type_id: item for item in (DiagramView, SessionDiagramView, ProjectDiagramView)
 }
 
 
@@ -672,9 +671,7 @@ class DiagramViewRepository:
                         "block_ship": _uuid(
                             block.get("block_ship"), field="View.Block.block_ship"
                         ),
-                        "label": _string(
-                            block.get("label"), field="View.Block.label"
-                        ),
+                        "label": _string(block.get("label"), field="View.Block.label"),
                         "disclosure": _string(
                             block.get("disclosure_name"),
                             field="View.Block.disclosure_name",

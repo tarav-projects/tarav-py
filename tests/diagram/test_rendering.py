@@ -6,20 +6,19 @@ from uuid import uuid4
 
 from tarav.cli.cli import main
 from tarav.diagram import (
-    BLOCK_ANNOTATION_TYPE,
+    BLOCK_SHIP_TYPE,
     DESIGN_BLOCK_OBJECT_TYPE,
     DESIGN_LINE_PRINCIPLE_TYPE,
     ISSUE_BLOCK_OBJECT_TYPE,
-    LINE_ANNOTATION_TYPE,
+    LINE_SHIP_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
     AnnotationDraft,
     CaptureManifest,
     ChatlasEvidence,
     Diagram,
-    DiagramBlockLocation,
     DiagramConfiguration,
-    DiagramLocation,
     DiagramNamespace,
+    ShipDraft,
     VerbatimGate,
     ChatlasTurnReference,
 )
@@ -45,30 +44,70 @@ AGENT_REF = {
 }
 
 
+def _edition_id(ship: ShipDraft) -> str:
+    return str(ship.record["editions"][0]["id"])
+
+
+def _block(
+    model_ship: str,
+    block_ship: str,
+    label: str,
+    block_type: str,
+) -> ShipDraft:
+    return ShipDraft(
+        block_ship,
+        {
+            "type": BLOCK_SHIP_TYPE,
+            "model_ship": model_ship,
+            "editions": [
+                {
+                    "id": str(uuid4()),
+                    "block_type": block_type,
+                    "data": {"label": label},
+                }
+            ],
+        },
+    )
+
+
+def _line(
+    model_ship: str,
+    block_ship: str,
+    line_ship: str,
+    text: str,
+) -> ShipDraft:
+    return ShipDraft(
+        line_ship,
+        {
+            "type": LINE_SHIP_TYPE,
+            "model_ship": model_ship,
+            "block_ship": block_ship,
+            "editions": [
+                {
+                    "id": str(uuid4()),
+                    "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
+                    "producer": AGENT_REF,
+                    "support": [{"root": USER_REF, "neighborhood": []}],
+                    "data": {"text": text},
+                }
+            ],
+        },
+    )
+
+
 def _diagram_with_line(tmp_path: Path):
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
     line_ship = str(uuid4())
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Diagram.Rendering"},
-        },
+    block = _block(
+        model.ship, block_ship, "Diagram.Rendering", DESIGN_BLOCK_OBJECT_TYPE
     )
-    line = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": LINE_ANNOTATION_TYPE,
-            "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
-            "producer": AGENT_REF,
-            "support": [{"root": USER_REF, "neighborhood": []}],
-            "location": DiagramLocation(model.ship, block_ship, line_ship).to_dict(),
-            "data": {"text": "Renderers are named read-only projections."},
-        },
+    line = _line(
+        model.ship,
+        block_ship,
+        line_ship,
+        "Renderers are named read-only projections.",
     )
     namespace.apply(CaptureManifest(model.ship, (block, line)))
     return Diagram((namespace,), namespace.id), model, block_ship, line_ship, line
@@ -133,7 +172,7 @@ def test_named_line_renderer_includes_exact_rooted_support(tmp_path: Path) -> No
     assert "〔UnAsserted · Unreviewed〕" in result.content
     assert "Please make Diagram renderers named." in result.content
     assert "User.Touch.Root" in result.content
-    assert line.id in result.content
+    assert _edition_id(line) in result.content
     assert "`Line.Continuity.Assertion` — unscored" in result.content
     assert [item.code for item in result.findings] == ["line-unreviewed"]
 
@@ -158,25 +197,12 @@ def test_issue_block_renderer_exposes_open_state_and_poi(tmp_path: Path) -> None
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
     line_ship = str(uuid4())
-    block = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": BLOCK_ANNOTATION_TYPE,
-            "block_type": ISSUE_BLOCK_OBJECT_TYPE,
-            "location": DiagramBlockLocation(model.ship, block_ship).to_dict(),
-            "data": {"label": "Issue.Rendering"},
-        },
-    )
-    line = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": LINE_ANNOTATION_TYPE,
-            "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
-            "producer": AGENT_REF,
-            "support": [{"root": USER_REF, "neighborhood": []}],
-            "location": DiagramLocation(model.ship, block_ship, line_ship).to_dict(),
-            "data": {"text": "Open Issues surface attention without blocking work."},
-        },
+    block = _block(model.ship, block_ship, "Issue.Rendering", ISSUE_BLOCK_OBJECT_TYPE)
+    line = _line(
+        model.ship,
+        block_ship,
+        line_ship,
+        "Open Issues surface attention without blocking work.",
     )
     namespace.apply(CaptureManifest(model.ship, (block, line)))
     diagram = Diagram((namespace,), namespace.id)
@@ -191,34 +217,39 @@ def test_issue_block_renderer_exposes_open_state_and_poi(tmp_path: Path) -> None
     assert "issue-open" in {item.code for item in result.findings}
 
 
-def test_ambiguous_line_renderer_surfaces_all_wording_variants(
+def test_line_renderer_uses_current_edition_while_ship_retains_history(
     tmp_path: Path,
 ) -> None:
     diagram, model, block_ship, line_ship, _ = _diagram_with_line(tmp_path)
-    second = AnnotationDraft(
-        str(uuid4()),
-        {
-            "type": LINE_ANNOTATION_TYPE,
-            "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
-            "producer": AGENT_REF,
-            "support": [{"root": USER_REF, "neighborhood": []}],
-            "location": DiagramLocation(model.ship, block_ship, line_ship).to_dict(),
-            "data": {"text": "A second possible wording."},
-        },
-    )
+    second = _line(model.ship, block_ship, line_ship, "A second possible wording.")
     model.namespace.apply(CaptureManifest(model.ship, (second,)))
 
     result = renderer("Kernel.Writing.Line").render(
         line_render_target(diagram, line_ship)
     )
 
-    assert result.content.count("\n\n- ") == 1
-    assert "Renderers are named read-only projections." in result.content
+    assert result.content.count("\n\n- ") == 0
+    assert "Renderers are named read-only projections." not in result.content
     assert "A second possible wording." in result.content
-    assert [item.code for item in result.findings] == [
-        "line-rendering-selection-ambiguous",
-        "line-unreviewed",
-    ]
+    assert len(model.namespace.ship(line_ship).record["editions"]) == 2
+    assert [item.code for item in result.findings] == ["line-unreviewed"]
+
+
+def test_block_renderer_uses_current_label_edition(tmp_path: Path) -> None:
+    diagram, model, block_ship, _, _ = _diagram_with_line(tmp_path)
+    replacement = _block(
+        model.ship, block_ship, "Current.Rendering", DESIGN_BLOCK_OBJECT_TYPE
+    )
+    model.namespace.apply(CaptureManifest(model.ship, (replacement,)))
+
+    result = renderer("Kernel.Writing.Block").render(
+        block_render_target(diagram, block_ship)
+    )
+
+    assert result.content.startswith("## Current.Rendering")
+    assert "block-label-selection-unresolved" not in {
+        item.code for item in result.findings
+    }
 
 
 def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -> None:
@@ -230,11 +261,11 @@ def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -
         str(uuid4()),
         {
             "type": LINE_GATE_ANNOTATION_TYPE,
-            "target_annotation": line.id,
+            "target_edition": _edition_id(line),
             "gates": [VerbatimGate(token, proposal_ref, approval_ref).to_dict()],
         },
     )
-    model.namespace.apply(CaptureManifest(model.ship, (gate,)))
+    model.namespace.apply(CaptureManifest(model.ship, annotations=(gate,)))
     normal_model = _normal_model()
     normal_model["messages"].extend(
         [

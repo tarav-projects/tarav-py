@@ -205,9 +205,7 @@ def _cmd_mentions(args: argparse.Namespace) -> int:
         diagram = _configuration(args).diagram()
         view = _repository(args).view(args.view)
         if not isinstance(view, SessionDiagramView):
-            raise DiagramViewError(
-                "Mention inspection requires a Session.Diagram.View"
-            )
+            raise DiagramViewError("Mention inspection requires a Session.Diagram.View")
         mentions = view.mentions(diagram, _evidence(args))
     except DiagramError as exc:
         raise CliError(str(exc)) from exc

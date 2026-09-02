@@ -27,10 +27,13 @@ DIAGRAM_CONFIG_CLASS = "Tarav.Diagram.Configuration"
 CAPTURE_MANIFEST_CLASS = "Tarav.Diagram.Capture.Manifest"
 USER_TOUCHED_CHATLAS_INDEX = "User.Touched.Chatlas.Index"
 DIAGRAM_ATTIC = "Diagram.Attic"
-MODEL_ANNOTATION_TYPE = "Diagram.Model.Annotation"
-BLOCK_ANNOTATION_TYPE = "Diagram.Block.Annotation"
+MODEL_SHIP_TYPE = "Diagram.Model.Ship"
+BLOCK_SHIP_TYPE = "Diagram.Block.Ship"
+LINE_SHIP_TYPE = "Diagram.Line.Ship"
+MODEL_EDITION_TYPE = "Diagram.Model.Edition"
+BLOCK_EDITION_TYPE = "Diagram.Block.Edition"
 BLOCK_TYPE_ANNOTATION_TYPE = "Diagram.Block.Type.Annotation"
-LINE_ANNOTATION_TYPE = "Diagram.Line.Annotation"
+LINE_EDITION_TYPE = "Diagram.Line.Edition"
 LINE_TYPE_ANNOTATION_TYPE = "Diagram.Line.Type.Annotation"
 LINE_SUPPORT_ANNOTATION_TYPE = "Diagram.Line.Support.Annotation"
 LINE_GATE_ANNOTATION_TYPE = "Diagram.Line.Gate.Annotation"
@@ -72,16 +75,24 @@ DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS = {
     DESIGN_LINE_EXAMPLE_TYPE: "1366fc61-a9fe-4ef5-91dc-6f13f0447e30",
 }
 CHATLAS_INDEX_NAMESPACES = frozenset((USER_TOUCHED_CHATLAS_INDEX, DIAGRAM_ATTIC))
+CHATLAS_INDEX_SHIP_TYPES = (
+    MODEL_SHIP_TYPE,
+    BLOCK_SHIP_TYPE,
+    LINE_SHIP_TYPE,
+)
+CHATLAS_INDEX_EDITION_TYPES = (
+    MODEL_EDITION_TYPE,
+    BLOCK_EDITION_TYPE,
+    LINE_EDITION_TYPE,
+)
 CHATLAS_INDEX_ANNOTATION_TYPES = (
-    MODEL_ANNOTATION_TYPE,
-    BLOCK_ANNOTATION_TYPE,
     BLOCK_TYPE_ANNOTATION_TYPE,
-    LINE_ANNOTATION_TYPE,
     LINE_TYPE_ANNOTATION_TYPE,
     LINE_SUPPORT_ANNOTATION_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
 )
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+CONFIG_SCHEMA_VERSION = 1
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 JsonObject = dict[str, Any]
 
@@ -95,6 +106,10 @@ class DiagramModelError(ValueError):
 
 
 class DiagramAnnotationSpecializationError(DiagramError):
+    pass
+
+
+class DiagramShipSpecializationError(DiagramError):
     pass
 
 
@@ -183,7 +198,7 @@ VERBATIM_GATE_ASSERTIONS = (
 @dataclass(frozen=True, slots=True)
 class GateAssessment:
     annotation_id: str
-    target_annotation_id: str
+    target_edition_id: str
     gate: VerbatimGate
     scores: JsonObject
     findings: tuple[Finding, ...]
@@ -200,7 +215,7 @@ class GateAssessment:
     def to_dict(self) -> JsonObject:
         return {
             "annotation_id": self.annotation_id,
-            "target_annotation_id": self.target_annotation_id,
+            "target_edition_id": self.target_edition_id,
             "gate": self.gate.to_dict(),
             "standing": self.standing,
             "scores": dict(self.scores),
@@ -358,8 +373,172 @@ class AnnotationDraft:
 
 
 @dataclass(frozen=True, slots=True)
+class ShipDraft:
+    """One complete or incremental typed Ship record supplied by Capture."""
+
+    id: str
+    record: JsonObject
+
+    def __post_init__(self) -> None:
+        _uuid(self.id, field="Ship.id")
+        copied = _object(self.record, field="Ship")
+        _string(copied.get("type"), field="Ship.type")
+        _array(copied.get("editions", []), field="Ship.editions")
+        object.__setattr__(self, "record", copied)
+
+    def to_dict(self) -> JsonObject:
+        return {"id": self.id, **self.record}
+
+    @classmethod
+    def from_dict(cls, value: object) -> ShipDraft:
+        data = _object(value, field="Capture.Ship")
+        ship_id = data.pop("id", None)
+        return cls(_string(ship_id, field="Ship.id"), data)
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramShip:
+    """Opaque semantic Ship. Only identity and ``type`` are universal."""
+
+    id: str
+    namespace: DiagramNamespace
+    record: JsonObject
+
+    def __post_init__(self) -> None:
+        _uuid(self.id, field="Ship.id")
+        copied = _object(self.record, field="Ship.Record")
+        _string(copied.get("type"), field="Ship.type")
+        object.__setattr__(self, "record", copied)
+
+    @property
+    def type(self) -> str:
+        return _string(self.record.get("type"), field="Ship.type")
+
+    def to_record(self) -> JsonObject:
+        return dict(self.record)
+
+    def specialize(self) -> TypedShip:
+        return self.namespace.specialize_ship(self)
+
+
+@dataclass(frozen=True, slots=True)
+class TypedShip:
+    ship: DiagramShip
+
+    @property
+    def id(self) -> str:
+        return self.ship.id
+
+    @property
+    def type(self) -> str:
+        return self.ship.type
+
+    @property
+    def record(self) -> JsonObject:
+        return self.ship.record
+
+    @property
+    def editions(self) -> tuple[JsonObject, ...]:
+        return tuple(
+            _object(item, field=f"Ship.{self.id}.editions[]")
+            for item in _array(self.record.get("editions", []), field="Ship.editions")
+        )
+
+    def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
+        return ()
+
+
+@dataclass(frozen=True, slots=True)
+class ModelShipRecord(TypedShip):
+    def __post_init__(self) -> None:
+        if self.type != MODEL_SHIP_TYPE:
+            raise DiagramModelError(f"not a Model Ship: {self.type}")
+        _validate_editions(self.editions, field="Model.Ship.editions")
+
+    def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
+        return tuple(
+            DiagramAnnotation(
+                _edition_id(edition),
+                self.ship.namespace,
+                {
+                    "type": MODEL_EDITION_TYPE,
+                    "model_ship": self.id,
+                    **_edition_payload(edition),
+                },
+            )
+            for edition in self.editions
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BlockShipRecord(TypedShip):
+    def __post_init__(self) -> None:
+        if self.type != BLOCK_SHIP_TYPE:
+            raise DiagramModelError(f"not a Block Ship: {self.type}")
+        _uuid(self.record.get("model_ship"), field="Block.Ship.model_ship")
+        _validate_editions(self.editions, field="Block.Ship.editions")
+
+    @property
+    def model_ship(self) -> str:
+        return _uuid(self.record.get("model_ship"), field="Block.Ship.model_ship")
+
+    def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
+        return tuple(
+            DiagramAnnotation(
+                _edition_id(edition),
+                self.ship.namespace,
+                {
+                    "type": BLOCK_EDITION_TYPE,
+                    "location": {
+                        "model_ship": self.model_ship,
+                        "block_ship": self.id,
+                    },
+                    **_edition_payload(edition),
+                },
+            )
+            for edition in self.editions
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LineShipRecord(TypedShip):
+    def __post_init__(self) -> None:
+        if self.type != LINE_SHIP_TYPE:
+            raise DiagramModelError(f"not a Line Ship: {self.type}")
+        _uuid(self.record.get("model_ship"), field="Line.Ship.model_ship")
+        _uuid(self.record.get("block_ship"), field="Line.Ship.block_ship")
+        _validate_editions(self.editions, field="Line.Ship.editions")
+
+    @property
+    def model_ship(self) -> str:
+        return _uuid(self.record.get("model_ship"), field="Line.Ship.model_ship")
+
+    @property
+    def block_ship(self) -> str:
+        return _uuid(self.record.get("block_ship"), field="Line.Ship.block_ship")
+
+    def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
+        return tuple(
+            DiagramAnnotation(
+                _edition_id(edition),
+                self.ship.namespace,
+                {
+                    "type": LINE_EDITION_TYPE,
+                    "location": {
+                        "model_ship": self.model_ship,
+                        "block_ship": self.block_ship,
+                        "line_ship": self.id,
+                    },
+                    **_edition_payload(edition),
+                },
+            )
+            for edition in self.editions
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class DiagramAnnotation:
-    """Opaque Annotation. Only ``type`` is universal."""
+    """Opaque claim record or internal Ship-edition projection adapter."""
 
     id: str
     namespace: DiagramNamespace
@@ -432,11 +611,11 @@ class TypedAnnotation:
 
 
 @dataclass(frozen=True, slots=True)
-class ModelAnnotation(TypedAnnotation):
+class ModelEditionRecord(TypedAnnotation):
     def __post_init__(self) -> None:
-        if self.type != MODEL_ANNOTATION_TYPE:
-            raise DiagramModelError(f"not a Model Annotation: {self.type}")
-        _uuid(self.record.get("model_ship"), field="Model.Annotation.model_ship")
+        if self.type != MODEL_EDITION_TYPE:
+            raise DiagramModelError(f"not a Model Edition: {self.type}")
+        _uuid(self.record.get("model_ship"), field="Model.Edition.model_ship")
 
     @property
     def model_ship(self) -> str:
@@ -464,10 +643,10 @@ class UserTouchedAnnotation(TypedAnnotation):
 
 
 @dataclass(frozen=True, slots=True)
-class LineAnnotation(UserTouchedAnnotation):
+class LineEditionRecord(UserTouchedAnnotation):
     def __post_init__(self) -> None:
-        if self.type != LINE_ANNOTATION_TYPE:
-            raise DiagramModelError(f"not a Line Annotation: {self.type}")
+        if self.type != LINE_EDITION_TYPE:
+            raise DiagramModelError(f"not a Line Edition: {self.type}")
         DiagramLocation.from_dict(self.record.get("location"))
         _string(
             _object(self.record.get("data", {}), field="data").get("text"),
@@ -526,10 +705,10 @@ class LineAnnotation(UserTouchedAnnotation):
 
 
 @dataclass(frozen=True, slots=True)
-class BlockAnnotation(TypedAnnotation):
+class BlockEditionRecord(TypedAnnotation):
     def __post_init__(self) -> None:
-        if self.type != BLOCK_ANNOTATION_TYPE:
-            raise DiagramModelError(f"not a Block Annotation: {self.type}")
+        if self.type != BLOCK_EDITION_TYPE:
+            raise DiagramModelError(f"not a Block Edition: {self.type}")
         DiagramBlockLocation.from_dict(self.record.get("location"))
         _string(
             _object(self.record.get("data", {}), field="data").get("label"),
@@ -657,14 +836,14 @@ class LineTypeAnnotation(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineGateAnnotation(TypedAnnotation):
-    """Adds review evidence to one immutable Line wording Annotation."""
+    """Adds review evidence to one immutable Line edition."""
 
     def __post_init__(self) -> None:
         if self.type != LINE_GATE_ANNOTATION_TYPE:
             raise DiagramModelError(f"not a Line Gate Annotation: {self.type}")
         _uuid(
-            self.record.get("target_annotation"),
-            field="Line.Gate.Annotation.target_annotation",
+            self.record.get("target_edition"),
+            field="Line.Gate.Annotation.target_edition",
         )
         gates = _verbatim_gates(self.record.get("gates"))
         if len(gates) != 1:
@@ -673,10 +852,10 @@ class LineGateAnnotation(TypedAnnotation):
             )
 
     @property
-    def target_annotation_id(self) -> str:
+    def target_edition_id(self) -> str:
         return _uuid(
-            self.record.get("target_annotation"),
-            field="Line.Gate.Annotation.target_annotation",
+            self.record.get("target_edition"),
+            field="Line.Gate.Annotation.target_edition",
         )
 
     @property
@@ -684,12 +863,12 @@ class LineGateAnnotation(TypedAnnotation):
         return _verbatim_gates(self.record.get("gates"))
 
     @property
-    def target(self) -> LineAnnotation:
-        annotation = self.annotation.namespace.annotation(self.target_annotation_id)
+    def target(self) -> LineEditionRecord:
+        annotation = self.annotation.namespace.edition(self.target_edition_id)
         typed = annotation.specialize()
-        if not isinstance(typed, LineAnnotation):
+        if not isinstance(typed, LineEditionRecord):
             raise DiagramModelError(
-                "Line.Gate.Annotation target is not a Diagram.Line.Annotation"
+                "Line.Gate.Annotation target is not a Diagram.Line.Ship edition"
             )
         return typed
 
@@ -698,7 +877,7 @@ class LineGateAnnotation(TypedAnnotation):
         return self.target.location
 
     def model_location(self) -> tuple[str, str]:
-        return self.location.model_ship, "target_annotation"
+        return self.location.model_ship, "target_edition"
 
     def type_assertions(self) -> tuple[JsonObject, ...]:
         return tuple({"type": kind} for kind in VERBATIM_GATE_ASSERTIONS)
@@ -847,7 +1026,7 @@ class DiagramObjectTypeRegistry:
 
 @dataclass(frozen=True, slots=True)
 class DiagramLineEdition:
-    annotation: LineAnnotation
+    annotation: LineEditionRecord
     object_type: DiagramLineType
 
     @property
@@ -898,7 +1077,11 @@ class DiagramLineShip:
 
     @property
     def object_type(self) -> str | None:
-        return self.type_ids[-1] if len(self.type_ids) == 1 else None
+        return self.type_ids[-1] if self.type_ids else None
+
+    @property
+    def current_edition(self) -> DiagramLineEdition | None:
+        return self.editions[-1] if self.editions else None
 
     def assertions(self) -> tuple[DiagramObjectAssertion, ...]:
         return _object_assertions(self.annotations)
@@ -906,7 +1089,8 @@ class DiagramLineShip:
     def inlined_dependencies(self, labels: Iterable[str]) -> tuple[str, ...]:
         """Return exact known Block labels named by any retained wording."""
 
-        texts = tuple(edition.text for edition in self.editions)
+        current = self.current_edition
+        texts = (current.text,) if current is not None else ()
         return tuple(
             label
             for label in labels
@@ -964,13 +1148,20 @@ class DiagramBlock:
 
     @property
     def object_type(self) -> str | None:
-        return self.type_ids[-1] if len(self.type_ids) == 1 else None
+        return self.type_ids[-1] if self.type_ids else None
 
     @property
     def labels(self) -> tuple[str, ...]:
         return tuple(
-            item.label for item in self.annotations if isinstance(item, BlockAnnotation)
+            item.label
+            for item in self.annotations
+            if isinstance(item, BlockEditionRecord)
         )
+
+    @property
+    def current_label(self) -> str | None:
+        labels = self.labels
+        return labels[-1] if labels else None
 
     def assertions(self) -> tuple[DiagramObjectAssertion, ...]:
         return _dedupe_object_assertions(
@@ -1022,7 +1213,7 @@ class IssueBlock(DiagramBlock):
             gate_assessment
             for line in resolution_lines
             for annotation in line.annotations
-            if isinstance(annotation, (LineAnnotation, LineGateAnnotation))
+            if isinstance(annotation, (LineEditionRecord, LineGateAnnotation))
             for gate_assessment in assertion_engine.assess(annotation).gate_assessments
         )
         closed = any(item.standing == "Passed" for item in assessments)
@@ -1090,11 +1281,29 @@ class DiagramProjection:
                             "ship": line.ship,
                             "object_type": line.object_type,
                             "type_history": list(line.type_ids),
-                            "annotations": [item.id for item in line.annotations],
+                            "editions": [
+                                item.id
+                                for item in line.annotations
+                                if isinstance(item, LineEditionRecord)
+                            ],
+                            "annotations": [
+                                item.id
+                                for item in line.annotations
+                                if not isinstance(item, LineEditionRecord)
+                            ],
                         }
                         for line in block.lines
                     ],
-                    "annotations": [item.id for item in block.annotations],
+                    "editions": [
+                        item.id
+                        for item in block.annotations
+                        if isinstance(item, BlockEditionRecord)
+                    ],
+                    "annotations": [
+                        item.id
+                        for item in block.annotations
+                        if not isinstance(item, BlockEditionRecord)
+                    ],
                 }
                 for block in self.blocks
             ],
@@ -1103,7 +1312,7 @@ class DiagramProjection:
 
 
 class DiagramProjectionBuilder:
-    """Canonical full projector. Annotation classes own their contributions."""
+    """Canonical full projector over Ship editions and attached Annotations."""
 
     def __init__(
         self,
@@ -1120,7 +1329,7 @@ class DiagramProjectionBuilder:
         self.findings: list[Finding] = []
 
     def add_block_annotation(
-        self, annotation: BlockAnnotation | BlockTypeAnnotation
+        self, annotation: BlockEditionRecord | BlockTypeAnnotation
     ) -> None:
         self.block_annotations.setdefault(annotation.location.block_ship, []).append(
             annotation
@@ -1128,7 +1337,7 @@ class DiagramProjectionBuilder:
 
     def add_line_annotation(
         self,
-        annotation: LineAnnotation | LineSupportAnnotation | LineTypeAnnotation,
+        annotation: LineEditionRecord | LineSupportAnnotation | LineTypeAnnotation,
     ) -> None:
         location = annotation.location
         self.line_annotations.setdefault(
@@ -1136,20 +1345,20 @@ class DiagramProjectionBuilder:
         ).append(annotation)
 
     def add_line_gate_annotation(self, annotation: LineGateAnnotation) -> None:
-        target = self.typed_by_id.get(annotation.target_annotation_id)
+        target = self.typed_by_id.get(annotation.target_edition_id)
         if target is None:
             try:
-                target = self.namespace.annotation(
-                    annotation.target_annotation_id
+                target = self.namespace.edition(
+                    annotation.target_edition_id
                 ).specialize()
             except (DiagramError, DiagramModelError):
                 target = None
-        if not isinstance(target, LineAnnotation):
+        if not isinstance(target, LineEditionRecord):
             self.findings.append(
                 Finding(
                     "line-gate-target-unresolved",
-                    f"annotation.{annotation.id}.target_annotation",
-                    "Line Gate target does not resolve to a Line Annotation.",
+                    f"annotation.{annotation.id}.target_edition",
+                    "Line Gate target does not resolve to a Line Edition.",
                 )
             )
             return
@@ -1182,7 +1391,7 @@ class DiagramProjectionBuilder:
     def _block(self, ship: str) -> DiagramBlock:
         annotations = _sort_typed(self.block_annotations.get(ship, ()))
         declarations = tuple(
-            item for item in annotations if isinstance(item, BlockAnnotation)
+            item for item in annotations if isinstance(item, BlockEditionRecord)
         )
         type_annotations = tuple(
             item for item in annotations if isinstance(item, BlockTypeAnnotation)
@@ -1200,7 +1409,7 @@ class DiagramProjectionBuilder:
                 Finding(
                     "block-declaration-missing",
                     f"block.{ship}",
-                    "Lines name a Block ship with no Block Annotation.",
+                    "Lines name a Block Ship with no Block Edition.",
                 )
             )
         if declarations and not type_ids and self.namespace.require_block_type:
@@ -1208,18 +1417,10 @@ class DiagramProjectionBuilder:
                 Finding(
                     "block-type-missing",
                     f"block.{ship}",
-                    "Block Annotations do not retain a Block.Type.",
+                    "Block Editions do not retain a Block.Type.",
                 )
             )
-        if len(type_ids) > 1:
-            findings.append(
-                Finding(
-                    "block-type-selection-unresolved",
-                    f"block.{ship}",
-                    "Block lineage contains several Block.Types.",
-                )
-            )
-        selected_id = type_ids[-1] if len(type_ids) == 1 else DIAGRAM_BLOCK_OBJECT_TYPE
+        selected_id = type_ids[-1] if type_ids else DIAGRAM_BLOCK_OBJECT_TYPE
         block_type = self.registry.block_type(selected_id)
         if block_type is None:
             findings.append(
@@ -1262,7 +1463,7 @@ class DiagramProjectionBuilder:
     ) -> DiagramLineShip:
         annotations = _sort_typed(self.line_annotations[(block_ship, ship)])
         wordings = tuple(
-            item for item in annotations if isinstance(item, LineAnnotation)
+            item for item in annotations if isinstance(item, LineEditionRecord)
         )
         type_annotations = tuple(
             item for item in annotations if isinstance(item, LineTypeAnnotation)
@@ -1280,7 +1481,7 @@ class DiagramProjectionBuilder:
                 Finding(
                     "line-wording-missing",
                     f"line.{ship}",
-                    "Line annotations name a Line ship with no wording Annotation.",
+                    "Line records name a Line Ship with no wording Edition.",
                 )
             )
         if wordings and not type_ids and block_type.require_line_type:
@@ -1288,20 +1489,12 @@ class DiagramProjectionBuilder:
                 Finding(
                     "line-type-missing",
                     f"line.{ship}",
-                    "Line Annotations do not retain a Line.Type.",
-                )
-            )
-        if len(type_ids) > 1:
-            findings.append(
-                Finding(
-                    "line-type-selection-unresolved",
-                    f"line.{ship}",
-                    "Line lineage contains several Line.Types.",
+                    "Line Editions do not retain a Line.Type.",
                 )
             )
         line_type = None
-        if len(type_ids) == 1:
-            selected_id = type_ids[0]
+        if type_ids:
+            selected_id = type_ids[-1]
             line_type = block_type.line_type(selected_id)
             if line_type is None:
                 known = self.registry.line_type(selected_id)
@@ -1481,7 +1674,8 @@ def _sort_typed(
 @dataclass(frozen=True, slots=True)
 class CaptureManifest:
     model_ship: str
-    annotations: tuple[AnnotationDraft, ...]
+    ships: tuple[ShipDraft, ...] = ()
+    annotations: tuple[AnnotationDraft, ...] = ()
 
     def __post_init__(self) -> None:
         _uuid(self.model_ship, field="Capture.Manifest.model_ship")
@@ -1491,6 +1685,7 @@ class CaptureManifest:
             "class": CAPTURE_MANIFEST_CLASS,
             "schema_version": SCHEMA_VERSION,
             "model_ship": self.model_ship,
+            "ships": [item.to_dict() for item in self.ships],
             "annotations": [item.to_dict() for item in self.annotations],
         }
 
@@ -1505,8 +1700,12 @@ class CaptureManifest:
         return cls(
             _string(data.get("model_ship"), field="model_ship"),
             tuple(
+                ShipDraft.from_dict(item)
+                for item in _array(data.get("ships", []), field="ships")
+            ),
+            tuple(
                 AnnotationDraft.from_dict(item)
-                for item in _array(data.get("annotations"), field="annotations")
+                for item in _array(data.get("annotations", []), field="annotations")
             ),
         )
 
@@ -1520,7 +1719,7 @@ class CaptureManifest:
         *,
         model_ship: str,
     ) -> CaptureManifest:
-        return cls(model_ship, ())
+        return cls(model_ship)
 
     def check(
         self, namespace: DiagramNamespace, *, evidence: ChatlasEvidence | None = None
@@ -1528,8 +1727,75 @@ class CaptureManifest:
         findings: list[Finding] = []
         seen: dict[str, JsonObject] = {}
         draft_annotations: list[DiagramAnnotation] = []
+        seen_ships: dict[str, JsonObject] = {}
+        for index, draft in enumerate(self.ships):
+            path = f"ships[{index}]"
+            if draft.id in seen_ships:
+                findings.append(
+                    Finding(
+                        "duplicate-ship-id",
+                        f"{path}.id",
+                        "Capture.Manifest repeats one Ship identity.",
+                    )
+                )
+                if seen_ships[draft.id] != draft.record:
+                    findings.append(
+                        Finding(
+                            "ship-identity-rebound",
+                            f"{path}.id",
+                            "One Ship identity names incompatible content.",
+                        )
+                    )
+            seen_ships[draft.id] = draft.record
+            ship = DiagramShip(draft.id, namespace, draft.record)
+            if (
+                namespace.allowed_ship_types
+                and ship.type not in namespace.allowed_ship_types
+            ):
+                findings.append(
+                    Finding(
+                        "ship-type-not-allowed",
+                        f"{path}.type",
+                        f"Namespace {namespace.name} does not allow Ship type {ship.type}.",
+                    )
+                )
+            try:
+                typed_ship = ship.specialize()
+            except DiagramShipSpecializationError as exc:
+                findings.append(
+                    Finding("ship-specialization-unavailable", f"{path}.type", str(exc))
+                )
+                continue
+            if isinstance(typed_ship, (BlockShipRecord, LineShipRecord)):
+                if typed_ship.model_ship != self.model_ship:
+                    findings.append(
+                        Finding(
+                            "capture-model-mismatch",
+                            f"{path}.model_ship",
+                            "Ship is not located in the Capture.Manifest Model.",
+                        )
+                    )
+            draft_annotations.extend(typed_ship.edition_annotations())
+            for edition_index, annotation in enumerate(
+                typed_ship.edition_annotations()
+            ):
+                findings.extend(
+                    namespace.findings(
+                        annotation,
+                        path=f"{path}.editions[{edition_index}]",
+                        evidence=evidence,
+                    )
+                )
         for index, draft in enumerate(self.annotations):
             path = f"annotations[{index}]"
+            if draft.record.get("type") in CHATLAS_INDEX_EDITION_TYPES:
+                findings.append(
+                    Finding(
+                        "ship-edition-in-annotation-collection",
+                        f"{path}.type",
+                        "Ship editions belong in Capture.Manifest.ships, not annotations.",
+                    )
+                )
             if draft.id in seen:
                 findings.append(
                     Finding(
@@ -1584,6 +1850,12 @@ class CaptureReceipt:
     committed: bool
     base_commit: str
     commit: str | None
+    created_ships: tuple[str, ...] = ()
+    updated_ships: tuple[str, ...] = ()
+    created_editions: tuple[str, ...] = ()
+    existing_editions: tuple[str, ...] = ()
+    created_annotations: tuple[str, ...] = ()
+    existing_annotations: tuple[str, ...] = ()
 
     def to_dict(self) -> JsonObject:
         return {
@@ -1591,6 +1863,12 @@ class CaptureReceipt:
             "namespace_id": self.namespace_id,
             "created": list(self.created),
             "existing": list(self.existing),
+            "created_ships": list(self.created_ships),
+            "updated_ships": list(self.updated_ships),
+            "created_editions": list(self.created_editions),
+            "existing_editions": list(self.existing_editions),
+            "created_annotations": list(self.created_annotations),
+            "existing_annotations": list(self.existing_annotations),
             "findings": [item.to_dict() for item in self.findings],
             "committed": self.committed,
             "base_commit": self.base_commit,
@@ -1909,7 +2187,7 @@ class VerbatimGateAssertionEvaluator:
         evidence: ChatlasEvidence | None,
         path: str,
     ) -> AssertionEvaluation:
-        if isinstance(annotation, LineAnnotation):
+        if isinstance(annotation, LineEditionRecord):
             assessments = _assess_verbatim_gates(
                 annotation_id=annotation.id,
                 target_id=annotation.id,
@@ -1926,12 +2204,12 @@ class VerbatimGateAssertionEvaluator:
                 target = None
                 target_finding = Finding(
                     "line-gate-target-unresolved",
-                    f"{path}.target_annotation",
+                    f"{path}.target_edition",
                     str(exc),
                 )
             assessments = _assess_verbatim_gates(
                 annotation_id=annotation.id,
-                target_id=annotation.target_annotation_id,
+                target_id=annotation.target_edition_id,
                 target=target,
                 gates=annotation.gates,
                 evidence=evidence,
@@ -2046,9 +2324,14 @@ class DiagramNamespace:
     root: Path
     id: str
     name: str
-    allowed_types: tuple[str, ...]
+    allowed_ship_types: tuple[str, ...]
+    allowed_annotation_types: tuple[str, ...]
     allowed_block_types: tuple[str, ...] = ()
     require_block_type: bool = False
+
+    @property
+    def ships_root(self) -> Path:
+        return self.root / "ships"
 
     @property
     def annotations_root(self) -> Path:
@@ -2061,7 +2344,8 @@ class DiagramNamespace:
         *,
         name: str,
         namespace_id: str | None = None,
-        allowed_types: Iterable[str] = (),
+        allowed_ship_types: Iterable[str] = (),
+        allowed_annotation_types: Iterable[str] = (),
         allowed_block_types: Iterable[str] = (),
         require_block_type: bool = False,
     ) -> DiagramNamespace:
@@ -2069,6 +2353,7 @@ class DiagramNamespace:
         if resolved.exists() and any(resolved.iterdir()):
             return cls.open(resolved)
         resolved.mkdir(parents=True, exist_ok=True)
+        (resolved / "ships").mkdir()
         (resolved / "annotations").mkdir()
         _run_git(resolved, "init", "-q")
         atomic_write_json(
@@ -2078,7 +2363,8 @@ class DiagramNamespace:
                 "schema_version": SCHEMA_VERSION,
                 "id": namespace_id or str(uuid4()),
                 "name": name,
-                "allowed_types": list(allowed_types),
+                "allowed_ship_types": list(allowed_ship_types),
+                "allowed_annotation_types": list(allowed_annotation_types),
                 "allowed_block_types": list(allowed_block_types),
                 "require_block_type": require_block_type,
             },
@@ -2095,7 +2381,8 @@ class DiagramNamespace:
         return cls.create(
             root,
             name=USER_TOUCHED_CHATLAS_INDEX,
-            allowed_types=CHATLAS_INDEX_ANNOTATION_TYPES,
+            allowed_ship_types=CHATLAS_INDEX_SHIP_TYPES,
+            allowed_annotation_types=CHATLAS_INDEX_ANNOTATION_TYPES,
             allowed_block_types=(
                 DIAGRAM_BLOCK_OBJECT_TYPE,
                 DESIGN_BLOCK_OBJECT_TYPE,
@@ -2110,7 +2397,8 @@ class DiagramNamespace:
         return cls.create(
             root,
             name=DIAGRAM_ATTIC,
-            allowed_types=CHATLAS_INDEX_ANNOTATION_TYPES,
+            allowed_ship_types=CHATLAS_INDEX_SHIP_TYPES,
+            allowed_annotation_types=CHATLAS_INDEX_ANNOTATION_TYPES,
             allowed_block_types=(
                 DIAGRAM_BLOCK_OBJECT_TYPE,
                 DESIGN_BLOCK_OBJECT_TYPE,
@@ -2123,7 +2411,11 @@ class DiagramNamespace:
     @classmethod
     def open(cls, root: Path) -> DiagramNamespace:
         resolved = root.expanduser().resolve()
-        if not (resolved / ".git").is_dir() or not (resolved / "annotations").is_dir():
+        if (
+            not (resolved / ".git").is_dir()
+            or not (resolved / "ships").is_dir()
+            or not (resolved / "annotations").is_dir()
+        ):
             raise DiagramError(f"Diagram Namespace repository is invalid: {resolved}")
         data = _read_json(resolved / "namespace.json")
         if (
@@ -2147,8 +2439,17 @@ class DiagramNamespace:
             _uuid(data.get("id"), field="Namespace.id"),
             name,
             tuple(
-                _string(item, field="allowed_types[]")
-                for item in _array(data.get("allowed_types", []), field="allowed_types")
+                _string(item, field="allowed_ship_types[]")
+                for item in _array(
+                    data.get("allowed_ship_types", []), field="allowed_ship_types"
+                )
+            ),
+            tuple(
+                _string(item, field="allowed_annotation_types[]")
+                for item in _array(
+                    data.get("allowed_annotation_types", []),
+                    field="allowed_annotation_types",
+                )
             ),
             tuple(
                 _string(item, field="allowed_block_types[]")
@@ -2167,27 +2468,85 @@ class DiagramNamespace:
     def object_types(self) -> DiagramObjectTypeRegistry:
         return default_diagram_object_types()
 
-    def annotation(self, annotation_id: str) -> DiagramAnnotation:
-        annotation_id = _uuid(annotation_id, field="Annotation.id")
-        path = self.annotations_root / f"{annotation_id}.json"
+    def ship(self, ship_id: str) -> DiagramShip:
+        ship_id = _uuid(ship_id, field="Ship.id")
+        path = self.ships_root / f"{ship_id}.json"
         if not path.is_file():
-            raise DiagramError(f"Diagram Annotation not found: {annotation_id}")
-        return DiagramAnnotation(annotation_id, self, _read_json(path))
+            raise DiagramError(f"Diagram Ship not found: {ship_id}")
+        return DiagramShip(ship_id, self, _read_json(path))
 
-    def annotations(self) -> tuple[DiagramAnnotation, ...]:
+    def ships(self) -> tuple[DiagramShip, ...]:
+        return tuple(
+            DiagramShip(path.stem, self, _read_json(path))
+            for path in sorted(self.ships_root.glob("*.json"))
+        )
+
+    def specialize_ship(self, ship: DiagramShip) -> TypedShip:
+        ship_class = {
+            MODEL_SHIP_TYPE: ModelShipRecord,
+            BLOCK_SHIP_TYPE: BlockShipRecord,
+            LINE_SHIP_TYPE: LineShipRecord,
+        }.get(ship.type)
+        if ship_class is None:
+            raise DiagramShipSpecializationError(
+                f"Ship type is not registered in Namespace {self.name}: {ship.type}"
+            )
+        try:
+            return ship_class(ship)
+        except DiagramModelError as exc:
+            raise DiagramShipSpecializationError(
+                f"Ship {ship.id} cannot be specialized as {ship.type}: {exc}"
+            ) from exc
+
+    def editions(self) -> tuple[DiagramAnnotation, ...]:
+        """Return Ship editions through the legacy projection adapter."""
+
+        annotations: list[DiagramAnnotation] = []
+        for ship in self.ships():
+            try:
+                annotations.extend(ship.specialize().edition_annotations())
+            except DiagramShipSpecializationError:
+                continue
+        return tuple(annotations)
+
+    def _projection_records(self) -> tuple[DiagramAnnotation, ...]:
+        return _sort_annotations((*self.editions(), *self.annotations()))
+
+    def standalone_annotations(self) -> tuple[DiagramAnnotation, ...]:
         return tuple(
             DiagramAnnotation(path.stem, self, _read_json(path))
             for path in sorted(self.annotations_root.glob("*.json"))
         )
 
+    def annotation(self, annotation_id: str) -> DiagramAnnotation:
+        annotation_id = _uuid(annotation_id, field="Annotation.id")
+        path = self.annotations_root / f"{annotation_id}.json"
+        if path.is_file():
+            return DiagramAnnotation(annotation_id, self, _read_json(path))
+        raise DiagramError(f"Diagram Annotation not found: {annotation_id}")
+
+    def edition(self, edition_id: str) -> DiagramAnnotation:
+        """Resolve one Ship edition through the projection adapter."""
+
+        edition_id = _uuid(edition_id, field="Ship.Edition.id")
+        matches = tuple(item for item in self.editions() if item.id == edition_id)
+        if len(matches) == 1:
+            return matches[0]
+        raise DiagramError(f"Diagram Ship edition not found: {edition_id}")
+
+    def annotations(self) -> tuple[DiagramAnnotation, ...]:
+        """Return claims stored in the Namespace's Annotation collection."""
+
+        return _sort_annotations(self.standalone_annotations())
+
     def assertions_for(self, annotation: DiagramAnnotation) -> tuple[JsonObject, ...]:
         if self.name not in CHATLAS_INDEX_NAMESPACES:
             return ()
         typed = self.specialize(annotation)
-        if isinstance(typed, ModelAnnotation):
+        if isinstance(typed, ModelEditionRecord):
             return typed.type_assertions()
         assertions: tuple[JsonObject, ...] = (
-            {"type": "Annotation.Representation.Assertion"},
+            {"type": "Semantic.Record.Representation.Assertion"},
         )
         if isinstance(typed, UserTouchedAnnotation):
             assertions += ({"type": "User.Touch.Support.Assertion"},)
@@ -2201,10 +2560,10 @@ class DiagramNamespace:
     def specialize(self, annotation: DiagramAnnotation) -> TypedAnnotation:
         classes = (
             {
-                MODEL_ANNOTATION_TYPE: ModelAnnotation,
-                BLOCK_ANNOTATION_TYPE: BlockAnnotation,
+                MODEL_EDITION_TYPE: ModelEditionRecord,
+                BLOCK_EDITION_TYPE: BlockEditionRecord,
                 BLOCK_TYPE_ANNOTATION_TYPE: BlockTypeAnnotation,
-                LINE_ANNOTATION_TYPE: LineAnnotation,
+                LINE_EDITION_TYPE: LineEditionRecord,
                 LINE_TYPE_ANNOTATION_TYPE: LineTypeAnnotation,
                 LINE_SUPPORT_ANNOTATION_TYPE: LineSupportAnnotation,
                 LINE_GATE_ANNOTATION_TYPE: LineGateAnnotation,
@@ -2232,12 +2591,14 @@ class DiagramNamespace:
         evidence: ChatlasEvidence | None = None,
     ) -> tuple[Finding, ...]:
         findings: list[Finding] = []
-        built_in_chatlas_types = set(CHATLAS_INDEX_ANNOTATION_TYPES)
-        allowed = annotation.type in self.allowed_types or (
+        built_in_chatlas_types = set(
+            (*CHATLAS_INDEX_EDITION_TYPES, *CHATLAS_INDEX_ANNOTATION_TYPES)
+        )
+        allowed = annotation.type in self.allowed_annotation_types or (
             self.name in CHATLAS_INDEX_NAMESPACES
             and annotation.type in built_in_chatlas_types
         )
-        if self.allowed_types and not allowed:
+        if self.allowed_annotation_types and not allowed:
             findings.append(
                 Finding(
                     "annotation-type-not-allowed",
@@ -2278,27 +2639,85 @@ class DiagramNamespace:
         if assessment.standing == "UnAsserted":
             findings.append(
                 Finding(
-                    "annotation-unasserted",
+                    "semantic-record-unasserted",
                     path,
-                    "Annotation.Score.Vector is missing one or more required Assertion scores.",
+                    "The semantic record is missing one or more required Assertion scores.",
                 )
             )
         return tuple(findings)
 
     def append(
         self,
-        drafts: Iterable[AnnotationDraft],
+        drafts: Iterable[ShipDraft | AnnotationDraft],
         *,
         findings: Iterable[Finding] = (),
         message: str = "diagram: append annotations",
         commit: bool = True,
     ) -> CaptureReceipt:
+        ship_drafts: list[ShipDraft] = []
+        annotation_drafts: list[AnnotationDraft] = []
+        for draft in drafts:
+            if isinstance(draft, ShipDraft):
+                ship_drafts.append(draft)
+            else:
+                annotation_drafts.append(draft)
+        return self._write_records(
+            ship_drafts,
+            annotation_drafts,
+            findings=findings,
+            message=message,
+            commit=commit,
+        )
+
+    def _write_records(
+        self,
+        ships: Iterable[ShipDraft],
+        annotations: Iterable[AnnotationDraft],
+        *,
+        findings: Iterable[Finding] = (),
+        message: str,
+        commit: bool,
+    ) -> CaptureReceipt:
         base_commit = _run_git(self.root, "rev-parse", "HEAD")
         created: list[str] = []
         existing: list[str] = []
-        pending: list[tuple[Path, JsonObject]] = []
+        created_ships: list[str] = []
+        updated_ships: list[str] = []
+        created_editions: list[str] = []
+        existing_editions: list[str] = []
+        created_annotations: list[str] = []
+        existing_annotations: list[str] = []
+        pending: dict[Path, JsonObject] = {}
+        loaded_ships: dict[str, JsonObject | None] = {}
+        for draft in ships:
+            path = self.ships_root / f"{draft.id}.json"
+            current = loaded_ships.get(draft.id)
+            if draft.id not in loaded_ships:
+                current = _read_json(path) if path.exists() else None
+            merged, added, repeated = _merge_ship_record(
+                draft.id,
+                current,
+                draft.record,
+            )
+            loaded_ships[draft.id] = merged
+            created.extend(added)
+            existing.extend(repeated)
+            created_editions.extend(added)
+            existing_editions.extend(repeated)
+            if current is None:
+                created_ships.append(draft.id)
+            elif added:
+                updated_ships.append(draft.id)
+            if current is None or merged != current:
+                pending[path] = merged
+
         claimed: dict[str, JsonObject] = {}
-        for draft in drafts:
+        for draft in annotations:
+            if draft.record.get("type") in CHATLAS_INDEX_EDITION_TYPES:
+                raise DiagramError(
+                    "Diagram Ship editions cannot be stored in annotations/: "
+                    f"{draft.id}"
+                )
             if draft.id in claimed:
                 if claimed[draft.id] != draft.record:
                     raise DiagramError(
@@ -2313,16 +2732,19 @@ class DiagramNamespace:
                         f"Diagram Annotation identity cannot be rebound: {draft.id}"
                     )
                 existing.append(draft.id)
+                existing_annotations.append(draft.id)
             else:
-                pending.append((path, {**draft.record, "recorded_at": _timestamp()}))
-        for path, record in pending:
+                pending[path] = {**draft.record, "recorded_at": _timestamp()}
+                created_annotations.append(draft.id)
+        for path, record in pending.items():
             atomic_write_json(path, record, ensure_ascii=False)
-            created.append(path.stem)
+            if path.parent == self.annotations_root:
+                created.append(path.stem)
         committed = bool(pending) and commit
         if committed:
             _commit_paths(
                 self.root,
-                (path.relative_to(self.root) for path, _ in pending),
+                (path.relative_to(self.root) for path in pending),
                 message=message,
             )
         return CaptureReceipt(
@@ -2333,47 +2755,65 @@ class DiagramNamespace:
             committed,
             base_commit,
             _run_git(self.root, "rev-parse", "HEAD") if committed else None,
+            tuple(dict.fromkeys(created_ships)),
+            tuple(dict.fromkeys(updated_ships)),
+            tuple(created_editions),
+            tuple(existing_editions),
+            tuple(created_annotations),
+            tuple(existing_annotations),
         )
 
     def create_model(
         self, *, model_ship: str | None = None, label: str | None = None
     ) -> DiagramModel:
         ship = model_ship or str(uuid4())
-        draft = AnnotationDraft(
-            str(uuid4()),
+        edition_id = str(uuid4())
+        draft = ShipDraft(
+            ship,
             {
-                "type": MODEL_ANNOTATION_TYPE,
-                "model_ship": ship,
-                "data": {"label": label} if label else {},
+                "type": MODEL_SHIP_TYPE,
+                "editions": [
+                    {
+                        "id": edition_id,
+                        "data": {"label": label} if label else {},
+                    }
+                ],
             },
         )
-        self.append((draft,), message="diagram(model): create")
-        return DiagramModel(ship, self, draft.id)
+        self._write_records(
+            (draft,),
+            (),
+            message="diagram(model): create",
+            commit=True,
+        )
+        return DiagramModel(ship, self, edition_id)
 
     def model(self, model_ship: str) -> DiagramModel:
         ship = _uuid(model_ship, field="Model.ship")
-        roots = [
-            item
-            for item in self.annotations()
-            if item.type == MODEL_ANNOTATION_TYPE
-            and item.record.get("model_ship") == ship
-        ]
-        if len(roots) != 1:
+        try:
+            typed = self.ship(ship).specialize()
+        except (DiagramError, DiagramShipSpecializationError) as exc:
+            raise DiagramError(
+                f"Diagram Model does not resolve uniquely in Namespace {self.name}: {ship}"
+            ) from exc
+        if not isinstance(typed, ModelShipRecord) or not typed.editions:
             raise DiagramError(
                 f"Diagram Model does not resolve uniquely in Namespace {self.name}: {ship}"
             )
-        return DiagramModel(ship, self, roots[0].id)
+        return DiagramModel(ship, self, _edition_id(typed.editions[-1]))
 
     def models(self) -> tuple[DiagramModel, ...]:
-        return tuple(
-            DiagramModel(
-                _uuid(item.record.get("model_ship"), field="Model.ship"),
-                self,
-                item.id,
-            )
-            for item in self.annotations()
-            if item.type == MODEL_ANNOTATION_TYPE
-        )
+        result: list[DiagramModel] = []
+        for ship in self.ships():
+            try:
+                typed = ship.specialize()
+            except DiagramShipSpecializationError:
+                continue
+            if isinstance(typed, ModelShipRecord) and typed.editions:
+                result.append(
+                    DiagramModel(ship.id, self, _edition_id(typed.editions[-1]))
+                )
+        return tuple(result)
 
     def apply(
         self,
@@ -2383,18 +2823,24 @@ class DiagramNamespace:
         commit: bool = True,
     ) -> CaptureReceipt:
         self.model(manifest.model_ship)
-        return self.append(
-            manifest.annotations,
+        ship_drafts = list(manifest.ships)
+        annotation_drafts = list(manifest.annotations)
+        count = len(ship_drafts) + len(annotation_drafts)
+        return self._write_records(
+            ship_drafts,
+            annotation_drafts,
             findings=manifest.check(self, evidence=evidence),
-            message=f"diagram(capture): add {len(manifest.annotations)} annotation(s)",
+            message=f"diagram(capture): apply {count} record(s)",
             commit=commit,
         )
 
     def model_annotations(self, model_ship: str) -> tuple[DiagramAnnotation, ...]:
+        """Return projection inputs for one Model, including Ship editions."""
+
         ship = _uuid(model_ship, field="Model.ship")
         direct = tuple(
             item
-            for item in self.annotations()
+            for item in self._projection_records()
             if isinstance(item.record.get("location"), dict)
             and item.record["location"].get("model_ship") == ship
         )
@@ -2431,7 +2877,7 @@ class DiagramNamespace:
         ship = _uuid(block_ship, field="Block.ship")
         direct = tuple(
             item
-            for item in self.annotations()
+            for item in self._projection_records()
             if isinstance(item.record.get("location"), dict)
             and item.record["location"].get("block_ship") == ship
         )
@@ -2445,16 +2891,16 @@ class DiagramNamespace:
             item
             for item in self.annotations()
             if item.type == LINE_GATE_ANNOTATION_TYPE
-            and item.record.get("target_annotation") in direct_ids
+            and item.record.get("target_edition") in direct_ids
         )
         return (*direct, *gates)
 
     def line(self, line_ship: str) -> tuple[TypedAnnotation, ...]:
         ship = _uuid(line_ship, field="Line.ship")
         result: list[TypedAnnotation] = []
-        for annotation in self.annotations():
+        for annotation in self._projection_records():
             if annotation.type in (
-                LINE_ANNOTATION_TYPE,
+                LINE_EDITION_TYPE,
                 LINE_TYPE_ANNOTATION_TYPE,
                 LINE_SUPPORT_ANNOTATION_TYPE,
                 LINE_GATE_ANNOTATION_TYPE,
@@ -2464,7 +2910,7 @@ class DiagramNamespace:
                     isinstance(
                         typed,
                         (
-                            LineAnnotation,
+                            LineEditionRecord,
                             LineTypeAnnotation,
                             LineSupportAnnotation,
                             LineGateAnnotation,
@@ -2484,13 +2930,13 @@ class DiagramNamespace:
     ) -> LineReview:
         ship = _uuid(line_ship, field="Line.ship")
         annotations = self.line(ship)
-        if not any(isinstance(item, LineAnnotation) for item in annotations):
+        if not any(isinstance(item, LineEditionRecord) for item in annotations):
             raise DiagramError(f"Diagram Line not found: {ship}")
         engine = assertion_engine or self.assertion_engine(evidence=evidence)
         assessments = tuple(
             gate_assessment
             for item in annotations
-            if isinstance(item, (LineAnnotation, LineGateAnnotation))
+            if isinstance(item, (LineEditionRecord, LineGateAnnotation))
             for gate_assessment in engine.assess(item).gate_assessments
         )
         findings = tuple(
@@ -2518,10 +2964,31 @@ class DiagramNamespace:
 class DiagramModel:
     ship: str
     namespace: DiagramNamespace
-    root_annotation_id: str
+    current_edition_id: str
+
+    @property
+    def record(self) -> ModelShipRecord:
+        ship = self.namespace.ship(self.ship).specialize()
+        if not isinstance(ship, ModelShipRecord):
+            raise DiagramError(f"Diagram Model Ship has the wrong type: {self.ship}")
+        return ship
 
     def annotations(self) -> tuple[DiagramAnnotation, ...]:
+        return tuple(
+            annotation
+            for annotation in self.namespace.model_annotations(self.ship)
+            if (self.namespace.annotations_root / f"{annotation.id}.json").is_file()
+        )
+
+    def projection_records(self) -> tuple[DiagramAnnotation, ...]:
         return self.namespace.model_annotations(self.ship)
+
+    def ships(self) -> tuple[DiagramShip, ...]:
+        return tuple(
+            ship
+            for ship in self.namespace.ships()
+            if ship.id == self.ship or ship.record.get("model_ship") == self.ship
+        )
 
     def project(self) -> DiagramProjection:
         return self.namespace.project(self.ship)
@@ -2550,7 +3017,7 @@ class DiagramConfiguration:
                 resolved,
                 {
                     "class": DIAGRAM_CONFIG_CLASS,
-                    "schema_version": SCHEMA_VERSION,
+                    "schema_version": CONFIG_SCHEMA_VERSION,
                     "namespace_locations": [],
                     "default_namespace_id": None,
                 },
@@ -2558,7 +3025,7 @@ class DiagramConfiguration:
         data = _read_json(resolved)
         if (
             data.get("class") != DIAGRAM_CONFIG_CLASS
-            or data.get("schema_version") != SCHEMA_VERSION
+            or data.get("schema_version") != CONFIG_SCHEMA_VERSION
         ):
             raise DiagramError(f"Diagram configuration is invalid: {resolved}")
         default = data.get("default_namespace_id")
@@ -2588,7 +3055,7 @@ class DiagramConfiguration:
             self.path,
             {
                 "class": DIAGRAM_CONFIG_CLASS,
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": CONFIG_SCHEMA_VERSION,
                 "namespace_locations": [str(item) for item in locations],
                 "default_namespace_id": default_id,
             },
@@ -2634,25 +3101,56 @@ class Diagram:
     ) -> DiagramAnnotation:
         if namespace:
             return self.namespace(namespace).annotation(annotation_id)
+        matches: list[DiagramAnnotation] = []
+        for space in self.namespaces:
+            try:
+                matches.append(space.annotation(annotation_id))
+            except DiagramError:
+                pass
+        if len(matches) != 1:
+            raise DiagramError(
+                f"Diagram Annotation does not resolve uniquely: {annotation_id}"
+            )
+        return matches[0]
+
+    def edition(
+        self, edition_id: str, *, namespace: str | None = None
+    ) -> DiagramAnnotation:
+        if namespace:
+            return self.namespace(namespace).edition(edition_id)
+        matches: list[DiagramAnnotation] = []
+        for space in self.namespaces:
+            try:
+                matches.append(space.edition(edition_id))
+            except DiagramError:
+                pass
+        if len(matches) != 1:
+            raise DiagramError(
+                f"Diagram Ship edition does not resolve uniquely: {edition_id}"
+            )
+        return matches[0]
+
+    def ship(self, ship_id: str, *, namespace: str | None = None) -> DiagramShip:
+        if namespace:
+            return self.namespace(namespace).ship(ship_id)
         matches = [
-            space.annotation(annotation_id)
+            space.ship(ship_id)
             for space in self.namespaces
-            if (space.annotations_root / f"{annotation_id}.json").is_file()
+            if (space.ships_root / f"{ship_id}.json").is_file()
         ]
-        if not matches:
-            raise DiagramError(f"Diagram Annotation not found: {annotation_id}")
+        if len(matches) != 1:
+            raise DiagramError(f"Diagram Ship does not resolve uniquely: {ship_id}")
         return matches[0]
 
     def model(self, model_ship: str) -> DiagramModel:
-        matches = []
+        matches: list[DiagramModel] = []
         for space in self.namespaces:
-            roots = [
-                item
-                for item in space.annotations()
-                if item.type == MODEL_ANNOTATION_TYPE
-                and item.record.get("model_ship") == model_ship
-            ]
-            matches.extend(DiagramModel(model_ship, space, item.id) for item in roots)
+            if not (space.ships_root / f"{model_ship}.json").is_file():
+                continue
+            try:
+                matches.append(space.model(model_ship))
+            except DiagramError:
+                pass
         if len(matches) != 1:
             raise DiagramError(f"Diagram Model does not resolve uniquely: {model_ship}")
         return matches[0]
@@ -2730,7 +3228,9 @@ class Diagram:
         spaces = (self.namespace(namespace),) if namespace else self.namespaces
         matches = []
         for space in spaces:
-            if any(isinstance(item, LineAnnotation) for item in space.line(line_ship)):
+            if any(
+                isinstance(item, LineEditionRecord) for item in space.line(line_ship)
+            ):
                 matches.append(space)
         if len(matches) != 1:
             raise DiagramError(f"Diagram Line does not resolve uniquely: {line_ship}")
@@ -2785,7 +3285,65 @@ class Diagram:
 
 
 def _semantic_record(record: Mapping[str, Any]) -> JsonObject:
-    return {key: value for key, value in record.items() if key != "recorded_at"}
+    return {
+        key: value
+        for key, value in record.items()
+        if key not in {"recorded_at", "updated_at"}
+    }
+
+
+def _merge_ship_record(
+    ship_id: str,
+    current: JsonObject | None,
+    incoming: Mapping[str, Any],
+) -> tuple[JsonObject, tuple[str, ...], tuple[str, ...]]:
+    _uuid(ship_id, field="Ship.id")
+    proposed = dict(incoming)
+    _string(proposed.get("type"), field="Ship.type")
+    proposed_editions = tuple(
+        _object(item, field="Ship.editions[]")
+        for item in _array(proposed.pop("editions", []), field="Ship.editions")
+    )
+    _validate_editions(proposed_editions, field="Ship.editions")
+    proposed_base = _semantic_record(proposed)
+    now = _timestamp()
+    if current is None:
+        merged = {**proposed_base, "recorded_at": now, "editions": []}
+        known_editions: dict[str, JsonObject] = {}
+    else:
+        current_base = _semantic_record(
+            {key: value for key, value in current.items() if key != "editions"}
+        )
+        if current_base != proposed_base:
+            raise DiagramError(f"Diagram Ship identity cannot be rebound: {ship_id}")
+        merged = dict(current)
+        known_editions = {
+            _edition_id(edition): edition
+            for item in _array(current.get("editions", []), field="Ship.editions")
+            for edition in (_object(item, field="Ship.editions[]"),)
+        }
+    added: list[str] = []
+    repeated: list[str] = []
+    editions = list(known_editions.values())
+    for edition in proposed_editions:
+        edition_id = _edition_id(edition)
+        prior = known_editions.get(edition_id)
+        if prior is not None:
+            if _semantic_record(prior) != _semantic_record(edition):
+                raise DiagramError(
+                    f"Diagram Ship edition identity cannot be rebound: {edition_id}"
+                )
+            repeated.append(edition_id)
+            continue
+        retained = dict(edition)
+        retained.setdefault("recorded_at", now)
+        editions.append(retained)
+        known_editions[edition_id] = retained
+        added.append(edition_id)
+    merged["editions"] = editions
+    if current is not None and added:
+        merged["updated_at"] = now
+    return merged, tuple(added), tuple(repeated)
 
 
 def _verbatim_gates(value: object) -> tuple[VerbatimGate, ...]:
@@ -2798,7 +3356,7 @@ def _assess_verbatim_gates(
     *,
     annotation_id: str,
     target_id: str,
-    target: LineAnnotation | None,
+    target: LineEditionRecord | None,
     gates: tuple[VerbatimGate, ...],
     evidence: ChatlasEvidence | None,
     path: str,
@@ -2854,7 +3412,7 @@ def _assess_verbatim_gate(
     *,
     evidence: ChatlasEvidence,
     annotation_id: str,
-    target: LineAnnotation,
+    target: LineEditionRecord,
     gate: VerbatimGate,
     path: str,
 ) -> GateAssessment:
@@ -2995,6 +3553,23 @@ def _canonical_review_content(text: str) -> str:
     return "".join(character for character in normalized if not character.isspace())
 
 
+def _edition_id(edition: Mapping[str, object]) -> str:
+    return _uuid(edition.get("id"), field="Ship.Edition.id")
+
+
+def _validate_editions(editions: Iterable[Mapping[str, object]], *, field: str) -> None:
+    seen: set[str] = set()
+    for index, edition in enumerate(editions):
+        edition_id = _edition_id(edition)
+        if edition_id in seen:
+            raise DiagramModelError(f"{field}[{index}].id is duplicated")
+        seen.add(edition_id)
+
+
+def _edition_payload(edition: Mapping[str, object]) -> JsonObject:
+    return {key: value for key, value in edition.items() if key != "id"}
+
+
 def _object(value: object, *, field: str) -> JsonObject:
     if not isinstance(value, dict):
         raise DiagramModelError(f"{field} must be an object")
@@ -3093,19 +3668,25 @@ __all__ = [
         "LineReview",
         "SupportMember",
         "SupportSet",
+        "ShipDraft",
+        "TypedShip",
+        "ModelShipRecord",
+        "BlockShipRecord",
+        "LineShipRecord",
         "TypedAnnotation",
         "UserTouchedAnnotation",
-        "BlockAnnotation",
+        "BlockEditionRecord",
         "BlockTypeAnnotation",
-        "LineAnnotation",
+        "LineEditionRecord",
         "LineGateAnnotation",
         "LineSupportAnnotation",
         "LineTypeAnnotation",
-        "ModelAnnotation",
+        "ModelEditionRecord",
         "MechanicalAssertionEvaluator",
         "VerbatimGate",
         "VerbatimGateAssertionEvaluator",
-        "BLOCK_ANNOTATION_TYPE",
+        "BLOCK_EDITION_TYPE",
+        "BLOCK_SHIP_TYPE",
         "BLOCK_TYPE_ANNOTATION_TYPE",
         "DIAGRAM_BLOCK_OBJECT_TYPE",
         "DIAGRAM_LINE_OBJECT_TYPE",
@@ -3122,11 +3703,13 @@ __all__ = [
         "ISSUE_BLOCK_OBJECT_TYPE",
         "ISSUE_LINE_RESOLVE_TYPE",
         "DIAGRAM_ATTIC",
-        "LINE_ANNOTATION_TYPE",
+        "LINE_EDITION_TYPE",
+        "LINE_SHIP_TYPE",
         "LINE_GATE_ANNOTATION_TYPE",
         "LINE_SUPPORT_ANNOTATION_TYPE",
         "LINE_TYPE_ANNOTATION_TYPE",
-        "MODEL_ANNOTATION_TYPE",
+        "MODEL_EDITION_TYPE",
+        "MODEL_SHIP_TYPE",
         "USER_TOUCHED_CHATLAS_INDEX",
         "VERBATIM_GATE_TYPE",
         "ImplReqBlock",

@@ -6,18 +6,16 @@ from uuid import uuid4
 
 from tarav.cli.cli import main
 from tarav.diagram import (
-    BLOCK_ANNOTATION_TYPE,
+    BLOCK_SHIP_TYPE,
     DESIGN_BLOCK_OBJECT_TYPE,
     DESIGN_LINE_PRINCIPLE_TYPE,
-    LINE_ANNOTATION_TYPE,
-    AnnotationDraft,
+    LINE_SHIP_TYPE,
     CaptureManifest,
     ChatlasEvidence,
     Diagram,
-    DiagramBlockLocation,
     DiagramConfiguration,
-    DiagramLocation,
     DiagramNamespace,
+    ShipDraft,
 )
 from tarav.diagram import view_commands
 from tarav.diagram import views
@@ -45,6 +43,43 @@ AGENT_REF = {
 }
 
 
+def _block(model_ship: str, block_ship: str, label: str) -> ShipDraft:
+    return ShipDraft(
+        block_ship,
+        {
+            "type": BLOCK_SHIP_TYPE,
+            "model_ship": model_ship,
+            "editions": [
+                {
+                    "id": str(uuid4()),
+                    "block_type": DESIGN_BLOCK_OBJECT_TYPE,
+                    "data": {"label": label},
+                }
+            ],
+        },
+    )
+
+
+def _line(model_ship: str, block_ship: str, line_ship: str, text: str) -> ShipDraft:
+    return ShipDraft(
+        line_ship,
+        {
+            "type": LINE_SHIP_TYPE,
+            "model_ship": model_ship,
+            "block_ship": block_ship,
+            "editions": [
+                {
+                    "id": str(uuid4()),
+                    "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
+                    "producer": AGENT_REF,
+                    "support": [{"root": REF, "neighborhood": []}],
+                    "data": {"text": text},
+                }
+            ],
+        },
+    )
+
+
 def _diagram(tmp_path: Path):
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model(label="Tarav")
@@ -53,51 +88,19 @@ def _diagram(tmp_path: Path):
     first_line = str(uuid4())
     second_line = str(uuid4())
     drafts = (
-        AnnotationDraft(
-            str(uuid4()),
-            {
-                "type": BLOCK_ANNOTATION_TYPE,
-                "block_type": DESIGN_BLOCK_OBJECT_TYPE,
-                "location": DiagramBlockLocation(model.ship, context_block).to_dict(),
-                "data": {"label": "Context.Provider"},
-            },
+        _block(model.ship, context_block, "Context.Provider"),
+        _block(model.ship, provider_block, "Diagram.View"),
+        _line(
+            model.ship,
+            provider_block,
+            first_line,
+            "Diagram.View is operated through Context.Provider mechanics.",
         ),
-        AnnotationDraft(
-            str(uuid4()),
-            {
-                "type": BLOCK_ANNOTATION_TYPE,
-                "block_type": DESIGN_BLOCK_OBJECT_TYPE,
-                "location": DiagramBlockLocation(model.ship, provider_block).to_dict(),
-                "data": {"label": "Diagram.View"},
-            },
-        ),
-        AnnotationDraft(
-            str(uuid4()),
-            {
-                "type": LINE_ANNOTATION_TYPE,
-                "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
-                "producer": AGENT_REF,
-                "support": [{"root": REF, "neighborhood": []}],
-                "location": DiagramLocation(
-                    model.ship, provider_block, first_line
-                ).to_dict(),
-                "data": {
-                    "text": "Diagram.View is operated through Context.Provider mechanics."
-                },
-            },
-        ),
-        AnnotationDraft(
-            str(uuid4()),
-            {
-                "type": LINE_ANNOTATION_TYPE,
-                "line_type": DESIGN_LINE_PRINCIPLE_TYPE,
-                "producer": AGENT_REF,
-                "support": [{"root": REF, "neighborhood": []}],
-                "location": DiagramLocation(
-                    model.ship, provider_block, second_line
-                ).to_dict(),
-                "data": {"text": "Agents select the context they need."},
-            },
+        _line(
+            model.ship,
+            provider_block,
+            second_line,
+            "Agents select the context they need.",
         ),
     )
     namespace.apply(CaptureManifest(model.ship, drafts))
@@ -209,8 +212,7 @@ def test_session_view_peer_hints_expose_related_selections(tmp_path: Path) -> No
     assert hints[0]["view_ship"] == second.ship
     assert hints[0]["shared_models"] == [model.ship]
     assert any(
-        block["block_ship"] == provider_block
-        for block in hints[0]["selected_blocks"]
+        block["block_ship"] == provider_block for block in hints[0]["selected_blocks"]
     )
 
 
@@ -441,21 +443,7 @@ def test_view_check_surfaces_stale_source_until_sync(tmp_path: Path) -> None:
     diagram, model, _, provider_block, _, _ = _diagram(tmp_path)
     repository = DiagramViewRepository.create(tmp_path / "views")
     view = repository.create_view(diagram, model_ships=(model.ship,)).view
-    model.namespace.append(
-        (
-            AnnotationDraft(
-                str(uuid4()),
-                {
-                    "type": BLOCK_ANNOTATION_TYPE,
-                    "block_type": DESIGN_BLOCK_OBJECT_TYPE,
-                    "location": DiagramBlockLocation(
-                        model.ship, str(uuid4())
-                    ).to_dict(),
-                    "data": {"label": "New.Block"},
-                },
-            ),
-        )
-    )
+    model.namespace.append((_block(model.ship, str(uuid4()), "New.Block"),))
 
     assert {item.code for item in view.check(diagram)} == {"diagram-view-source-stale"}
 

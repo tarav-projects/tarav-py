@@ -10,7 +10,7 @@ from typing import Any
 from . import (
     AnnotationAssessment,
     AssertionEngine,
-    BlockAnnotation,
+    BlockEditionRecord,
     ChatlasEvidence,
     Diagram,
     DiagramAnnotation,
@@ -20,7 +20,7 @@ from . import (
     DiagramModel,
     Finding,
     IssueBlock,
-    LineAnnotation,
+    LineEditionRecord,
     LineGateAnnotation,
     TypedAnnotation,
     UserTouchedAnnotation,
@@ -248,29 +248,23 @@ def _render_line(
     line = target.subject
     if not isinstance(line, DiagramLineShip):
         raise DiagramRenderError("Line renderer received another target")
-    wordings = [item for item in line.annotations if isinstance(item, LineAnnotation)]
+    wordings = [
+        item for item in line.annotations if isinstance(item, LineEditionRecord)
+    ]
     if not wordings:
         raise DiagramRenderError(f"Diagram Line has no wording: {target.identity}")
     findings: list[Finding] = list(line.findings)
-    ambiguous = len(wordings) > 1
-    if ambiguous:
-        findings.append(
-            Finding(
-                "line-rendering-selection-ambiguous",
-                "target.line",
-                "Line has several wording Annotations and no selected edition; all variants were rendered.",
-            )
-        )
+    current_wording = _sort_typed(wordings)[-1]
     sections: list[str] = []
     any_reviewed = False
     typed_annotations = line.annotations
-    for wording in _sort_typed(wordings):
+    for wording in (current_wording,):
         annotation_assessment = context.assertions.assess(wording)
         assessments = annotation_assessment.gate_assessments
         for gate_annotation in typed_annotations:
             if (
                 isinstance(gate_annotation, LineGateAnnotation)
-                and gate_annotation.target_annotation_id == wording.id
+                and gate_annotation.target_edition_id == wording.id
             ):
                 assessments = (
                     *assessments,
@@ -289,7 +283,7 @@ def _render_line(
         marker = _annotation_marker(
             wording.annotation,
             assessment=annotation_assessment,
-            ambiguous=ambiguous,
+            ambiguous=False,
             review_standing=review_standing,
         )
         line_type = next(
@@ -354,18 +348,18 @@ def _render_block(
     if not isinstance(projection, DiagramBlock):
         raise DiagramRenderError("Block renderer received another target")
     blocks = [
-        item for item in projection.annotations if isinstance(item, BlockAnnotation)
+        item for item in projection.annotations if isinstance(item, BlockEditionRecord)
     ]
     findings: list[Finding] = list(projection.findings)
-    if len(blocks) == 1:
-        label = blocks[0].label
+    if blocks:
+        label = _sort_typed(blocks)[-1].label
     else:
         label = f"Block.{projection.ship[:8]}"
         findings.append(
             Finding(
                 "block-label-selection-unresolved",
                 "target.block",
-                "Block does not have exactly one label Annotation.",
+                "Block has no label edition.",
             )
         )
     sections = [f"{'#' * heading_level} {label}"]
@@ -378,7 +372,7 @@ def _render_block(
             Finding(
                 "block-has-no-lines",
                 "target.block",
-                "Block contains no Line wording Annotations.",
+                "Block contains no Line editions.",
             )
         )
     rendered_lines: list[str] = []
@@ -400,7 +394,7 @@ def _kernel_model(
     model = target.subject
     if not isinstance(model, DiagramModel):
         raise DiagramRenderError("Model renderer received another target")
-    root = model.namespace.annotation(model.root_annotation_id)
+    root = model.namespace.edition(model.current_edition_id)
     data = root.record.get("data")
     label = data.get("label") if isinstance(data, dict) else None
     title = label if isinstance(label, str) and label else f"Model.{model.ship[:8]}"
@@ -424,7 +418,7 @@ def _kernel_model(
             Finding(
                 "model-has-no-blocks",
                 "target.model",
-                "Model contains no Block Annotations.",
+                "Model contains no Block Ships.",
             )
         )
     return "\n\n".join(sections), _dedupe_findings(findings)

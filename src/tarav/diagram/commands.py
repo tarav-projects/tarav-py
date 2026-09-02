@@ -20,6 +20,7 @@ from . import (
     DiagramError,
     DiagramModelError,
     DiagramNamespace,
+    LINE_EDITION_TYPE,
     USER_TOUCHED_CHATLAS_INDEX,
 )
 from .rendering import (
@@ -57,10 +58,9 @@ def _emit(
 
 
 def _diagram_evidence(args: argparse.Namespace) -> ChatlasEvidence:
+    chatlas_root = getattr(args, "chatlas_root", None)
     root = (
-        Path(args.chatlas_root).expanduser().resolve()
-        if args.chatlas_root is not None
-        else None
+        Path(chatlas_root).expanduser().resolve() if chatlas_root is not None else None
     )
     return ChatlasEvidence(chatlas_root=root)
 
@@ -198,9 +198,10 @@ def _model_payload(model, *, diagram=None) -> dict[str, object]:
         "ship": model.ship,
         "namespace_id": model.namespace.id,
         "namespace_name": model.namespace.name,
-        "root_annotation_id": model.root_annotation_id,
+        "current_edition_id": model.current_edition_id,
         "object_types": object_types_payload,
         "projection": projection.to_dict(),
+        "ships": [_ship_payload(ship) for ship in model.ships()],
         "annotations": [
             _annotation_payload(annotation) for annotation in model.annotations()
         ],
@@ -222,6 +223,7 @@ def _cmd_diagram_model_show(args: argparse.Namespace) -> int:
         (
             f"model: {model.ship}",
             f"namespace: {model.namespace.name}",
+            f"ships: {len(model.ships())}",
             f"annotations: {len(model.annotations())}",
         ),
     )
@@ -242,7 +244,7 @@ def _cmd_diagram_model_list(args: argparse.Namespace) -> int:
             "models": payload,
         },
         tuple(
-            f"{model.ship}  {model.namespace.name}  {len(model.annotations())} annotations"
+            f"{model.ship}  {model.namespace.name}  {len(model.ships())} ships"
             for model in models
         ),
     )
@@ -416,8 +418,12 @@ def _cmd_diagram_capture_apply(args: argparse.Namespace) -> int:
         payload,
         (
             f"namespace: {receipt.namespace_id}",
-            f"created: {len(receipt.created)}",
-            f"existing: {len(receipt.existing)}",
+            f"created ships: {len(receipt.created_ships)}",
+            f"updated ships: {len(receipt.updated_ships)}",
+            f"created editions: {len(receipt.created_editions)}",
+            f"existing editions: {len(receipt.existing_editions)}",
+            f"created annotations: {len(receipt.created_annotations)}",
+            f"existing annotations: {len(receipt.existing_annotations)}",
             f"findings: {len(receipt.findings)}",
             f"committed: {'yes' if receipt.committed else 'no'}",
             f"commit: {receipt.commit or '-'}",
@@ -440,6 +446,35 @@ def _annotation_payload(annotation, assessment=None) -> dict[str, object]:
         if assessment is not None
         else annotation.standing,
     }
+
+
+def _ship_payload(ship) -> dict[str, object]:
+    return {
+        "id": ship.id,
+        **ship.to_record(),
+    }
+
+
+def _cmd_diagram_ship_show(args: argparse.Namespace) -> int:
+    try:
+        diagram = _diagram_configuration(args.diagram_config).diagram()
+        ship = diagram.ship(args.ship, namespace=args.namespace)
+    except (DiagramError, DiagramModelError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    return _emit(
+        args,
+        {
+            "status": "ok",
+            "command": "tarav diagram ship show",
+            "namespace_id": ship.namespace.id,
+            "ship": _ship_payload(ship),
+        },
+        (
+            f"ship: {ship.id}",
+            f"type: {ship.type}",
+            f"editions: {len(ship.record.get('editions', []))}",
+        ),
+    )
 
 
 def _cmd_diagram_annotation_show(args: argparse.Namespace) -> int:
@@ -479,13 +514,19 @@ def _cmd_diagram_line_show(args: argparse.Namespace) -> int:
         assertions = diagram.assertion_engine(evidence=_diagram_evidence(args))
     except (DiagramError, DiagramModelError, ValueError) as exc:
         raise CliError(str(exc)) from exc
+    editions = tuple(item for item in annotations if item.type == LINE_EDITION_TYPE)
+    claims = tuple(item for item in annotations if item.type != LINE_EDITION_TYPE)
     payload = {
         "status": "ok",
         "command": "tarav diagram line show",
         "line_ship": args.line_ship,
+        "editions": [
+            _annotation_payload(edition.annotation, assertions.assess(edition))
+            for edition in editions
+        ],
         "annotations": [
             _annotation_payload(annotation.annotation, assertions.assess(annotation))
-            for annotation in annotations
+            for annotation in claims
         ],
     }
     return _emit(
@@ -493,7 +534,8 @@ def _cmd_diagram_line_show(args: argparse.Namespace) -> int:
         payload,
         (
             f"line: {args.line_ship}",
-            f"annotations: {len(annotations)}",
+            f"editions: {len(editions)}",
+            f"annotations: {len(claims)}",
         ),
     )
 
@@ -606,7 +648,7 @@ def _add_diagram_model_selector(parser: argparse.ArgumentParser) -> None:
 def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     diagram = subparsers.add_parser(
         "diagram",
-        help="Capture grounded semantic Annotations over Chatlas turns.",
+        help="Maintain typed semantic Ships and grounded Annotations.",
     )
     diagram_commands = diagram.add_subparsers(
         dest="diagram_command",
@@ -671,7 +713,7 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     model = diagram_commands.add_parser("model", help="Inspect Diagram Models.")
     model_commands = model.add_subparsers(dest="diagram_model_command", required=True)
     model_show = model_commands.add_parser(
-        "show", help="Show one Model projection and its Annotations."
+        "show", help="Show one Model, its Ships, Annotations, and projection."
     )
     _add_diagram_model_selector(model_show)
     _add_diagram_config_option(model_show)
@@ -684,9 +726,7 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_diagram_config_option(model_list)
     _add_json_option(model_list)
     model_list.set_defaults(handler=_cmd_diagram_model_list)
-    model_create = model_commands.add_parser(
-        "create", help="Create one Model root Annotation."
-    )
+    model_create = model_commands.add_parser("create", help="Create one Model Ship.")
     model_create.add_argument(
         "--namespace", help="Namespace id or name; defaults to the configured default."
     )
@@ -756,18 +796,34 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
 
     capture_apply = capture_commands.add_parser(
         "apply",
-        help="Apply all structurally representable Annotations and report POIs.",
+        help="Apply structurally representable Ships and Annotations; report POIs.",
     )
     capture_apply.add_argument("--manifest", required=True, help="Capture JSON path.")
     capture_apply.add_argument(
         "--no-commit",
         action="store_true",
-        help="Write Annotation records without creating a Namespace Git commit.",
+        help="Write records without creating a Namespace Git commit.",
     )
     _add_diagram_config_option(capture_apply)
     _add_chatlas_root_option(capture_apply)
     _add_json_option(capture_apply)
     capture_apply.set_defaults(handler=_cmd_diagram_capture_apply)
+
+    ship = diagram_commands.add_parser("ship", help="Inspect semantic Ships.")
+    ship_commands = ship.add_subparsers(
+        dest="diagram_ship_command",
+        required=True,
+    )
+    ship_show = ship_commands.add_parser(
+        "show", help="Show one typed Ship and its ordered editions."
+    )
+    ship_show.add_argument("--ship", required=True, help="Ship UUID.")
+    ship_show.add_argument(
+        "--namespace", help="Namespace id or name; otherwise use load order."
+    )
+    _add_diagram_config_option(ship_show)
+    _add_json_option(ship_show)
+    ship_show.set_defaults(handler=_cmd_diagram_ship_show)
 
     annotation = diagram_commands.add_parser(
         "annotation",
