@@ -131,7 +131,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
         {
             "view_ship": view.ship,
             "view_type": view.view_type,
-            "annotation_id": view.annotation_id,
+            "manifest_id": view.manifest_id,
             "scope": [item.to_dict() for item in view.scopes],
             "about": view.about,
             "edition": view.edition(),

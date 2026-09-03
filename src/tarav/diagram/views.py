@@ -27,13 +27,13 @@ from . import (
 
 
 VIEW_REPOSITORY_CLASS = "Tarav.Diagram.View.Repository"
-VIEW_MANIFEST_TYPE = "Diagram.View.Annotation"
+VIEW_MANIFEST_TYPE = "Diagram.View.Manifest"
 VIEW_CLASS = "Tarav.Diagram.View"
 DIAGRAM_VIEW_TYPE = "Diagram.View"
 SESSION_DIAGRAM_VIEW_TYPE = "Session.Diagram.View"
 PROJECT_DIAGRAM_VIEW_TYPE = "Project.Diagram.View"
 VIEW_CONFIGURATION_CLASS = "Tarav.Diagram.View.Configuration"
-VIEW_SCHEMA_VERSION = 1
+VIEW_SCHEMA_VERSION = 2
 VIEW_REPOSITORY_FILENAME = "repository.json"
 DISCLOSURE_LEVELS = ("collapsed", "lines", "support", "deep-support")
 JsonObject = dict[str, Any]
@@ -197,7 +197,7 @@ class DiagramView:
         return _uuid(self.manifest.get("view_ship"), field="View.view_ship")
 
     @property
-    def annotation_id(self) -> str:
+    def manifest_id(self) -> str:
         return _uuid(self.manifest.get("id"), field="View.id")
 
     @property
@@ -321,6 +321,17 @@ class DiagramView:
                     )
                 for line_index, line_value in enumerate(rendered):
                     line = _object(line_value, field="View.Line")
+                    for edition_index, edition_value in enumerate(
+                        _array(line.get("editions", []), field="View.Line.editions")
+                    ):
+                        edition = _object(edition_value, field="View.Line.Edition")
+                        _uuid(
+                            edition.get("edition_id"),
+                            field=(
+                                f"View.blocks[{index}].disclosure.lines[{line_index}]"
+                                f".editions[{edition_index}].edition_id"
+                            ),
+                        )
                     for raw_finding in _array(
                         line.get("materialization_findings", []),
                         field="materialization_findings",
@@ -1084,7 +1095,7 @@ def _line_entry(
     support_findings: list[JsonObject] = []
     for item in line.editions:
         annotation = item.annotation
-        editions.append({"annotation_id": annotation.id, "text": item.text})
+        editions.append({"edition_id": annotation.id, "text": item.text})
     if level >= 3 and evidence is not None:
         for typed in line.annotations:
             if isinstance(typed, UserTouchedAnnotation):
