@@ -47,7 +47,7 @@ contract and Git boundaries.
 - `tarav.archive` owns stable Artifact identity, retained Archive Records, and
   portable references to retained or externally located data.
 - `tarav.diagram` owns flat Namespace collections of typed semantic Ships and
-  separate Annotation claims, their recursive projections, Assertion
+  separate Annotation claim lineages, their recursive projections, Assertion
   evaluation, read-only renderers over Archive-grounded data, and retained
   `Diagram.View` context selections. Views are separate Git-backed WIP surfaces:
   they materialize Diagram data but never mutate the semantic database.

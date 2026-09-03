@@ -365,6 +365,7 @@ def test_renderer_cli_discovers_and_runs_named_renderers(
 
 def test_renderer_registry_has_the_candidate_initial_surface() -> None:
     assert {item.name for item in renderers()} == {
+        "Kernel.Writing.Line.Annotation",
         "Kernel.Writing.Line",
         "Kernel.Writing.Line.WithSupport",
         "Kernel.Writing.Block",

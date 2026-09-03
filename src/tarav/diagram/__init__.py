@@ -37,6 +37,7 @@ LINE_EDITION_TYPE = "Diagram.Line.Edition"
 LINE_TYPE_ANNOTATION_TYPE = "Diagram.Line.Type.Annotation"
 LINE_SUPPORT_ANNOTATION_TYPE = "Diagram.Line.Support.Annotation"
 LINE_GATE_ANNOTATION_TYPE = "Diagram.Line.Gate.Annotation"
+LINE_ANNOTATION_TYPE = "Line.Annotation"
 VERBATIM_GATE_TYPE = "Verbatim.Gate"
 DIAGRAM_BLOCK_OBJECT_TYPE = "Diagram.Block"
 DESIGN_BLOCK_OBJECT_TYPE = "Design.Block"
@@ -90,6 +91,7 @@ CHATLAS_INDEX_ANNOTATION_TYPES = (
     LINE_TYPE_ANNOTATION_TYPE,
     LINE_SUPPORT_ANNOTATION_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
+    LINE_ANNOTATION_TYPE,
 )
 SCHEMA_VERSION = 2
 CONFIG_SCHEMA_VERSION = 1
@@ -352,6 +354,39 @@ class DiagramBlockLocation:
 
 
 @dataclass(frozen=True, slots=True)
+class DiagramArgumentReference:
+    """Stable reference used by a free-standing Line.Annotation."""
+
+    namespace_id: str
+    kind: str
+    id: str
+
+    def __post_init__(self) -> None:
+        _uuid(self.namespace_id, field="Argument.Reference.namespace_id")
+        if self.kind not in {"ship", "edition", "annotation"}:
+            raise DiagramModelError(
+                "Argument.Reference.kind must be ship, edition, or annotation"
+            )
+        _uuid(self.id, field="Argument.Reference.id")
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "namespace_id": self.namespace_id,
+            "kind": self.kind,
+            "id": self.id,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> DiagramArgumentReference:
+        data = _object(value, field="Argument.Reference")
+        return cls(
+            _string(data.get("namespace_id"), field="Argument.Reference.namespace_id"),
+            _string(data.get("kind"), field="Argument.Reference.kind"),
+            _string(data.get("id"), field="Argument.Reference.id"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class AnnotationDraft:
     id: str
     record: JsonObject
@@ -556,13 +591,21 @@ class DiagramAnnotation:
 
     @property
     def standing(self) -> str:
-        return "Asserted" if self.record.get("score_vector") else "UnAsserted"
+        return "Asserted" if self.score_vector() else "UnAsserted"
 
     def assertions(self) -> tuple[JsonObject, ...]:
         return self.namespace.assertions_for(self)
 
     def score_vector(self) -> JsonObject:
         value = self.record.get("score_vector", {})
+        if self.type == LINE_ANNOTATION_TYPE:
+            editions = self.record.get("editions", [])
+            if (
+                isinstance(editions, list)
+                and editions
+                and isinstance(editions[-1], dict)
+            ):
+                value = editions[-1].get("score_vector", value)
         return value if isinstance(value, dict) else {}
 
     def to_record(self) -> JsonObject:
@@ -640,6 +683,159 @@ class UserTouchedAnnotation(TypedAnnotation):
 
     def render_support(self, evidence: ChatlasEvidence) -> list[JsonObject]:
         return [evidence.render_member(item) for item in self.support.members]
+
+
+@dataclass(frozen=True, slots=True)
+class LineAnnotationRecord(TypedAnnotation):
+    """One free-standing Index.Line with explicit Diagram arguments."""
+
+    def __post_init__(self) -> None:
+        if self.type != LINE_ANNOTATION_TYPE:
+            raise DiagramModelError(f"not a Line.Annotation: {self.type}")
+        _uuid(self.record.get("model_ship"), field="Line.Annotation.model_ship")
+        _validate_editions(self.editions, field="Line.Annotation.editions")
+        if not self.editions:
+            raise DiagramModelError("Line.Annotation must contain an edition")
+        for index, edition in enumerate(self.editions):
+            _validate_line_annotation_edition(
+                edition, field=f"Line.Annotation.editions[{index}]"
+            )
+
+    @property
+    def model_ship(self) -> str:
+        return _uuid(self.record.get("model_ship"), field="Line.Annotation.model_ship")
+
+    @property
+    def editions(self) -> tuple[JsonObject, ...]:
+        return tuple(
+            _object(item, field="Line.Annotation.editions[]")
+            for item in _array(
+                self.record.get("editions", []), field="Line.Annotation.editions"
+            )
+        )
+
+    @property
+    def current_edition(self) -> JsonObject:
+        return self.editions[-1]
+
+    @property
+    def current_edition_id(self) -> str:
+        return _edition_id(self.current_edition)
+
+    @property
+    def arguments(self) -> tuple[DiagramArgumentReference, ...]:
+        return tuple(
+            DiagramArgumentReference.from_dict(item)
+            for item in _array(
+                self.current_edition.get("arguments", []),
+                field="Line.Annotation.Edition.arguments",
+            )
+        )
+
+    @property
+    def text(self) -> str:
+        return _string(
+            _object(
+                self.current_edition.get("data", {}),
+                field="Line.Annotation.Edition.data",
+            ).get("text"),
+            field="Line.Annotation.Edition.data.text",
+        )
+
+    @property
+    def has_producer(self) -> bool:
+        return self.current_edition.get("producer") is not None
+
+    @property
+    def producer(self) -> ChatlasTurnReference:
+        return ChatlasTurnReference.from_dict(self.current_edition.get("producer"))
+
+    @property
+    def support(self) -> SupportSet:
+        return SupportSet.from_list(self.current_edition.get("support", []))
+
+    @property
+    def gates(self) -> tuple[VerbatimGate, ...]:
+        return _verbatim_gates(self.current_edition.get("gates", []))
+
+    @property
+    def retained_assertions(self) -> tuple[JsonObject, ...]:
+        return tuple(
+            _object(item, field="Line.Annotation.Edition.assertions[]")
+            for item in _array(
+                self.current_edition.get("assertions", []),
+                field="Line.Annotation.Edition.assertions",
+            )
+        )
+
+    def references(self, identity: str) -> bool:
+        _uuid(identity, field="Argument.Reference.id")
+        return any(
+            reference.id == identity
+            for edition in self.editions
+            for reference in _line_annotation_arguments(edition)
+        )
+
+    def render_support(self, evidence: ChatlasEvidence) -> list[JsonObject]:
+        return [evidence.render_member(item) for item in self.support.members]
+
+    def model_location(self) -> tuple[str, str]:
+        return self.model_ship, "model_ship"
+
+    def type_assertions(self) -> tuple[JsonObject, ...]:
+        assertions: tuple[JsonObject, ...] = (
+            {"type": "Line.Continuity.Assertion"},
+            {"type": "Argument.Context.Assertion"},
+            {"type": "Model.Scope.Assertion"},
+            *self.retained_assertions,
+        )
+        if self.gates:
+            assertions += tuple({"type": kind} for kind in VERBATIM_GATE_ASSERTIONS)
+        return tuple(
+            {assertion["type"]: assertion for assertion in assertions}.values()
+        )
+
+    def type_findings(
+        self,
+        *,
+        path: str,
+        evidence: ChatlasEvidence | None,
+    ) -> tuple[Finding, ...]:
+        findings: list[Finding] = []
+        namespace = self.annotation.namespace
+        for index, reference in enumerate(self.arguments):
+            if reference.namespace_id != namespace.id:
+                continue
+            if not namespace.resolves_argument(reference):
+                findings.append(
+                    Finding(
+                        "line-annotation-argument-unresolved",
+                        f"{path}.editions[-1].arguments[{index}]",
+                        (
+                            "Line.Annotation argument does not resolve in its "
+                            f"Namespace: {reference.kind} {reference.id}."
+                        ),
+                    )
+                )
+        if self.support.members:
+            if not self.has_producer:
+                findings.append(
+                    Finding(
+                        "line-annotation-producer-missing",
+                        f"{path}.editions[-1].producer",
+                        "Supported Line.Annotation edition has no producer Turn.",
+                    )
+                )
+            elif evidence is not None:
+                findings.extend(evidence.check(self, path=f"{path}.editions[-1]"))
+            findings.append(
+                Finding(
+                    "archive-grounding-unassessable",
+                    path,
+                    "Chatlas-to-Archive grounding is not yet mechanically assessable.",
+                )
+            )
+        return tuple(findings)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1906,7 +2102,12 @@ class ChatlasEvidence:
             turns, {"turn_address": ref.turn_address, "turn_hash": ref.turn_hash}
         )
 
-    def check(self, annotation: UserTouchedAnnotation, *, path: str) -> list[Finding]:
+    def check(
+        self,
+        annotation: UserTouchedAnnotation | LineAnnotationRecord,
+        *,
+        path: str,
+    ) -> list[Finding]:
         findings: list[Finding] = []
         producer = self._matched(
             annotation.producer,
@@ -2107,7 +2308,7 @@ class MechanicalAssertionEvaluator(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class AnnotationAssessment:
-    """Current derived Assertion state for one immutable Annotation record."""
+    """Current derived Assertion state for one Annotation claim edition."""
 
     annotation_id: str
     assertion_types: tuple[str, ...]
@@ -2187,10 +2388,15 @@ class VerbatimGateAssertionEvaluator:
         evidence: ChatlasEvidence | None,
         path: str,
     ) -> AssertionEvaluation:
-        if isinstance(annotation, LineEditionRecord):
+        if isinstance(annotation, (LineEditionRecord, LineAnnotationRecord)):
+            target_id = (
+                annotation.current_edition_id
+                if isinstance(annotation, LineAnnotationRecord)
+                else annotation.id
+            )
             assessments = _assess_verbatim_gates(
                 annotation_id=annotation.id,
-                target_id=annotation.id,
+                target_id=target_id,
                 target=annotation,
                 gates=annotation.gates,
                 evidence=evidence,
@@ -2539,8 +2745,53 @@ class DiagramNamespace:
 
         return _sort_annotations(self.standalone_annotations())
 
+    def annotations_for_argument(self, identity: str) -> tuple[DiagramAnnotation, ...]:
+        """Return Line.Annotations whose retained history names one identity."""
+
+        target = _uuid(identity, field="Argument.Reference.id")
+        result: list[DiagramAnnotation] = []
+        for annotation in self.annotations():
+            if annotation.type != LINE_ANNOTATION_TYPE:
+                continue
+            try:
+                typed = annotation.specialize()
+            except DiagramAnnotationSpecializationError:
+                continue
+            if isinstance(typed, LineAnnotationRecord) and typed.references(target):
+                result.append(annotation)
+        return tuple(result)
+
+    def resolves_argument(self, reference: DiagramArgumentReference) -> bool:
+        """Resolve a local Argument.Reference without interpreting its relation."""
+
+        if reference.namespace_id != self.id:
+            return False
+        try:
+            if reference.kind == "ship":
+                self.ship(reference.id)
+                return True
+            if reference.kind == "annotation":
+                self.annotation(reference.id)
+                return True
+            self.edition(reference.id)
+            return True
+        except DiagramError:
+            if reference.kind != "edition":
+                return False
+            return any(
+                annotation.type == LINE_ANNOTATION_TYPE
+                and any(
+                    _edition_id(edition) == reference.id
+                    for edition in _line_annotation_editions(annotation.record)
+                )
+                for annotation in self.annotations()
+            )
+
     def assertions_for(self, annotation: DiagramAnnotation) -> tuple[JsonObject, ...]:
-        if self.name not in CHATLAS_INDEX_NAMESPACES:
+        if (
+            self.name not in CHATLAS_INDEX_NAMESPACES
+            and annotation.type != LINE_ANNOTATION_TYPE
+        ):
             return ()
         typed = self.specialize(annotation)
         if isinstance(typed, ModelEditionRecord):
@@ -2548,7 +2799,9 @@ class DiagramNamespace:
         assertions: tuple[JsonObject, ...] = (
             {"type": "Semantic.Record.Representation.Assertion"},
         )
-        if isinstance(typed, UserTouchedAnnotation):
+        if isinstance(typed, UserTouchedAnnotation) or (
+            isinstance(typed, LineAnnotationRecord) and typed.support.members
+        ):
             assertions += ({"type": "User.Touch.Support.Assertion"},)
         return (*assertions, *typed.type_assertions())
 
@@ -2558,19 +2811,21 @@ class DiagramNamespace:
         return AssertionEngine(evidence=evidence)
 
     def specialize(self, annotation: DiagramAnnotation) -> TypedAnnotation:
-        classes = (
-            {
-                MODEL_EDITION_TYPE: ModelEditionRecord,
-                BLOCK_EDITION_TYPE: BlockEditionRecord,
-                BLOCK_TYPE_ANNOTATION_TYPE: BlockTypeAnnotation,
-                LINE_EDITION_TYPE: LineEditionRecord,
-                LINE_TYPE_ANNOTATION_TYPE: LineTypeAnnotation,
-                LINE_SUPPORT_ANNOTATION_TYPE: LineSupportAnnotation,
-                LINE_GATE_ANNOTATION_TYPE: LineGateAnnotation,
-            }
-            if self.name in CHATLAS_INDEX_NAMESPACES
-            else {}
-        )
+        classes: dict[str, type[TypedAnnotation]] = {
+            LINE_ANNOTATION_TYPE: LineAnnotationRecord,
+        }
+        if self.name in CHATLAS_INDEX_NAMESPACES:
+            classes.update(
+                {
+                    MODEL_EDITION_TYPE: ModelEditionRecord,
+                    BLOCK_EDITION_TYPE: BlockEditionRecord,
+                    BLOCK_TYPE_ANNOTATION_TYPE: BlockTypeAnnotation,
+                    LINE_EDITION_TYPE: LineEditionRecord,
+                    LINE_TYPE_ANNOTATION_TYPE: LineTypeAnnotation,
+                    LINE_SUPPORT_ANNOTATION_TYPE: LineSupportAnnotation,
+                    LINE_GATE_ANNOTATION_TYPE: LineGateAnnotation,
+                }
+            )
         annotation_class = classes.get(annotation.type)
         if annotation_class is None:
             raise DiagramAnnotationSpecializationError(
@@ -2634,7 +2889,12 @@ class DiagramNamespace:
                 )
             )
         findings.extend(typed.type_findings(path=path, evidence=evidence))
-        assessment = self.assertion_engine(evidence=evidence).assess(typed, path=path)
+        assessment_path = (
+            f"{path}.editions[-1]" if isinstance(typed, LineAnnotationRecord) else path
+        )
+        assessment = self.assertion_engine(evidence=evidence).assess(
+            typed, path=assessment_path
+        )
         findings.extend(assessment.findings)
         if assessment.standing == "UnAsserted":
             findings.append(
@@ -2726,6 +2986,26 @@ class DiagramNamespace:
                 continue
             claimed[draft.id] = draft.record
             path = self.annotations_root / f"{draft.id}.json"
+            if draft.record.get("type") == LINE_ANNOTATION_TYPE:
+                current = _read_json(path) if path.exists() else None
+                merged, added, repeated = _merge_line_annotation_record(
+                    draft.id,
+                    current,
+                    draft.record,
+                )
+                created.extend(added)
+                existing.extend(repeated)
+                created_editions.extend(added)
+                existing_editions.extend(repeated)
+                if current is None:
+                    created.append(draft.id)
+                    created_annotations.append(draft.id)
+                else:
+                    existing.append(draft.id)
+                    existing_annotations.append(draft.id)
+                if current is None or merged != current:
+                    pending[path] = merged
+                continue
             if path.exists():
                 if _semantic_record(_read_json(path)) != _semantic_record(draft.record):
                     raise DiagramError(
@@ -2735,11 +3015,10 @@ class DiagramNamespace:
                 existing_annotations.append(draft.id)
             else:
                 pending[path] = {**draft.record, "recorded_at": _timestamp()}
+                created.append(draft.id)
                 created_annotations.append(draft.id)
         for path, record in pending.items():
             atomic_write_json(path, record, ensure_ascii=False)
-            if path.parent == self.annotations_root:
-                created.append(path.stem)
         committed = bool(pending) and commit
         if committed:
             _commit_paths(
@@ -2841,8 +3120,14 @@ class DiagramNamespace:
         direct = tuple(
             item
             for item in self._projection_records()
-            if isinstance(item.record.get("location"), dict)
-            and item.record["location"].get("model_ship") == ship
+            if (
+                isinstance(item.record.get("location"), dict)
+                and item.record["location"].get("model_ship") == ship
+            )
+            or (
+                item.type == LINE_ANNOTATION_TYPE
+                and item.record.get("model_ship") == ship
+            )
         )
         return self._with_line_gate_annotations(direct)
 
@@ -2881,7 +3166,8 @@ class DiagramNamespace:
             if isinstance(item.record.get("location"), dict)
             and item.record["location"].get("block_ship") == ship
         )
-        return self._with_line_gate_annotations(direct)
+        related = self.annotations_for_argument(ship)
+        return self._with_line_gate_annotations(_sort_annotations((*direct, *related)))
 
     def _with_line_gate_annotations(
         self, direct: tuple[DiagramAnnotation, ...]
@@ -3113,6 +3399,16 @@ class Diagram:
             )
         return matches[0]
 
+    def annotations_for_argument(
+        self, identity: str, *, namespace: str | None = None
+    ) -> tuple[DiagramAnnotation, ...]:
+        spaces = (self.namespace(namespace),) if namespace else self.namespaces
+        return tuple(
+            annotation
+            for space in spaces
+            for annotation in space.annotations_for_argument(identity)
+        )
+
     def edition(
         self, edition_id: str, *, namespace: str | None = None
     ) -> DiagramAnnotation:
@@ -3292,6 +3588,117 @@ def _semantic_record(record: Mapping[str, Any]) -> JsonObject:
     }
 
 
+def _line_annotation_editions(record: Mapping[str, Any]) -> tuple[JsonObject, ...]:
+    return tuple(
+        _object(item, field="Line.Annotation.editions[]")
+        for item in _array(record.get("editions", []), field="Line.Annotation.editions")
+    )
+
+
+def _line_annotation_arguments(
+    edition: Mapping[str, Any],
+) -> tuple[DiagramArgumentReference, ...]:
+    return tuple(
+        DiagramArgumentReference.from_dict(item)
+        for item in _array(
+            edition.get("arguments", []),
+            field="Line.Annotation.Edition.arguments",
+        )
+    )
+
+
+def _validate_line_annotation_edition(
+    edition: Mapping[str, Any], *, field: str
+) -> None:
+    _edition_id(edition)
+    arguments = _line_annotation_arguments(edition)
+    if not arguments:
+        raise DiagramModelError(f"{field}.arguments must not be empty")
+    keys = tuple((item.namespace_id, item.kind, item.id) for item in arguments)
+    if len(keys) != len(set(keys)):
+        raise DiagramModelError(f"{field}.arguments contains duplicates")
+    _string(
+        _object(edition.get("data", {}), field=f"{field}.data").get("text"),
+        field=f"{field}.data.text",
+    )
+    if edition.get("producer") is not None:
+        ChatlasTurnReference.from_dict(edition.get("producer"))
+    if edition.get("support") is not None:
+        SupportSet.from_list(edition.get("support"))
+    _verbatim_gates(edition.get("gates", []))
+    for index, assertion in enumerate(
+        _array(edition.get("assertions", []), field=f"{field}.assertions")
+    ):
+        _string(
+            _object(assertion, field=f"{field}.assertions[{index}]").get("type"),
+            field=f"{field}.assertions[{index}].type",
+        )
+    score_vector = edition.get("score_vector")
+    if score_vector is not None:
+        _object(score_vector, field=f"{field}.score_vector")
+
+
+def _merge_line_annotation_record(
+    annotation_id: str,
+    current: JsonObject | None,
+    incoming: Mapping[str, Any],
+) -> tuple[JsonObject, tuple[str, ...], tuple[str, ...]]:
+    """Append Line.Annotation editions while keeping its address stable."""
+
+    _uuid(annotation_id, field="Annotation.id")
+    proposed = dict(incoming)
+    if proposed.get("type") != LINE_ANNOTATION_TYPE:
+        raise DiagramModelError("not a Line.Annotation record")
+    proposed_editions = tuple(
+        _object(item, field="Line.Annotation.editions[]")
+        for item in _array(
+            proposed.pop("editions", []), field="Line.Annotation.editions"
+        )
+    )
+    _validate_editions(proposed_editions, field="Line.Annotation.editions")
+    proposed_base = _semantic_record(proposed)
+    now = _timestamp()
+    if current is None:
+        merged = {**proposed_base, "recorded_at": now, "editions": []}
+        known_editions: dict[str, JsonObject] = {}
+    else:
+        current_base = _semantic_record(
+            {key: value for key, value in current.items() if key != "editions"}
+        )
+        if current_base != proposed_base:
+            raise DiagramError(
+                f"Diagram Annotation identity cannot be rebound: {annotation_id}"
+            )
+        merged = dict(current)
+        known_editions = {
+            _edition_id(edition): edition
+            for edition in _line_annotation_editions(current)
+        }
+    added: list[str] = []
+    repeated: list[str] = []
+    editions = list(known_editions.values())
+    for edition in proposed_editions:
+        edition_id = _edition_id(edition)
+        prior = known_editions.get(edition_id)
+        if prior is not None:
+            if _semantic_record(prior) != _semantic_record(edition):
+                raise DiagramError(
+                    "Diagram Annotation edition identity cannot be rebound: "
+                    f"{edition_id}"
+                )
+            repeated.append(edition_id)
+            continue
+        retained = dict(edition)
+        retained.setdefault("recorded_at", now)
+        editions.append(retained)
+        known_editions[edition_id] = retained
+        added.append(edition_id)
+    merged["editions"] = editions
+    if current is not None and added:
+        merged["updated_at"] = now
+    return merged, tuple(added), tuple(repeated)
+
+
 def _merge_ship_record(
     ship_id: str,
     current: JsonObject | None,
@@ -3352,11 +3759,21 @@ def _verbatim_gates(value: object) -> tuple[VerbatimGate, ...]:
     )
 
 
+def _line_target_edition_id(
+    target: LineEditionRecord | LineAnnotationRecord,
+) -> str:
+    return (
+        target.current_edition_id
+        if isinstance(target, LineAnnotationRecord)
+        else target.id
+    )
+
+
 def _assess_verbatim_gates(
     *,
     annotation_id: str,
     target_id: str,
-    target: LineEditionRecord | None,
+    target: LineEditionRecord | LineAnnotationRecord | None,
     gates: tuple[VerbatimGate, ...],
     evidence: ChatlasEvidence | None,
     path: str,
@@ -3383,7 +3800,7 @@ def _assess_verbatim_gates(
             assessments.append(
                 GateAssessment(
                     annotation_id,
-                    target.id,
+                    _line_target_edition_id(target),
                     gate,
                     scores,
                     (
@@ -3412,7 +3829,7 @@ def _assess_verbatim_gate(
     *,
     evidence: ChatlasEvidence,
     annotation_id: str,
-    target: LineEditionRecord,
+    target: LineEditionRecord | LineAnnotationRecord,
     gate: VerbatimGate,
     path: str,
 ) -> GateAssessment:
@@ -3514,7 +3931,7 @@ def _assess_verbatim_gate(
 
     return GateAssessment(
         annotation_id,
-        target.id,
+        _line_target_edition_id(target),
         gate,
         scores,
         tuple(findings),
@@ -3677,6 +4094,7 @@ __all__ = [
         "UserTouchedAnnotation",
         "BlockEditionRecord",
         "BlockTypeAnnotation",
+        "LineAnnotationRecord",
         "LineEditionRecord",
         "LineGateAnnotation",
         "LineSupportAnnotation",
@@ -3703,6 +4121,7 @@ __all__ = [
         "ISSUE_BLOCK_OBJECT_TYPE",
         "ISSUE_LINE_RESOLVE_TYPE",
         "DIAGRAM_ATTIC",
+        "LINE_ANNOTATION_TYPE",
         "LINE_EDITION_TYPE",
         "LINE_SHIP_TYPE",
         "LINE_GATE_ANNOTATION_TYPE",

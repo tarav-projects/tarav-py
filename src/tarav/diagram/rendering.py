@@ -20,6 +20,7 @@ from . import (
     DiagramModel,
     Finding,
     IssueBlock,
+    LineAnnotationRecord,
     LineEditionRecord,
     LineGateAnnotation,
     TypedAnnotation,
@@ -199,6 +200,44 @@ def _debug_annotation(
         ),
         assessment.findings,
     )
+
+
+def _kernel_line_annotation(
+    target: DiagramRenderTarget, context: DiagramRenderContext
+) -> tuple[str, tuple[Finding, ...]]:
+    annotation = target.subject
+    if not isinstance(annotation, DiagramAnnotation):
+        raise DiagramRenderError("Line.Annotation renderer received another target")
+    typed = annotation.specialize()
+    if not isinstance(typed, LineAnnotationRecord):
+        raise DiagramRenderError(
+            f"Annotation is not a Line.Annotation: {annotation.type}"
+        )
+    assessment = context.assertions.assess(typed)
+    gate_assessments = assessment.gate_assessments
+    if any(item.standing == "Passed" for item in gate_assessments):
+        review_standing = "Reviewed"
+    elif gate_assessments and context.evidence is None:
+        review_standing = "Review.Unassessable"
+    elif gate_assessments:
+        review_standing = "Review.POI"
+    else:
+        review_standing = None
+    marker = _annotation_marker(
+        annotation,
+        assessment=assessment,
+        review_standing=review_standing,
+    )
+    sections = [
+        f"- {typed.text} {marker}",
+        "",
+        f"**Line.Annotation:** `{annotation.id}`  ",
+        f"**Edition:** `{typed.current_edition_id}`",
+        "",
+        "**Arguments:**",
+        *(f"- `{item.namespace_id}:{item.kind}:{item.id}`" for item in typed.arguments),
+    ]
+    return "\n".join(sections), assessment.findings
 
 
 def _debug_line(
@@ -587,6 +626,13 @@ _RENDERERS = {
             "text/markdown",
             "Kernel.Writing projection of one Model's Blocks and Lines.",
             _kernel_model,
+        ),
+        DiagramRenderer(
+            "Kernel.Writing.Line.Annotation",
+            "annotation",
+            "text/markdown",
+            "Compact Kernel.Writing projection of one free-standing Line.Annotation.",
+            _kernel_line_annotation,
         ),
         DiagramRenderer(
             "Diagram.Debug.Annotation",

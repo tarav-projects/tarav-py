@@ -507,6 +507,67 @@ def _cmd_diagram_annotation_show(args: argparse.Namespace) -> int:
     )
 
 
+def _cmd_diagram_annotation_list(args: argparse.Namespace) -> int:
+    try:
+        diagram = _diagram_configuration(args.diagram_config).diagram()
+        spaces = (
+            (diagram.namespace(args.namespace),)
+            if args.namespace
+            else diagram.namespaces
+        )
+        annotations = tuple(
+            annotation for space in spaces for annotation in space.annotations()
+        )
+        if args.argument:
+            matching = {
+                (annotation.namespace.id, annotation.id)
+                for annotation in diagram.annotations_for_argument(
+                    args.argument, namespace=args.namespace
+                )
+            }
+            annotations = tuple(
+                annotation
+                for annotation in annotations
+                if (annotation.namespace.id, annotation.id) in matching
+            )
+        if args.model_ship:
+            selected = []
+            for annotation in annotations:
+                try:
+                    location = annotation.specialize().model_location()
+                except DiagramError:
+                    location = None
+                if location is not None and location[0] == args.model_ship:
+                    selected.append(annotation)
+            annotations = tuple(selected)
+        if args.annotation_type:
+            annotations = tuple(
+                annotation
+                for annotation in annotations
+                if annotation.type == args.annotation_type
+            )
+    except (DiagramError, DiagramModelError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    return _emit(
+        args,
+        {
+            "status": "ok",
+            "command": "tarav diagram annotation list",
+            "annotations": [
+                {
+                    "namespace_id": annotation.namespace.id,
+                    **_annotation_payload(annotation),
+                }
+                for annotation in annotations
+            ],
+        },
+        tuple(
+            f"{annotation.id}  {annotation.type}  {annotation.namespace.name}"
+            for annotation in annotations
+        ),
+    )
+
+
 def _cmd_diagram_line_show(args: argparse.Namespace) -> int:
     try:
         diagram = _diagram_configuration(args.diagram_config).diagram()
@@ -850,6 +911,25 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_chatlas_root_option(annotation_show)
     _add_json_option(annotation_show)
     annotation_show.set_defaults(handler=_cmd_diagram_annotation_show)
+    annotation_list = annotation_commands.add_parser(
+        "list",
+        help="List Annotations, optionally selecting an argument or owning Model.",
+    )
+    annotation_list.add_argument(
+        "--argument", help="Only Line.Annotations naming this Diagram UUID."
+    )
+    annotation_list.add_argument(
+        "--model-ship", help="Only Annotations located in this Model."
+    )
+    annotation_list.add_argument(
+        "--type", dest="annotation_type", help="Only this exact Annotation.Type."
+    )
+    annotation_list.add_argument(
+        "--namespace", help="Namespace id or name; otherwise use load order."
+    )
+    _add_diagram_config_option(annotation_list)
+    _add_json_option(annotation_list)
+    annotation_list.set_defaults(handler=_cmd_diagram_annotation_list)
 
     line = diagram_commands.add_parser("line", help="Inspect one semantic Line ship.")
     line_commands = line.add_subparsers(
