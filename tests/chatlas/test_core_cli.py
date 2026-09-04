@@ -5,7 +5,7 @@ import json
 from tarav.cli.cli import build_parser, main
 
 
-def test_chatlas_help_exposes_only_core_commands() -> None:
+def test_chatlas_help_exposes_current_commands() -> None:
     parser = build_parser()
     chatlas = next(
         action.choices["chatlas"]
@@ -14,10 +14,199 @@ def test_chatlas_help_exposes_only_core_commands() -> None:
     )
     help_text = chatlas.format_help()
 
-    for command in ("update", "index", "raw", "normal-model"):
+    for command in ("update", "index", "raw", "normal-model", "query", "render"):
         assert command in help_text
-    for removed in ("query", "recents", "products", "anchory", "views", "events"):
+    for removed in ("recents", "products", "anchory", "views", "events"):
         assert removed not in help_text
+
+
+def test_query_and_default_render_share_query_execution_and_output(
+    monkeypatch, capsys
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class Reader:
+        def model_header(self):
+            return {
+                "session": {
+                    "provider": "codex",
+                    "session_id": "session-one",
+                    "identity_hash": "0" * 64,
+                }
+            }
+
+        def iter_turns(self):
+            calls.append(("turns",))
+            yield {
+                "class": "Chat.Turn",
+                "turn_address": "1" * 64,
+                "turn_hash": "a" * 64,
+                "side": "user",
+                "event_refs": [],
+                "message_refs": [
+                    {
+                        "message_address": "2" * 64,
+                        "message_hash": "3" * 64,
+                    }
+                ],
+            }
+
+        def iter_messages(self):
+            calls.append(("messages",))
+            yield {
+                "class": "Chat.Message",
+                "message_address": "2" * 64,
+                "message_hash": "3" * 64,
+                "side": "user",
+                "event_refs": [],
+                "text": "selected text",
+            }
+
+    monkeypatch.setattr(
+        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+    )
+    argv = ["--identity-hash", "0" * 64, "--turn-hash-prefix", "a" * 8]
+
+    assert main(["chatlas", "query", *argv]) == 0
+    queried = capsys.readouterr().out
+    assert main(["chatlas", "render", *argv]) == 0
+    rendered = capsys.readouterr().out
+
+    assert queried == rendered
+    assert "selected text" in queried
+    assert calls == [("turns",), ("messages",), ("turns",), ("messages",)]
+
+
+def test_render_selects_a_registered_renderer_and_passes_options(
+    monkeypatch, capsys
+) -> None:
+    from tarav.chatlas.rendering import ChatlasRenderer, register_renderer
+
+    class Reader:
+        def model_header(self):
+            return {"session": {"session_id": "session-one"}}
+
+        def iter_turns(self):
+            yield {
+                "turn_address": "1" * 64,
+                "turn_hash": "a" * 64,
+                "side": "user",
+                "message_refs": [],
+            }
+
+        def iter_messages(self):
+            return iter(())
+
+    monkeypatch.setattr(
+        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+    )
+    register_renderer(
+        ChatlasRenderer(
+            "workflow.cli.test.renderer",
+            "text/plain",
+            "CLI test renderer.",
+            lambda result, options: f"{options['label']}:{len(result.findings)}",
+        )
+    )
+
+    assert main(
+        [
+            "chatlas",
+            "render",
+            "--identity-hash",
+            "0" * 64,
+            "--turn-hash-prefix",
+            "a" * 8,
+            "--renderer",
+            "workflow.cli.test.renderer",
+            "--renderer-option",
+            "label=chosen",
+        ]
+    ) == 0
+
+    assert capsys.readouterr().out == "chosen:1\n"
+
+
+def test_query_json_uses_the_default_renderer_envelope(monkeypatch, capsys) -> None:
+    class Reader:
+        def model_header(self):
+            return {"session": {"session_id": "session-one"}}
+
+        def iter_turns(self):
+            yield {
+                "turn_address": "1" * 64,
+                "turn_hash": "a" * 64,
+                "side": "user",
+                "message_refs": [],
+            }
+
+        def iter_messages(self):
+            return iter(())
+
+    monkeypatch.setattr(
+        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+    )
+
+    assert main(
+        [
+            "chatlas",
+            "query",
+            "--identity-hash",
+            "0" * 64,
+            "--turn-hash-prefix",
+            "a" * 8,
+            "--json",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["renderer"] == "Chatlas.Query.Default.Renderer"
+    assert payload["query_result"]["findings"][0]["prefix"] == "a" * 8
+
+
+def test_render_accepts_a_repeatable_turn_prefix_batch(monkeypatch, capsys) -> None:
+    class Reader:
+        def model_header(self):
+            return {"session": {"session_id": "session-one"}}
+
+        def iter_turns(self):
+            yield {
+                "turn_address": "1" * 64,
+                "turn_hash": "a" * 64,
+                "side": "user",
+                "message_refs": [],
+            }
+            yield {
+                "turn_address": "2" * 64,
+                "turn_hash": "b" * 64,
+                "side": "agent",
+                "message_refs": [],
+            }
+
+        def iter_messages(self):
+            return iter(())
+
+    monkeypatch.setattr(
+        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+    )
+
+    assert main(
+        [
+            "chatlas",
+            "render",
+            "--identity-hash",
+            "0" * 64,
+            "--turn-hash-prefix",
+            "b" * 8,
+            "--turn-hash-prefix",
+            "a" * 8,
+        ]
+    ) == 0
+
+    output = capsys.readouterr().out
+    assert output.index("Agent Turn `bbbbbbbb`") < output.index(
+        "User Turn `aaaaaaaa`"
+    )
 
 
 def test_normal_model_command_uses_an_exact_session_reference(

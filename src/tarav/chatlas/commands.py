@@ -5,11 +5,18 @@ import json
 from pathlib import Path
 import sys
 
+from tarav._core.errors import CliError
 from tarav.chatlas.core import chatlas_raw_sources, chatlas_update
 from tarav.chatlas.delta_scan import chatlas_index_redo, chatlas_index_reset
 from tarav.chatlas.normal_model import (
     compute_normal_model,
     provide_normal_model_reader,
+)
+from tarav.chatlas.query import ChatlasQuery, ChatlasQueryEngine, ChatlasQueryError
+from tarav.chatlas.rendering import (
+    DEFAULT_CHATLAS_RENDERER,
+    ChatlasRenderError,
+    renderer,
 )
 
 
@@ -89,6 +96,30 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     normal_model.set_defaults(handler=_cmd_normal_model)
 
+    query = commands.add_parser(
+        "query", help="Query one exact Chatlas Normal Model."
+    )
+    _add_query_options(query)
+    query.set_defaults(handler=_cmd_query)
+
+    render = commands.add_parser(
+        "render", help="Render Chatlas Query findings through a named Renderer."
+    )
+    _add_query_options(render)
+    render.add_argument(
+        "--renderer",
+        default=DEFAULT_CHATLAS_RENDERER,
+        help="Fully qualified registered Renderer name.",
+    )
+    render.add_argument(
+        "--renderer-option",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Renderer-owned option; may be repeated.",
+    )
+    render.set_defaults(handler=_cmd_render)
+
 
 def _add_capture_options(parser: argparse.ArgumentParser) -> None:
     _add_provider_options(parser)
@@ -116,6 +147,21 @@ def _add_session_reference_options(parser: argparse.ArgumentParser) -> None:
 
 def _add_root_option(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--chatlas-root")
+
+
+def _add_query_options(parser: argparse.ArgumentParser) -> None:
+    _add_session_reference_options(parser)
+    parser.add_argument(
+        "--turn-hash-prefix",
+        action="append",
+        required=True,
+        dest="turn_hash_prefixes",
+        help="Lowercase Chat.Turn hash prefix; may be repeated.",
+    )
+    parser.add_argument(
+        "--refresh", action="store_true", help="Rebuild the Normal Model cache."
+    )
+    parser.add_argument("--json", action="store_true")
 
 
 def _root(args: argparse.Namespace) -> Path | None:
@@ -196,6 +242,57 @@ def _cmd_normal_model(args: argparse.Namespace) -> int:
             include_loaded_contexts=include_loaded_contexts,
         )
     return _print(model)
+
+
+def _cmd_query(args: argparse.Namespace) -> int:
+    return _run_query_renderer(
+        args,
+        renderer_name=DEFAULT_CHATLAS_RENDERER,
+        renderer_options={},
+    )
+
+
+def _cmd_render(args: argparse.Namespace) -> int:
+    return _run_query_renderer(
+        args,
+        renderer_name=args.renderer,
+        renderer_options=_renderer_options(args.renderer_option),
+    )
+
+
+def _run_query_renderer(
+    args: argparse.Namespace,
+    *,
+    renderer_name: str,
+    renderer_options: dict[str, str],
+) -> int:
+    try:
+        selected_renderer = renderer(renderer_name)
+        reader = provide_normal_model_reader(
+            **_reference(args), refresh=args.refresh
+        )
+        result = ChatlasQueryEngine(reader).run(
+            ChatlasQuery(turn_hash_prefixes=tuple(args.turn_hash_prefixes))
+        )
+        rendered = selected_renderer.render(result, options=renderer_options)
+    except (ChatlasQueryError, ChatlasRenderError) as exc:
+        raise CliError(str(exc)) from exc
+    if args.json:
+        return _print(rendered.to_dict())
+    print(rendered.content)
+    return 0
+
+
+def _renderer_options(values: list[str]) -> dict[str, str]:
+    options: dict[str, str] = {}
+    for value in values:
+        name, separator, option = value.partition("=")
+        if not separator or not name:
+            raise CliError("--renderer-option must use NAME=VALUE")
+        if name in options:
+            raise CliError(f"duplicate Renderer option: {name}")
+        options[name] = option
+    return options
 
 
 def _project_computed_model(

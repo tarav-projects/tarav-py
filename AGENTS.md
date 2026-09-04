@@ -64,10 +64,12 @@
 ## Chatlas
 
 - `tarav.chatlas` captures provider-native chat artifacts, indexes sessions,
-  materializes the provider-neutral Normal Model, and preserves traceability
-  from normalized objects to retained raw artifacts.
-- Chatlas does not own search, interpretation, annotation, contextualization,
-  or workflow products. Add such behavior in a consumer domain.
+  materializes the provider-neutral Normal Model, provides bounded structural
+  Query and named rendering over it, and preserves traceability from normalized
+  objects to retained raw artifacts.
+- Chatlas Query owns selection and record assembly; Chatlas Renderers own only
+  presentation. Semantic interpretation, annotation, contextualization, and
+  workflow products belong to consumer domains.
 - Capture and Session Index modules do not import `normal_model`; command
   composition is the exception that registers the public `tarav chatlas`
   leaves.

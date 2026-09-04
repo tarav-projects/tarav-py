@@ -62,6 +62,12 @@ class NormalModelCacheReader:
     def iter_loaded_contexts(self) -> Iterator[JsonObject]:
         yield from self._iter_collection("loaded_contexts")
 
+    def model_header(self) -> JsonObject:
+        model = self.metadata.get("model")
+        if not isinstance(model, dict):
+            raise CliError(f"Normal Model cache has no model header: {self.path}")
+        return deepcopy(model)
+
     def project(
         self,
         *,
@@ -69,7 +75,7 @@ class NormalModelCacheReader:
         include_turns: bool = False,
         include_loaded_contexts: bool = False,
     ) -> JsonObject:
-        model = self._model_header()
+        model = self.model_header()
         model["events"] = list(self.iter_events())
         if include_messages:
             model["messages"] = list(self.iter_messages())
@@ -85,12 +91,6 @@ class NormalModelCacheReader:
             include_turns=True,
             include_loaded_contexts=True,
         )
-
-    def _model_header(self) -> JsonObject:
-        model = self.metadata.get("model")
-        if not isinstance(model, dict):
-            raise CliError(f"Normal Model cache has no model header: {self.path}")
-        return deepcopy(model)
 
     def _iter_collection(self, name: str) -> Iterator[JsonObject]:
         filename = _COLLECTION_FILES[name]

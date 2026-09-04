@@ -41,8 +41,10 @@ contract and Git boundaries.
 - `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,
   and provider adapters under `tarav.agent.providers`.
 - `tarav.chatlas` owns the chat data train from provider-native capture through
-  Session Index to the provider-neutral Normal Model. It preserves source
-  traceability but does not own search, interpretation, annotation,
+  Session Index to the provider-neutral Normal Model, bounded structural Query
+  over that Model, and named presentation of Query findings. Query owns
+  selection and record assembly; Renderers own presentation. Chatlas preserves
+  source traceability but does not own semantic interpretation, annotation,
   contextualization, or workflow products.
 - `tarav.archive` owns stable Artifact identity, retained Archive Records, and
   portable references to retained or externally located data.
@@ -107,6 +109,8 @@ Annotated code is discovered through the project's `.skw/skw.json`.
 - Chatlas consumers import the public `tarav.chatlas.normal_model` package, not its
   internal modules. Only Chatlas command composition reaches into that layer
   to register its CLI.
+- Chatlas Query consumes streamable Normal Model collections. Named Chatlas
+  Renderers consume structured Query results and never reimplement selection.
 - Diagram consumes Chatlas's public Normal Model for producer and support
   evidence. Chatlas does not import Diagram.
 
