@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-- **Status:** Ready for execution
+- **Status:** Implemented and verified
 - **Source session:** `01a05752-fa8d-7c62-abb2-5ff20c8260da`
 - **Objective:** Implement the approved end-to-end path from recursive
   `Diagram.Collection` hosting through durable `Diagram.Draft`, bounded
@@ -24,10 +24,17 @@
 - **Capture commit:** `049980da9067baa6f4c4bbaa7cb76dc5cf4d9e38`
 - **Capture standing:** one supported automatic Decision Line; expected
   unasserted and Archive-grounding POIs are nonblocking.
+- **Impl.Req.Collection:** `771.Impl.Req` /
+  `09fd0cef-7a05-4a75-bc77-3b29e32151dd` (`Closed`)
+- **Diagram.Draft:** `fff47c51-cf49-4f54-9882-3145336d3071` /
+  `/Users/pereiro/Documents/tarav/diagram/drafts/fff47c51-cf49-4f54-9882-3145336d3071.json`
+- **Capture.Authorization.Gate:**
+  `5e808170-9f18-4421-b3a7-e3fd3730fa36`
+- **Final Capture commit:** `e763d9c9ee07304c288868e72190ce25d0c04845`
 
-The legacy Block is the presently executable Develop handoff. Execution will
-introduce `Impl.Req.Collection` as its replacement and use the resulting
-mechanics during the final capture audit.
+The legacy Block was the bootstrap handoff required by the pre-change skill.
+The final capture exercised and retained its replacement Collection, Draft,
+authorization, lifecycle, loading, and receipt mechanics end to end.
 
 ## Execution.Plan
 
@@ -39,7 +46,7 @@ mechanics during the final capture audit.
 - Observable: a Collection-hosted Line is absent from the primary Model view
   and discoverable through explicit expansion/query.
 - Check: focused schema, projection, recursion, and query tests.
-- **Status:** Not started.
+- **Status:** Completed.
 
 ### Slice 2 — Durable Diagram.Draft
 
@@ -50,7 +57,7 @@ mechanics during the final capture audit.
 - Observable: a Draft survives reload, checks as a Model overlay, lands once,
   and becomes applied.
 - Check: domain and CLI lifecycle tests.
-- **Status:** Not started.
+- **Status:** Completed.
 
 ### Slice 3 — Authorization and Impl.Req lifecycle
 
@@ -60,7 +67,7 @@ mechanics during the final capture audit.
 - Observable: authorization evidence is assessable; invalid lifecycle actions
   surface scoped POIs rather than hiding or corrupting data.
 - Check: Gate evaluation, receipt, closure, and reopening tests.
-- **Status:** Not started.
+- **Status:** Completed.
 
 ### Slice 4 — Loading and staleness
 
@@ -71,7 +78,7 @@ mechanics during the final capture audit.
 - Observable: default and expanded projections differ predictably and expose
   enough identity to investigate staleness.
 - Check: projection, renderer/query, and POI tests.
-- **Status:** Not started.
+- **Status:** Completed.
 
 ### Slice 5 — Workflow and documentation alignment
 
@@ -83,7 +90,7 @@ mechanics during the final capture audit.
   durable Draft, lands at completion, and targets `Impl.Req.Collection`.
 - Check: architecture/docs tests, Ruff, full maintained suite, and a live
   Draft/Collection smoke test.
-- **Status:** Not started.
+- **Status:** Completed.
 
 ## Risks and deviation triggers
 
@@ -113,3 +120,15 @@ mechanics during the final capture audit.
 - Edition-level hosting is selected because organizational location may change
   across one Line lineage while its semantic Block attachment remains stable.
 - The execution order follows the User-selected vertical slice.
+- The required pre-edit checkpoint is `eb5fb11`; all implementation changes
+  after it remain uncommitted for User review.
+- The public CLI now provides `diagram draft create|list|show|update|check|apply`,
+  Collection object queries/expansion, and `Kernel.Writing.Collection`.
+- Final verification: Ruff passed and the complete package suite passed with
+  `1515 passed`.
+- The live Draft applied once and its receipt maps the authorization Gate to
+  the Line edition plus both Open/Closed Collection editions.
+- Expected final POIs are unscored semantic records, unavailable
+  Chatlas-to-Archive grounding, the intentional `Model.Staleness.POI`, and
+  pre-existing legacy Block/Line typing debt. No lifecycle, authorization,
+  host/reference, or schema POI remains for this capture.

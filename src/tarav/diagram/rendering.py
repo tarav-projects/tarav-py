@@ -15,10 +15,12 @@ from . import (
     Diagram,
     DiagramAnnotation,
     DiagramBlock,
+    DiagramCollection,
     DiagramError,
     DiagramLineShip,
     DiagramModel,
     Finding,
+    ImplReqCollection,
     IssueBlock,
     LineAnnotationRecord,
     LineEditionRecord,
@@ -56,6 +58,7 @@ class DiagramRenderTarget:
             "annotation": "id",
             "line": "ship",
             "block": "ship",
+            "collection": "ship",
             "model": "ship",
         }.get(self.kind, "identity")
         return {
@@ -158,6 +161,21 @@ def block_render_target(
 
 def model_render_target(model: DiagramModel) -> DiagramRenderTarget:
     return DiagramRenderTarget("model", model.ship, model.namespace.id, model)
+
+
+def collection_render_target(
+    diagram: Diagram, collection_ship: str, *, namespace: str | None = None
+) -> DiagramRenderTarget:
+    collection = diagram.projected_collection(collection_ship, namespace=namespace)
+    current = collection.current_edition
+    if current is None:
+        raise DiagramRenderError("Diagram Collection has no current edition")
+    return DiagramRenderTarget(
+        "collection",
+        collection.ship,
+        current.annotation.namespace.id,
+        collection,
+    )
 
 
 def renderer(name: str) -> DiagramRenderer:
@@ -452,6 +470,13 @@ def _kernel_model(
         )
         sections.append(content)
         findings.extend(block_findings)
+    if projection.collections:
+        sections.extend(
+            (
+                "## Collections",
+                *(_collection_summary(item) for item in projection.collections),
+            )
+        )
     if not projection.blocks:
         findings.append(
             Finding(
@@ -461,6 +486,61 @@ def _kernel_model(
             )
         )
     return "\n\n".join(sections), _dedupe_findings(findings)
+
+
+def _collection_summary(collection: DiagramCollection) -> str:
+    label = collection.current_label or f"Collection.{collection.ship[:8]}"
+    state = (
+        f"; state: {collection.state}"
+        if isinstance(collection, ImplReqCollection)
+        else ""
+    )
+    return (
+        f"- **{label}** — `{collection.object_type}`; "
+        f"ship: `{collection.ship}`; hosted editions: "
+        f"{len(collection.hosted_editions)}{state}"
+    )
+
+
+def _kernel_collection(
+    target: DiagramRenderTarget, context: DiagramRenderContext
+) -> tuple[str, tuple[Finding, ...]]:
+    collection = target.subject
+    if not isinstance(collection, DiagramCollection):
+        raise DiagramRenderError("Collection renderer received another target")
+    title = collection.current_label or f"Collection.{collection.ship[:8]}"
+    sections = [
+        f"# {title}",
+        f"**Collection:** `{collection.ship}`  ",
+        f"**Type:** `{collection.object_type}`",
+    ]
+    if isinstance(collection, ImplReqCollection):
+        sections.append(f"**State:** `{collection.state}`")
+    if collection.host is not None:
+        sections.append(f"**Host:** `{collection.host.kind}:{collection.host.id}`")
+    if collection.hosted_editions:
+        sections.extend(
+            (
+                "",
+                "## Hosted editions",
+                *(
+                    f"- `{item.kind}:{item.ship}@{item.edition}`"
+                    for item in collection.hosted_editions
+                ),
+            )
+        )
+    if collection.references:
+        sections.extend(
+            (
+                "",
+                "## References",
+                *(
+                    f"- `{item.namespace_id}:{item.kind}:{item.id}`"
+                    for item in collection.references
+                ),
+            )
+        )
+    return "\n".join(sections), collection.findings
 
 
 def _typed_annotations(target: DiagramRenderTarget) -> tuple[TypedAnnotation, ...]:
@@ -628,6 +708,13 @@ _RENDERERS = {
             _kernel_model,
         ),
         DiagramRenderer(
+            "Kernel.Writing.Collection",
+            "collection",
+            "text/markdown",
+            "Kernel.Writing projection of one Collection and its hosted editions.",
+            _kernel_collection,
+        ),
+        DiagramRenderer(
             "Kernel.Writing.Line.Annotation",
             "annotation",
             "text/markdown",
@@ -659,6 +746,7 @@ __all__ = [
     "DiagramRenderer",
     "annotation_render_target",
     "block_render_target",
+    "collection_render_target",
     "line_render_target",
     "model_render_target",
     "renderer",

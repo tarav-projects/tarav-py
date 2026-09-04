@@ -1,0 +1,66 @@
+# Chatlas Query and Render — Impl.Req
+
+## Impl.Abstract
+
+- **Status:** Ready for execution
+- **Source session:** `01a05752-fa8d-7c62-abb2-5ff20c8260da`
+- **Objective:** add a bounded Chatlas Query engine for exact Turn-hash-prefix findings and expose default and explicitly selected named Renderer paths through the umbrella CLI.
+- **Boundary:** Query owns finding selection and Turn-to-Message assembly. Renderers receive structured findings and own only their presentation.
+- **Out of scope:** general document-reference parsing, persistent renderer configuration, dynamic plugin discovery, broad full-text search, and Diagram rendering changes.
+
+## Impl.Req.Diagram
+
+- **Namespace:** `User.Touched.Chatlas.Index` / `1c99092c-ba46-4006-adc3-9ada50c00abd`
+- **Model:** `Tarav` / `b7b78eab-e5c2-4610-9bf5-1b704a106f34`
+- **Impl.Req.Collection:** `773.Impl.Req` / `7a7d0e1b-1e66-48e5-bfbf-341633536db6` (`Open`)
+- **Diagram.Draft:** `8ea79144-7bff-4ced-ada0-7905e4677c98` / `/Users/pereiro/Documents/tarav/diagram/drafts/8ea79144-7bff-4ced-ada0-7905e4677c98.json`
+- **Capture.Authorization.Gate:** `58f7d2c9-1550-4048-a588-a4084083a972`
+
+The Collection hosts only supported implementation constraints. Its editions remain semantically attached to the existing `Context.Provider` and `Kernel.Writing` Blocks.
+
+## Execution.Plan
+
+### Slice 1 — Structured Chatlas Query
+
+- Add a Chatlas-owned query model that selects exact Turns by hash prefix and assembles their referenced Messages from the streamable Normal Model cache.
+- Preserve query order and reject malformed, missing, or ambiguous prefixes explicitly.
+- Observable: one prefix yields one structured finding without materializing Events or Loaded Contexts.
+- Check: focused Query unit tests cover successful, missing, ambiguous, malformed, multi-message, and ordered multi-prefix cases.
+- **Status:** Not started.
+
+### Slice 2 — Named Renderer paths
+
+- Add a named Chatlas Renderer registry with one fully qualified default Renderer.
+- Make `tarav chatlas query` run shared query mechanics and the default Renderer.
+- Make `tarav chatlas render` accept the same query flags plus an optional fully qualified `--renderer`; omission uses the same default.
+- Observable: equivalent default invocations render identical text, while registry lookup supports another in-process Renderer without changing Query.
+- Check: renderer and CLI tests cover equivalence, discovery failure, JSON envelopes, and custom registration.
+- **Status:** Not started.
+
+### Slice 3 — Integration and live verification
+
+- Export the public Query and Renderer primitives and align current Chatlas package documentation and CLI expectations.
+- Reinstall the editable command and exercise both commands against a real current-session Turn prefix.
+- Observable: the earlier product-surface context reference resolves to its exact User message through both commands.
+- Check: focused Chatlas suites, Ruff, architecture tests, and proportional complete-package tests.
+- **Status:** Not started.
+
+## Risks and deviation triggers
+
+- If existing Normal Model cache streams cannot assemble one Turn without loading unrelated collections, stop and revise the Query boundary rather than hiding full-model materialization inside a Renderer.
+- If fully dynamic external plugin loading is required for the first registered Renderer, keep registration in-process and defer distribution discovery instead of adding an unrequested plugin system.
+- If query flags begin encoding presentation choices, move them to the Renderer surface before continuing.
+
+## Acceptance signals
+
+- Query and Render share one Query parser and execution path.
+- Default Query and default Render output are byte-identical.
+- A Renderer is addressed by its full opaque registered name.
+- The CLI resolves compact Turn-hash prefixes and prints every referenced Chat.Message in Turn order.
+- Existing Normal Model, update, index, and raw commands remain unchanged.
+
+## Impl.Log
+
+- Repository inspection found no current Chatlas Query engine or Renderer registry; the implementation introduces the smallest reusable versions inside `tarav.chatlas`.
+- The streamable Normal Model cache already separates `turns.jsonl` and `messages.jsonl`, allowing Query to avoid loading unrelated Events and Loaded Contexts.
+- Renderer registration is an in-process extension primitive in this slice; workflow/plugin discovery remains deferred.

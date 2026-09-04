@@ -370,6 +370,7 @@ def test_renderer_registry_has_the_candidate_initial_surface() -> None:
         "Kernel.Writing.Line.WithSupport",
         "Kernel.Writing.Block",
         "Kernel.Writing.Block.WithSupport",
+        "Kernel.Writing.Collection",
         "Kernel.Writing.Model",
         "Diagram.Debug.Annotation",
         "Diagram.Debug.Line",

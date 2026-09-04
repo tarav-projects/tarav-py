@@ -25,23 +25,29 @@ from tarav.chatlas.normal_model import (
 NAMESPACE_CLASS = "Tarav.Diagram.Namespace"
 DIAGRAM_CONFIG_CLASS = "Tarav.Diagram.Configuration"
 CAPTURE_MANIFEST_CLASS = "Tarav.Diagram.Capture.Manifest"
+DIAGRAM_DRAFT_CLASS = "Tarav.Diagram.Draft"
 USER_TOUCHED_CHATLAS_INDEX = "User.Touched.Chatlas.Index"
 DIAGRAM_ATTIC = "Diagram.Attic"
 MODEL_SHIP_TYPE = "Diagram.Model.Ship"
 BLOCK_SHIP_TYPE = "Diagram.Block.Ship"
 LINE_SHIP_TYPE = "Diagram.Line.Ship"
+COLLECTION_SHIP_TYPE = "Diagram.Collection.Ship"
 MODEL_EDITION_TYPE = "Diagram.Model.Edition"
 BLOCK_EDITION_TYPE = "Diagram.Block.Edition"
 BLOCK_TYPE_ANNOTATION_TYPE = "Diagram.Block.Type.Annotation"
 LINE_EDITION_TYPE = "Diagram.Line.Edition"
+COLLECTION_EDITION_TYPE = "Diagram.Collection.Edition"
 LINE_TYPE_ANNOTATION_TYPE = "Diagram.Line.Type.Annotation"
 LINE_SUPPORT_ANNOTATION_TYPE = "Diagram.Line.Support.Annotation"
 LINE_GATE_ANNOTATION_TYPE = "Diagram.Line.Gate.Annotation"
 LINE_ANNOTATION_TYPE = "Line.Annotation"
+CAPTURE_AUTHORIZATION_GATE_TYPE = "Capture.Authorization.Gate"
 VERBATIM_GATE_TYPE = "Verbatim.Gate"
 DIAGRAM_BLOCK_OBJECT_TYPE = "Diagram.Block"
 DESIGN_BLOCK_OBJECT_TYPE = "Design.Block"
 IMPL_REQ_BLOCK_OBJECT_TYPE = "Impl.Req.Block"
+DIAGRAM_COLLECTION_OBJECT_TYPE = "Diagram.Collection"
+IMPL_REQ_COLLECTION_OBJECT_TYPE = "Impl.Req.Collection"
 ISSUE_BLOCK_OBJECT_TYPE = "Issue.Block"
 DIAGRAM_LINE_OBJECT_TYPE = "Diagram.Line"
 DESIGN_LINE_DEFINITION_TYPE = "Design.Line.Definition"
@@ -64,6 +70,12 @@ DESIGN_LINE_OBJECT_TYPES = (
 DIAGRAM_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "7b2bb6ef-37b8-47e0-8c6b-2ff5ccbdd82d"
 DESIGN_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "aa26bfa3-49f6-406d-b74f-f071ec3d11fa"
 IMPL_REQ_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "f6dfcbcb-6eb5-468c-a3f8-7f7034334b94"
+DIAGRAM_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP = (
+    "376d5a04-fae7-45ea-acaf-b5fbd176acb3"
+)
+IMPL_REQ_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP = (
+    "6d475881-1b3c-4774-bb1c-7e0ee91418bb"
+)
 ISSUE_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "4864c2cc-9542-49ea-8295-a566eea29164"
 ISSUE_LINE_RESOLVE_TYPE_DEFINITION_BLOCK_SHIP = "3753a425-04e7-4d62-9d44-01f42af5b5e4"
 DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS = {
@@ -80,11 +92,13 @@ CHATLAS_INDEX_SHIP_TYPES = (
     MODEL_SHIP_TYPE,
     BLOCK_SHIP_TYPE,
     LINE_SHIP_TYPE,
+    COLLECTION_SHIP_TYPE,
 )
 CHATLAS_INDEX_EDITION_TYPES = (
     MODEL_EDITION_TYPE,
     BLOCK_EDITION_TYPE,
     LINE_EDITION_TYPE,
+    COLLECTION_EDITION_TYPE,
 )
 CHATLAS_INDEX_ANNOTATION_TYPES = (
     BLOCK_TYPE_ANNOTATION_TYPE,
@@ -92,6 +106,7 @@ CHATLAS_INDEX_ANNOTATION_TYPES = (
     LINE_SUPPORT_ANNOTATION_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
     LINE_ANNOTATION_TYPE,
+    CAPTURE_AUTHORIZATION_GATE_TYPE,
 )
 SCHEMA_VERSION = 2
 CONFIG_SCHEMA_VERSION = 1
@@ -194,6 +209,11 @@ VERBATIM_GATE_ASSERTIONS = (
     "Verbatim.Gate.Token.Assertion",
     "Verbatim.Gate.Order.Assertion",
     "Verbatim.Gate.Content.Assertion",
+)
+CAPTURE_AUTHORIZATION_ASSERTIONS = (
+    "Capture.Authorization.Permission.Role.Assertion",
+    "Capture.Authorization.Token.Assertion",
+    "Capture.Authorization.Scope.Assertion",
 )
 
 
@@ -387,6 +407,39 @@ class DiagramArgumentReference:
 
 
 @dataclass(frozen=True, slots=True)
+class DiagramHostReference:
+    """Organizational host of one Diagram Ship edition."""
+
+    kind: str
+    id: str
+
+    def __post_init__(self) -> None:
+        if self.kind not in {"model", "collection"}:
+            raise DiagramModelError("Edition.host.kind must be model or collection")
+        _uuid(self.id, field="Edition.host.id")
+
+    def to_dict(self) -> dict[str, str]:
+        return {"kind": self.kind, "id": self.id}
+
+    @classmethod
+    def from_dict(cls, value: object) -> DiagramHostReference:
+        data = _object(value, field="Edition.host")
+        return cls(
+            _string(data.get("kind"), field="Edition.host.kind"),
+            _string(data.get("id"), field="Edition.host.id"),
+        )
+
+
+def _record_host(record: Mapping[str, Any], model_ship: str) -> DiagramHostReference:
+    value = record.get("host")
+    return (
+        DiagramHostReference.from_dict(value)
+        if value is not None
+        else DiagramHostReference("model", model_ship)
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class AnnotationDraft:
     id: str
     record: JsonObject
@@ -564,6 +617,36 @@ class LineShipRecord(TypedShip):
                         "block_ship": self.block_ship,
                         "line_ship": self.id,
                     },
+                    **_edition_payload(edition),
+                },
+            )
+            for edition in self.editions
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionShipRecord(TypedShip):
+    def __post_init__(self) -> None:
+        if self.type != COLLECTION_SHIP_TYPE:
+            raise DiagramModelError(f"not a Collection Ship: {self.type}")
+        _uuid(self.record.get("model_ship"), field="Collection.Ship.model_ship")
+        _validate_editions(self.editions, field="Collection.Ship.editions")
+
+    @property
+    def model_ship(self) -> str:
+        return _uuid(
+            self.record.get("model_ship"), field="Collection.Ship.model_ship"
+        )
+
+    def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
+        return tuple(
+            DiagramAnnotation(
+                _edition_id(edition),
+                self.ship.namespace,
+                {
+                    "type": COLLECTION_EDITION_TYPE,
+                    "model_ship": self.model_ship,
+                    "collection_ship": self.id,
                     **_edition_payload(edition),
                 },
             )
@@ -849,6 +932,8 @@ class LineEditionRecord(UserTouchedAnnotation):
             field="data.text",
         )
         _verbatim_gates(self.record.get("gates", []))
+        self.host
+        self.authorization_gates
 
     @property
     def location(self) -> DiagramLocation:
@@ -869,6 +954,14 @@ class LineEditionRecord(UserTouchedAnnotation):
     def line_type(self) -> str | None:
         value = self.record.get("line_type")
         return _string(value, field="line_type") if value is not None else None
+
+    @property
+    def host(self) -> DiagramHostReference:
+        return _record_host(self.record, self.location.model_ship)
+
+    @property
+    def authorization_gates(self) -> tuple[str, ...]:
+        return _authorization_gate_ids(self.record)
 
     def model_location(self) -> tuple[str, str]:
         return self.location.model_ship, "location.model_ship"
@@ -910,6 +1003,8 @@ class BlockEditionRecord(TypedAnnotation):
             _object(self.record.get("data", {}), field="data").get("label"),
             field="data.label",
         )
+        self.host
+        self.authorization_gates
 
     @property
     def location(self) -> DiagramBlockLocation:
@@ -926,6 +1021,14 @@ class BlockEditionRecord(TypedAnnotation):
     def block_type(self) -> str | None:
         value = self.record.get("block_type")
         return _string(value, field="block_type") if value is not None else None
+
+    @property
+    def host(self) -> DiagramHostReference:
+        return _record_host(self.record, self.location.model_ship)
+
+    @property
+    def authorization_gates(self) -> tuple[str, ...]:
+        return _authorization_gate_ids(self.record)
 
     def model_location(self) -> tuple[str, str]:
         return self.location.model_ship, "location.model_ship"
@@ -944,6 +1047,151 @@ class BlockEditionRecord(TypedAnnotation):
 
     def contribute(self, projector: DiagramProjectionBuilder) -> None:
         projector.add_block_annotation(self)
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionEditionRecord(TypedAnnotation):
+    def __post_init__(self) -> None:
+        if self.type != COLLECTION_EDITION_TYPE:
+            raise DiagramModelError(f"not a Collection Edition: {self.type}")
+        _uuid(self.record.get("model_ship"), field="Collection.Edition.model_ship")
+        _uuid(
+            self.record.get("collection_ship"),
+            field="Collection.Edition.collection_ship",
+        )
+        _string(self.record.get("collection_type"), field="collection_type")
+        _string(
+            _object(self.record.get("data", {}), field="data").get("label"),
+            field="data.label",
+        )
+        self.host
+        self.references
+        self.authorization_gates
+
+    @property
+    def model_ship(self) -> str:
+        return _uuid(self.record.get("model_ship"), field="model_ship")
+
+    @property
+    def collection_ship(self) -> str:
+        return _uuid(self.record.get("collection_ship"), field="collection_ship")
+
+    @property
+    def collection_type(self) -> str:
+        return _string(self.record.get("collection_type"), field="collection_type")
+
+    @property
+    def label(self) -> str:
+        return _string(
+            _object(self.record.get("data", {}), field="data").get("label"),
+            field="data.label",
+        )
+
+    @property
+    def data(self) -> JsonObject:
+        return _object(self.record.get("data", {}), field="data")
+
+    @property
+    def host(self) -> DiagramHostReference:
+        return _record_host(self.record, self.model_ship)
+
+    @property
+    def references(self) -> tuple[DiagramArgumentReference, ...]:
+        return tuple(
+            DiagramArgumentReference.from_dict(item)
+            for item in _array(self.record.get("references", []), field="references")
+        )
+
+    @property
+    def authorization_gates(self) -> tuple[str, ...]:
+        return _authorization_gate_ids(self.record)
+
+    def model_location(self) -> tuple[str, str]:
+        return self.model_ship, "model_ship"
+
+    def type_assertions(self) -> tuple[JsonObject, ...]:
+        return (
+            {"type": "Collection.Continuity.Assertion"},
+            {"type": "Collection.Type.Conformance.Assertion"},
+            {"type": "Model.Scope.Assertion"},
+        )
+
+    def contribute(self, projector: DiagramProjectionBuilder) -> None:
+        projector.add_collection_edition(self)
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureAuthorizationGateRecord(TypedAnnotation):
+    def __post_init__(self) -> None:
+        if self.type != CAPTURE_AUTHORIZATION_GATE_TYPE:
+            raise DiagramModelError(f"not a Capture Authorization Gate: {self.type}")
+        _uuid(self.record.get("model_ship"), field="Capture.Authorization.model_ship")
+        _string(self.record.get("token"), field="Capture.Authorization.token")
+        _string(self.record.get("workflow"), field="Capture.Authorization.workflow")
+        ChatlasTurnReference.from_dict(self.record.get("permission_turn"))
+        operations = tuple(
+            _string(item, field="Capture.Authorization.operations[]")
+            for item in _array(
+                self.record.get("operations", []),
+                field="Capture.Authorization.operations",
+            )
+        )
+        if not operations:
+            raise DiagramModelError("Capture.Authorization.operations must not be empty")
+        scopes = tuple(
+            DiagramArgumentReference.from_dict(item)
+            for item in _array(
+                self.record.get("target_scope", []),
+                field="Capture.Authorization.target_scope",
+            )
+        )
+        if not scopes:
+            raise DiagramModelError("Capture.Authorization.target_scope must not be empty")
+
+    @property
+    def model_ship(self) -> str:
+        return _uuid(self.record.get("model_ship"), field="model_ship")
+
+    @property
+    def token(self) -> str:
+        return _string(self.record.get("token"), field="token")
+
+    @property
+    def workflow(self) -> str:
+        return _string(self.record.get("workflow"), field="workflow")
+
+    @property
+    def permission_turn(self) -> ChatlasTurnReference:
+        return ChatlasTurnReference.from_dict(self.record.get("permission_turn"))
+
+    @property
+    def operations(self) -> tuple[str, ...]:
+        return tuple(
+            _string(item, field="operations[]")
+            for item in _array(self.record.get("operations", []), field="operations")
+        )
+
+    @property
+    def target_scope(self) -> tuple[DiagramArgumentReference, ...]:
+        return tuple(
+            DiagramArgumentReference.from_dict(item)
+            for item in _array(
+                self.record.get("target_scope", []), field="target_scope"
+            )
+        )
+
+    def model_location(self) -> tuple[str, str]:
+        return self.model_ship, "model_ship"
+
+    def type_assertions(self) -> tuple[JsonObject, ...]:
+        return tuple(
+            {"type": kind}
+            for kind in (
+                "Capture.Authorization.Permission.Role.Assertion",
+                "Capture.Authorization.Token.Assertion",
+                "Capture.Authorization.Scope.Assertion",
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1155,8 +1403,23 @@ class DiagramBlockType:
 
 
 @dataclass(frozen=True, slots=True)
+class DiagramCollectionType:
+    id: str
+    collection_class: type[DiagramCollection]
+    definition_block_ship: str | None = None
+
+    def to_dict(self) -> JsonObject:
+        return {
+            "id": self.id,
+            "class": self.collection_class.__name__,
+            "definition_block_ship": self.definition_block_ship,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DiagramObjectTypeRegistry:
     block_types: tuple[DiagramBlockType, ...]
+    collection_types: tuple[DiagramCollectionType, ...] = ()
 
     def block_type(self, type_id: str) -> DiagramBlockType | None:
         return next((item for item in self.block_types if item.id == type_id), None)
@@ -1172,11 +1435,17 @@ class DiagramObjectTypeRegistry:
             None,
         )
 
+    def collection_type(self, type_id: str) -> DiagramCollectionType | None:
+        return next(
+            (item for item in self.collection_types if item.id == type_id), None
+        )
+
     def types(self) -> tuple[DiagramBlockType | DiagramLineType, ...]:
         return tuple(
             dict.fromkeys(
                 (
                     *self.block_types,
+                    *self.collection_types,
                     *(
                         line_type
                         for block_type in self.block_types
@@ -1217,7 +1486,10 @@ class DiagramObjectTypeRegistry:
         return tuple(findings)
 
     def to_dict(self) -> JsonObject:
-        return {"block_types": [item.to_dict() for item in self.block_types]}
+        return {
+            "block_types": [item.to_dict() for item in self.block_types],
+            "collection_types": [item.to_dict() for item in self.collection_types],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -1451,10 +1723,98 @@ class IssueBlock(DiagramBlock):
 
 
 @dataclass(frozen=True, slots=True)
+class DiagramHostedEdition:
+    kind: str
+    ship: str
+    edition: str
+
+    def to_dict(self) -> JsonObject:
+        return {"kind": self.kind, "ship": self.ship, "edition": self.edition}
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramCollection:
+    ship: str
+    model_ship: str
+    editions: tuple[CollectionEditionRecord, ...]
+    type_ids: tuple[str, ...]
+    hosted_editions: tuple[DiagramHostedEdition, ...]
+    findings: tuple[Finding, ...]
+
+    @property
+    def object_type(self) -> str | None:
+        return self.type_ids[-1] if self.type_ids else None
+
+    @property
+    def current_edition(self) -> CollectionEditionRecord | None:
+        return self.editions[-1] if self.editions else None
+
+    @property
+    def labels(self) -> tuple[str, ...]:
+        return tuple(item.label for item in self.editions)
+
+    @property
+    def current_label(self) -> str | None:
+        current = self.current_edition
+        return current.label if current is not None else None
+
+    @property
+    def host(self) -> DiagramHostReference | None:
+        current = self.current_edition
+        return current.host if current is not None else None
+
+    @property
+    def references(self) -> tuple[DiagramArgumentReference, ...]:
+        current = self.current_edition
+        return current.references if current is not None else ()
+
+    def mechanical_findings(self) -> tuple[Finding, ...]:
+        return ()
+
+
+class ImplReqCollection(DiagramCollection):
+    @property
+    def state(self) -> str | None:
+        current = self.current_edition
+        if current is None:
+            return None
+        value = current.data.get("state")
+        return value if isinstance(value, str) else None
+
+    def mechanical_findings(self) -> tuple[Finding, ...]:
+        findings: list[Finding] = []
+        previous: CollectionEditionRecord | None = None
+        for edition in self.editions:
+            state = edition.data.get("state")
+            if state not in {"Open", "Closed"}:
+                findings.append(
+                    Finding(
+                        "impl-req-state-invalid",
+                        f"collection.{self.ship}.edition.{edition.id}.data.state",
+                        "Impl.Req.Collection state must be Open or Closed.",
+                    )
+                )
+            if previous is not None and previous.data.get("state") == "Closed" and state == "Open":
+                reopened_at = _optional_timestamp(edition.data.get("reopened_at"))
+                reopen_until = _optional_timestamp(previous.data.get("reopen_until"))
+                if reopened_at is None or reopen_until is None or reopened_at > reopen_until:
+                    findings.append(
+                        Finding(
+                            "impl-req-reopen-window-invalid",
+                            f"collection.{self.ship}.edition.{edition.id}",
+                            "Impl.Req.Collection reopening is outside its declared window.",
+                        )
+                    )
+            previous = edition
+        return tuple(findings)
+
+
+@dataclass(frozen=True, slots=True)
 class DiagramProjection:
     model_ship: str
     namespace_id: str
     blocks: tuple[DiagramBlock, ...]
+    collections: tuple[DiagramCollection, ...]
     findings: tuple[Finding, ...]
 
     def block(self, block_ship: str) -> DiagramBlock:
@@ -1474,20 +1834,40 @@ class DiagramProjection:
             raise DiagramError(f"Projected Line does not resolve: {line_ship}")
         return matches[0]
 
+    def collection(self, collection_ship: str) -> DiagramCollection:
+        matches = tuple(
+            item for item in self.collections if item.ship == collection_ship
+        )
+        if len(matches) != 1:
+            raise DiagramError(
+                f"Projected Collection does not resolve: {collection_ship}"
+            )
+        return matches[0]
+
+    def child_collections(self, collection_ship: str) -> tuple[DiagramCollection, ...]:
+        return tuple(
+            item
+            for item in self.collections
+            if item.host is not None
+            and item.host.kind == "collection"
+            and item.host.id == collection_ship
+        )
+
     def objects(
         self,
         *,
         kind: str | None = None,
         object_type: str | None = None,
         label: str | None = None,
-    ) -> tuple[DiagramBlock | DiagramLineShip, ...]:
+    ) -> tuple[DiagramBlock | DiagramLineShip | DiagramCollection, ...]:
         """Return projected semantic objects matching exact composable filters."""
 
-        if kind not in (None, "block", "line"):
+        if kind not in (None, "block", "line", "collection"):
             raise DiagramModelError(f"unsupported Diagram object kind: {kind}")
-        selected: tuple[DiagramBlock | DiagramLineShip, ...] = tuple(
+        selected: tuple[DiagramBlock | DiagramLineShip | DiagramCollection, ...] = tuple(
             (
                 *(self.blocks if kind in (None, "block") else ()),
+                *(self.collections if kind in (None, "collection") else ()),
                 *(
                     tuple(line for block in self.blocks for line in block.lines)
                     if kind in (None, "line")
@@ -1503,7 +1883,8 @@ class DiagramProjection:
             selected = tuple(
                 item
                 for item in selected
-                if isinstance(item, DiagramBlock) and label in item.labels
+                if isinstance(item, (DiagramBlock, DiagramCollection))
+                and label in item.labels
             )
         return selected
 
@@ -1547,6 +1928,25 @@ class DiagramProjection:
                 }
                 for block in self.blocks
             ],
+            "collections": [
+                {
+                    "ship": collection.ship,
+                    "object_type": collection.object_type,
+                    "labels": list(collection.labels),
+                    "host": (
+                        collection.host.to_dict()
+                        if collection.host is not None
+                        else None
+                    ),
+                    "hosted_editions": [
+                        item.to_dict() for item in collection.hosted_editions
+                    ],
+                    "references": [
+                        item.to_dict() for item in collection.references
+                    ],
+                }
+                for collection in self.collections
+            ],
             "findings": [item.to_dict() for item in self.findings],
         }
 
@@ -1559,14 +1959,21 @@ class DiagramProjectionBuilder:
         namespace: DiagramNamespace,
         model_ship: str,
         annotations: Iterable[TypedAnnotation],
+        *,
+        include_collection_content: bool = False,
     ) -> None:
         self.namespace = namespace
         self.model_ship = model_ship
         self.registry = namespace.object_types()
         self.typed_by_id = {item.id: item for item in annotations}
+        self.include_collection_content = include_collection_content
         self.block_annotations: dict[str, list[TypedAnnotation]] = {}
         self.line_annotations: dict[tuple[str, str], list[TypedAnnotation]] = {}
+        self.collection_editions: dict[str, list[CollectionEditionRecord]] = {}
         self.findings: list[Finding] = []
+
+    def add_collection_edition(self, edition: CollectionEditionRecord) -> None:
+        self.collection_editions.setdefault(edition.collection_ship, []).append(edition)
 
     def add_block_annotation(
         self, annotation: BlockEditionRecord | BlockTypeAnnotation
@@ -1613,11 +2020,27 @@ class DiagramProjectionBuilder:
                 (*self.block_annotations, *(key[0] for key in self.line_annotations))
             )
         )
-        blocks = tuple(self._block(ship) for ship in block_ships)
+        blocks = tuple(
+            block
+            for ship in block_ships
+            if (block := self._block(ship)) is not None
+        )
+        collections = tuple(
+            self._collection(ship) for ship in self.collection_editions
+        )
+        self.findings.extend(self._collection_cycle_findings(collections))
         findings = _dedupe_findings(
             (
                 *self.findings,
                 *(finding for block in blocks for finding in block.findings),
+                *(
+                    finding
+                    for collection in collections
+                    for finding in (
+                        *collection.findings,
+                        *collection.mechanical_findings(),
+                    )
+                ),
                 *(
                     finding
                     for block in blocks
@@ -1626,7 +2049,9 @@ class DiagramProjectionBuilder:
                 ),
             )
         )
-        return DiagramProjection(self.model_ship, self.namespace.id, blocks, findings)
+        return DiagramProjection(
+            self.model_ship, self.namespace.id, blocks, collections, findings
+        )
 
     def _ordered_ship_editions(
         self, ship: str, editions: Iterable[TypedAnnotation]
@@ -1648,12 +2073,19 @@ class DiagramProjectionBuilder:
             )
         )
 
-    def _block(self, ship: str) -> DiagramBlock:
+    def _block(self, ship: str) -> DiagramBlock | None:
         annotations = _sort_typed(self.block_annotations.get(ship, ()))
-        declarations = self._ordered_ship_editions(
+        all_declarations = self._ordered_ship_editions(
             ship,
             (item for item in annotations if isinstance(item, BlockEditionRecord)),
         )
+        declarations = tuple(
+            item
+            for item in all_declarations
+            if self.include_collection_content or item.host.kind == "model"
+        )
+        if all_declarations and not declarations:
+            return None
         annotations = (
             *declarations,
             *(item for item in annotations if not isinstance(item, BlockEditionRecord)),
@@ -1710,9 +2142,10 @@ class DiagramProjectionBuilder:
             )
         assert block_type is not None
         lines = tuple(
-            self._line(ship, line_ship, block_type)
+            line
             for block_ship, line_ship in self.line_annotations
             if block_ship == ship
+            if (line := self._line(ship, line_ship, block_type)) is not None
         )
         return block_type.block_class(
             ship,
@@ -1725,12 +2158,23 @@ class DiagramProjectionBuilder:
 
     def _line(
         self, block_ship: str, ship: str, block_type: DiagramBlockType
-    ) -> DiagramLineShip:
+    ) -> DiagramLineShip | None:
         annotations = _sort_typed(self.line_annotations[(block_ship, ship)])
-        wordings = self._ordered_ship_editions(
+        all_wordings = self._ordered_ship_editions(
             ship,
             (item for item in annotations if isinstance(item, LineEditionRecord)),
         )
+        wordings = tuple(
+            item
+            for item in all_wordings
+            if self.include_collection_content or item.host.kind == "model"
+        )
+        if not wordings:
+            if all_wordings and all_wordings[-1].host.kind == "collection":
+                self.findings.append(self._staleness_finding(ship, all_wordings[-1]))
+            return None
+        if all_wordings[-1].id != wordings[-1].id:
+            self.findings.append(self._staleness_finding(ship, all_wordings[-1]))
         annotations = (
             *wordings,
             *(item for item in annotations if not isinstance(item, LineEditionRecord)),
@@ -1796,6 +2240,202 @@ class DiagramProjectionBuilder:
             type_ids,
             tuple(findings),
         )
+
+    def _staleness_finding(
+        self, ship: str, latest: LineEditionRecord
+    ) -> Finding:
+        return Finding(
+            "model-staleness",
+            f"line.{ship}.edition.{latest.id}",
+            (
+                "Model.Staleness.POI: the newest known Line.Ship edition is "
+                f"hosted outside the Model primary surface by {latest.host.id}."
+            ),
+        )
+
+    def _collection(self, ship: str) -> DiagramCollection:
+        editions = tuple(
+            item
+            for item in self._ordered_ship_editions(
+                ship, self.collection_editions.get(ship, ())
+            )
+            if isinstance(item, CollectionEditionRecord)
+        )
+        findings: list[Finding] = []
+        type_ids = tuple(dict.fromkeys(item.collection_type for item in editions))
+        selected_id = type_ids[-1] if type_ids else DIAGRAM_COLLECTION_OBJECT_TYPE
+        collection_type = self.registry.collection_type(selected_id)
+        if collection_type is None:
+            findings.append(
+                Finding(
+                    "collection-type-unknown",
+                    f"collection.{ship}.collection_type",
+                    f"Collection.Type is not registered: {selected_id}.",
+                )
+            )
+            collection_type = self.registry.collection_type(
+                DIAGRAM_COLLECTION_OBJECT_TYPE
+            )
+        assert collection_type is not None
+        if (
+            type_ids
+            and self.namespace.allowed_collection_types
+            and selected_id not in self.namespace.allowed_collection_types
+        ):
+            findings.append(
+                Finding(
+                    "collection-type-not-allowed",
+                    f"collection.{ship}.collection_type",
+                    (
+                        f"Namespace {self.namespace.name} does not allow "
+                        f"Collection.Type {selected_id}."
+                    ),
+                )
+            )
+        current = editions[-1] if editions else None
+        if current is not None and current.host.kind == "model":
+            if current.host.id != self.model_ship:
+                findings.append(
+                    Finding(
+                        "collection-host-model-mismatch",
+                        f"collection.{ship}.host",
+                        "Collection host names a different Model.",
+                    )
+                )
+        elif current is not None and current.host.id not in self.collection_editions:
+            findings.append(
+                Finding(
+                    "collection-host-unresolved",
+                    f"collection.{ship}.host",
+                    "Parent Diagram.Collection does not resolve in this Model.",
+                )
+            )
+        if current is not None:
+            for index, reference in enumerate(current.references):
+                if (
+                    reference.namespace_id == self.namespace.id
+                    and not self.namespace.resolves_argument(reference)
+                    and not self._resolves_projection_reference(reference)
+                ):
+                    findings.append(
+                        Finding(
+                            "collection-reference-unresolved",
+                            f"collection.{ship}.references[{index}]",
+                            "Diagram.Collection reference does not resolve.",
+                        )
+                    )
+        hosted = self._hosted_editions(ship)
+        collection = collection_type.collection_class(
+            ship,
+            self.model_ship,
+            editions,
+            type_ids,
+            hosted,
+            tuple(findings),
+        )
+        if isinstance(collection, ImplReqCollection) and collection.state == "Closed":
+            current = collection.current_edition
+            closed_at = (
+                _optional_timestamp(current.data.get("closed_at"))
+                if current is not None
+                else None
+            )
+            if closed_at is None and current is not None:
+                closed_at = _optional_timestamp(current.record.get("recorded_at"))
+            close_is_already_landed = (
+                current is not None and current.record.get("recorded_at") is not None
+            )
+            for hosted_edition in hosted:
+                typed = self.typed_by_id.get(hosted_edition.edition)
+                recorded_at = (
+                    _optional_timestamp(typed.record.get("recorded_at"))
+                    if typed is not None
+                    else None
+                )
+                if recorded_at is None and not close_is_already_landed:
+                    continue
+                if closed_at is not None and recorded_at is not None and recorded_at <= closed_at:
+                    continue
+                findings.append(
+                    Finding(
+                        "impl-req-closed-write",
+                        f"collection.{ship}.hosted.{hosted_edition.edition}",
+                        "Normal capture added or revised content in a Closed Impl.Req.Collection.",
+                    )
+                )
+            collection = collection_type.collection_class(
+                ship,
+                self.model_ship,
+                editions,
+                type_ids,
+                hosted,
+                tuple(findings),
+            )
+        return collection
+
+    def _resolves_projection_reference(
+        self, reference: DiagramArgumentReference
+    ) -> bool:
+        if reference.kind in {"edition", "annotation"}:
+            return reference.id in self.typed_by_id
+        if reference.kind != "ship":
+            return False
+        for item in self.typed_by_id.values():
+            if isinstance(item, LineEditionRecord):
+                identities = (item.location.block_ship, item.location.line_ship)
+            elif isinstance(item, BlockEditionRecord):
+                identities = (item.location.block_ship,)
+            elif isinstance(item, CollectionEditionRecord):
+                identities = (item.collection_ship,)
+            else:
+                continue
+            if reference.id in identities:
+                return True
+        return False
+
+    def _hosted_editions(self, collection_ship: str) -> tuple[DiagramHostedEdition, ...]:
+        hosted: list[DiagramHostedEdition] = []
+        for typed in self.typed_by_id.values():
+            if not isinstance(
+                typed, (BlockEditionRecord, LineEditionRecord, CollectionEditionRecord)
+            ):
+                continue
+            if typed.host.kind != "collection" or typed.host.id != collection_ship:
+                continue
+            if isinstance(typed, BlockEditionRecord):
+                kind, ship = "block", typed.location.block_ship
+            elif isinstance(typed, LineEditionRecord):
+                kind, ship = "line", typed.location.line_ship
+            else:
+                kind, ship = "collection", typed.collection_ship
+            hosted.append(DiagramHostedEdition(kind, ship, typed.id))
+        return tuple(hosted)
+
+    def _collection_cycle_findings(
+        self, collections: tuple[DiagramCollection, ...]
+    ) -> tuple[Finding, ...]:
+        parents = {
+            item.ship: item.host.id
+            for item in collections
+            if item.host is not None and item.host.kind == "collection"
+        }
+        findings: list[Finding] = []
+        for ship in parents:
+            visited: set[str] = set()
+            cursor = ship
+            while cursor in parents:
+                if cursor in visited:
+                    findings.append(
+                        Finding(
+                            "collection-host-cycle",
+                            f"collection.{ship}.host",
+                            "Diagram.Collection hosting contains a cycle.",
+                        )
+                    )
+                    break
+                visited.add(cursor)
+                cursor = parents[cursor]
+        return _dedupe_findings(findings)
 
 
 def default_diagram_object_types() -> DiagramObjectTypeRegistry:
@@ -1890,7 +2530,19 @@ def default_diagram_object_types() -> DiagramObjectTypeRegistry:
                 (*design_lines, issue_resolve),
                 definition_block_ship=ISSUE_BLOCK_TYPE_DEFINITION_BLOCK_SHIP,
             ),
-        )
+        ),
+        (
+            DiagramCollectionType(
+                DIAGRAM_COLLECTION_OBJECT_TYPE,
+                DiagramCollection,
+                definition_block_ship=DIAGRAM_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP,
+            ),
+            DiagramCollectionType(
+                IMPL_REQ_COLLECTION_OBJECT_TYPE,
+                ImplReqCollection,
+                definition_block_ship=IMPL_REQ_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP,
+            ),
+        ),
     )
 
 
@@ -2018,10 +2670,11 @@ class CaptureManifest:
                     )
             seen_ships[draft.id] = draft.record
             ship = DiagramShip(draft.id, namespace, draft.record)
-            if (
-                namespace.allowed_ship_types
-                and ship.type not in namespace.allowed_ship_types
-            ):
+            allowed_ship = ship.type in namespace.allowed_ship_types or (
+                namespace.name in CHATLAS_INDEX_NAMESPACES
+                and ship.type in CHATLAS_INDEX_SHIP_TYPES
+            )
+            if namespace.allowed_ship_types and not allowed_ship:
                 findings.append(
                     Finding(
                         "ship-type-not-allowed",
@@ -2036,7 +2689,9 @@ class CaptureManifest:
                     Finding("ship-specialization-unavailable", f"{path}.type", str(exc))
                 )
                 continue
-            if isinstance(typed_ship, (BlockShipRecord, LineShipRecord)):
+            if isinstance(
+                typed_ship, (BlockShipRecord, LineShipRecord, CollectionShipRecord)
+            ):
                 if typed_ship.model_ship != self.model_ship:
                     findings.append(
                         Finding(
@@ -2100,6 +2755,77 @@ class CaptureManifest:
                         "Annotation is not located in the Capture.Manifest Model.",
                     )
                 )
+        existing_gate_ids = {
+            item.id
+            for item in namespace.annotations()
+            if item.type == CAPTURE_AUTHORIZATION_GATE_TYPE
+        }
+        draft_gate_ids = {
+            item.id
+            for item in self.annotations
+            if item.record.get("type") == CAPTURE_AUTHORIZATION_GATE_TYPE
+        }
+        known_gate_ids = existing_gate_ids | draft_gate_ids
+        known_collection_ids = {
+            item.id
+            for item in namespace.ships()
+            if item.type == COLLECTION_SHIP_TYPE
+        } | {
+            item.id
+            for item in self.ships
+            if item.record.get("type") == COLLECTION_SHIP_TYPE
+        }
+        for index, draft in enumerate(self.ships):
+            for edition_index, value in enumerate(
+                _array(draft.record.get("editions", []), field="Ship.editions")
+            ):
+                edition = _object(value, field="Ship.editions[]")
+                path = f"ships[{index}].editions[{edition_index}]"
+                host = edition.get("host")
+                if host is not None:
+                    reference = DiagramHostReference.from_dict(host)
+                    if (
+                        reference.kind == "collection"
+                        and reference.id not in known_collection_ids
+                    ):
+                        findings.append(
+                            Finding(
+                                "edition-host-unresolved",
+                                f"{path}.host",
+                                "Edition host Collection does not resolve.",
+                            )
+                        )
+                for gate_id in _authorization_gate_ids(edition):
+                    if gate_id not in known_gate_ids:
+                        findings.append(
+                            Finding(
+                                "capture-authorization-gate-unresolved",
+                                f"{path}.authorization_gates",
+                                f"Capture.Authorization.Gate does not resolve: {gate_id}.",
+                            )
+                        )
+        for index, draft in enumerate(self.annotations):
+            records = (
+                _line_annotation_editions(draft.record)
+                if draft.record.get("type") == LINE_ANNOTATION_TYPE
+                else (draft.record,)
+            )
+            for record_index, record in enumerate(records):
+                path = f"annotations[{index}]"
+                if len(records) > 1:
+                    path += f".editions[{record_index}]"
+                for gate_id in _authorization_gate_ids(record):
+                    if gate_id not in known_gate_ids:
+                        findings.append(
+                            Finding(
+                                "capture-authorization-gate-unresolved",
+                                f"{path}.authorization_gates",
+                                (
+                                    "Capture.Authorization.Gate does not resolve: "
+                                    f"{gate_id}."
+                                ),
+                            )
+                        )
         projection = namespace.project(self.model_ship, extra=draft_annotations)
         findings.extend(projection.findings)
         assertion_engine = namespace.assertion_engine(evidence=evidence)
@@ -2126,6 +2852,7 @@ class CaptureReceipt:
     existing_editions: tuple[str, ...] = ()
     created_annotations: tuple[str, ...] = ()
     existing_annotations: tuple[str, ...] = ()
+    authorizations: tuple[JsonObject, ...] = ()
 
     def to_dict(self) -> JsonObject:
         return {
@@ -2139,6 +2866,7 @@ class CaptureReceipt:
             "existing_editions": list(self.existing_editions),
             "created_annotations": list(self.created_annotations),
             "existing_annotations": list(self.existing_annotations),
+            "authorizations": [dict(item) for item in self.authorizations],
             "findings": [item.to_dict() for item in self.findings],
             "committed": self.committed,
             "base_commit": self.base_commit,
@@ -2513,6 +3241,104 @@ class VerbatimGateAssertionEvaluator:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class CaptureAuthorizationAssertionEvaluator:
+    name: str = "Capture.Authorization.Assertion.Evaluator"
+    assertion_types: tuple[str, ...] = CAPTURE_AUTHORIZATION_ASSERTIONS
+
+    def evaluate(
+        self,
+        annotation: TypedAnnotation,
+        *,
+        evidence: ChatlasEvidence | None,
+        path: str,
+    ) -> AssertionEvaluation:
+        if not isinstance(annotation, CaptureAuthorizationGateRecord):
+            return AssertionEvaluation(self.name, {})
+        if evidence is None:
+            return AssertionEvaluation(
+                self.name,
+                {kind: None for kind in self.assertion_types},
+                (
+                    Finding(
+                        "capture-authorization-unassessable",
+                        path,
+                        "Capture.Authorization.Gate requires Chatlas evidence.",
+                    ),
+                ),
+            )
+        findings: list[Finding] = []
+        try:
+            turn = evidence.turn(annotation.permission_turn)
+            role_score = turn.get("side") == "user"
+            token_score = annotation.token in evidence.turn_text(
+                annotation.permission_turn
+            )
+        except DiagramError as exc:
+            role_score = None
+            token_score = None
+            findings.append(
+                Finding(
+                    "capture-authorization-permission-unresolved",
+                    f"{path}.permission_turn",
+                    str(exc),
+                )
+            )
+        local_scope = all(
+            reference.namespace_id == annotation.annotation.namespace.id
+            for reference in annotation.target_scope
+        )
+        scope_score = (
+            all(
+                annotation.annotation.namespace.resolves_argument(reference)
+                for reference in annotation.target_scope
+            )
+            if local_scope
+            else None
+        )
+        if role_score is False:
+            findings.append(
+                Finding(
+                    "capture-authorization-permission-not-user",
+                    f"{path}.permission_turn",
+                    "Capture authorization permission evidence is not a User turn.",
+                )
+            )
+        if token_score is False:
+            findings.append(
+                Finding(
+                    "capture-authorization-token-missing",
+                    f"{path}.token",
+                    "Authorization token does not occur in its permission evidence.",
+                )
+            )
+        if scope_score is False:
+            findings.append(
+                Finding(
+                    "capture-authorization-scope-unresolved",
+                    f"{path}.target_scope",
+                    "One or more authorization targets do not resolve.",
+                )
+            )
+        elif scope_score is None:
+            findings.append(
+                Finding(
+                    "capture-authorization-scope-unassessable",
+                    f"{path}.target_scope",
+                    "Cross-Namespace authorization scope requires Diagram-level resolution.",
+                )
+            )
+        return AssertionEvaluation(
+            self.name,
+            {
+                self.assertion_types[0]: role_score,
+                self.assertion_types[1]: token_score,
+                self.assertion_types[2]: scope_score,
+            },
+            tuple(findings),
+        )
+
+
 class AssertionEngine:
     """Central evaluator for retained and mechanically derived Assertion scores."""
 
@@ -2524,7 +3350,10 @@ class AssertionEngine:
     ) -> None:
         self.evidence = evidence
         self._evaluators: dict[str, MechanicalAssertionEvaluator] = {}
-        for evaluator in evaluators or (VerbatimGateAssertionEvaluator(),):
+        for evaluator in evaluators or (
+            VerbatimGateAssertionEvaluator(),
+            CaptureAuthorizationAssertionEvaluator(),
+        ):
             self.register(evaluator)
 
     def register(self, evaluator: MechanicalAssertionEvaluator) -> None:
@@ -2607,6 +3436,7 @@ class DiagramNamespace:
     allowed_ship_types: tuple[str, ...]
     allowed_annotation_types: tuple[str, ...]
     allowed_block_types: tuple[str, ...] = ()
+    allowed_collection_types: tuple[str, ...] = ()
     require_block_type: bool = False
 
     @property
@@ -2627,6 +3457,7 @@ class DiagramNamespace:
         allowed_ship_types: Iterable[str] = (),
         allowed_annotation_types: Iterable[str] = (),
         allowed_block_types: Iterable[str] = (),
+        allowed_collection_types: Iterable[str] = (),
         require_block_type: bool = False,
     ) -> DiagramNamespace:
         resolved = root.expanduser().resolve()
@@ -2646,6 +3477,7 @@ class DiagramNamespace:
                 "allowed_ship_types": list(allowed_ship_types),
                 "allowed_annotation_types": list(allowed_annotation_types),
                 "allowed_block_types": list(allowed_block_types),
+                "allowed_collection_types": list(allowed_collection_types),
                 "require_block_type": require_block_type,
             },
         )
@@ -2669,6 +3501,10 @@ class DiagramNamespace:
                 IMPL_REQ_BLOCK_OBJECT_TYPE,
                 ISSUE_BLOCK_OBJECT_TYPE,
             ),
+            allowed_collection_types=(
+                DIAGRAM_COLLECTION_OBJECT_TYPE,
+                IMPL_REQ_COLLECTION_OBJECT_TYPE,
+            ),
             require_block_type=True,
         )
 
@@ -2684,6 +3520,10 @@ class DiagramNamespace:
                 DESIGN_BLOCK_OBJECT_TYPE,
                 IMPL_REQ_BLOCK_OBJECT_TYPE,
                 ISSUE_BLOCK_OBJECT_TYPE,
+            ),
+            allowed_collection_types=(
+                DIAGRAM_COLLECTION_OBJECT_TYPE,
+                IMPL_REQ_COLLECTION_OBJECT_TYPE,
             ),
             require_block_type=True,
         )
@@ -2714,6 +3554,11 @@ class DiagramNamespace:
             if name in CHATLAS_INDEX_NAMESPACES
             else ()
         )
+        default_collection_types = (
+            (DIAGRAM_COLLECTION_OBJECT_TYPE, IMPL_REQ_COLLECTION_OBJECT_TYPE)
+            if name in CHATLAS_INDEX_NAMESPACES
+            else ()
+        )
         return cls(
             resolved,
             _uuid(data.get("id"), field="Namespace.id"),
@@ -2736,6 +3581,14 @@ class DiagramNamespace:
                 for item in _array(
                     data.get("allowed_block_types") or list(default_block_types),
                     field="allowed_block_types",
+                )
+            ),
+            tuple(
+                _string(item, field="allowed_collection_types[]")
+                for item in _array(
+                    data.get("allowed_collection_types")
+                    or list(default_collection_types),
+                    field="allowed_collection_types",
                 )
             ),
             (
@@ -2766,6 +3619,7 @@ class DiagramNamespace:
             MODEL_SHIP_TYPE: ModelShipRecord,
             BLOCK_SHIP_TYPE: BlockShipRecord,
             LINE_SHIP_TYPE: LineShipRecord,
+            COLLECTION_SHIP_TYPE: CollectionShipRecord,
         }.get(ship.type)
         if ship_class is None:
             raise DiagramShipSpecializationError(
@@ -2887,6 +3741,7 @@ class DiagramNamespace:
     def specialize(self, annotation: DiagramAnnotation) -> TypedAnnotation:
         classes: dict[str, type[TypedAnnotation]] = {
             LINE_ANNOTATION_TYPE: LineAnnotationRecord,
+            CAPTURE_AUTHORIZATION_GATE_TYPE: CaptureAuthorizationGateRecord,
         }
         if self.name in CHATLAS_INDEX_NAMESPACES:
             classes.update(
@@ -2895,6 +3750,7 @@ class DiagramNamespace:
                     BLOCK_EDITION_TYPE: BlockEditionRecord,
                     BLOCK_TYPE_ANNOTATION_TYPE: BlockTypeAnnotation,
                     LINE_EDITION_TYPE: LineEditionRecord,
+                    COLLECTION_EDITION_TYPE: CollectionEditionRecord,
                     LINE_TYPE_ANNOTATION_TYPE: LineTypeAnnotation,
                     LINE_SUPPORT_ANNOTATION_TYPE: LineSupportAnnotation,
                     LINE_GATE_ANNOTATION_TYPE: LineGateAnnotation,
@@ -3012,6 +3868,9 @@ class DiagramNamespace:
         message: str,
         commit: bool,
     ) -> CaptureReceipt:
+        ships = tuple(ships)
+        annotations = tuple(annotations)
+        authorization_coverage = _authorization_coverage(ships, annotations)
         base_commit = _run_git(self.root, "rev-parse", "HEAD")
         created: list[str] = []
         existing: list[str] = []
@@ -3114,6 +3973,7 @@ class DiagramNamespace:
             tuple(existing_editions),
             tuple(created_annotations),
             tuple(existing_annotations),
+            authorization_coverage,
         )
 
     def create_model(
@@ -3194,14 +4054,12 @@ class DiagramNamespace:
         direct = tuple(
             item
             for item in self._projection_records()
+            if item.type != MODEL_EDITION_TYPE
             if (
                 isinstance(item.record.get("location"), dict)
                 and item.record["location"].get("model_ship") == ship
             )
-            or (
-                item.type == LINE_ANNOTATION_TYPE
-                and item.record.get("model_ship") == ship
-            )
+            or item.record.get("model_ship") == ship
         )
         return self._with_line_gate_annotations(direct)
 
@@ -3210,13 +4068,17 @@ class DiagramNamespace:
         model_ship: str,
         *,
         extra: Iterable[DiagramAnnotation] = (),
+        include_collection_content: bool = False,
     ) -> DiagramProjection:
         ship = _uuid(model_ship, field="Model.ship")
         combined = {
             item.id: item for item in (*self.model_annotations(ship), *tuple(extra))
         }
         typed: list[TypedAnnotation] = []
-        for annotation in _sort_annotations(combined.values()):
+        # Existing records are already ordered by their retained timestamps.
+        # Preserve ``extra`` order for new Ships so a Draft's edition order is
+        # not accidentally replaced by UUID lexical order.
+        for annotation in combined.values():
             try:
                 specialized = self.specialize(annotation)
             except DiagramAnnotationSpecializationError:
@@ -3227,7 +4089,12 @@ class DiagramNamespace:
                 location = None
             if location is None or location[0] == ship:
                 typed.append(specialized)
-        builder = DiagramProjectionBuilder(self, ship, typed)
+        builder = DiagramProjectionBuilder(
+            self,
+            ship,
+            typed,
+            include_collection_content=include_collection_content,
+        )
         for annotation in typed:
             annotation.contribute(builder)
         return builder.build()
@@ -3350,8 +4217,10 @@ class DiagramModel:
             if ship.id == self.ship or ship.record.get("model_ship") == self.ship
         )
 
-    def project(self) -> DiagramProjection:
-        return self.namespace.project(self.ship)
+    def project(self, *, include_collection_content: bool = False) -> DiagramProjection:
+        return self.namespace.project(
+            self.ship, include_collection_content=include_collection_content
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -3574,18 +4443,43 @@ class Diagram:
         return populated[0][1]
 
     def projected_block(
-        self, block_ship: str, *, namespace: str | None = None
+        self,
+        block_ship: str,
+        *,
+        namespace: str | None = None,
+        include_collection_content: bool = False,
     ) -> DiagramBlock:
         spaces = (self.namespace(namespace),) if namespace else self.namespaces
         matches: list[DiagramBlock] = []
         for space in spaces:
             for model in space.models():
                 try:
-                    matches.append(model.project().block(block_ship))
+                    matches.append(
+                        model.project(
+                            include_collection_content=include_collection_content
+                        ).block(block_ship)
+                    )
                 except DiagramError:
                     pass
         if len(matches) != 1:
             raise DiagramError(f"Diagram Block does not resolve uniquely: {block_ship}")
+        return matches[0]
+
+    def projected_collection(
+        self, collection_ship: str, *, namespace: str | None = None
+    ) -> DiagramCollection:
+        spaces = (self.namespace(namespace),) if namespace else self.namespaces
+        matches: list[DiagramCollection] = []
+        for space in spaces:
+            for model in space.models():
+                try:
+                    matches.append(model.project().collection(collection_ship))
+                except DiagramError:
+                    pass
+        if len(matches) != 1:
+            raise DiagramError(
+                f"Diagram Collection does not resolve uniquely: {collection_ship}"
+            )
         return matches[0]
 
     def line_review(
@@ -4061,6 +4955,47 @@ def _edition_payload(edition: Mapping[str, object]) -> JsonObject:
     return {key: value for key, value in edition.items() if key != "id"}
 
 
+def _authorization_gate_ids(record: Mapping[str, Any]) -> tuple[str, ...]:
+    values = tuple(
+        _uuid(item, field="Edition.authorization_gates[]")
+        for item in _array(
+            record.get("authorization_gates", []),
+            field="Edition.authorization_gates",
+        )
+    )
+    if len(values) != len(set(values)):
+        raise DiagramModelError("Edition.authorization_gates contains duplicates")
+    return values
+
+
+def _authorization_coverage(
+    ships: Iterable[ShipDraft], annotations: Iterable[AnnotationDraft]
+) -> tuple[JsonObject, ...]:
+    coverage: dict[str, list[JsonObject]] = {}
+    for draft in ships:
+        for edition in _array(draft.record.get("editions", []), field="Ship.editions"):
+            retained = _object(edition, field="Ship.editions[]")
+            for gate in _authorization_gate_ids(retained):
+                coverage.setdefault(gate, []).append(
+                    {"kind": "edition", "id": _edition_id(retained), "ship": draft.id}
+                )
+    for draft in annotations:
+        records = (
+            _line_annotation_editions(draft.record)
+            if draft.record.get("type") == LINE_ANNOTATION_TYPE
+            else (draft.record,)
+        )
+        for record in records:
+            for gate in _authorization_gate_ids(record):
+                coverage.setdefault(gate, []).append(
+                    {"kind": "annotation", "id": draft.id}
+                )
+    return tuple(
+        {"gate": gate, "objects": objects}
+        for gate, objects in coverage.items()
+    )
+
+
 def _object(value: object, *, field: str) -> JsonObject:
     if not isinstance(value, dict):
         raise DiagramModelError(f"{field} must be an object")
@@ -4139,6 +5074,16 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _optional_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
 __all__ = [
     name
     for name in globals()
@@ -4151,6 +5096,7 @@ __all__ = [
         "AssertionEvaluation",
         "CaptureManifest",
         "CaptureReceipt",
+        "CaptureAuthorizationGateRecord",
         "ChatlasEvidence",
         "ChatlasTurnReference",
         "Finding",
@@ -4163,10 +5109,12 @@ __all__ = [
         "TypedShip",
         "ModelShipRecord",
         "BlockShipRecord",
+        "CollectionShipRecord",
         "LineShipRecord",
         "TypedAnnotation",
         "UserTouchedAnnotation",
         "BlockEditionRecord",
+        "CollectionEditionRecord",
         "BlockTypeAnnotation",
         "LineAnnotationRecord",
         "LineEditionRecord",
@@ -4180,8 +5128,12 @@ __all__ = [
         "BLOCK_EDITION_TYPE",
         "BLOCK_SHIP_TYPE",
         "BLOCK_TYPE_ANNOTATION_TYPE",
+        "CAPTURE_AUTHORIZATION_GATE_TYPE",
+        "COLLECTION_EDITION_TYPE",
+        "COLLECTION_SHIP_TYPE",
         "DIAGRAM_BLOCK_OBJECT_TYPE",
         "DIAGRAM_LINE_OBJECT_TYPE",
+        "DIAGRAM_COLLECTION_OBJECT_TYPE",
         "DESIGN_BLOCK_OBJECT_TYPE",
         "DESIGN_LINE_CONSTRAINT_TYPE",
         "DESIGN_LINE_DECISION_TYPE",
@@ -4192,6 +5144,7 @@ __all__ = [
         "DESIGN_LINE_PRINCIPLE_TYPE",
         "DESIGN_LINE_REJECTION_TYPE",
         "IMPL_REQ_BLOCK_OBJECT_TYPE",
+        "IMPL_REQ_COLLECTION_OBJECT_TYPE",
         "ISSUE_BLOCK_OBJECT_TYPE",
         "ISSUE_LINE_RESOLVE_TYPE",
         "DIAGRAM_ATTIC",
@@ -4206,6 +5159,7 @@ __all__ = [
         "USER_TOUCHED_CHATLAS_INDEX",
         "VERBATIM_GATE_TYPE",
         "ImplReqBlock",
+        "ImplReqCollection",
         "IssueBlock",
         "IssueLineResolve",
         "IssueResolveLineShip",

@@ -47,10 +47,12 @@ contract and Git boundaries.
 - `tarav.archive` owns stable Artifact identity, retained Archive Records, and
   portable references to retained or externally located data.
 - `tarav.diagram` owns flat Namespace collections of typed semantic Ships and
-  separate Annotation claim lineages, their recursive projections, Assertion
-  evaluation, read-only renderers over Archive-grounded data, and retained
-  `Diagram.View` context selections. Views are separate Git-backed WIP surfaces:
-  they materialize Diagram data but never mutate the semantic database.
+  separate Annotation claim lineages, recursive organizational Collections,
+  their projections, Assertion evaluation, read-only renderers over
+  Archive-grounded data, retained `Diagram.View` reading workspaces, and
+  durable `Diagram.Draft` writing workspaces. Views never mutate the semantic
+  database. Drafts reconcile proposed changes and apply them through the
+  ordinary Diagram capture boundary.
 - `tarav.bloberia` owns the hosted global `Tarav.Bloberia` registry. The public
   `tarav bloberia` command addresses that registry directly; its private JSON
   storage is not a second Tarav system or command surface.

@@ -1355,7 +1355,7 @@ def test_capture_context_returns_model_and_manifest_ready_turn_references(
         "Design.Line.Freedom": "1894d99c-ddca-491d-a586-1a7a53e9c4b0",
         "Design.Line.Example": "1366fc61-a9fe-4ef5-91dc-6f13f0447e30",
     }
-    assert len(payload["model"]["object_types"]["findings"]) == 13
+    assert len(payload["model"]["object_types"]["findings"]) == 15
     assert {item["code"] for item in payload["model"]["object_types"]["findings"]} == {
         "object-type-definition-block-unresolved"
     }

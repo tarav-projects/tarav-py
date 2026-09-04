@@ -18,10 +18,12 @@ from . import (
     DIAGRAM_ATTIC,
     DiagramConfiguration,
     DiagramBlock,
+    DiagramCollection,
     DiagramError,
     DiagramLineShip,
     DiagramModelError,
     DiagramNamespace,
+    ImplReqCollection,
     LINE_EDITION_TYPE,
     USER_TOUCHED_CHATLAS_INDEX,
 )
@@ -29,12 +31,14 @@ from .rendering import (
     DiagramRenderError,
     annotation_render_target,
     block_render_target,
+    collection_render_target,
     line_render_target,
     model_render_target,
     renderer,
     renderers,
 )
 from .view_commands import register_view_commands
+from .draft_commands import register_draft_commands
 
 
 def _diagram_configuration(
@@ -253,21 +257,22 @@ def _cmd_diagram_model_list(args: argparse.Namespace) -> int:
 
 
 def _object_annotations(
-    item: DiagramBlock | DiagramLineShip,
+    item: DiagramBlock | DiagramLineShip | DiagramCollection,
 ) -> tuple[object, ...]:
-    annotations = (
-        (
+    if isinstance(item, DiagramBlock):
+        annotations = (
             *item.annotations,
             *(annotation for line in item.lines for annotation in line.annotations),
         )
-        if isinstance(item, DiagramBlock)
-        else item.annotations
-    )
+    elif isinstance(item, DiagramCollection):
+        annotations = item.editions
+    else:
+        annotations = item.annotations
     return tuple({annotation.id: annotation for annotation in annotations}.values())
 
 
 def _object_payload(
-    item: DiagramBlock | DiagramLineShip, *, namespace
+    item: DiagramBlock | DiagramLineShip | DiagramCollection, *, namespace
 ) -> tuple[dict[str, object], tuple[dict[str, object], ...]]:
     annotations = _object_annotations(item)
     engine = namespace.assertion_engine(evidence=None)
@@ -279,7 +284,11 @@ def _object_payload(
         for assessment in assessments
         for assertion_type in assessment.assertion_types
     )
-    lines = item.lines if isinstance(item, DiagramBlock) else (item,)
+    lines = (
+        item.lines
+        if isinstance(item, DiagramBlock)
+        else (() if isinstance(item, DiagramCollection) else (item,))
+    )
     reviews = tuple(
         namespace.line_review(line.ship, evidence=None) for line in lines
     )
@@ -308,13 +317,21 @@ def _object_payload(
         }.values()
     )
     current_edition = item.current_edition
+    kind = (
+        "block"
+        if isinstance(item, DiagramBlock)
+        else "collection"
+        if isinstance(item, DiagramCollection)
+        else "line"
+    )
     payload: dict[str, object] = {
-        "kind": "block" if isinstance(item, DiagramBlock) else "line",
+        "kind": kind,
         "ship": item.ship,
         "object_type": item.object_type,
         "current_edition_id": (
             current_edition.id
-            if isinstance(item, DiagramBlock) and current_edition is not None
+            if isinstance(item, (DiagramBlock, DiagramCollection))
+            and current_edition is not None
             else (
                 current_edition.annotation.id if current_edition is not None else None
             )
@@ -332,14 +349,21 @@ def _object_payload(
             "findings": len(unique_findings),
         },
     }
-    if isinstance(item, DiagramBlock):
+    if isinstance(item, (DiagramBlock, DiagramCollection)):
         payload.update(
             {
                 "labels": list(item.labels),
                 "current_label": item.current_label,
-                "line_count": len(item.lines),
+                "line_count": len(item.lines) if isinstance(item, DiagramBlock) else 0,
             }
         )
+        if isinstance(item, DiagramCollection):
+            payload["host"] = item.host.to_dict() if item.host is not None else None
+            payload["hosted_editions"] = [
+                hosted.to_dict() for hosted in item.hosted_editions
+            ]
+            if isinstance(item, ImplReqCollection):
+                payload["state"] = item.state
     else:
         payload["block_ship"] = item.block_ship
     return payload, tuple(finding.to_dict() for finding in unique_findings)
@@ -348,7 +372,9 @@ def _object_payload(
 def _cmd_diagram_object_list(args: argparse.Namespace) -> int:
     try:
         _diagram, model = _read_diagram_model(args)
-        projection = model.project()
+        projection = model.project(
+            include_collection_content=args.include_collection_content
+        )
         objects = projection.objects(
             kind=args.kind,
             object_type=args.object_type,
@@ -379,6 +405,11 @@ def _cmd_diagram_object_list(args: argparse.Namespace) -> int:
                 "kind": args.kind,
                 "object_type": args.object_type,
                 "label": args.label,
+                **(
+                    {"include_collection_content": True}
+                    if args.include_collection_content
+                    else {}
+                ),
             },
             "objects": list(object_payloads),
             "findings": list(findings),
@@ -802,6 +833,10 @@ def _cmd_diagram_render(args: argparse.Namespace) -> int:
             target = block_render_target(
                 diagram, args.block_ship, namespace=args.namespace
             )
+        elif args.collection_ship:
+            target = collection_render_target(
+                diagram, args.collection_ship, namespace=args.namespace
+            )
         elif args.model_ship:
             target = model_render_target(diagram.model(args.model_ship))
         else:
@@ -957,12 +992,17 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
         "list", help="List projected objects through exact composable filters."
     )
     _add_diagram_model_selector(object_list)
-    object_list.add_argument("--kind", choices=("block", "line"))
+    object_list.add_argument("--kind", choices=("block", "line", "collection"))
     object_list.add_argument(
         "--object-type", help="Only objects with this exact current Object.Type."
     )
     object_list.add_argument(
         "--label", help="Only Blocks retaining this exact label in their history."
+    )
+    object_list.add_argument(
+        "--include-collection-content",
+        action="store_true",
+        help="Include Collection-hosted editions in the Model projection.",
     )
     _add_diagram_config_option(object_list)
     _add_json_option(object_list)
@@ -1129,7 +1169,7 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     renderer_list.add_argument(
         "--target",
-        choices=("annotation", "line", "block", "model"),
+        choices=("annotation", "line", "block", "collection", "model"),
         help="Limit renderers to one target kind.",
     )
     _add_json_option(renderer_list)
@@ -1151,6 +1191,7 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     target.add_argument("--annotation", help="Annotation UUID.")
     target.add_argument("--line-ship", help="Line ship UUID.")
     target.add_argument("--block-ship", help="Block ship UUID.")
+    target.add_argument("--collection-ship", help="Collection ship UUID.")
     target.add_argument("--model-ship", help="Model ship UUID.")
     target.add_argument(
         "--project",
@@ -1164,6 +1205,7 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_json_option(render)
     render.set_defaults(handler=_cmd_diagram_render)
 
+    register_draft_commands(diagram_commands)
     register_view_commands(diagram_commands)
 
 
