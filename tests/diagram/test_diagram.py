@@ -40,6 +40,7 @@ from tarav.diagram import (
     DiagramError,
     DiagramBlockLocation,
     DiagramLocation,
+    DiagramModelError,
     DiagramNamespace,
     DesignBlock,
     DesignLinePrinciple,
@@ -1123,6 +1124,121 @@ def test_line_show_cli_separates_ship_editions_from_annotations(
     payload = json.loads(capsys.readouterr().out)
     assert [edition["id"] for edition in payload["editions"]] == [_edition_id(line)]
     assert payload["annotations"] == []
+
+
+def test_projection_queries_objects_by_kind_type_and_label(tmp_path: Path) -> None:
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    initial_impl_block = _block(
+        model.ship,
+        label="Legacy.Impl.Req",
+        block_type=IMPL_REQ_BLOCK_OBJECT_TYPE,
+    )
+    impl_block = ShipDraft(
+        initial_impl_block.id,
+        {
+            **initial_impl_block.record,
+            "editions": [
+                *initial_impl_block.record["editions"],
+                {
+                    "id": str(uuid4()),
+                    "block_type": IMPL_REQ_BLOCK_OBJECT_TYPE,
+                    "data": {"label": "770.Impl.Req"},
+                },
+            ],
+        },
+    )
+    design_block = _block(
+        model.ship,
+        label="Diagram.Query",
+        block_type=DESIGN_BLOCK_OBJECT_TYPE,
+    )
+    impl_line = _line(
+        model.ship,
+        block_ship=impl_block.id,
+        line_type=DESIGN_LINE_PRINCIPLE_TYPE,
+        support=False,
+    )
+    namespace.apply(CaptureManifest(model.ship, (impl_block, design_block, impl_line)))
+
+    projection = model.project()
+
+    assert projection.objects(
+        kind="block",
+        object_type=IMPL_REQ_BLOCK_OBJECT_TYPE,
+        label="Legacy.Impl.Req",
+    ) == (projection.block(impl_block.id),)
+    assert projection.block(impl_block.id).current_label == "770.Impl.Req"
+    assert projection.objects(kind="line") == (projection.line(impl_line.id),)
+    assert projection.objects(label="Diagram.Query") == (
+        projection.block(design_block.id),
+    )
+    with pytest.raises(DiagramModelError, match="unsupported Diagram object kind"):
+        projection.objects(kind="annotation")
+
+
+def test_object_list_cli_returns_compact_scoped_standing(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "diagram.json"
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    impl_block = _block(
+        model.ship,
+        label="770.Impl.Req",
+        block_type=IMPL_REQ_BLOCK_OBJECT_TYPE,
+    )
+    impl_line = _line(
+        model.ship,
+        block_ship=impl_block.id,
+        line_type=DESIGN_LINE_PRINCIPLE_TYPE,
+        support=False,
+    )
+    unrelated_legacy_block = _block(model.ship, label="Legacy")
+    namespace.apply(
+        CaptureManifest(model.ship, (impl_block, impl_line, unrelated_legacy_block))
+    )
+    DiagramConfiguration.load(config_path, create=True).mount(namespace, default=True)
+
+    assert (
+        main(
+            [
+                "diagram",
+                "object",
+                "list",
+                "--model-ship",
+                model.ship,
+                "--kind",
+                "block",
+                "--object-type",
+                IMPL_REQ_BLOCK_OBJECT_TYPE,
+                "--diagram-config",
+                str(config_path),
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "poi"
+    assert payload["filters"] == {
+        "kind": "block",
+        "object_type": IMPL_REQ_BLOCK_OBJECT_TYPE,
+        "label": None,
+    }
+    assert payload["model"]["ship"] == model.ship
+    assert len(payload["objects"]) == 1
+    result = payload["objects"][0]
+    assert result["kind"] == "block"
+    assert result["ship"] == impl_block.id
+    assert result["current_edition_id"] == _edition_id(impl_block)
+    assert result["current_label"] == "770.Impl.Req"
+    assert result["line_count"] == 1
+    assert result["standing"]["unasserted"] > 0
+    assert result["standing"]["unreviewed_lines"] == 1
+    assert all(
+        unrelated_legacy_block.id not in finding["path"]
+        for finding in payload["findings"]
+    )
 
 
 def test_project_set_main_model_cli_associates_an_existing_model(

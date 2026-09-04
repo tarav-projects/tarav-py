@@ -1359,6 +1359,17 @@ class DiagramBlock:
         labels = self.labels
         return labels[-1] if labels else None
 
+    @property
+    def editions(self) -> tuple[BlockEditionRecord, ...]:
+        return tuple(
+            item for item in self.annotations if isinstance(item, BlockEditionRecord)
+        )
+
+    @property
+    def current_edition(self) -> BlockEditionRecord | None:
+        editions = self.editions
+        return editions[-1] if editions else None
+
     def assertions(self) -> tuple[DiagramObjectAssertion, ...]:
         return _dedupe_object_assertions(
             (
@@ -1462,6 +1473,39 @@ class DiagramProjection:
         if len(matches) != 1:
             raise DiagramError(f"Projected Line does not resolve: {line_ship}")
         return matches[0]
+
+    def objects(
+        self,
+        *,
+        kind: str | None = None,
+        object_type: str | None = None,
+        label: str | None = None,
+    ) -> tuple[DiagramBlock | DiagramLineShip, ...]:
+        """Return projected semantic objects matching exact composable filters."""
+
+        if kind not in (None, "block", "line"):
+            raise DiagramModelError(f"unsupported Diagram object kind: {kind}")
+        selected: tuple[DiagramBlock | DiagramLineShip, ...] = tuple(
+            (
+                *(self.blocks if kind in (None, "block") else ()),
+                *(
+                    tuple(line for block in self.blocks for line in block.lines)
+                    if kind in (None, "line")
+                    else ()
+                ),
+            )
+        )
+        if object_type is not None:
+            selected = tuple(
+                item for item in selected if item.object_type == object_type
+            )
+        if label is not None:
+            selected = tuple(
+                item
+                for item in selected
+                if isinstance(item, DiagramBlock) and label in item.labels
+            )
+        return selected
 
     def to_dict(self) -> JsonObject:
         return {
@@ -1584,10 +1628,35 @@ class DiagramProjectionBuilder:
         )
         return DiagramProjection(self.model_ship, self.namespace.id, blocks, findings)
 
+    def _ordered_ship_editions(
+        self, ship: str, editions: Iterable[TypedAnnotation]
+    ) -> tuple[TypedAnnotation, ...]:
+        retained = tuple(editions)
+        try:
+            ship_editions = self.namespace.ship(ship).specialize().editions
+        except (DiagramError, DiagramModelError):
+            return retained
+        positions = {
+            _edition_id(edition): index
+            for index, edition in enumerate(ship_editions)
+        }
+        fallback = len(positions)
+        return tuple(
+            sorted(
+                retained,
+                key=lambda item: (positions.get(item.id, fallback), item.id),
+            )
+        )
+
     def _block(self, ship: str) -> DiagramBlock:
         annotations = _sort_typed(self.block_annotations.get(ship, ()))
-        declarations = tuple(
-            item for item in annotations if isinstance(item, BlockEditionRecord)
+        declarations = self._ordered_ship_editions(
+            ship,
+            (item for item in annotations if isinstance(item, BlockEditionRecord)),
+        )
+        annotations = (
+            *declarations,
+            *(item for item in annotations if not isinstance(item, BlockEditionRecord)),
         )
         type_annotations = tuple(
             item for item in annotations if isinstance(item, BlockTypeAnnotation)
@@ -1658,8 +1727,13 @@ class DiagramProjectionBuilder:
         self, block_ship: str, ship: str, block_type: DiagramBlockType
     ) -> DiagramLineShip:
         annotations = _sort_typed(self.line_annotations[(block_ship, ship)])
-        wordings = tuple(
-            item for item in annotations if isinstance(item, LineEditionRecord)
+        wordings = self._ordered_ship_editions(
+            ship,
+            (item for item in annotations if isinstance(item, LineEditionRecord)),
+        )
+        annotations = (
+            *wordings,
+            *(item for item in annotations if not isinstance(item, LineEditionRecord)),
         )
         type_annotations = tuple(
             item for item in annotations if isinstance(item, LineTypeAnnotation)

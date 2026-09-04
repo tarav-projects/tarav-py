@@ -17,7 +17,9 @@ from . import (
     ChatlasTurnReference,
     DIAGRAM_ATTIC,
     DiagramConfiguration,
+    DiagramBlock,
     DiagramError,
+    DiagramLineShip,
     DiagramModelError,
     DiagramNamespace,
     LINE_EDITION_TYPE,
@@ -246,6 +248,155 @@ def _cmd_diagram_model_list(args: argparse.Namespace) -> int:
         tuple(
             f"{model.ship}  {model.namespace.name}  {len(model.ships())} ships"
             for model in models
+        ),
+    )
+
+
+def _object_annotations(
+    item: DiagramBlock | DiagramLineShip,
+) -> tuple[object, ...]:
+    annotations = (
+        (
+            *item.annotations,
+            *(annotation for line in item.lines for annotation in line.annotations),
+        )
+        if isinstance(item, DiagramBlock)
+        else item.annotations
+    )
+    return tuple({annotation.id: annotation for annotation in annotations}.values())
+
+
+def _object_payload(
+    item: DiagramBlock | DiagramLineShip, *, namespace
+) -> tuple[dict[str, object], tuple[dict[str, object], ...]]:
+    annotations = _object_annotations(item)
+    engine = namespace.assertion_engine(evidence=None)
+    assessments = tuple(
+        engine.assess(annotation) for annotation in annotations
+    )
+    assertion_scores = tuple(
+        assessment.score_vector.get(assertion_type)
+        for assessment in assessments
+        for assertion_type in assessment.assertion_types
+    )
+    lines = item.lines if isinstance(item, DiagramBlock) else (item,)
+    reviews = tuple(
+        namespace.line_review(line.ship, evidence=None) for line in lines
+    )
+    findings = (
+        *item.findings,
+        *(
+            tuple(finding for line in item.lines for finding in line.findings)
+            if isinstance(item, DiagramBlock)
+            else ()
+        ),
+        *(
+            finding
+            for annotation in annotations
+            for finding in namespace.findings(
+                annotation.annotation,
+                path=f"annotation.{annotation.id}",
+                evidence=None,
+            )
+        ),
+        *(finding for review in reviews for finding in review.findings),
+    )
+    unique_findings = tuple(
+        {
+            (finding.code, finding.path, finding.message): finding
+            for finding in findings
+        }.values()
+    )
+    current_edition = item.current_edition
+    payload: dict[str, object] = {
+        "kind": "block" if isinstance(item, DiagramBlock) else "line",
+        "ship": item.ship,
+        "object_type": item.object_type,
+        "current_edition_id": (
+            current_edition.id
+            if isinstance(item, DiagramBlock) and current_edition is not None
+            else (
+                current_edition.annotation.id if current_edition is not None else None
+            )
+        ),
+        "standing": {
+            "assertions": len(assertion_scores),
+            "asserted": sum(score is not None for score in assertion_scores),
+            "unasserted": sum(score is None for score in assertion_scores),
+            "reviewed_lines": sum(
+                review.standing == "Reviewed" for review in reviews
+            ),
+            "unreviewed_lines": sum(
+                review.standing != "Reviewed" for review in reviews
+            ),
+            "findings": len(unique_findings),
+        },
+    }
+    if isinstance(item, DiagramBlock):
+        payload.update(
+            {
+                "labels": list(item.labels),
+                "current_label": item.current_label,
+                "line_count": len(item.lines),
+            }
+        )
+    else:
+        payload["block_ship"] = item.block_ship
+    return payload, tuple(finding.to_dict() for finding in unique_findings)
+
+
+def _cmd_diagram_object_list(args: argparse.Namespace) -> int:
+    try:
+        _diagram, model = _read_diagram_model(args)
+        projection = model.project()
+        objects = projection.objects(
+            kind=args.kind,
+            object_type=args.object_type,
+            label=args.label,
+        )
+        results = tuple(
+            _object_payload(item, namespace=model.namespace) for item in objects
+        )
+        object_payloads = tuple(payload for payload, _findings in results)
+        findings = tuple(
+            finding
+            for _payload, object_findings in results
+            for finding in object_findings
+        )
+    except (DiagramError, DiagramModelError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    return _emit(
+        args,
+        {
+            "status": "poi" if findings else "ok",
+            "command": "tarav diagram object list",
+            "model": {
+                "ship": model.ship,
+                "namespace_id": model.namespace.id,
+                "current_edition_id": model.current_edition_id,
+            },
+            "filters": {
+                "kind": args.kind,
+                "object_type": args.object_type,
+                "label": args.label,
+            },
+            "objects": list(object_payloads),
+            "findings": list(findings),
+        },
+        tuple(
+            "  ".join(
+                (
+                    str(payload["kind"]),
+                    str(payload["object_type"] or "-"),
+                    str(payload.get("current_label") or "-"),
+                    str(payload["ship"]),
+                    (
+                        f"{payload['standing']['asserted']}/"
+                        f"{payload['standing']['assertions']} asserted"
+                    ),
+                )
+            )
+            for payload in object_payloads
         ),
     )
 
@@ -795,6 +946,27 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_diagram_config_option(model_create)
     _add_json_option(model_create)
     model_create.set_defaults(handler=_cmd_diagram_model_create)
+
+    object_command = diagram_commands.add_parser(
+        "object", help="Query projected Diagram Blocks and Lines."
+    )
+    object_commands = object_command.add_subparsers(
+        dest="diagram_object_command", required=True
+    )
+    object_list = object_commands.add_parser(
+        "list", help="List projected objects through exact composable filters."
+    )
+    _add_diagram_model_selector(object_list)
+    object_list.add_argument("--kind", choices=("block", "line"))
+    object_list.add_argument(
+        "--object-type", help="Only objects with this exact current Object.Type."
+    )
+    object_list.add_argument(
+        "--label", help="Only Blocks retaining this exact label in their history."
+    )
+    _add_diagram_config_option(object_list)
+    _add_json_option(object_list)
+    object_list.set_defaults(handler=_cmd_diagram_object_list)
 
     capture = diagram_commands.add_parser(
         "capture",
