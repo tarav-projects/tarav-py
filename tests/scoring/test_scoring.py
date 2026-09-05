@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,9 +20,16 @@ from tarav.diagram import (
     ShipDraft,
 )
 from tarav.scoring import (
+    ASSERTION_TYPE_SELECTOR,
+    DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
+    GROUNDING_ASSERTION_REFERENCE_TYPE,
+    GROUNDING_ASSERTION_TYPE,
     GROUNDING_TASK_TYPE,
+    POOL_TYPE,
     RESULT_TYPE,
     RUN_TYPE,
+    SCORE_COMPUTATION_TYPE,
+    SCORE_DEFINITION_TYPE,
     ScoringError,
     ScoringRepository,
     builtin_score_definition,
@@ -30,18 +38,27 @@ from tarav.scoring import (
     create_pool,
     create_result,
     create_run,
+    pool_matches,
     render_task,
 )
-from tarav.scoring.tasks import create_line_grounding_task
+from tarav.scoring.tasks import (
+    IndexLineGroundingAssertionType,
+    create_line_grounding_task,
+)
 from tarav.scoring.runner import execute_run, prepare_run
 
 
 def _candidate(candidate_id: str, claim: str) -> dict[str, object]:
     return {
         "id": candidate_id,
-        "assertion": {
-            "type": "Index.Line.Grounding.Assertion",
-            "subject": {"line_edition_id": candidate_id},
+        "assertion_ref": {
+            "type": GROUNDING_ASSERTION_REFERENCE_TYPE,
+            "subject_ref": {
+                "type": DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
+                "namespace_id": str(uuid4()),
+                "line_ship": str(uuid4()),
+                "edition_id": candidate_id,
+            },
         },
         "presentation": f"Line claim:\n{claim}\n\nDeclared Support.Set:\nEvidence.",
         "appendix": [],
@@ -53,30 +70,64 @@ def _task():
     pool = create_pool("line-grounding")
     task = create_grounding_task(
         pool=pool,
-        candidates=(_candidate(first, "First claim."), _candidate(second, "Second claim.")),
+        candidates=(
+            _candidate(first, "First claim."),
+            _candidate(second, "Second claim."),
+        ),
     )
     return pool, task, first, second
 
 
-def test_repository_retains_typed_records_in_git_and_resolves_prefixes(tmp_path: Path) -> None:
+def test_repository_retains_typed_records_in_git_and_resolves_prefixes(
+    tmp_path: Path,
+) -> None:
     repository = ScoringRepository.initialize(tmp_path / "scoring")
     pool = repository.create(create_pool("grounding"))
 
     assert repository.resolve(pool["id"][:12]) == pool
     assert repository.path_for(pool).parent.name == "pools"
     assert repository.head()
-    assert int(
-        __import__("subprocess").run(
-            ("git", "-C", str(repository.root), "rev-list", "--count", "HEAD"),
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
-    ) == 2
+    assert (
+        int(
+            __import__("subprocess")
+            .run(
+                ("git", "-C", str(repository.root), "rev-list", "--count", "HEAD"),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            .stdout
+        )
+        == 2
+    )
 
     rebound = {**pool, "type": RUN_TYPE}
     with pytest.raises(ScoringError):
         repository.save(rebound)
+
+
+def test_pool_is_a_selector_and_assertion_type_owns_task_production() -> None:
+    pool = create_pool("line-grounding")
+    candidate = _candidate(str(uuid4()), "Supported claim.")
+    assertion_ref = candidate["assertion_ref"]
+
+    assert pool["selector"] == {
+        "type": ASSERTION_TYPE_SELECTOR,
+        "assertion_type": GROUNDING_ASSERTION_TYPE,
+    }
+    assert pool_matches(pool, assertion_ref)
+    assert GROUNDING_TASK_TYPE in {
+        producer.task_type
+        for producer in IndexLineGroundingAssertionType.task_producers
+    }
+    assert "task_types" not in pool
+
+    incompatible = create_pool("other", "Other.Assertion")
+    with pytest.raises(ScoringError, match="does not belong"):
+        create_grounding_task(
+            pool=incompatible,
+            candidates=(candidate, _candidate(str(uuid4()), "Other claim.")),
+        )
 
 
 def test_task_rendering_uses_opaque_labels_and_run_retains_exact_prompt() -> None:
@@ -96,6 +147,14 @@ def test_task_rendering_uses_opaque_labels_and_run_retains_exact_prompt() -> Non
         status="Preview",
     )
     assert run["type"] == RUN_TYPE
+    assert run["task_ref"] == {
+        "type": f"{GROUNDING_TASK_TYPE}.Reference",
+        "id": task["id"],
+        "record_sha256": run["task_ref"]["record_sha256"],
+    }
+    assert len(run["task_ref"]["record_sha256"]) == 64
+    assert "task_id" not in run
+    assert "pool_id" not in run
     assert run["rendered_prompt_sha256"]
     assert "tarav scoring submit" in run["rendered_prompt"]
     assert "--root '/tmp/scoring records'" in run["rendered_prompt"]
@@ -128,14 +187,23 @@ def test_structured_results_map_labels_and_scores_retain_exact_inputs() -> None:
     )
     definition = builtin_score_definition()
     score = compute_win_rate_score(
-        pool=pool,
         definition=definition,
-        results=(result_one, result_two),
+        observations=((result_one, run_one), (result_two, run_two)),
     )
 
     assert result_one["type"] == RESULT_TYPE
-    assert result_one["tiers"] == [[first], [second]]
-    assert score["result_ids"] == [result_one["id"], result_two["id"]]
+    assert result_one["run_ref"]["id"] == run_one["id"]
+    assert "run_id" not in result_one
+    assert "task_id" not in result_one
+    assert "pool_id" not in result_one
+    assert result_one["tiers"] == [[labels_one[first]], [labels_one[second]]]
+    assert "presented_tiers" not in result_one
+    assert [reference["id"] for reference in score["result_refs"]] == [
+        result_one["id"],
+        result_two["id"],
+    ]
+    assert "pool_id" not in score
+    assert "definition_id" not in score
     standings = {item["candidate_id"]: item for item in score["standings"]}
     assert standings[first]["value"] == pytest.approx(0.75)
     assert standings[second]["value"] == pytest.approx(0.25)
@@ -178,26 +246,58 @@ def test_cli_preview_submit_score_and_debug_surfaces(tmp_path: Path, capsys) -> 
     run_id = preview.splitlines()[0].split(": ", 1)[1]
     run = repository.resolve(run_id)
     labels = list(run["labels"])
-    assert main(
-        [
-            "scoring",
-            "submit",
-            run_id,
-            "--root",
-            str(root),
-            "--tier",
-            labels[0],
-            "--tier",
-            labels[1],
-            "--rationale",
-            "First is stronger.",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "scoring",
+                "submit",
+                run_id,
+                "--root",
+                str(root),
+                "--tier",
+                labels[0],
+                "--tier",
+                labels[1],
+                "--rationale",
+                "First is stronger.",
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()
     assert main(["scoring", "score", pool["id"], "--root", str(root)]) == 0
     assert "results: 1" in capsys.readouterr().out
-    assert main(["scoring", "show", run_id[:10], "--root", str(root)]) == 0
-    assert '"rendered_prompt"' in capsys.readouterr().out
+    result = repository.records(RESULT_TYPE)[0]
+    assert (
+        main(
+            [
+                "scoring",
+                "show",
+                result["id"],
+                "--root",
+                str(root),
+                "--trace",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    traced = json.loads(capsys.readouterr().out)
+    traced_types = {record["type"] for record in traced["trace"]["records"]}
+    assert traced_types == {RESULT_TYPE, RUN_TYPE, GROUNDING_TASK_TYPE, POOL_TYPE}
+    assert len(traced["trace"]["external_references"]) == 2
+
+    score = repository.records(SCORE_COMPUTATION_TYPE)[0]
+    score_trace = repository.trace(score)
+    score_types = {record["type"] for record in score_trace["records"]}
+    assert score_types == {
+        SCORE_COMPUTATION_TYPE,
+        SCORE_DEFINITION_TYPE,
+        RESULT_TYPE,
+        RUN_TYPE,
+        GROUNDING_TASK_TYPE,
+        POOL_TYPE,
+    }
 
 
 def test_runtime_exposes_scoring_and_retires_tournament() -> None:
@@ -261,10 +361,34 @@ def test_agent_runner_retains_resolved_provenance_and_submitted_result(
     assert completed["status"] == "Completed"
     assert completed["runner"]["resolved_provider"] == "fake"
     assert completed["runner"]["resolved_model"] == "judge-v1"
-    assert completed["execution"]["result_id"] == result["id"]
+    assert "result_id" not in completed["execution"]
+    assert repository.result_for_run(completed["id"])["id"] == result["id"]
 
 
-def test_grounding_task_resolves_diagram_line_editions_and_support(tmp_path: Path) -> None:
+def test_exact_record_references_resolve_historical_editions(tmp_path: Path) -> None:
+    repository = ScoringRepository.initialize(tmp_path / "scoring")
+    pool, task, _, _ = _task()
+    repository.create(pool)
+    repository.create(task)
+    run = repository.create(
+        create_run(
+            task=task,
+            runner={"type": "Preview.Ranking.Task.Runner"},
+            repository_root=str(repository.root),
+            seed="historical",
+            status="Preview",
+        )
+    )
+
+    repository.save({**task, "appendix": ["Later Task edition."]})
+
+    assert repository.resolve(task["id"])["appendix"] == ["Later Task edition."]
+    assert repository.resolve_reference(run["task_ref"]) == task
+
+
+def test_grounding_task_resolves_diagram_line_editions_and_support(
+    tmp_path: Path,
+) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
     initialize_project_layout(project_root)
@@ -356,5 +480,16 @@ def test_grounding_task_resolves_diagram_line_editions_and_support(tmp_path: Pat
 
     assert task["type"] == GROUNDING_TASK_TYPE
     assert "Block: Scoring" in task["candidates"][0]["presentation"]
-    assert "Keep ranking evidence separate from scores." in task["candidates"][0]["presentation"]
-    assert task["candidates"][0]["assertion"]["subject"]["line_ship"] == line_ids[0]
+    assert (
+        "Keep ranking evidence separate from scores."
+        in task["candidates"][0]["presentation"]
+    )
+    assertion_ref = task["candidates"][0]["assertion_ref"]
+    assert assertion_ref["type"] == GROUNDING_ASSERTION_REFERENCE_TYPE
+    assert assertion_ref["subject_ref"]["line_ship"] == line_ids[0]
+    assert set(assertion_ref["subject_ref"]) == {
+        "type",
+        "namespace_id",
+        "line_ship",
+        "edition_id",
+    }

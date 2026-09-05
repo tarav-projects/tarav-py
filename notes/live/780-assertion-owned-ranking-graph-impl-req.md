@@ -1,6 +1,6 @@
 # 780 — Assertion-owned ranking and provenance graph
 
-Status: In Progress
+Status: Completed
 
 ## Impl.Abstract
 
@@ -24,6 +24,7 @@ by this workflow. No production scoring repository has been initialized.
 - Namespace: `User.Touched.Chatlas.Index` — `1c99092c-ba46-4006-adc3-9ada50c00abd`
 - Model: `Tarav` — `b7b78eab-e5c2-4610-9bf5-1b704a106f34`
 - Block: `Assertion.Scoring.And.Continuity.Controls` — `e22e51cc-bf92-4369-9b2c-36a6c990ffd2`
+- View: `73303608-fe4f-4e8a-a9d5-0917298eea86`
 - Collection: `780.Impl.Req` — `d031c530-0e94-4c14-b11e-be3caba6a85c`
 - Draft: `d09e365b-64bb-405d-b3db-e94eb5bd1c48`
 - Authorization Gate: `2102455f-7cea-4e00-add8-5e8643525b14`
@@ -66,8 +67,31 @@ Acceptance signals:
 - Autonomous alignment selected by the explicit `--AUTO` invocation.
 - Grounded through the current Chatlas Normal Model and the Tarav Model's
   `Assertion.Scoring.And.Continuity.Controls` Block.
-- Creating a fresh Project Diagram.View exposed an unrelated incomplete-View
-  POI: the command left a registered directory without `view.json`, causing
-  `view list` to fail. The exact Diagram capture context remained available and
-  was used for this workflow; no View repair is included in this slice.
-
+- The Project Diagram.View creation outlived its initial command yield. A query
+  issued while it was still materializing temporarily found no `view.json`;
+  after completion the View resolved and listed normally. No View defect was
+  reproduced.
+- Workflow checkpoint: `8f720ee`.
+- Replaced `Assertion.Ranking.Pool` with `Assertion.Pool` containing a typed
+  `Assertion.Type.Selector`. Pool membership is checked independently of Task
+  compatibility.
+- Added an Assertion Ranking registry. `Index.Line.Grounding.Assertion` now
+  owns its supported Task producer and the Diagram-to-candidate presentation;
+  the generic Agent Runner only executes the rendered Task.
+- Scoring Records now carry typed, content-addressed direct references. Exact
+  older editions resolve through the scoring repository's non-rewritten Git
+  history, including when the Record's current edition has changed.
+- Removed transitive Pool/Task IDs from Runs and Results, the resolved-candidate
+  duplicate from Results, the Result back-reference from completed Runs, and
+  the Definition-name duplicate from Score computations. Score aggregation
+  resolves opaque result labels through each exact referenced Run.
+- Added `tarav scoring show <record> --trace`, which walks scoring Record
+  dependencies and exposes Diagram Assertion references as external leaves.
+- Live smoke experiment over two real Tarav Diagram Lines created a Pool, Task,
+  preview Run, Result, Score computation, and complete trace successfully in a
+  temporary Git-backed repository.
+- Verification: 22 focused scoring/architecture tests passed; Ruff and format
+  checks passed; the complete maintained suite passed with 1,279 tests; the
+  editable `tarav` CLI was reinstalled and its live scoring workflow passed.
+- Applied the closed `780.Impl.Req` Draft once. Diagram receipt commit:
+  `ce67863d1ae1f48dbca70fa93541cfc3d7d48f91`.

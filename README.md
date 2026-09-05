@@ -43,7 +43,8 @@ belong in their owning registries or state roots, not in `project.json`.
 - `tarav agent` — provider-neutral agent and account operations.
 - `tarav chatlas` — retained chat data, lossless normalization, and queries.
 - `tarav diagram` — semantic Models, Ships, Annotations, Views, and Drafts.
-- `tarav scoring` — retained Ranking evidence and named Assertion scores.
+- `tarav scoring` — Assertion-owned Ranking Tasks, retained experiment
+  evidence, provenance tracing, and named scores.
 - `tarav index` — distributed Index surfaces, records, capture, and linting.
 - `tarav skw` — Skillware build, checking, context, and edition history.
 - `tarav surfaces` — thin native source normal models.

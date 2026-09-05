@@ -27,7 +27,9 @@ def prepare_run(
     preview: bool,
 ) -> JsonObject:
     runner = {
-        "type": "Agent.Ranking.Task.Runner" if not preview else "Preview.Ranking.Task.Runner",
+        "type": "Agent.Ranking.Task.Runner"
+        if not preview
+        else "Preview.Ranking.Task.Runner",
         "provider": provider,
         "profile": profile,
         "home": str(home) if home is not None else None,
@@ -123,7 +125,6 @@ def execute_run(
             "stdout_sha256": hashlib.sha256(stdout.encode("utf-8")).hexdigest(),
             "stderr_bytes": len(stderr.encode("utf-8")),
             "stderr_sha256": hashlib.sha256(stderr.encode("utf-8")).hexdigest(),
-            "result_id": submitted["id"] if submitted else None,
         },
     }
     repository.save(completed, message=f"Complete Ranking Run {run['id']}")

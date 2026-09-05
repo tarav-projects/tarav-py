@@ -1,6 +1,9 @@
 """Tarav Assertion Scoring public domain surface."""
 
 from .model import (
+    ASSERTION_TYPE_SELECTOR,
+    DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
+    GROUNDING_ASSERTION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_TYPE,
     GROUNDING_TASK_TYPE,
     POOL_TYPE,
@@ -12,17 +15,28 @@ from .model import (
     WIN_RATE_SCORE,
     builtin_score_definition,
     compute_win_rate_score,
-    create_grounding_task,
     create_pool,
     create_result,
     create_run,
+    pool_matches,
+    record_reference,
     render_task,
     validate_record,
 )
 from .repository import ScoringRepository, default_scoring_root
+from .tasks import (
+    DEFAULT_ASSERTION_RANKING_REGISTRY,
+    AssertionRankingRegistry,
+    IndexLineGroundingAssertionType,
+    create_grounding_task,
+)
 
 
 __all__ = [
+    "ASSERTION_TYPE_SELECTOR",
+    "DEFAULT_ASSERTION_RANKING_REGISTRY",
+    "DIAGRAM_LINE_EDITION_REFERENCE_TYPE",
+    "GROUNDING_ASSERTION_REFERENCE_TYPE",
     "GROUNDING_ASSERTION_TYPE",
     "GROUNDING_TASK_TYPE",
     "POOL_TYPE",
@@ -30,6 +44,8 @@ __all__ = [
     "RUN_TYPE",
     "SCORE_COMPUTATION_TYPE",
     "SCORE_DEFINITION_TYPE",
+    "AssertionRankingRegistry",
+    "IndexLineGroundingAssertionType",
     "ScoringError",
     "ScoringRepository",
     "WIN_RATE_SCORE",
@@ -40,6 +56,8 @@ __all__ = [
     "create_result",
     "create_run",
     "default_scoring_root",
+    "pool_matches",
+    "record_reference",
     "render_task",
     "validate_record",
 ]

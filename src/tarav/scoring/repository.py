@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 import json
 import os
 import subprocess
@@ -12,7 +13,19 @@ from filelock import FileLock
 
 from tarav._core.persistence import atomic_write_json, atomic_write_text
 
-from .model import RECORD_KINDS, JsonObject, ScoringError, validate_record
+from .model import (
+    GROUNDING_TASK_TYPE,
+    POOL_TYPE,
+    RECORD_KINDS,
+    RESULT_TYPE,
+    RUN_TYPE,
+    SCORE_COMPUTATION_TYPE,
+    JsonObject,
+    ScoringError,
+    content_hash,
+    reference_target_type,
+    validate_record,
+)
 
 
 REPOSITORY_TYPE = "Tarav.Assertion.Scoring.Repository"
@@ -76,11 +89,14 @@ class ScoringRepository:
         ]
         if missing:
             raise ScoringError(
-                "scoring repository is missing Record directories: " + ", ".join(missing)
+                "scoring repository is missing Record directories: "
+                + ", ".join(missing)
             )
         return self
 
-    def save(self, record: Mapping[str, object], *, message: str | None = None) -> JsonObject:
+    def save(
+        self, record: Mapping[str, object], *, message: str | None = None
+    ) -> JsonObject:
         payload = dict(record)
         validate_record(payload)
         path = self.path_for(payload)
@@ -88,9 +104,13 @@ class ScoringRepository:
             if path.exists():
                 previous = self._read_json(path)
                 if previous.get("type") != payload["type"]:
-                    raise ScoringError("a Record UUID cannot be rebound to another Type")
+                    raise ScoringError(
+                        "a Record UUID cannot be rebound to another Type"
+                    )
             atomic_write_json(path, payload, ensure_ascii=False)
-            self._commit_path(path, message or f"Store {payload['type']} {payload['id']}")
+            self._commit_path(
+                path, message or f"Store {payload['type']} {payload['id']}"
+            )
         return payload
 
     def create(self, record: Mapping[str, object]) -> JsonObject:
@@ -113,21 +133,134 @@ class ScoringRepository:
     def resolve(self, selector: str, *, record_type: str | None = None) -> JsonObject:
         candidates = self.records(record_type)
         exact = [item for item in candidates if item["id"] == selector]
-        matches = exact or [item for item in candidates if str(item["id"]).startswith(selector)]
+        matches = exact or [
+            item for item in candidates if str(item["id"]).startswith(selector)
+        ]
         if len(matches) != 1:
-            detail = "not found" if not matches else f"ambiguous ({len(matches)} matches)"
+            detail = (
+                "not found" if not matches else f"ambiguous ({len(matches)} matches)"
+            )
             raise ScoringError(f"scoring Record {selector!r} is {detail}")
         return matches[0]
 
     def result_for_run(self, run_id: str) -> JsonObject | None:
         matches = [
             result
-            for result in self.records("Ranking.Result")
-            if result.get("run_id") == run_id
+            for result in self.records(RESULT_TYPE)
+            if _reference_id(result.get("run_ref")) == run_id
         ]
         if len(matches) > 1:
             raise ScoringError(f"Ranking Run has multiple Results: {run_id}")
         return matches[0] if matches else None
+
+    def results_for_pool(self, pool: Mapping[str, object]) -> tuple[JsonObject, ...]:
+        """Select Results by following Result → Run → Task → Pool."""
+
+        validate_record(pool)
+        if pool.get("type") != POOL_TYPE:
+            raise ScoringError("Result selection requires an Assertion.Pool")
+        pool_id = str(pool["id"])
+        selected: list[JsonObject] = []
+        for result in self.records(RESULT_TYPE):
+            run = self.resolve_reference(_reference(result, "run_ref"))
+            task = self.resolve_reference(_reference(run, "task_ref"))
+            if _reference_id(task.get("pool_ref")) == pool_id:
+                selected.append(result)
+        return tuple(selected)
+
+    def resolve_reference(self, reference: Mapping[str, object]) -> JsonObject:
+        """Resolve one exact scoring Record edition, including from Git history."""
+
+        target_type = reference_target_type(reference)
+        if target_type is None:
+            raise ScoringError(
+                f"Reference is external to the scoring repository: {reference.get('type')}"
+            )
+        identity = str(reference.get("id", ""))
+        expected_hash = str(reference.get("record_sha256", ""))
+        relative = Path(RECORD_KINDS[target_type]) / f"{identity}.json"
+        path = self.root / relative
+        if path.is_file():
+            current = self._load_path(path)
+            if content_hash(current) == expected_hash:
+                return current
+        commits = self._git(
+            "log", "--format=%H", "--all", "--", str(relative)
+        ).stdout.splitlines()
+        for commit in commits:
+            shown = self._git("show", f"{commit}:{relative}", check=False)
+            if shown.returncode != 0:
+                continue
+            try:
+                candidate = json.loads(shown.stdout)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(candidate, dict):
+                continue
+            try:
+                validate_record(candidate)
+            except ScoringError:
+                continue
+            if content_hash(candidate) == expected_hash:
+                return candidate
+        raise ScoringError(
+            "exact scoring Record edition is not recoverable: "
+            f"{reference.get('type')} {reference.get('id')}@{expected_hash}"
+        )
+
+    def trace(self, record: Mapping[str, object]) -> JsonObject:
+        """Expand direct Record dependencies without inventing semantic ancestry."""
+
+        root = dict(record)
+        validate_record(root)
+        pending = deque([root])
+        seen: set[tuple[str, str]] = set()
+        records: list[JsonObject] = []
+        edges: list[JsonObject] = []
+        external: list[JsonObject] = []
+        while pending:
+            current = pending.popleft()
+            current_id = str(current["id"])
+            current_ref = {
+                "type": f"{current['type']}.Reference",
+                "id": current_id,
+                "record_sha256": content_hash(current),
+            }
+            current_key = (current_id, str(current_ref["record_sha256"]))
+            if current_key in seen:
+                continue
+            seen.add(current_key)
+            records.append(current)
+            for field, reference in _direct_references(current):
+                target_type = reference_target_type(reference)
+                if target_type is None:
+                    external.append(
+                        {
+                            "from_ref": current_ref,
+                            "field": field,
+                            "reference": reference,
+                        }
+                    )
+                    continue
+                dependency = self.resolve_reference(reference)
+                edges.append(
+                    {
+                        "from_ref": current_ref,
+                        "field": field,
+                        "to_ref": dict(reference),
+                    }
+                )
+                pending.append(dependency)
+        return {
+            "root_ref": {
+                "type": f"{root['type']}.Reference",
+                "id": root["id"],
+                "record_sha256": content_hash(root),
+            },
+            "records": records,
+            "edges": edges,
+            "external_references": external,
+        }
 
     def path_for(self, record: Mapping[str, object]) -> Path:
         record_type = str(record.get("type", ""))
@@ -182,6 +315,55 @@ class ScoringRepository:
             detail = result.stderr.strip() or result.stdout.strip()
             raise ScoringError(f"Git failed in scoring repository: {detail}")
         return result
+
+
+def _reference(record: Mapping[str, object], field: str) -> Mapping[str, object]:
+    value = record.get(field)
+    if not isinstance(value, dict):
+        raise ScoringError(f"{field} must be a typed Reference")
+    return value
+
+
+def _reference_id(value: object) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    identity = value.get("id")
+    return identity if isinstance(identity, str) else None
+
+
+def _direct_references(
+    record: Mapping[str, object],
+) -> tuple[tuple[str, Mapping[str, object]], ...]:
+    record_type = record.get("type")
+    references: list[tuple[str, Mapping[str, object]]] = []
+    if record_type == GROUNDING_TASK_TYPE:
+        references.append(("pool_ref", _reference(record, "pool_ref")))
+        candidates = record.get("candidates")
+        if not isinstance(candidates, list):
+            raise ScoringError("candidates must be a list")
+        for index, candidate in enumerate(candidates):
+            if not isinstance(candidate, dict):
+                raise ScoringError("candidate must be an object")
+            references.append(
+                (
+                    f"candidates[{index}].assertion_ref",
+                    _reference(candidate, "assertion_ref"),
+                )
+            )
+    elif record_type == RUN_TYPE:
+        references.append(("task_ref", _reference(record, "task_ref")))
+    elif record_type == RESULT_TYPE:
+        references.append(("run_ref", _reference(record, "run_ref")))
+    elif record_type == SCORE_COMPUTATION_TYPE:
+        references.append(("definition_ref", _reference(record, "definition_ref")))
+        result_refs = record.get("result_refs")
+        if not isinstance(result_refs, list):
+            raise ScoringError("result_refs must be a list")
+        for index, reference in enumerate(result_refs):
+            if not isinstance(reference, dict):
+                raise ScoringError("result_refs must contain typed References")
+            references.append((f"result_refs[{index}]", reference))
+    return tuple(references)
 
 
 __all__ = ["REPOSITORY_TYPE", "ScoringRepository", "default_scoring_root"]

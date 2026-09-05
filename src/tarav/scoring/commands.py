@@ -65,7 +65,11 @@ def _cmd_init(args: argparse.Namespace) -> int:
         raise CliError(str(exc)) from exc
     return _emit(
         args,
-        {"status": "ok", "repository": str(repository.root), "git_head": repository.head()},
+        {
+            "status": "ok",
+            "repository": str(repository.root),
+            "git_head": repository.head(),
+        },
         [f"scoring repository: {repository.root}", f"git: {repository.head()}"],
     )
 
@@ -79,7 +83,11 @@ def _cmd_pool(args: argparse.Namespace) -> int:
     return _emit(
         args,
         record,
-        [f"pool: {record['id']}", f"assertion: {record['assertion_type']}"],
+        [
+            f"pool: {record['id']}",
+            f"selector: {record['selector']['type']}",
+            f"assertion: {record['selector']['assertion_type']}",
+        ],
     )
 
 
@@ -168,7 +176,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _parse_tiers(values: list[str]) -> list[list[str]]:
-    tiers = [[label.strip() for label in value.split(",") if label.strip()] for value in values]
+    tiers = [
+        [label.strip() for label in value.split(",") if label.strip()]
+        for value in values
+    ]
     if any(not tier for tier in tiers):
         raise ScoringError("--tier cannot be empty")
     return tiers
@@ -219,16 +230,21 @@ def _cmd_score(args: argparse.Namespace) -> int:
                 raise ScoringError(f"unknown Score Definition: {args.name}")
             repository.create(definition)
         score = compute_win_rate_score(
-            pool=pool,
             definition=definition,
-            results=repository.records(RESULT_TYPE),
+            observations=tuple(
+                (
+                    result,
+                    repository.resolve_reference(result["run_ref"]),
+                )
+                for result in repository.results_for_pool(pool)
+            ),
         )
         repository.create(score)
     except ScoringError as exc:
         raise CliError(str(exc)) from exc
     lines = [
         f"score: {score['id']}",
-        f"definition: {score['name']}",
+        f"definition: {definition['name']}",
         f"results: {score['result_count']} (+ {score['abstention_count']} abstentions)",
     ]
     lines.extend(
@@ -266,12 +282,27 @@ def _cmd_show(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
         record = repository.resolve(args.record)
+        trace = repository.trace(record) if args.trace else None
     except ScoringError as exc:
         raise CliError(str(exc)) from exc
+    payload = {
+        "record": record,
+        "path": str(repository.path_for(record)),
+        "git_head": repository.head(),
+    }
+    if trace is not None:
+        payload["trace"] = trace
     return _emit(
         args,
-        {"record": record, "path": str(repository.path_for(record)), "git_head": repository.head()},
-        [json.dumps(record, indent=2, ensure_ascii=False, sort_keys=True)],
+        payload,
+        [
+            json.dumps(
+                trace if trace is not None else record,
+                indent=2,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        ],
     )
 
 
@@ -290,32 +321,45 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     commands = parser.add_subparsers(dest="scoring_command", required=True)
 
-    init = commands.add_parser("init", help="Initialize the Git-backed Record repository.")
+    init = commands.add_parser(
+        "init", help="Initialize the Git-backed Record repository."
+    )
     _add_common(init)
     init.set_defaults(handler=_cmd_init)
 
-    pool = commands.add_parser("pool", help="Create an assertion-compatible Ranking pool.")
+    pool = commands.add_parser("pool", help="Create a typed Assertion selector Pool.")
     pool.add_argument("name")
     pool.add_argument("--assertion-type", default=GROUNDING_ASSERTION_TYPE)
     _add_common(pool)
     pool.set_defaults(handler=_cmd_pool)
 
-    task = commands.add_parser("task", help="Create an Index.Line grounding Ranking Task.")
+    task = commands.add_parser(
+        "task", help="Create an Index.Line grounding Ranking Task."
+    )
     task.add_argument("--pool", required=True)
     task.add_argument("--project", default=".")
-    task.add_argument("--line", action="append", required=True, help="Line Ship UUID; repeat for candidates.")
+    task.add_argument(
+        "--line",
+        action="append",
+        required=True,
+        help="Line Ship UUID; repeat for candidates.",
+    )
     task.add_argument("--appendix", action="append", default=[])
     task.add_argument("--diagram-config")
     task.add_argument("--chatlas-root")
     _add_common(task)
     task.set_defaults(handler=_cmd_task)
 
-    render = commands.add_parser("render", help="Render a Task or exact Run prompt for inspection.")
+    render = commands.add_parser(
+        "render", help="Render a Task or exact Run prompt for inspection."
+    )
     render.add_argument("record", help="Task/Run UUID or unambiguous prefix.")
     _add_common(render)
     render.set_defaults(handler=_cmd_render)
 
-    run = commands.add_parser("run", help="Create a blinded Run and optionally execute its Agent runner.")
+    run = commands.add_parser(
+        "run", help="Create a blinded Run and optionally execute its Agent runner."
+    )
     run.add_argument("task")
     run.add_argument("--provider")
     run.add_argument("--profile")
@@ -325,20 +369,33 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     run.add_argument("--cwd", default=".")
     run.add_argument("--timeout", type=int)
     run.add_argument("--seed", help="Reproducible candidate-order seed.")
-    run.add_argument("--preview", action="store_true", help="Retain and print the exact Run without invoking an Agent.")
+    run.add_argument(
+        "--preview",
+        action="store_true",
+        help="Retain and print the exact Run without invoking an Agent.",
+    )
     _add_common(run)
     run.set_defaults(handler=_cmd_run)
 
-    submit = commands.add_parser("submit", help="Submit one structured Result for a Run.")
+    submit = commands.add_parser(
+        "submit", help="Submit one structured Result for a Run."
+    )
     submit.add_argument("run")
-    submit.add_argument("--tier", action="append", default=[], help="One rank tier; use A,B for a tie. Repeat in best-first order.")
+    submit.add_argument(
+        "--tier",
+        action="append",
+        default=[],
+        help="One rank tier; use A,B for a tie. Repeat in best-first order.",
+    )
     submit.add_argument("--rationale")
     submit.add_argument("--abstain", action="store_true")
     submit.add_argument("--reason")
     _add_common(submit)
     submit.set_defaults(handler=_cmd_submit)
 
-    score = commands.add_parser("score", help="Compute and retain a named score over one pool's Results.")
+    score = commands.add_parser(
+        "score", help="Compute and retain a named score over one pool's Results."
+    )
     score.add_argument("pool")
     score.add_argument("--name", default="Assertion.Ranking.WinRate.Score.v1")
     _add_common(score)
@@ -349,8 +406,15 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_common(listing)
     listing.set_defaults(handler=_cmd_list)
 
-    show = commands.add_parser("show", help="Show any exact scoring Record and its provenance location.")
+    show = commands.add_parser(
+        "show", help="Show a scoring Record and optionally trace its dependencies."
+    )
     show.add_argument("record")
+    show.add_argument(
+        "--trace",
+        action="store_true",
+        help="Follow direct scoring Record references and expose external references.",
+    )
     _add_common(show)
     show.set_defaults(handler=_cmd_show)
 
