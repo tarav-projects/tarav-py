@@ -27,7 +27,7 @@ def _usage_candidate(
 
     ``used_percent`` is passed through uncapped (floored at 0) so overflow
     candidates exercise the same saturate-bar / truthful-number / boundary
-    marker path the real estimated-burst row uses.
+    marker path the real usage rows use.
     """
     ratio = _usage_time_ratio(used_percent, elapsed_percent)
     return MonitorUsageTimeRow(
@@ -51,15 +51,15 @@ def build_dev_test_frame() -> MonitorFrame:
         title="dev-test · usage bar candidates",
         rows=[
             MonitorTextRow("normal fill (bar tracks the number)"),
-            _usage_candidate("~Burst   0%", used_percent=0, elapsed_percent=20),
-            _usage_candidate("~Burst  45%", used_percent=45, elapsed_percent=50),
-            _usage_candidate("~Burst  99%", used_percent=99, elapsed_percent=90),
-            _usage_candidate("~Burst 100%", used_percent=100, elapsed_percent=100),
+            _usage_candidate("Burst   0%", used_percent=0, elapsed_percent=20),
+            _usage_candidate("Burst  45%", used_percent=45, elapsed_percent=50),
+            _usage_candidate("Burst  99%", used_percent=99, elapsed_percent=90),
+            _usage_candidate("Burst 100%", used_percent=100, elapsed_percent=100),
             MonitorTextRow(""),
             MonitorTextRow("overflow (bar saturates, 100% line marker, true %)"),
-            _usage_candidate("~Burst 126%", used_percent=126, elapsed_percent=40),
-            _usage_candidate("~Burst 180%", used_percent=180, elapsed_percent=60),
-            _usage_candidate("~Burst 250%", used_percent=250, elapsed_percent=30),
+            _usage_candidate("Burst 126%", used_percent=126, elapsed_percent=40),
+            _usage_candidate("Burst 180%", used_percent=180, elapsed_percent=60),
+            _usage_candidate("Burst 250%", used_percent=250, elapsed_percent=30),
         ],
     )
     return frame

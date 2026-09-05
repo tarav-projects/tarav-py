@@ -15,21 +15,13 @@ from tarav.agent.account_status import (
     AccountIdentity,
     AccountLimit,
     AccountStatus,
-    UsageOverTimeLimitData,
     USAGE_RECORD_STATUS_FRESH,
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     USAGE_RECORD_STATUS_REGISTRY_LATEST,
     registry_latest_usage_record_metadata,
     usage_record_age_sec,
 )
-from tarav.agent.monitor.burst_estimation import (
-    ESTIMATED_BURST_FALLBACK_WEEKLY_PERCENT,
-    codex_registry_records,
-    estimated_burst_weekly_percent,
-    fixed_local_5h_window,
-    nearest_record_at_or_before,
-    records_by_target,
-)
+from tarav.agent.monitor.burst_ratio import measure_burst_ratios
 from tarav.agent.monitor.clock import (
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
@@ -95,9 +87,6 @@ _DEFAULT_STALE_THRESHOLD_SEC = 600.0
 
 
 _ERROR_HEARTBEAT_SEC = 3600.0
-_WEEKLY_BURST_PERCENT_BY_PROVIDER = {
-    "claude-code": 9.0,
-}
 
 
 class LimitsTrackingWorkflow:
@@ -124,7 +113,7 @@ class LimitsTrackingWorkflow:
             )
             self._prime_target_from_usage_registry(target_state, target=target)
             self._maybe_log_error(target, target_state, tick=frame.tick)
-        self._refresh_codex_estimated_burst_state(workflow_state)
+        self._refresh_burst_ratios(workflow_state)
 
         self._write_frame_block(frame, state=state, workflow_state=workflow_state)
 
@@ -162,7 +151,7 @@ class LimitsTrackingWorkflow:
                 )
                 self._maybe_log_error(target, target_state, tick=frame.tick)
         if should_refresh:
-            self._refresh_codex_estimated_burst_state(workflow_state)
+            self._refresh_burst_ratios(workflow_state)
 
         self._write_frame_block(frame, state=state, workflow_state=workflow_state)
 
@@ -417,48 +406,20 @@ class LimitsTrackingWorkflow:
             return None
         return account_status
 
-    def _refresh_codex_estimated_burst_state(
+    def _refresh_burst_ratios(
         self,
         workflow_state: LimitsWorkflowState,
     ) -> None:
+        """Remeasure the weekly-per-burst ratio when the retained one ages out.
 
-        codex_targets = [
-            target for target in self.config.targets if target.provider == "codex"
-        ]
-        if not codex_targets:
-            workflow_state.codex_estimated_burst = None
-            return
-        registry_records = codex_registry_records()
-        estimate = estimated_burst_weekly_percent(registry_records)
-        source = "usage-registry"
-        if estimate is None:
-            estimate = ESTIMATED_BURST_FALLBACK_WEEKLY_PERCENT
-            source = "fallback"
+        The ratio is a calibration value over days of history, so it is not
+        remeasured on every refresh alarm.
+        """
         now = datetime.datetime.now(tz=datetime.UTC)
-        window_start, reset_at = fixed_local_5h_window(recorded_at=now)
-        workflow_state.codex_estimated_burst = {
-            "weekly_percent": estimate,
-            "computed_at": now.isoformat(),
-            "source": source,
-            "window": "fixed-local-5h",
-            "window_start_at": window_start.isoformat(),
-            "reset_at": reset_at.isoformat(),
-        }
-        grouped = records_by_target(registry_records)
-        for target in codex_targets:
-            target_key = _target_key(target)
-            target_state = workflow_state.targets.get(target_key)
-            if target_state is None or not isinstance(
-                target_state.account_status, dict
-            ):
-                continue
-            _synthesize_estimated_burst_limit(
-                account_status=target_state.account_status,
-                target_records=grouped.get(f"codex/{target.account}", []),
-                burst_weekly_percent=estimate,
-                window_start=window_start,
-                reset_at=reset_at,
-            )
+        retained = workflow_state.burst_ratios
+        if retained is not None and not retained.is_stale(now=now):
+            return
+        workflow_state.burst_ratios = measure_burst_ratios(now=now)
 
     def _write_frame_block(
         self,
@@ -668,6 +629,7 @@ def _target_rows(
         limit_rows = _account_limit_rows(
             account_status,
             provider=target.provider,
+            account=target.account,
             target_key=target_key,
             workflow_state=workflow_state,
         )
@@ -723,6 +685,7 @@ def _account_limit_rows(
     account_status: dict[str, Any],
     *,
     provider: str,
+    account: str | None = None,
     target_key: str | None = None,
     workflow_state: LimitsWorkflowState | None = None,
 ) -> list[MonitorRow]:
@@ -757,7 +720,7 @@ def _account_limit_rows(
             usage_over_time=usage_over_time,
             used_percent=used_percent,
             recorded_at=now,
-            target_key=target_key,
+            account=account,
             workflow_state=workflow_state,
         )
         if burst_unit is not None:
@@ -909,12 +872,12 @@ def _weekly_burst_unit_summary(
     usage_over_time: dict[str, object],
     used_percent: int,
     recorded_at: datetime.datetime,
-    target_key: str | None = None,
+    account: str | None = None,
     workflow_state: LimitsWorkflowState | None = None,
 ) -> dict[str, object] | None:
     weekly_burst_percent = _weekly_burst_percent(
         provider=provider,
-        target_key=target_key,
+        account=account,
         workflow_state=workflow_state,
     )
     if weekly_burst_percent is None or not _is_weekly_limit(limit, usage_over_time):
@@ -947,20 +910,20 @@ def _weekly_burst_unit_summary(
 def _weekly_burst_percent(
     *,
     provider: str,
-    target_key: str | None,
+    account: str | None,
     workflow_state: LimitsWorkflowState | None,
 ) -> float | None:
-    if provider == "codex":
-        if target_key is None or workflow_state is None:
-            return None
-        estimate = workflow_state.codex_estimated_burst
-        if not isinstance(estimate, dict):
-            return None
-        weekly_percent = estimate.get("weekly_percent")
-        if isinstance(weekly_percent, int | float) and weekly_percent > 0:
-            return float(weekly_percent)
+    if account is None or workflow_state is None:
         return None
-    return _WEEKLY_BURST_PERCENT_BY_PROVIDER.get(provider)
+    measurement = workflow_state.burst_ratios
+    if measurement is None:
+        return None
+    weekly_burst_percent = measurement.weekly_burst_percent(
+        provider=provider, account=account
+    )
+    if weekly_burst_percent is None or weekly_burst_percent <= 0:
+        return None
+    return weekly_burst_percent
 
 
 def _is_weekly_limit(limit: dict[str, Any], usage_over_time: dict[str, object]) -> bool:
@@ -1062,71 +1025,6 @@ def _weekly_usage_period_key(usage_over_time: dict[str, object]) -> str | None:
     return period_end.isoformat()
 
 
-def _synthesize_estimated_burst_limit(
-    *,
-    account_status: dict[str, Any],
-    target_records: list[dict[str, Any]],
-    burst_weekly_percent: float,
-    window_start: datetime.datetime,
-    reset_at: datetime.datetime,
-) -> None:
-    """Insert an estimated burst limit when the provider stopped reporting one.
-
-    Baseline = nearest registry record at-or-before the window start, with no
-    weekly-period filter and no proximity tolerance. Codex's weekly resetsAt
-    rolls continuously, so it cannot identify a stable period; the max(0, delta)
-    floor below absorbs a real weekly reset (usage drops -> non-positive delta
-    -> 0%). No record at-or-before the window start means no observed usage
-    (a record gap implies no monitored activity, so an older reading stays
-    valid) -> 0%.
-    """
-    limits = account_status.get("limits")
-    if not isinstance(limits, list) or _has_burst_limit(limits):
-        return
-    point = _weekly_usage_point(account_status)
-    if point is None:
-        return
-    _period_key, weekly_now = point
-    baseline = nearest_record_at_or_before(target_records, target=window_start)
-    if baseline is None:
-        used_percent = 0
-    else:
-        weekly_delta = max(0, weekly_now - baseline["used_percent"])
-
-        used_percent = max(0, round((weekly_delta / burst_weekly_percent) * 100))
-    synthesized = AccountLimit(
-        limit_class="usage_over_time",
-        limit_id="burst",
-        limit_name="burst",
-        limit_label="Burst",
-        estimated=True,
-        usage_over_time=UsageOverTimeLimitData(
-            used_percent=used_percent,
-            period_started_at=_utc_iso(window_start),
-            period_ends_at=_utc_iso(reset_at),
-            period_duration_mins=300,
-            resets_at=_utc_iso(reset_at),
-        ),
-    )
-    limits.insert(0, synthesized.summary())
-
-
-def _has_burst_limit(limits: list[object]) -> bool:
-    for limit in limits:
-        if not isinstance(limit, dict):
-            continue
-        usage_over_time = limit.get("usage_over_time")
-        if not isinstance(usage_over_time, dict):
-            continue
-        if _int_value(usage_over_time.get("period_duration_mins")) == 300:
-            return True
-    return False
-
-
-def _utc_iso(value: datetime.datetime) -> str:
-    return value.astimezone(datetime.UTC).isoformat().replace("+00:00", "Z")
-
-
 def _weekly_usage_baseline_key(*, target_key: str, period_key: str) -> str:
     return f"{target_key}|weekly|{period_key}"
 
@@ -1215,17 +1113,15 @@ def _usage_error_message(account_status: dict[str, Any]) -> str | None:
 
 
 def _limit_label(limit: dict[str, Any], usage_over_time: dict[str, object]) -> str:
-
-    prefix = "~" if limit.get("estimated") is True else ""
     duration_mins = _int_value(usage_over_time.get("period_duration_mins"))
     if duration_mins == 300:
-        return f"{prefix}Burst"
+        return "Burst"
     if duration_mins == 10_080:
-        return f"{prefix}Weekly"
+        return "Weekly"
     label = limit.get("limit_label") or limit.get("limit_name")
     if isinstance(label, str) and label:
-        return f"{prefix}{label}"
-    return f"{prefix}usage"
+        return label
+    return "usage"
 
 
 def _reset_columns(

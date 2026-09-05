@@ -35,6 +35,15 @@ from tarav.testing import TaravTestEnvironment
 
 from _monitor_helpers import _limit
 
+from tarav.agent.monitor.burst_ratio import BurstRatioMeasurement
+
+
+def _burst_ratios(accounts: dict[str, float]) -> BurstRatioMeasurement:
+    return BurstRatioMeasurement(
+        accounts=dict(accounts),
+        computed_at=datetime.datetime.now(tz=datetime.UTC),
+    )
+
 
 def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
     monkeypatch: pytest.MonkeyPatch,
@@ -430,7 +439,7 @@ def test_limits_tracking_weekly_usage_time_animates_burst_units(
                         account_status=_account_status(limits=[weekly]),
                     )
                 },
-                codex_estimated_burst={"weekly_percent": 15.7},
+                burst_ratios=_burst_ratios({"codex/jp": 15.7}),
             ),
         }
     )
@@ -487,138 +496,25 @@ def test_limits_tracking_burst_limit_does_not_get_weekly_burst_unit_variant(
     burst = _limit(used_percent=63, now=now, limit_id="burst")
 
     rows = limits_tracking._account_limit_rows(
-        _account_status(limits=[burst]), provider="codex"
-    )
-
-    usage_row = rows[0]
-    assert isinstance(usage_row, MonitorUsageTimeRow)
-    assert usage_row.variants == ()
-    assert usage_row.burst_unit is None
-
-
-def test_limits_tracking_unknown_provider_does_not_get_burst_unit_variant(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    _freeze_monitor_now(monkeypatch, now)
-    weekly = _limit(
-        used_percent=63,
-        now=now,
-        limit_id="weekly",
-        end_offset_mins=6048,
-        duration_mins=10080,
-    )
-
-    rows = limits_tracking._account_limit_rows(
-        _account_status(limits=[weekly]), provider="copilot-cli"
-    )
-
-    usage_row = rows[0]
-    assert isinstance(usage_row, MonitorUsageTimeRow)
-    assert usage_row.variants == ()
-    assert usage_row.burst_unit is None
-
-
-def _codex_workflow_and_state(
-    account_status: dict[str, object],
-) -> tuple[LimitsTrackingWorkflow, LimitsWorkflowState, str]:
-    target = MonitorTarget(
+        _account_status(limits=[burst]),
         provider="codex",
         account="jp",
-        home=Path("/tmp/codex-jp"),
-    )
-    workflow = LimitsTrackingWorkflow(
-        MonitorWorkflowConfig(
-            name=LIMITS_TRACKING_WORKFLOW,
-            targets=(target,),
-            refresh_interval_sec=60,
-            raw_config={},
-        )
-    )
-    target_key = "codex/jp@/tmp/codex-jp"
-    workflow_state = LimitsWorkflowState(
-        targets={
-            target_key: LimitsTargetState(
-                provider="codex",
-                account="jp",
-                home="/tmp/codex-jp",
-                status="ok",
-                account_status=account_status,
-            )
-        },
-    )
-    return workflow, workflow_state, target_key
-
-
-def test_limits_tracking_synthesizes_estimated_burst_limit_for_codex(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    _freeze_monitor_now(monkeypatch, now)
-    from tarav.agent.monitor.burst_estimation import fixed_local_5h_window
-
-    window_start, _reset_at = fixed_local_5h_window(recorded_at=now)
-    weekly = _limit(
-        used_percent=63,
-        now=now,
-        limit_id="weekly",
-        end_offset_mins=6048,
-        duration_mins=10080,
-    )
-    period_key = datetime.datetime.fromisoformat(
-        str(weekly["usage_over_time"]["period_ends_at"])  # type: ignore[index]
-    ).isoformat()
-    baseline = {
-        "key": "codex/jp",
-        # Rebuild through the (frozen) datetime class so registry-record
-        # validation sees the patched type.
-        "recorded_at": datetime.datetime.fromisoformat(
-            (window_start - datetime.timedelta(hours=3)).isoformat()
+        workflow_state=LimitsWorkflowState(
+            burst_ratios=_burst_ratios({"codex/jp": 15.7})
         ),
-        "reset_at": period_key,
-        "used_percent": 55,
-    }
-    monkeypatch.setattr(limits_tracking, "codex_registry_records", lambda: [baseline])
-    monkeypatch.setattr(
-        limits_tracking, "estimated_burst_weekly_percent", lambda records: 16.0
-    )
-    workflow, workflow_state, target_key = _codex_workflow_and_state(
-        _account_status(limits=[weekly])
     )
 
-    workflow._refresh_codex_estimated_burst_state(workflow_state)
-
-    account_status = workflow_state.targets[target_key].account_status
-    assert isinstance(account_status, dict)
-    limits = account_status["limits"]
-    assert isinstance(limits, list)
-    assert len(limits) == 2
-    synthesized = limits[0]
-    assert synthesized["estimated"] is True
-    assert synthesized["limit_id"] == "burst"
-    # (63 - 55) weekly delta over a 16.0%-per-window estimate -> 50% of a burst window.
-    assert synthesized["usage_over_time"]["used_percent"] == 50
-    assert synthesized["usage_over_time"]["period_duration_mins"] == 300
-
-    rows = limits_tracking._account_limit_rows(
-        account_status,
-        provider="codex",
-        target_key=target_key,
-        workflow_state=workflow_state,
-    )
     usage_row = rows[0]
     assert isinstance(usage_row, MonitorUsageTimeRow)
-    assert usage_row.suffix == "~Burst"
+    assert usage_row.variants == ()
+    assert usage_row.burst_unit is None
 
 
-def test_limits_tracking_estimated_burst_zero_without_baseline_before_window(
+def test_limits_tracking_unmeasured_provider_does_not_get_burst_unit_variant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
     _freeze_monitor_now(monkeypatch, now)
-    from tarav.agent.monitor.burst_estimation import fixed_local_5h_window
-
-    window_start, _reset_at = fixed_local_5h_window(recorded_at=now)
     weekly = _limit(
         used_percent=63,
         now=now,
@@ -626,118 +522,17 @@ def test_limits_tracking_estimated_burst_zero_without_baseline_before_window(
         end_offset_mins=6048,
         duration_mins=10080,
     )
-    period_key = datetime.datetime.fromisoformat(
-        str(weekly["usage_over_time"]["period_ends_at"])  # type: ignore[index]
-    ).isoformat()
-    # Only record is after the window start: it cannot serve as baseline.
-    late_record = {
-        "key": "codex/jp",
-        "recorded_at": window_start + datetime.timedelta(minutes=10),
-        "reset_at": period_key,
-        "used_percent": 60,
-    }
-    monkeypatch.setattr(
-        limits_tracking, "codex_registry_records", lambda: [late_record]
-    )
-    monkeypatch.setattr(
-        limits_tracking, "estimated_burst_weekly_percent", lambda records: 16.0
-    )
-    workflow, workflow_state, target_key = _codex_workflow_and_state(
-        _account_status(limits=[weekly])
-    )
-
-    workflow._refresh_codex_estimated_burst_state(workflow_state)
-
-    account_status = workflow_state.targets[target_key].account_status
-    assert isinstance(account_status, dict)
-    synthesized = account_status["limits"][0]  # type: ignore[index]
-    assert synthesized["estimated"] is True
-    assert synthesized["usage_over_time"]["used_percent"] == 0
-
-
-def test_limits_tracking_estimated_burst_baseline_survives_rolling_reset(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Codex's weekly resetsAt rolls, so a record captured before the window
-    # start carries a *different* reset_at than the current weekly period. It
-    # must still serve as the baseline; keying the period on exact resetsAt was
-    # the frozen-0% bug.
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    _freeze_monitor_now(monkeypatch, now)
-    from tarav.agent.monitor.burst_estimation import fixed_local_5h_window
-
-    window_start, _reset_at = fixed_local_5h_window(recorded_at=now)
-    weekly = _limit(
-        used_percent=63,
-        now=now,
-        limit_id="weekly",
-        end_offset_mins=6048,
-        duration_mins=10080,
-    )
-    baseline = {
-        "key": "codex/jp",
-        "recorded_at": datetime.datetime.fromisoformat(
-            (window_start - datetime.timedelta(hours=3)).isoformat()
-        ),
-        # A drifted resetsAt from before the window start; differs from the
-        # account-status weekly period_key.
-        "reset_at": "2026-05-12T00:00:00+00:00",
-        "used_percent": 55,
-    }
-    monkeypatch.setattr(limits_tracking, "codex_registry_records", lambda: [baseline])
-    monkeypatch.setattr(
-        limits_tracking, "estimated_burst_weekly_percent", lambda records: 16.0
-    )
-    workflow, workflow_state, target_key = _codex_workflow_and_state(
-        _account_status(limits=[weekly])
-    )
-
-    workflow._refresh_codex_estimated_burst_state(workflow_state)
-
-    account_status = workflow_state.targets[target_key].account_status
-    assert isinstance(account_status, dict)
-    synthesized = account_status["limits"][0]  # type: ignore[index]
-    assert synthesized["estimated"] is True
-    # (63 - 55) weekly delta over 16.0%/window -> 50%, despite the drifted reset_at.
-    assert synthesized["usage_over_time"]["used_percent"] == 50
-
-
-def test_limits_tracking_no_synthesis_when_provider_reports_burst(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    _freeze_monitor_now(monkeypatch, now)
-    burst = _limit(used_percent=30, now=now, limit_id="burst")
-    weekly = _limit(
-        used_percent=63,
-        now=now,
-        limit_id="weekly",
-        end_offset_mins=6048,
-        duration_mins=10080,
-    )
-    monkeypatch.setattr(limits_tracking, "codex_registry_records", lambda: [])
-    monkeypatch.setattr(
-        limits_tracking, "estimated_burst_weekly_percent", lambda records: 16.0
-    )
-    workflow, workflow_state, target_key = _codex_workflow_and_state(
-        _account_status(limits=[burst, weekly])
-    )
-
-    workflow._refresh_codex_estimated_burst_state(workflow_state)
-
-    account_status = workflow_state.targets[target_key].account_status
-    assert isinstance(account_status, dict)
-    limits = account_status["limits"]
-    assert isinstance(limits, list)
-    assert len(limits) == 2
-    assert all("estimated" not in limit for limit in limits)
 
     rows = limits_tracking._account_limit_rows(
-        account_status,
-        provider="codex",
-        target_key=target_key,
-        workflow_state=workflow_state,
+        _account_status(limits=[weekly]),
+        provider="copilot-cli",
+        account="jp",
+        workflow_state=LimitsWorkflowState(
+            burst_ratios=_burst_ratios({"codex/jp": 15.7})
+        ),
     )
+
     usage_row = rows[0]
     assert isinstance(usage_row, MonitorUsageTimeRow)
-    assert usage_row.suffix == "Burst"
+    assert usage_row.variants == ()
+    assert usage_row.burst_unit is None

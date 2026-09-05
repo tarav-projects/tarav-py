@@ -155,10 +155,6 @@ class AccountLimit:
     usage_over_time: UsageOverTimeLimitData | None = None
     provider_limit: Mapping[str, object] = field(default_factory=dict)
 
-
-
-    estimated: bool = False
-
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
             "limit_class": self.limit_class,
@@ -170,8 +166,6 @@ class AccountLimit:
             payload["usage_over_time"] = self.usage_over_time.summary()
         if self.provider_limit:
             payload["provider_limit"] = dict(self.provider_limit)
-        if self.estimated:
-            payload["estimated"] = True
         return payload
 
 

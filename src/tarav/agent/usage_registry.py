@@ -94,6 +94,38 @@ def latest_account_usage_record(
     )
 
 
+
+def iter_usage_records_since(
+    cutoff: datetime.datetime,
+) -> Iterator[Mapping[str, Any]]:
+    """Yield usage records recorded at or after cutoff, newest first.
+
+    Registry files are append-ordered, so reading them newest-first and
+    stopping at the first older record bounds the scan to the requested
+    window instead of the whole registry.
+    """
+    registry_dir = tarav_home_dir() / "agent" / "usage-registry"
+    if not registry_dir.is_dir():
+        return
+    boundary = iso_z(cutoff)
+    for record_path in sorted(registry_dir.glob("*-usage.jsonl"), reverse=True):
+        if not record_path.is_file():
+            continue
+        for raw_line in _iter_lines_reverse(record_path):
+            try:
+                record = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            recorded_at = record.get("recorded_at")
+            if not isinstance(recorded_at, str):
+                continue
+            if recorded_at < boundary:
+                return
+            yield record
+
+
 def _latest_matching_record(
     *,
     provider: str,
@@ -174,6 +206,7 @@ def _validate_required_text(value: str, *, field_name: str) -> None:
 
 __all__ = [
     "append_usage_record",
+    "iter_usage_records_since",
     "latest_account_usage_record",
     "latest_usage_record",
 ]

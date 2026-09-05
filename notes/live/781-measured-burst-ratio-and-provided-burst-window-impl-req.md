@@ -5,7 +5,7 @@
 - **scope:** replace the hardcoded per-provider weekly-burst constant with a value
   measured from the two real provider windows, and remove the codex 5h burst
   estimation so codex renders only the provider-supplied 300-min window.
-- **status:** ready for execution
+- **status:** implemented
 - **source:** account-monitor session 2026-09-05; User decisions captured in the
   `781.Impl.Req` Collection.
 - **current state:** OpenAI resumed publishing the codex 5h window on
@@ -63,7 +63,7 @@ this request. Inspect the Draft and Diagram; do not duplicate those Lines here.
   decrease splitting, telescoping across a quantized series, per-provider median
   selection, and insufficient data returning no ratio; `uv run ruff check` on the
   new file.
-- status: not started
+- status: complete
 
 ### Slice 2 — Wire the measured ratio into the Weekly burst-unit variant
 
@@ -84,7 +84,7 @@ this request. Inspect the Draft and Diagram; do not duplicate those Lines here.
   driven by measured values; copilot-cli, which publishes no window pair, has no
   variant.
 - check: `uv run pytest tests/test_agent_monitor_limits_tracking.py tests/test_agent_monitor_loop_render.py`
-- status: not started
+- status: complete
 
 ### Slice 3 — Remove the estimation path
 
@@ -101,13 +101,13 @@ this request. Inspect the Draft and Diagram; do not duplicate those Lines here.
 - observable: codex Burst rows originate only in the provider payload; no `~`
   prefix and no `estimated` key remain anywhere.
 - check: `uv run pytest tests/ -k "monitor or account_status" -q`
-- status: not started
+- status: complete
 
 ### Slice 4 — Verification
 
 - full `uv run pytest` suite and `uv run ruff check` on touched files.
 - confirm no limits-tracking refresh path performs a full-registry scan.
-- status: not started
+- status: complete
 
 ## Risks and Deviation Triggers
 
@@ -149,3 +149,33 @@ this request. Inspect the Draft and Diagram; do not duplicate those Lines here.
 - 2026-09-05: Observation deferred, not blocking — codex `br` produces 214 reset
   runs against 40–80 for the other accounts at comparable observation counts.
   Its reset identity churns far more. Possibly auto-prime activity; unconfirmed.
+- 2026-09-05: Slice 1 — the bounded scan reuses `usage_registry._iter_lines_reverse`
+  through a new public `iter_usage_records_since`, rather than re-reading whole
+  files inside the monitor. Registry reading stays owned by `usage_registry`;
+  `burst_ratio` stays pure measurement. Measured cost is 0.12s, below the 0.55s
+  the plan budgeted.
+- 2026-09-05: Slice 1 deviation (minor drift, resolved without User input) — over
+  the 14-day measurement window codex `br` measures 15.07, marginally below the
+  15.3–15.9 band the plan recorded from a 6-day sample. Every other account and
+  both provider medians land inside their bands (codex 15.41, claude-code 9.76).
+  The shift tracks the longer window, not a design fault, so execution continued.
+- 2026-09-05: Slices 2 and 3 landed together, deviating from the planned slice
+  order. Dropping the burst-estimation imports in Slice 2 left the synthesis
+  helpers referencing undefined names, so the module had no coherent
+  intermediate state in which Slice 2's check could pass.
+- 2026-09-05: Open-space decision — `_account_limit_rows` keeps `target_key`
+  alongside the new `account` parameter. `target_key` still addresses the
+  weekly-baseline delta-marker feature, which is out of scope here; only the
+  burst-ratio lookup moved to `account`.
+- 2026-09-05: Verification — full suite 1288 passed, ruff clean across the
+  project, and no `burst_estimation`, `codex_estimated`, `estimated`,
+  `_WEEKLY_BURST_PERCENT_BY_PROVIDER`, or `~Burst` reference remains in `src/`
+  or `tests/`. A live `tarav agent accounts monitor --once` measured
+  codex 15.07–15.45 and claude-code 9.67–9.87, and every rendered Burst-unit
+  row's `usage_burst_units_left` equals `(100 - used) / weekly_burst_percent`
+  against its own account's measured ratio. `claude-code/om` has no usable runs
+  and correctly falls back to the claude-code median; `copilot-cli/jp`
+  publishes no window pair and renders no variant.
+- 2026-09-05: Observation, out of scope — `codex/jp` reports two weekly windows
+  in its provider payload, so it renders two Weekly rows. Pre-existing
+  provider-parsing behavior; both rows take the same measured account ratio.

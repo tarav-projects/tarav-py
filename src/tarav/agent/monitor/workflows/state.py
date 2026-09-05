@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from tarav.agent.monitor.burst_ratio import BurstRatioMeasurement
+
 
 @dataclass
 class LimitsTargetState:
@@ -61,7 +63,7 @@ class LimitsWorkflowState:
     weekly_usage_baselines: dict[str, dict[str, object]] = field(
         default_factory=dict
     )
-    codex_estimated_burst: dict[str, object] | None = None
+    burst_ratios: BurstRatioMeasurement | None = None
 
     def payload(self) -> dict[str, object]:
         return {
@@ -77,9 +79,11 @@ class LimitsWorkflowState:
                 key: dict(value)
                 for key, value in self.weekly_usage_baselines.items()
             },
-            "codex_estimated_burst": dict(self.codex_estimated_burst)
-            if self.codex_estimated_burst is not None
-            else None,
+            "burst_ratios": (
+                self.burst_ratios.payload()
+                if self.burst_ratios is not None
+                else None
+            ),
         }
 
 
