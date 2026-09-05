@@ -179,3 +179,23 @@ this request. Inspect the Draft and Diagram; do not duplicate those Lines here.
 - 2026-09-05: Observation, out of scope — `codex/jp` reports two weekly windows
   in its provider payload, so it renders two Weekly rows. Pre-existing
   provider-parsing behavior; both rows take the same measured account ratio.
+- 2026-09-05: Capture closed. The `781.Impl.Req` Collection is Closed and the
+  durable Draft applied once at Diagram commit
+  `75a7902d08ea04aa3675f14204d151bfcb4b6c30`, landing the Collection, the new
+  `Account.Usage.Burst.Measurement` Block, and five User-Touched Lines under
+  authorization gate `f7865bb8-4eaf-45d2-b9a8-77685822c6b9`. No new User-Touched
+  material arrived after the design capture, so no Line was added during
+  execution.
+- 2026-09-05: POI, retryable — Product.Landing.Capture was not performed. The
+  Model's Object.Type registry has no Product.Surface annotation type, so the
+  claim cannot currently be represented. Exact Product.Surface references are
+  retained in this note instead; no legacy SKW or Chat.Index pipeline was
+  reconstructed.
+- 2026-09-05: POI, pre-existing — `tarav skw check` reports
+  `dangling-dependency` for `burst_ratio.py` against
+  `Normalization.Pipeline::Account.Usage.Model`, the same unresolved depot
+  surface already carried by every neighbouring account and monitor module
+  (441 project-wide POIs). The new file follows the area's existing `$kw`
+  convention; resolving that depot surface is separate work.
+- 2026-09-05: Capture Lines carry no `Verbatim.Gate`. They landed through the
+  workflow's authorization gate and remain Unreviewed by construction.
