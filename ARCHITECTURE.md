@@ -55,6 +55,12 @@ contract and Git boundaries.
   durable `Diagram.Draft` writing workspaces. Views never mutate the semantic
   database. Drafts reconcile proposed changes and apply them through the
   ordinary Diagram capture boundary.
+- `tarav.scoring` owns compatible Assertion pools, typed Ranking Tasks, exact
+  Agent Runs, retained Results, and reproducible named Score computations in
+  the independent Git-backed `~/Documents/tarav/scoring/` Record repository.
+  Diagram owns the Assertions being evaluated; Scoring owns evaluation
+  evidence and interpretations. Runner code executes a rendered Task but does
+  not define its assertion semantics.
 - `tarav.bloberia` owns the hosted global `Tarav.Bloberia` registry. The public
   `tarav bloberia` command addresses that registry directly; its private JSON
   storage is not a second Tarav system or command surface.
@@ -84,8 +90,10 @@ contract and Git boundaries.
   initialization, discovery, resolution, verification, and project-local
   Skills operations. `tarav.skills` remains the cohesive domain that owns
   Skills behavior.
-- `tarav.hooks`, `tarav.daemon`, `tarav.tournament`, and `tarav.workspaces` are
-  cohesive domains.
+- `tarav.hooks`, `tarav.daemon`, and `tarav.workspaces` are cohesive domains.
+- The former Tournament implementation is retained only under
+  `_DEPRECATED/tournament/` for design archaeology. It is neither importable
+  maintained code nor a public command surface.
 - `tarav.iterante` and `tarav.iterante2` are separate runtimes; only behavior
   proven identical belongs in `tarav.iterante._shared`.
 
@@ -117,6 +125,10 @@ Annotated code is discovered through the project's `.skw/skw.json`.
   Renderers consume structured Query results and never reimplement selection.
 - Diagram consumes Chatlas's public Normal Model for producer and support
   evidence. Chatlas does not import Diagram.
+- Scoring consumes Diagram's public projection and Chatlas-backed support when
+  an Assertion-owned task builder constructs an `Index.Line` grounding case.
+  Diagram does not import Scoring; score discovery can be rebuilt from the
+  Scoring Record repository.
 
 Retained Chatlas raw artifacts are authoritative evidence. Its Session Index
 and Normal Model cache are derived surfaces and may be rebuilt.

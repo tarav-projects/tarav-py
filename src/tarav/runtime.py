@@ -61,12 +61,12 @@ class TaravRuntime:
         from tarav.stdlib.prefix.commands import register_prefix_commands
         from tarav.project import register_project_commands
         from tarav.reading_club.commands import register_reading_club_commands
+        from tarav.scoring.commands import register_scoring_commands
         from tarav.stdlib.refs import register_refs_commands
         from tarav.surfaces.commands import register_surface_commands
         from tarav.skills import register_skills_commands
         from tarav.skillware.commands import register_skillware_commands
         from tarav.system import register_system_commands
-        from tarav.tournament.commands import register_tournament_commands
         from tarav.stdlib.utils import register_utils_commands
         from tarav.wayfinder.commands import register_wayfinder_commands
         from tarav.workspaces.commands import register_workspace_commands
@@ -122,7 +122,7 @@ class TaravRuntime:
                 )
             ),
         )
-        register_tournament_commands(subparsers)
+        register_scoring_commands(subparsers)
         register_workspace_commands(subparsers)
         register_poi_commands(
             subparsers,

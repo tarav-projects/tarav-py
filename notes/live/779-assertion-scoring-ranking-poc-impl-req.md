@@ -1,6 +1,6 @@
 # 779 — Assertion scoring and ranking proof of concept
 
-Status: Ready
+Status: Completed
 
 ## Impl.Abstract
 
@@ -89,3 +89,19 @@ Acceptance signals:
 - The pre-edit checkpoint also preserves an unrelated concurrent
   `tarav.reading_club` implementation and its runtime/architecture wiring;
   scoring execution does not modify or depend on those surfaces.
+- Implemented the typed Git-backed Record repository, grounding Pool and Task,
+  opaque-label Run rendering, structured ranked/abstained Results, Agent Runner
+  provenance, and the first named pairwise win-rate Score computation.
+- Added the compact `tarav scoring` command set with `render`, retained preview
+  Runs, generic `list`, and generic `show` debugging surfaces. A smoke run built
+  and rendered a real two-candidate Task from the grounded Tarav Model.
+- Retired `tarav tournament` from maintained imports and CLI composition. Its
+  source and tests now live under `_DEPRECATED/tournament/` as non-executable
+  design archaeology.
+- Verified the installed CLI with a real Tarav Diagram Task, a retained preview
+  Run, structured submission, Result listing, and named Score computation.
+  Focused scoring/architecture checks passed, Ruff passed over `src tests`, and
+  the complete maintained suite passed with 1,277 tests.
+- No Product Surface was provided for inline requirement annotation; the
+  durable Impl.Req Collection is the implementation-capture surface for this
+  run.
