@@ -1,6 +1,6 @@
 # 778 — Chatlas ledger time and current-session identity
 
-Status: In Progress
+Status: Completed
 
 ## Impl.Abstract
 
@@ -42,3 +42,12 @@ Acceptance signals:
 - Existing Query already owns Turn/Message assembly, while the ledger owns only string presentation; Event time follows the same boundary.
 - Existing `--current-session` query/update mechanics already use one exact resolver for Codex and Claude Code. The new command surfaces that resolver rather than adding another identity mechanism.
 - The preceding `777` product changes remain uncommitted and will enter this workflow's required pre-edit checkpoint.
+- Workflow checkpoint: `131677a`.
+- Query findings now resolve Turn Event references, validate their addresses and hashes, and retain the earliest valid timezone-aware `started_at` by absolute instant.
+- `Chatlas.Turn.Ledger.Renderer` formats the resolved value at UTC minute precision and emits `-` for absence; it performs no Event lookup.
+- Added the read-only `tarav chatlas current-session` command over the existing verified resolver. Live Codex and isolated Claude Code checks returned their provider-native session identities.
+- Updated `tarav-chatlas-my-session-id` to use the surfaced command and documented it in the Chatlas package skill.
+- Verification: `42` targeted tests passed; `78` Chatlas tests passed; Ruff clean; full suite `1553` passed; skill validation passed; editable CLI reinstalled and live ledger/current-session checks passed.
+- Product surfaces: `src/tarav/chatlas/{commands,query,rendering}.py`, their focused tests, and the two Chatlas skill surfaces.
+- Applied the closed `778.Impl.Req` Draft once. Diagram receipt commit: `fa8ca9a919c4356d7a82ed7c1cbcc4cb16bd79e6`.
+- Expected capture POIs remain for unasserted records, unavailable Archive-grounding assessment, Model staleness, and older closed implementation collections. The new Collection is closed and introduced no closed-write finding of its own.

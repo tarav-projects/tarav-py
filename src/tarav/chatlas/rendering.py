@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import re
 from typing import Any
 
@@ -165,8 +166,24 @@ def _turn_ledger_renderer(
             for message in finding.messages
             if isinstance((value := message.get("text")), str)
         )
-        rows.append(f"{finding.prefix}  {side:<5}  {text[:160]}")
+        rows.append(
+            f"{_ledger_timestamp(finding.started_at)}  "
+            f"{finding.prefix}  {side:<5}  {text[:160]}"
+        )
     return "\n".join(rows)
+
+
+def _ledger_timestamp(value: str | None) -> str:
+    if value is None:
+        return "-"
+    normalized = f"{value[:-1]}+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ChatlasRenderError("Turn finding has an invalid started_at") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ChatlasRenderError("Turn finding started_at has no timezone")
+    return parsed.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%MZ")
 
 
 _REGISTRY = ChatlasRendererRegistry()
@@ -190,7 +207,7 @@ _REGISTRY.register(
     ChatlasRenderer(
         TURN_LEDGER_RENDERER,
         "text/plain",
-        "Compact Turn hash, side, and message-text ledger.",
+        "Compact Turn time, hash, side, and message-text ledger.",
         _turn_ledger_renderer,
     )
 )

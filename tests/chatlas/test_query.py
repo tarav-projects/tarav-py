@@ -17,6 +17,10 @@ MESSAGE_ONE_ADDRESS = "c" * 64
 MESSAGE_TWO_ADDRESS = "d" * 64
 MESSAGE_ONE_HASH = "e" * 64
 MESSAGE_TWO_HASH = "f" * 64
+EVENT_ONE_ADDRESS = "1" * 64
+EVENT_TWO_ADDRESS = "2" * 64
+EVENT_ONE_HASH = "3" * 64
+EVENT_TWO_HASH = "4" * 64
 
 
 def _turn(
@@ -24,6 +28,7 @@ def _turn(
     *,
     address: str,
     side: str = "user",
+    event_refs: list[dict[str, str]] | None = None,
     message_refs: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
     return {
@@ -31,7 +36,7 @@ def _turn(
         "turn_address": address,
         "turn_hash": turn_hash,
         "side": side,
-        "event_refs": [],
+        "event_refs": event_refs or [],
         "message_refs": message_refs or [],
     }
 
@@ -49,15 +54,28 @@ def _message(
     }
 
 
+def _event(
+    address: str, digest: str, *, started_at: object
+) -> dict[str, object]:
+    return {
+        "class": "Chat.Event",
+        "event_address": address,
+        "event_hash": digest,
+        "started_at": started_at,
+    }
+
+
 class Reader:
     def __init__(
         self,
         *,
         turns: list[dict[str, object]],
         messages: list[dict[str, object]],
+        events: list[dict[str, object]] | None = None,
     ) -> None:
         self._turns = turns
         self._messages = messages
+        self._events = events or []
 
     def model_header(self) -> dict[str, object]:
         return {
@@ -72,6 +90,9 @@ class Reader:
 
     def iter_turns(self):
         yield from deepcopy(self._turns)
+
+    def iter_events(self):
+        yield from deepcopy(self._events)
 
     def iter_messages(self):
         yield from deepcopy(self._messages)
@@ -132,6 +153,85 @@ def test_query_preserves_requested_prefix_order() -> None:
         TURN_TWO_HASH[:8],
         TURN_ONE_HASH[:8],
     ]
+
+
+def test_query_resolves_the_earliest_valid_event_started_at() -> None:
+    event_refs = [
+        {"event_address": EVENT_ONE_ADDRESS, "event_hash": EVENT_ONE_HASH},
+        {"event_address": EVENT_TWO_ADDRESS, "event_hash": EVENT_TWO_HASH},
+    ]
+    reader = Reader(
+        turns=[
+            _turn(
+                TURN_ONE_HASH,
+                address="5" * 64,
+                event_refs=event_refs,
+            )
+        ],
+        messages=[],
+        events=[
+            _event(
+                EVENT_ONE_ADDRESS,
+                EVENT_ONE_HASH,
+                started_at="2026-09-05T10:00:00-04:00",
+            ),
+            _event(
+                EVENT_TWO_ADDRESS,
+                EVENT_TWO_HASH,
+                started_at="2026-09-05T13:00:00Z",
+            ),
+        ],
+    )
+
+    result = ChatlasQueryEngine(reader).run(
+        ChatlasQuery(turn_hash_prefixes=(TURN_ONE_HASH[:8],))
+    )
+
+    assert result.findings[0].started_at == "2026-09-05T13:00:00Z"
+    assert result.findings[0].to_dict()["started_at"] == "2026-09-05T13:00:00Z"
+
+
+def test_query_leaves_started_at_absent_when_events_have_no_valid_time() -> None:
+    reader = Reader(
+        turns=[
+            _turn(
+                TURN_ONE_HASH,
+                address="5" * 64,
+                event_refs=[
+                    {"event_address": EVENT_ONE_ADDRESS, "event_hash": EVENT_ONE_HASH}
+                ],
+            )
+        ],
+        messages=[],
+        events=[_event(EVENT_ONE_ADDRESS, EVENT_ONE_HASH, started_at="not-a-time")],
+    )
+
+    result = ChatlasQueryEngine(reader).run(
+        ChatlasQuery(turn_hash_prefixes=(TURN_ONE_HASH[:8],))
+    )
+
+    assert result.findings[0].started_at is None
+
+
+def test_query_rejects_an_amended_turn_event() -> None:
+    reader = Reader(
+        turns=[
+            _turn(
+                TURN_ONE_HASH,
+                address="5" * 64,
+                event_refs=[
+                    {"event_address": EVENT_ONE_ADDRESS, "event_hash": EVENT_ONE_HASH}
+                ],
+            )
+        ],
+        messages=[],
+        events=[_event(EVENT_ONE_ADDRESS, EVENT_TWO_HASH, started_at=None)],
+    )
+
+    with pytest.raises(ChatlasQueryError, match="Chat.Event was amended"):
+        ChatlasQueryEngine(reader).run(
+            ChatlasQuery(turn_hash_prefixes=(TURN_ONE_HASH[:8],))
+        )
 
 
 @pytest.mark.parametrize("prefix", ["", "xyz", "A" * 8, "a" * 65])

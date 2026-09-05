@@ -16,7 +16,9 @@ from tarav.chatlas.rendering import (
 )
 
 
-def _result(*texts: str) -> ChatlasQueryResult:
+def _result(
+    *texts: str, started_at: str | None = "2026-09-05T09:27:11-04:00"
+) -> ChatlasQueryResult:
     turn_hash = "a" * 64
     messages = tuple(
         {
@@ -38,6 +40,7 @@ def _result(*texts: str) -> ChatlasQueryResult:
             "message_refs": [],
         },
         messages,
+        started_at,
     )
     return ChatlasQueryResult(
         ChatlasQuery(turn_hash_prefixes=(turn_hash[:8],)),
@@ -133,4 +136,14 @@ def test_turn_ledger_renderer_compacts_message_text() -> None:
     )
 
     assert rendered.media_type == "text/plain"
-    assert rendered.content == "aaaaaaaa  user   first message second message"
+    assert rendered.content == (
+        "2026-09-05 13:27Z  aaaaaaaa  user   first message second message"
+    )
+
+
+def test_turn_ledger_renderer_marks_an_unavailable_time() -> None:
+    rendered = renderer(TURN_LEDGER_RENDERER).render(
+        _result("message", started_at=None)
+    )
+
+    assert rendered.content == "-  aaaaaaaa  user   message"

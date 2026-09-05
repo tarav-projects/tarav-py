@@ -18,7 +18,15 @@ def test_chatlas_help_exposes_current_commands() -> None:
     )
     help_text = chatlas.format_help()
 
-    for command in ("update", "index", "raw", "normal-model", "query", "render"):
+    for command in (
+        "update",
+        "current-session",
+        "index",
+        "raw",
+        "normal-model",
+        "query",
+        "render",
+    ):
         assert command in help_text
     for removed in ("recents", "products", "anchory", "views", "events"):
         assert removed not in help_text
@@ -81,6 +89,51 @@ def test_query_and_default_render_share_query_execution_and_output(
     assert calls == [("turns",), ("messages",), ("turns",), ("messages",)]
 
 
+def test_current_session_reports_verified_codex_and_claude_context(
+    monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("CODEX_THREAD_ID", "codex-session")
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+
+    assert main(["chatlas", "current-session", "--provider", "codex", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "class": "Chatlas.Current.Session",
+        "provider": "codex",
+        "session_id": "codex-session",
+    }
+
+    monkeypatch.delenv("CODEX_THREAD_ID")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "claude-session")
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "current-session",
+                "--provider",
+                "claude-code",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out) == {
+        "class": "Chatlas.Current.Session",
+        "provider": "claude-code",
+        "session_id": "claude-session",
+    }
+
+
+def test_current_session_requires_unambiguous_verified_context(
+    monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("CODEX_THREAD_ID", "codex-session")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "claude-session")
+
+    assert main(["chatlas", "current-session"]) == 1
+    assert "ambiguous" in capsys.readouterr().err
+
+
 def test_render_selects_a_registered_renderer_and_passes_options(
     monkeypatch, capsys
 ) -> None:
@@ -95,6 +148,7 @@ def test_render_selects_a_registered_renderer_and_passes_options(
                 "turn_address": "1" * 64,
                 "turn_hash": "a" * 64,
                 "side": "user",
+                "event_refs": [],
                 "message_refs": [],
             }
 
@@ -144,6 +198,7 @@ def test_query_json_uses_the_default_renderer_envelope(monkeypatch, capsys) -> N
                 "turn_address": "1" * 64,
                 "turn_hash": "a" * 64,
                 "side": "user",
+                "event_refs": [],
                 "message_refs": [],
             }
 
@@ -405,6 +460,7 @@ def test_render_uses_query_discovery_with_the_turn_ledger_renderer(
                 "turn_address": "1" * 64,
                 "turn_hash": "a" * 64,
                 "side": "user",
+                "event_refs": [],
                 "message_refs": [
                     {"message_address": "2" * 64, "message_hash": "3" * 64}
                 ],
@@ -440,7 +496,9 @@ def test_render_uses_query_discovery_with_the_turn_ledger_renderer(
         == 0
     )
 
-    assert capsys.readouterr().out == ("aaaaaaaaaaaaaaaa  user   discover this Turn\n")
+    assert capsys.readouterr().out == (
+        "-  aaaaaaaaaaaaaaaa  user   discover this Turn\n"
+    )
 
 
 def test_render_accepts_a_repeatable_turn_prefix_batch(monkeypatch, capsys) -> None:
@@ -453,12 +511,14 @@ def test_render_accepts_a_repeatable_turn_prefix_batch(monkeypatch, capsys) -> N
                 "turn_address": "1" * 64,
                 "turn_hash": "a" * 64,
                 "side": "user",
+                "event_refs": [],
                 "message_refs": [],
             }
             yield {
                 "turn_address": "2" * 64,
                 "turn_hash": "b" * 64,
                 "side": "agent",
+                "event_refs": [],
                 "message_refs": [],
             }
 
@@ -500,6 +560,7 @@ def test_render_formats_an_ordered_inlined_capture_batch(monkeypatch, capsys) ->
                     "turn_address": digit * 64,
                     "turn_hash": digit * 64,
                     "side": "user",
+                    "event_refs": [],
                     "message_refs": [],
                 }
 

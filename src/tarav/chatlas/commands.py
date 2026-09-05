@@ -40,6 +40,18 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_capture_options(update)
     update.set_defaults(handler=_cmd_update)
 
+    current_session = commands.add_parser(
+        "current-session",
+        help="Resolve the running harness's verified provider-native session.",
+    )
+    current_session.add_argument(
+        "--provider",
+        choices=tuple(_CURRENT_SESSION_ENV),
+        help="Harness provider; recommended when more than one may be active.",
+    )
+    current_session.add_argument("--json", action="store_true")
+    current_session.set_defaults(handler=_cmd_current_session)
+
     index = commands.add_parser(
         "index", help="Rebuild or reset the derived session index."
     )
@@ -241,6 +253,20 @@ def _cmd_update(args: argparse.Namespace) -> int:
             progress=_progress,
         )
     )
+
+
+def _cmd_current_session(args: argparse.Namespace) -> int:
+    provider, session_id = _resolve_current_session(args.provider)
+    payload = {
+        "class": "Chatlas.Current.Session",
+        "provider": provider,
+        "session_id": session_id,
+    }
+    if args.json:
+        return _print(payload)
+    print(f"provider:   {provider}")
+    print(f"session_id: {session_id}")
+    return 0
 
 
 def _cmd_index_redo(args: argparse.Namespace) -> int:

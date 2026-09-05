@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import datetime
 import re
 from typing import Any, Protocol
 
@@ -19,6 +20,8 @@ class ChatlasQueryError(ValueError):
 
 class ChatlasQueryReader(Protocol):
     def model_header(self) -> JsonObject: ...
+
+    def iter_events(self) -> Iterator[JsonObject]: ...
 
     def iter_turns(self) -> Iterator[JsonObject]: ...
 
@@ -73,6 +76,7 @@ class ChatlasTurnFinding:
     prefix: str
     turn: JsonObject
     messages: tuple[JsonObject, ...]
+    started_at: str | None = None
 
     def to_dict(self) -> JsonObject:
         return {
@@ -80,6 +84,7 @@ class ChatlasTurnFinding:
             "prefix": self.prefix,
             "turn": deepcopy(self.turn),
             "messages": deepcopy(list(self.messages)),
+            "started_at": self.started_at,
         }
 
 
@@ -131,11 +136,31 @@ class ChatlasQueryEngine:
                 )
             messages[address] = message
 
+        requested_event_addresses = {
+            _event_ref(ref)[0]
+            for turn in selected
+            for ref in _array(turn.get("event_refs"), field="Chat.Turn.event_refs")
+        }
+        events: dict[str, JsonObject] = {}
+        if requested_event_addresses:
+            for event in self.reader.iter_events():
+                address = _full_hash(
+                    event.get("event_address"), field="Chat.Event.event_address"
+                )
+                if address not in requested_event_addresses:
+                    continue
+                if address in events:
+                    raise ChatlasQueryError(
+                        f"Normal Model contains duplicate Chat.Event address: {address}"
+                    )
+                events[address] = event
+
         findings = [
             ChatlasTurnFinding(
                 prefix,
                 turn,
                 _messages_for_turn(turn, messages),
+                _started_at_for_turn(turn, events),
             )
             for prefix, turn in _finding_inputs(query, selected)
         ]
@@ -242,6 +267,49 @@ def _message_ref(value: object) -> tuple[str, str]:
         _full_hash(value.get("message_address"), field="Message.Ref.message_address"),
         _full_hash(value.get("message_hash"), field="Message.Ref.message_hash"),
     )
+
+
+def _started_at_for_turn(
+    turn: JsonObject, events: dict[str, JsonObject]
+) -> str | None:
+    candidates: list[tuple[datetime, str]] = []
+    for value in _array(turn.get("event_refs"), field="Chat.Turn.event_refs"):
+        address, expected_hash = _event_ref(value)
+        event = events.get(address)
+        if event is None:
+            raise ChatlasQueryError(f"Chat.Event does not resolve: {address}")
+        current_hash = _full_hash(event.get("event_hash"), field="Chat.Event.event_hash")
+        if current_hash != expected_hash:
+            raise ChatlasQueryError(f"Chat.Event was amended: {address}")
+        started_at = event.get("started_at")
+        parsed = _parse_timestamp(started_at)
+        if parsed is not None:
+            candidates.append((parsed, started_at))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: item[0])[1]
+
+
+def _event_ref(value: object) -> tuple[str, str]:
+    if not isinstance(value, dict):
+        raise ChatlasQueryError("Chat.Turn Event.Ref must be an object")
+    return (
+        _full_hash(value.get("event_address"), field="Event.Ref.event_address"),
+        _full_hash(value.get("event_hash"), field="Event.Ref.event_hash"),
+    )
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    normalized = f"{value[:-1]}+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed
 
 
 def _array(value: object, *, field: str) -> list[object]:
