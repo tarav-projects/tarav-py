@@ -253,6 +253,146 @@ def test_update_current_session_is_an_explicit_provider_scoped_write(
     assert calls[0]["session_ids"] == ("current-session",)
 
 
+def test_query_update_captures_exact_session_before_forced_refresh(
+    monkeypatch, capsys
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class Reader:
+        def model_header(self):
+            return {"session": {"session_id": "session-one"}}
+
+        def iter_turns(self):
+            return iter(())
+
+        def iter_messages(self):
+            return iter(())
+
+    def update(**kwargs):
+        calls.append(("update", kwargs))
+        kwargs["progress"]("captured exact session")
+        return {"status": "ok"}
+
+    def reader(**kwargs):
+        calls.append(("reader", kwargs))
+        return Reader()
+
+    monkeypatch.setattr("tarav.chatlas.commands.chatlas_update", update)
+    monkeypatch.setattr("tarav.chatlas.commands.provide_normal_model_reader", reader)
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "query",
+                "--provider",
+                "codex",
+                "--session-id",
+                "session-one",
+                "--update",
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert captured.out == "\n"
+    assert captured.err == "captured exact session\n"
+    assert [name for name, _kwargs in calls] == ["update", "reader"]
+    assert calls[0][1]["providers"] == ("codex",)
+    assert calls[0][1]["session_ids"] == ("session-one",)
+    assert calls[1][1]["refresh"] is True
+
+
+def test_render_update_resolves_the_provider_explicit_current_session(
+    monkeypatch, capsys
+) -> None:
+    updates: list[dict[str, object]] = []
+
+    class Reader:
+        def model_header(self):
+            return {"session": {"session_id": "current-session"}}
+
+        def iter_turns(self):
+            return iter(())
+
+        def iter_messages(self):
+            return iter(())
+
+    monkeypatch.setenv("CODEX_THREAD_ID", "current-session")
+    monkeypatch.setattr(
+        "tarav.chatlas.commands.chatlas_update",
+        lambda **kwargs: updates.append(kwargs) or {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+    )
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "render",
+                "--provider",
+                "codex",
+                "--current-session",
+                "--update",
+            ]
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out == "\n"
+    assert updates[0]["providers"] == ("codex",)
+    assert updates[0]["session_ids"] == ("current-session",)
+
+
+def test_query_update_rejects_non_exact_update_targets_before_capture(
+    monkeypatch, capsys
+) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "tarav.chatlas.commands.chatlas_update",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    assert main(["chatlas", "query", "--session-id", "session-one", "--update"]) == 1
+    assert "requires --provider" in capsys.readouterr().err
+    assert (
+        main(
+            [
+                "chatlas",
+                "query",
+                "--provider",
+                "codex",
+                "--identity-hash",
+                "0" * 64,
+                "--update",
+            ]
+        )
+        == 1
+    )
+    assert "not --identity-hash" in capsys.readouterr().err
+    assert (
+        main(
+            [
+                "chatlas",
+                "query",
+                "--provider",
+                "codex",
+                "--session-id",
+                "session-one",
+                "--update",
+                "--limit",
+                "0",
+            ]
+        )
+        == 1
+    )
+    assert "limit must be positive" in capsys.readouterr().err
+    assert calls == []
+
+
 def test_render_uses_query_discovery_with_the_turn_ledger_renderer(
     monkeypatch, capsys
 ) -> None:

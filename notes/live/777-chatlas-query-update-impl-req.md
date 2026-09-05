@@ -1,6 +1,6 @@
 # 777 — Chatlas Query update preflight
 
-Status: Designed
+Status: Completed
 
 ## Impl.Abstract
 
@@ -46,3 +46,12 @@ Acceptance signals:
 - Current product already centralizes Query/Render execution in `src/tarav/chatlas/commands.py::_run_query_renderer` and capture in `chatlas_update`; no new update subsystem is needed.
 - The preceding `776` implementation remains uncommitted and will be included in this workflow's required pre-edit checkpoint.
 - Product capture will remain in the durable Draft and land once after verification.
+- Workflow checkpoint: `02f33c4`.
+- Implemented shared `--update` handling in `src/tarav/chatlas/commands.py`; Query validation and exact-target validation finish before capture begins.
+- The preflight calls the existing `chatlas_update` with exactly one provider/session, preserves progress on stderr, and forces Normal Model refresh before Query execution.
+- Added CLI coverage for explicit session IDs, provider-explicit current-session resolution, validation-before-write, update-before-reader ordering, forced refresh, and stdout/stderr separation.
+- Reinstalled the editable CLI. A live `--provider codex --current-session --update` render captured and returned the intended current User Turn.
+- Verification: targeted Ruff clean; `72` Chatlas tests passed; full suite `1547` passed.
+- Product surfaces: `src/tarav/chatlas/commands.py` and `tests/chatlas/test_core_cli.py`.
+- Applied the closed `777.Impl.Req` Draft once. Diagram receipt commit: `dadd13f68a396595071b6285cca2a7b871f3ada6`.
+- Expected capture POIs remain for unasserted records, unresolved Archive grounding, and Collection-hosted Model staleness; the larger receipt also carries pre-existing Tarav Model vocabulary POIs. No authorization failure was introduced.

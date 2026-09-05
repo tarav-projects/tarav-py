@@ -194,6 +194,11 @@ def _add_query_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--refresh", action="store_true", help="Rebuild the Normal Model cache."
     )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Capture the exact provider session before querying; this writes.",
+    )
     parser.add_argument("--json", action="store_true")
 
 
@@ -345,16 +350,21 @@ def _run_query_renderer(
 ) -> int:
     try:
         selected_renderer = renderer(renderer_name)
-        reader = provide_normal_model_reader(**_reference(args), refresh=args.refresh)
-        result = ChatlasQueryEngine(reader).run(
-            ChatlasQuery(
-                turn_hash_prefixes=tuple(args.turn_hash_prefixes or ()),
-                side=args.side,
-                text_contains=args.text_contains,
-                order=args.order,
-                limit=args.limit,
-            )
+        query = ChatlasQuery(
+            turn_hash_prefixes=tuple(args.turn_hash_prefixes or ()),
+            side=args.side,
+            text_contains=args.text_contains,
+            order=args.order,
+            limit=args.limit,
         )
+        reference = _query_reference(args)
+        if args.update:
+            _update_query_session(reference)
+        reader = provide_normal_model_reader(
+            **reference,
+            refresh=args.refresh or args.update,
+        )
+        result = ChatlasQueryEngine(reader).run(query)
         rendered = selected_renderer.render(result, options=renderer_options)
     except (ChatlasQueryError, ChatlasRenderError) as exc:
         raise CliError(str(exc)) from exc
@@ -362,6 +372,36 @@ def _run_query_renderer(
         return _print(rendered.to_dict())
     print(rendered.content)
     return 0
+
+
+def _query_reference(args: argparse.Namespace) -> dict[str, object]:
+    if args.update:
+        if args.provider is None:
+            raise CliError("--update requires --provider")
+        if args.identity_hash is not None:
+            raise CliError(
+                "--update requires --current-session or --session-id, not --identity-hash"
+            )
+    return _reference(args)
+
+
+def _update_query_session(reference: dict[str, object]) -> None:
+    provider = reference.get("provider")
+    session_id = reference.get("session_id")
+    instance = reference.get("instance")
+    if not isinstance(provider, str) or not isinstance(session_id, str):
+        raise CliError("--update requires an exact provider session")
+    chatlas_update(
+        providers=(provider,),
+        instances=(instance,) if isinstance(instance, str) else None,
+        session_ids=(session_id,),
+        chatlas_root=reference.get("chatlas_root"),
+        start_path=".",
+        cache_enabled=True,
+        full_scan=False,
+        window_seconds=None,
+        progress=_progress,
+    )
 
 
 def _renderer_options(values: list[str]) -> dict[str, str]:
