@@ -58,6 +58,10 @@ contract and Git boundaries.
 - `tarav.bloberia` owns the hosted global `Tarav.Bloberia` registry. The public
   `tarav bloberia` command addresses that registry directly; its private JSON
   storage is not a second Tarav system or command surface.
+- `tarav.reading_club` owns the thin, read-only logistical model and public
+  navigation CLI for Git-tracked Reading Projects under the independent
+  `~/Documents/tarav/reading-club/` data surface. It does not identify
+  documents, interpret reading content, or own Agent reading workflows.
 - `tarav.index_model` owns only the written form of an Index line: label grammar
   and the identity hashes asserted over the `Line.Type + body + anchor` triplet.
   It does not model the Index.

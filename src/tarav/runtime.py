@@ -60,6 +60,7 @@ class TaravRuntime:
         )
         from tarav.stdlib.prefix.commands import register_prefix_commands
         from tarav.project import register_project_commands
+        from tarav.reading_club.commands import register_reading_club_commands
         from tarav.stdlib.refs import register_refs_commands
         from tarav.surfaces.commands import register_surface_commands
         from tarav.skills import register_skills_commands
@@ -90,6 +91,7 @@ class TaravRuntime:
             subparsers,
             skills_registrar=register_skills_commands,
         )
+        register_reading_club_commands(subparsers)
         register_system_commands(subparsers)
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
