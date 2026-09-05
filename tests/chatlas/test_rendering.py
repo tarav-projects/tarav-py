@@ -7,6 +7,7 @@ import pytest
 from tarav.chatlas.query import ChatlasQuery, ChatlasQueryResult, ChatlasTurnFinding
 from tarav.chatlas.rendering import (
     DEFAULT_CHATLAS_RENDERER,
+    INLINED_CAPTURE_MARKDOWN_RENDERER,
     ChatlasRenderer,
     ChatlasRendererRegistry,
     ChatlasRenderError,
@@ -92,3 +93,31 @@ def test_render_result_json_retains_renderer_and_structured_findings() -> None:
 
     assert json.loads(json.dumps(payload))["renderer"] == DEFAULT_CHATLAS_RENDERER
     assert payload["query_result"]["findings"][0]["messages"][0]["text"] == "message"
+
+
+def test_inlined_capture_markdown_renderer_formats_a_compact_reference() -> None:
+    rendered = renderer(INLINED_CAPTURE_MARKDOWN_RENDERER).render(
+        _result("message"), options={"session-alias": "phd"}
+    )
+
+    assert rendered.media_type == "text/markdown"
+    assert rendered.content == "<!-- tarav.context phd:aaaaaaaaaaaaaaaa -->"
+
+
+def test_inlined_capture_markdown_renderer_requires_a_safe_session_alias() -> None:
+    selected = renderer(INLINED_CAPTURE_MARKDOWN_RENDERER)
+
+    with pytest.raises(ChatlasRenderError, match="session-alias"):
+        selected.render(_result("message"))
+    with pytest.raises(ChatlasRenderError, match="session alias"):
+        selected.render(_result("message"), options={"session-alias": "bad--alias"})
+
+
+def test_inlined_capture_markdown_renderer_rejects_agent_turns() -> None:
+    result = _result("message")
+    result.findings[0].turn["side"] = "agent"
+
+    with pytest.raises(ChatlasRenderError, match="User Turns"):
+        renderer(INLINED_CAPTURE_MARKDOWN_RENDERER).render(
+            result, options={"session-alias": "phd"}
+        )

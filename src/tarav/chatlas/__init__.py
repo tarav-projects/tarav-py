@@ -8,6 +8,7 @@ from .query import (
 )
 from .rendering import (
     DEFAULT_CHATLAS_RENDERER,
+    INLINED_CAPTURE_MARKDOWN_RENDERER,
     ChatlasRenderer,
     ChatlasRendererRegistry,
     ChatlasRenderError,
@@ -31,6 +32,7 @@ __all__ = [
     "ChatlasRenderResult",
     "ChatlasTurnFinding",
     "DEFAULT_CHATLAS_RENDERER",
+    "INLINED_CAPTURE_MARKDOWN_RENDERER",
     "register_chatlas_commands",
     "register_renderer",
     "renderer",

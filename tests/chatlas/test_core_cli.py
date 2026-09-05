@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from tarav.cli.cli import build_parser, main
+from tarav.chatlas.rendering import INLINED_CAPTURE_MARKDOWN_RENDERER
 
 
 def test_chatlas_help_exposes_current_commands() -> None:
@@ -206,6 +207,50 @@ def test_render_accepts_a_repeatable_turn_prefix_batch(monkeypatch, capsys) -> N
     output = capsys.readouterr().out
     assert output.index("Agent Turn `bbbbbbbb`") < output.index(
         "User Turn `aaaaaaaa`"
+    )
+
+
+def test_render_formats_an_ordered_inlined_capture_batch(monkeypatch, capsys) -> None:
+    class Reader:
+        def model_header(self):
+            return {"session": {"session_id": "session-one"}}
+
+        def iter_turns(self):
+            for digit in ("a", "b"):
+                yield {
+                    "turn_address": digit * 64,
+                    "turn_hash": digit * 64,
+                    "side": "user",
+                    "message_refs": [],
+                }
+
+        def iter_messages(self):
+            return iter(())
+
+    monkeypatch.setattr(
+        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+    )
+
+    assert main(
+        [
+            "chatlas",
+            "render",
+            "--identity-hash",
+            "0" * 64,
+            "--turn-hash-prefix",
+            "b" * 8,
+            "--turn-hash-prefix",
+            "a" * 20,
+            "--renderer",
+            INLINED_CAPTURE_MARKDOWN_RENDERER,
+            "--renderer-option",
+            "session-alias=phd",
+        ]
+    ) == 0
+
+    assert capsys.readouterr().out == (
+        "<!-- tarav.context phd:bbbbbbbbbbbbbbbb -->\n"
+        "<!-- tarav.context phd:aaaaaaaaaaaaaaaaaaaa -->\n"
     )
 
 

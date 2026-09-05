@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+import re
 from typing import Any
 
 from tarav.chatlas.query import ChatlasQueryResult
@@ -11,8 +12,11 @@ from tarav.chatlas.query import ChatlasQueryResult
 
 JsonObject = dict[str, Any]
 DEFAULT_CHATLAS_RENDERER = "Chatlas.Query.Default.Renderer"
+INLINED_CAPTURE_MARKDOWN_RENDERER = "Inlined.Capture.Markdown.Reference.Renderer"
 RenderOptions = Mapping[str, str]
 RenderHandler = Callable[[ChatlasQueryResult, RenderOptions], str]
+_FULL_HASH = re.compile(r"[0-9a-f]{64}")
+_SESSION_ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 
 
 class ChatlasRenderError(ValueError):
@@ -109,6 +113,40 @@ def _default_renderer(result: ChatlasQueryResult, options: RenderOptions) -> str
     return "\n\n".join(rendered)
 
 
+def _inlined_capture_markdown_renderer(
+    result: ChatlasQueryResult,
+    options: RenderOptions,
+) -> str:
+    unknown = set(options) - {"session-alias"}
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise ChatlasRenderError(
+            f"{INLINED_CAPTURE_MARKDOWN_RENDERER} does not accept options: {names}"
+        )
+    alias = options.get("session-alias")
+    if alias is None:
+        raise ChatlasRenderError(
+            f"{INLINED_CAPTURE_MARKDOWN_RENDERER} requires session-alias"
+        )
+    if _SESSION_ALIAS.fullmatch(alias) is None or "--" in alias:
+        raise ChatlasRenderError("Markdown session alias is not safe to embed")
+
+    references: list[str] = []
+    for finding in result.findings:
+        if finding.turn.get("side") != "user":
+            raise ChatlasRenderError(
+                "Inlined.Capture references must resolve to User Turns"
+            )
+        turn_hash = finding.turn.get("turn_hash")
+        if not isinstance(turn_hash, str) or _FULL_HASH.fullmatch(turn_hash) is None:
+            raise ChatlasRenderError("Chat.Turn has no renderable hash")
+        prefix_length = max(16, len(finding.prefix))
+        references.append(
+            f"<!-- tarav.context {alias}:{turn_hash[:prefix_length]} -->"
+        )
+    return "\n".join(references)
+
+
 _REGISTRY = ChatlasRendererRegistry()
 _REGISTRY.register(
     ChatlasRenderer(
@@ -116,6 +154,14 @@ _REGISTRY.register(
         "text/markdown",
         "Readable projection of resolved Chatlas Turn findings and their Messages.",
         _default_renderer,
+    )
+)
+_REGISTRY.register(
+    ChatlasRenderer(
+        INLINED_CAPTURE_MARKDOWN_RENDERER,
+        "text/markdown",
+        "Markdown references from a Product.Surface to selected User Turns.",
+        _inlined_capture_markdown_renderer,
     )
 )
 
@@ -138,6 +184,7 @@ __all__ = [
     "ChatlasRenderError",
     "ChatlasRenderResult",
     "DEFAULT_CHATLAS_RENDERER",
+    "INLINED_CAPTURE_MARKDOWN_RENDERER",
     "register_renderer",
     "renderer",
     "renderers",
