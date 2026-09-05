@@ -13,6 +13,7 @@ from tarav.chatlas.query import ChatlasQueryResult
 JsonObject = dict[str, Any]
 DEFAULT_CHATLAS_RENDERER = "Chatlas.Query.Default.Renderer"
 INLINED_CAPTURE_MARKDOWN_RENDERER = "Inlined.Capture.Markdown.Reference.Renderer"
+TURN_LEDGER_RENDERER = "Chatlas.Turn.Ledger.Renderer"
 RenderOptions = Mapping[str, str]
 RenderHandler = Callable[[ChatlasQueryResult, RenderOptions], str]
 _FULL_HASH = re.compile(r"[0-9a-f]{64}")
@@ -141,10 +142,31 @@ def _inlined_capture_markdown_renderer(
         if not isinstance(turn_hash, str) or _FULL_HASH.fullmatch(turn_hash) is None:
             raise ChatlasRenderError("Chat.Turn has no renderable hash")
         prefix_length = max(16, len(finding.prefix))
-        references.append(
-            f"<!-- tarav.context {alias}:{turn_hash[:prefix_length]} -->"
-        )
+        references.append(f"<!-- tarav.context {alias}:{turn_hash[:prefix_length]} -->")
     return "\n".join(references)
+
+
+def _turn_ledger_renderer(
+    result: ChatlasQueryResult,
+    options: RenderOptions,
+) -> str:
+    if options:
+        names = ", ".join(sorted(options))
+        raise ChatlasRenderError(
+            f"{TURN_LEDGER_RENDERER} accepts no Renderer options: {names}"
+        )
+    rows: list[str] = []
+    for finding in result.findings:
+        side = finding.turn.get("side")
+        if side not in {"user", "agent"}:
+            raise ChatlasRenderError("Chat.Turn has no renderable side")
+        text = " ".join(
+            " ".join(value.split())
+            for message in finding.messages
+            if isinstance((value := message.get("text")), str)
+        )
+        rows.append(f"{finding.prefix}  {side:<5}  {text[:160]}")
+    return "\n".join(rows)
 
 
 _REGISTRY = ChatlasRendererRegistry()
@@ -162,6 +184,14 @@ _REGISTRY.register(
         "text/markdown",
         "Markdown references from a Product.Surface to selected User Turns.",
         _inlined_capture_markdown_renderer,
+    )
+)
+_REGISTRY.register(
+    ChatlasRenderer(
+        TURN_LEDGER_RENDERER,
+        "text/plain",
+        "Compact Turn hash, side, and message-text ledger.",
+        _turn_ledger_renderer,
     )
 )
 
@@ -185,6 +215,7 @@ __all__ = [
     "ChatlasRenderResult",
     "DEFAULT_CHATLAS_RENDERER",
     "INLINED_CAPTURE_MARKDOWN_RENDERER",
+    "TURN_LEDGER_RENDERER",
     "register_renderer",
     "renderer",
     "renderers",

@@ -1,6 +1,6 @@
 # 776 — Chatlas Turn discovery and current-session scope
 
-Status: Designed
+Status: Completed
 
 ## Impl.Abstract
 
@@ -50,3 +50,12 @@ Deviation triggers: discovery requires an index outside one Normal Model; harnes
 - Grounded the Tarav Model at Diagram commit `3d6db4d717eb1699f0fed0ba63b9c5de12107b99`.
 - The existing session View targets `Pdf.Readings`, so direct Block rendering supplied the Tarav context. This is a contextualization POI, not product scope for this slice.
 - Product capture will be reconciled in the durable Draft and applied once when the implementation converges.
+- Workflow checkpoint: `770b009`.
+- Implemented exact-session Turn discovery with `--side`, case-insensitive literal `--text-contains`, `--order`, and bounded `--limit`; exact repeated `--turn-hash-prefix` behavior remains unchanged.
+- Added `--current-session` to exact-session Chatlas commands and `update`. The resolver reads only `CODEX_THREAD_ID` or `CLAUDE_CODE_SESSION_ID`; explicit `--provider` is recommended and ambiguity fails.
+- Added `Chatlas.Turn.Ledger.Renderer`; Query remains responsible for selection and Renderers remain presentation-only.
+- Reinstalled the editable CLI. Live provider-explicit discovery and unambiguous provider inference both resolved the intended current User Turn.
+- Verification: targeted Ruff clean; `69` Chatlas tests passed; full suite `1544` passed.
+- Product surfaces: `src/tarav/chatlas/query.py`, `commands.py`, `rendering.py`, `__init__.py`, and their focused tests.
+- Applied the closed `776.Impl.Req` Draft once. Diagram receipt commit: `f84fcd0ade9b981e9be1c4645b9eca46faa78a84`.
+- Expected capture POIs remain for unasserted records, unresolved Archive grounding, and Collection-hosted Model staleness. The checker also reports pre-existing Tarav Model vocabulary POIs; none are authorization failures.

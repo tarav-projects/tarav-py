@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -20,6 +21,12 @@ from tarav.chatlas.rendering import (
 )
 
 
+_CURRENT_SESSION_ENV = {
+    "codex": "CODEX_THREAD_ID",
+    "claude-code": "CLAUDE_CODE_SESSION_ID",
+}
+
+
 def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "chatlas",
@@ -36,9 +43,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     index = commands.add_parser(
         "index", help="Rebuild or reset the derived session index."
     )
-    index_commands = index.add_subparsers(
-        dest="chatlas_index_command", required=True
-    )
+    index_commands = index.add_subparsers(dest="chatlas_index_command", required=True)
     redo = index_commands.add_parser(
         "redo", help="Rebuild the session index from captured raw artifacts."
     )
@@ -96,9 +101,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     normal_model.set_defaults(handler=_cmd_normal_model)
 
-    query = commands.add_parser(
-        "query", help="Query one exact Chatlas Normal Model."
-    )
+    query = commands.add_parser("query", help="Query one exact Chatlas Normal Model.")
     _add_query_options(query)
     query.set_defaults(handler=_cmd_query)
 
@@ -124,6 +127,11 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
 def _add_capture_options(parser: argparse.ArgumentParser) -> None:
     _add_provider_options(parser)
     parser.add_argument("--session-id", action="append", dest="session_ids")
+    parser.add_argument(
+        "--current-session",
+        action="store_true",
+        help="Capture the running harness session; supplying --provider is recommended.",
+    )
     parser.add_argument("--start-path", default=".")
     parser.add_argument("--full-scan", action="store_true")
     parser.add_argument("--no-cache", action="store_true")
@@ -140,6 +148,11 @@ def _add_session_reference_options(parser: argparse.ArgumentParser) -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--identity-hash")
     group.add_argument("--session-id")
+    group.add_argument(
+        "--current-session",
+        action="store_true",
+        help="Use the running harness session; supplying --provider is recommended.",
+    )
     parser.add_argument("--provider")
     parser.add_argument("--instance")
     _add_root_option(parser)
@@ -154,9 +167,29 @@ def _add_query_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--turn-hash-prefix",
         action="append",
-        required=True,
         dest="turn_hash_prefixes",
         help="Lowercase Chat.Turn hash prefix; may be repeated.",
+    )
+    parser.add_argument(
+        "--side",
+        choices=("user", "agent"),
+        help="Discovery filter; cannot be combined with Turn-hash prefixes.",
+    )
+    parser.add_argument(
+        "--text-contains",
+        help="Case-insensitive literal discovery filter over Turn message text.",
+    )
+    parser.add_argument(
+        "--order",
+        choices=("oldest", "newest"),
+        default="oldest",
+        help="Discovery order (default: oldest).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Maximum discovery findings (default: 50).",
     )
     parser.add_argument(
         "--refresh", action="store_true", help="Rebuild the Normal Model cache."
@@ -178,11 +211,23 @@ def _progress(message: str) -> None:
 
 
 def _cmd_update(args: argparse.Namespace) -> int:
+    providers = tuple(args.providers) if args.providers else None
+    session_ids = tuple(args.session_ids or ())
+    if args.current_session:
+        if session_ids:
+            raise CliError("--current-session cannot be combined with --session-id")
+        if providers is not None and len(providers) != 1:
+            raise CliError("--current-session accepts exactly one --provider")
+        provider, session_id = _resolve_current_session(
+            providers[0] if providers is not None else None
+        )
+        providers = (provider,)
+        session_ids = (session_id,)
     return _print(
         chatlas_update(
-            providers=tuple(args.providers) if args.providers else None,
+            providers=providers,
             instances=tuple(args.instances) if args.instances else None,
-            session_ids=tuple(args.session_ids or ()),
+            session_ids=session_ids,
             chatlas_root=_root(args),
             start_path=args.start_path,
             cache_enabled=not args.no_cache,
@@ -208,13 +253,45 @@ def _cmd_index_reset(args: argparse.Namespace) -> int:
 
 
 def _reference(args: argparse.Namespace) -> dict[str, object]:
+    provider = args.provider
+    session_id = args.session_id
+    if args.current_session:
+        provider, session_id = _resolve_current_session(provider)
     return {
         "identity_hash": args.identity_hash,
-        "session_id": args.session_id,
-        "provider": args.provider,
+        "session_id": session_id,
+        "provider": provider,
         "instance": args.instance,
         "chatlas_root": _root(args),
     }
+
+
+def _resolve_current_session(provider: str | None) -> tuple[str, str]:
+    if provider is not None:
+        variable = _CURRENT_SESSION_ENV.get(provider)
+        if variable is None:
+            raise CliError(
+                f"--current-session is not supported for provider: {provider}"
+            )
+        session_id = os.environ.get(variable, "").strip()
+        if not session_id:
+            raise CliError(
+                f"--current-session found no {variable} for provider {provider}"
+            )
+        return provider, session_id
+
+    resolved = [
+        (name, value)
+        for name, variable in _CURRENT_SESSION_ENV.items()
+        if (value := os.environ.get(variable, "").strip())
+    ]
+    if not resolved:
+        raise CliError(
+            "--current-session found no verified harness context; supply --provider"
+        )
+    if len(resolved) != 1:
+        raise CliError("--current-session is ambiguous; supply --provider explicitly")
+    return resolved[0]
 
 
 def _cmd_raw_sources(args: argparse.Namespace) -> int:
@@ -268,11 +345,15 @@ def _run_query_renderer(
 ) -> int:
     try:
         selected_renderer = renderer(renderer_name)
-        reader = provide_normal_model_reader(
-            **_reference(args), refresh=args.refresh
-        )
+        reader = provide_normal_model_reader(**_reference(args), refresh=args.refresh)
         result = ChatlasQueryEngine(reader).run(
-            ChatlasQuery(turn_hash_prefixes=tuple(args.turn_hash_prefixes))
+            ChatlasQuery(
+                turn_hash_prefixes=tuple(args.turn_hash_prefixes or ()),
+                side=args.side,
+                text_contains=args.text_contains,
+                order=args.order,
+                limit=args.limit,
+            )
         )
         rendered = selected_renderer.render(result, options=renderer_options)
     except (ChatlasQueryError, ChatlasRenderError) as exc:
@@ -304,7 +385,14 @@ def _project_computed_model(
 ) -> dict[str, object]:
     projected = {
         key: model[key]
-        for key in ("class", "schema_version", "metadata", "session", "sources", "events")
+        for key in (
+            "class",
+            "schema_version",
+            "metadata",
+            "session",
+            "sources",
+            "events",
+        )
     }
     if include_messages:
         projected["messages"] = model["messages"]

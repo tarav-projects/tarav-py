@@ -27,21 +27,44 @@ class ChatlasQueryReader(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class ChatlasQuery:
-    turn_hash_prefixes: tuple[str, ...]
+    turn_hash_prefixes: tuple[str, ...] = ()
+    side: str | None = None
+    text_contains: str | None = None
+    order: str = "oldest"
+    limit: int = 50
 
     def __post_init__(self) -> None:
-        if not self.turn_hash_prefixes:
-            raise ChatlasQueryError("Chatlas Query requires a Turn-hash prefix")
         for prefix in self.turn_hash_prefixes:
             if _HASH_PREFIX.fullmatch(prefix) is None:
                 raise ChatlasQueryError(
                     "Turn-hash prefix must be 1 to 64 lowercase hexadecimal characters"
                 )
+        if self.side not in {None, "user", "agent"}:
+            raise ChatlasQueryError("Chatlas Query side must be user or agent")
+        if self.text_contains is not None and not self.text_contains:
+            raise ChatlasQueryError("Chatlas Query text must not be empty")
+        if self.order not in {"oldest", "newest"}:
+            raise ChatlasQueryError("Chatlas Query order must be oldest or newest")
+        if self.limit < 1:
+            raise ChatlasQueryError("Chatlas Query limit must be positive")
+        if self.turn_hash_prefixes and (
+            self.side is not None
+            or self.text_contains is not None
+            or self.order != "oldest"
+            or self.limit != 50
+        ):
+            raise ChatlasQueryError(
+                "Turn-hash prefixes cannot be combined with discovery options"
+            )
 
     def to_dict(self) -> JsonObject:
         return {
             "class": "Chatlas.Query",
             "turn_hash_prefixes": list(self.turn_hash_prefixes),
+            "side": self.side,
+            "text_contains": self.text_contains,
+            "order": self.order,
+            "limit": self.limit,
         }
 
 
@@ -80,26 +103,15 @@ class ChatlasQueryEngine:
     reader: ChatlasQueryReader
 
     def run(self, query: ChatlasQuery) -> ChatlasQueryResult:
-        matched: list[list[JsonObject]] = [
-            [] for _prefix in query.turn_hash_prefixes
-        ]
+        turns: list[JsonObject] = []
         for turn in self.reader.iter_turns():
-            digest = _full_hash(turn.get("turn_hash"), field="Chat.Turn.turn_hash")
-            for index, prefix in enumerate(query.turn_hash_prefixes):
-                if digest.startswith(prefix):
-                    matched[index].append(turn)
+            _full_hash(turn.get("turn_hash"), field="Chat.Turn.turn_hash")
+            turns.append(turn)
 
-        selected: list[JsonObject] = []
-        for prefix, matches in zip(query.turn_hash_prefixes, matched, strict=True):
-            if not matches:
-                raise ChatlasQueryError(
-                    f"Turn-hash prefix does not match a Turn: {prefix}"
-                )
-            if len(matches) != 1:
-                raise ChatlasQueryError(
-                    f"Turn-hash prefix {prefix} matches {len(matches)} Turns"
-                )
-            selected.append(matches[0])
+        if query.turn_hash_prefixes:
+            selected = _select_exact_turns(turns, query.turn_hash_prefixes)
+        else:
+            selected = _select_discovery_turns(turns, query)
 
         requested_addresses = {
             _message_ref(ref)[0]
@@ -119,19 +131,86 @@ class ChatlasQueryEngine:
                 )
             messages[address] = message
 
-        findings = tuple(
+        findings = [
             ChatlasTurnFinding(
                 prefix,
                 turn,
                 _messages_for_turn(turn, messages),
             )
-            for prefix, turn in zip(query.turn_hash_prefixes, selected, strict=True)
-        )
+            for prefix, turn in _finding_inputs(query, selected)
+        ]
+        if not query.turn_hash_prefixes:
+            findings = _filter_discovery_text(findings, query)
         header = self.reader.model_header()
         session = header.get("session")
         if not isinstance(session, dict):
             raise ChatlasQueryError("Normal Model header has no Session")
-        return ChatlasQueryResult(query, deepcopy(session), findings)
+        return ChatlasQueryResult(query, deepcopy(session), tuple(findings))
+
+
+def _select_exact_turns(
+    turns: list[JsonObject], prefixes: tuple[str, ...]
+) -> list[JsonObject]:
+    matched: list[list[JsonObject]] = [[] for _prefix in prefixes]
+    for turn in turns:
+        digest = _full_hash(turn.get("turn_hash"), field="Chat.Turn.turn_hash")
+        for index, prefix in enumerate(prefixes):
+            if digest.startswith(prefix):
+                matched[index].append(turn)
+
+    selected: list[JsonObject] = []
+    for prefix, matches in zip(prefixes, matched, strict=True):
+        if not matches:
+            raise ChatlasQueryError(f"Turn-hash prefix does not match a Turn: {prefix}")
+        if len(matches) != 1:
+            raise ChatlasQueryError(
+                f"Turn-hash prefix {prefix} matches {len(matches)} Turns"
+            )
+        selected.append(matches[0])
+    return selected
+
+
+def _finding_inputs(
+    query: ChatlasQuery, selected: list[JsonObject]
+) -> Iterator[tuple[str, JsonObject]]:
+    if query.turn_hash_prefixes:
+        yield from zip(query.turn_hash_prefixes, selected, strict=True)
+        return
+    for turn in selected:
+        digest = _full_hash(turn.get("turn_hash"), field="Chat.Turn.turn_hash")
+        yield digest[:16], turn
+
+
+def _select_discovery_turns(
+    turns: list[JsonObject], query: ChatlasQuery
+) -> list[JsonObject]:
+    selected = turns
+    if query.side is not None:
+        selected = [item for item in selected if item.get("side") == query.side]
+    if query.order == "newest":
+        selected = list(reversed(selected))
+    if query.text_contains is None:
+        return selected[: query.limit]
+    return selected
+
+
+def _filter_discovery_text(
+    findings: list[ChatlasTurnFinding], query: ChatlasQuery
+) -> list[ChatlasTurnFinding]:
+    if query.text_contains is None:
+        return findings
+    needle = query.text_contains.casefold()
+    selected = [
+        item
+        for item in findings
+        if needle
+        in "\n".join(
+            text
+            for message in item.messages
+            if isinstance((text := message.get("text")), str)
+        ).casefold()
+    ]
+    return selected[: query.limit]
 
 
 def _messages_for_turn(

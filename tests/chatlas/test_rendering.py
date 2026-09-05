@@ -8,6 +8,7 @@ from tarav.chatlas.query import ChatlasQuery, ChatlasQueryResult, ChatlasTurnFin
 from tarav.chatlas.rendering import (
     DEFAULT_CHATLAS_RENDERER,
     INLINED_CAPTURE_MARKDOWN_RENDERER,
+    TURN_LEDGER_RENDERER,
     ChatlasRenderer,
     ChatlasRendererRegistry,
     ChatlasRenderError,
@@ -72,9 +73,12 @@ def test_renderer_registry_accepts_an_opaque_fully_qualified_name() -> None:
 
     registry.register(custom)
 
-    assert registry.renderer(custom.name).render(
-        _result("message"), options={"label": "selected"}
-    ).content == "selected:1"
+    assert (
+        registry.renderer(custom.name)
+        .render(_result("message"), options={"label": "selected"})
+        .content
+        == "selected:1"
+    )
 
 
 def test_renderer_registry_rejects_duplicate_and_unknown_names() -> None:
@@ -121,3 +125,12 @@ def test_inlined_capture_markdown_renderer_rejects_agent_turns() -> None:
         renderer(INLINED_CAPTURE_MARKDOWN_RENDERER).render(
             result, options={"session-alias": "phd"}
         )
+
+
+def test_turn_ledger_renderer_compacts_message_text() -> None:
+    rendered = renderer(TURN_LEDGER_RENDERER).render(
+        _result("first\nmessage", "second message")
+    )
+
+    assert rendered.media_type == "text/plain"
+    assert rendered.content == "aaaaaaaa  user   first message second message"
