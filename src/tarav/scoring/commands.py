@@ -5,24 +5,37 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import subprocess
 
+from tarav import __version__
 from tarav._core.errors import CliError
 
 from .model import (
-    ASSERTION_SCORE_TYPE,
     GROUNDING_RANKING_METHOD,
     GROUNDING_TASK_TYPE,
     POOL_ENROLLMENT_TYPE,
     POOL_TYPE,
     RESULT_TYPE,
     RUN_TYPE,
-    SCORE_DEFINITION_TYPE,
+    SCORING_EVENT_TYPE,
+    SCORING_TRACE_TYPE,
+    WIN_RATE_SCORE,
     ScoringError,
-    builtin_score_definition,
     compute_win_rate_scores,
     create_pool,
     create_result,
+    create_scoring_event,
+    create_scoring_trace,
     render_task,
+)
+from .rendering import (
+    CURRENT_SCORE_RENDERER,
+    RENDERERS,
+    TRACE_EVOLUTION_RENDERER,
+    TRACE_HISTORY_RENDERER,
+    render_current_scores,
+    render_trace_evolution,
+    render_trace_history,
 )
 from .repository import ScoringRepository, default_scoring_root
 from .runner import execute_run, prepare_run
@@ -39,8 +52,8 @@ LIST_TYPES = {
     "tasks": GROUNDING_TASK_TYPE,
     "runs": RUN_TYPE,
     "results": RESULT_TYPE,
-    "definitions": SCORE_DEFINITION_TYPE,
-    "scores": ASSERTION_SCORE_TYPE,
+    "traces": SCORING_TRACE_TYPE,
+    "events": SCORING_EVENT_TYPE,
 }
 
 
@@ -235,7 +248,8 @@ def _cmd_pool_run(args: argparse.Namespace) -> int:
 
 def _cmd_render(args: argparse.Namespace) -> int:
     try:
-        record = _repository(args).resolve(args.record)
+        repository = _repository(args)
+        record = repository.resolve(args.record)
         if record["type"] == GROUNDING_TASK_TYPE:
             labels = {
                 chr(ord("A") + index): candidate["id"]
@@ -244,8 +258,17 @@ def _cmd_render(args: argparse.Namespace) -> int:
             rendered = render_task(record, labels)
         elif record["type"] == RUN_TYPE:
             rendered = str(record["rendered_prompt"])
+        elif record["type"] == SCORING_TRACE_TYPE:
+            renderer = args.renderer or TRACE_HISTORY_RENDERER
+            events = repository.events_for_trace(record)
+            if renderer == TRACE_HISTORY_RENDERER:
+                rendered = render_trace_history(record, events)
+            elif renderer == TRACE_EVOLUTION_RENDERER:
+                rendered = render_trace_evolution(record, events)
+            else:
+                raise ScoringError(f"renderer does not accept a scoring Trace: {renderer}")
         else:
-            raise ScoringError("render accepts a Ranking Task or Ranking Run")
+            raise ScoringError("render accepts a Ranking Task, Run, or scoring Trace")
     except ScoringError as exc:
         raise CliError(str(exc)) from exc
     if args.json:
@@ -330,45 +353,74 @@ def _cmd_submit(args: argparse.Namespace) -> int:
 def _cmd_score(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
+        if args.method != WIN_RATE_SCORE:
+            raise ScoringError(f"unknown Score method: {args.method}")
         pools = [
             repository.resolve(selector, record_type=POOL_TYPE)
             for selector in args.pool
         ]
-        definitions = [
-            item
-            for item in repository.records(SCORE_DEFINITION_TYPE)
-            if item.get("name") == args.name
-        ]
-        if len(definitions) > 1:
-            raise ScoringError(f"Score Definition name is ambiguous: {args.name}")
-        if definitions:
-            definition = definitions[0]
-        else:
-            definition = builtin_score_definition()
-            if definition["name"] != args.name:
-                raise ScoringError(f"unknown Score Definition: {args.name}")
-            repository.create(definition)
+        results = repository.results_for_pools(pools)
+        results_commit = repository.head()
         scores = compute_win_rate_scores(
-            definition=definition,
-            observations=repository.ranking_observations(
-                repository.results_for_pools(pools)
-            ),
+            observations=repository.ranking_observations(results),
         )
         if not scores:
             raise ScoringError("selected Pools have no scoreable Ranking Results")
-        scores = tuple(repository.create(score) for score in scores)
+        events = []
+        traces = []
+        if not args.no_record:
+            provenance = _code_provenance()
+            for score in scores:
+                assertion_ref = score["assertion_ref"]
+                trace = repository.scoring_trace_for_assertion(assertion_ref)
+                if trace is None:
+                    trace = repository.create(create_scoring_trace(assertion_ref))
+                event = repository.append_event(
+                    create_scoring_event(
+                        trace=trace,
+                        score=score,
+                        pool_ids=[str(pool["id"]) for pool in pools],
+                        results_commit=results_commit,
+                        code_provenance=provenance,
+                    )
+                )
+                traces.append(trace)
+                events.append(event)
     except ScoringError as exc:
         raise CliError(str(exc)) from exc
-    lines = [
-        f"scores: {len(scores)}",
-        f"definition: {definition['name']}",
-    ]
-    lines.extend(
-        f"{score['value']:.3f}\t{score['id']}\t{score['comparisons']} comparisons"
-        for score in scores
-        if score["value"] is not None
+    rendered = render_current_scores(scores)
+    payload = {
+        "renderer": args.renderer,
+        "method": args.method,
+        "pool_ids": [pool["id"] for pool in pools],
+        "results_commit": results_commit,
+        "scores": scores,
+        "recorded": not args.no_record,
+        "traces": traces,
+        "events": events,
+    }
+    return _emit(args, payload, rendered.splitlines())
+
+
+def _code_provenance() -> dict[str, object]:
+    root = Path(__file__).resolve().parents[3]
+    commit = subprocess.run(
+        ("git", "-C", str(root), "rev-parse", "HEAD"),
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    return _emit(args, {"definition": definition, "scores": scores}, lines)
+    dirty = subprocess.run(
+        ("git", "-C", str(root), "status", "--porcelain"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return {
+        "version": __version__,
+        "git_commit": commit.stdout.strip() if commit.returncode == 0 else None,
+        "dirty": dirty.returncode != 0 or bool(dirty.stdout.strip()),
+    }
 
 
 def _cmd_assertion(args: argparse.Namespace) -> int:
@@ -523,9 +575,10 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     task.set_defaults(handler=_cmd_task)
 
     render = commands.add_parser(
-        "render", help="Render a Task or exact Run prompt for inspection."
+        "render", help="Render a Task, exact Run prompt, or scoring Trace."
     )
     render.add_argument("record", help="Task/Run UUID or unambiguous prefix.")
+    render.add_argument("--renderer", choices=RENDERERS)
     _add_common(render)
     render.set_defaults(handler=_cmd_render)
 
@@ -566,10 +619,20 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     submit.set_defaults(handler=_cmd_submit)
 
     score = commands.add_parser(
-        "score", help="Compute named Assertion Scores over selected Pool Results."
+        "score", help="Compute live Assertion Scores over selected Pool Results."
     )
     score.add_argument("--pool", action="append", required=True)
-    score.add_argument("--name", default="Assertion.Ranking.WinRate.Score.v1")
+    score.add_argument("--method", default=WIN_RATE_SCORE)
+    score.add_argument(
+        "--renderer",
+        choices=(CURRENT_SCORE_RENDERER,),
+        default=CURRENT_SCORE_RENDERER,
+    )
+    score.add_argument(
+        "--no-record",
+        action="store_true",
+        help="Compute read-only without appending scoring Trace events.",
+    )
     _add_common(score)
     score.set_defaults(handler=_cmd_score)
 

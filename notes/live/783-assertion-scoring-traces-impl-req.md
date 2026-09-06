@@ -1,6 +1,6 @@
 # 783 — Assertion scoring traces
 
-Status: In Progress
+Status: Complete
 
 ## Impl.Abstract
 
@@ -64,4 +64,12 @@ Acceptance signals:
   (`91c6e789df50d874a454107ba81ff86be1e99022173b3469fbcdeffaedbf86c1`).
 - The previous scoring Impl.Req 782 is Closed; this request owns the subsequent
   storage and trace redesign.
-
+- Replaced flat Record-kind directories with Pool-owned subtrees and separate
+  per-Assertion trace directories.
+- Removed retained Score Definition and standalone Score records. `score`
+  computes live and appends compact trace Events unless `--no-record` is used.
+- Added current-score, trace-history, and trace-evolution renderers. Trend
+  output exposes Results/code provenance but performs no semantic diagnosis.
+- Initialized `/Users/pereiro/Documents/tarav/scoring` at repository schema v2.
+- Verification: scoring plus architecture checks `23 passed`; maintained suite
+  `1289 passed`; Ruff clean; installed CLI and interactive `fcodex_mm -h` pass.

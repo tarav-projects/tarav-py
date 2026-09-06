@@ -56,18 +56,23 @@ contract and Git boundaries.
   database. Drafts reconcile proposed changes and apply them through the
   ordinary Diagram capture boundary.
 - `tarav.scoring` owns named Assertion Pools, explicit Pool Enrollments,
-  Ranking Tasks, exact Agent Runs, retained Results, and reproducible named
-  Assertion Scores in the independent Git-backed
-  `~/Documents/tarav/scoring/` Record repository. Assertion Types own their
+  Ranking Tasks, exact Agent Runs, retained Results, live derived Scores, and
+  compact per-Assertion Scoring Traces in the independent Git-backed
+  `~/Documents/tarav/scoring/` Record repository. Each Pool directory is the
+  default comparability boundary and owns its Enrollments, Tasks, Runs, and
+  Results. Assertion Types own their
   supported Scoring Methods, admission compatibility, Task production, and
   candidate presentation. Pools do not discover participants; Assertion
-  instances enroll explicitly and may join several Pools. Scores independently
-  select Results from one or more Pools. Scoring Records retain direct inputs
-  with exact edition hashes, while a disposable reverse-reference index makes
-  the Pool ↔ Enrollment ↔ Task ↔ Run ↔ Result ↔ Score graph navigable
-  without stored backlinks. Diagram owns the Assertions being evaluated;
-  Scoring owns evaluation evidence and interpretations. Runner code executes a
-  rendered Task but does not define Assertion semantics.
+  instances enroll explicitly and may join several Pools. Score methods may
+  select Results from several Pools and are code, not retained definitions.
+  Explicit scoring executions append typed Events to one Trace per Assertion;
+  each Event records Pool selection, the Results Git state, code provenance,
+  value, and supporting statistics. Read-only renderers expose current values
+  and history without interpreting trends. A disposable reverse-reference
+  index keeps the Record graph navigable without stored backlinks. Diagram
+  owns the Assertions being evaluated; Scoring owns evaluation evidence and
+  derived interpretations. Runner code executes a rendered Task but does not
+  define Assertion semantics.
 - `tarav.bloberia` owns the hosted global `Tarav.Bloberia` registry. The public
   `tarav bloberia` command addresses that registry directly; its private JSON
   storage is not a second Tarav system or command surface.

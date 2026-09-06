@@ -20,8 +20,9 @@ GROUNDING_TASK_TYPE = "Index.Line.Grounding.Ranking.Task"
 GROUNDING_RANKING_METHOD = "Index.Line.Grounding.Ranking.Method"
 RUN_TYPE = "Ranking.Run"
 RESULT_TYPE = "Ranking.Result"
-SCORE_DEFINITION_TYPE = "Score.Definition"
-ASSERTION_SCORE_TYPE = "Assertion.Score"
+SCORING_TRACE_TYPE = "Assertion.Scoring.Trace"
+SCORING_EVENT_TYPE = "Assertion.Scoring.Event"
+LIVE_SCORE_CLASS = "Assertion.Score.Live"
 GROUNDING_ASSERTION_TYPE = "Index.Line.Grounding.Assertion"
 GROUNDING_ASSERTION_REFERENCE_TYPE = f"{GROUNDING_ASSERTION_TYPE}.Reference"
 DIAGRAM_LINE_EDITION_REFERENCE_TYPE = "Diagram.Line.Edition.Reference"
@@ -29,12 +30,12 @@ WIN_RATE_SCORE = "Assertion.Ranking.WinRate.Score.v1"
 
 RECORD_KINDS = {
     POOL_TYPE: "pools",
-    POOL_ENROLLMENT_TYPE: "pool-enrollments",
+    POOL_ENROLLMENT_TYPE: "enrollments",
     GROUNDING_TASK_TYPE: "tasks",
     RUN_TYPE: "runs",
     RESULT_TYPE: "results",
-    SCORE_DEFINITION_TYPE: "score-definitions",
-    ASSERTION_SCORE_TYPE: "scores",
+    SCORING_TRACE_TYPE: "assertion-traces",
+    SCORING_EVENT_TYPE: "events",
 }
 RECORD_REFERENCE_TARGETS = {
     f"{record_type}.Reference": record_type for record_type in RECORD_KINDS
@@ -273,18 +274,8 @@ def create_result(
     )
 
 
-def builtin_score_definition() -> JsonObject:
-    return new_record(
-        SCORE_DEFINITION_TYPE,
-        name=WIN_RATE_SCORE,
-        result_type=RESULT_TYPE,
-        method="pairwise win rate; ties contribute one half; abstentions are excluded",
-    )
-
-
 def compute_win_rate_scores(
     *,
-    definition: Mapping[str, object],
     observations: Sequence[
         tuple[
             Mapping[str, object],
@@ -293,12 +284,10 @@ def compute_win_rate_scores(
         ]
     ],
 ) -> tuple[JsonObject, ...]:
-    """Compute one independently addressable Score per Assertion instance."""
+    """Compute current scores without retaining derived scoring Records."""
 
-    validate_record(definition)
     stats: dict[str, dict[str, float | int]] = {}
     assertion_refs: dict[str, Mapping[str, object]] = {}
-    result_refs: dict[str, list[JsonObject]] = {}
     ranked_results: dict[str, int] = {}
     abstentions: dict[str, int] = {}
     for result, run, assertions_by_candidate in observations:
@@ -324,7 +313,6 @@ def compute_win_rate_scores(
                 raise ScoringError(
                     f"candidate id is rebound to another Assertion: {candidate_id}"
                 )
-            result_refs.setdefault(candidate_id, []).append(record_reference(result))
         if result.get("outcome") == "abstained":
             for candidate_id in candidate_ids:
                 abstentions[candidate_id] = abstentions.get(candidate_id, 0) + 1
@@ -357,21 +345,63 @@ def compute_win_rate_scores(
             else None
         )
         scores.append(
-            new_record(
-                ASSERTION_SCORE_TYPE,
-                assertion_ref=dict(assertion_refs[candidate]),
-                definition_ref=record_reference(definition),
-                result_refs=result_refs.get(candidate, []),
-                result_count=ranked_results.get(candidate, 0),
-                abstention_count=abstentions.get(candidate, 0),
-                wins=values["wins"],
-                losses=values["losses"],
-                ties=values["ties"],
-                comparisons=comparisons,
-                value=score,
-            )
+            {
+                "class": LIVE_SCORE_CLASS,
+                "assertion_ref": dict(assertion_refs[candidate]),
+                "method": WIN_RATE_SCORE,
+                "result_count": ranked_results.get(candidate, 0),
+                "abstention_count": abstentions.get(candidate, 0),
+                "wins": values["wins"],
+                "losses": values["losses"],
+                "ties": values["ties"],
+                "comparisons": comparisons,
+                "value": score,
+            }
         )
     return tuple(scores)
+
+
+def create_scoring_trace(assertion_ref: Mapping[str, object]) -> JsonObject:
+    """Create the stable retained scoring-history object for one Assertion."""
+
+    _validate_assertion_reference(assertion_ref)
+    return new_record(SCORING_TRACE_TYPE, assertion_ref=dict(assertion_ref))
+
+
+def create_scoring_event(
+    *,
+    trace: Mapping[str, object],
+    score: Mapping[str, object],
+    pool_ids: Sequence[str],
+    results_commit: str,
+    code_provenance: Mapping[str, object],
+) -> JsonObject:
+    """Create one compact retained observation of an explicit score computation."""
+
+    validate_record(trace)
+    if trace["type"] != SCORING_TRACE_TYPE:
+        raise ScoringError("Assertion scoring Event requires a scoring Trace")
+    _validate_live_score(score)
+    if score.get("assertion_ref") != trace.get("assertion_ref"):
+        raise ScoringError("Score and Trace must identify the same Assertion")
+    computed_at = now_iso()
+    return new_record(
+        SCORING_EVENT_TYPE,
+        created_at=computed_at,
+        computed_at=computed_at,
+        trace_ref=record_reference(trace),
+        method=_required_string(score, "method"),
+        pool_ids=list(pool_ids),
+        results_commit=_nonempty(results_commit, "results_commit"),
+        code_provenance=dict(code_provenance),
+        result_count=score["result_count"],
+        abstention_count=score["abstention_count"],
+        wins=score["wins"],
+        losses=score["losses"],
+        ties=score["ties"],
+        comparisons=score["comparisons"],
+        value=score["value"],
+    )
 
 
 def _validate_pool(record: Mapping[str, object]) -> None:
@@ -437,22 +467,42 @@ def _validate_result(record: Mapping[str, object]) -> None:
         raise ScoringError("an abstained Result cannot contain tiers")
 
 
-def _validate_score_definition(record: Mapping[str, object]) -> None:
-    _required_string(record, "name")
-    _required_string(record, "result_type")
-    _required_string(record, "method")
-
-
-def _validate_score(record: Mapping[str, object]) -> None:
+def _validate_scoring_trace(record: Mapping[str, object]) -> None:
     _validate_assertion_reference(record.get("assertion_ref"))
-    _validate_reference(
-        record.get("definition_ref"), expected_target=SCORE_DEFINITION_TYPE
-    )
-    result_refs = record.get("result_refs")
-    if not isinstance(result_refs, list):
-        raise ScoringError("result_refs must be a list")
-    for reference in result_refs:
-        _validate_reference(reference, expected_target=RESULT_TYPE)
+
+
+def _validate_scoring_event(record: Mapping[str, object]) -> None:
+    _validate_reference(record.get("trace_ref"), expected_target=SCORING_TRACE_TYPE)
+    _required_string(record, "computed_at")
+    _required_string(record, "method")
+    pool_ids = record.get("pool_ids")
+    if not isinstance(pool_ids, list) or not pool_ids:
+        raise ScoringError("pool_ids must be a non-empty list")
+    for pool_id in pool_ids:
+        _uuid(_nonempty(pool_id, "pool_ids[]"), "pool_ids[]")
+    _git_hash(_required_string(record, "results_commit"), "results_commit")
+    provenance = _required_object(record, "code_provenance")
+    _required_string(provenance, "version")
+    git_commit = provenance.get("git_commit")
+    if git_commit is not None:
+        _git_hash(
+            _nonempty(git_commit, "code_provenance.git_commit"),
+            "code_provenance.git_commit",
+        )
+    if not isinstance(provenance.get("dirty"), bool):
+        raise ScoringError("code_provenance.dirty must be Boolean")
+    _validate_score_statistics(record)
+
+
+def _validate_live_score(score: Mapping[str, object]) -> None:
+    if score.get("class") != LIVE_SCORE_CLASS:
+        raise ScoringError(f"Score class must be {LIVE_SCORE_CLASS}")
+    _validate_assertion_reference(score.get("assertion_ref"))
+    _required_string(score, "method")
+    _validate_score_statistics(score)
+
+
+def _validate_score_statistics(record: Mapping[str, object]) -> None:
     for field in (
         "result_count",
         "abstention_count",
@@ -462,10 +512,12 @@ def _validate_score(record: Mapping[str, object]) -> None:
         "comparisons",
     ):
         value = record.get(field)
-        if not isinstance(value, int) or value < 0:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ScoringError(f"{field} must be a nonnegative integer")
     value = record.get("value")
-    if value is not None and not isinstance(value, (int, float)):
+    if value is not None and (
+        isinstance(value, bool) or not isinstance(value, (int, float))
+    ):
         raise ScoringError("Score value must be numeric or null")
 
 
@@ -483,8 +535,8 @@ def validate_record(record: Mapping[str, object]) -> None:
         GROUNDING_TASK_TYPE: _validate_task,
         RUN_TYPE: _validate_run,
         RESULT_TYPE: _validate_result,
-        SCORE_DEFINITION_TYPE: _validate_score_definition,
-        ASSERTION_SCORE_TYPE: _validate_score,
+        SCORING_TRACE_TYPE: _validate_scoring_trace,
+        SCORING_EVENT_TYPE: _validate_scoring_event,
     }[record_type]
     validator(record)
 
@@ -575,8 +627,16 @@ def _uuid(value: str, field: str) -> str:
     return value
 
 
+def _git_hash(value: str, field: str) -> str:
+    if len(value) not in {40, 64} or any(
+        character not in string.hexdigits for character in value
+    ):
+        raise ScoringError(f"{field} must be a Git commit hash")
+    return value
+
+
 __all__ = [
-    "ASSERTION_SCORE_TYPE",
+    "LIVE_SCORE_CLASS",
     "DIAGRAM_LINE_EDITION_REFERENCE_TYPE",
     "GROUNDING_ASSERTION_REFERENCE_TYPE",
     "GROUNDING_ASSERTION_TYPE",
@@ -588,10 +648,10 @@ __all__ = [
     "RECORD_REFERENCE_TARGETS",
     "RESULT_TYPE",
     "RUN_TYPE",
-    "SCORE_DEFINITION_TYPE",
+    "SCORING_EVENT_TYPE",
+    "SCORING_TRACE_TYPE",
     "ScoringError",
     "WIN_RATE_SCORE",
-    "builtin_score_definition",
     "candidate_labels",
     "compute_win_rate_scores",
     "content_hash",
@@ -599,6 +659,8 @@ __all__ = [
     "create_pool_enrollment",
     "create_result",
     "create_run",
+    "create_scoring_event",
+    "create_scoring_trace",
     "new_record",
     "record_reference",
     "reference_target_type",

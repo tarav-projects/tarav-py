@@ -44,8 +44,8 @@ belong in their owning registries or state roots, not in `project.json`.
 - `tarav chatlas` — retained chat data, lossless normalization, and queries.
 - `tarav diagram` — semantic Models, Ships, Annotations, Views, and Drafts.
 - `tarav scoring` — Assertion-owned Scoring Methods, explicitly enrolled
-  Ranking Pools, retained experiment evidence, graph tracing, and independent
-  named Assertion Scores.
+  Ranking Pools, retained experiment evidence, live derived scores, compact
+  per-Assertion scoring histories, and graph tracing.
 - `tarav index` — distributed Index surfaces, records, capture, and linting.
 - `tarav skw` — Skillware build, checking, context, and edition history.
 - `tarav surfaces` — thin native source normal models.

@@ -1,7 +1,6 @@
 """Tarav Assertion Scoring public domain surface."""
 
 from .model import (
-    ASSERTION_SCORE_TYPE,
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_TYPE,
@@ -11,20 +10,31 @@ from .model import (
     POOL_TYPE,
     RESULT_TYPE,
     RUN_TYPE,
-    SCORE_DEFINITION_TYPE,
+    LIVE_SCORE_CLASS,
+    SCORING_EVENT_TYPE,
+    SCORING_TRACE_TYPE,
     ScoringError,
     WIN_RATE_SCORE,
-    builtin_score_definition,
     compute_win_rate_scores,
     create_pool,
     create_pool_enrollment,
     create_result,
     create_run,
+    create_scoring_event,
+    create_scoring_trace,
     record_reference,
     render_task,
     validate_record,
 )
 from .repository import ScoringRepository, default_scoring_root
+from .rendering import (
+    CURRENT_SCORE_RENDERER,
+    TRACE_EVOLUTION_RENDERER,
+    TRACE_HISTORY_RENDERER,
+    render_current_scores,
+    render_trace_evolution,
+    render_trace_history,
+)
 from .tasks import (
     DEFAULT_ASSERTION_RANKING_REGISTRY,
     AssertionRankingRegistry,
@@ -36,8 +46,8 @@ from .tasks import (
 
 
 __all__ = [
-    "ASSERTION_SCORE_TYPE",
     "DEFAULT_ASSERTION_RANKING_REGISTRY",
+    "CURRENT_SCORE_RENDERER",
     "DIAGRAM_LINE_EDITION_REFERENCE_TYPE",
     "GROUNDING_ASSERTION_REFERENCE_TYPE",
     "GROUNDING_ASSERTION_TYPE",
@@ -47,13 +57,16 @@ __all__ = [
     "POOL_TYPE",
     "RESULT_TYPE",
     "RUN_TYPE",
-    "SCORE_DEFINITION_TYPE",
+    "LIVE_SCORE_CLASS",
+    "SCORING_EVENT_TYPE",
+    "SCORING_TRACE_TYPE",
+    "TRACE_EVOLUTION_RENDERER",
+    "TRACE_HISTORY_RENDERER",
     "AssertionRankingRegistry",
     "IndexLineGroundingAssertionType",
     "ScoringError",
     "ScoringRepository",
     "WIN_RATE_SCORE",
-    "builtin_score_definition",
     "compute_win_rate_scores",
     "create_grounding_task",
     "create_line_grounding_enrollments",
@@ -61,9 +74,14 @@ __all__ = [
     "create_pool_enrollment",
     "create_result",
     "create_run",
+    "create_scoring_event",
+    "create_scoring_trace",
     "default_scoring_root",
     "line_grounding_assertion_references",
     "record_reference",
+    "render_current_scores",
     "render_task",
+    "render_trace_evolution",
+    "render_trace_history",
     "validate_record",
 ]

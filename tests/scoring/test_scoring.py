@@ -20,7 +20,6 @@ from tarav.diagram import (
     ShipDraft,
 )
 from tarav.scoring import (
-    ASSERTION_SCORE_TYPE,
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_REFERENCE_TYPE,
     GROUNDING_RANKING_METHOD,
@@ -29,16 +28,19 @@ from tarav.scoring import (
     POOL_TYPE,
     RESULT_TYPE,
     RUN_TYPE,
-    SCORE_DEFINITION_TYPE,
+    LIVE_SCORE_CLASS,
+    SCORING_EVENT_TYPE,
+    SCORING_TRACE_TYPE,
     ScoringError,
     ScoringRepository,
-    builtin_score_definition,
     compute_win_rate_scores,
     create_grounding_task,
     create_pool,
     create_pool_enrollment,
     create_result,
     create_run,
+    create_scoring_event,
+    create_scoring_trace,
     record_reference,
     render_task,
 )
@@ -98,7 +100,16 @@ def test_repository_retains_typed_records_in_git_and_resolves_prefixes(
     pool = repository.create(create_pool("grounding"))
 
     assert repository.resolve(pool["id"][:12]) == pool
-    assert repository.path_for(pool).parent.name == "pools"
+    assert repository.path_for(pool).relative_to(repository.root) == Path(
+        "pools", pool["id"], "pool.json"
+    )
+    assert {item.name for item in repository.path_for(pool).parent.iterdir()} >= {
+        "pool.json",
+        "enrollments",
+        "tasks",
+        "runs",
+        "results",
+    }
     assert repository.head()
     assert (
         int(
@@ -198,14 +209,25 @@ def test_assertions_enroll_in_many_named_pools_and_scores_cross_pools(
     assert repository.resolve("diagram.line.grounding.global") == pools[0]
     assert len(repository.enrollments_for_pool(pools[0])) == 2
     assert len(repository.results_for_pools(pools)) == 2
-    definition = repository.create(builtin_score_definition())
-    scores = tuple(
-        repository.create(score)
-        for score in compute_win_rate_scores(
-            definition=definition,
-            observations=repository.ranking_observations(results),
-        )
+    results_commit = repository.head()
+    scores = compute_win_rate_scores(
+        observations=repository.ranking_observations(results),
     )
+    for score in scores:
+        trace = repository.create(create_scoring_trace(score["assertion_ref"]))
+        repository.append_event(
+            create_scoring_event(
+                trace=trace,
+                score=score,
+                pool_ids=[str(pool["id"]) for pool in pools],
+                results_commit=results_commit,
+                code_provenance={
+                    "version": "test",
+                    "git_commit": results_commit,
+                    "dirty": False,
+                },
+            )
+        )
     assert len(scores) == 2
     first_trace = repository.trace_reference(first_ref)
     traced_types = {record["type"] for record in first_trace["records"]}
@@ -215,8 +237,8 @@ def test_assertions_enroll_in_many_named_pools_and_scores_cross_pools(
         GROUNDING_TASK_TYPE,
         RUN_TYPE,
         RESULT_TYPE,
-        SCORE_DEFINITION_TYPE,
-        ASSERTION_SCORE_TYPE,
+        SCORING_TRACE_TYPE,
+        SCORING_EVENT_TYPE,
     }
     assert (
         sum(item["type"] == POOL_ENROLLMENT_TYPE for item in first_trace["records"])
@@ -254,7 +276,7 @@ def test_task_rendering_uses_opaque_labels_and_run_retains_exact_prompt() -> Non
     assert "--root '/tmp/scoring records'" in run["rendered_prompt"]
 
 
-def test_structured_results_map_labels_and_scores_retain_exact_inputs() -> None:
+def test_structured_results_map_labels_and_compute_live_scores() -> None:
     _, enrollments, task, first, second = _task()
     run_one = create_run(
         task=task,
@@ -279,13 +301,11 @@ def test_structured_results_map_labels_and_scores_retain_exact_inputs() -> None:
         tiers=(tuple(run_two["labels"]),),
         rationale="Equivalent support.",
     )
-    definition = builtin_score_definition()
     assertions = {
         first: enrollments[0]["assertion_ref"],
         second: enrollments[1]["assertion_ref"],
     }
     scores = compute_win_rate_scores(
-        definition=definition,
         observations=(
             (result_one, run_one, assertions),
             (result_two, run_two, assertions),
@@ -302,13 +322,10 @@ def test_structured_results_map_labels_and_scores_retain_exact_inputs() -> None:
     by_assertion = {
         item["assertion_ref"]["subject_ref"]["edition_id"]: item for item in scores
     }
-    assert by_assertion[first]["type"] == ASSERTION_SCORE_TYPE
+    assert by_assertion[first]["class"] == LIVE_SCORE_CLASS
     assert by_assertion[first]["value"] == pytest.approx(0.75)
     assert by_assertion[second]["value"] == pytest.approx(0.25)
-    assert [ref["id"] for ref in by_assertion[first]["result_refs"]] == [
-        result_one["id"],
-        result_two["id"],
-    ]
+    assert "result_refs" not in by_assertion[first]
 
     with pytest.raises(ScoringError, match="every presented label"):
         create_result(run=run_one, tiers=((labels_one[first],),))
@@ -389,28 +406,61 @@ def test_cli_preview_submit_score_and_debug_surfaces(tmp_path: Path, capsys) -> 
     traced = json.loads(capsys.readouterr().out)
     traced_types = {record["type"] for record in traced["trace"]["records"]}
     assert traced_types == {
-        ASSERTION_SCORE_TYPE,
         RESULT_TYPE,
         RUN_TYPE,
         GROUNDING_TASK_TYPE,
         POOL_ENROLLMENT_TYPE,
         POOL_TYPE,
-        SCORE_DEFINITION_TYPE,
+        SCORING_TRACE_TYPE,
+        SCORING_EVENT_TYPE,
     }
     assert len(traced["trace"]["external_references"]) == 2
 
-    score = repository.records(ASSERTION_SCORE_TYPE)[0]
-    score_trace = repository.trace(score)
-    score_types = {record["type"] for record in score_trace["records"]}
-    assert score_types == {
-        ASSERTION_SCORE_TYPE,
-        SCORE_DEFINITION_TYPE,
-        RESULT_TYPE,
-        RUN_TYPE,
-        GROUNDING_TASK_TYPE,
-        POOL_ENROLLMENT_TYPE,
-        POOL_TYPE,
-    }
+    traces = repository.records(SCORING_TRACE_TYPE)
+    events = repository.records(SCORING_EVENT_TYPE)
+    assert len(traces) == 2
+    assert len(events) == 2
+    assert all(event["results_commit"] for event in events)
+    assert all(event["code_provenance"]["version"] for event in events)
+    assert repository.path_for(traces[0]).name == "trace.json"
+    assert repository.path_for(events[0]).name == "events.jsonl"
+
+    assert (
+        main(
+            [
+                "scoring",
+                "score",
+                "--pool",
+                pool["id"],
+                "--root",
+                str(root),
+                "--no-record",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    assert len(repository.records(SCORING_EVENT_TYPE)) == 2
+
+    for renderer in (
+        "Assertion.Scoring.Trace.History.Renderer",
+        "Assertion.Scoring.Trace.Evolution.Renderer",
+    ):
+        assert (
+            main(
+                [
+                    "scoring",
+                    "render",
+                    traces[0]["id"],
+                    "--renderer",
+                    renderer,
+                    "--root",
+                    str(root),
+                ]
+            )
+            == 0
+        )
+        assert "events: 1" in capsys.readouterr().out
 
 
 def test_runtime_exposes_scoring_and_retires_tournament() -> None:

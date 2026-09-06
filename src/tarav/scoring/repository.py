@@ -14,13 +14,14 @@ from filelock import FileLock
 from tarav._core.persistence import atomic_write_json, atomic_write_text
 
 from .model import (
-    ASSERTION_SCORE_TYPE,
     GROUNDING_TASK_TYPE,
     POOL_ENROLLMENT_TYPE,
     POOL_TYPE,
     RECORD_KINDS,
     RESULT_TYPE,
     RUN_TYPE,
+    SCORING_EVENT_TYPE,
+    SCORING_TRACE_TYPE,
     JsonObject,
     ScoringError,
     canonical_json,
@@ -31,6 +32,7 @@ from .model import (
 
 
 REPOSITORY_TYPE = "Tarav.Assertion.Scoring.Repository"
+REPOSITORY_SCHEMA_VERSION = 2
 
 
 def default_scoring_root() -> Path:
@@ -41,7 +43,7 @@ def default_scoring_root() -> Path:
 
 
 class ScoringRepository:
-    """One-file-per-Record storage whose retained history is ordinary Git."""
+    """Pool-oriented Records and append-only per-Assertion scoring traces."""
 
     def __init__(self, root: Path):
         self.root = root.expanduser().resolve()
@@ -60,11 +62,14 @@ class ScoringRepository:
                 f"refusing to initialize a non-empty scoring directory: {repository.root}"
             )
         repository.root.mkdir(parents=True, exist_ok=True)
-        for dirname in sorted(set(RECORD_KINDS.values())):
-            (repository.root / dirname).mkdir()
+        (repository.root / "pools").mkdir()
+        (repository.root / "assertion-traces").mkdir()
         atomic_write_json(
             repository.marker_path,
-            {"type": REPOSITORY_TYPE, "schema_version": 1},
+            {
+                "type": REPOSITORY_TYPE,
+                "schema_version": REPOSITORY_SCHEMA_VERSION,
+            },
             ensure_ascii=False,
         )
         atomic_write_text(repository.root / ".gitignore", ".write.lock\n")
@@ -77,22 +82,26 @@ class ScoringRepository:
     def open(self) -> ScoringRepository:
         if not self.marker_path.is_file():
             raise ScoringError(
-                f"scoring repository not initialized: {self.root}; run `tarav scoring init`"
+                f"scoring repository not initialized: {self.root}; "
+                "run `tarav scoring init`"
             )
         marker = self._read_json(self.marker_path)
-        if marker != {"schema_version": 1, "type": REPOSITORY_TYPE}:
+        expected = {
+            "schema_version": REPOSITORY_SCHEMA_VERSION,
+            "type": REPOSITORY_TYPE,
+        }
+        if marker != expected:
             raise ScoringError(f"invalid scoring repository marker: {self.marker_path}")
         if not (self.root / ".git").is_dir():
             raise ScoringError(f"scoring repository has no Git history: {self.root}")
         missing = [
             dirname
-            for dirname in sorted(set(RECORD_KINDS.values()))
+            for dirname in ("pools", "assertion-traces")
             if not (self.root / dirname).is_dir()
         ]
         if missing:
             raise ScoringError(
-                "scoring repository is missing Record directories: "
-                + ", ".join(missing)
+                "scoring repository is missing directories: " + ", ".join(missing)
             )
         return self
 
@@ -101,14 +110,18 @@ class ScoringRepository:
     ) -> JsonObject:
         payload = dict(record)
         validate_record(payload)
+        if payload["type"] == SCORING_EVENT_TYPE:
+            raise ScoringError("Scoring Events are append-only; use append_event")
         path = self.path_for(payload)
         with FileLock(str(self.root / ".write.lock")):
             if path.exists():
                 previous = self._read_json(path)
                 if previous.get("type") != payload["type"]:
-                    raise ScoringError(
-                        "a Record UUID cannot be rebound to another Type"
-                    )
+                    raise ScoringError("a Record UUID cannot be rebound to another Type")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if payload["type"] == POOL_TYPE:
+                for child in ("enrollments", "tasks", "runs", "results"):
+                    (path.parent / child).mkdir(exist_ok=True)
             atomic_write_json(path, payload, ensure_ascii=False)
             self._commit_path(
                 path, message or f"Store {payload['type']} {payload['id']}"
@@ -116,35 +129,59 @@ class ScoringRepository:
         return payload
 
     def create(self, record: Mapping[str, object]) -> JsonObject:
-        path = self.path_for(record)
+        payload = dict(record)
+        validate_record(payload)
+        if payload["type"] == SCORING_EVENT_TYPE:
+            return self.append_event(payload)
+        path = self.path_for(payload)
         if path.exists():
-            raise ScoringError(f"scoring Record already exists: {record.get('id')}")
-        return self.save(record)
+            raise ScoringError(f"scoring Record already exists: {payload.get('id')}")
+        return self.save(payload)
+
+    def append_event(self, event: Mapping[str, object]) -> JsonObject:
+        """Append one typed event to its Assertion Trace JSONL."""
+
+        payload = dict(event)
+        validate_record(payload)
+        if payload["type"] != SCORING_EVENT_TYPE:
+            raise ScoringError("append_event requires an Assertion.Scoring.Event")
+        path = self.path_for(payload)
+        with FileLock(str(self.root / ".write.lock")):
+            if any(item["id"] == payload["id"] for item in self._read_events(path)):
+                raise ScoringError(f"scoring Event already exists: {payload['id']}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            previous = path.read_text(encoding="utf-8") if path.exists() else ""
+            serialized = json.dumps(
+                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
+            atomic_write_text(path, previous + serialized + "\n")
+            self._commit_path(path, f"Append {payload['type']} {payload['id']}")
+        return payload
 
     def records(self, record_type: str | None = None) -> tuple[JsonObject, ...]:
         if record_type is not None and record_type not in RECORD_KINDS:
             raise ScoringError(f"unknown scoring Record type: {record_type}")
         types = (record_type,) if record_type else tuple(RECORD_KINDS)
-        records = [
-            self._load_path(path)
-            for kind in types
-            for path in sorted((self.root / RECORD_KINDS[kind]).glob("*.json"))
-        ]
+        records: list[JsonObject] = []
+        for kind in types:
+            if kind == SCORING_EVENT_TYPE:
+                for path in sorted(
+                    (self.root / "assertion-traces").glob("*/events.jsonl")
+                ):
+                    records.extend(self._read_events(path))
+                continue
+            records.extend(self._load_path(path) for path in self._paths_for_type(kind))
         return tuple(sorted(records, key=lambda item: str(item.get("created_at", ""))))
 
     def resolve(self, selector: str, *, record_type: str | None = None) -> JsonObject:
         candidates = self.records(record_type)
         exact = [item for item in candidates if item["id"] == selector]
         named = [item for item in candidates if item.get("name") == selector]
-        matches = (
-            exact
-            or named
-            or [item for item in candidates if str(item["id"]).startswith(selector)]
-        )
+        matches = exact or named or [
+            item for item in candidates if str(item["id"]).startswith(selector)
+        ]
         if len(matches) != 1:
-            detail = (
-                "not found" if not matches else f"ambiguous ({len(matches)} matches)"
-            )
+            detail = "not found" if not matches else f"ambiguous ({len(matches)} matches)"
             raise ScoringError(f"scoring Record {selector!r} is {detail}")
         return matches[0]
 
@@ -161,16 +198,13 @@ class ScoringRepository:
     def enrollments_for_pool(
         self, pool: Mapping[str, object]
     ) -> tuple[JsonObject, ...]:
-        """Return the explicit current participant roster for one Pool."""
-
         validate_record(pool)
         if pool.get("type") != POOL_TYPE:
             raise ScoringError("Enrollment selection requires an Assertion.Pool")
-        pool_id = str(pool["id"])
         return tuple(
             item
             for item in self.records(POOL_ENROLLMENT_TYPE)
-            if _reference_id(item.get("pool_ref")) == pool_id
+            if _reference_id(item.get("pool_ref")) == pool["id"]
             and item.get("status") == "Enrolled"
         )
 
@@ -183,8 +217,7 @@ class ScoringRepository:
         matches = [
             item
             for item in self.enrollments_for_pool(pool)
-            if canonical_json(item.get("assertion_ref"))
-            == canonical_json(assertion_ref)
+            if canonical_json(item.get("assertion_ref")) == canonical_json(assertion_ref)
         ]
         if len(matches) > 1:
             raise ScoringError("Assertion has duplicate active Pool enrollments")
@@ -212,8 +245,6 @@ class ScoringRepository:
     def ranking_observations(
         self, results: Sequence[Mapping[str, object]]
     ) -> tuple[tuple[JsonObject, JsonObject, dict[str, Mapping[str, object]]], ...]:
-        """Resolve Result inputs into the compact form consumed by scorers."""
-
         observations = []
         for result in results:
             run = self.resolve_reference(_reference(result, "run_ref"))
@@ -235,6 +266,27 @@ class ScoringRepository:
             observations.append((dict(result), run, assertions))
         return tuple(observations)
 
+    def scoring_trace_for_assertion(
+        self, assertion_ref: Mapping[str, object]
+    ) -> JsonObject | None:
+        matches = [
+            trace
+            for trace in self.records(SCORING_TRACE_TYPE)
+            if canonical_json(trace.get("assertion_ref")) == canonical_json(assertion_ref)
+        ]
+        if len(matches) > 1:
+            raise ScoringError("Assertion has multiple scoring Traces")
+        return matches[0] if matches else None
+
+    def events_for_trace(
+        self, trace: Mapping[str, object]
+    ) -> tuple[JsonObject, ...]:
+        validate_record(trace)
+        if trace.get("type") != SCORING_TRACE_TYPE:
+            raise ScoringError("scoring Event selection requires a scoring Trace")
+        path = self.root / "assertion-traces" / str(trace["id"]) / "events.jsonl"
+        return tuple(self._read_events(path))
+
     def resolve_reference(self, reference: Mapping[str, object]) -> JsonObject:
         """Resolve one exact scoring Record edition, including from Git history."""
 
@@ -245,12 +297,22 @@ class ScoringRepository:
             )
         identity = str(reference.get("id", ""))
         expected_hash = str(reference.get("record_sha256", ""))
-        relative = Path(RECORD_KINDS[target_type]) / f"{identity}.json"
-        path = self.root / relative
-        if path.is_file():
-            current = self._load_path(path)
-            if content_hash(current) == expected_hash:
-                return current
+        current = [
+            item for item in self.records(target_type) if str(item["id"]) == identity
+        ]
+        if len(current) > 1:
+            raise ScoringError(f"duplicate scoring Record UUID: {identity}")
+        if current and content_hash(current[0]) == expected_hash:
+            return current[0]
+        if target_type == SCORING_EVENT_TYPE:
+            raise ScoringError(
+                f"exact scoring Event is not retained at HEAD: {identity}@{expected_hash}"
+            )
+        if not current:
+            raise ScoringError(
+                f"exact scoring Record is not retained at HEAD: {identity}@{expected_hash}"
+            )
+        relative = self.path_for(current[0]).relative_to(self.root)
         commits = self._git(
             "log", "--format=%H", "--all", "--", str(relative)
         ).stdout.splitlines()
@@ -272,12 +334,10 @@ class ScoringRepository:
                 return candidate
         raise ScoringError(
             "exact scoring Record edition is not recoverable: "
-            f"{reference.get('type')} {reference.get('id')}@{expected_hash}"
+            f"{reference.get('type')} {identity}@{expected_hash}"
         )
 
     def trace(self, record: Mapping[str, object]) -> JsonObject:
-        """Expand one scoring Record in both directions through direct references."""
-
         root = dict(record)
         validate_record(root)
         return self.trace_reference(_record_reference(root))
@@ -346,14 +406,56 @@ class ScoringRepository:
 
     def path_for(self, record: Mapping[str, object]) -> Path:
         record_type = str(record.get("type", ""))
-        dirname = RECORD_KINDS.get(record_type)
-        if dirname is None:
+        if record_type not in RECORD_KINDS:
             raise ScoringError(f"unsupported scoring Record type: {record_type}")
         record_id = str(record.get("id", ""))
-        return self.root / dirname / f"{record_id}.json"
+        if record_type == POOL_TYPE:
+            return self.root / "pools" / record_id / "pool.json"
+        if record_type == SCORING_TRACE_TYPE:
+            return self.root / "assertion-traces" / record_id / "trace.json"
+        if record_type == SCORING_EVENT_TYPE:
+            trace = self.resolve_reference(_reference(record, "trace_ref"))
+            return self.root / "assertion-traces" / str(trace["id"]) / "events.jsonl"
+        pool_id = self._pool_id_for(record)
+        child_dir = {
+            POOL_ENROLLMENT_TYPE: "enrollments",
+            GROUNDING_TASK_TYPE: "tasks",
+            RUN_TYPE: "runs",
+            RESULT_TYPE: "results",
+        }[record_type]
+        return self.root / "pools" / pool_id / child_dir / f"{record_id}.json"
 
     def head(self) -> str:
         return self._git("rev-parse", "HEAD").stdout.strip()
+
+    def _pool_id_for(self, record: Mapping[str, object]) -> str:
+        record_type = record.get("type")
+        if record_type in {POOL_ENROLLMENT_TYPE, GROUNDING_TASK_TYPE}:
+            pool = self.resolve_reference(_reference(record, "pool_ref"))
+            return str(pool["id"])
+        if record_type == RUN_TYPE:
+            task = self.resolve_reference(_reference(record, "task_ref"))
+            return self._pool_id_for(task)
+        if record_type == RESULT_TYPE:
+            run = self.resolve_reference(_reference(record, "run_ref"))
+            return self._pool_id_for(run)
+        raise ScoringError(f"Record is not Pool-owned: {record_type}")
+
+    def _paths_for_type(self, record_type: str) -> tuple[Path, ...]:
+        pattern = {
+            POOL_TYPE: "*/pool.json",
+            POOL_ENROLLMENT_TYPE: "*/enrollments/*.json",
+            GROUNDING_TASK_TYPE: "*/tasks/*.json",
+            RUN_TYPE: "*/runs/*.json",
+            RESULT_TYPE: "*/results/*.json",
+        }.get(record_type)
+        if record_type == SCORING_TRACE_TYPE:
+            return tuple(
+                sorted((self.root / "assertion-traces").glob("*/trace.json"))
+            )
+        if pattern is None:
+            return ()
+        return tuple(sorted((self.root / "pools").glob(pattern)))
 
     def _load_path(self, path: Path) -> JsonObject:
         payload = self._read_json(path)
@@ -361,6 +463,27 @@ class ScoringRepository:
         if self.path_for(payload) != path:
             raise ScoringError(f"scoring Record is stored at the wrong path: {path}")
         return payload
+
+    def _read_events(self, path: Path) -> list[JsonObject]:
+        if not path.exists():
+            return []
+        events: list[JsonObject] = []
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), 1
+        ):
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ScoringError(
+                    f"cannot read scoring JSONL {path}:{line_number}: {exc}"
+                ) from exc
+            if not isinstance(value, dict):
+                raise ScoringError(
+                    f"scoring JSONL line must be an object: {path}:{line_number}"
+                )
+            validate_record(value)
+            events.append(value)
+        return events
 
     @staticmethod
     def _read_json(path: Path) -> JsonObject:
@@ -439,16 +562,10 @@ def _direct_references(
         references.append(("task_ref", _reference(record, "task_ref")))
     elif record_type == RESULT_TYPE:
         references.append(("run_ref", _reference(record, "run_ref")))
-    elif record_type == ASSERTION_SCORE_TYPE:
+    elif record_type == SCORING_TRACE_TYPE:
         references.append(("assertion_ref", _reference(record, "assertion_ref")))
-        references.append(("definition_ref", _reference(record, "definition_ref")))
-        result_refs = record.get("result_refs")
-        if not isinstance(result_refs, list):
-            raise ScoringError("result_refs must be a list")
-        for index, reference in enumerate(result_refs):
-            if not isinstance(reference, dict):
-                raise ScoringError("result_refs must contain typed References")
-            references.append((f"result_refs[{index}]", reference))
+    elif record_type == SCORING_EVENT_TYPE:
+        references.append(("trace_ref", _reference(record, "trace_ref")))
     return tuple(references)
 
 
