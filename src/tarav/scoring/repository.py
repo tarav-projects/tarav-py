@@ -114,10 +114,20 @@ class ScoringRepository:
             raise ScoringError("Scoring Events are append-only; use append_event")
         path = self.path_for(payload)
         with FileLock(str(self.root / ".write.lock")):
+            if payload["type"] == RESULT_TYPE:
+                run_id = _reference_id(payload.get("run_ref"))
+                existing_result = self.result_for_run(str(run_id))
+                if (
+                    existing_result is not None
+                    and existing_result["id"] != payload["id"]
+                ):
+                    raise ScoringError(f"Ranking Run already has a Result: {run_id}")
             if path.exists():
                 previous = self._read_json(path)
                 if previous.get("type") != payload["type"]:
-                    raise ScoringError("a Record UUID cannot be rebound to another Type")
+                    raise ScoringError(
+                        "a Record UUID cannot be rebound to another Type"
+                    )
             path.parent.mkdir(parents=True, exist_ok=True)
             if payload["type"] == POOL_TYPE:
                 for child in ("enrollments", "tasks", "runs", "results"):
@@ -177,11 +187,15 @@ class ScoringRepository:
         candidates = self.records(record_type)
         exact = [item for item in candidates if item["id"] == selector]
         named = [item for item in candidates if item.get("name") == selector]
-        matches = exact or named or [
-            item for item in candidates if str(item["id"]).startswith(selector)
-        ]
+        matches = (
+            exact
+            or named
+            or [item for item in candidates if str(item["id"]).startswith(selector)]
+        )
         if len(matches) != 1:
-            detail = "not found" if not matches else f"ambiguous ({len(matches)} matches)"
+            detail = (
+                "not found" if not matches else f"ambiguous ({len(matches)} matches)"
+            )
             raise ScoringError(f"scoring Record {selector!r} is {detail}")
         return matches[0]
 
@@ -217,7 +231,8 @@ class ScoringRepository:
         matches = [
             item
             for item in self.enrollments_for_pool(pool)
-            if canonical_json(item.get("assertion_ref")) == canonical_json(assertion_ref)
+            if canonical_json(item.get("assertion_ref"))
+            == canonical_json(assertion_ref)
         ]
         if len(matches) > 1:
             raise ScoringError("Assertion has duplicate active Pool enrollments")
@@ -272,15 +287,14 @@ class ScoringRepository:
         matches = [
             trace
             for trace in self.records(SCORING_TRACE_TYPE)
-            if canonical_json(trace.get("assertion_ref")) == canonical_json(assertion_ref)
+            if canonical_json(trace.get("assertion_ref"))
+            == canonical_json(assertion_ref)
         ]
         if len(matches) > 1:
             raise ScoringError("Assertion has multiple scoring Traces")
         return matches[0] if matches else None
 
-    def events_for_trace(
-        self, trace: Mapping[str, object]
-    ) -> tuple[JsonObject, ...]:
+    def events_for_trace(self, trace: Mapping[str, object]) -> tuple[JsonObject, ...]:
         validate_record(trace)
         if trace.get("type") != SCORING_TRACE_TYPE:
             raise ScoringError("scoring Event selection requires a scoring Trace")
@@ -450,9 +464,7 @@ class ScoringRepository:
             RESULT_TYPE: "*/results/*.json",
         }.get(record_type)
         if record_type == SCORING_TRACE_TYPE:
-            return tuple(
-                sorted((self.root / "assertion-traces").glob("*/trace.json"))
-            )
+            return tuple(sorted((self.root / "assertion-traces").glob("*/trace.json")))
         if pattern is None:
             return ()
         return tuple(sorted((self.root / "pools").glob(pattern)))

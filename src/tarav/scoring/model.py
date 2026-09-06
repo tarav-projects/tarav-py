@@ -17,7 +17,8 @@ JsonObject = dict[str, Any]
 POOL_TYPE = "Assertion.Pool"
 POOL_ENROLLMENT_TYPE = "Assertion.Pool.Enrollment"
 GROUNDING_TASK_TYPE = "Index.Line.Grounding.Ranking.Task"
-GROUNDING_RANKING_METHOD = "Index.Line.Grounding.Ranking.Method"
+GROUNDING_POOL_CLASS = "Index.Line.Grounding.Ranking.Pool"
+GROUNDING_TASK_RENDERER = "Index.Line.Grounding.Ranking.Task.Renderer.v1"
 RUN_TYPE = "Ranking.Run"
 RESULT_TYPE = "Ranking.Result"
 SCORING_TRACE_TYPE = "Assertion.Scoring.Trace"
@@ -91,14 +92,14 @@ def reference_target_type(reference: Mapping[str, object]) -> str | None:
 
 def create_pool(
     name: str,
-    scoring_method: str = GROUNDING_RANKING_METHOD,
+    pool_class: str = GROUNDING_POOL_CLASS,
 ) -> JsonObject:
-    """Create a named population organized around one Scoring Method."""
+    """Create a named population governed by one Pool Class."""
 
     return new_record(
         POOL_TYPE,
         name=_nonempty(name, "name"),
-        scoring_method=_nonempty(scoring_method, "scoring_method"),
+        pool_class=_nonempty(pool_class, "pool_class"),
     )
 
 
@@ -189,14 +190,50 @@ def render_task(task: Mapping[str, object], labels: Mapping[str, str]) -> str:
     return "\n".join(sections)
 
 
+def render_run(
+    *,
+    task: Mapping[str, object],
+    run: Mapping[str, object],
+) -> str:
+    """Reconstruct and verify the exact prompt for a frozen Ranking Run."""
+
+    validate_record(task)
+    validate_record(run)
+    if run["type"] != RUN_TYPE:
+        raise ScoringError("render_run requires a Ranking.Run")
+    if run.get("task_ref") != record_reference(task):
+        raise ScoringError("Ranking Run does not reference the supplied Task edition")
+    renderer = _required_object(run, "renderer")
+    if _required_string(renderer, "type") != GROUNDING_TASK_RENDERER:
+        raise ScoringError(f"unsupported Ranking Run renderer: {renderer.get('type')}")
+    labels = _required_object(run, "labels")
+    prompt = render_task(task, labels)
+    submission = _required_object(run, "submission")
+    command_root = shlex.quote(_required_string(submission, "repository_root"))
+    example_tiers = " ".join(f"--tier {label}" for label in labels)
+    prompt += (
+        "\n\n"
+        f"Ranked: tarav scoring submit {run['id']} --root {command_root} "
+        f"{example_tiers} --rationale 'brief reason'\n"
+        f"Abstain: tarav scoring submit {run['id']} --root {command_root} "
+        "--abstain --reason 'why the evidence is insufficient'"
+    )
+    digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    if digest != run.get("rendered_prompt_sha256"):
+        raise ScoringError("rendered Ranking prompt does not match its frozen hash")
+    return prompt
+
+
 def create_run(
     *,
     task: Mapping[str, object],
     runner: Mapping[str, object],
     repository_root: str,
+    code_provenance: Mapping[str, object],
     seed: str | None = None,
-    status: str = "Prepared",
 ) -> JsonObject:
+    """Freeze one unresolved evaluation without duplicating its rendered prompt."""
+
     validate_record(task)
     run_id = new_id()
     effective_seed = seed or run_id
@@ -204,26 +241,55 @@ def create_run(
         _required_string(item, "id") for item in _required_dicts(task, "candidates")
     ]
     labels = candidate_labels(candidate_ids, seed=effective_seed)
-    prompt = render_task(task, labels)
-    command_root = shlex.quote(repository_root)
-    example_tiers = " ".join(f"--tier {label}" for label in labels)
-    prompt += (
-        "\n\n"
-        f"Ranked: tarav scoring submit {run_id} --root {command_root} "
-        f"{example_tiers} --rationale 'brief reason'\n"
-        f"Abstain: tarav scoring submit {run_id} --root {command_root} "
-        "--abstain --reason 'why the evidence is insufficient'"
-    )
-    return new_record(
+    renderer = {
+        "type": GROUNDING_TASK_RENDERER,
+        "code_provenance": dict(code_provenance),
+    }
+    provisional = new_record(
         RUN_TYPE,
         id=run_id,
         task_ref=record_reference(task),
         runner=dict(runner),
-        seed=effective_seed,
         labels=labels,
-        rendered_prompt=prompt,
+        renderer=renderer,
+        submission={"repository_root": repository_root},
+        rendered_prompt_sha256="0" * 64,
+        status="Awaiting.Result",
+    )
+    prompt = _render_unchecked_run_prompt(
+        task=task,
+        run=provisional,
+    )
+    return new_record(
+        RUN_TYPE,
+        id=run_id,
+        created_at=provisional["created_at"],
+        task_ref=record_reference(task),
+        runner=dict(runner),
+        labels=labels,
+        renderer=renderer,
+        submission={"repository_root": repository_root},
         rendered_prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-        status=status,
+        status="Awaiting.Result",
+    )
+
+
+def _render_unchecked_run_prompt(
+    *,
+    task: Mapping[str, object],
+    run: Mapping[str, object],
+) -> str:
+    labels = _required_object(run, "labels")
+    prompt = render_task(task, labels)
+    submission = _required_object(run, "submission")
+    command_root = shlex.quote(_required_string(submission, "repository_root"))
+    example_tiers = " ".join(f"--tier {label}" for label in labels)
+    return prompt + (
+        "\n\n"
+        f"Ranked: tarav scoring submit {run['id']} --root {command_root} "
+        f"{example_tiers} --rationale 'brief reason'\n"
+        f"Abstain: tarav scoring submit {run['id']} --root {command_root} "
+        "--abstain --reason 'why the evidence is insufficient'"
     )
 
 
@@ -237,7 +303,7 @@ def create_result(
     validate_record(run)
     if run["type"] != RUN_TYPE:
         raise ScoringError("Ranking Result requires a Ranking.Run")
-    if run.get("status") not in {"Prepared", "Preview", "Running"}:
+    if run.get("status") != "Awaiting.Result":
         raise ScoringError(
             f"Ranking Run no longer accepts a Result: {run.get('status')}"
         )
@@ -406,7 +472,7 @@ def create_scoring_event(
 
 def _validate_pool(record: Mapping[str, object]) -> None:
     _required_string(record, "name")
-    _required_string(record, "scoring_method")
+    _required_string(record, "pool_class")
 
 
 def _validate_pool_enrollment(record: Mapping[str, object]) -> None:
@@ -448,11 +514,20 @@ def _validate_run(record: Mapping[str, object]) -> None:
         _nonempty(candidate, "labels value")
     if len(set(labels.values())) != len(labels):
         raise ScoringError("Run labels must reference distinct candidates")
-    prompt = _required_string(record, "rendered_prompt")
-    expected_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    if _required_string(record, "rendered_prompt_sha256") != expected_hash:
-        raise ScoringError("rendered_prompt_sha256 does not match rendered_prompt")
-    _required_string(record, "status")
+    renderer = _required_object(record, "renderer")
+    _required_string(renderer, "type")
+    _validate_code_provenance(_required_object(renderer, "code_provenance"))
+    submission = _required_object(record, "submission")
+    _required_string(submission, "repository_root")
+    digest = _required_string(record, "rendered_prompt_sha256")
+    if len(digest) != 64 or any(
+        character not in string.hexdigits for character in digest
+    ):
+        raise ScoringError("rendered_prompt_sha256 must be a SHA-256 hex digest")
+    if _required_string(record, "status") != "Awaiting.Result":
+        raise ScoringError("Ranking Run status must remain Awaiting.Result")
+    if "rendered_prompt" in record:
+        raise ScoringError("Ranking Run must not duplicate its rendered prompt")
 
 
 def _validate_result(record: Mapping[str, object]) -> None:
@@ -482,6 +557,11 @@ def _validate_scoring_event(record: Mapping[str, object]) -> None:
         _uuid(_nonempty(pool_id, "pool_ids[]"), "pool_ids[]")
     _git_hash(_required_string(record, "results_commit"), "results_commit")
     provenance = _required_object(record, "code_provenance")
+    _validate_code_provenance(provenance)
+    _validate_score_statistics(record)
+
+
+def _validate_code_provenance(provenance: Mapping[str, object]) -> None:
     _required_string(provenance, "version")
     git_commit = provenance.get("git_commit")
     if git_commit is not None:
@@ -491,7 +571,6 @@ def _validate_scoring_event(record: Mapping[str, object]) -> None:
         )
     if not isinstance(provenance.get("dirty"), bool):
         raise ScoringError("code_provenance.dirty must be Boolean")
-    _validate_score_statistics(record)
 
 
 def _validate_live_score(score: Mapping[str, object]) -> None:
@@ -641,7 +720,8 @@ __all__ = [
     "GROUNDING_ASSERTION_REFERENCE_TYPE",
     "GROUNDING_ASSERTION_TYPE",
     "GROUNDING_TASK_TYPE",
-    "GROUNDING_RANKING_METHOD",
+    "GROUNDING_POOL_CLASS",
+    "GROUNDING_TASK_RENDERER",
     "POOL_TYPE",
     "POOL_ENROLLMENT_TYPE",
     "RECORD_KINDS",
@@ -664,6 +744,7 @@ __all__ = [
     "new_record",
     "record_reference",
     "reference_target_type",
+    "render_run",
     "render_task",
     "validate_record",
 ]

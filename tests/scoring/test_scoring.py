@@ -22,7 +22,7 @@ from tarav.diagram import (
 from tarav.scoring import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_REFERENCE_TYPE,
-    GROUNDING_RANKING_METHOD,
+    GROUNDING_POOL_CLASS,
     GROUNDING_TASK_TYPE,
     POOL_ENROLLMENT_TYPE,
     POOL_TYPE,
@@ -42,6 +42,7 @@ from tarav.scoring import (
     create_scoring_event,
     create_scoring_trace,
     record_reference,
+    render_run,
     render_task,
 )
 from tarav.scoring.tasks import (
@@ -49,7 +50,7 @@ from tarav.scoring.tasks import (
     create_line_grounding_enrollments,
     create_line_grounding_task,
 )
-from tarav.scoring.runner import execute_run, prepare_run
+from tarav.scoring.runner import execute_run, prepare_agent_run, prepare_unknown_run
 
 
 def _assertion_ref(candidate_id: str) -> dict[str, object]:
@@ -73,6 +74,10 @@ def _candidate(
         "presentation": f"Line claim:\n{claim}\n\nDeclared Support.Set:\nEvidence.",
         "appendix": [],
     }
+
+
+def _code_provenance() -> dict[str, object]:
+    return {"version": "test", "git_commit": "0" * 40, "dirty": False}
 
 
 def _task():
@@ -130,7 +135,7 @@ def test_repository_retains_typed_records_in_git_and_resolves_prefixes(
         repository.save(rebound)
 
 
-def test_pool_is_an_explicit_population_and_assertion_type_owns_methods() -> None:
+def test_pool_is_an_explicit_population_and_classes_split_ownership() -> None:
     pool = create_pool("line-grounding")
     first, second = str(uuid4()), str(uuid4())
     enrollments = (
@@ -138,15 +143,13 @@ def test_pool_is_an_explicit_population_and_assertion_type_owns_methods() -> Non
         create_pool_enrollment(pool=pool, assertion_ref=_assertion_ref(second)),
     )
 
-    assert pool["scoring_method"] == GROUNDING_RANKING_METHOD
+    assert pool["pool_class"] == GROUNDING_POOL_CLASS
     assert "selector" not in pool
     assert all(item["type"] == POOL_ENROLLMENT_TYPE for item in enrollments)
-    assert GROUNDING_RANKING_METHOD in {
-        method.method_type for method in IndexLineGroundingAssertionType.scoring_methods
-    }
+    assert GROUNDING_POOL_CLASS in IndexLineGroundingAssertionType.pool_classes
 
-    incompatible = create_pool("other", "Other.Scoring.Method")
-    with pytest.raises(ScoringError, match="does not organize"):
+    incompatible = create_pool("other", "Other.Ranking.Pool")
+    with pytest.raises(ScoringError, match="unknown Ranking Pool Class"):
         create_grounding_task(
             pool=incompatible,
             enrollments=enrollments,
@@ -189,10 +192,10 @@ def test_assertions_enroll_in_many_named_pools_and_scores_cross_pools(
         run = repository.create(
             create_run(
                 task=task,
-                runner={"type": "Preview.Ranking.Task.Runner"},
+                runner={"type": "Unknown.Ranking.Runner"},
                 repository_root=str(repository.root),
+                code_provenance=_code_provenance(),
                 seed=str(index),
-                status="Preview",
             )
         )
         labels = {candidate: label for label, candidate in run["labels"].items()}
@@ -246,7 +249,7 @@ def test_assertions_enroll_in_many_named_pools_and_scores_cross_pools(
     )
 
 
-def test_task_rendering_uses_opaque_labels_and_run_retains_exact_prompt() -> None:
+def test_task_rendering_uses_opaque_labels_and_run_reconstructs_exact_prompt() -> None:
     _, _, task, first, second = _task()
     rendered = render_task(task, {"A": second, "B": first})
 
@@ -257,10 +260,10 @@ def test_task_rendering_uses_opaque_labels_and_run_retains_exact_prompt() -> Non
 
     run = create_run(
         task=task,
-        runner={"type": "Preview.Ranking.Task.Runner"},
+        runner={"type": "Unknown.Ranking.Runner"},
         repository_root="/tmp/scoring records",
+        code_provenance=_code_provenance(),
         seed="repeatable",
-        status="Preview",
     )
     assert run["type"] == RUN_TYPE
     assert run["task_ref"] == {
@@ -272,16 +275,23 @@ def test_task_rendering_uses_opaque_labels_and_run_retains_exact_prompt() -> Non
     assert "task_id" not in run
     assert "pool_id" not in run
     assert run["rendered_prompt_sha256"]
-    assert "tarav scoring submit" in run["rendered_prompt"]
-    assert "--root '/tmp/scoring records'" in run["rendered_prompt"]
+    assert "rendered_prompt" not in run
+    assert "seed" not in run
+    prompt = render_run(
+        task=task,
+        run=run,
+    )
+    assert "tarav scoring submit" in prompt
+    assert "--root '/tmp/scoring records'" in prompt
 
 
 def test_structured_results_map_labels_and_compute_live_scores() -> None:
     _, enrollments, task, first, second = _task()
     run_one = create_run(
         task=task,
-        runner={"type": "Preview.Ranking.Task.Runner"},
+        runner={"type": "Unknown.Ranking.Runner"},
         repository_root="/tmp/scoring",
+        code_provenance=_code_provenance(),
         seed="one",
     )
     labels_one = {candidate: label for label, candidate in run_one["labels"].items()}
@@ -292,8 +302,9 @@ def test_structured_results_map_labels_and_compute_live_scores() -> None:
     )
     run_two = create_run(
         task=task,
-        runner={"type": "Preview.Ranking.Task.Runner"},
+        runner={"type": "Unknown.Ranking.Runner"},
         repository_root="/tmp/scoring",
+        code_provenance=_code_provenance(),
         seed="two",
     )
     result_two = create_result(
@@ -329,14 +340,14 @@ def test_structured_results_map_labels_and_compute_live_scores() -> None:
 
     with pytest.raises(ScoringError, match="every presented label"):
         create_result(run=run_one, tiers=((labels_one[first],),))
-    with pytest.raises(ScoringError, match="no longer accepts"):
+    with pytest.raises(ScoringError, match="must remain Awaiting.Result"):
         create_result(
             run={**run_one, "status": "Exited.Without.Result"},
             tiers=(tuple(run_one["labels"]),),
         )
 
 
-def test_cli_preview_submit_score_and_debug_surfaces(tmp_path: Path, capsys) -> None:
+def test_cli_submit_score_and_debug_surfaces(tmp_path: Path, capsys) -> None:
     root = tmp_path / "scoring"
     assert main(["scoring", "init", "--root", str(root)]) == 0
     repository = ScoringRepository(root).open()
@@ -348,24 +359,15 @@ def test_cli_preview_submit_score_and_debug_surfaces(tmp_path: Path, capsys) -> 
 
     assert main(["scoring", "render", task["id"][:10], "--root", str(root)]) == 0
     assert "# Ranking Task" in capsys.readouterr().out
-    assert (
-        main(
-            [
-                "scoring",
-                "run",
-                task["id"],
-                "--root",
-                str(root),
-                "--preview",
-                "--seed",
-                "cli-test",
-            ]
-        )
-        == 0
+    run, prompt = prepare_unknown_run(
+        repository=repository,
+        task=task,
+        seed="cli-test",
     )
-    preview = capsys.readouterr().out
-    run_id = preview.splitlines()[0].split(": ", 1)[1]
-    run = repository.resolve(run_id)
+    run_id = str(run["id"])
+    assert "tarav scoring submit" in prompt
+    assert main(["scoring", "render", run_id, "--root", str(root)]) == 0
+    assert capsys.readouterr().out.rstrip() == prompt
     labels = list(run["labels"])
     assert (
         main(
@@ -386,6 +388,14 @@ def test_cli_preview_submit_score_and_debug_surfaces(tmp_path: Path, capsys) -> 
         == 0
     )
     capsys.readouterr()
+    with pytest.raises(ScoringError, match="already has a Result"):
+        repository.create(
+            create_result(
+                run=run,
+                tiers=tuple((label,) for label in labels),
+                rationale="Duplicate submission.",
+            )
+        )
     assert main(["scoring", "score", "--pool", pool["id"], "--root", str(root)]) == 0
     assert "scores: 2" in capsys.readouterr().out
     result = repository.records(RESULT_TYPE)[0]
@@ -486,18 +496,6 @@ def test_agent_runner_retains_resolved_provenance_and_submitted_result(
     for enrollment in enrollments:
         repository.create(enrollment)
     repository.create(task)
-    run = prepare_run(
-        repository=repository,
-        task=task,
-        provider="fake",
-        profile=None,
-        home=tmp_path / "agent-home",
-        model="judge-v1",
-        account="judge-account",
-        cwd=tmp_path,
-        seed="runner-test",
-        preview=False,
-    )
 
     class FakeAgent:
         provider = "fake"
@@ -507,7 +505,10 @@ def test_agent_runner_retains_resolved_provenance_and_submitted_result(
         account = None
 
         def run(self, command_config, run_config):
-            assert command_config.prompt == run["rendered_prompt"]
+            assert command_config.prompt == render_run(
+                task=task,
+                run=run,
+            )
             assert command_config.interaction_mode == "non_interactive"
             assert run_config.process_mode == "capture"
             repository.create(
@@ -516,6 +517,17 @@ def test_agent_runner_retains_resolved_provenance_and_submitted_result(
             return AgentRunResult(exit_code=0, stdout="submitted", stderr="")
 
     monkeypatch.setattr("tarav.scoring.runner.resolve_agent", lambda **_: FakeAgent())
+    run, _ = prepare_agent_run(
+        repository=repository,
+        task=task,
+        provider="fake",
+        profile=None,
+        home=tmp_path / "agent-home",
+        model="judge-v1",
+        account="judge-account",
+        cwd=tmp_path,
+        seed="runner-test",
+    )
 
     completed, result = execute_run(
         repository=repository,
@@ -523,10 +535,10 @@ def test_agent_runner_retains_resolved_provenance_and_submitted_result(
         timeout_sec=10,
     )
 
-    assert completed["status"] == "Completed"
-    assert completed["runner"]["resolved_provider"] == "fake"
-    assert completed["runner"]["resolved_model"] == "judge-v1"
-    assert "result_id" not in completed["execution"]
+    assert completed["status"] == "Awaiting.Result"
+    assert completed["runner"]["provider"] == "fake"
+    assert completed["runner"]["model"] == "judge-v1"
+    assert repository.resolve(completed["id"]) == completed
     assert repository.result_for_run(completed["id"])["id"] == result["id"]
 
 
@@ -540,10 +552,10 @@ def test_exact_record_references_resolve_historical_editions(tmp_path: Path) -> 
     run = repository.create(
         create_run(
             task=task,
-            runner={"type": "Preview.Ranking.Task.Runner"},
+            runner={"type": "Unknown.Ranking.Runner"},
             repository_root=str(repository.root),
+            code_provenance=_code_provenance(),
             seed="historical",
-            status="Preview",
         )
     )
 
@@ -554,7 +566,7 @@ def test_exact_record_references_resolve_historical_editions(tmp_path: Path) -> 
 
 
 def test_grounding_task_resolves_diagram_line_editions_and_support(
-    tmp_path: Path, capsys
+    tmp_path: Path, capsys, monkeypatch
 ) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -711,6 +723,36 @@ def test_grounding_task_resolves_diagram_line_editions_and_support(
         == 0
     )
     assert "enrollment:" in capsys.readouterr().out
+    monkeypatch.setattr(
+        "tarav.scoring.tasks.ChatlasEvidence",
+        lambda chatlas_root=None: ChatlasEvidence(model_loader=lambda _: normal_model),
+    )
+    assert (
+        main(
+            [
+                "scoring",
+                "task",
+                "--pool",
+                "diagram.line.grounding.test",
+                "--project",
+                str(project_root),
+                "--diagram-config",
+                str(config.path),
+                "--root",
+                str(scoring_root),
+                "--seed",
+                "manual-run",
+            ]
+        )
+        == 0
+    )
+    task_output = capsys.readouterr().out
+    assert "task:" in task_output
+    assert "run:" in task_output
+    assert "tarav scoring submit" in task_output
+    retained_run = ScoringRepository(scoring_root).open().records(RUN_TYPE)[0]
+    assert retained_run["runner"] == {"type": "Unknown.Ranking.Runner"}
+    assert retained_run["status"] == "Awaiting.Result"
     assert (
         main(
             [

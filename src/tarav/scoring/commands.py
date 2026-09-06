@@ -5,13 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import subprocess
-
-from tarav import __version__
 from tarav._core.errors import CliError
 
 from .model import (
-    GROUNDING_RANKING_METHOD,
+    GROUNDING_POOL_CLASS,
     GROUNDING_TASK_TYPE,
     POOL_ENROLLMENT_TYPE,
     POOL_TYPE,
@@ -26,6 +23,7 @@ from .model import (
     create_result,
     create_scoring_event,
     create_scoring_trace,
+    render_run,
     render_task,
 )
 from .rendering import (
@@ -38,7 +36,7 @@ from .rendering import (
     render_trace_history,
 )
 from .repository import ScoringRepository, default_scoring_root
-from .runner import execute_run, prepare_run
+from .runner import code_provenance, execute_run, prepare_agent_run, prepare_unknown_run
 from .tasks import (
     create_line_grounding_enrollments,
     create_line_grounding_task,
@@ -98,7 +96,7 @@ def _cmd_pool_create(args: argparse.Namespace) -> int:
         repository = _repository(args)
         if any(item.get("name") == args.name for item in repository.records(POOL_TYPE)):
             raise ScoringError(f"Assertion Pool name already exists: {args.name}")
-        record = repository.create(create_pool(args.name, args.scoring_method))
+        record = repository.create(create_pool(args.name, args.pool_class))
     except ScoringError as exc:
         raise CliError(str(exc)) from exc
     return _emit(
@@ -107,7 +105,7 @@ def _cmd_pool_create(args: argparse.Namespace) -> int:
         [
             f"pool: {record['id']}",
             f"name: {record['name']}",
-            f"method: {record['scoring_method']}",
+            f"class: {record['pool_class']}",
         ],
     )
 
@@ -160,7 +158,7 @@ def _cmd_pool_show(args: argparse.Namespace) -> int:
         [
             f"pool: {pool['id']}",
             f"name: {pool['name']}",
-            f"method: {pool['scoring_method']}",
+            f"class: {pool['pool_class']}",
             f"enrollments: {len(enrollments)}",
         ],
     )
@@ -192,12 +190,23 @@ def _cmd_task(args: argparse.Namespace) -> int:
         repository = _repository(args)
         pool = repository.resolve(args.pool, record_type=POOL_TYPE)
         task = _create_pool_task(args, repository, pool)
+        run, prompt = prepare_unknown_run(
+            repository=repository,
+            task=task,
+            seed=args.seed,
+        )
     except (ScoringError, CliError) as exc:
         raise CliError(str(exc)) from exc
     return _emit(
         args,
-        task,
-        [f"task: {task['id']}", f"candidates: {len(task['candidates'])}"],
+        {"task": task, "run": run, "rendered_prompt": prompt},
+        [
+            f"task: {task['id']}",
+            f"run: {run['id']}",
+            f"candidates: {len(task['candidates'])}",
+            "",
+            prompt,
+        ],
     )
 
 
@@ -208,7 +217,7 @@ def _cmd_pool_run(args: argparse.Namespace) -> int:
         repository = _repository(args)
         pool = repository.resolve(args.pool, record_type=POOL_TYPE)
         task = _create_pool_task(args, repository, pool)
-        run = prepare_run(
+        run, _ = prepare_agent_run(
             repository=repository,
             task=task,
             provider=args.provider,
@@ -218,17 +227,12 @@ def _cmd_pool_run(args: argparse.Namespace) -> int:
             account=args.account,
             cwd=Path(args.cwd).expanduser().resolve(),
             seed=args.seed,
-            preview=args.preview,
         )
-        if args.preview:
-            result = None
-            completed = run
-        else:
-            completed, result = execute_run(
-                repository=repository,
-                run=run,
-                timeout_sec=args.timeout,
-            )
+        completed, result = execute_run(
+            repository=repository,
+            run=run,
+            timeout_sec=args.timeout,
+        )
     except (ScoringError, CliError) as exc:
         raise CliError(str(exc)) from exc
     payload = {"pool": pool, "task": task, "run": completed, "result": result}
@@ -240,10 +244,8 @@ def _cmd_pool_run(args: argparse.Namespace) -> int:
     ]
     if result is not None:
         lines.append(f"result: {result['id']}")
-    if args.preview:
-        lines.extend(("", str(completed["rendered_prompt"])))
     _emit(args, payload, lines)
-    return 0 if completed["status"] in {"Completed", "Preview"} else 1
+    return 0
 
 
 def _cmd_render(args: argparse.Namespace) -> int:
@@ -257,7 +259,11 @@ def _cmd_render(args: argparse.Namespace) -> int:
             }
             rendered = render_task(record, labels)
         elif record["type"] == RUN_TYPE:
-            rendered = str(record["rendered_prompt"])
+            task = repository.resolve_reference(record["task_ref"])
+            rendered = render_run(
+                task=task,
+                run=record,
+            )
         elif record["type"] == SCORING_TRACE_TYPE:
             renderer = args.renderer or TRACE_HISTORY_RENDERER
             events = repository.events_for_trace(record)
@@ -266,7 +272,9 @@ def _cmd_render(args: argparse.Namespace) -> int:
             elif renderer == TRACE_EVOLUTION_RENDERER:
                 rendered = render_trace_evolution(record, events)
             else:
-                raise ScoringError(f"renderer does not accept a scoring Trace: {renderer}")
+                raise ScoringError(
+                    f"renderer does not accept a scoring Trace: {renderer}"
+                )
         else:
             raise ScoringError("render accepts a Ranking Task, Run, or scoring Trace")
     except ScoringError as exc:
@@ -281,7 +289,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
         task = repository.resolve(args.task, record_type=GROUNDING_TASK_TYPE)
-        run = prepare_run(
+        run, _ = prepare_agent_run(
             repository=repository,
             task=task,
             provider=args.provider,
@@ -291,14 +299,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             account=args.account,
             cwd=Path(args.cwd).expanduser().resolve(),
             seed=args.seed,
-            preview=args.preview,
         )
-        if args.preview:
-            if args.json:
-                return _emit(args, run, [])
-            print(f"run: {run['id']}\n")
-            print(run["rendered_prompt"])
-            return 0
         completed, result = execute_run(
             repository=repository,
             run=run,
@@ -311,7 +312,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if result is not None:
         lines.append(f"result: {result['id']}")
     _emit(args, payload, lines)
-    return 0 if completed["status"] == "Completed" else 1
+    return 0
 
 
 def _parse_tiers(values: list[str]) -> list[list[str]]:
@@ -369,7 +370,7 @@ def _cmd_score(args: argparse.Namespace) -> int:
         events = []
         traces = []
         if not args.no_record:
-            provenance = _code_provenance()
+            provenance = code_provenance()
             for score in scores:
                 assertion_ref = score["assertion_ref"]
                 trace = repository.scoring_trace_for_assertion(assertion_ref)
@@ -400,27 +401,6 @@ def _cmd_score(args: argparse.Namespace) -> int:
         "events": events,
     }
     return _emit(args, payload, rendered.splitlines())
-
-
-def _code_provenance() -> dict[str, object]:
-    root = Path(__file__).resolve().parents[3]
-    commit = subprocess.run(
-        ("git", "-C", str(root), "rev-parse", "HEAD"),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    dirty = subprocess.run(
-        ("git", "-C", str(root), "status", "--porcelain"),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return {
-        "version": __version__,
-        "git_commit": commit.stdout.strip() if commit.returncode == 0 else None,
-        "dirty": dirty.returncode != 0 or bool(dirty.stdout.strip()),
-    }
 
 
 def _cmd_assertion(args: argparse.Namespace) -> int:
@@ -520,7 +500,7 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
 
     pool_create = pool_commands.add_parser("create", help="Create a named Pool.")
     pool_create.add_argument("name")
-    pool_create.add_argument("--scoring-method", default=GROUNDING_RANKING_METHOD)
+    pool_create.add_argument("--pool-class", default=GROUNDING_POOL_CLASS)
     _add_common(pool_create)
     pool_create.set_defaults(handler=_cmd_pool_create)
 
@@ -559,7 +539,6 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     pool_run.add_argument("--cwd", default=".")
     pool_run.add_argument("--timeout", type=int)
     pool_run.add_argument("--seed")
-    pool_run.add_argument("--preview", action="store_true")
     _add_common(pool_run)
     pool_run.set_defaults(handler=_cmd_pool_run)
 
@@ -571,6 +550,7 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     task.add_argument("--appendix", action="append", default=[])
     task.add_argument("--diagram-config")
     task.add_argument("--chatlas-root")
+    task.add_argument("--seed", help="Reproducible candidate-order seed.")
     _add_common(task)
     task.set_defaults(handler=_cmd_task)
 
@@ -583,7 +563,7 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     render.set_defaults(handler=_cmd_render)
 
     run = commands.add_parser(
-        "run", help="Create a blinded Run and optionally execute its Agent runner."
+        "run", help="Create a frozen blinded Run and execute its Agent runner."
     )
     run.add_argument("task")
     run.add_argument("--provider")
@@ -594,11 +574,6 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     run.add_argument("--cwd", default=".")
     run.add_argument("--timeout", type=int)
     run.add_argument("--seed", help="Reproducible candidate-order seed.")
-    run.add_argument(
-        "--preview",
-        action="store_true",
-        help="Retain and print the exact Run without invoking an Agent.",
-    )
     _add_common(run)
     run.set_defaults(handler=_cmd_run)
 

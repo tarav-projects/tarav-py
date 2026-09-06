@@ -60,11 +60,19 @@ contract and Git boundaries.
   compact per-Assertion Scoring Traces in the independent Git-backed
   `~/Documents/tarav/scoring/` Record repository. Each Pool directory is the
   default comparability boundary and owns its Enrollments, Tasks, Runs, and
-  Results. Assertion Types own their
-  supported Scoring Methods, admission compatibility, Task production, and
-  candidate presentation. Pools do not discover participants; Assertion
-  instances enroll explicitly and may join several Pools. Score methods may
-  select Results from several Pools and are code, not retained definitions.
+  Results. Assertion Classes declare compatible Pool Classes and adapt exact
+  Assertion instances into the candidate material those Pools require. Pool
+  Classes own comparison mechanics and Task assembly; named Pool instances
+  own their enrolled population and evidence history. Pools do not discover
+  participants: Assertion instances enroll explicitly and may join several
+  Pools, while several Pool instances may use one Pool Class. A Task CLI call
+  creates the Task and one compact frozen unresolved Run, then prints the
+  blinded prompt for an arbitrary Agent. The Run retains exact Task identity,
+  opaque candidate order, known or unknown Runner provenance, renderer/code
+  provenance, submission location, and prompt hash without duplicating the
+  prompt. A Result is submitted against exactly one previously registered Run;
+  submission never mutates that Run. Score methods may select Results from
+  several Pools and are code, not retained definitions.
   Explicit scoring executions append typed Events to one Trace per Assertion;
   each Event records Pool selection, the Results Git state, code provenance,
   value, and supporting statistics. Read-only renderers expose current values

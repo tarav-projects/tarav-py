@@ -24,7 +24,9 @@ def render_current_scores(scores: Sequence[Mapping[str, object]]) -> str:
         if isinstance(subject, dict):
             subject = subject.get("subject_ref", {})
         edition = subject.get("edition_id", "?") if isinstance(subject, dict) else "?"
-        lines.append(f"{rendered}\t{edition}\t{score.get('comparisons', 0)} comparisons")
+        lines.append(
+            f"{rendered}\t{edition}\t{score.get('comparisons', 0)} comparisons"
+        )
     return "\n".join(lines)
 
 

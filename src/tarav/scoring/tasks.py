@@ -13,7 +13,7 @@ from .model import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_TYPE,
-    GROUNDING_RANKING_METHOD,
+    GROUNDING_POOL_CLASS,
     GROUNDING_TASK_TYPE,
     POOL_ENROLLMENT_TYPE,
     POOL_TYPE,
@@ -26,11 +26,11 @@ from .model import (
 )
 
 
-class ScoringMethod(Protocol):
-    method_type: str
+class RankingPoolClass(Protocol):
+    pool_class: str
     task_type: str
 
-    def create(
+    def create_task(
         self,
         *,
         pool: Mapping[str, object],
@@ -42,19 +42,19 @@ class ScoringMethod(Protocol):
 
 class AssertionRankingType(Protocol):
     assertion_type: str
-    scoring_methods: tuple[ScoringMethod, ...]
+    pool_classes: tuple[str, ...]
 
-    def method(self, method_type: str) -> ScoringMethod: ...
+    def supports_pool(self, pool_class: str) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
-class IndexLineGroundingRankingMethod:
-    """Produce one fair comparison among enrolled Line-grounding Assertions."""
+class IndexLineGroundingRankingPool:
+    """Comparative mechanics for one population of grounding Assertions."""
 
-    method_type: ClassVar[str] = GROUNDING_RANKING_METHOD
+    pool_class: ClassVar[str] = GROUNDING_POOL_CLASS
     task_type: ClassVar[str] = GROUNDING_TASK_TYPE
 
-    def create(
+    def create_task(
         self,
         *,
         pool: Mapping[str, object],
@@ -65,8 +65,8 @@ class IndexLineGroundingRankingMethod:
         validate_record(pool)
         if pool["type"] != POOL_TYPE:
             raise ScoringError("grounding Task requires an Assertion.Pool")
-        if pool.get("scoring_method") != self.method_type:
-            raise ScoringError(f"Assertion Pool does not organize {self.method_type}")
+        if pool.get("pool_class") != self.pool_class:
+            raise ScoringError(f"Assertion Pool is not governed by {self.pool_class}")
         enrollment_records = [dict(item) for item in enrollments]
         candidate_records = [dict(item) for item in candidates]
         if len(enrollment_records) != len(candidate_records):
@@ -84,10 +84,6 @@ class IndexLineGroundingRankingMethod:
             if _reference_id(enrollment.get("pool_ref")) != pool.get("id"):
                 raise ScoringError("Enrollment belongs to another Assertion Pool")
             assertion_ref = _enrollment_assertion_ref(enrollment)
-            if assertion_ref.get("type") != GROUNDING_ASSERTION_REFERENCE_TYPE:
-                raise ScoringError(
-                    "Index.Line grounding Tasks require grounding Assertion references"
-                )
             expected_enrollments[_assertion_instance_id(assertion_ref)] = enrollment
         for candidate in candidate_records:
             candidate_id = _candidate_id(candidate)
@@ -125,19 +121,13 @@ class IndexLineGroundingAssertionType:
     """Ranking capabilities owned by Index.Line grounding Assertions."""
 
     assertion_type: ClassVar[str] = GROUNDING_ASSERTION_TYPE
-    scoring_methods: ClassVar[tuple[ScoringMethod, ...]] = (
-        IndexLineGroundingRankingMethod(),
-    )
+    pool_classes: ClassVar[tuple[str, ...]] = (GROUNDING_POOL_CLASS,)
 
-    def method(self, method_type: str) -> ScoringMethod:
-        matches = [
-            item for item in self.scoring_methods if item.method_type == method_type
-        ]
-        if len(matches) != 1:
+    def supports_pool(self, pool_class: str) -> None:
+        if pool_class not in self.pool_classes:
             raise ScoringError(
-                f"Assertion Type {self.assertion_type} does not support {method_type}"
+                f"Assertion Type {self.assertion_type} does not support {pool_class}"
             )
-        return matches[0]
 
     def reference(
         self,
@@ -170,9 +160,11 @@ class IndexLineGroundingAssertionType:
         *,
         assertion_ref: Mapping[str, object],
         enrollment: Mapping[str, object],
+        pool_class: str,
         projection: Any,
         evidence: ChatlasEvidence,
     ) -> JsonObject:
+        self.supports_pool(pool_class)
         subject_ref = assertion_ref.get("subject_ref")
         if not isinstance(subject_ref, dict):
             raise ScoringError("grounding Assertion has no subject Reference")
@@ -214,7 +206,7 @@ class IndexLineGroundingAssertionType:
 
 
 class AssertionRankingRegistry:
-    """Resolve ranking behavior from the Assertion Type—not from its Pool."""
+    """Resolve Assertion-owned adaptation into Pool candidate contracts."""
 
     def __init__(self, assertion_types: Sequence[AssertionRankingType] = ()) -> None:
         self._types: dict[str, AssertionRankingType] = {}
@@ -241,18 +233,42 @@ DEFAULT_ASSERTION_RANKING_REGISTRY = AssertionRankingRegistry(
 )
 
 
+class RankingPoolRegistry:
+    """Resolve Pool-owned comparative Task mechanics."""
+
+    def __init__(self, pool_classes: Sequence[RankingPoolClass] = ()) -> None:
+        self._classes: dict[str, RankingPoolClass] = {}
+        for pool_class in pool_classes:
+            self.register(pool_class)
+
+    def register(self, pool_class: RankingPoolClass) -> None:
+        type_id = pool_class.pool_class
+        if type_id in self._classes:
+            raise ScoringError(f"Ranking Pool Class already registered: {type_id}")
+        self._classes[type_id] = pool_class
+
+    def resolve(self, pool_class: str) -> RankingPoolClass:
+        try:
+            return self._classes[pool_class]
+        except KeyError as exc:
+            raise ScoringError(f"unknown Ranking Pool Class: {pool_class}") from exc
+
+
+DEFAULT_RANKING_POOL_REGISTRY = RankingPoolRegistry((IndexLineGroundingRankingPool(),))
+
+
 def create_grounding_task(
     *,
     pool: Mapping[str, object],
     enrollments: Sequence[Mapping[str, object]],
     candidates: Sequence[Mapping[str, object]],
     appendix: Sequence[str] = (),
-    registry: AssertionRankingRegistry = DEFAULT_ASSERTION_RANKING_REGISTRY,
+    pool_registry: RankingPoolRegistry = DEFAULT_RANKING_POOL_REGISTRY,
 ) -> JsonObject:
-    """Create a Task through its Assertion Type's registered producer."""
+    """Create a Task through the Pool Class governing its population."""
 
-    assertion_type = registry.resolve(GROUNDING_ASSERTION_TYPE)
-    return assertion_type.method(GROUNDING_RANKING_METHOD).create(
+    pool_class = pool_registry.resolve(str(pool.get("pool_class", "")))
+    return pool_class.create_task(
         pool=pool,
         enrollments=enrollments,
         candidates=candidates,
@@ -269,16 +285,13 @@ def create_line_grounding_task(
     chatlas_root: Path | None = None,
     appendix: Sequence[str] = (),
     evidence: ChatlasEvidence | None = None,
-    registry: AssertionRankingRegistry = DEFAULT_ASSERTION_RANKING_REGISTRY,
+    assertion_registry: AssertionRankingRegistry = DEFAULT_ASSERTION_RANKING_REGISTRY,
+    pool_registry: RankingPoolRegistry = DEFAULT_RANKING_POOL_REGISTRY,
 ) -> JsonObject:
-    """Resolve exact Line editions through the registered Assertion Type."""
+    """Adapt Assertions into candidates, then let the Pool assemble its Task."""
 
     project = require_agentos_project(project=project_path)
-    assertion_type = registry.resolve(GROUNDING_ASSERTION_TYPE)
-    if not isinstance(assertion_type, IndexLineGroundingAssertionType):
-        raise ScoringError(
-            "registered Index.Line grounding Assertion Type has an invalid class"
-        )
+    pool_class = pool_registry.resolve(str(pool.get("pool_class", "")))
     try:
         model = (
             DiagramConfiguration.load(diagram_config)
@@ -290,21 +303,24 @@ def create_line_grounding_task(
         candidates = []
         for enrollment in enrollments:
             assertion_ref = _enrollment_assertion_ref(enrollment)
-            assertion_class = registry.resolve(_assertion_type_id(assertion_ref))
-            assertion_class.method(str(pool.get("scoring_method", "")))
+            assertion_class = assertion_registry.resolve(
+                _assertion_type_id(assertion_ref)
+            )
+            assertion_class.supports_pool(pool_class.pool_class)
             if not isinstance(assertion_class, IndexLineGroundingAssertionType):
                 raise ScoringError("grounding Pool contains an incompatible Assertion")
             candidates.append(
                 assertion_class.candidate(
                     assertion_ref=assertion_ref,
                     enrollment=enrollment,
+                    pool_class=pool_class.pool_class,
                     projection=projection,
                     evidence=resolved_evidence,
                 )
             )
     except (DiagramError, ValueError) as exc:
         raise ScoringError(str(exc)) from exc
-    return assertion_type.method(GROUNDING_RANKING_METHOD).create(
+    return pool_class.create_task(
         pool=pool,
         enrollments=enrollments,
         candidates=candidates,
@@ -339,7 +355,7 @@ def create_line_grounding_enrollments(
             line_ships=line_ships,
             diagram_config=diagram_config,
             registry=registry,
-            scoring_method=str(pool.get("scoring_method", "")),
+            pool_class=str(pool.get("pool_class", "")),
         )
     )
 
@@ -350,7 +366,7 @@ def line_grounding_assertion_references(
     line_ships: Sequence[str],
     diagram_config: Path | None = None,
     registry: AssertionRankingRegistry = DEFAULT_ASSERTION_RANKING_REGISTRY,
-    scoring_method: str = GROUNDING_RANKING_METHOD,
+    pool_class: str = GROUNDING_POOL_CLASS,
 ) -> tuple[JsonObject, ...]:
     """Resolve current Line-grounding Assertion instances through their class."""
 
@@ -367,7 +383,7 @@ def line_grounding_assertion_references(
     assertion_class = registry.resolve(GROUNDING_ASSERTION_TYPE)
     if not isinstance(assertion_class, IndexLineGroundingAssertionType):
         raise ScoringError("registered grounding Assertion Type has an invalid class")
-    assertion_class.method(scoring_method)
+    assertion_class.supports_pool(pool_class)
     return tuple(
         assertion_class.reference(
             line_ship=line_ship,
@@ -441,9 +457,11 @@ def _render_candidate(
 
 __all__ = [
     "DEFAULT_ASSERTION_RANKING_REGISTRY",
+    "DEFAULT_RANKING_POOL_REGISTRY",
     "AssertionRankingRegistry",
     "IndexLineGroundingAssertionType",
-    "IndexLineGroundingRankingMethod",
+    "IndexLineGroundingRankingPool",
+    "RankingPoolRegistry",
     "create_grounding_task",
     "create_line_grounding_enrollments",
     "create_line_grounding_task",

@@ -1,6 +1,6 @@
 # 784 — Frozen unresolved Ranking Runs
 
-Status: In Progress
+Status: Implemented and verified
 
 ## Impl.Abstract
 
@@ -43,4 +43,24 @@ the experiment and validate its later Result.
   the User's request.
 - Chatlas session: `01a05752-fa8d-7c62-abb2-5ff20c8260da`
   (`91c6e789df50d874a454107ba81ff86be1e99022173b3469fbcdeffaedbf86c1`).
-
+- Checkpoint commit: `28966ac`.
+- Assertion Classes now declare compatible Pool Classes and adapt exact
+  Assertion Instances into candidate material. Pool Classes own comparative
+  mechanics and Task assembly; named Pool Instances own enrollment and
+  evaluation history.
+- `tarav scoring task` now creates its Task and a compact frozen
+  `Ranking.Run`, prints the exact blinded prompt, and records an
+  `Unknown.Ranking.Runner` for manual execution.
+- A Run retains its exact Task reference, opaque labels, Runner provenance,
+  renderer/code provenance, submission repository, prompt hash, and the
+  invariant `Awaiting.Result` state. The rendered prompt is reconstructed and
+  hash-checked rather than duplicated.
+- Result submission is the separate state transition: one registered Run may
+  receive at most one Result, and neither manual nor automatic execution
+  rewrites the frozen Run.
+- Verification: focused scoring tests `10 passed`; architecture/core CLI tests
+  `21 passed`; complete suite `1289 passed`; Ruff and diff checks clean;
+  installed `tarav scoring` and interactive-shell `fcodex_mm -h` work.
+- Capture closed and the Draft applied once at Diagram commit
+  `5c24069b5ce6e5354820d7803aa7724a811e5fcd`. Its expected unasserted,
+  Archive-grounding, and Model-staleness POIs remain nonblocking.
