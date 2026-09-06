@@ -552,7 +552,13 @@ def test_render_accepts_a_repeatable_turn_prefix_batch(monkeypatch, capsys) -> N
 def test_render_formats_an_ordered_inlined_capture_batch(monkeypatch, capsys) -> None:
     class Reader:
         def model_header(self):
-            return {"session": {"session_id": "session-one"}}
+            return {
+                "session": {
+                    "session_id": "session-one",
+                    "provider": "codex",
+                    "identity_hash": "0" * 64,
+                }
+            }
 
         def iter_turns(self):
             for digit in ("a", "b"):
@@ -584,16 +590,14 @@ def test_render_formats_an_ordered_inlined_capture_batch(monkeypatch, capsys) ->
                 "a" * 20,
                 "--renderer",
                 INLINED_CAPTURE_MARKDOWN_RENDERER,
-                "--renderer-option",
-                "session-alias=phd",
             ]
         )
         == 0
     )
 
     assert capsys.readouterr().out == (
-        "<!-- tarav.context phd:bbbbbbbbbbbbbbbb -->\n"
-        "<!-- tarav.context phd:aaaaaaaaaaaaaaaaaaaa -->\n"
+        "<!-- tarav.context 00000000:bbbbbbbbbbbbbbbb -->\n"
+        "<!-- tarav.context 00000000:aaaaaaaaaaaaaaaaaaaa -->\n"
     )
 
 

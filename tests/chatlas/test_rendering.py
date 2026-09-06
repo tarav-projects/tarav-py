@@ -102,22 +102,26 @@ def test_render_result_json_retains_renderer_and_structured_findings() -> None:
     assert payload["query_result"]["findings"][0]["messages"][0]["text"] == "message"
 
 
-def test_inlined_capture_markdown_renderer_formats_a_compact_reference() -> None:
-    rendered = renderer(INLINED_CAPTURE_MARKDOWN_RENDERER).render(
-        _result("message"), options={"session-alias": "phd"}
-    )
+def test_inlined_capture_markdown_renderer_derives_the_alias_from_the_session() -> None:
+    rendered = renderer(INLINED_CAPTURE_MARKDOWN_RENDERER).render(_result("message"))
 
     assert rendered.media_type == "text/markdown"
-    assert rendered.content == "<!-- tarav.context phd:aaaaaaaaaaaaaaaa -->"
+    assert rendered.content == "<!-- tarav.context cccccccc:aaaaaaaaaaaaaaaa -->"
 
 
-def test_inlined_capture_markdown_renderer_requires_a_safe_session_alias() -> None:
-    selected = renderer(INLINED_CAPTURE_MARKDOWN_RENDERER)
+def test_inlined_capture_markdown_renderer_accepts_no_options() -> None:
+    with pytest.raises(ChatlasRenderError, match="accepts no Renderer options"):
+        renderer(INLINED_CAPTURE_MARKDOWN_RENDERER).render(
+            _result("message"), options={"session-alias": "phd"}
+        )
 
-    with pytest.raises(ChatlasRenderError, match="session-alias"):
-        selected.render(_result("message"))
-    with pytest.raises(ChatlasRenderError, match="session alias"):
-        selected.render(_result("message"), options={"session-alias": "bad--alias"})
+
+def test_inlined_capture_markdown_renderer_requires_a_session_identity_hash() -> None:
+    result = _result("message")
+    result.session["identity_hash"] = "not-a-hash"
+
+    with pytest.raises(ChatlasRenderError, match="identity hash"):
+        renderer(INLINED_CAPTURE_MARKDOWN_RENDERER).render(result)
 
 
 def test_inlined_capture_markdown_renderer_rejects_agent_turns() -> None:
@@ -125,9 +129,7 @@ def test_inlined_capture_markdown_renderer_rejects_agent_turns() -> None:
     result.findings[0].turn["side"] = "agent"
 
     with pytest.raises(ChatlasRenderError, match="User Turns"):
-        renderer(INLINED_CAPTURE_MARKDOWN_RENDERER).render(
-            result, options={"session-alias": "phd"}
-        )
+        renderer(INLINED_CAPTURE_MARKDOWN_RENDERER).render(result)
 
 
 def test_turn_ledger_renderer_compacts_message_text() -> None:

@@ -1,5 +1,5 @@
 <!-- tarav.sessions
-phd = codex:01a06bed-b554-7770-86e3-cce2e5729994
+4571385e = codex:01a06bed-b554-7770-86e3-cce2e5729994 @4571385eb2c5457a615e836d943acad00147fda45a10dbad26848faf81e2bfe1
 -->
 
 # Inlined.Capture tooling evaluation
@@ -10,15 +10,15 @@ phd = codex:01a06bed-b554-7770-86e3-cce2e5729994
 - **Date:** 2026-09-04
 - **Implementation status:** no changes proposed here are implemented
 - **Source:** practical use during the PhD documentation workflow
-<!-- tarav.context phd:f8afd4b4130b5f6e -->
+<!-- tarav.context 4571385e:f8afd4b4130b5f6e -->
 
 ## Executive conclusion
 
 The current Inlined.Capture design is conceptually sound, but its operational surface is too manual beyond the intended one-document-at-a-time rhythm. The largest friction is not writing the Markdown comment. It is discovering the exact User Turn that the Agent has already identified semantically, then safely attaching and validating the rendered reference on the product surface.
-<!-- tarav.context phd:893153adb60d4832 -->
+<!-- tarav.context 4571385e:893153adb60d4832 -->
 
 The semantic decisions should remain Agent work. The surrounding discovery, insertion, and validation ceremony is mechanical and should become cheaper. This distinction preserves the workflow's minimality while strengthening the connection between product surfaces and their conversational neighborhoods.
-<!-- tarav.context phd:a25968e7175d135f -->
+<!-- tarav.context 4571385e:a25968e7175d135f -->
 
 ## Observed workflow
 
@@ -140,4 +140,4 @@ Those may become useful if later workflows require them. They are not prerequisi
 ## Proposed next design question
 
 Define the smallest User-Turn ledger and inline-reference audit that would eliminate the custom `jq` and `rg` orchestration observed in the PhD capture pass, while leaving Turn selection and semantic block attachment explicitly under Agent control.
-<!-- tarav.context phd:893153adb60d4832 -->
+<!-- tarav.context 4571385e:893153adb60d4832 -->

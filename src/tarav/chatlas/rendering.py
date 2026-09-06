@@ -18,7 +18,12 @@ TURN_LEDGER_RENDERER = "Chatlas.Turn.Ledger.Renderer"
 RenderOptions = Mapping[str, str]
 RenderHandler = Callable[[ChatlasQueryResult, RenderOptions], str]
 _FULL_HASH = re.compile(r"[0-9a-f]{64}")
-_SESSION_ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+
+# A surface-local session alias is derived from the session's Chatlas identity
+# hash so the same session resolves to the same alias in every surface without
+# coordination, and so a reader can check the alias against the declaration it
+# appears beside.
+SESSION_ALIAS_LENGTH = 8
 
 
 class ChatlasRenderError(ValueError):
@@ -115,23 +120,27 @@ def _default_renderer(result: ChatlasQueryResult, options: RenderOptions) -> str
     return "\n\n".join(rendered)
 
 
+def _session_identity_hash(result: ChatlasQueryResult) -> str:
+    identity = result.session.get("identity_hash")
+    if not isinstance(identity, str) or _FULL_HASH.fullmatch(identity) is None:
+        raise ChatlasRenderError("Chat.Session has no renderable identity hash")
+    return identity
+
+
+def _session_alias(result: ChatlasQueryResult) -> str:
+    return _session_identity_hash(result)[:SESSION_ALIAS_LENGTH]
+
+
 def _inlined_capture_markdown_renderer(
     result: ChatlasQueryResult,
     options: RenderOptions,
 ) -> str:
-    unknown = set(options) - {"session-alias"}
-    if unknown:
-        names = ", ".join(sorted(unknown))
+    if options:
+        names = ", ".join(sorted(options))
         raise ChatlasRenderError(
-            f"{INLINED_CAPTURE_MARKDOWN_RENDERER} does not accept options: {names}"
+            f"{INLINED_CAPTURE_MARKDOWN_RENDERER} accepts no Renderer options: {names}"
         )
-    alias = options.get("session-alias")
-    if alias is None:
-        raise ChatlasRenderError(
-            f"{INLINED_CAPTURE_MARKDOWN_RENDERER} requires session-alias"
-        )
-    if _SESSION_ALIAS.fullmatch(alias) is None or "--" in alias:
-        raise ChatlasRenderError("Markdown session alias is not safe to embed")
+    alias = _session_alias(result)
 
     references: list[str] = []
     for finding in result.findings:
