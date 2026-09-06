@@ -23,9 +23,10 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
 - `tarav.runtime` is the composition root for registries and cross-domain
   adapters.
 - Domain foundations do not import the runtime or CLI to obtain dependencies.
-- `tarav.harness` contains schema-neutral semantic roles and the explicit,
-  trusted top-level Record Type registry used by applications. Applications
-  import Harness; Harness never imports an application.
+- `tarav.harness` contains schema-neutral semantic roles, Ship identity
+  primitives, and the explicit, trusted top-level Record Type registry used by
+  applications. Applications import Harness; Harness never imports an
+  application.
 - `tarav._core` contains dependency-free infrastructure only after multiple
   domains have demonstrated identical semantics.
 - Cross-domain imports must remain acyclic outside the composition root.
@@ -43,10 +44,20 @@ contract and Git boundaries.
 
 ## Ownership map
 
-- `tarav.harness` owns the small application-facing semantic base classes and
-  exact `Record.type` to trusted Python class dispatch. It does not impose an
-  application Record schema, storage model, or shared behavior merely because
-  classes subtype its roles.
+- `tarav.harness` owns the small application-facing semantic base classes,
+  the `Ship` identity primitives, and `Record.type` to trusted Python class
+  dispatch. A `Ship` wraps one UUID and nothing else, so identity comparison
+  ignores the specialized class. Every `TaravRecordType` subclass, including
+  intermediate bases, declares a class-local `type_ship` beside its
+  human-facing `type_name`; the registry indexes both and treats the Type Ship
+  as authoritative, so a known Type keeps resolving after a rename. A retained
+  `type` may be a legacy label or a structural `{id, name}` reference, and the
+  registry reports absent, unknown, or conflicting components rather than
+  guessing. Records expose their Ships through `ship_occurrences()`, which a
+  class opts into by returning concrete `Ship` instances; Harness never infers
+  a Ship by scanning UUID-shaped data. It does not impose an application Record
+  schema, storage model, or shared behavior merely because classes subtype its
+  roles.
 - `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,
   and provider adapters under `tarav.agent.providers`.
 - `tarav.chatlas` owns the chat data train from provider-native capture through
@@ -156,8 +167,11 @@ Annotated code is discovered through the project's `.skw/skw.json`.
 - Diagram consumes Chatlas's public Normal Model for producer and support
   evidence. Chatlas does not import Diagram.
 - Diagram specializes Harness roles and uses its trusted Type registry for
-  Ship and Annotation Record dispatch. Diagram retains its object schemas,
-  projections, Ships, Assertions, and storage semantics.
+  Ship and Annotation Record dispatch. It is the first consumer of Type Ships:
+  its record classes declare them, its read paths accept both retained `type`
+  forms, and its typed Records expose their structural Ship occurrences.
+  Retained label-only Records are not rewritten. Diagram retains its object
+  schemas, projections, Ships, Assertions, and storage semantics.
 - Scoring consumes Diagram's public projection and Chatlas-backed support when
   an Assertion-owned task builder constructs an `Index.Line` grounding case.
   Diagram does not import Scoring; score discovery can be rebuilt from the

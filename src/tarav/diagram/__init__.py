@@ -22,10 +22,14 @@ from tarav.chatlas.normal_model import (
     resolve_event_ref,
 )
 from tarav.harness import (
+    RecordTypeReference,
+    Ship,
+    ShipOccurrence,
     TaravAssertion,
     TaravPOIInstance,
     TaravRecordType,
     TypeRegistry,
+    TypeShip,
     UnknownRecordType,
 )
 
@@ -450,7 +454,7 @@ class AnnotationDraft:
     def __post_init__(self) -> None:
         _uuid(self.id, field="Annotation.id")
         copied = _object(self.record, field="Annotation")
-        _string(copied.get("type"), field="Annotation.type")
+        _record_type_reference(copied.get("type"), field="Annotation.type")
         object.__setattr__(self, "record", copied)
 
     def to_dict(self) -> JsonObject:
@@ -473,7 +477,7 @@ class ShipDraft:
     def __post_init__(self) -> None:
         _uuid(self.id, field="Ship.id")
         copied = _object(self.record, field="Ship")
-        _string(copied.get("type"), field="Ship.type")
+        _record_type_reference(copied.get("type"), field="Ship.type")
         _array(copied.get("editions", []), field="Ship.editions")
         object.__setattr__(self, "record", copied)
 
@@ -498,12 +502,16 @@ class DiagramShip:
     def __post_init__(self) -> None:
         _uuid(self.id, field="Ship.id")
         copied = _object(self.record, field="Ship.Record")
-        _string(copied.get("type"), field="Ship.type")
+        _record_type_reference(copied.get("type"), field="Ship.type")
         object.__setattr__(self, "record", copied)
 
     @property
+    def type_reference(self) -> RecordTypeReference:
+        return _record_type_reference(self.record.get("type"), field="Ship.type")
+
+    @property
     def type(self) -> str:
-        return _string(self.record.get("type"), field="Ship.type")
+        return _record_type_name(self.record.get("type"), field="Ship.type")
 
     def to_record(self) -> JsonObject:
         return dict(self.record)
@@ -514,6 +522,8 @@ class DiagramShip:
 
 @dataclass(frozen=True, slots=True)
 class TypedShip(TaravRecordType):
+    type_ship: ClassVar[TypeShip] = TypeShip("f495fc94-a511-4a9f-b058-7e2957890529")
+
     ship: DiagramShip
 
     @property
@@ -535,17 +545,30 @@ class TypedShip(TaravRecordType):
             for item in _array(self.record.get("editions", []), field="Ship.editions")
         )
 
+    def _require_record_type(self) -> None:
+        reference = self.ship.type_reference
+        if not type(self).matches(reference):
+            raise DiagramModelError(
+                f"not a {type(self).type_name}: {reference.describe()}"
+            )
+
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(TypedShip, self).ship_occurrences(),
+            ShipOccurrence("id", Ship(self.id)),
+        )
+
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
         return ()
 
 
 @dataclass(frozen=True, slots=True)
 class ModelShipRecord(TypedShip):
+    type_ship: ClassVar[TypeShip] = TypeShip("990807e6-2348-466e-9c12-dba6673755c1")
     type_name: ClassVar[str] = MODEL_SHIP_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != MODEL_SHIP_TYPE:
-            raise DiagramModelError(f"not a Model Ship: {self.type}")
+        self._require_record_type()
         _validate_editions(self.editions, field="Model.Ship.editions")
 
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
@@ -565,17 +588,23 @@ class ModelShipRecord(TypedShip):
 
 @dataclass(frozen=True, slots=True)
 class BlockShipRecord(TypedShip):
+    type_ship: ClassVar[TypeShip] = TypeShip("d091667e-4426-45a2-a22b-ee900d9ca9de")
     type_name: ClassVar[str] = BLOCK_SHIP_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != BLOCK_SHIP_TYPE:
-            raise DiagramModelError(f"not a Block Ship: {self.type}")
+        self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Block.Ship.model_ship")
         _validate_editions(self.editions, field="Block.Ship.editions")
 
     @property
     def model_ship(self) -> str:
         return _uuid(self.record.get("model_ship"), field="Block.Ship.model_ship")
+
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(BlockShipRecord, self).ship_occurrences(),
+            ShipOccurrence("model_ship", Ship(self.model_ship)),
+        )
 
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
         return tuple(
@@ -597,11 +626,11 @@ class BlockShipRecord(TypedShip):
 
 @dataclass(frozen=True, slots=True)
 class LineShipRecord(TypedShip):
+    type_ship: ClassVar[TypeShip] = TypeShip("18dd06c0-bdcb-48ac-b5a6-3388a601084c")
     type_name: ClassVar[str] = LINE_SHIP_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != LINE_SHIP_TYPE:
-            raise DiagramModelError(f"not a Line Ship: {self.type}")
+        self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Line.Ship.model_ship")
         _uuid(self.record.get("block_ship"), field="Line.Ship.block_ship")
         _validate_editions(self.editions, field="Line.Ship.editions")
@@ -613,6 +642,13 @@ class LineShipRecord(TypedShip):
     @property
     def block_ship(self) -> str:
         return _uuid(self.record.get("block_ship"), field="Line.Ship.block_ship")
+
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(LineShipRecord, self).ship_occurrences(),
+            ShipOccurrence("model_ship", Ship(self.model_ship)),
+            ShipOccurrence("block_ship", Ship(self.block_ship)),
+        )
 
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
         return tuple(
@@ -635,17 +671,23 @@ class LineShipRecord(TypedShip):
 
 @dataclass(frozen=True, slots=True)
 class CollectionShipRecord(TypedShip):
+    type_ship: ClassVar[TypeShip] = TypeShip("5af5946f-2fa7-4d27-af37-c5bbbf271ff0")
     type_name: ClassVar[str] = COLLECTION_SHIP_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != COLLECTION_SHIP_TYPE:
-            raise DiagramModelError(f"not a Collection Ship: {self.type}")
+        self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Collection.Ship.model_ship")
         _validate_editions(self.editions, field="Collection.Ship.editions")
 
     @property
     def model_ship(self) -> str:
         return _uuid(self.record.get("model_ship"), field="Collection.Ship.model_ship")
+
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(CollectionShipRecord, self).ship_occurrences(),
+            ShipOccurrence("model_ship", Ship(self.model_ship)),
+        )
 
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
         return tuple(
@@ -674,12 +716,16 @@ class DiagramAnnotation:
     def __post_init__(self) -> None:
         _uuid(self.id, field="Annotation.id")
         copied = _object(self.record, field="Annotation.Record")
-        _string(copied.get("type"), field="Annotation.type")
+        _record_type_reference(copied.get("type"), field="Annotation.type")
         object.__setattr__(self, "record", copied)
 
     @property
+    def type_reference(self) -> RecordTypeReference:
+        return _record_type_reference(self.record.get("type"), field="Annotation.type")
+
+    @property
     def type(self) -> str:
-        return _string(self.record.get("type"), field="Annotation.type")
+        return _record_type_name(self.record.get("type"), field="Annotation.type")
 
     @property
     def standing(self) -> str:
@@ -709,6 +755,8 @@ class DiagramAnnotation:
 
 @dataclass(frozen=True, slots=True)
 class TypedAnnotation(TaravRecordType):
+    type_ship: ClassVar[TypeShip] = TypeShip("e01f77fb-4155-4efd-94f7-a0abcecadc27")
+
     annotation: DiagramAnnotation
 
     @property
@@ -744,14 +792,21 @@ class TypedAnnotation(TaravRecordType):
 
         return None
 
+    def _require_record_type(self) -> None:
+        reference = self.annotation.type_reference
+        if not type(self).matches(reference):
+            raise DiagramModelError(
+                f"not a {type(self).type_name}: {reference.describe()}"
+            )
+
 
 @dataclass(frozen=True, slots=True)
 class ModelEditionRecord(TypedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("213b526c-cdd1-4d9b-a39d-650eee709354")
     type_name: ClassVar[str] = MODEL_EDITION_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != MODEL_EDITION_TYPE:
-            raise DiagramModelError(f"not a Model Edition: {self.type}")
+        self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Model.Edition.model_ship")
 
     @property
@@ -764,9 +819,17 @@ class ModelEditionRecord(TypedAnnotation):
     def type_assertions(self) -> tuple[JsonObject, ...]:
         return ({"type": "Model.Derived.Support.Assertion"},)
 
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(ModelEditionRecord, self).ship_occurrences(),
+            ShipOccurrence("model_ship", Ship(self.model_ship)),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class UserTouchedAnnotation(TypedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("35958f0b-e78f-4b94-b5d2-d1e74c56b355")
+
     @property
     def producer(self) -> ChatlasTurnReference:
         return ChatlasTurnReference.from_dict(self.record.get("producer"))
@@ -781,13 +844,13 @@ class UserTouchedAnnotation(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineAnnotationRecord(TypedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("212bab37-f204-4ad7-b174-c339812c7876")
     type_name: ClassVar[str] = LINE_ANNOTATION_TYPE
 
     """One free-standing Index.Line with explicit Diagram arguments."""
 
     def __post_init__(self) -> None:
-        if self.type != LINE_ANNOTATION_TYPE:
-            raise DiagramModelError(f"not a Line.Annotation: {self.type}")
+        self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Line.Annotation.model_ship")
         _validate_editions(self.editions, field="Line.Annotation.editions")
         if not self.editions:
@@ -891,6 +954,20 @@ class LineAnnotationRecord(TypedAnnotation):
             {assertion["type"]: assertion for assertion in assertions}.values()
         )
 
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(LineAnnotationRecord, self).ship_occurrences(),
+            ShipOccurrence("id", Ship(self.id)),
+            ShipOccurrence("model_ship", Ship(self.model_ship)),
+            *(
+                ShipOccurrence(
+                    f"editions[-1].arguments[{index}].id", Ship(reference.id)
+                )
+                for index, reference in enumerate(self.arguments)
+                if reference.kind == "ship"
+            ),
+        )
+
     def type_findings(
         self,
         *,
@@ -936,11 +1013,11 @@ class LineAnnotationRecord(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineEditionRecord(UserTouchedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("075a399c-4285-4cc2-b6f2-d0c315d4a137")
     type_name: ClassVar[str] = LINE_EDITION_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != LINE_EDITION_TYPE:
-            raise DiagramModelError(f"not a Line Edition: {self.type}")
+        self._require_record_type()
         DiagramLocation.from_dict(self.record.get("location"))
         _string(
             _object(self.record.get("data", {}), field="data").get("text"),
@@ -978,6 +1055,12 @@ class LineEditionRecord(UserTouchedAnnotation):
     def authorization_gates(self) -> tuple[str, ...]:
         return _authorization_gate_ids(self.record)
 
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(LineEditionRecord, self).ship_occurrences(),
+            *_location_occurrences(self.location),
+        )
+
     def model_location(self) -> tuple[str, str]:
         return self.location.model_ship, "location.model_ship"
 
@@ -1010,11 +1093,11 @@ class LineEditionRecord(UserTouchedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class BlockEditionRecord(TypedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("81ca3e71-1432-48af-afa5-2446042a40f9")
     type_name: ClassVar[str] = BLOCK_EDITION_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != BLOCK_EDITION_TYPE:
-            raise DiagramModelError(f"not a Block Edition: {self.type}")
+        self._require_record_type()
         DiagramBlockLocation.from_dict(self.record.get("location"))
         _string(
             _object(self.record.get("data", {}), field="data").get("label"),
@@ -1047,6 +1130,12 @@ class BlockEditionRecord(TypedAnnotation):
     def authorization_gates(self) -> tuple[str, ...]:
         return _authorization_gate_ids(self.record)
 
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(BlockEditionRecord, self).ship_occurrences(),
+            *_location_occurrences(self.location),
+        )
+
     def model_location(self) -> tuple[str, str]:
         return self.location.model_ship, "location.model_ship"
 
@@ -1068,11 +1157,11 @@ class BlockEditionRecord(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class CollectionEditionRecord(TypedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("fa0413e9-88e6-4b8b-8606-5d3ef397ea61")
     type_name: ClassVar[str] = COLLECTION_EDITION_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != COLLECTION_EDITION_TYPE:
-            raise DiagramModelError(f"not a Collection Edition: {self.type}")
+        self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Collection.Edition.model_ship")
         _uuid(
             self.record.get("collection_ship"),
@@ -1125,6 +1214,13 @@ class CollectionEditionRecord(TypedAnnotation):
     def authorization_gates(self) -> tuple[str, ...]:
         return _authorization_gate_ids(self.record)
 
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(CollectionEditionRecord, self).ship_occurrences(),
+            ShipOccurrence("model_ship", Ship(self.model_ship)),
+            ShipOccurrence("collection_ship", Ship(self.collection_ship)),
+        )
+
     def model_location(self) -> tuple[str, str]:
         return self.model_ship, "model_ship"
 
@@ -1141,11 +1237,11 @@ class CollectionEditionRecord(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class CaptureAuthorizationGateRecord(TypedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("f3701ea7-cb6c-494f-b3e5-1d38370abde0")
     type_name: ClassVar[str] = CAPTURE_AUTHORIZATION_GATE_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != CAPTURE_AUTHORIZATION_GATE_TYPE:
-            raise DiagramModelError(f"not a Capture Authorization Gate: {self.type}")
+        self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Capture.Authorization.model_ship")
         _string(self.record.get("token"), field="Capture.Authorization.token")
         _string(self.record.get("workflow"), field="Capture.Authorization.workflow")
@@ -1205,6 +1301,17 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
             )
         )
 
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(CaptureAuthorizationGateRecord, self).ship_occurrences(),
+            ShipOccurrence("model_ship", Ship(self.model_ship)),
+            *(
+                ShipOccurrence(f"target_scope[{index}].id", Ship(reference.id))
+                for index, reference in enumerate(self.target_scope)
+                if reference.kind == "ship"
+            ),
+        )
+
     def model_location(self) -> tuple[str, str]:
         return self.model_ship, "model_ship"
 
@@ -1221,13 +1328,13 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class BlockTypeAnnotation(TypedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("cbd91ead-be95-4679-b94a-ac16d351dcc9")
     type_name: ClassVar[str] = BLOCK_TYPE_ANNOTATION_TYPE
 
     """Assigns an Object.Type to an existing Block without adding content."""
 
     def __post_init__(self) -> None:
-        if self.type != BLOCK_TYPE_ANNOTATION_TYPE:
-            raise DiagramModelError(f"not a Block Type Annotation: {self.type}")
+        self._require_record_type()
         DiagramBlockLocation.from_dict(self.record.get("location"))
         _string(self.record.get("block_type"), field="block_type")
 
@@ -1238,6 +1345,12 @@ class BlockTypeAnnotation(TypedAnnotation):
     @property
     def block_type(self) -> str:
         return _string(self.record.get("block_type"), field="block_type")
+
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(BlockTypeAnnotation, self).ship_occurrences(),
+            *_location_occurrences(self.location),
+        )
 
     def model_location(self) -> tuple[str, str]:
         return self.location.model_ship, "location.model_ship"
@@ -1251,16 +1364,22 @@ class BlockTypeAnnotation(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineSupportAnnotation(UserTouchedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("d8215a2f-0cdb-4940-95c9-fd071a9d7735")
     type_name: ClassVar[str] = LINE_SUPPORT_ANNOTATION_TYPE
 
     def __post_init__(self) -> None:
-        if self.type != LINE_SUPPORT_ANNOTATION_TYPE:
-            raise DiagramModelError(f"not a Line Support Annotation: {self.type}")
+        self._require_record_type()
         DiagramLocation.from_dict(self.record.get("location"))
 
     @property
     def location(self) -> DiagramLocation:
         return DiagramLocation.from_dict(self.record.get("location"))
+
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(LineSupportAnnotation, self).ship_occurrences(),
+            *_location_occurrences(self.location),
+        )
 
     def model_location(self) -> tuple[str, str]:
         return self.location.model_ship, "location.model_ship"
@@ -1281,13 +1400,13 @@ class LineSupportAnnotation(UserTouchedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineTypeAnnotation(TypedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("30013ead-fec7-4584-9b03-4de96c941f58")
     type_name: ClassVar[str] = LINE_TYPE_ANNOTATION_TYPE
 
     """Assigns an Object.Type to an existing Line without adding wording."""
 
     def __post_init__(self) -> None:
-        if self.type != LINE_TYPE_ANNOTATION_TYPE:
-            raise DiagramModelError(f"not a Line Type Annotation: {self.type}")
+        self._require_record_type()
         DiagramLocation.from_dict(self.record.get("location"))
         _string(self.record.get("line_type"), field="line_type")
 
@@ -1298,6 +1417,12 @@ class LineTypeAnnotation(TypedAnnotation):
     @property
     def line_type(self) -> str:
         return _string(self.record.get("line_type"), field="line_type")
+
+    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+        return (
+            *super(LineTypeAnnotation, self).ship_occurrences(),
+            *_location_occurrences(self.location),
+        )
 
     def model_location(self) -> tuple[str, str]:
         return self.location.model_ship, "location.model_ship"
@@ -1311,13 +1436,13 @@ class LineTypeAnnotation(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineGateAnnotation(TypedAnnotation):
+    type_ship: ClassVar[TypeShip] = TypeShip("3bf237e7-0251-4106-8166-dfbba1046b7c")
     type_name: ClassVar[str] = LINE_GATE_ANNOTATION_TYPE
 
     """Adds review evidence to one immutable Line edition."""
 
     def __post_init__(self) -> None:
-        if self.type != LINE_GATE_ANNOTATION_TYPE:
-            raise DiagramModelError(f"not a Line Gate Annotation: {self.type}")
+        self._require_record_type()
         _uuid(
             self.record.get("target_edition"),
             field="Line.Gate.Annotation.target_edition",
@@ -4732,7 +4857,7 @@ def _merge_ship_record(
 ) -> tuple[JsonObject, tuple[str, ...], tuple[str, ...]]:
     _uuid(ship_id, field="Ship.id")
     proposed = dict(incoming)
-    _string(proposed.get("type"), field="Ship.type")
+    _record_type_reference(proposed.get("type"), field="Ship.type")
     proposed_editions = tuple(
         _object(item, field="Ship.editions[]")
         for item in _array(proposed.pop("editions", []), field="Ship.editions")
@@ -5063,6 +5188,31 @@ def _array(value: object, *, field: str) -> list[object]:
     if not isinstance(value, list):
         raise DiagramModelError(f"{field} must be an array")
     return value
+
+
+def _location_occurrences(
+    location: DiagramLocation | DiagramBlockLocation,
+) -> tuple[ShipOccurrence, ...]:
+    return tuple(
+        ShipOccurrence(f"location.{key}", Ship(value))
+        for key, value in location.to_dict().items()
+    )
+
+
+def _record_type_reference(value: object, *, field: str) -> RecordTypeReference:
+    reference = RecordTypeReference.parse(value)
+    if reference.ship is None and reference.name is None:
+        raise DiagramModelError(
+            f"{field} must be a Type name or a {{id, name}} reference"
+        )
+    return reference
+
+
+def _record_type_name(value: object, *, field: str) -> str:
+    reference = _record_type_reference(value, field=field)
+    if reference.name is None:
+        raise DiagramModelError(f"{field} must carry a human-facing Type name")
+    return reference.name
 
 
 def _string(value: object, *, field: str) -> str:
