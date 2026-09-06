@@ -22,10 +22,9 @@ from tarav.diagram import (
 from tarav.scoring import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_REFERENCE_TYPE,
-    GROUNDING_POOL_CLASS,
+    GROUNDING_POOL_TYPE,
     GROUNDING_TASK_TYPE,
     POOL_ENROLLMENT_TYPE,
-    POOL_TYPE,
     RESULT_TYPE,
     RUN_TYPE,
     LIVE_SCORE_CLASS,
@@ -35,7 +34,6 @@ from tarav.scoring import (
     ScoringRepository,
     compute_win_rate_scores,
     create_grounding_task,
-    create_pool,
     create_pool_enrollment,
     create_result,
     create_run,
@@ -46,6 +44,7 @@ from tarav.scoring import (
     render_task,
 )
 from tarav.scoring.tasks import (
+    DEFAULT_RANKING_POOL_REGISTRY,
     IndexLineGroundingAssertionType,
     create_line_grounding_enrollments,
     create_line_grounding_task,
@@ -80,9 +79,17 @@ def _code_provenance() -> dict[str, object]:
     return {"version": "test", "git_commit": "0" * 40, "dirty": False}
 
 
+def _pool(name: str) -> dict[str, object]:
+    return IndexLineGroundingAssertionType().create_pool(
+        name=name,
+        pool_type=GROUNDING_POOL_TYPE,
+        pool_registry=DEFAULT_RANKING_POOL_REGISTRY,
+    )
+
+
 def _task():
     first, second = str(uuid4()), str(uuid4())
-    pool = create_pool("line-grounding")
+    pool = _pool("line-grounding")
     enrollments = (
         create_pool_enrollment(pool=pool, assertion_ref=_assertion_ref(first)),
         create_pool_enrollment(pool=pool, assertion_ref=_assertion_ref(second)),
@@ -102,7 +109,7 @@ def test_repository_retains_typed_records_in_git_and_resolves_prefixes(
     tmp_path: Path,
 ) -> None:
     repository = ScoringRepository.initialize(tmp_path / "scoring")
-    pool = repository.create(create_pool("grounding"))
+    pool = repository.create(_pool("grounding"))
 
     assert repository.resolve(pool["id"][:12]) == pool
     assert repository.path_for(pool).relative_to(repository.root) == Path(
@@ -136,28 +143,21 @@ def test_repository_retains_typed_records_in_git_and_resolves_prefixes(
 
 
 def test_pool_is_an_explicit_population_and_classes_split_ownership() -> None:
-    pool = create_pool("line-grounding")
+    pool = _pool("line-grounding")
     first, second = str(uuid4()), str(uuid4())
     enrollments = (
         create_pool_enrollment(pool=pool, assertion_ref=_assertion_ref(first)),
         create_pool_enrollment(pool=pool, assertion_ref=_assertion_ref(second)),
     )
 
-    assert pool["pool_class"] == GROUNDING_POOL_CLASS
+    assert pool["type"] == GROUNDING_POOL_TYPE
+    assert "pool_class" not in pool
     assert "selector" not in pool
     assert all(item["type"] == POOL_ENROLLMENT_TYPE for item in enrollments)
-    assert GROUNDING_POOL_CLASS in IndexLineGroundingAssertionType.pool_classes
+    assert GROUNDING_POOL_TYPE in IndexLineGroundingAssertionType.pool_types
 
-    incompatible = create_pool("other", "Other.Ranking.Pool")
-    with pytest.raises(ScoringError, match="unknown Ranking Pool Class"):
-        create_grounding_task(
-            pool=incompatible,
-            enrollments=enrollments,
-            candidates=(
-                _candidate(enrollments[0], first, "First claim."),
-                _candidate(enrollments[1], second, "Second claim."),
-            ),
-        )
+    with pytest.raises(ScoringError, match="does not support Other.Ranking.Pool"):
+        IndexLineGroundingAssertionType().supports_pool("Other.Ranking.Pool")
 
 
 def test_assertions_enroll_in_many_named_pools_and_scores_cross_pools(
@@ -166,7 +166,7 @@ def test_assertions_enroll_in_many_named_pools_and_scores_cross_pools(
     repository = ScoringRepository.initialize(tmp_path / "scoring")
     first, second = str(uuid4()), str(uuid4())
     pools = tuple(
-        repository.create(create_pool(name))
+        repository.create(_pool(name))
         for name in ("diagram.line.grounding.global", "tarav.line.grounding")
     )
     results = []
@@ -235,7 +235,7 @@ def test_assertions_enroll_in_many_named_pools_and_scores_cross_pools(
     first_trace = repository.trace_reference(first_ref)
     traced_types = {record["type"] for record in first_trace["records"]}
     assert traced_types == {
-        POOL_TYPE,
+        GROUNDING_POOL_TYPE,
         POOL_ENROLLMENT_TYPE,
         GROUNDING_TASK_TYPE,
         RUN_TYPE,
@@ -420,7 +420,7 @@ def test_cli_submit_score_and_debug_surfaces(tmp_path: Path, capsys) -> None:
         RUN_TYPE,
         GROUNDING_TASK_TYPE,
         POOL_ENROLLMENT_TYPE,
-        POOL_TYPE,
+        GROUNDING_POOL_TYPE,
         SCORING_TRACE_TYPE,
         SCORING_EVENT_TYPE,
     }
@@ -649,7 +649,7 @@ def test_grounding_task_resolves_diagram_line_editions_and_support(
             }
         ],
     }
-    pool = create_pool("grounding")
+    pool = _pool("grounding")
     enrollments = create_line_grounding_enrollments(
         pool=pool,
         project_path=project_root,
@@ -701,6 +701,13 @@ def test_grounding_task_resolves_diagram_line_editions_and_support(
         == 0
     )
     capsys.readouterr()
+    retained_pool = (
+        ScoringRepository(scoring_root)
+        .open()
+        .resolve_pool("diagram.line.grounding.test")
+    )
+    assert retained_pool["type"] == GROUNDING_POOL_TYPE
+    assert "pool_class" not in retained_pool
     assert (
         main(
             [

@@ -60,10 +60,11 @@ contract and Git boundaries.
   compact per-Assertion Scoring Traces in the independent Git-backed
   `~/Documents/tarav/scoring/` Record repository. Each Pool directory is the
   default comparability boundary and owns its Enrollments, Tasks, Runs, and
-  Results. Assertion Classes declare compatible Pool Classes and adapt exact
-  Assertion instances into the candidate material those Pools require. Pool
-  Classes own comparison mechanics and Task assembly; named Pool instances
-  own their enrolled population and evidence history. Pools do not discover
+  Results. Assertion Classes declare compatible concrete Pool Types and adapt
+  exact Assertion instances into the candidate material those Pools require.
+  Each Pool Record declares that concrete Type directly; its registered class
+  owns instance creation, comparison mechanics, validation, and Task assembly.
+  Named Pool instances own their enrolled population and evidence history. Pools do not discover
   participants: Assertion instances enroll explicitly and may join several
   Pools, while several Pool instances may use one Pool Class. A Task CLI call
   creates the Task and one compact frozen unresolved Run, then prints the

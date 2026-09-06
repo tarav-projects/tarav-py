@@ -8,10 +8,10 @@ from pathlib import Path
 from tarav._core.errors import CliError
 
 from .model import (
-    GROUNDING_POOL_CLASS,
+    GROUNDING_ASSERTION_TYPE,
+    GROUNDING_POOL_TYPE,
     GROUNDING_TASK_TYPE,
     POOL_ENROLLMENT_TYPE,
-    POOL_TYPE,
     RESULT_TYPE,
     RUN_TYPE,
     SCORING_EVENT_TYPE,
@@ -19,7 +19,6 @@ from .model import (
     WIN_RATE_SCORE,
     ScoringError,
     compute_win_rate_scores,
-    create_pool,
     create_result,
     create_scoring_event,
     create_scoring_trace,
@@ -38,6 +37,8 @@ from .rendering import (
 from .repository import ScoringRepository, default_scoring_root
 from .runner import code_provenance, execute_run, prepare_agent_run, prepare_unknown_run
 from .tasks import (
+    DEFAULT_ASSERTION_RANKING_REGISTRY,
+    DEFAULT_RANKING_POOL_REGISTRY,
     create_line_grounding_enrollments,
     create_line_grounding_task,
     line_grounding_assertion_references,
@@ -45,7 +46,7 @@ from .tasks import (
 
 
 LIST_TYPES = {
-    "pools": POOL_TYPE,
+    "pools": None,
     "enrollments": POOL_ENROLLMENT_TYPE,
     "tasks": GROUNDING_TASK_TYPE,
     "runs": RUN_TYPE,
@@ -94,9 +95,18 @@ def _cmd_init(args: argparse.Namespace) -> int:
 def _cmd_pool_create(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
-        if any(item.get("name") == args.name for item in repository.records(POOL_TYPE)):
+        if any(item.get("name") == args.name for item in repository.pools()):
             raise ScoringError(f"Assertion Pool name already exists: {args.name}")
-        record = repository.create(create_pool(args.name, args.pool_class))
+        assertion_class = DEFAULT_ASSERTION_RANKING_REGISTRY.resolve(
+            args.assertion_type
+        )
+        record = repository.create(
+            assertion_class.create_pool(
+                name=args.name,
+                pool_type=args.pool_type,
+                pool_registry=DEFAULT_RANKING_POOL_REGISTRY,
+            )
+        )
     except ScoringError as exc:
         raise CliError(str(exc)) from exc
     return _emit(
@@ -105,7 +115,7 @@ def _cmd_pool_create(args: argparse.Namespace) -> int:
         [
             f"pool: {record['id']}",
             f"name: {record['name']}",
-            f"class: {record['pool_class']}",
+            f"type: {record['type']}",
         ],
     )
 
@@ -113,7 +123,7 @@ def _cmd_pool_create(args: argparse.Namespace) -> int:
 def _cmd_pool_enroll(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
-        pool = repository.resolve(args.pool, record_type=POOL_TYPE)
+        pool = repository.resolve_pool(args.pool)
         candidates = create_line_grounding_enrollments(
             pool=pool,
             project_path=Path(args.project),
@@ -148,7 +158,7 @@ def _cmd_pool_enroll(args: argparse.Namespace) -> int:
 def _cmd_pool_show(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
-        pool = repository.resolve(args.pool, record_type=POOL_TYPE)
+        pool = repository.resolve_pool(args.pool)
         enrollments = repository.enrollments_for_pool(pool)
     except ScoringError as exc:
         raise CliError(str(exc)) from exc
@@ -158,7 +168,7 @@ def _cmd_pool_show(args: argparse.Namespace) -> int:
         [
             f"pool: {pool['id']}",
             f"name: {pool['name']}",
-            f"class: {pool['pool_class']}",
+            f"type: {pool['type']}",
             f"enrollments: {len(enrollments)}",
         ],
     )
@@ -188,7 +198,7 @@ def _create_pool_task(
 def _cmd_task(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
-        pool = repository.resolve(args.pool, record_type=POOL_TYPE)
+        pool = repository.resolve_pool(args.pool)
         task = _create_pool_task(args, repository, pool)
         run, prompt = prepare_unknown_run(
             repository=repository,
@@ -215,7 +225,7 @@ def _cmd_pool_run(args: argparse.Namespace) -> int:
 
     try:
         repository = _repository(args)
-        pool = repository.resolve(args.pool, record_type=POOL_TYPE)
+        pool = repository.resolve_pool(args.pool)
         task = _create_pool_task(args, repository, pool)
         run, _ = prepare_agent_run(
             repository=repository,
@@ -356,10 +366,7 @@ def _cmd_score(args: argparse.Namespace) -> int:
         repository = _repository(args)
         if args.method != WIN_RATE_SCORE:
             raise ScoringError(f"unknown Score method: {args.method}")
-        pools = [
-            repository.resolve(selector, record_type=POOL_TYPE)
-            for selector in args.pool
-        ]
+        pools = [repository.resolve_pool(selector) for selector in args.pool]
         results = repository.results_for_pools(pools)
         results_commit = repository.head()
         scores = compute_win_rate_scores(
@@ -426,7 +433,12 @@ def _cmd_assertion(args: argparse.Namespace) -> int:
 def _cmd_list(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
-        records = repository.records(LIST_TYPES[args.kind])
+        record_type = LIST_TYPES[args.kind]
+        records = (
+            repository.pools()
+            if record_type is None
+            else repository.records(record_type)
+        )
     except ScoringError as exc:
         raise CliError(str(exc)) from exc
     lines = [
@@ -500,7 +512,8 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
 
     pool_create = pool_commands.add_parser("create", help="Create a named Pool.")
     pool_create.add_argument("name")
-    pool_create.add_argument("--pool-class", default=GROUNDING_POOL_CLASS)
+    pool_create.add_argument("--assertion-type", default=GROUNDING_ASSERTION_TYPE)
+    pool_create.add_argument("--pool-type", default=GROUNDING_POOL_TYPE)
     _add_common(pool_create)
     pool_create.set_defaults(handler=_cmd_pool_create)
 

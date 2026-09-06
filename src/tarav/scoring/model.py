@@ -14,10 +14,9 @@ from uuid import UUID, uuid4
 
 JsonObject = dict[str, Any]
 
-POOL_TYPE = "Assertion.Pool"
 POOL_ENROLLMENT_TYPE = "Assertion.Pool.Enrollment"
 GROUNDING_TASK_TYPE = "Index.Line.Grounding.Ranking.Task"
-GROUNDING_POOL_CLASS = "Index.Line.Grounding.Ranking.Pool"
+GROUNDING_POOL_TYPE = "Index.Line.Grounding.Ranking.Pool"
 GROUNDING_TASK_RENDERER = "Index.Line.Grounding.Ranking.Task.Renderer.v1"
 RUN_TYPE = "Ranking.Run"
 RESULT_TYPE = "Ranking.Result"
@@ -30,7 +29,7 @@ DIAGRAM_LINE_EDITION_REFERENCE_TYPE = "Diagram.Line.Edition.Reference"
 WIN_RATE_SCORE = "Assertion.Ranking.WinRate.Score.v1"
 
 RECORD_KINDS = {
-    POOL_TYPE: "pools",
+    GROUNDING_POOL_TYPE: "pools",
     POOL_ENROLLMENT_TYPE: "enrollments",
     GROUNDING_TASK_TYPE: "tasks",
     RUN_TYPE: "runs",
@@ -90,26 +89,13 @@ def reference_target_type(reference: Mapping[str, object]) -> str | None:
     return RECORD_REFERENCE_TARGETS.get(_required_string(reference, "type"))
 
 
-def create_pool(
-    name: str,
-    pool_class: str = GROUNDING_POOL_CLASS,
-) -> JsonObject:
-    """Create a named population governed by one Pool Class."""
-
-    return new_record(
-        POOL_TYPE,
-        name=_nonempty(name, "name"),
-        pool_class=_nonempty(pool_class, "pool_class"),
-    )
-
-
 def create_pool_enrollment(
     *, pool: Mapping[str, object], assertion_ref: Mapping[str, object]
 ) -> JsonObject:
     """Retain one explicit Assertion-instance enrollment in a Pool."""
 
     validate_record(pool)
-    if pool["type"] != POOL_TYPE:
+    if not is_pool_record_type(str(pool["type"])):
         raise ScoringError("Assertion enrollment requires an Assertion.Pool")
     _validate_assertion_reference(assertion_ref)
     return new_record(
@@ -472,18 +458,30 @@ def create_scoring_event(
 
 def _validate_pool(record: Mapping[str, object]) -> None:
     _required_string(record, "name")
-    _required_string(record, "pool_class")
+    if "pool_class" in record:
+        raise ScoringError("Pool Record must not retain a pool_class discriminator")
+
+
+def _validate_pool_reference(value: object) -> None:
+    reference = _required_mapping(value, field="Assertion.Pool.Reference")
+    reference_type = _required_string(reference, "type")
+    target = RECORD_REFERENCE_TARGETS.get(reference_type)
+    if target is None or not is_pool_record_type(target):
+        raise ScoringError(
+            f"expected a concrete Pool Reference, found {reference_type}"
+        )
+    _validate_reference(reference, expected_target=target)
 
 
 def _validate_pool_enrollment(record: Mapping[str, object]) -> None:
-    _validate_reference(record.get("pool_ref"), expected_target=POOL_TYPE)
+    _validate_pool_reference(record.get("pool_ref"))
     _validate_assertion_reference(record.get("assertion_ref"))
     if _required_string(record, "status") != "Enrolled":
         raise ScoringError("unsupported Assertion Pool enrollment status")
 
 
 def _validate_task(record: Mapping[str, object]) -> None:
-    _validate_reference(record.get("pool_ref"), expected_target=POOL_TYPE)
+    _validate_pool_reference(record.get("pool_ref"))
     _required_string(record, "background")
     _required_string(record, "question")
     _strings(record.get("appendix", []), "appendix")
@@ -608,16 +606,22 @@ def validate_record(record: Mapping[str, object]) -> None:
         raise ScoringError("scoring Record schema_version must be 1")
     _uuid(_required_string(record, "id"), "id")
     _required_string(record, "created_at")
-    validator = {
-        POOL_TYPE: _validate_pool,
+    validators = {
         POOL_ENROLLMENT_TYPE: _validate_pool_enrollment,
         GROUNDING_TASK_TYPE: _validate_task,
         RUN_TYPE: _validate_run,
         RESULT_TYPE: _validate_result,
         SCORING_TRACE_TYPE: _validate_scoring_trace,
         SCORING_EVENT_TYPE: _validate_scoring_event,
-    }[record_type]
+    }
+    validator = (
+        _validate_pool if is_pool_record_type(record_type) else validators[record_type]
+    )
     validator(record)
+
+
+def is_pool_record_type(record_type: str) -> bool:
+    return RECORD_KINDS.get(record_type) == "pools"
 
 
 def _validate_assertion_reference(value: object) -> None:
@@ -720,9 +724,8 @@ __all__ = [
     "GROUNDING_ASSERTION_REFERENCE_TYPE",
     "GROUNDING_ASSERTION_TYPE",
     "GROUNDING_TASK_TYPE",
-    "GROUNDING_POOL_CLASS",
+    "GROUNDING_POOL_TYPE",
     "GROUNDING_TASK_RENDERER",
-    "POOL_TYPE",
     "POOL_ENROLLMENT_TYPE",
     "RECORD_KINDS",
     "RECORD_REFERENCE_TARGETS",
@@ -735,12 +738,12 @@ __all__ = [
     "candidate_labels",
     "compute_win_rate_scores",
     "content_hash",
-    "create_pool",
     "create_pool_enrollment",
     "create_result",
     "create_run",
     "create_scoring_event",
     "create_scoring_trace",
+    "is_pool_record_type",
     "new_record",
     "record_reference",
     "reference_target_type",

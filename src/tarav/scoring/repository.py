@@ -16,7 +16,6 @@ from tarav._core.persistence import atomic_write_json, atomic_write_text
 from .model import (
     GROUNDING_TASK_TYPE,
     POOL_ENROLLMENT_TYPE,
-    POOL_TYPE,
     RECORD_KINDS,
     RESULT_TYPE,
     RUN_TYPE,
@@ -26,6 +25,7 @@ from .model import (
     ScoringError,
     canonical_json,
     content_hash,
+    is_pool_record_type,
     reference_target_type,
     validate_record,
 )
@@ -129,7 +129,7 @@ class ScoringRepository:
                         "a Record UUID cannot be rebound to another Type"
                     )
             path.parent.mkdir(parents=True, exist_ok=True)
-            if payload["type"] == POOL_TYPE:
+            if is_pool_record_type(str(payload["type"])):
                 for child in ("enrollments", "tasks", "runs", "results"):
                     (path.parent / child).mkdir(exist_ok=True)
             atomic_write_json(path, payload, ensure_ascii=False)
@@ -180,7 +180,11 @@ class ScoringRepository:
                 ):
                     records.extend(self._read_events(path))
                 continue
-            records.extend(self._load_path(path) for path in self._paths_for_type(kind))
+            records.extend(
+                record
+                for path in self._paths_for_type(kind)
+                if (record := self._load_path(path)).get("type") == kind
+            )
         return tuple(sorted(records, key=lambda item: str(item.get("created_at", ""))))
 
     def resolve(self, selector: str, *, record_type: str | None = None) -> JsonObject:
@@ -199,6 +203,29 @@ class ScoringRepository:
             raise ScoringError(f"scoring Record {selector!r} is {detail}")
         return matches[0]
 
+    def pools(self) -> tuple[JsonObject, ...]:
+        return tuple(
+            record
+            for record in self.records()
+            if is_pool_record_type(str(record.get("type", "")))
+        )
+
+    def resolve_pool(self, selector: str) -> JsonObject:
+        candidates = self.pools()
+        exact = [item for item in candidates if item["id"] == selector]
+        named = [item for item in candidates if item.get("name") == selector]
+        matches = (
+            exact
+            or named
+            or [item for item in candidates if str(item["id"]).startswith(selector)]
+        )
+        if len(matches) != 1:
+            detail = (
+                "not found" if not matches else f"ambiguous ({len(matches)} matches)"
+            )
+            raise ScoringError(f"Assertion Pool {selector!r} is {detail}")
+        return matches[0]
+
     def result_for_run(self, run_id: str) -> JsonObject | None:
         matches = [
             result
@@ -213,7 +240,7 @@ class ScoringRepository:
         self, pool: Mapping[str, object]
     ) -> tuple[JsonObject, ...]:
         validate_record(pool)
-        if pool.get("type") != POOL_TYPE:
+        if not is_pool_record_type(str(pool.get("type", ""))):
             raise ScoringError("Enrollment selection requires an Assertion.Pool")
         return tuple(
             item
@@ -246,7 +273,7 @@ class ScoringRepository:
         pool_ids: set[str] = set()
         for pool in pools:
             validate_record(pool)
-            if pool.get("type") != POOL_TYPE:
+            if not is_pool_record_type(str(pool.get("type", ""))):
                 raise ScoringError("Result selection requires Assertion.Pools")
             pool_ids.add(str(pool["id"]))
         selected: list[JsonObject] = []
@@ -423,7 +450,7 @@ class ScoringRepository:
         if record_type not in RECORD_KINDS:
             raise ScoringError(f"unsupported scoring Record type: {record_type}")
         record_id = str(record.get("id", ""))
-        if record_type == POOL_TYPE:
+        if is_pool_record_type(record_type):
             return self.root / "pools" / record_id / "pool.json"
         if record_type == SCORING_TRACE_TYPE:
             return self.root / "assertion-traces" / record_id / "trace.json"
@@ -457,7 +484,11 @@ class ScoringRepository:
 
     def _paths_for_type(self, record_type: str) -> tuple[Path, ...]:
         pattern = {
-            POOL_TYPE: "*/pool.json",
+            **{
+                pool_type: "*/pool.json"
+                for pool_type in RECORD_KINDS
+                if is_pool_record_type(pool_type)
+            },
             POOL_ENROLLMENT_TYPE: "*/enrollments/*.json",
             GROUNDING_TASK_TYPE: "*/tasks/*.json",
             RUN_TYPE: "*/runs/*.json",

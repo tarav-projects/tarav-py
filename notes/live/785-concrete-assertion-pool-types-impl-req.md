@@ -1,6 +1,6 @@
 # 785 — Concrete Assertion Pool Types
 
-Status: Ready for execution
+Status: Implemented and verified
 
 ## Impl.Abstract
 
@@ -38,6 +38,9 @@ There is no retained production Pool data to migrate.
    tests, architecture tests, full suite, Ruff, installed CLI, and shell helper
    smoke checks pass.
 
+Slice status: all three implementation slices, product verification, and
+Diagram capture close are complete.
+
 Risks and deviation triggers: stop and record a deviation if concrete Pool
 typing requires a second retained discriminator, if generic repository
 discovery cannot remain registry-driven, or if exact historical references
@@ -54,4 +57,21 @@ the product work.
   mismatch as a View-scope POI.
 - The previous scoring request `784` is Closed; this request owns the concrete
   Pool Type refactor.
-
+- Workflow checkpoint commit: `ff20d87`.
+- Pool Records now declare `Index.Line.Grounding.Ranking.Pool` directly. The
+  registered Pool class creates and validates instances; the registered
+  Assertion class declares compatible Pool Types and delegates creation.
+- Removed the grounding-class `isinstance` dispatch path. Assertion classes
+  produce candidates through their contract, and Pool classes assemble Tasks.
+- Installed-CLI smoke repository `/tmp/tarav-scoring-785.PKSLA7` exercised two
+  real Diagram Lines through enrollment, Task, frozen unresolved Run, Result,
+  live scoring, trace events, and graph traversal. It produced scores `1.0`
+  and `0.0`; those values are protocol fixtures, not quality judgments.
+- Verification: focused scoring and architecture checks `23 passed`; complete
+  suite `1289 passed`; Ruff, targeted formatting, and diff checks pass; the
+  installed `tarav scoring` CLI and interactive-shell `fcodex_mm -h` work.
+- Repository-wide Ruff formatting remains intentionally outside this request:
+  its pre-existing baseline reports unrelated files requiring formatting.
+- The Closed `785.Impl.Req` Draft applied once at Diagram commit
+  `7b3797b798229d3d5380cf31f56b0778db6870a1`. Its request-specific finding is
+  the expected `Model.Staleness.POI` for the Collection-hosted Line.
