@@ -1,6 +1,6 @@
 # 782 — Assertion Pool enrollment graph
 
-Status: Ready for execution
+Status: Completed
 
 ## Impl.Abstract
 
@@ -72,4 +72,38 @@ Acceptance signals:
   and the Tarav Model's `Assertion.Scoring.And.Continuity.Controls` Block.
 - Existing request 781 product changes were committed at the User's explicit
   `commit all` instruction before this request began product mutation.
-
+- Workflow checkpoint: `cc9582c`.
+- `Assertion.Pool` is now a named population organized around one class-owned
+  Scoring Method. `Assertion.Pool.Enrollment` retains each explicit
+  many-to-many membership and its exact Pool/Assertion references.
+- Pool Task construction reads only retained enrollments. Every Task candidate
+  references its exact Enrollment edition; the Assertion class resolves and
+  presents the exact asserted Line edition.
+- `tarav scoring pool create|enroll|show|run` provides the normal workflow.
+  Standalone `task`, `render`, `run`, `submit`, `show`, and `assertion` commands
+  preserve inspectable debugging and navigation.
+- Replaced aggregate `Score.Computation` records with independent
+  `Assertion.Score` records. One score computation may consume Results reached
+  through several Pools, while each retained Score directly references its
+  Assertion, Definition, and contributing Results.
+- Graph traversal derives inbound edges by scanning authoritative outgoing
+  references. No backlink database or duplicated ancestry was introduced.
+- Live installed-CLI smoke repository:
+  `/tmp/tarav-scoring-782.ABLtPB/scoring`. It exercised create, multi-enroll,
+  Pool Task/Run preview, Result submission, scoring, and assertion-centric
+  graph traversal over real Tarav Diagram Lines.
+- Verification: 23 focused scoring/architecture tests passed; all touched
+  Python files pass Ruff lint and format checks; repository-wide Ruff lint
+  passed; the complete maintained suite passed with 1,289 tests. The global
+  Ruff format check remains non-clean on 238 pre-existing unrelated files.
+- Reinstalled the editable `tarav` CLI and verified `pool run` plus multi-record
+  score output through the installed executable.
+- Product.Surface generation context has no current code-edition Annotation
+  path, so exact code references remain in this live note for later
+  reconciliation rather than manufacturing unsupported Diagram data.
+- Applied the closed `782.Impl.Req` Draft once. Diagram receipt commit:
+  `ef478b421ecc13b5035693fe60f09ab37b2492be`.
+- Expected landing POIs remain: the new semantic records are unscored,
+  Chatlas-to-Archive grounding is not yet mechanically assessable, and
+  Collection-hosted Lines surface Model-staleness opportunities. Existing
+  legacy Type/lifecycle POIs were not changed by this request.

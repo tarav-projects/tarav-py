@@ -15,12 +15,13 @@ from uuid import UUID, uuid4
 JsonObject = dict[str, Any]
 
 POOL_TYPE = "Assertion.Pool"
-ASSERTION_TYPE_SELECTOR = "Assertion.Type.Selector"
+POOL_ENROLLMENT_TYPE = "Assertion.Pool.Enrollment"
 GROUNDING_TASK_TYPE = "Index.Line.Grounding.Ranking.Task"
+GROUNDING_RANKING_METHOD = "Index.Line.Grounding.Ranking.Method"
 RUN_TYPE = "Ranking.Run"
 RESULT_TYPE = "Ranking.Result"
 SCORE_DEFINITION_TYPE = "Score.Definition"
-SCORE_COMPUTATION_TYPE = "Score.Computation"
+ASSERTION_SCORE_TYPE = "Assertion.Score"
 GROUNDING_ASSERTION_TYPE = "Index.Line.Grounding.Assertion"
 GROUNDING_ASSERTION_REFERENCE_TYPE = f"{GROUNDING_ASSERTION_TYPE}.Reference"
 DIAGRAM_LINE_EDITION_REFERENCE_TYPE = "Diagram.Line.Edition.Reference"
@@ -28,11 +29,12 @@ WIN_RATE_SCORE = "Assertion.Ranking.WinRate.Score.v1"
 
 RECORD_KINDS = {
     POOL_TYPE: "pools",
+    POOL_ENROLLMENT_TYPE: "pool-enrollments",
     GROUNDING_TASK_TYPE: "tasks",
     RUN_TYPE: "runs",
     RESULT_TYPE: "results",
     SCORE_DEFINITION_TYPE: "score-definitions",
-    SCORE_COMPUTATION_TYPE: "scores",
+    ASSERTION_SCORE_TYPE: "scores",
 }
 RECORD_REFERENCE_TARGETS = {
     f"{record_type}.Reference": record_type for record_type in RECORD_KINDS
@@ -88,32 +90,32 @@ def reference_target_type(reference: Mapping[str, object]) -> str | None:
 
 def create_pool(
     name: str,
-    assertion_type: str = GROUNDING_ASSERTION_TYPE,
+    scoring_method: str = GROUNDING_RANKING_METHOD,
 ) -> JsonObject:
-    """Create a named cohort whose only responsibility is Assertion selection."""
+    """Create a named population organized around one Scoring Method."""
 
     return new_record(
         POOL_TYPE,
         name=_nonempty(name, "name"),
-        selector={
-            "type": ASSERTION_TYPE_SELECTOR,
-            "assertion_type": _nonempty(assertion_type, "assertion_type"),
-        },
+        scoring_method=_nonempty(scoring_method, "scoring_method"),
     )
 
 
-def pool_matches(
-    pool: Mapping[str, object], assertion_ref: Mapping[str, object]
-) -> bool:
+def create_pool_enrollment(
+    *, pool: Mapping[str, object], assertion_ref: Mapping[str, object]
+) -> JsonObject:
+    """Retain one explicit Assertion-instance enrollment in a Pool."""
+
     validate_record(pool)
     if pool["type"] != POOL_TYPE:
-        raise ScoringError("Assertion selection requires an Assertion.Pool")
-    selector = _required_object(pool, "selector")
-    selector_type = _required_string(selector, "type")
-    if selector_type != ASSERTION_TYPE_SELECTOR:
-        raise ScoringError(f"unsupported Assertion Pool selector: {selector_type}")
-    assertion_type = _required_string(selector, "assertion_type")
-    return assertion_ref.get("type") == f"{assertion_type}.Reference"
+        raise ScoringError("Assertion enrollment requires an Assertion.Pool")
+    _validate_assertion_reference(assertion_ref)
+    return new_record(
+        POOL_ENROLLMENT_TYPE,
+        pool_ref=record_reference(pool),
+        assertion_ref=dict(assertion_ref),
+        status="Enrolled",
+    )
 
 
 def candidate_labels(candidate_ids: Sequence[str], *, seed: str) -> dict[str, str]:
@@ -280,17 +282,26 @@ def builtin_score_definition() -> JsonObject:
     )
 
 
-def compute_win_rate_score(
+def compute_win_rate_scores(
     *,
     definition: Mapping[str, object],
-    observations: Sequence[tuple[Mapping[str, object], Mapping[str, object]]],
-) -> JsonObject:
+    observations: Sequence[
+        tuple[
+            Mapping[str, object],
+            Mapping[str, object],
+            Mapping[str, Mapping[str, object]],
+        ]
+    ],
+) -> tuple[JsonObject, ...]:
+    """Compute one independently addressable Score per Assertion instance."""
+
     validate_record(definition)
-    ranked: list[Mapping[str, object]] = []
-    selected: list[Mapping[str, object]] = []
     stats: dict[str, dict[str, float | int]] = {}
-    abstentions = 0
-    for result, run in observations:
+    assertion_refs: dict[str, Mapping[str, object]] = {}
+    result_refs: dict[str, list[JsonObject]] = {}
+    ranked_results: dict[str, int] = {}
+    abstentions: dict[str, int] = {}
+    for result, run, assertions_by_candidate in observations:
         validate_record(result)
         validate_record(run)
         if result["type"] != RESULT_TYPE:
@@ -301,11 +312,25 @@ def compute_win_rate_score(
             raise ScoringError(
                 "Ranking Result does not reference the supplied Run edition"
             )
-        selected.append(result)
+        candidate_ids = set(assertions_by_candidate)
+        if set(_required_object(run, "labels").values()) != candidate_ids:
+            raise ScoringError(
+                "Ranking observation Assertions must cover every Run candidate"
+            )
+        for candidate_id, assertion_ref in assertions_by_candidate.items():
+            _validate_assertion_reference(assertion_ref)
+            previous = assertion_refs.setdefault(candidate_id, assertion_ref)
+            if previous != assertion_ref:
+                raise ScoringError(
+                    f"candidate id is rebound to another Assertion: {candidate_id}"
+                )
+            result_refs.setdefault(candidate_id, []).append(record_reference(result))
         if result.get("outcome") == "abstained":
-            abstentions += 1
+            for candidate_id in candidate_ids:
+                abstentions[candidate_id] = abstentions.get(candidate_id, 0) + 1
             continue
-        ranked.append(result)
+        for candidate_id in candidate_ids:
+            ranked_results[candidate_id] = ranked_results.get(candidate_id, 0) + 1
         presented_tiers = _required_tiers(result)
         labels = _required_object(run, "labels")
         tiers = [
@@ -322,46 +347,43 @@ def compute_win_rate_score(
                 stats[candidate]["losses"] += sum(
                     len(earlier) for earlier in tiers[:tier_index]
                 )
-    standings: list[JsonObject] = []
-    for candidate, values in stats.items():
+    scores: list[JsonObject] = []
+    for candidate in sorted(assertion_refs):
+        values = stats.get(candidate, {"wins": 0, "losses": 0, "ties": 0})
         comparisons = int(values["wins"] + values["losses"] + values["ties"])
         score = (
             (float(values["wins"]) + 0.5 * float(values["ties"])) / comparisons
             if comparisons
             else None
         )
-        standings.append(
-            {
-                "candidate_id": candidate,
-                **values,
-                "comparisons": comparisons,
-                "value": score,
-            }
+        scores.append(
+            new_record(
+                ASSERTION_SCORE_TYPE,
+                assertion_ref=dict(assertion_refs[candidate]),
+                definition_ref=record_reference(definition),
+                result_refs=result_refs.get(candidate, []),
+                result_count=ranked_results.get(candidate, 0),
+                abstention_count=abstentions.get(candidate, 0),
+                wins=values["wins"],
+                losses=values["losses"],
+                ties=values["ties"],
+                comparisons=comparisons,
+                value=score,
+            )
         )
-    standings.sort(
-        key=lambda item: (
-            item["value"] is not None,
-            item["value"] if item["value"] is not None else -1,
-            item["candidate_id"],
-        ),
-        reverse=True,
-    )
-    return new_record(
-        SCORE_COMPUTATION_TYPE,
-        definition_ref=record_reference(definition),
-        result_refs=[record_reference(item) for item in selected],
-        result_count=len(ranked),
-        abstention_count=abstentions,
-        standings=standings,
-    )
+    return tuple(scores)
 
 
 def _validate_pool(record: Mapping[str, object]) -> None:
     _required_string(record, "name")
-    selector = _required_object(record, "selector")
-    if _required_string(selector, "type") != ASSERTION_TYPE_SELECTOR:
-        raise ScoringError("unsupported Assertion Pool selector")
-    _required_string(selector, "assertion_type")
+    _required_string(record, "scoring_method")
+
+
+def _validate_pool_enrollment(record: Mapping[str, object]) -> None:
+    _validate_reference(record.get("pool_ref"), expected_target=POOL_TYPE)
+    _validate_assertion_reference(record.get("assertion_ref"))
+    if _required_string(record, "status") != "Enrolled":
+        raise ScoringError("unsupported Assertion Pool enrollment status")
 
 
 def _validate_task(record: Mapping[str, object]) -> None:
@@ -375,7 +397,9 @@ def _validate_task(record: Mapping[str, object]) -> None:
     for candidate in candidates:
         _required_string(candidate, "id")
         _required_string(candidate, "presentation")
-        _validate_assertion_reference(candidate.get("assertion_ref"))
+        _validate_reference(
+            candidate.get("enrollment_ref"), expected_target=POOL_ENROLLMENT_TYPE
+        )
         _strings(candidate.get("appendix", []), "candidate.appendix")
     candidate_ids = [_required_string(item, "id") for item in candidates]
     if len(candidate_ids) != len(set(candidate_ids)):
@@ -420,6 +444,7 @@ def _validate_score_definition(record: Mapping[str, object]) -> None:
 
 
 def _validate_score(record: Mapping[str, object]) -> None:
+    _validate_assertion_reference(record.get("assertion_ref"))
     _validate_reference(
         record.get("definition_ref"), expected_target=SCORE_DEFINITION_TYPE
     )
@@ -428,9 +453,20 @@ def _validate_score(record: Mapping[str, object]) -> None:
         raise ScoringError("result_refs must be a list")
     for reference in result_refs:
         _validate_reference(reference, expected_target=RESULT_TYPE)
-    standings = record.get("standings")
-    if not isinstance(standings, list):
-        raise ScoringError("standings must be a list")
+    for field in (
+        "result_count",
+        "abstention_count",
+        "wins",
+        "losses",
+        "ties",
+        "comparisons",
+    ):
+        value = record.get(field)
+        if not isinstance(value, int) or value < 0:
+            raise ScoringError(f"{field} must be a nonnegative integer")
+    value = record.get("value")
+    if value is not None and not isinstance(value, (int, float)):
+        raise ScoringError("Score value must be numeric or null")
 
 
 def validate_record(record: Mapping[str, object]) -> None:
@@ -443,11 +479,12 @@ def validate_record(record: Mapping[str, object]) -> None:
     _required_string(record, "created_at")
     validator = {
         POOL_TYPE: _validate_pool,
+        POOL_ENROLLMENT_TYPE: _validate_pool_enrollment,
         GROUNDING_TASK_TYPE: _validate_task,
         RUN_TYPE: _validate_run,
         RESULT_TYPE: _validate_result,
         SCORE_DEFINITION_TYPE: _validate_score_definition,
-        SCORE_COMPUTATION_TYPE: _validate_score,
+        ASSERTION_SCORE_TYPE: _validate_score,
     }[record_type]
     validator(record)
 
@@ -539,29 +576,30 @@ def _uuid(value: str, field: str) -> str:
 
 
 __all__ = [
-    "ASSERTION_TYPE_SELECTOR",
+    "ASSERTION_SCORE_TYPE",
     "DIAGRAM_LINE_EDITION_REFERENCE_TYPE",
     "GROUNDING_ASSERTION_REFERENCE_TYPE",
     "GROUNDING_ASSERTION_TYPE",
     "GROUNDING_TASK_TYPE",
+    "GROUNDING_RANKING_METHOD",
     "POOL_TYPE",
+    "POOL_ENROLLMENT_TYPE",
     "RECORD_KINDS",
     "RECORD_REFERENCE_TARGETS",
     "RESULT_TYPE",
     "RUN_TYPE",
-    "SCORE_COMPUTATION_TYPE",
     "SCORE_DEFINITION_TYPE",
     "ScoringError",
     "WIN_RATE_SCORE",
     "builtin_score_definition",
     "candidate_labels",
-    "compute_win_rate_score",
+    "compute_win_rate_scores",
     "content_hash",
     "create_pool",
+    "create_pool_enrollment",
     "create_result",
     "create_run",
     "new_record",
-    "pool_matches",
     "record_reference",
     "reference_target_type",
     "render_task",

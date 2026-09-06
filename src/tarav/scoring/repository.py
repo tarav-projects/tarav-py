@@ -7,21 +7,23 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from filelock import FileLock
 
 from tarav._core.persistence import atomic_write_json, atomic_write_text
 
 from .model import (
+    ASSERTION_SCORE_TYPE,
     GROUNDING_TASK_TYPE,
+    POOL_ENROLLMENT_TYPE,
     POOL_TYPE,
     RECORD_KINDS,
     RESULT_TYPE,
     RUN_TYPE,
-    SCORE_COMPUTATION_TYPE,
     JsonObject,
     ScoringError,
+    canonical_json,
     content_hash,
     reference_target_type,
     validate_record,
@@ -133,9 +135,12 @@ class ScoringRepository:
     def resolve(self, selector: str, *, record_type: str | None = None) -> JsonObject:
         candidates = self.records(record_type)
         exact = [item for item in candidates if item["id"] == selector]
-        matches = exact or [
-            item for item in candidates if str(item["id"]).startswith(selector)
-        ]
+        named = [item for item in candidates if item.get("name") == selector]
+        matches = (
+            exact
+            or named
+            or [item for item in candidates if str(item["id"]).startswith(selector)]
+        )
         if len(matches) != 1:
             detail = (
                 "not found" if not matches else f"ambiguous ({len(matches)} matches)"
@@ -153,20 +158,82 @@ class ScoringRepository:
             raise ScoringError(f"Ranking Run has multiple Results: {run_id}")
         return matches[0] if matches else None
 
-    def results_for_pool(self, pool: Mapping[str, object]) -> tuple[JsonObject, ...]:
-        """Select Results by following Result → Run → Task → Pool."""
+    def enrollments_for_pool(
+        self, pool: Mapping[str, object]
+    ) -> tuple[JsonObject, ...]:
+        """Return the explicit current participant roster for one Pool."""
 
         validate_record(pool)
         if pool.get("type") != POOL_TYPE:
-            raise ScoringError("Result selection requires an Assertion.Pool")
+            raise ScoringError("Enrollment selection requires an Assertion.Pool")
         pool_id = str(pool["id"])
+        return tuple(
+            item
+            for item in self.records(POOL_ENROLLMENT_TYPE)
+            if _reference_id(item.get("pool_ref")) == pool_id
+            and item.get("status") == "Enrolled"
+        )
+
+    def enrollment_for_assertion(
+        self,
+        *,
+        pool: Mapping[str, object],
+        assertion_ref: Mapping[str, object],
+    ) -> JsonObject | None:
+        matches = [
+            item
+            for item in self.enrollments_for_pool(pool)
+            if canonical_json(item.get("assertion_ref"))
+            == canonical_json(assertion_ref)
+        ]
+        if len(matches) > 1:
+            raise ScoringError("Assertion has duplicate active Pool enrollments")
+        return matches[0] if matches else None
+
+    def results_for_pools(
+        self, pools: Sequence[Mapping[str, object]]
+    ) -> tuple[JsonObject, ...]:
+        """Select Results by following Result → Run → Task → Pool."""
+
+        pool_ids: set[str] = set()
+        for pool in pools:
+            validate_record(pool)
+            if pool.get("type") != POOL_TYPE:
+                raise ScoringError("Result selection requires Assertion.Pools")
+            pool_ids.add(str(pool["id"]))
         selected: list[JsonObject] = []
         for result in self.records(RESULT_TYPE):
             run = self.resolve_reference(_reference(result, "run_ref"))
             task = self.resolve_reference(_reference(run, "task_ref"))
-            if _reference_id(task.get("pool_ref")) == pool_id:
+            if _reference_id(task.get("pool_ref")) in pool_ids:
                 selected.append(result)
         return tuple(selected)
+
+    def ranking_observations(
+        self, results: Sequence[Mapping[str, object]]
+    ) -> tuple[tuple[JsonObject, JsonObject, dict[str, Mapping[str, object]]], ...]:
+        """Resolve Result inputs into the compact form consumed by scorers."""
+
+        observations = []
+        for result in results:
+            run = self.resolve_reference(_reference(result, "run_ref"))
+            task = self.resolve_reference(_reference(run, "task_ref"))
+            assertions: dict[str, Mapping[str, object]] = {}
+            candidates = task.get("candidates")
+            if not isinstance(candidates, list):
+                raise ScoringError("Ranking Task candidates must be a list")
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    raise ScoringError("Ranking Task candidate must be an object")
+                candidate_id = candidate.get("id")
+                if not isinstance(candidate_id, str):
+                    raise ScoringError("Ranking Task candidate has no id")
+                enrollment = self.resolve_reference(
+                    _reference(candidate, "enrollment_ref")
+                )
+                assertions[candidate_id] = _reference(enrollment, "assertion_ref")
+            observations.append((dict(result), run, assertions))
+        return tuple(observations)
 
     def resolve_reference(self, reference: Mapping[str, object]) -> JsonObject:
         """Resolve one exact scoring Record edition, including from Git history."""
@@ -209,54 +276,69 @@ class ScoringRepository:
         )
 
     def trace(self, record: Mapping[str, object]) -> JsonObject:
-        """Expand direct Record dependencies without inventing semantic ancestry."""
+        """Expand one scoring Record in both directions through direct references."""
 
         root = dict(record)
         validate_record(root)
-        pending = deque([root])
-        seen: set[tuple[str, str]] = set()
+        return self.trace_reference(_record_reference(root))
+
+    def trace_reference(self, root_reference: Mapping[str, object]) -> JsonObject:
+        """Build a disposable neighborhood around a scoring or external Reference."""
+
+        root_ref = dict(root_reference)
+        pending = deque([root_ref])
+        seen_refs: set[str] = set()
+        seen_records: set[tuple[str, str]] = set()
         records: list[JsonObject] = []
         edges: list[JsonObject] = []
         external: list[JsonObject] = []
+        current_records = self.records()
+        inbound: dict[str, list[JsonObject]] = {}
+        for candidate in current_records:
+            for _, reference in _direct_references(candidate):
+                inbound.setdefault(_reference_key(reference), []).append(candidate)
         while pending:
-            current = pending.popleft()
-            current_id = str(current["id"])
-            current_ref = {
-                "type": f"{current['type']}.Reference",
-                "id": current_id,
-                "record_sha256": content_hash(current),
-            }
-            current_key = (current_id, str(current_ref["record_sha256"]))
-            if current_key in seen:
+            current_ref = pending.popleft()
+            ref_key = _reference_key(current_ref)
+            if ref_key in seen_refs:
                 continue
-            seen.add(current_key)
-            records.append(current)
-            for field, reference in _direct_references(current):
-                target_type = reference_target_type(reference)
-                if target_type is None:
-                    external.append(
-                        {
-                            "from_ref": current_ref,
-                            "field": field,
-                            "reference": reference,
-                        }
-                    )
-                    continue
-                dependency = self.resolve_reference(reference)
-                edges.append(
-                    {
+            seen_refs.add(ref_key)
+            target_type = reference_target_type(current_ref)
+            if target_type is not None:
+                current = self.resolve_reference(current_ref)
+                current_key = (str(current["id"]), content_hash(current))
+                if current_key not in seen_records:
+                    seen_records.add(current_key)
+                    records.append(current)
+                for field, reference in _direct_references(current):
+                    edge = {
                         "from_ref": current_ref,
                         "field": field,
                         "to_ref": dict(reference),
                     }
-                )
-                pending.append(dependency)
+                    if edge not in edges:
+                        edges.append(edge)
+                    if reference_target_type(reference) is None:
+                        if dict(reference) not in external:
+                            external.append(dict(reference))
+                    pending.append(dict(reference))
+            elif current_ref not in external:
+                external.append(current_ref)
+            for dependent in inbound.get(ref_key, []):
+                dependent_ref = _record_reference(dependent)
+                for field, reference in _direct_references(dependent):
+                    if _reference_key(reference) != ref_key:
+                        continue
+                    edge = {
+                        "from_ref": dependent_ref,
+                        "field": field,
+                        "to_ref": current_ref,
+                    }
+                    if edge not in edges:
+                        edges.append(edge)
+                pending.append(dependent_ref)
         return {
-            "root_ref": {
-                "type": f"{root['type']}.Reference",
-                "id": root["id"],
-                "record_sha256": content_hash(root),
-            },
+            "root_ref": root_ref,
             "records": records,
             "edges": edges,
             "external_references": external,
@@ -336,7 +418,10 @@ def _direct_references(
 ) -> tuple[tuple[str, Mapping[str, object]], ...]:
     record_type = record.get("type")
     references: list[tuple[str, Mapping[str, object]]] = []
-    if record_type == GROUNDING_TASK_TYPE:
+    if record_type == POOL_ENROLLMENT_TYPE:
+        references.append(("pool_ref", _reference(record, "pool_ref")))
+        references.append(("assertion_ref", _reference(record, "assertion_ref")))
+    elif record_type == GROUNDING_TASK_TYPE:
         references.append(("pool_ref", _reference(record, "pool_ref")))
         candidates = record.get("candidates")
         if not isinstance(candidates, list):
@@ -346,15 +431,16 @@ def _direct_references(
                 raise ScoringError("candidate must be an object")
             references.append(
                 (
-                    f"candidates[{index}].assertion_ref",
-                    _reference(candidate, "assertion_ref"),
+                    f"candidates[{index}].enrollment_ref",
+                    _reference(candidate, "enrollment_ref"),
                 )
             )
     elif record_type == RUN_TYPE:
         references.append(("task_ref", _reference(record, "task_ref")))
     elif record_type == RESULT_TYPE:
         references.append(("run_ref", _reference(record, "run_ref")))
-    elif record_type == SCORE_COMPUTATION_TYPE:
+    elif record_type == ASSERTION_SCORE_TYPE:
+        references.append(("assertion_ref", _reference(record, "assertion_ref")))
         references.append(("definition_ref", _reference(record, "definition_ref")))
         result_refs = record.get("result_refs")
         if not isinstance(result_refs, list):
@@ -364,6 +450,18 @@ def _direct_references(
                 raise ScoringError("result_refs must contain typed References")
             references.append((f"result_refs[{index}]", reference))
     return tuple(references)
+
+
+def _record_reference(record: Mapping[str, object]) -> JsonObject:
+    return {
+        "type": f"{record['type']}.Reference",
+        "id": record["id"],
+        "record_sha256": content_hash(record),
+    }
+
+
+def _reference_key(reference: Mapping[str, object]) -> str:
+    return canonical_json(reference)
 
 
 __all__ = ["REPOSITORY_TYPE", "ScoringRepository", "default_scoring_root"]

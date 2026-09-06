@@ -55,15 +55,19 @@ contract and Git boundaries.
   durable `Diagram.Draft` writing workspaces. Views never mutate the semantic
   database. Drafts reconcile proposed changes and apply them through the
   ordinary Diagram capture boundary.
-- `tarav.scoring` owns typed Assertion selector Pools, Ranking Tasks, exact
-  Agent Runs, retained Results, and reproducible named Score computations in
-  the independent Git-backed `~/Documents/tarav/scoring/` Record repository.
-  Assertion Types own compatible Task production and candidate presentation;
-  Pools only select cohorts. Scoring Records reference their direct inputs and
-  retain exact edition hashes, forming the navigable
-  Score → Results → Run → Task → Assertions graph. Diagram owns the Assertions
-  being evaluated; Scoring owns evaluation evidence and interpretations.
-  Runner code executes a rendered Task but does not define Assertion semantics.
+- `tarav.scoring` owns named Assertion Pools, explicit Pool Enrollments,
+  Ranking Tasks, exact Agent Runs, retained Results, and reproducible named
+  Assertion Scores in the independent Git-backed
+  `~/Documents/tarav/scoring/` Record repository. Assertion Types own their
+  supported Scoring Methods, admission compatibility, Task production, and
+  candidate presentation. Pools do not discover participants; Assertion
+  instances enroll explicitly and may join several Pools. Scores independently
+  select Results from one or more Pools. Scoring Records retain direct inputs
+  with exact edition hashes, while a disposable reverse-reference index makes
+  the Pool ↔ Enrollment ↔ Task ↔ Run ↔ Result ↔ Score graph navigable
+  without stored backlinks. Diagram owns the Assertions being evaluated;
+  Scoring owns evaluation evidence and interpretations. Runner code executes a
+  rendered Task but does not define Assertion semantics.
 - `tarav.bloberia` owns the hosted global `Tarav.Bloberia` registry. The public
   `tarav bloberia` command addresses that registry directly; its private JSON
   storage is not a second Tarav system or command surface.
