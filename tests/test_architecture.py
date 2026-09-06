@@ -132,6 +132,13 @@ def test_subsystem_import_graph_is_acyclic() -> None:
     assert _strongly_connected_components(graph) == ()
 
 
+def test_harness_is_a_dependency_clean_application_base() -> None:
+    imports = _top_level_import_graph()
+
+    assert imports["harness"] == set()
+    assert "harness" in imports["diagram"]
+
+
 def test_promoted_tarav_domains_have_normal_package_ownership() -> None:
     assert (PACKAGE_ROOT / "archive" / "commands.py").is_file()
     assert (PACKAGE_ROOT / "diagram" / "commands.py").is_file()
@@ -328,7 +335,6 @@ def test_every_poi_class_resolves_to_exactly_one_managed_block() -> None:
             unresolved.append(f"{name}: {payload.get('situation', payload)}")
 
     assert unresolved == [], "\n".join(unresolved)
-
 
 
 def test_no_poi_class_names_a_superseded_model() -> None:

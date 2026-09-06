@@ -5,6 +5,8 @@ modular monolith under the `tarav` package: the CLI, runtime, daemon, Chatlas,
 Index, Skillware, Canvas, agent/provider support, and Iterante runtimes.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership and dependency direction.
+`tarav.harness` provides the dependency-clean semantic roles and trusted Record
+Type dispatch that Tarav applications may specialize without sharing schemas.
 
 ## Install
 

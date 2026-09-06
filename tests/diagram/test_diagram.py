@@ -56,6 +56,11 @@ from tarav.diagram import (
     VerbatimGate,
 )
 from tarav.diagram.migration import migrate_namespace_v1
+from tarav.harness import (
+    TaravAssertion,
+    TaravPOIInstance,
+    TaravRecordType,
+)
 
 
 def _line(
@@ -184,6 +189,20 @@ def test_only_type_is_universal_and_specialization_is_explicit(tmp_path: Path) -
     assert annotation.to_record()["type"] == "Example.Free.Annotation"
     with pytest.raises(DiagramAnnotationSpecializationError):
         annotation.specialize()
+
+
+def test_diagram_types_participate_in_harness_without_schema_changes() -> None:
+    from tarav.diagram import (
+        DiagramObjectAssertion,
+        Finding,
+        TypedAnnotation,
+        TypedShip,
+    )
+
+    assert issubclass(TypedShip, TaravRecordType)
+    assert issubclass(TypedAnnotation, TaravRecordType)
+    assert issubclass(DiagramObjectAssertion, TaravAssertion)
+    assert issubclass(Finding, TaravPOIInstance)
 
 
 def test_models_are_typed_ships_and_project_their_editions(
@@ -1177,7 +1196,9 @@ def test_projection_queries_objects_by_kind_type_and_label(tmp_path: Path) -> No
         projection.objects(kind="annotation")
 
 
-def test_object_list_cli_returns_compact_scoped_standing(tmp_path: Path, capsys) -> None:
+def test_object_list_cli_returns_compact_scoped_standing(
+    tmp_path: Path, capsys
+) -> None:
     config_path = tmp_path / "diagram.json"
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model(label="Tarav")

@@ -1,6 +1,6 @@
 # 787 — Tarav Harness bootstrap from Diagram
 
-Status: Designed; implementation pending
+Status: Implemented and verified
 
 ## Impl.Abstract
 
@@ -60,5 +60,25 @@ other application behavior remain in their current owners.
   (`91c6e789df50d874a454107ba81ff86be1e99022173b3469fbcdeffaedbf86c1`).
 - Design support is rooted in User Turn `b33dffc75c425b84`; the latest explicit
   workflow authorization is User Turn `fc68f68d2dd5a33e`.
-- Product edits have not started.
-
+- Workflow checkpoint commit: `1723508`.
+- Added dependency-clean `tarav.harness` semantic roles and an explicit exact
+  Type registry that reads only a Record's top-level `type`.
+- Diagram's Ship and Annotation specialization now composes trusted Harness
+  registries. Existing Diagram schemas and specialization errors are retained.
+- Diagram typed Ships and Annotations, object Assertions, and finding instances
+  now subtype the corresponding schema-neutral Harness roles.
+- Architecture documentation and tests enforce `tarav.diagram → tarav.harness`
+  and prohibit reverse application imports from Harness.
+- Focused Harness, Diagram, and architecture verification: `60 passed`; the
+  complete Diagram suite: `76 passed`.
+- Complete verification: `1294 passed`; Ruff and targeted formatting checks
+  pass; the reinstalled editable `tarav` CLI resolves the Project Model; and
+  interactive-shell `fcodex_mm -h` works.
+- No PaperSON files or imports were changed. Ships, scoring, storage, and POI
+  behavior remain in their existing owners; only the semantic participation
+  base for Diagram findings was added.
+- The Closed `787.Impl.Req` Draft applied once at Diagram commit `c6fdd35`.
+  Its first render exposed an incorrect `-04:00` capture-hour transcription;
+  the exact five timestamps were repaired at `bc94ffa` through the Diagram
+  repository's retained Git history. The Collection now renders `ok` with no
+  lifecycle findings.

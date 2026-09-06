@@ -12,6 +12,8 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
                     |
        domains and integration adapters
                     |
+              `tarav.harness`
+                    |
     native surfaces and domain foundations
                     |
                `tarav._core`
@@ -21,6 +23,9 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
 - `tarav.runtime` is the composition root for registries and cross-domain
   adapters.
 - Domain foundations do not import the runtime or CLI to obtain dependencies.
+- `tarav.harness` contains schema-neutral semantic roles and the explicit,
+  trusted top-level Record Type registry used by applications. Applications
+  import Harness; Harness never imports an application.
 - `tarav._core` contains dependency-free infrastructure only after multiple
   domains have demonstrated identical semantics.
 - Cross-domain imports must remain acyclic outside the composition root.
@@ -38,6 +43,10 @@ contract and Git boundaries.
 
 ## Ownership map
 
+- `tarav.harness` owns the small application-facing semantic base classes and
+  exact `Record.type` to trusted Python class dispatch. It does not impose an
+  application Record schema, storage model, or shared behavior merely because
+  classes subtype its roles.
 - `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,
   and provider adapters under `tarav.agent.providers`.
 - `tarav.chatlas` owns the chat data train from provider-native capture through
@@ -146,6 +155,9 @@ Annotated code is discovered through the project's `.skw/skw.json`.
   Renderers consume structured Query results and never reimplement selection.
 - Diagram consumes Chatlas's public Normal Model for producer and support
   evidence. Chatlas does not import Diagram.
+- Diagram specializes Harness roles and uses its trusted Type registry for
+  Ship and Annotation Record dispatch. Diagram retains its object schemas,
+  projections, Ships, Assertions, and storage semantics.
 - Scoring consumes Diagram's public projection and Chatlas-backed support when
   an Assertion-owned task builder constructs an `Index.Line` grounding case.
   Diagram does not import Scoring; score discovery can be rebuilt from the

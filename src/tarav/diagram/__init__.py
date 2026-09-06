@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 import unicodedata
 from uuid import UUID, uuid4
 
@@ -20,6 +20,13 @@ from tarav.chatlas.normal_model import (
     resolve_chat_message_ref,
     resolve_chat_turn_ref,
     resolve_event_ref,
+)
+from tarav.harness import (
+    TaravAssertion,
+    TaravPOIInstance,
+    TaravRecordType,
+    TypeRegistry,
+    UnknownRecordType,
 )
 
 NAMESPACE_CLASS = "Tarav.Diagram.Namespace"
@@ -70,12 +77,8 @@ DESIGN_LINE_OBJECT_TYPES = (
 DIAGRAM_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "7b2bb6ef-37b8-47e0-8c6b-2ff5ccbdd82d"
 DESIGN_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "aa26bfa3-49f6-406d-b74f-f071ec3d11fa"
 IMPL_REQ_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "f6dfcbcb-6eb5-468c-a3f8-7f7034334b94"
-DIAGRAM_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP = (
-    "376d5a04-fae7-45ea-acaf-b5fbd176acb3"
-)
-IMPL_REQ_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP = (
-    "6d475881-1b3c-4774-bb1c-7e0ee91418bb"
-)
+DIAGRAM_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP = "376d5a04-fae7-45ea-acaf-b5fbd176acb3"
+IMPL_REQ_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP = "6d475881-1b3c-4774-bb1c-7e0ee91418bb"
 ISSUE_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "4864c2cc-9542-49ea-8295-a566eea29164"
 ISSUE_LINE_RESOLVE_TYPE_DEFINITION_BLOCK_SHIP = "3753a425-04e7-4d62-9d44-01f42af5b5e4"
 DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS = {
@@ -131,7 +134,7 @@ class DiagramShipSpecializationError(DiagramError):
 
 
 @dataclass(frozen=True, slots=True)
-class Finding:
+class Finding(TaravPOIInstance):
     code: str
     path: str
     message: str
@@ -510,7 +513,7 @@ class DiagramShip:
 
 
 @dataclass(frozen=True, slots=True)
-class TypedShip:
+class TypedShip(TaravRecordType):
     ship: DiagramShip
 
     @property
@@ -538,6 +541,8 @@ class TypedShip:
 
 @dataclass(frozen=True, slots=True)
 class ModelShipRecord(TypedShip):
+    type_name: ClassVar[str] = MODEL_SHIP_TYPE
+
     def __post_init__(self) -> None:
         if self.type != MODEL_SHIP_TYPE:
             raise DiagramModelError(f"not a Model Ship: {self.type}")
@@ -560,6 +565,8 @@ class ModelShipRecord(TypedShip):
 
 @dataclass(frozen=True, slots=True)
 class BlockShipRecord(TypedShip):
+    type_name: ClassVar[str] = BLOCK_SHIP_TYPE
+
     def __post_init__(self) -> None:
         if self.type != BLOCK_SHIP_TYPE:
             raise DiagramModelError(f"not a Block Ship: {self.type}")
@@ -590,6 +597,8 @@ class BlockShipRecord(TypedShip):
 
 @dataclass(frozen=True, slots=True)
 class LineShipRecord(TypedShip):
+    type_name: ClassVar[str] = LINE_SHIP_TYPE
+
     def __post_init__(self) -> None:
         if self.type != LINE_SHIP_TYPE:
             raise DiagramModelError(f"not a Line Ship: {self.type}")
@@ -626,6 +635,8 @@ class LineShipRecord(TypedShip):
 
 @dataclass(frozen=True, slots=True)
 class CollectionShipRecord(TypedShip):
+    type_name: ClassVar[str] = COLLECTION_SHIP_TYPE
+
     def __post_init__(self) -> None:
         if self.type != COLLECTION_SHIP_TYPE:
             raise DiagramModelError(f"not a Collection Ship: {self.type}")
@@ -634,9 +645,7 @@ class CollectionShipRecord(TypedShip):
 
     @property
     def model_ship(self) -> str:
-        return _uuid(
-            self.record.get("model_ship"), field="Collection.Ship.model_ship"
-        )
+        return _uuid(self.record.get("model_ship"), field="Collection.Ship.model_ship")
 
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
         return tuple(
@@ -699,7 +708,7 @@ class DiagramAnnotation:
 
 
 @dataclass(frozen=True, slots=True)
-class TypedAnnotation:
+class TypedAnnotation(TaravRecordType):
     annotation: DiagramAnnotation
 
     @property
@@ -738,6 +747,8 @@ class TypedAnnotation:
 
 @dataclass(frozen=True, slots=True)
 class ModelEditionRecord(TypedAnnotation):
+    type_name: ClassVar[str] = MODEL_EDITION_TYPE
+
     def __post_init__(self) -> None:
         if self.type != MODEL_EDITION_TYPE:
             raise DiagramModelError(f"not a Model Edition: {self.type}")
@@ -770,6 +781,8 @@ class UserTouchedAnnotation(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineAnnotationRecord(TypedAnnotation):
+    type_name: ClassVar[str] = LINE_ANNOTATION_TYPE
+
     """One free-standing Index.Line with explicit Diagram arguments."""
 
     def __post_init__(self) -> None:
@@ -923,6 +936,8 @@ class LineAnnotationRecord(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineEditionRecord(UserTouchedAnnotation):
+    type_name: ClassVar[str] = LINE_EDITION_TYPE
+
     def __post_init__(self) -> None:
         if self.type != LINE_EDITION_TYPE:
             raise DiagramModelError(f"not a Line Edition: {self.type}")
@@ -995,6 +1010,8 @@ class LineEditionRecord(UserTouchedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class BlockEditionRecord(TypedAnnotation):
+    type_name: ClassVar[str] = BLOCK_EDITION_TYPE
+
     def __post_init__(self) -> None:
         if self.type != BLOCK_EDITION_TYPE:
             raise DiagramModelError(f"not a Block Edition: {self.type}")
@@ -1051,6 +1068,8 @@ class BlockEditionRecord(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class CollectionEditionRecord(TypedAnnotation):
+    type_name: ClassVar[str] = COLLECTION_EDITION_TYPE
+
     def __post_init__(self) -> None:
         if self.type != COLLECTION_EDITION_TYPE:
             raise DiagramModelError(f"not a Collection Edition: {self.type}")
@@ -1122,6 +1141,8 @@ class CollectionEditionRecord(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class CaptureAuthorizationGateRecord(TypedAnnotation):
+    type_name: ClassVar[str] = CAPTURE_AUTHORIZATION_GATE_TYPE
+
     def __post_init__(self) -> None:
         if self.type != CAPTURE_AUTHORIZATION_GATE_TYPE:
             raise DiagramModelError(f"not a Capture Authorization Gate: {self.type}")
@@ -1137,7 +1158,9 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
             )
         )
         if not operations:
-            raise DiagramModelError("Capture.Authorization.operations must not be empty")
+            raise DiagramModelError(
+                "Capture.Authorization.operations must not be empty"
+            )
         scopes = tuple(
             DiagramArgumentReference.from_dict(item)
             for item in _array(
@@ -1146,7 +1169,9 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
             )
         )
         if not scopes:
-            raise DiagramModelError("Capture.Authorization.target_scope must not be empty")
+            raise DiagramModelError(
+                "Capture.Authorization.target_scope must not be empty"
+            )
 
     @property
     def model_ship(self) -> str:
@@ -1196,6 +1221,8 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class BlockTypeAnnotation(TypedAnnotation):
+    type_name: ClassVar[str] = BLOCK_TYPE_ANNOTATION_TYPE
+
     """Assigns an Object.Type to an existing Block without adding content."""
 
     def __post_init__(self) -> None:
@@ -1224,6 +1251,8 @@ class BlockTypeAnnotation(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineSupportAnnotation(UserTouchedAnnotation):
+    type_name: ClassVar[str] = LINE_SUPPORT_ANNOTATION_TYPE
+
     def __post_init__(self) -> None:
         if self.type != LINE_SUPPORT_ANNOTATION_TYPE:
             raise DiagramModelError(f"not a Line Support Annotation: {self.type}")
@@ -1252,6 +1281,8 @@ class LineSupportAnnotation(UserTouchedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineTypeAnnotation(TypedAnnotation):
+    type_name: ClassVar[str] = LINE_TYPE_ANNOTATION_TYPE
+
     """Assigns an Object.Type to an existing Line without adding wording."""
 
     def __post_init__(self) -> None:
@@ -1280,6 +1311,8 @@ class LineTypeAnnotation(TypedAnnotation):
 
 @dataclass(frozen=True, slots=True)
 class LineGateAnnotation(TypedAnnotation):
+    type_name: ClassVar[str] = LINE_GATE_ANNOTATION_TYPE
+
     """Adds review evidence to one immutable Line edition."""
 
     def __post_init__(self) -> None:
@@ -1345,7 +1378,7 @@ class LineGateAnnotation(TypedAnnotation):
 
 
 @dataclass(frozen=True, slots=True)
-class DiagramObjectAssertion:
+class DiagramObjectAssertion(TaravAssertion):
     """One assertion exposed by a projected object without duplicating evaluation."""
 
     annotation_id: str
@@ -1794,10 +1827,18 @@ class ImplReqCollection(DiagramCollection):
                         "Impl.Req.Collection state must be Open or Closed.",
                     )
                 )
-            if previous is not None and previous.data.get("state") == "Closed" and state == "Open":
+            if (
+                previous is not None
+                and previous.data.get("state") == "Closed"
+                and state == "Open"
+            ):
                 reopened_at = _optional_timestamp(edition.data.get("reopened_at"))
                 reopen_until = _optional_timestamp(previous.data.get("reopen_until"))
-                if reopened_at is None or reopen_until is None or reopened_at > reopen_until:
+                if (
+                    reopened_at is None
+                    or reopen_until is None
+                    or reopened_at > reopen_until
+                ):
                     findings.append(
                         Finding(
                             "impl-req-reopen-window-invalid",
@@ -1864,15 +1905,17 @@ class DiagramProjection:
 
         if kind not in (None, "block", "line", "collection"):
             raise DiagramModelError(f"unsupported Diagram object kind: {kind}")
-        selected: tuple[DiagramBlock | DiagramLineShip | DiagramCollection, ...] = tuple(
-            (
-                *(self.blocks if kind in (None, "block") else ()),
-                *(self.collections if kind in (None, "collection") else ()),
-                *(
-                    tuple(line for block in self.blocks for line in block.lines)
-                    if kind in (None, "line")
-                    else ()
-                ),
+        selected: tuple[DiagramBlock | DiagramLineShip | DiagramCollection, ...] = (
+            tuple(
+                (
+                    *(self.blocks if kind in (None, "block") else ()),
+                    *(self.collections if kind in (None, "collection") else ()),
+                    *(
+                        tuple(line for block in self.blocks for line in block.lines)
+                        if kind in (None, "line")
+                        else ()
+                    ),
+                )
             )
         )
         if object_type is not None:
@@ -1941,9 +1984,7 @@ class DiagramProjection:
                     "hosted_editions": [
                         item.to_dict() for item in collection.hosted_editions
                     ],
-                    "references": [
-                        item.to_dict() for item in collection.references
-                    ],
+                    "references": [item.to_dict() for item in collection.references],
                 }
                 for collection in self.collections
             ],
@@ -2021,13 +2062,9 @@ class DiagramProjectionBuilder:
             )
         )
         blocks = tuple(
-            block
-            for ship in block_ships
-            if (block := self._block(ship)) is not None
+            block for ship in block_ships if (block := self._block(ship)) is not None
         )
-        collections = tuple(
-            self._collection(ship) for ship in self.collection_editions
-        )
+        collections = tuple(self._collection(ship) for ship in self.collection_editions)
         self.findings.extend(self._collection_cycle_findings(collections))
         findings = _dedupe_findings(
             (
@@ -2062,8 +2099,7 @@ class DiagramProjectionBuilder:
         except (DiagramError, DiagramModelError):
             return retained
         positions = {
-            _edition_id(edition): index
-            for index, edition in enumerate(ship_editions)
+            _edition_id(edition): index for index, edition in enumerate(ship_editions)
         }
         fallback = len(positions)
         return tuple(
@@ -2241,9 +2277,7 @@ class DiagramProjectionBuilder:
             tuple(findings),
         )
 
-    def _staleness_finding(
-        self, ship: str, latest: LineEditionRecord
-    ) -> Finding:
+    def _staleness_finding(self, ship: str, latest: LineEditionRecord) -> Finding:
         return Finding(
             "model-staleness",
             f"line.{ship}.edition.{latest.id}",
@@ -2354,7 +2388,11 @@ class DiagramProjectionBuilder:
                 )
                 if recorded_at is None and not close_is_already_landed:
                     continue
-                if closed_at is not None and recorded_at is not None and recorded_at <= closed_at:
+                if (
+                    closed_at is not None
+                    and recorded_at is not None
+                    and recorded_at <= closed_at
+                ):
                     continue
                 findings.append(
                     Finding(
@@ -2393,7 +2431,9 @@ class DiagramProjectionBuilder:
                 return True
         return False
 
-    def _hosted_editions(self, collection_ship: str) -> tuple[DiagramHostedEdition, ...]:
+    def _hosted_editions(
+        self, collection_ship: str
+    ) -> tuple[DiagramHostedEdition, ...]:
         hosted: list[DiagramHostedEdition] = []
         for typed in self.typed_by_id.values():
             if not isinstance(
@@ -2544,6 +2584,43 @@ def default_diagram_object_types() -> DiagramObjectTypeRegistry:
             ),
         ),
     )
+
+
+def default_diagram_ship_type_registry() -> TypeRegistry[TypedShip]:
+    """Compose the trusted concrete Types accepted by Diagram Ship records."""
+
+    return TypeRegistry(
+        TypedShip,
+        (
+            ModelShipRecord,
+            BlockShipRecord,
+            LineShipRecord,
+            CollectionShipRecord,
+        ),
+    )
+
+
+def default_diagram_annotation_type_registry(
+    *, include_chatlas_index_types: bool
+) -> TypeRegistry[TypedAnnotation]:
+    """Compose Annotation Types for one Namespace policy boundary."""
+
+    record_types: tuple[type[TypedAnnotation], ...] = (
+        LineAnnotationRecord,
+        CaptureAuthorizationGateRecord,
+    )
+    if include_chatlas_index_types:
+        record_types += (
+            ModelEditionRecord,
+            BlockEditionRecord,
+            BlockTypeAnnotation,
+            LineEditionRecord,
+            CollectionEditionRecord,
+            LineTypeAnnotation,
+            LineSupportAnnotation,
+            LineGateAnnotation,
+        )
+    return TypeRegistry(TypedAnnotation, record_types)
 
 
 def _object_assertions(
@@ -2767,9 +2844,7 @@ class CaptureManifest:
         }
         known_gate_ids = existing_gate_ids | draft_gate_ids
         known_collection_ids = {
-            item.id
-            for item in namespace.ships()
-            if item.type == COLLECTION_SHIP_TYPE
+            item.id for item in namespace.ships() if item.type == COLLECTION_SHIP_TYPE
         } | {
             item.id
             for item in self.ships
@@ -3615,16 +3690,12 @@ class DiagramNamespace:
         )
 
     def specialize_ship(self, ship: DiagramShip) -> TypedShip:
-        ship_class = {
-            MODEL_SHIP_TYPE: ModelShipRecord,
-            BLOCK_SHIP_TYPE: BlockShipRecord,
-            LINE_SHIP_TYPE: LineShipRecord,
-            COLLECTION_SHIP_TYPE: CollectionShipRecord,
-        }.get(ship.type)
-        if ship_class is None:
+        try:
+            ship_class = default_diagram_ship_type_registry().resolve(ship.record)
+        except UnknownRecordType:
             raise DiagramShipSpecializationError(
                 f"Ship type is not registered in Namespace {self.name}: {ship.type}"
-            )
+            ) from None
         try:
             return ship_class(ship)
         except DiagramModelError as exc:
@@ -3739,28 +3810,15 @@ class DiagramNamespace:
         return AssertionEngine(evidence=evidence)
 
     def specialize(self, annotation: DiagramAnnotation) -> TypedAnnotation:
-        classes: dict[str, type[TypedAnnotation]] = {
-            LINE_ANNOTATION_TYPE: LineAnnotationRecord,
-            CAPTURE_AUTHORIZATION_GATE_TYPE: CaptureAuthorizationGateRecord,
-        }
-        if self.name in CHATLAS_INDEX_NAMESPACES:
-            classes.update(
-                {
-                    MODEL_EDITION_TYPE: ModelEditionRecord,
-                    BLOCK_EDITION_TYPE: BlockEditionRecord,
-                    BLOCK_TYPE_ANNOTATION_TYPE: BlockTypeAnnotation,
-                    LINE_EDITION_TYPE: LineEditionRecord,
-                    COLLECTION_EDITION_TYPE: CollectionEditionRecord,
-                    LINE_TYPE_ANNOTATION_TYPE: LineTypeAnnotation,
-                    LINE_SUPPORT_ANNOTATION_TYPE: LineSupportAnnotation,
-                    LINE_GATE_ANNOTATION_TYPE: LineGateAnnotation,
-                }
-            )
-        annotation_class = classes.get(annotation.type)
-        if annotation_class is None:
+        registry = default_diagram_annotation_type_registry(
+            include_chatlas_index_types=self.name in CHATLAS_INDEX_NAMESPACES
+        )
+        try:
+            annotation_class = registry.resolve(annotation.record)
+        except UnknownRecordType:
             raise DiagramAnnotationSpecializationError(
                 f"Annotation type is not registered in Namespace {self.name}: {annotation.type}"
-            )
+            ) from None
         try:
             return annotation_class(annotation)
         except DiagramModelError as exc:
@@ -4991,8 +5049,7 @@ def _authorization_coverage(
                     {"kind": "annotation", "id": draft.id}
                 )
     return tuple(
-        {"gate": gate, "objects": objects}
-        for gate, objects in coverage.items()
+        {"gate": gate, "objects": objects} for gate, objects in coverage.items()
     )
 
 
