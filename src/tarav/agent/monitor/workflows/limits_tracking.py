@@ -18,7 +18,11 @@ from tarav.agent.account_status import (
     USAGE_RECORD_STATUS_FRESH,
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     USAGE_RECORD_STATUS_REGISTRY_LATEST,
+    WEEKLY_LIMIT_ID,
+    WEEKLY_WINDOW_MINS,
     registry_latest_usage_record_metadata,
+    usage_over_time_limit_id,
+    usage_over_time_limit_label,
     usage_record_age_sec,
 )
 from tarav.agent.monitor.burst_ratio import measure_burst_ratios
@@ -927,10 +931,11 @@ def _weekly_burst_percent(
 
 
 def _is_weekly_limit(limit: dict[str, Any], usage_over_time: dict[str, object]) -> bool:
-    limit_id = _string_value(limit.get("limit_id"))
-    if limit_id == "weekly":
+    if _string_value(limit.get("limit_id")) == WEEKLY_LIMIT_ID:
         return True
-    return _int_value(usage_over_time.get("period_duration_mins")) == 10_080
+    return (
+        _int_value(usage_over_time.get("period_duration_mins")) == WEEKLY_WINDOW_MINS
+    )
 
 
 def _sync_weekly_usage_baselines(
@@ -1113,11 +1118,11 @@ def _usage_error_message(account_status: dict[str, Any]) -> str | None:
 
 
 def _limit_label(limit: dict[str, Any], usage_over_time: dict[str, object]) -> str:
-    duration_mins = _int_value(usage_over_time.get("period_duration_mins"))
-    if duration_mins == 300:
-        return "Burst"
-    if duration_mins == 10_080:
-        return "Weekly"
+    limit_id = usage_over_time_limit_id(
+        _int_value(usage_over_time.get("period_duration_mins"))
+    )
+    if limit_id is not None:
+        return usage_over_time_limit_label(limit_id)
     label = limit.get("limit_label") or limit.get("limit_name")
     if isinstance(label, str) and label:
         return label

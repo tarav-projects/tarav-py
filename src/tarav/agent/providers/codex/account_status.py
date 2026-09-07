@@ -16,14 +16,17 @@ from tarav.agent.account_status import (
     AccountLimit,
     AccountStatus,
     AccountStatusError,
-    UsageOverTimeLimitData,
+    BURST_LIMIT_ID,
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
+    WEEKLY_LIMIT_ID,
     fresh_usage_record_metadata,
     iso_from_epoch_seconds,
     limits_summary,
     optional_int,
     period_bounds_from_reset,
     string_or_none,
+    usage_over_time_limit,
+    usage_over_time_limit_id,
 )
 from tarav.agent.account_usage_fallback import (
     AccountUsageReadResult,
@@ -38,6 +41,11 @@ DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
 CODEX_APP_SERVER_ARGV = ("app-server",)
 CODEX_APP_SERVER_USAGE_SOURCE = "app_server"
 CODEX_APP_SERVER_RATE_LIMITS_METHOD = "account/rateLimits/read"
+CODEX_QUOTA_LIMIT_ID = "codex"
+CODEX_WINDOW_LIMIT_IDS = {
+    "primary": BURST_LIMIT_ID,
+    "secondary": WEEKLY_LIMIT_ID,
+}
 
 
 def _codex_account_status_impl(
@@ -214,7 +222,7 @@ def _account_usage_app_server(
     try:
         payload = _fetch_account_usage_app_server_payload(agent)
         return (
-            tuple(_parse_codex_rate_limits(payload)),
+            codex_usage_record_limits(payload),
             (),
             payload,
             payload,
@@ -319,32 +327,39 @@ def _build_codex_account_status_command(agent: AgentConfig, *, argv: tuple[str, 
     return agent._build_command(AgentCommandConfig(argv=argv))
 
 
-def _parse_codex_rate_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:
-    rate_limits_by_id = payload.get("rateLimitsByLimitId")
-    snapshots: list[tuple[str | None, Mapping[str, Any]]] = []
-    if isinstance(rate_limits_by_id, dict) and rate_limits_by_id:
-        for limit_id, snapshot in rate_limits_by_id.items():
-            if not isinstance(limit_id, str):
-                raise CliError("codex rate limit id must be a string")
-            if not isinstance(snapshot, dict):
-                raise CliError("codex rate limit snapshot must be an object")
-            snapshots.append((limit_id, snapshot))
-    else:
-        raw_rate_limits = payload.get("rateLimits")
-        if not isinstance(raw_rate_limits, dict):
-            raise CliError("codex rate limit response is missing rateLimits")
-        snapshots.append(
-            (string_or_none(raw_rate_limits.get("limitId")), raw_rate_limits)
-        )
-
-    limits: list[AccountLimit] = []
-    for limit_id, snapshot in snapshots:
-        limits.extend(_parse_codex_snapshot_windows(snapshot, limit_id=limit_id))
-    return tuple(limits)
-
-
 def codex_usage_record_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:
-    return _parse_codex_rate_limits(payload)
+    """Read the account's burst and weekly limits from a rate-limit payload."""
+
+    limit_id, snapshot = codex_quota_pool(payload)
+    return _parse_codex_snapshot_windows(snapshot, limit_id=limit_id)
+
+
+def codex_quota_pool(
+    payload: Mapping[str, Any],
+) -> tuple[str | None, Mapping[str, Any]]:
+    """Select the Codex quota pool from a rate-limit payload.
+
+    An account can be metered by several pools at once. Only the Codex pool
+    meters Codex usage; the others -- `base_model_inference` (the gpt-reserve
+    shared with ChatGPT) and anything OpenAI adds later -- are separate budgets
+    that the account model does not track, and reporting them alongside the
+    Codex windows produces a second, unrelated weekly limit. The unabridged
+    provider payload stays in the status `raw` and in the usage registry.
+
+    `rateLimits` is the pool the provider itself designates as the account's
+    Codex quota; `rateLimitsByLimitId` names the same pool explicitly and is
+    the fallback for payloads that carry only the map.
+    """
+
+    rate_limits = payload.get("rateLimits")
+    if isinstance(rate_limits, dict):
+        return string_or_none(rate_limits.get("limitId")), rate_limits
+    rate_limits_by_id = payload.get("rateLimitsByLimitId")
+    if isinstance(rate_limits_by_id, dict):
+        snapshot = rate_limits_by_id.get(CODEX_QUOTA_LIMIT_ID)
+        if isinstance(snapshot, dict):
+            return CODEX_QUOTA_LIMIT_ID, snapshot
+    raise CliError("codex rate limit response is missing the codex quota pool")
 
 
 def _parse_codex_snapshot_windows(
@@ -352,17 +367,19 @@ def _parse_codex_snapshot_windows(
     *,
     limit_id: str | None,
 ) -> tuple[AccountLimit, ...]:
+    """Translate one pool's windows into burst and weekly limits.
+
+    Codex reports its two windows positionally. The published window duration
+    classifies them; the position is the fallback for a window that omits it.
+    """
+
     limits: list[AccountLimit] = []
-    for window_key in ("primary", "secondary"):
+    for window_key, fallback_limit_id in CODEX_WINDOW_LIMIT_IDS.items():
         raw_window = snapshot.get(window_key)
         if raw_window is None:
             continue
         if not isinstance(raw_window, dict):
             raise CliError(f"codex {window_key} rate-limit window must be an object")
-        used_percent = _required_int(
-            raw_window.get("usedPercent"),
-            field_name=f"codex {window_key} usedPercent",
-        )
         window_duration_mins = optional_int(
             raw_window.get("windowDurationMins"),
             field_name=f"codex {window_key} windowDurationMins",
@@ -375,24 +392,18 @@ def _parse_codex_snapshot_windows(
             resets_at_epoch=resets_at_epoch,
             period_duration_mins=window_duration_mins,
         )
-        parsed_limit_id = _codex_window_limit_id(
-            window_key,
-            window_duration_mins=window_duration_mins,
-        )
-        parsed_limit_label = _codex_limit_label(parsed_limit_id)
         limits.append(
-            AccountLimit(
-                limit_class="usage_over_time",
-                limit_id=parsed_limit_id,
-                limit_name=parsed_limit_id,
-                limit_label=parsed_limit_label,
-                usage_over_time=UsageOverTimeLimitData(
-                    used_percent=used_percent,
-                    period_started_at=period_started_at,
-                    period_ends_at=period_ends_at,
-                    period_duration_mins=window_duration_mins,
-                    resets_at=iso_from_epoch_seconds(resets_at_epoch),
+            usage_over_time_limit(
+                limit_id=usage_over_time_limit_id(window_duration_mins)
+                or fallback_limit_id,
+                used_percent=_required_int(
+                    raw_window.get("usedPercent"),
+                    field_name=f"codex {window_key} usedPercent",
                 ),
+                period_started_at=period_started_at,
+                period_ends_at=period_ends_at,
+                period_duration_mins=window_duration_mins,
+                resets_at=iso_from_epoch_seconds(resets_at_epoch),
                 provider_limit={
                     "limit_id": limit_id,
                     "window_key": window_key,
@@ -401,30 +412,6 @@ def _parse_codex_snapshot_windows(
             )
         )
     return tuple(limits)
-
-
-def _codex_window_limit_id(
-    window_key: str,
-    *,
-    window_duration_mins: int | None,
-) -> str:
-    if window_duration_mins == 300:
-        return "burst"
-    if window_duration_mins == 10_080:
-        return "weekly"
-    if window_key == "primary":
-        return "burst"
-    if window_key == "secondary":
-        return "weekly"
-    raise CliError(f"unsupported codex rate-limit window {window_key!r}")
-
-
-def _codex_limit_label(limit_id: str) -> str:
-    if limit_id == "burst":
-        return "Burst"
-    if limit_id == "weekly":
-        return "Weekly"
-    return limit_id
 
 
 def _usage_auth_summary(

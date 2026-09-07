@@ -28,8 +28,11 @@ from tarav.agent.account_status import (
     AccountLimit,
     AccountStatus,
     AccountStatusError,
-    UsageOverTimeLimitData,
+    BURST_LIMIT_ID,
+    BURST_WINDOW_MINS,
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
+    WEEKLY_LIMIT_ID,
+    WEEKLY_WINDOW_MINS,
     fresh_usage_record_metadata,
     iso_from_epoch_seconds,
     limits_summary,
@@ -37,6 +40,7 @@ from tarav.agent.account_status import (
     parse_iso_datetime,
     period_bounds_from_reset,
     string_or_none,
+    usage_over_time_limit,
 )
 from tarav.agent.account_usage_fallback import (
     AccountUsageReadResult,
@@ -79,6 +83,14 @@ CLAUDE_STATUSLINE_PARENT_ENV_ALLOWLIST = frozenset(
     }
 )
 CLAUDE_STATUSLINE_LAST_RUN_LOG_FILENAME = "claude-statusline-last-run.json"
+CLAUDE_WINDOW_LIMIT_IDS = {
+    "five_hour": BURST_LIMIT_ID,
+    "seven_day": WEEKLY_LIMIT_ID,
+}
+CLAUDE_WINDOW_DURATION_MINS = {
+    "five_hour": BURST_WINDOW_MINS,
+    "seven_day": WEEKLY_WINDOW_MINS,
+}
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
@@ -1002,7 +1014,7 @@ def _text_tail(text: str) -> str:
 
 def _parse_claude_usage_get_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:
     limits: list[AccountLimit] = []
-    for limit_type in ("five_hour", "seven_day"):
+    for limit_type in CLAUDE_WINDOW_LIMIT_IDS:
         raw_limit = payload.get(limit_type)
         if raw_limit is None:
             continue
@@ -1029,21 +1041,14 @@ def _parse_claude_usage_get_limit(
         resets_at=resets_at,
         period_duration_mins=period_duration_mins,
     )
-    return AccountLimit(
-        limit_class="usage_over_time",
+    return usage_over_time_limit(
         limit_id=_claude_rate_limit_id(limit_type),
-        limit_name=_claude_rate_limit_name(limit_type),
-        limit_label=_claude_rate_limit_label(limit_type),
-        usage_over_time=UsageOverTimeLimitData(
-            used_percent=used_percent,
-            period_started_at=period_started_at,
-            period_ends_at=period_ends_at,
-            period_duration_mins=period_duration_mins,
-            resets_at=_normalize_iso_datetime(resets_at),
-        ),
-        provider_limit={
-            "limit_type": limit_type,
-        },
+        used_percent=used_percent,
+        period_started_at=period_started_at,
+        period_ends_at=period_ends_at,
+        period_duration_mins=period_duration_mins,
+        resets_at=_normalize_iso_datetime(resets_at),
+        provider_limit={"limit_type": limit_type},
     )
 
 
@@ -1053,7 +1058,7 @@ def _parse_claude_statusline_rate_limits(payload: Mapping[str, Any]) -> tuple[Ac
         raise CliError("claude statusLine payload is missing rate_limits")
 
     limits: list[AccountLimit] = []
-    for limit_type in ("five_hour", "seven_day"):
+    for limit_type in CLAUDE_WINDOW_LIMIT_IDS:
         raw_limit = raw_rate_limits.get(limit_type)
         if raw_limit is None:
             continue
@@ -1089,50 +1094,29 @@ def _parse_claude_statusline_limit(
         resets_at_epoch=resets_at_epoch,
         period_duration_mins=period_duration_mins,
     )
-    return AccountLimit(
-        limit_class="usage_over_time",
+    return usage_over_time_limit(
         limit_id=_claude_rate_limit_id(limit_type),
-        limit_name=_claude_rate_limit_name(limit_type),
-        limit_label=_claude_rate_limit_label(limit_type),
-        usage_over_time=UsageOverTimeLimitData(
-            used_percent=used_percent,
-            period_started_at=period_started_at,
-            period_ends_at=period_ends_at,
-            period_duration_mins=period_duration_mins,
-            resets_at=iso_from_epoch_seconds(resets_at_epoch),
-        ),
-        provider_limit={
-            "limit_type": limit_type,
-        },
+        used_percent=used_percent,
+        period_started_at=period_started_at,
+        period_ends_at=period_ends_at,
+        period_duration_mins=period_duration_mins,
+        resets_at=iso_from_epoch_seconds(resets_at_epoch),
+        provider_limit={"limit_type": limit_type},
     )
 
 
 def _claude_rate_limit_id(limit_type: str) -> str:
-    if limit_type == "five_hour":
-        return "burst"
-    if limit_type == "seven_day":
-        return "weekly"
-    raise CliError(f"unsupported claude rate-limit type {limit_type!r}")
+    limit_id = CLAUDE_WINDOW_LIMIT_IDS.get(limit_type)
+    if limit_id is None:
+        raise CliError(f"unsupported claude rate-limit type {limit_type!r}")
+    return limit_id
 
 
-def _claude_rate_limit_name(limit_type: str) -> str:
-    return _claude_rate_limit_id(limit_type)
-
-
-def _claude_rate_limit_label(limit_type: str) -> str:
-    if limit_type == "five_hour":
-        return "Burst"
-    if limit_type == "seven_day":
-        return "Weekly"
-    return limit_type
-
-
-def _claude_rate_limit_duration_mins(limit_type: str) -> int | None:
-    if limit_type == "five_hour":
-        return 300
-    if limit_type == "seven_day":
-        return 10_080
-    raise CliError(f"unsupported claude rate-limit type {limit_type!r}")
+def _claude_rate_limit_duration_mins(limit_type: str) -> int:
+    duration_mins = CLAUDE_WINDOW_DURATION_MINS.get(limit_type)
+    if duration_mins is None:
+        raise CliError(f"unsupported claude rate-limit type {limit_type!r}")
+    return duration_mins
 
 
 def _period_bounds_from_reset_iso(

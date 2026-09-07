@@ -1,4 +1,13 @@
 # $kw: --from Account.Management
+"""Provider-neutral account status, usage limits, and usage-record metadata.
+
+An account is metered over two quota windows: a short burst window and a long
+weekly window. Providers word them differently -- Codex primary/secondary,
+Claude five_hour/seven_day -- and every provider adapter translates into the
+neutral vocabulary here, so the monitor, the auto-prime workflow, and the
+burst-ratio measurement read one shape regardless of who produced it.
+"""
+
 from __future__ import annotations
 
 import datetime
@@ -15,6 +24,20 @@ AccountIdentityMatch = Literal["verified", "mismatched", "unknown", "unavailable
 USAGE_RECORD_STATUS_FRESH = "fresh"
 USAGE_RECORD_STATUS_REGISTRY_FALLBACK = "registry_fallback"
 USAGE_RECORD_STATUS_REGISTRY_LATEST = "registry_latest"
+
+USAGE_OVER_TIME_LIMIT_CLASS = "usage_over_time"
+BURST_LIMIT_ID = "burst"
+WEEKLY_LIMIT_ID = "weekly"
+BURST_WINDOW_MINS = 300
+WEEKLY_WINDOW_MINS = 10_080
+USAGE_OVER_TIME_LIMIT_LABELS = {
+    BURST_LIMIT_ID: "Burst",
+    WEEKLY_LIMIT_ID: "Weekly",
+}
+USAGE_OVER_TIME_LIMIT_IDS_BY_WINDOW_MINS = {
+    BURST_WINDOW_MINS: BURST_LIMIT_ID,
+    WEEKLY_WINDOW_MINS: WEEKLY_LIMIT_ID,
+}
 
 
 @dataclass(frozen=True)
@@ -169,6 +192,50 @@ class AccountLimit:
         return payload
 
 
+def usage_over_time_limit(
+    *,
+    limit_id: str,
+    used_percent: int | None,
+    period_started_at: str | None,
+    period_ends_at: str | None,
+    period_duration_mins: int | None = None,
+    resets_at: str | None = None,
+    limit_label: str | None = None,
+    provider_limit: Mapping[str, object] | None = None,
+) -> AccountLimit:
+    """Build a usage-over-time limit in the shared provider-neutral shape.
+
+    Every provider adapter names the same windows the same way, so the
+    identity of a limit is its neutral id, not the provider wording that
+    produced it.
+    """
+
+    return AccountLimit(
+        limit_class=USAGE_OVER_TIME_LIMIT_CLASS,
+        limit_id=limit_id,
+        limit_name=limit_id,
+        limit_label=limit_label or usage_over_time_limit_label(limit_id),
+        usage_over_time=UsageOverTimeLimitData(
+            used_percent=used_percent,
+            period_started_at=period_started_at,
+            period_ends_at=period_ends_at,
+            period_duration_mins=period_duration_mins,
+            resets_at=resets_at,
+        ),
+        provider_limit=dict(provider_limit or {}),
+    )
+
+
+def usage_over_time_limit_label(limit_id: str) -> str:
+    return USAGE_OVER_TIME_LIMIT_LABELS.get(limit_id, limit_id)
+
+
+def usage_over_time_limit_id(window_duration_mins: int | None) -> str | None:
+    """Classify a provider window by its duration, or None when unrecognized."""
+
+    return USAGE_OVER_TIME_LIMIT_IDS_BY_WINDOW_MINS.get(window_duration_mins)
+
+
 @dataclass(frozen=True)
 class AccountStatus:
     provider: str
@@ -297,10 +364,17 @@ __all__ = [
     "AccountStatusError",
     "AccountUsageStatus",
     "AgentAccountContext",
+    "BURST_LIMIT_ID",
+    "BURST_WINDOW_MINS",
+    "USAGE_OVER_TIME_LIMIT_CLASS",
+    "USAGE_OVER_TIME_LIMIT_IDS_BY_WINDOW_MINS",
+    "USAGE_OVER_TIME_LIMIT_LABELS",
     "USAGE_RECORD_STATUS_FRESH",
     "USAGE_RECORD_STATUS_REGISTRY_FALLBACK",
     "USAGE_RECORD_STATUS_REGISTRY_LATEST",
     "UsageOverTimeLimitData",
+    "WEEKLY_LIMIT_ID",
+    "WEEKLY_WINDOW_MINS",
     "fresh_usage_record_metadata",
     "iso_from_epoch_seconds",
     "limits_summary",
@@ -310,5 +384,8 @@ __all__ = [
     "registry_latest_usage_record_metadata",
     "registry_fallback_usage_record_metadata",
     "string_or_none",
+    "usage_over_time_limit",
+    "usage_over_time_limit_id",
+    "usage_over_time_limit_label",
     "usage_record_age_sec",
 ]

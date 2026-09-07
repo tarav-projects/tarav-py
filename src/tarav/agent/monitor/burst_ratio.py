@@ -20,11 +20,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from tarav._core.errors import CliError
+from tarav.agent.account_status import BURST_WINDOW_MINS, WEEKLY_WINDOW_MINS
+from tarav.agent.providers.codex.account_status import codex_quota_pool
 from tarav.agent.usage_registry import iter_usage_records_since
 
-
-BURST_WINDOW_MINS = 300
-WEEKLY_WINDOW_MINS = 10_080
 
 MEASUREMENT_WINDOW = datetime.timedelta(days=14)
 MEASUREMENT_TTL = datetime.timedelta(hours=24)
@@ -40,13 +40,20 @@ class _Observation:
 
 
 def _codex_observation(payload: Mapping[str, Any]) -> tuple[Any, ...] | None:
-    rate_limits = payload.get("rateLimits")
-    if not isinstance(rate_limits, dict):
+    """Read both windows of the account's Codex quota pool.
+
+    The ratio only means something inside one pool, so this reads the same
+    pool the account model tracks and ignores the account's other budgets.
+    """
+
+    try:
+        _limit_id, snapshot = codex_quota_pool(payload)
+    except CliError:
         return None
-    burst: dict[str, Any] | None = None
-    weekly: dict[str, Any] | None = None
+    burst: Mapping[str, Any] | None = None
+    weekly: Mapping[str, Any] | None = None
     for key in ("primary", "secondary"):
-        window = rate_limits.get(key)
+        window = snapshot.get(key)
         if not isinstance(window, dict):
             continue
         duration = window.get("windowDurationMins")

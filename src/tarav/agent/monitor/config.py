@@ -22,6 +22,7 @@ from tarav.agent.profile_scope import (
     format_allowed_values,
 )
 from tarav.agent.monitor.loop import MonitorLoop
+from tarav.agent.account_status import BURST_LIMIT_ID, WEEKLY_LIMIT_ID
 from tarav.agent.monitor.models import (
     ACCOUNT_ROTATION_WORKFLOW,
     AUTO_PRIME_SUPPORTED_TRIGGERS,
@@ -37,12 +38,12 @@ from tarav.agent.monitor.models import (
 from tarav.agent.monitor.workflows import build_monitor_workflows
 
 AUTO_PRIME_ZERO_LIMITS_DEFAULT_TARGET_LIMITS = {
-    "codex": ("burst",),
-    "claude-code": ("burst",),
+    "codex": (BURST_LIMIT_ID,),
+    "claude-code": (BURST_LIMIT_ID,),
 }
 AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS = {
-    "codex": ("burst", "weekly"),
-    "claude-code": ("burst", "weekly"),
+    "codex": (BURST_LIMIT_ID, WEEKLY_LIMIT_ID),
+    "claude-code": (BURST_LIMIT_ID, WEEKLY_LIMIT_ID),
 }
 AUTO_PRIME_ZERO_LIMITS_DEFAULT_TRIGGERS = {
     "codex": (

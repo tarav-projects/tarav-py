@@ -5,8 +5,17 @@ from typing import Any
 
 import pytest
 
-from tarav.agent.account_status import AccountStatusError, AgentAccountContext
+from tarav._core.errors import CliError
+from tarav.agent.account_status import (
+    AccountLimit,
+    AccountStatusError,
+    AgentAccountContext,
+)
 from tarav.agent.usage_registry import append_usage_record
+from tarav.agent.providers.claude_code.account_status import (
+    claude_statusline_usage_record_limits,
+)
+from tarav.agent.providers.codex.account_status import codex_usage_record_limits
 from tarav.agent.providers.codex.agent import CodexAgent
 from tarav.testing import TaravTestEnvironment
 from tarav.testing import codex_auth_json, seed_codex_account
@@ -204,3 +213,99 @@ def test_agent_usage_without_cached_codex_limits_stays_error(
     assert status.auth_summary is None
     assert status.raw["usage"] is None
     assert status.raw["usage_record"] is None
+
+
+def _codex_multi_pool_usage_payload() -> dict[str, Any]:
+    """An app-server payload for an account metered by more than one pool."""
+
+    codex_pool = {
+        "limitId": "codex",
+        "planType": "plus",
+        "primary": {
+            "usedPercent": 3,
+            "windowDurationMins": 300,
+            "resetsAt": 1_788_777_569,
+        },
+        "secondary": {
+            "usedPercent": 100,
+            "windowDurationMins": 10080,
+            "resetsAt": 1_788_763_013,
+        },
+    }
+    return {
+        "rateLimits": dict(codex_pool),
+        "rateLimitsByLimitId": {
+            "base_model_inference": {
+                "limitId": "base_model_inference",
+                "limitName": "gpt-reserve",
+                "planType": "plus",
+                "primary": {
+                    "usedPercent": 0,
+                    "windowDurationMins": 10080,
+                    "resetsAt": 1_789_364_369,
+                },
+                "secondary": None,
+            },
+            "codex": dict(codex_pool),
+        },
+    }
+
+
+def test_codex_limits_ignore_non_codex_quota_pools() -> None:
+    limits = codex_usage_record_limits(_codex_multi_pool_usage_payload())
+
+    assert [(limit.limit_id, limit.limit_label) for limit in limits] == [
+        ("burst", "Burst"),
+        ("weekly", "Weekly"),
+    ]
+    assert [limit.usage_over_time.used_percent for limit in limits] == [3, 100]
+    assert [limit.provider_limit["limit_id"] for limit in limits] == ["codex", "codex"]
+
+
+def test_codex_limits_read_the_codex_pool_from_the_limit_id_map() -> None:
+    payload = _codex_multi_pool_usage_payload()
+    del payload["rateLimits"]
+
+    limits = codex_usage_record_limits(payload)
+
+    assert [(limit.limit_id, limit.limit_label) for limit in limits] == [
+        ("burst", "Burst"),
+        ("weekly", "Weekly"),
+    ]
+
+
+def test_codex_limits_without_a_codex_quota_pool_are_an_error() -> None:
+    payload = _codex_multi_pool_usage_payload()
+    del payload["rateLimits"]
+    del payload["rateLimitsByLimitId"]["codex"]
+
+    with pytest.raises(CliError, match="codex quota pool"):
+        codex_usage_record_limits(payload)
+
+
+def test_codex_and_claude_publish_the_same_limit_vocabulary() -> None:
+    codex_limits = codex_usage_record_limits(_codex_multi_pool_usage_payload())
+    claude_limits = claude_statusline_usage_record_limits(
+        {
+            "rate_limits": {
+                "five_hour": {"used_percentage": 3, "resets_at": 1_788_777_569},
+                "seven_day": {"used_percentage": 100, "resets_at": 1_788_763_013},
+            }
+        }
+    )
+
+    def vocabulary(limits: tuple[AccountLimit, ...]) -> list[tuple[object, ...]]:
+        return [
+            (
+                limit.limit_class,
+                limit.limit_id,
+                limit.limit_name,
+                limit.limit_label,
+                limit.usage_over_time.period_duration_mins,
+                limit.usage_over_time.used_percent,
+                limit.usage_over_time.resets_at,
+            )
+            for limit in limits
+        ]
+
+    assert vocabulary(codex_limits) == vocabulary(claude_limits)
