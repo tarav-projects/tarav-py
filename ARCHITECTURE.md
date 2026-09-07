@@ -51,13 +51,20 @@ contract and Git boundaries.
   intermediate bases, declares a class-local `type_ship` beside its
   human-facing `type_name`; the registry indexes both and treats the Type Ship
   as authoritative, so a known Type keeps resolving after a rename. A retained
-  `type` may be a legacy label or a structural `{id, name}` reference, and the
-  registry reports absent, unknown, or conflicting components rather than
-  guessing. Records expose their Ships through `ship_occurrences()`, which a
-  class opts into by returning concrete `Ship` instances; Harness never infers
-  a Ship by scanning UUID-shaped data. It does not impose an application Record
-  schema, storage model, or shared behavior merely because classes subtype its
-  roles.
+  Type reference may be a legacy label or a structural `{uuid, label}`
+  value, and the registry reports absent, unknown, or conflicting
+  components rather than guessing. `TYPE_RESOLUTION_PATH` is the single Harness-owned ordered sequence
+  of literal key paths locating that reference — `__tarav__.type`, then root
+  `type`. It is not configurable by applications, registries, Record families,
+  or concrete Types: the first path that exists is selected even when its value
+  is null or empty, so a malformed reference fails at its own location instead
+  of being shadowed by a later one. `__tarav__` is the reserved namespace an
+  application uses when its own records already give `type` another meaning.
+  Records expose the Ships they semantically recognize through `ships()`, which
+  a subclass extends by returning concrete `Ship` instances; the projection
+  carries no serialized paths, and Harness never infers a Ship by scanning
+  UUID-shaped data. It does not impose an application Record schema, storage
+  model, or shared behavior merely because classes subtype its roles.
 - `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,
   and provider adapters under `tarav.agent.providers`.
 - `tarav.chatlas` owns the chat data train from provider-native capture through
@@ -125,6 +132,15 @@ contract and Git boundaries.
   results express execution dependencies.
 - `tarav.anchory` remains a legacy importable primitive for retained consumers;
   it has no public umbrella-CLI command.
+- `tarav.python_env` owns the public `tarav python` namespace, which exposes
+  the interpreter already running Tarav so an external script can import it
+  without locating or installing the distribution. The environment is reported,
+  never provisioned: `interpreter()` is `sys.executable`, so a tool install and
+  a project run each answer honestly for their own process. A script is named
+  explicitly, as `--file` or as `--src`, so nothing about the command line is
+  positional and arguments belonging to the script stay behind a `--`
+  separator. Callers that need more than `python run` use `python path` and
+  drive the interpreter directly.
 - `tarav.stdlib` contains reusable `mdblocks`, `prefix`, `refs`, and `utils`
   primitives matching the `tarav stdlib` CLI.
 - `tarav.project` owns the public `tarav project` namespace and composes its
@@ -168,10 +184,13 @@ Annotated code is discovered through the project's `.skw/skw.json`.
   evidence. Chatlas does not import Diagram.
 - Diagram specializes Harness roles and uses its trusted Type registry for
   Ship and Annotation Record dispatch. It is the first consumer of Type Ships:
-  its record classes declare them, its read paths accept both retained `type`
-  forms, and its typed Records expose their structural Ship occurrences.
-  Retained label-only Records are not rewritten. Diagram retains its object
-  schemas, projections, Ships, Assertions, and storage semantics.
+  its record classes declare them, every Type reference read goes through
+  `TYPE_RESOLUTION_PATH` rather than Diagram reading root `type` itself, and
+  its typed Records project the Ships they recognize. Gate and Assertion
+  payloads keep their own nested `type` keys; the resolution path addresses
+  Records, not cargo. Retained label-only Records are not rewritten. Diagram
+  retains its object schemas, projections, Ships, Assertions, and storage
+  semantics.
 - Scoring consumes Diagram's public projection and Chatlas-backed support when
   an Assertion-owned task builder constructs an `Index.Line` grounding case.
   Diagram does not import Scoring; score discovery can be rebuilt from the

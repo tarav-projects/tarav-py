@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from uuid import UUID
 
 
@@ -59,17 +58,3 @@ class TypeShip(Ship):
     The Ship persists while the Type's human-facing label and Python
     implementation evolve across system editions.
     """
-
-
-@dataclass(frozen=True, slots=True)
-class ShipOccurrence:
-    """One Record path paired with the concrete Ship instance found there."""
-
-    path: str
-    ship: Ship
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.path, str) or not self.path:
-            raise ShipIdentityError("Ship.Occurrence path must be a non-empty string")
-        if not isinstance(self.ship, Ship):
-            raise ShipIdentityError("Ship.Occurrence ship must be a Ship instance")

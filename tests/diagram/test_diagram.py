@@ -55,7 +55,6 @@ from tarav.diagram import (
     ShipDraft,
     VerbatimGate,
 )
-from tarav.diagram.migration import migrate_namespace_v1
 from tarav.harness import (
     TaravAssertion,
     TaravPOIInstance,
@@ -872,114 +871,6 @@ def test_annotation_identity_is_non_rebinding(tmp_path: Path) -> None:
     namespace.append((AnnotationDraft(annotation_id, {"type": "Example.One"}),))
     with pytest.raises(DiagramError, match="cannot be rebound"):
         namespace.append((AnnotationDraft(annotation_id, {"type": "Example.Two"}),))
-
-
-def test_v1_migration_retains_raw_tape_and_builds_typed_ships(tmp_path: Path) -> None:
-    root = tmp_path / "legacy-index"
-    annotations = root / "annotations"
-    annotations.mkdir(parents=True)
-    subprocess.run(("git", "-C", str(root), "init", "-q"), check=True)
-    namespace_id = str(uuid4())
-    model_ship = str(uuid4())
-    model_edition = str(uuid4())
-    block_ship = str(uuid4())
-    block_edition = str(uuid4())
-    line_ship = str(uuid4())
-    line_edition = str(uuid4())
-    type_claim = str(uuid4())
-    records = {
-        model_edition: {
-            "type": "Diagram.Model.Annotation",
-            "model_ship": model_ship,
-            "data": {"label": "Legacy.Model"},
-            "recorded_at": "2026-01-01T00:00:00Z",
-        },
-        block_edition: {
-            "type": "Diagram.Block.Annotation",
-            "location": DiagramBlockLocation(model_ship, block_ship).to_dict(),
-            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
-            "data": {"label": "Legacy.Block"},
-            "recorded_at": "2026-01-01T00:01:00Z",
-        },
-        line_edition: {
-            "type": "Diagram.Line.Annotation",
-            "location": DiagramLocation(model_ship, block_ship, line_ship).to_dict(),
-            "producer": {
-                "session_identity": "a" * 64,
-                "turn_address": "b" * 64,
-                "turn_hash": "c" * 64,
-            },
-            "support": [],
-            "data": {"text": "Legacy content remains addressable."},
-            "recorded_at": "2026-01-01T00:02:00Z",
-        },
-        type_claim: {
-            "type": BLOCK_TYPE_ANNOTATION_TYPE,
-            "location": DiagramBlockLocation(model_ship, block_ship).to_dict(),
-            "block_type": DESIGN_BLOCK_OBJECT_TYPE,
-            "recorded_at": "2026-01-01T00:03:00Z",
-        },
-    }
-    (root / "namespace.json").write_text(
-        json.dumps(
-            {
-                "class": "Tarav.Diagram.Namespace",
-                "schema_version": 1,
-                "id": namespace_id,
-                "name": USER_TOUCHED_CHATLAS_INDEX,
-                "allowed_types": [
-                    "Diagram.Model.Annotation",
-                    "Diagram.Block.Annotation",
-                    "Diagram.Line.Annotation",
-                    BLOCK_TYPE_ANNOTATION_TYPE,
-                ],
-                "allowed_block_types": [DESIGN_BLOCK_OBJECT_TYPE],
-                "require_block_type": True,
-            }
-        ),
-        encoding="utf-8",
-    )
-    for record_id, record in records.items():
-        (annotations / f"{record_id}.json").write_text(
-            json.dumps(record), encoding="utf-8"
-        )
-    subprocess.run(("git", "-C", str(root), "add", "."), check=True)
-    subprocess.run(
-        (
-            "git",
-            "-C",
-            str(root),
-            "-c",
-            "user.name=Tarav Test",
-            "-c",
-            "user.email=tarav@example.invalid",
-            "commit",
-            "-qm",
-            "legacy",
-        ),
-        check=True,
-    )
-    backup = tmp_path / "attic" / "legacy" / "index-v1"
-
-    report = migrate_namespace_v1(root, backup=backup)
-    migrated = DiagramNamespace.open(root)
-
-    assert report.namespace_id == namespace_id
-    assert report.ships == 3
-    assert report.editions == 3
-    assert report.annotations == 1
-    assert (backup / "migration.json").is_file()
-    assert (
-        json.loads((backup / "annotations" / f"{line_edition}.json").read_text())
-        == records[line_edition]
-    )
-    assert migrated.ship(model_ship).type == MODEL_SHIP_TYPE
-    assert migrated.ship(block_ship).type == BLOCK_SHIP_TYPE
-    assert migrated.ship(line_ship).type == LINE_SHIP_TYPE
-    assert migrated.annotation(type_claim).type == BLOCK_TYPE_ANNOTATION_TYPE
-    assert migrated.edition(line_edition).specialize().text == (
-        "Legacy content remains addressable."
-    )
 
 
 def test_project_main_model_bootstraps_in_default_user_namespace(

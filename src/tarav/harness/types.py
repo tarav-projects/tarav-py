@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import ClassVar, Generic, TypeVar
+from typing import ClassVar, Final, Generic, TypeVar
 from uuid import UUID
 
-from .ships import ShipIdentityError, ShipOccurrence, TypeShip
+from .ships import Ship, ShipIdentityError, TypeShip
 
 
 class TaravType:
@@ -51,17 +51,18 @@ class TaravRecordType(TaravType):
 
         if reference.ship is not None:
             return reference.ship == cls.type_ship
-        return reference.name == getattr(cls, "type_name", None)
+        return reference.label == getattr(cls, "type_name", None)
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
-        """Return the Ships this Record carries, path by path.
+    def ships(self) -> tuple[Ship, ...]:
+        """Return the Ships this Record semantically recognizes.
 
-        The default exposes only the Record Type Ship. An application class
-        opts into cargo Ships by returning concrete ``Ship`` instances; Harness
-        never infers a Ship by scanning UUID-shaped values.
+        The default exposes only the Record Type Ship. A subclass extends the
+        projection with the Ships its own semantics recognize, returning
+        concrete ``Ship`` instances; Harness never infers a Ship by scanning
+        UUID-shaped values, and the projection exposes no serialized paths.
         """
 
-        return (ShipOccurrence("type.id", type(self).type_ship),)
+        return (type(self).type_ship,)
 
 
 class TaravAssertion(TaravType):
@@ -70,6 +71,62 @@ class TaravAssertion(TaravType):
 
 class TaravPOIInstance(TaravType):
     """Semantic role for a Tarav point-of-interest instance."""
+
+
+TYPE_RESOLUTION_PATH: Final[tuple[tuple[str, ...], ...]] = (
+    ("__tarav__", "type"),
+    ("type",),
+)
+"""The single ordered sequence of literal key paths locating a Record's Type.
+
+`__tarav__` is the reserved namespace an application uses when its own records
+already give `type` a different meaning. The sequence is Harness-owned:
+applications, registries, Record families, and concrete Types cannot configure
+it, so any Record's Type reference is found the same way everywhere.
+"""
+
+_MISSING = object()
+
+
+def _traverse(record: Mapping[str, object], path: tuple[str, ...]) -> object:
+    cursor: object = record
+    for segment in path:
+        if not isinstance(cursor, Mapping) or segment not in cursor:
+            return _MISSING
+        cursor = cursor[segment]
+    return cursor
+
+
+@dataclass(frozen=True, slots=True)
+class RecordTypeLocation:
+    """The Type.Resolution.PATH entry that supplied a Record's Type reference."""
+
+    path: tuple[str, ...]
+    value: object
+
+    @property
+    def field(self) -> str:
+        return ".".join(self.path)
+
+
+def locate_record_type(record: Mapping[str, object]) -> RecordTypeLocation | None:
+    """Select the first `Type.Resolution.PATH` entry present in one Record.
+
+    A path exists once every segment is present, even when the final value is
+    null or empty. Existence alone selects: a present but unusable value fails
+    at that path rather than falling through, so a malformed reference can
+    never be shadowed by a later one.
+    """
+
+    for path in TYPE_RESOLUTION_PATH:
+        value = _traverse(record, path)
+        if value is not _MISSING:
+            return RecordTypeLocation(path, value)
+    return None
+
+
+def _resolution_paths() -> str:
+    return ", ".join(".".join(path) for path in TYPE_RESOLUTION_PATH)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,19 +140,15 @@ class RecordTypeReference:
     """
 
     ship: TypeShip | None = None
-    name: str | None = None
+    label: str | None = None
 
     @classmethod
     def parse(cls, value: object) -> RecordTypeReference:
         if isinstance(value, str):
             return cls(None, value or None)
         if isinstance(value, Mapping):
-            return cls(cls._ship(value.get("id")), cls._name(value.get("name")))
+            return cls(cls._ship(value.get("uuid")), cls._label(value.get("label")))
         return cls()
-
-    @classmethod
-    def from_record(cls, record: Mapping[str, object]) -> RecordTypeReference:
-        return cls.parse(record.get("type"))
 
     @staticmethod
     def _ship(value: object) -> TypeShip | None:
@@ -107,13 +160,13 @@ class RecordTypeReference:
             return None
 
     @staticmethod
-    def _name(value: object) -> str | None:
+    def _label(value: object) -> str | None:
         return value if isinstance(value, str) and value else None
 
     def describe(self) -> str:
-        if self.ship is not None and self.name is not None:
-            return f"{self.name} ({self.ship})"
-        return self.name or (str(self.ship) if self.ship else "<missing>")
+        if self.ship is not None and self.label is not None:
+            return f"{self.label} ({self.ship})"
+        return self.label or (str(self.ship) if self.ship else "<missing>")
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,38 +278,75 @@ class TypeRegistry(Generic[RecordTypeT]):
 
         if reference.ship is not None:
             return self.resolve_ship(reference.ship)
-        if reference.name is not None:
-            return self.resolve_type(reference.name)
+        if reference.label is not None:
+            return self.resolve_type(reference.label)
         raise InvalidRecordType(
-            "Record.type must be a Type name or a {id, name} reference"
+            "Record.type must be a Type label or a {uuid, label} reference"
         )
 
     def resolve(self, record: Mapping[str, object]) -> type[RecordTypeT]:
-        """Resolve one Record without interpreting application-owned fields."""
+        """Resolve one Record through `Type.Resolution.PATH`.
 
-        return self.resolve_reference(RecordTypeReference.from_record(record))
+        Only the selected path is consulted, so an unusable reference reports
+        the exact location that supplied it instead of resolving elsewhere.
+        """
+
+        location = locate_record_type(record)
+        if location is None:
+            raise InvalidRecordType(
+                "Record carries no Type reference at any Type.Resolution.PATH "
+                f"entry: {_resolution_paths()}"
+            )
+        reference = RecordTypeReference.parse(location.value)
+        if reference.ship is None and reference.label is None:
+            raise InvalidRecordType(
+                f"{location.field} is not a Tarav Type reference: {location.value!r}"
+            )
+        try:
+            return self.resolve_reference(reference)
+        except UnknownRecordType as exc:
+            raise UnknownRecordType(f"{exc} (at {location.field})") from None
+
+    def record_findings(
+        self, record: Mapping[str, object]
+    ) -> tuple[TypeReferenceFinding, ...]:
+        """Report what one Record's Type reference is missing or disagrees on."""
+
+        location = locate_record_type(record)
+        if location is None:
+            return (
+                TypeReferenceFinding(
+                    "record-type-component-missing",
+                    TYPE_RESOLUTION_PATH[-1][0],
+                    "Record carries no Type reference at any "
+                    f"Type.Resolution.PATH entry: {_resolution_paths()}.",
+                ),
+            )
+        return self.reference_findings(
+            RecordTypeReference.parse(location.value), field=location.field
+        )
 
     def reference_findings(
         self, reference: RecordTypeReference, *, field: str = "type"
     ) -> tuple[TypeReferenceFinding, ...]:
         """Report what is absent, unknown, or inconsistent in one reference."""
 
-        if reference.ship is None and reference.name is None:
+        if reference.ship is None and reference.label is None:
             return (
                 TypeReferenceFinding(
                     "record-type-component-missing",
                     field,
-                    "Record.type carries no Type Ship and no Type name.",
+                    "Record.type carries no Type Ship and no Type label.",
                 ),
             )
         if reference.ship is None:
-            if reference.name in self._types:
+            if reference.label in self._types:
                 return ()
             return (
                 TypeReferenceFinding(
-                    "record-type-name-unknown",
-                    f"{field}.name",
-                    f"Record Type name is not registered: {reference.name}.",
+                    "record-type-label-unknown",
+                    f"{field}.label",
+                    f"Record Type label is not registered: {reference.label}.",
                 ),
             )
         registered = self._ships.get(reference.ship.uuid)
@@ -264,29 +354,29 @@ class TypeRegistry(Generic[RecordTypeT]):
             return (
                 TypeReferenceFinding(
                     "record-type-ship-unknown",
-                    f"{field}.id",
+                    f"{field}.uuid",
                     f"Record Type Ship is not registered: {reference.ship}.",
                 ),
             )
-        if reference.name is None:
+        if reference.label is None:
             return (
                 TypeReferenceFinding(
                     "record-type-component-missing",
-                    f"{field}.name",
+                    f"{field}.label",
                     (
-                        "Record.type carries no human-facing name for Type Ship "
+                        "Record.type carries no human-facing label for Type Ship "
                         f"{reference.ship}."
                     ),
                 ),
             )
-        if reference.name != registered.type_name:
+        if reference.label != registered.type_name:
             return (
                 TypeReferenceFinding(
-                    "record-type-name-conflict",
-                    f"{field}.name",
+                    "record-type-label-conflict",
+                    f"{field}.label",
                     (
                         f"Record Type Ship {reference.ship} resolves to "
-                        f"{registered.type_name}, not {reference.name}."
+                        f"{registered.type_name}, not {reference.label}."
                     ),
                 ),
             )

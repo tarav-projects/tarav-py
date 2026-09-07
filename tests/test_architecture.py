@@ -141,12 +141,19 @@ def test_harness_is_a_dependency_clean_application_base() -> None:
 
 def test_ship_identity_is_owned_by_harness_and_only_declared_by_diagram() -> None:
     import tarav.diagram as diagram
-    from tarav.harness import Ship, ShipOccurrence, TypeShip
+    from tarav.harness import Ship, TypeShip, locate_record_type
 
     assert issubclass(TypeShip, Ship)
     assert diagram.Ship is Ship
-    assert diagram.ShipOccurrence is ShipOccurrence
     assert isinstance(diagram.LineShipRecord.type_ship, TypeShip)
+    assert diagram.locate_record_type is locate_record_type
+
+
+def test_python_env_reports_the_environment_without_provisioning_one() -> None:
+    imports = _top_level_import_graph()
+
+    assert imports["python_env"] == set()
+    assert (PACKAGE_ROOT / "python_env" / "commands.py").is_file()
 
 
 def test_promoted_tarav_domains_have_normal_package_ownership() -> None:

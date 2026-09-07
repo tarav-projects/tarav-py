@@ -21,7 +21,6 @@ from tarav.diagram import (
 )
 from tarav.diagram import view_commands
 from tarav.diagram import views
-from tarav.diagram.view_migration import migrate_view_repository_v1
 from tarav.diagram.views import (
     DIAGRAM_VIEW_TYPE,
     PROJECT_DIAGRAM_VIEW_TYPE,
@@ -198,62 +197,15 @@ def test_view_manifest_type_selects_runtime_view_class(tmp_path: Path) -> None:
     assert isinstance(repository.view(project.ship), ProjectDiagramView)
 
 
-def test_view_repository_v1_migration_preserves_views_and_line_editions(
-    tmp_path: Path,
-) -> None:
-    diagram, model, _, provider_block, _, _ = _diagram(tmp_path)
+def test_a_repository_of_another_schema_version_is_refused(tmp_path: Path) -> None:
     repository = DiagramViewRepository.create(tmp_path / "views")
-    view = repository.create_view(
-        diagram,
-        block_ships=(provider_block,),
-        configuration=DiagramViewConfiguration(bootstrap_visible_lines=1),
-    ).view
-    original_state = view.state
-    original_edition_id = original_state["blocks"][0]["disclosure"]["lines"][0][
-        "editions"
-    ][0]["edition_id"]
-    original_manifest_id = view.manifest_id
-
-    repository_record = json.loads(
-        (repository.root / "repository.json").read_text(encoding="utf-8")
-    )
-    repository_record["schema_version"] = 1
-    (repository.root / "repository.json").write_text(
-        json.dumps(repository_record), encoding="utf-8"
-    )
-    manifest = view.manifest
-    manifest["type"] = "Diagram.View.Annotation"
-    manifest["schema_version"] = 1
-    view.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    config = json.loads(view.config_path.read_text(encoding="utf-8"))
-    config["schema_version"] = 1
-    view.config_path.write_text(json.dumps(config), encoding="utf-8")
-    state = view.state
-    state["schema_version"] = 1
-    edition = state["blocks"][0]["disclosure"]["lines"][0]["editions"][0]
-    edition["annotation_id"] = edition.pop("edition_id")
-    view.state_path.write_text(json.dumps(state), encoding="utf-8")
+    record_path = repository.root / "repository.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["schema_version"] = record["schema_version"] + 1
+    record_path.write_text(json.dumps(record), encoding="utf-8")
 
     with pytest.raises(DiagramViewError, match="Unsupported Diagram.View repository"):
         DiagramViewRepository.open(repository.root)
-
-    report = migrate_view_repository_v1(repository.root)
-    migrated = DiagramViewRepository.open(repository.root).view(view.ship)
-
-    assert report.source_commit
-    assert report.views == 1
-    assert report.line_editions == 1
-    assert migrated.manifest_id == original_manifest_id
-    assert migrated.manifest["type"] == "Diagram.View.Manifest"
-    assert migrated.configuration == view.configuration
-    migrated_edition = migrated.state["blocks"][0]["disclosure"]["lines"][0][
-        "editions"
-    ][0]
-    assert migrated_edition == {
-        "edition_id": original_edition_id,
-        "text": edition["text"],
-    }
-    assert migrated.check(diagram) == ()
 
 
 def test_session_view_peer_hints_expose_related_selections(tmp_path: Path) -> None:

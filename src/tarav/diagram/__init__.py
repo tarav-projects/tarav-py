@@ -23,8 +23,8 @@ from tarav.chatlas.normal_model import (
 )
 from tarav.harness import (
     RecordTypeReference,
+    locate_record_type,
     Ship,
-    ShipOccurrence,
     TaravAssertion,
     TaravPOIInstance,
     TaravRecordType,
@@ -454,7 +454,7 @@ class AnnotationDraft:
     def __post_init__(self) -> None:
         _uuid(self.id, field="Annotation.id")
         copied = _object(self.record, field="Annotation")
-        _record_type_reference(copied.get("type"), field="Annotation.type")
+        _record_type_reference(copied, field="Annotation")
         object.__setattr__(self, "record", copied)
 
     def to_dict(self) -> JsonObject:
@@ -477,7 +477,7 @@ class ShipDraft:
     def __post_init__(self) -> None:
         _uuid(self.id, field="Ship.id")
         copied = _object(self.record, field="Ship")
-        _record_type_reference(copied.get("type"), field="Ship.type")
+        _record_type_reference(copied, field="Ship")
         _array(copied.get("editions", []), field="Ship.editions")
         object.__setattr__(self, "record", copied)
 
@@ -502,16 +502,16 @@ class DiagramShip:
     def __post_init__(self) -> None:
         _uuid(self.id, field="Ship.id")
         copied = _object(self.record, field="Ship.Record")
-        _record_type_reference(copied.get("type"), field="Ship.type")
+        _record_type_reference(copied, field="Ship")
         object.__setattr__(self, "record", copied)
 
     @property
     def type_reference(self) -> RecordTypeReference:
-        return _record_type_reference(self.record.get("type"), field="Ship.type")
+        return _record_type_reference(self.record, field="Ship")
 
     @property
     def type(self) -> str:
-        return _record_type_name(self.record.get("type"), field="Ship.type")
+        return _record_type_name(self.record, field="Ship")
 
     def to_record(self) -> JsonObject:
         return dict(self.record)
@@ -552,10 +552,10 @@ class TypedShip(TaravRecordType):
                 f"not a {type(self).type_name}: {reference.describe()}"
             )
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(TypedShip, self).ship_occurrences(),
-            ShipOccurrence("id", Ship(self.id)),
+            *super(TypedShip, self).ships(),
+            Ship(self.id),
         )
 
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
@@ -600,10 +600,10 @@ class BlockShipRecord(TypedShip):
     def model_ship(self) -> str:
         return _uuid(self.record.get("model_ship"), field="Block.Ship.model_ship")
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(BlockShipRecord, self).ship_occurrences(),
-            ShipOccurrence("model_ship", Ship(self.model_ship)),
+            *super(BlockShipRecord, self).ships(),
+            Ship(self.model_ship),
         )
 
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
@@ -643,11 +643,11 @@ class LineShipRecord(TypedShip):
     def block_ship(self) -> str:
         return _uuid(self.record.get("block_ship"), field="Line.Ship.block_ship")
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(LineShipRecord, self).ship_occurrences(),
-            ShipOccurrence("model_ship", Ship(self.model_ship)),
-            ShipOccurrence("block_ship", Ship(self.block_ship)),
+            *super(LineShipRecord, self).ships(),
+            Ship(self.model_ship),
+            Ship(self.block_ship),
         )
 
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
@@ -683,10 +683,10 @@ class CollectionShipRecord(TypedShip):
     def model_ship(self) -> str:
         return _uuid(self.record.get("model_ship"), field="Collection.Ship.model_ship")
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(CollectionShipRecord, self).ship_occurrences(),
-            ShipOccurrence("model_ship", Ship(self.model_ship)),
+            *super(CollectionShipRecord, self).ships(),
+            Ship(self.model_ship),
         )
 
     def edition_annotations(self) -> tuple[DiagramAnnotation, ...]:
@@ -716,16 +716,16 @@ class DiagramAnnotation:
     def __post_init__(self) -> None:
         _uuid(self.id, field="Annotation.id")
         copied = _object(self.record, field="Annotation.Record")
-        _record_type_reference(copied.get("type"), field="Annotation.type")
+        _record_type_reference(copied, field="Annotation")
         object.__setattr__(self, "record", copied)
 
     @property
     def type_reference(self) -> RecordTypeReference:
-        return _record_type_reference(self.record.get("type"), field="Annotation.type")
+        return _record_type_reference(self.record, field="Annotation")
 
     @property
     def type(self) -> str:
-        return _record_type_name(self.record.get("type"), field="Annotation.type")
+        return _record_type_name(self.record, field="Annotation")
 
     @property
     def standing(self) -> str:
@@ -819,10 +819,10 @@ class ModelEditionRecord(TypedAnnotation):
     def type_assertions(self) -> tuple[JsonObject, ...]:
         return ({"type": "Model.Derived.Support.Assertion"},)
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(ModelEditionRecord, self).ship_occurrences(),
-            ShipOccurrence("model_ship", Ship(self.model_ship)),
+            *super(ModelEditionRecord, self).ships(),
+            Ship(self.model_ship),
         )
 
 
@@ -954,16 +954,14 @@ class LineAnnotationRecord(TypedAnnotation):
             {assertion["type"]: assertion for assertion in assertions}.values()
         )
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(LineAnnotationRecord, self).ship_occurrences(),
-            ShipOccurrence("id", Ship(self.id)),
-            ShipOccurrence("model_ship", Ship(self.model_ship)),
+            *super(LineAnnotationRecord, self).ships(),
+            Ship(self.id),
+            Ship(self.model_ship),
             *(
-                ShipOccurrence(
-                    f"editions[-1].arguments[{index}].id", Ship(reference.id)
-                )
-                for index, reference in enumerate(self.arguments)
+                Ship(reference.id)
+                for reference in self.arguments
                 if reference.kind == "ship"
             ),
         )
@@ -1055,10 +1053,10 @@ class LineEditionRecord(UserTouchedAnnotation):
     def authorization_gates(self) -> tuple[str, ...]:
         return _authorization_gate_ids(self.record)
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(LineEditionRecord, self).ship_occurrences(),
-            *_location_occurrences(self.location),
+            *super(LineEditionRecord, self).ships(),
+            *_location_ships(self.location),
         )
 
     def model_location(self) -> tuple[str, str]:
@@ -1130,10 +1128,10 @@ class BlockEditionRecord(TypedAnnotation):
     def authorization_gates(self) -> tuple[str, ...]:
         return _authorization_gate_ids(self.record)
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(BlockEditionRecord, self).ship_occurrences(),
-            *_location_occurrences(self.location),
+            *super(BlockEditionRecord, self).ships(),
+            *_location_ships(self.location),
         )
 
     def model_location(self) -> tuple[str, str]:
@@ -1214,11 +1212,11 @@ class CollectionEditionRecord(TypedAnnotation):
     def authorization_gates(self) -> tuple[str, ...]:
         return _authorization_gate_ids(self.record)
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(CollectionEditionRecord, self).ship_occurrences(),
-            ShipOccurrence("model_ship", Ship(self.model_ship)),
-            ShipOccurrence("collection_ship", Ship(self.collection_ship)),
+            *super(CollectionEditionRecord, self).ships(),
+            Ship(self.model_ship),
+            Ship(self.collection_ship),
         )
 
     def model_location(self) -> tuple[str, str]:
@@ -1301,13 +1299,13 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
             )
         )
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(CaptureAuthorizationGateRecord, self).ship_occurrences(),
-            ShipOccurrence("model_ship", Ship(self.model_ship)),
+            *super(CaptureAuthorizationGateRecord, self).ships(),
+            Ship(self.model_ship),
             *(
-                ShipOccurrence(f"target_scope[{index}].id", Ship(reference.id))
-                for index, reference in enumerate(self.target_scope)
+                Ship(reference.id)
+                for reference in self.target_scope
                 if reference.kind == "ship"
             ),
         )
@@ -1346,10 +1344,10 @@ class BlockTypeAnnotation(TypedAnnotation):
     def block_type(self) -> str:
         return _string(self.record.get("block_type"), field="block_type")
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(BlockTypeAnnotation, self).ship_occurrences(),
-            *_location_occurrences(self.location),
+            *super(BlockTypeAnnotation, self).ships(),
+            *_location_ships(self.location),
         )
 
     def model_location(self) -> tuple[str, str]:
@@ -1375,10 +1373,10 @@ class LineSupportAnnotation(UserTouchedAnnotation):
     def location(self) -> DiagramLocation:
         return DiagramLocation.from_dict(self.record.get("location"))
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(LineSupportAnnotation, self).ship_occurrences(),
-            *_location_occurrences(self.location),
+            *super(LineSupportAnnotation, self).ships(),
+            *_location_ships(self.location),
         )
 
     def model_location(self) -> tuple[str, str]:
@@ -1418,10 +1416,10 @@ class LineTypeAnnotation(TypedAnnotation):
     def line_type(self) -> str:
         return _string(self.record.get("line_type"), field="line_type")
 
-    def ship_occurrences(self) -> tuple[ShipOccurrence, ...]:
+    def ships(self) -> tuple[Ship, ...]:
         return (
-            *super(LineTypeAnnotation, self).ship_occurrences(),
-            *_location_occurrences(self.location),
+            *super(LineTypeAnnotation, self).ships(),
+            *_location_ships(self.location),
         )
 
     def model_location(self) -> tuple[str, str]:
@@ -2603,6 +2601,14 @@ class DiagramProjectionBuilder:
         return _dedupe_findings(findings)
 
 
+CHATLAS_INDEX_EDITION_RECORD_TYPES: tuple[type[TypedAnnotation], ...] = (
+    ModelEditionRecord,
+    BlockEditionRecord,
+    LineEditionRecord,
+    CollectionEditionRecord,
+)
+
+
 def default_diagram_object_types() -> DiagramObjectTypeRegistry:
     generic_line = DiagramLineType(
         DIAGRAM_LINE_OBJECT_TYPE,
@@ -2915,7 +2921,7 @@ class CaptureManifest:
                 )
         for index, draft in enumerate(self.annotations):
             path = f"annotations[{index}]"
-            if draft.record.get("type") in CHATLAS_INDEX_EDITION_TYPES:
+            if _record_is_any(draft.record, CHATLAS_INDEX_EDITION_RECORD_TYPES):
                 findings.append(
                     Finding(
                         "ship-edition-in-annotation-collection",
@@ -2965,7 +2971,7 @@ class CaptureManifest:
         draft_gate_ids = {
             item.id
             for item in self.annotations
-            if item.record.get("type") == CAPTURE_AUTHORIZATION_GATE_TYPE
+            if _record_is(item.record, CaptureAuthorizationGateRecord)
         }
         known_gate_ids = existing_gate_ids | draft_gate_ids
         known_collection_ids = {
@@ -2973,7 +2979,7 @@ class CaptureManifest:
         } | {
             item.id
             for item in self.ships
-            if item.record.get("type") == COLLECTION_SHIP_TYPE
+            if _record_is(item.record, CollectionShipRecord)
         }
         for index, draft in enumerate(self.ships):
             for edition_index, value in enumerate(
@@ -3007,7 +3013,7 @@ class CaptureManifest:
         for index, draft in enumerate(self.annotations):
             records = (
                 _line_annotation_editions(draft.record)
-                if draft.record.get("type") == LINE_ANNOTATION_TYPE
+                if _record_is(draft.record, LineAnnotationRecord)
                 else (draft.record,)
             )
             for record_index, record in enumerate(records):
@@ -4089,7 +4095,7 @@ class DiagramNamespace:
 
         claimed: dict[str, JsonObject] = {}
         for draft in annotations:
-            if draft.record.get("type") in CHATLAS_INDEX_EDITION_TYPES:
+            if _record_is_any(draft.record, CHATLAS_INDEX_EDITION_RECORD_TYPES):
                 raise DiagramError(
                     "Diagram Ship editions cannot be stored in annotations/: "
                     f"{draft.id}"
@@ -4102,7 +4108,7 @@ class DiagramNamespace:
                 continue
             claimed[draft.id] = draft.record
             path = self.annotations_root / f"{draft.id}.json"
-            if draft.record.get("type") == LINE_ANNOTATION_TYPE:
+            if _record_is(draft.record, LineAnnotationRecord):
                 current = _read_json(path) if path.exists() else None
                 merged, added, repeated = _merge_line_annotation_record(
                     draft.id,
@@ -4798,7 +4804,7 @@ def _merge_line_annotation_record(
 
     _uuid(annotation_id, field="Annotation.id")
     proposed = dict(incoming)
-    if proposed.get("type") != LINE_ANNOTATION_TYPE:
+    if not _record_is(proposed, LineAnnotationRecord):
         raise DiagramModelError("not a Line.Annotation record")
     proposed_editions = tuple(
         _object(item, field="Line.Annotation.editions[]")
@@ -4857,7 +4863,7 @@ def _merge_ship_record(
 ) -> tuple[JsonObject, tuple[str, ...], tuple[str, ...]]:
     _uuid(ship_id, field="Ship.id")
     proposed = dict(incoming)
-    _record_type_reference(proposed.get("type"), field="Ship.type")
+    _record_type_reference(proposed, field="Ship")
     proposed_editions = tuple(
         _object(item, field="Ship.editions[]")
         for item in _array(proposed.pop("editions", []), field="Ship.editions")
@@ -5165,7 +5171,7 @@ def _authorization_coverage(
     for draft in annotations:
         records = (
             _line_annotation_editions(draft.record)
-            if draft.record.get("type") == LINE_ANNOTATION_TYPE
+            if _record_is(draft.record, LineAnnotationRecord)
             else (draft.record,)
         )
         for record in records:
@@ -5190,29 +5196,49 @@ def _array(value: object, *, field: str) -> list[object]:
     return value
 
 
-def _location_occurrences(
+def _location_ships(
     location: DiagramLocation | DiagramBlockLocation,
-) -> tuple[ShipOccurrence, ...]:
-    return tuple(
-        ShipOccurrence(f"location.{key}", Ship(value))
-        for key, value in location.to_dict().items()
-    )
+) -> tuple[Ship, ...]:
+    return tuple(Ship(value) for value in location.to_dict().values())
 
 
-def _record_type_reference(value: object, *, field: str) -> RecordTypeReference:
-    reference = RecordTypeReference.parse(value)
-    if reference.ship is None and reference.name is None:
+def _record_type_reference(
+    record: Mapping[str, Any], *, field: str
+) -> RecordTypeReference:
+    """Read one Record's Type reference through the Harness resolution path."""
+
+    location = locate_record_type(record)
+    if location is None:
+        raise DiagramModelError(f"{field} carries no Tarav Type reference")
+    reference = RecordTypeReference.parse(location.value)
+    if reference.ship is None and reference.label is None:
         raise DiagramModelError(
-            f"{field} must be a Type name or a {{id, name}} reference"
+            f"{field}.{location.field} is not a Tarav Type reference: "
+            f"{location.value!r}"
         )
     return reference
 
 
-def _record_type_name(value: object, *, field: str) -> str:
-    reference = _record_type_reference(value, field=field)
-    if reference.name is None:
-        raise DiagramModelError(f"{field} must carry a human-facing Type name")
-    return reference.name
+def _record_type_name(record: Mapping[str, Any], *, field: str) -> str:
+    reference = _record_type_reference(record, field=field)
+    if reference.label is None:
+        raise DiagramModelError(f"{field} carries no human-facing Type label")
+    return reference.label
+
+
+def _record_is(record: Mapping[str, Any], record_type: type[TaravRecordType]) -> bool:
+    """Whether one Record's Type reference designates a registered class."""
+
+    location = locate_record_type(record)
+    if location is None:
+        return False
+    return record_type.matches(RecordTypeReference.parse(location.value))
+
+
+def _record_is_any(
+    record: Mapping[str, Any], record_types: tuple[type[TaravRecordType], ...]
+) -> bool:
+    return any(_record_is(record, item) for item in record_types)
 
 
 def _string(value: object, *, field: str) -> str:

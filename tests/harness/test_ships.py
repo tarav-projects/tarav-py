@@ -4,7 +4,7 @@ from uuid import UUID
 
 import pytest
 
-from tarav.harness import Ship, ShipIdentityError, ShipOccurrence, TypeShip
+from tarav.harness import Ship, ShipIdentityError, TypeShip
 
 EXAMPLE = "3f7f6f7c-8d5c-4f1a-9c4e-1c0d3b2a5e6f"
 OTHER = "9a1d2c3b-4e5f-4a6b-8c7d-0e1f2a3b4c5d"
@@ -34,15 +34,3 @@ def test_ship_identity_is_uuid_only_across_specialized_classes() -> None:
     assert specialized.role() == "role"
     assert generic != Ship(OTHER)
     assert generic != EXAMPLE
-
-
-def test_ship_occurrence_pairs_a_record_path_with_a_concrete_ship() -> None:
-    occurrence = ShipOccurrence("type.id", TypeShip(EXAMPLE))
-
-    assert occurrence.path == "type.id"
-    assert occurrence.ship == Ship(EXAMPLE)
-
-    with pytest.raises(ShipIdentityError):
-        ShipOccurrence("", TypeShip(EXAMPLE))
-    with pytest.raises(ShipIdentityError):
-        ShipOccurrence("type.id", EXAMPLE)  # type: ignore[arg-type]

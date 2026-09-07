@@ -1,6 +1,6 @@
 # 790 — Record Ships and Type Resolution PATH
 
-Status: Ready for execution
+Status: Executed — Collection closed, Draft applied
 
 ## Impl.Abstract
 
@@ -12,9 +12,12 @@ application.
 
 This is deliberately bounded. It does not settle the final serialized Type
 value, remove legacy label resolution, rewrite the retained corpus, add a
-Record-construction protocol, or begin PaperSON integration. The uncommitted
-789 implementation is the direct baseline for this work and must be evolved in
-place without discarding any existing changes.
+Record-construction protocol, or begin PaperSON integration. The 789
+implementation was the direct baseline and was evolved in place; it is now
+committed as `e75ae78`.
+
+All 1766 retained Ships and 1053 Annotations across the mounted Namespaces
+still read and specialize, and the corpus produces no Type-reference findings.
 
 ## Impl.Req.Diagram
 
@@ -28,7 +31,9 @@ place without discarding any existing changes.
 - Collection: `790.Impl.Req` —
   `0a4f6a8c-f190-48ed-a101-79317ac23903`
 - Draft: `b80cf5a9-32f4-449f-9c60-6e426e998611`
-- Design authorization gate: `78bfb2d8-98dd-4625-bc3e-e6f692d15dfa`
+- Authorization gates:
+  - Design — `78bfb2d8-98dd-4625-bc3e-e6f692d15dfa`
+  - Execute — `e40f34b5-7ccf-44fb-98d8-84c7ca3bb1db`
 
 The retained Session View is scoped to PaperSON rather than Tarav and remains
 stale after synchronization. Grounding therefore uses the freshly resolved
@@ -36,22 +41,22 @@ Tarav Project Model directly; the View mismatch is retained as a POI.
 
 ## Execution.Plan
 
-1. **Harness Ship projection.** Remove `ShipOccurrence` and
+1. **Done — Harness Ship projection.** Remove `ShipOccurrence` and
    `ship_occurrences()`. Add `TaravRecordType.ships() -> tuple[Ship, ...]`,
    whose default returns the Type Ship. Application classes may inherit or
    extend it with Ships they semantically recognize. The API exposes no
    serialized paths, and generic UUID-shape scanning remains forbidden.
-2. **Universal Type resolution.** Define the single non-configurable ordered
+2. **Done — Universal Type resolution.** Define the single non-configurable ordered
    path `(("__tarav__", "type"), ("type",))` in Harness. Select the first
    key path that exists, including when its value is null or empty. Parse and
    resolve only that value; invalid or unregistered values raise without
    falling through. Diagnostics identify the selected path and value.
-3. **Diagram adoption.** Replace every Diagram Ship-occurrence override and
+3. **Done — Diagram adoption.** Replace every Diagram Ship-occurrence override and
    path helper with `ships()` implementations returning concrete Ships. Route
    Diagram Type-reference reads through the Harness Record resolver so Diagram
    does not independently assign semantics to root `type`. Keep existing root
    `type` Records readable and add synthetic coverage for `__tarav__.type`.
-4. **Documentation and verification.** Update Harness exports and
+4. **Done — Documentation and verification.** Update Harness exports and
    `ARCHITECTURE.md`; replace path-bearing tests with semantic Ship projection
    tests; cover path priority, key existence, malformed shadowing, unknown
    Types, and non-configurability. Run focused tests, the full suite, Ruff, the
@@ -94,6 +99,49 @@ discarding/reconstructing the uncommitted 789 baseline.
   `archive-grounding-unassessable`; the overlay also reports the pre-existing
   corpus-wide Type, staleness, and closed-Impl.Req findings.
 
+### Execution
+
+- Execute Alignment.Mode: Autonomous, selected mid-run by an explicit `--AUTO`
+  User turn after the Interactive banner had already been rendered.
+- Execute Chatlas session: `b69e11dc-dc6d-4903-97a5-25f895655718`
+  (`a99c4bd996fed3236949d3208e7a8819a55d05cf06186fe39ed22b7bcffc48fd`).
+  The execution authorization is User Turn `c7266147e98a5923`.
+- Git checkpoint before the first product edit: `e75ae78`, which committed the
+  789 baseline rather than leaving it uncommitted beneath this work.
+- Capture.Receipt: Namespace commit `7cee949` on base `f5bf71d`. The Collection
+  is Closed and the Draft is Applied. The Execute Gate covers the closing
+  Collection edition; the Design Gate covers the Design Line edition.
+- Verification: full suite 1327 passed, Ruff clean, CLI reinstalled and
+  smoke-tested, and a live-corpus pass over 1766 Ships and 1053 Annotations
+  produced zero specialization errors and zero Type-reference findings. The
+  `ships()` projection yields 6769 Ships across the retained Ship records.
+
+### Deviations
+
+- Step 3's scope was resolved to include the eight Diagram sites that branched
+  on `record.get("type")` against label constants
+  (`CHATLAS_INDEX_EDITION_TYPES`, `CAPTURE_AUTHORIZATION_GATE_TYPE`,
+  `COLLECTION_SHIP_TYPE`, `LINE_ANNOTATION_TYPE`). They are Type-reference
+  reads that independently assign semantics to root `type`, and leaving them
+  would have broken draft merging for any Record using `__tarav__.type` while
+  reads succeeded. They now resolve through `_record_is` / `_record_is_any`
+  over the registered classes.
+- `RecordTypeReference.from_record()` was removed rather than retargeted.
+  `locate_record_type()` and `TypeRegistry.record_findings()` replace it, so
+  callers cannot read a Type reference without going through the resolution
+  path. This is an API change the plan implies but does not name.
+- Gate and Assertion payloads keep their own nested `type` keys. The resolution
+  path addresses Records at the root of a file or JSONL line, not cargo objects
+  inside one, so `VerbatimGate` and Assertion parsing were left untouched.
+
+### Implementation notes
+
+- `locate_record_type` distinguishes an absent key from a present null through a
+  module-local sentinel, so `{"__tarav__": {"type": null}}` selects and then
+  fails instead of falling through to root `type`.
+- Non-configurability is covered behaviourally: a Record class declaring its own
+  `type_resolution_path` has no effect on resolution.
+
 ### POIs
 
 - The current Session View targets the PaperSON Model and omits the mentioned
@@ -102,3 +150,26 @@ discarding/reconstructing the uncommitted 789 baseline.
 - Draft checks may surface the expected unasserted semantic scores,
   unassessable Archive grounding, and pre-existing corpus-wide Type/staleness
   findings. These do not expand this implementation request.
+- `DiagramAnnotation.score_vector()` — the generic opaque class — still reads
+  `Line.Annotation`'s edition structure directly. Under the amended
+  `Tarav.Record` constraint that is a violation, not a POI, but it is outside
+  this request's plan and acceptance criteria and was left untouched.
+- The reviewed Line `A retained Record's type contains its Type Ship UUID and
+  current human-facing label` still names root `type` and asserts a value shape
+  this request deliberately does not settle. The new `Type.Resolution.PATH`
+  Lines supersede its location claim; the Line has no new edition.
+
+### Product.Surfaces
+
+- `src/tarav/harness/ships.py`
+- `src/tarav/harness/types.py`
+- `src/tarav/harness/__init__.py`
+- `src/tarav/diagram/__init__.py`
+- `tests/harness/test_record_ships.py` (new)
+- `tests/harness/test_type_resolution_path.py` (new)
+- `tests/harness/test_ships.py`
+- `tests/harness/test_record_type_references.py`
+- `tests/harness/test_ship_occurrences.py` (removed)
+- `tests/diagram/test_record_type_ships.py`
+- `tests/test_architecture.py`
+- `ARCHITECTURE.md`
