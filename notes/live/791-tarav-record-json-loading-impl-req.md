@@ -1,6 +1,6 @@
 # 791 — Tarav Record JSON Loading
 
-Status: Executing
+Status: Executed
 
 ## Impl.Abstract
 
@@ -51,7 +51,39 @@ does not migrate retained schemas or force those facts into JSON.
   (`33afe59c2f13ac5d4b59e56f7a3761d3d91c1206a1b6287b0872036739b370fd`).
 - Direct-input Execute authorization: User Turn `c41ec6b77644c0522`.
 - Grounded Model and `Tarav.Record` Block were resolved before execution.
+- Workflow checkpoint: `8d9bb11`.
+- Harness now exposes `TaravRecord`, `TypeRegistry.json_load(file)`, and
+  inherited `RecordClass.json_load(file, registry=...)`; the former
+  `TaravRecordType` name was removed rather than retained as an alias.
+- Diagram's registered Ship and Annotation interpreters now accept the
+  retained Record directly. The existing `DiagramShip` and
+  `DiagramAnnotation` objects remain as optional storage bindings for
+  file-address identity and Namespace-dependent behavior.
+- Type-private score-vector interpretation moved out of the generic
+  `DiagramAnnotation` storage binding and into the registered
+  `LineAnnotationRecord` interpreter.
+- Verification: Ruff clean; full suite `1348 passed`; editable CLI reinstall
+  and `tarav --version` smoke succeeded. All 1,768 retained Ships and 1,055
+  retained Annotations loaded through their registries and specialized with
+  zero errors.
+- Capture applied at Namespace commit
+  `baf97e958c4c70276411c75d9c4148d3fbf45634`. The authorization Gate covers
+  every amended or created Design edition and the Collection close.
+- Capture surfaced the expected `semantic-record-unasserted` and
+  `archive-grounding-unassessable` findings on this material, plus existing
+  corpus-wide model-staleness and missing-Type findings. None indicates a
+  product implementation failure.
 - Product changes remain uncommitted after the workflow checkpoint.
+
+### Deviations
+
+- The bounded Diagram pass did not remove the storage-binding classes.
+  Instead, it separated their storage role from registered Record semantics.
+  Removing them would require deciding how file-address identity and
+  Namespace context enter otherwise raw Record interpreters, which belongs to
+  the later Diagram class-tree redesign.
+- Product-surface annotations were not emitted because that capture mechanic
+  remains unavailable; the exact surfaces are retained below.
 
 ### Product.Surfaces
 

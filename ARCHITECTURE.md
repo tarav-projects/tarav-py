@@ -24,7 +24,7 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
   adapters.
 - Domain foundations do not import the runtime or CLI to obtain dependencies.
 - `tarav.harness` contains schema-neutral semantic roles, Ship identity
-  primitives, and the explicit, trusted top-level Record Type registry used by
+  primitives, and the explicit, trusted Record Type registry used by
   applications. Applications import Harness; Harness never imports an
   application.
 - `tarav._core` contains dependency-free infrastructure only after multiple
@@ -45,9 +45,9 @@ contract and Git boundaries.
 ## Ownership map
 
 - `tarav.harness` owns the small application-facing semantic base classes,
-  the `Ship` identity primitives, and `Record.type` to trusted Python class
-  dispatch. A `Ship` wraps one UUID and nothing else, so identity comparison
-  ignores the specialized class. Every `TaravRecordType` subclass, including
+  the `Ship` identity primitives, and retained Type-reference to trusted Python
+  class dispatch. A `Ship` wraps one UUID and nothing else, so identity comparison
+  ignores the specialized class. Every `TaravRecord` subclass, including
   intermediate bases, declares a class-local `type_ship` beside its
   human-facing `type_name`; the registry indexes both and treats the Type Ship
   as authoritative, so a known Type keeps resolving after a rename. A retained
@@ -63,8 +63,13 @@ contract and Git boundaries.
   Records expose the Ships they semantically recognize through `ships()`, which
   a subclass extends by returning concrete `Ship` instances; the projection
   carries no serialized paths, and Harness never infers a Ship by scanning
-  UUID-shaped data. It does not impose an application Record schema, storage
-  model, or shared behavior merely because classes subtype its roles.
+  UUID-shaped data. `TypeRegistry.json_load(file)` loads a JSON object and
+  constructs its exact registered class. The inherited
+  `RecordClass.json_load(file, registry=...)` instead constructs the calling
+  class only when it is that registered authority or a subclass. Harness has
+  no opaque fallback Record wrapper: uninterpreted JSON remains ordinary JSON.
+  It does not impose an application storage model or shared behavior merely
+  because classes subtype its roles.
 - `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,
   and provider adapters under `tarav.agent.providers`.
 - `tarav.chatlas` owns the chat data train from provider-native capture through
@@ -186,11 +191,15 @@ Annotated code is discovered through the project's `.skw/skw.json`.
   Ship and Annotation Record dispatch. It is the first consumer of Type Ships:
   its record classes declare them, every Type reference read goes through
   `TYPE_RESOLUTION_PATH` rather than Diagram reading root `type` itself, and
-  its typed Records project the Ships they recognize. Gate and Assertion
-  payloads keep their own nested `type` keys; the resolution path addresses
-  Records, not cargo. Retained label-only Records are not rewritten. Diagram
-  retains its object schemas, projections, Ships, Assertions, and storage
-  semantics.
+  its registered Record classes accept their retained Record directly. A
+  Diagram storage binding may additionally supply the identity derived from a
+  file address and the Namespace derived from its repository; those facts are
+  not forced into the retained JSON. Generic storage bindings do not interpret
+  Type-owned fields: registered classes own validation, score-vector layout,
+  Ship projection, and other semantic behavior. Gate and Assertion payloads
+  keep their own nested `type` keys; the resolution path addresses Records,
+  not cargo. Retained label-only Records are not rewritten. Diagram retains
+  its object schemas, projections, Ships, Assertions, and storage semantics.
 - Scoring consumes Diagram's public projection and Chatlas-backed support when
   an Assertion-owned task builder constructs an `Index.Line` grounding case.
   Diagram does not import Scoring; score discovery can be rebuilt from the

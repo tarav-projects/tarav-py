@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import ClassVar, Final, Generic, TypeVar
+from typing import BinaryIO, ClassVar, Final, Generic, Self, TextIO, TypeVar
 from uuid import UUID
 
 from .ships import Ship, ShipIdentityError, TypeShip
@@ -18,8 +19,19 @@ class RecordTypeDeclarationError(TypeError):
     """A Record Type subclass does not declare the identity Tarav requires."""
 
 
-class TaravRecordType(TaravType):
-    """Python behavior selected by a Tarav Record's top-level ``type``.
+class InvalidRecordJSON(ValueError):
+    """Loaded JSON is not a root Record object."""
+
+
+class RecordTypeMismatch(TypeError):
+    """A requested Record class does not specialize the registered authority."""
+
+
+JsonFile = TextIO | BinaryIO
+
+
+class TaravRecord(TaravType):
+    """Authoritative Python interpreter for one typed serialized Record.
 
     ``type_ship`` is the Type's durable identity and ``type_name`` its current
     human-facing label. Every subclass, including intermediate bases, declares
@@ -28,6 +40,11 @@ class TaravRecordType(TaravType):
 
     type_name: ClassVar[str]
     type_ship: ClassVar[TypeShip]
+
+    def __init__(self, record: Mapping[str, object]) -> None:
+        if type(self) is TaravRecord:
+            raise TypeError("TaravRecord is not an opaque Record wrapper")
+        self.record = dict(record)
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -64,6 +81,24 @@ class TaravRecordType(TaravType):
 
         return (type(self).type_ship,)
 
+    @classmethod
+    def json_load(
+        cls,
+        file: JsonFile,
+        *,
+        registry: TypeRegistry[TaravRecord],
+    ) -> Self:
+        """Load one Record as this registered class or a deliberate subclass."""
+
+        record = _json_load_record(file)
+        registered_class = registry.resolve(record)
+        if not issubclass(cls, registered_class):
+            raise RecordTypeMismatch(
+                f"{cls.__name__} does not specialize registered Record class "
+                f"{registered_class.__name__}"
+            )
+        return cls(record)
+
 
 class TaravAssertion(TaravType):
     """Semantic role for an auditable Tarav Assertion."""
@@ -86,6 +121,13 @@ it, so any Record's Type reference is found the same way everywhere.
 """
 
 _MISSING = object()
+
+
+def _json_load_record(file: JsonFile) -> Mapping[str, object]:
+    value = json.load(file)
+    if not isinstance(value, Mapping):
+        raise InvalidRecordJSON("Tarav Record JSON root must be an object")
+    return value
 
 
 def _traverse(record: Mapping[str, object], path: tuple[str, ...]) -> object:
@@ -194,15 +236,15 @@ class InvalidRecordType(TypeRegistrationError):
     pass
 
 
-RecordTypeT = TypeVar("RecordTypeT", bound=TaravRecordType)
+RecordTypeT = TypeVar("RecordTypeT", bound=TaravRecord)
 
 
 class TypeRegistry(Generic[RecordTypeT]):
-    """Exact Record ``type`` to trusted Python class dispatch.
+    """Exact retained Type reference to trusted Python class dispatch.
 
-    The registry knows no application schema beyond the top-level ``type``
-    field. Registration is explicit: Record data never names an import path or
-    causes code to be loaded dynamically.
+    The registry knows no application schema beyond the reference selected by
+    ``Type.Resolution.PATH``. Registration is explicit: Record data never names
+    an import path or causes code to be loaded dynamically.
     """
 
     def __init__(
@@ -210,9 +252,9 @@ class TypeRegistry(Generic[RecordTypeT]):
         base_type: type[RecordTypeT],
         record_types: Iterable[type[RecordTypeT]] = (),
     ) -> None:
-        if not issubclass(base_type, TaravRecordType):
+        if not issubclass(base_type, TaravRecord):
             raise TypeRegistrationError(
-                "TypeRegistry base must be a TaravRecordType subclass"
+                "TypeRegistry base must be a TaravRecord subclass"
             )
         self._base_type = base_type
         self._types: dict[str, type[RecordTypeT]] = {}
@@ -306,6 +348,12 @@ class TypeRegistry(Generic[RecordTypeT]):
             return self.resolve_reference(reference)
         except UnknownRecordType as exc:
             raise UnknownRecordType(f"{exc} (at {location.field})") from None
+
+    def json_load(self, file: JsonFile) -> RecordTypeT:
+        """Load one JSON Record as an instance of its exact registered class."""
+
+        record = _json_load_record(file)
+        return self.resolve(record)(record)
 
     def record_findings(
         self, record: Mapping[str, object]

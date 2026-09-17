@@ -6,7 +6,7 @@ from tarav.harness import (
     TYPE_RESOLUTION_PATH,
     InvalidRecordType,
     RecordTypeLocation,
-    TaravRecordType,
+    TaravRecord,
     TypeRegistry,
     TypeShip,
     UnknownRecordType,
@@ -17,14 +17,14 @@ SHIP = "6e2b1d40-9a73-4c58-8b12-7f0d3a4e5c61"
 OTHER = "7f3c2e51-ab84-4d69-9c23-80e1b4f5d672"
 
 
-class Located(TaravRecordType):
+class Located(TaravRecord):
     type_ship = TypeShip(SHIP)
     type_name = "Located.Record"
 
 
 @pytest.fixture
-def registry() -> TypeRegistry[TaravRecordType]:
-    return TypeRegistry(TaravRecordType, (Located,))
+def registry() -> TypeRegistry[TaravRecord]:
+    return TypeRegistry(TaravRecord, (Located,))
 
 
 def test_the_resolution_path_is_the_reserved_namespace_then_root_type() -> None:
@@ -32,7 +32,7 @@ def test_the_resolution_path_is_the_reserved_namespace_then_root_type() -> None:
 
 
 def test_the_reserved_namespace_wins_over_root_type(
-    registry: TypeRegistry[TaravRecordType],
+    registry: TypeRegistry[TaravRecord],
 ) -> None:
     record = {
         "__tarav__": {"type": "Located.Record"},
@@ -46,14 +46,14 @@ def test_the_reserved_namespace_wins_over_root_type(
 
 
 def test_root_type_is_used_when_the_reserved_namespace_omits_it(
-    registry: TypeRegistry[TaravRecordType],
+    registry: TypeRegistry[TaravRecord],
 ) -> None:
     assert registry.resolve({"__tarav__": {}, "type": "Located.Record"}) is Located
     assert registry.resolve({"type": "Located.Record"}) is Located
 
 
 def test_a_present_but_unusable_reference_is_never_shadowed(
-    registry: TypeRegistry[TaravRecordType],
+    registry: TypeRegistry[TaravRecord],
 ) -> None:
     for shadowing in ({"type": None}, {"type": ""}, {"type": 7}):
         record = {"__tarav__": shadowing, "type": "Located.Record"}
@@ -64,7 +64,7 @@ def test_a_present_but_unusable_reference_is_never_shadowed(
 
 
 def test_a_record_with_no_reference_names_every_path(
-    registry: TypeRegistry[TaravRecordType],
+    registry: TypeRegistry[TaravRecord],
 ) -> None:
     assert locate_record_type({}) is None
     with pytest.raises(InvalidRecordType, match="__tarav__.type, type"):
@@ -74,7 +74,7 @@ def test_a_record_with_no_reference_names_every_path(
 
 
 def test_an_unregistered_type_reports_the_path_that_supplied_it(
-    registry: TypeRegistry[TaravRecordType],
+    registry: TypeRegistry[TaravRecord],
 ) -> None:
     with pytest.raises(UnknownRecordType, match=r"at __tarav__\.type"):
         registry.resolve({"__tarav__": {"type": {"uuid": OTHER, "label": "Absent"}}})
@@ -83,7 +83,7 @@ def test_an_unregistered_type_reports_the_path_that_supplied_it(
 
 
 def test_record_findings_report_against_the_selected_path(
-    registry: TypeRegistry[TaravRecordType],
+    registry: TypeRegistry[TaravRecord],
 ) -> None:
     drifted = {"__tarav__": {"type": {"uuid": SHIP, "label": "Renamed.Record"}}}
     (finding,) = registry.record_findings(drifted)
@@ -93,15 +93,15 @@ def test_record_findings_report_against_the_selected_path(
 
 
 def test_the_resolution_path_is_not_configurable(
-    registry: TypeRegistry[TaravRecordType],
+    registry: TypeRegistry[TaravRecord],
 ) -> None:
-    class DeclaresItsOwnPath(TaravRecordType):
+    class DeclaresItsOwnPath(TaravRecord):
         type_ship = TypeShip(OTHER)
         type_name = "Declares.Own.Path"
         type_resolution_path = (("kind",),)
 
-    scoped: TypeRegistry[TaravRecordType] = TypeRegistry(
-        TaravRecordType, (DeclaresItsOwnPath,)
+    scoped: TypeRegistry[TaravRecord] = TypeRegistry(
+        TaravRecord, (DeclaresItsOwnPath,)
     )
 
     with pytest.raises(InvalidRecordType):

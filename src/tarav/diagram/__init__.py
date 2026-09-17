@@ -27,7 +27,7 @@ from tarav.harness import (
     Ship,
     TaravAssertion,
     TaravPOIInstance,
-    TaravRecordType,
+    TaravRecord,
     TypeRegistry,
     TypeShip,
     UnknownRecordType,
@@ -493,7 +493,7 @@ class ShipDraft:
 
 @dataclass(frozen=True, slots=True)
 class DiagramShip:
-    """Opaque semantic Ship. Only identity and ``type`` are universal."""
+    """Address and Namespace binding for one retained Ship Record."""
 
     id: str
     namespace: DiagramNamespace
@@ -520,33 +520,53 @@ class DiagramShip:
         return self.namespace.specialize_ship(self)
 
 
-@dataclass(frozen=True, slots=True)
-class TypedShip(TaravRecordType):
+class TypedShip(TaravRecord):
+    """Registered Ship Record interpreter, optionally bound to Diagram storage."""
+
     type_ship: ClassVar[TypeShip] = TypeShip("f495fc94-a511-4a9f-b058-7e2957890529")
 
-    ship: DiagramShip
+    def __init__(self, record: Mapping[str, object] | DiagramShip) -> None:
+        if isinstance(record, DiagramShip):
+            self.ship: DiagramShip | None = record
+            retained = record.record
+        else:
+            self.ship = None
+            retained = _object(record, field="Ship.Record")
+        super().__init__(retained)
+        self._validate_record()
+
+    def _validate_record(self) -> None:
+        return None
+
+    def _binding(self) -> DiagramShip:
+        if self.ship is None:
+            raise DiagramModelError(
+                f"{type(self).__name__} requires a Diagram Ship storage binding"
+            )
+        return self.ship
 
     @property
     def id(self) -> str:
-        return self.ship.id
+        return self._binding().id
 
     @property
     def type(self) -> str:
-        return self.ship.type
+        return _record_type_name(self.record, field="Ship")
 
     @property
-    def record(self) -> JsonObject:
-        return self.ship.record
+    def namespace(self) -> DiagramNamespace:
+        return self._binding().namespace
 
     @property
     def editions(self) -> tuple[JsonObject, ...]:
+        subject = self.ship.id if self.ship is not None else type(self).__name__
         return tuple(
-            _object(item, field=f"Ship.{self.id}.editions[]")
+            _object(item, field=f"Ship.{subject}.editions[]")
             for item in _array(self.record.get("editions", []), field="Ship.editions")
         )
 
     def _require_record_type(self) -> None:
-        reference = self.ship.type_reference
+        reference = _record_type_reference(self.record, field="Ship")
         if not type(self).matches(reference):
             raise DiagramModelError(
                 f"not a {type(self).type_name}: {reference.describe()}"
@@ -562,12 +582,11 @@ class TypedShip(TaravRecordType):
         return ()
 
 
-@dataclass(frozen=True, slots=True)
 class ModelShipRecord(TypedShip):
     type_ship: ClassVar[TypeShip] = TypeShip("990807e6-2348-466e-9c12-dba6673755c1")
     type_name: ClassVar[str] = MODEL_SHIP_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         _validate_editions(self.editions, field="Model.Ship.editions")
 
@@ -575,7 +594,7 @@ class ModelShipRecord(TypedShip):
         return tuple(
             DiagramAnnotation(
                 _edition_id(edition),
-                self.ship.namespace,
+                self.namespace,
                 {
                     "type": MODEL_EDITION_TYPE,
                     "model_ship": self.id,
@@ -586,12 +605,11 @@ class ModelShipRecord(TypedShip):
         )
 
 
-@dataclass(frozen=True, slots=True)
 class BlockShipRecord(TypedShip):
     type_ship: ClassVar[TypeShip] = TypeShip("d091667e-4426-45a2-a22b-ee900d9ca9de")
     type_name: ClassVar[str] = BLOCK_SHIP_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Block.Ship.model_ship")
         _validate_editions(self.editions, field="Block.Ship.editions")
@@ -610,7 +628,7 @@ class BlockShipRecord(TypedShip):
         return tuple(
             DiagramAnnotation(
                 _edition_id(edition),
-                self.ship.namespace,
+                self.namespace,
                 {
                     "type": BLOCK_EDITION_TYPE,
                     "location": {
@@ -624,12 +642,11 @@ class BlockShipRecord(TypedShip):
         )
 
 
-@dataclass(frozen=True, slots=True)
 class LineShipRecord(TypedShip):
     type_ship: ClassVar[TypeShip] = TypeShip("18dd06c0-bdcb-48ac-b5a6-3388a601084c")
     type_name: ClassVar[str] = LINE_SHIP_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Line.Ship.model_ship")
         _uuid(self.record.get("block_ship"), field="Line.Ship.block_ship")
@@ -654,7 +671,7 @@ class LineShipRecord(TypedShip):
         return tuple(
             DiagramAnnotation(
                 _edition_id(edition),
-                self.ship.namespace,
+                self.namespace,
                 {
                     "type": LINE_EDITION_TYPE,
                     "location": {
@@ -669,12 +686,11 @@ class LineShipRecord(TypedShip):
         )
 
 
-@dataclass(frozen=True, slots=True)
 class CollectionShipRecord(TypedShip):
     type_ship: ClassVar[TypeShip] = TypeShip("5af5946f-2fa7-4d27-af37-c5bbbf271ff0")
     type_name: ClassVar[str] = COLLECTION_SHIP_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Collection.Ship.model_ship")
         _validate_editions(self.editions, field="Collection.Ship.editions")
@@ -693,7 +709,7 @@ class CollectionShipRecord(TypedShip):
         return tuple(
             DiagramAnnotation(
                 _edition_id(edition),
-                self.ship.namespace,
+                self.namespace,
                 {
                     "type": COLLECTION_EDITION_TYPE,
                     "model_ship": self.model_ship,
@@ -707,7 +723,7 @@ class CollectionShipRecord(TypedShip):
 
 @dataclass(frozen=True, slots=True)
 class DiagramAnnotation:
-    """Opaque claim record or internal Ship-edition projection adapter."""
+    """Address and Namespace binding for an Annotation or edition adapter."""
 
     id: str
     namespace: DiagramNamespace
@@ -735,15 +751,11 @@ class DiagramAnnotation:
         return self.namespace.assertions_for(self)
 
     def score_vector(self) -> JsonObject:
+        try:
+            return self.specialize().score_vector()
+        except DiagramAnnotationSpecializationError:
+            pass
         value = self.record.get("score_vector", {})
-        if self.type == LINE_ANNOTATION_TYPE:
-            editions = self.record.get("editions", [])
-            if (
-                isinstance(editions, list)
-                and editions
-                and isinstance(editions[-1], dict)
-            ):
-                value = editions[-1].get("score_vector", value)
         return value if isinstance(value, dict) else {}
 
     def to_record(self) -> JsonObject:
@@ -753,23 +765,42 @@ class DiagramAnnotation:
         return self.namespace.specialize(self)
 
 
-@dataclass(frozen=True, slots=True)
-class TypedAnnotation(TaravRecordType):
+class TypedAnnotation(TaravRecord):
+    """Registered Annotation interpreter, optionally bound to Diagram storage."""
+
     type_ship: ClassVar[TypeShip] = TypeShip("e01f77fb-4155-4efd-94f7-a0abcecadc27")
 
-    annotation: DiagramAnnotation
+    def __init__(self, record: Mapping[str, object] | DiagramAnnotation) -> None:
+        if isinstance(record, DiagramAnnotation):
+            self.annotation: DiagramAnnotation | None = record
+            retained = record.record
+        else:
+            self.annotation = None
+            retained = _object(record, field="Annotation.Record")
+        super().__init__(retained)
+        self._validate_record()
+
+    def _validate_record(self) -> None:
+        return None
+
+    def _binding(self) -> DiagramAnnotation:
+        if self.annotation is None:
+            raise DiagramModelError(
+                f"{type(self).__name__} requires an Annotation storage binding"
+            )
+        return self.annotation
 
     @property
     def id(self) -> str:
-        return self.annotation.id
+        return self._binding().id
 
     @property
     def type(self) -> str:
-        return self.annotation.type
+        return _record_type_name(self.record, field="Annotation")
 
     @property
-    def record(self) -> JsonObject:
-        return self.annotation.record
+    def namespace(self) -> DiagramNamespace:
+        return self._binding().namespace
 
     def model_location(self) -> tuple[str, str] | None:
         """Return the owning Model and the record path that establishes it."""
@@ -778,6 +809,10 @@ class TypedAnnotation(TaravRecordType):
 
     def type_assertions(self) -> tuple[JsonObject, ...]:
         return ()
+
+    def score_vector(self) -> JsonObject:
+        value = self.record.get("score_vector", {})
+        return value if isinstance(value, dict) else {}
 
     def type_findings(
         self,
@@ -793,19 +828,18 @@ class TypedAnnotation(TaravRecordType):
         return None
 
     def _require_record_type(self) -> None:
-        reference = self.annotation.type_reference
+        reference = _record_type_reference(self.record, field="Annotation")
         if not type(self).matches(reference):
             raise DiagramModelError(
                 f"not a {type(self).type_name}: {reference.describe()}"
             )
 
 
-@dataclass(frozen=True, slots=True)
 class ModelEditionRecord(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("213b526c-cdd1-4d9b-a39d-650eee709354")
     type_name: ClassVar[str] = MODEL_EDITION_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Model.Edition.model_ship")
 
@@ -826,7 +860,6 @@ class ModelEditionRecord(TypedAnnotation):
         )
 
 
-@dataclass(frozen=True, slots=True)
 class UserTouchedAnnotation(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("35958f0b-e78f-4b94-b5d2-d1e74c56b355")
 
@@ -842,14 +875,13 @@ class UserTouchedAnnotation(TypedAnnotation):
         return [evidence.render_member(item) for item in self.support.members]
 
 
-@dataclass(frozen=True, slots=True)
 class LineAnnotationRecord(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("212bab37-f204-4ad7-b174-c339812c7876")
     type_name: ClassVar[str] = LINE_ANNOTATION_TYPE
 
     """One free-standing Index.Line with explicit Diagram arguments."""
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Line.Annotation.model_ship")
         _validate_editions(self.editions, field="Line.Annotation.editions")
@@ -927,6 +959,12 @@ class LineAnnotationRecord(TypedAnnotation):
             )
         )
 
+    def score_vector(self) -> JsonObject:
+        value = self.current_edition.get(
+            "score_vector", self.record.get("score_vector", {})
+        )
+        return value if isinstance(value, dict) else {}
+
     def references(self, identity: str) -> bool:
         _uuid(identity, field="Argument.Reference.id")
         return any(
@@ -973,7 +1011,7 @@ class LineAnnotationRecord(TypedAnnotation):
         evidence: ChatlasEvidence | None,
     ) -> tuple[Finding, ...]:
         findings: list[Finding] = []
-        namespace = self.annotation.namespace
+        namespace = self.namespace
         for index, reference in enumerate(self.arguments):
             if reference.namespace_id != namespace.id:
                 continue
@@ -1009,12 +1047,11 @@ class LineAnnotationRecord(TypedAnnotation):
         return tuple(findings)
 
 
-@dataclass(frozen=True, slots=True)
 class LineEditionRecord(UserTouchedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("075a399c-4285-4cc2-b6f2-d0c315d4a137")
     type_name: ClassVar[str] = LINE_EDITION_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         DiagramLocation.from_dict(self.record.get("location"))
         _string(
@@ -1089,12 +1126,11 @@ class LineEditionRecord(UserTouchedAnnotation):
         return ()
 
 
-@dataclass(frozen=True, slots=True)
 class BlockEditionRecord(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("81ca3e71-1432-48af-afa5-2446042a40f9")
     type_name: ClassVar[str] = BLOCK_EDITION_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         DiagramBlockLocation.from_dict(self.record.get("location"))
         _string(
@@ -1153,12 +1189,11 @@ class BlockEditionRecord(TypedAnnotation):
         projector.add_block_annotation(self)
 
 
-@dataclass(frozen=True, slots=True)
 class CollectionEditionRecord(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("fa0413e9-88e6-4b8b-8606-5d3ef397ea61")
     type_name: ClassVar[str] = COLLECTION_EDITION_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Collection.Edition.model_ship")
         _uuid(
@@ -1233,12 +1268,11 @@ class CollectionEditionRecord(TypedAnnotation):
         projector.add_collection_edition(self)
 
 
-@dataclass(frozen=True, slots=True)
 class CaptureAuthorizationGateRecord(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("f3701ea7-cb6c-494f-b3e5-1d38370abde0")
     type_name: ClassVar[str] = CAPTURE_AUTHORIZATION_GATE_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         _uuid(self.record.get("model_ship"), field="Capture.Authorization.model_ship")
         _string(self.record.get("token"), field="Capture.Authorization.token")
@@ -1324,14 +1358,13 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
         )
 
 
-@dataclass(frozen=True, slots=True)
 class BlockTypeAnnotation(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("cbd91ead-be95-4679-b94a-ac16d351dcc9")
     type_name: ClassVar[str] = BLOCK_TYPE_ANNOTATION_TYPE
 
     """Assigns an Object.Type to an existing Block without adding content."""
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         DiagramBlockLocation.from_dict(self.record.get("location"))
         _string(self.record.get("block_type"), field="block_type")
@@ -1360,12 +1393,11 @@ class BlockTypeAnnotation(TypedAnnotation):
         projector.add_block_annotation(self)
 
 
-@dataclass(frozen=True, slots=True)
 class LineSupportAnnotation(UserTouchedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("d8215a2f-0cdb-4940-95c9-fd071a9d7735")
     type_name: ClassVar[str] = LINE_SUPPORT_ANNOTATION_TYPE
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         DiagramLocation.from_dict(self.record.get("location"))
 
@@ -1396,14 +1428,13 @@ class LineSupportAnnotation(UserTouchedAnnotation):
         projector.add_line_annotation(self)
 
 
-@dataclass(frozen=True, slots=True)
 class LineTypeAnnotation(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("30013ead-fec7-4584-9b03-4de96c941f58")
     type_name: ClassVar[str] = LINE_TYPE_ANNOTATION_TYPE
 
     """Assigns an Object.Type to an existing Line without adding wording."""
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         DiagramLocation.from_dict(self.record.get("location"))
         _string(self.record.get("line_type"), field="line_type")
@@ -1432,14 +1463,13 @@ class LineTypeAnnotation(TypedAnnotation):
         projector.add_line_annotation(self)
 
 
-@dataclass(frozen=True, slots=True)
 class LineGateAnnotation(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("3bf237e7-0251-4106-8166-dfbba1046b7c")
     type_name: ClassVar[str] = LINE_GATE_ANNOTATION_TYPE
 
     """Adds review evidence to one immutable Line edition."""
 
-    def __post_init__(self) -> None:
+    def _validate_record(self) -> None:
         self._require_record_type()
         _uuid(
             self.record.get("target_edition"),
@@ -1464,7 +1494,7 @@ class LineGateAnnotation(TypedAnnotation):
 
     @property
     def target(self) -> LineEditionRecord:
-        annotation = self.annotation.namespace.edition(self.target_edition_id)
+        annotation = self.namespace.edition(self.target_edition_id)
         typed = annotation.specialize()
         if not isinstance(typed, LineEditionRecord):
             raise DiagramModelError(
@@ -5226,7 +5256,7 @@ def _record_type_name(record: Mapping[str, Any], *, field: str) -> str:
     return reference.label
 
 
-def _record_is(record: Mapping[str, Any], record_type: type[TaravRecordType]) -> bool:
+def _record_is(record: Mapping[str, Any], record_type: type[TaravRecord]) -> bool:
     """Whether one Record's Type reference designates a registered class."""
 
     location = locate_record_type(record)
@@ -5236,7 +5266,7 @@ def _record_is(record: Mapping[str, Any], record_type: type[TaravRecordType]) ->
 
 
 def _record_is_any(
-    record: Mapping[str, Any], record_types: tuple[type[TaravRecordType], ...]
+    record: Mapping[str, Any], record_types: tuple[type[TaravRecord], ...]
 ) -> bool:
     return any(_record_is(record, item) for item in record_types)
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from io import StringIO
 from pathlib import Path
 from uuid import uuid4
 
@@ -216,3 +218,22 @@ def test_a_reserved_namespace_reference_is_never_shadowed_by_root_type(
                 "editions": [],
             },
         )
+
+
+def test_diagram_registered_records_can_load_directly_from_json() -> None:
+    record = _line_record(
+        str(uuid4()),
+        str(uuid4()),
+        {"uuid": str(LineShipRecord.type_ship.uuid), "label": LINE_SHIP_TYPE},
+    ).record
+    registry = default_diagram_ship_type_registry()
+
+    dynamically_loaded = registry.json_load(StringIO(json.dumps(record)))
+    explicitly_loaded = LineShipRecord.json_load(
+        StringIO(json.dumps(record)), registry=registry
+    )
+
+    assert type(dynamically_loaded) is LineShipRecord
+    assert type(explicitly_loaded) is LineShipRecord
+    assert dynamically_loaded.record == record
+    assert explicitly_loaded.model_ship == record["model_ship"]
