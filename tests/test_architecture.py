@@ -28,6 +28,10 @@ def _top_level_import_graph() -> dict[str, set[str]]:
     for path in PACKAGE_ROOT.rglob("*.py"):
         relative = path.relative_to(PACKAGE_ROOT)
         source = relative.parts[0] if len(relative.parts) > 1 else "<root>"
+        # skw.skills is a composition leaf, distinct from skw.network's
+        # existing lower-level algorithms consumed by Skillware.
+        if relative.as_posix() in {"skw/skills.py", "skw/publication.py", "skw/loading.py"}:
+            source = "skw.skills"
         graph[source]
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
@@ -40,9 +44,17 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 if not name.startswith("tarav."):
                     continue
                 target = name.split(".", 2)[1]
+                if name == "tarav.skw.skills" or name.startswith("tarav.skw.skills."):
+                    target = "skw.skills"
                 if target != source:
                     graph[source].add(target)
     return graph
+
+
+def test_skill_specialization_is_not_imported_by_general_skillware():
+    graph = _top_level_import_graph()
+    assert "skw.skills" not in graph["skillware"]
+    assert "skw.skills" not in graph["skw"]
 
 
 def _strongly_connected_components(
@@ -210,10 +222,11 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
                 and not m.startswith("tarav.chatlas.normal_model")
                 for m in modules
             )
-        elif path.name != "commands.py":
+        elif path.name not in {"commands.py", "references.py"}:
             # commands.py is the composition point: it builds the one `tarav chatlas`
             # group and hands its subparsers to the layer. Everything else in
             # chatlas/ must stay below the layer, not reach up into it.
+            # references.py is an explicit Normal Model consumer exposing typed Turns.
             assert not any(
                 m.startswith("tarav.chatlas.normal_model") for m in modules
             ), path

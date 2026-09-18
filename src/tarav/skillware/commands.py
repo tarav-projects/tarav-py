@@ -856,7 +856,8 @@ def register_skillware_commands(
     subparsers: argparse._SubParsersAction,
     *,
     edition_history_support_resolver: EditionSupportResolver | None = None,
-) -> None:
+    document_factory=None,
+) -> argparse._SubParsersAction:
     skillware_parser = subparsers.add_parser(
         "skw",
         help="Build Skw packages and lint configured project surfaces.",
@@ -875,7 +876,8 @@ def register_skillware_commands(
     skillware_subparsers = skillware_parser.add_subparsers(dest="skillware_command")
     from .document import register_commands
 
-    register_commands(skillware_subparsers)
+    options = {'document_factory': document_factory} if document_factory is not None else {}
+    register_commands(skillware_subparsers, **options)
     _add_edition_history_commands(
         skillware_subparsers,
         support_resolver=edition_history_support_resolver,
@@ -960,6 +962,9 @@ def register_skillware_commands(
                 help="Unlock-token receipt from a required context surface; repeatable.",
             )
         sub.set_defaults(handler=handler)
+
+
+    return skillware_subparsers
 
 
 __all__ = ["register_skillware_commands"]

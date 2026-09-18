@@ -13,7 +13,9 @@ class StructuredFileReference(Reference):
     type_name = "Tarav.Reference.StructuredFile"
     type_ship = TypeShip("d8e8b967-b3a2-4c62-9fa7-d6604b95d3c0")
 
-    def locate(self, locator):
+    def address(self):
+        """Return an absolute path and optional pointer without reading payloads."""
+        locator = self.locator
         if not isinstance(locator, Mapping) or set(locator) - {"path", "pointer"}:
             raise ValueError("Locator requires path and optional pointer")
         raw = locator.get("path")
@@ -24,7 +26,17 @@ class StructuredFileReference(Reference):
             if self.source is None:
                 raise ValueError("Relative reference requires containing source")
             path = self.source.parent / path
-        payload = path.read_bytes()
+        result = {"path": str(path.resolve())}
+        if "pointer" in locator:
+            pointer = locator["pointer"]
+            if not isinstance(pointer, str) or (pointer and not pointer.startswith("/")):
+                raise ValueError("Expected JSON Pointer")
+            result["pointer"] = pointer
+        return result
+
+    def locate(self, locator):
+        address = self.address()
+        payload = Path(address["path"]).read_bytes()
         if "pointer" not in locator:
             return payload
         pointer = locator["pointer"]

@@ -44,6 +44,32 @@ contract and Git boundaries.
 
 ## Ownership map
 
+`tarav.skw.skills` specializes the general `tarav.skillware.document` engine
+for deployable skill packages. It owns `.skw/skill.json`, developer/consumer
+dependency purposes, product selection, and package checks. General Skillware
+does not import this specialization; runtime composes its CLI and Record types.
+`skw.skills` is a composition leaf; `skw.network` remains the independent
+lower-level network algorithms used by existing Skillware mechanics.
+`skw.publication` belongs to that composition layer and consumes Diagram's
+public Model projection and Kernel renderer. Explicit selections publish
+Markdown without generation; the publication lock records source/model/product
+fingerprints. Diagram never imports SKW for publication.
+`skw.loading` owns static consumer-context analysis for instruction surfaces.
+Its typed `.skw` declarations bind existing SKW blocks through StructuredFile
+references, attach parents, and declare links, inclusions, and requirements.
+Loading mechanics never infer graph edges from Markdown. Output parsing is
+only a conformance check. Runtime injects the skill document factory into the
+generic document CLI; generic Skillware never imports the specialization.
+Deployment copies declared consumer files to a fresh directory and reports
+external consumer skill requirements; it does not install dependencies.
+
+Chatlas owns `chatlas.references.ChatlasTurnReference`, a Normal Model consumer
+exposing exact Turn coordinates and messages through the shared Reference API.
+Runtime registers it; the references foundation does not import Chatlas.
+Skillware composes that reference with its context roles. `maintenance` provides
+context, `dependency` enables target-change tracking, and `user-grounding`
+checks User-Turn evidence without claiming approval or semantic fidelity.
+
 - `tarav.harness` owns the small application-facing semantic base classes,
   the `Ship` identity primitives, and retained Type-reference to trusted Python
   class dispatch. A `Ship` wraps one UUID and nothing else, so identity comparison
@@ -137,6 +163,9 @@ contract and Git boundaries.
   generation annotations, and locks. It owns whole-document assembly and
   source linting. Runtime registers its Record authorities; CLI operations at
   `tarav skw document` delegate to the library.
+  Context listings inspect reference addresses without loading target bodies;
+  explicit reads select one entry. Structured references own source-relative
+  address resolution. Lint/record retain full fingerprint checks independently.
 - `tarav.skw` owns backend-neutral network algorithms shared by consumers; it
   does not own Skillware policy.
 - `tarav.poi` owns the shared finding model and resolution adapters. Producers

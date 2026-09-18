@@ -155,7 +155,8 @@ class TaravRuntime:
             wayfinder=wayfinder,
             related_resolver=RelatedSurfaceResolver(wayfinder),
         )
-        register_skillware_commands(subparsers)
+        from tarav.skw.skills import register_commands, skill_document
+        register_commands(register_skillware_commands(subparsers, document_factory=skill_document))
 
 
 CommandRegistrar = Callable[["argparse._SubParsersAction"], None]
@@ -193,6 +194,8 @@ def create_runtime(
     from tarav.archive.workflow import ArchiveWorkflow
     from tarav.diagram.workflow import DiagramWorkflow
     from tarav.skillware.document import SkillwareWorkflow
+    from tarav.skw.skills import SkillsWorkflow
+    from tarav.chatlas.references import ChatlasTurnReference
 
     registrations = WorkflowRegistry(
         TypeRegistry(
@@ -201,6 +204,7 @@ def create_runtime(
                 FileRecord,
                 DirectoryRecord,
                 WayfinderReference,
+                ChatlasTurnReference,
             ),
         )
     )
@@ -211,6 +215,7 @@ def create_runtime(
         ArchiveWorkflow(),
         DiagramWorkflow(),
         SkillwareWorkflow(),
+        SkillsWorkflow(),
         navigation,
         *workflows,
     ):

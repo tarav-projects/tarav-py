@@ -48,6 +48,16 @@
 
 ## Native surfaces and Skillware
 
+- Skill packages with a `loading` declaration use `tarav.skw.skills` for
+  compilation. The installed `skw document` CLI receives this specialization
+  through runtime composition. Plain `Document` is the generic engine, not a
+  substitute for compiling skill primitives. Loading graphs are declared data;
+  never infer parent attachments or context satisfaction from Markdown links.
+
+- Skillware context navigation defaults to compact listings. Agents select
+  entries for head/tail/cat reads or use exposed absolute paths. Keep payload
+  resolution for dependency checks separate from context presentation.
+
 - JSON document sources under `.skw/src/` own all literal and generated text
   for their product. Edit generation outputs in source, record them explicitly,
   and lint/compile through `tarav skw document`. Compilation must not refresh
@@ -84,6 +94,8 @@
   composition is the exception that registers the public `tarav chatlas`
   leaves.
 - Consumers import `tarav.chatlas.normal_model`, not its internal modules.
+- `chatlas.references` is a Normal Model consumer owning typed Turn references;
+  capture/index modules remain independent of normalization.
 - Retained raw artifacts are the evidence surface. The Session Index and Normal
   Model cache are derived, replaceable, and rebuildable.
 

@@ -100,24 +100,25 @@ def test_cli_dispatches_full_document_workflow(tmp_path):
                                 capture_output=True, text=True)
         assert result.returncode == 0, result.stdout + result.stderr
         return json.loads(result.stdout)
-    prepared = run("prepare", str(path), "explain")
+    prepared = run("prepare", "--source", "explanation.skw.json", "--project", str(tmp_path), "--block", "explain")
     data["blocks"][1]["output"] = ["Prints one."]
     path.write_text(json.dumps(data))
-    run("record", str(path), prepared["id"])
-    assert run("compile", str(path))["written"]
-    assert run("lint", str(path)) == []
+    run("record", "--source", "explanation.skw.json", "--project", str(tmp_path), "--generation", prepared["id"])
+    assert run("compile", "--project", str(tmp_path), "--source", "explanation.skw.json")["written"]
+    assert run("lint", "--project", str(tmp_path), "--source", "explanation.skw.json") == []
 
 
 def test_context_observation_order_and_relative_file_change(tmp_path):
     path, data = source(tmp_path)
     data["blocks"][1]["context"] = [
-        {"kind": "prompt", "lines": ["Read the implementation.", "Preserve behavior."]},
-        {"kind": "reference", "reference": {"type": "Tarav.Reference.StructuredFile", "locator": {"path": "../../input.py"}}},
+        {"kind": "prompt", "roles": ["dependency"], "lines": ["Read the implementation.", "Preserve behavior."]},
+        {"kind": "reference", "roles": ["dependency"], "reference": {"type": "Tarav.Reference.StructuredFile", "locator": {"path": "../../input.py"}}},
     ]
     path.write_text(json.dumps(data))
     prepared = Document(path).prepare("explain")
-    assert prepared["context"][0]["content"] == "Read the implementation.\nPreserve behavior."
-    assert prepared["context"][1]["content"] == "print(1)"
+    assert prepared["context"][0]["line_count"] == 2
+    assert Document(path).read_context("explain", 0)["text"] == "Read the implementation.\nPreserve behavior."
+    assert Document(path).read_context("explain", 1)["text"] == "print(1)"
     Document(path).observe_context("explain")
     assert not any(f["kind"].startswith("context-") for f in Document(path).lint())
     (tmp_path / "input.py").write_text("print(2)")
@@ -137,7 +138,7 @@ def test_block_context_fingerprints_selected_whole_block(tmp_path):
         {"id": "selected", "kind": "generation", "prompt": ["Explain"], "output": ["Old"]},
         {"id": "unrelated", "kind": "literal", "lines": ["One"]}]}
     other.write_text(json.dumps(target))
-    data["blocks"][1]["context"] = [{"kind": "reference", "reference": {"type": "Tarav.Reference.StructuredFile", "locator": {"path": "other.skw.json", "pointer": "/blocks/0"}}}]
+    data["blocks"][1]["context"] = [{"kind": "reference", "roles": ["dependency"], "reference": {"type": "Tarav.Reference.StructuredFile", "locator": {"path": "other.skw.json", "pointer": "/blocks/0"}}}]
     data["blocks"][1]["output"] = ["Retained"]
     path.write_text(json.dumps(data))
     Document(path).observe_context("explain")
@@ -153,9 +154,9 @@ def test_block_context_fingerprints_selected_whole_block(tmp_path):
 
 
 @pytest.mark.parametrize("entry", [
-    {"kind": "other"}, {"kind": "prompt", "lines": "not an array"},
-    {"kind": "reference", "path": "/absolute"},
-    {"kind": "reference", "path": "missing.json", "block": "absent"},
+    {"kind": "other"}, {"kind": "prompt", "roles": ["dependency"], "lines": "not an array"},
+    {"kind": "reference", "roles": ["dependency"], "path": "/absolute"},
+    {"kind": "reference", "roles": ["dependency"], "path": "missing.json", "block": "absent"},
 ])
 def test_invalid_context_is_a_finding(tmp_path, entry):
     path, data = source(tmp_path)
@@ -167,7 +168,7 @@ def test_invalid_context_is_a_finding(tmp_path, entry):
 def test_existing_content_needs_no_invented_generation_history(tmp_path):
     path, data = source(tmp_path)
     data["blocks"][1].update(prompt=[], arguments={}, output=["Existing content"],
-                             context=[{"kind": "prompt", "lines": ["Maintain this text."]}])
+                             context=[{"kind": "prompt", "roles": ["dependency"], "lines": ["Maintain this text."]}])
     path.write_text(json.dumps(data))
     doc = Document(path)
     doc.observe_context("explain")
