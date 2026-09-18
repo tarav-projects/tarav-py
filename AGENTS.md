@@ -48,6 +48,11 @@
 
 ## Native surfaces and Skillware
 
+- JSON document sources under `.skw/src/` own all literal and generated text
+  for their product. Edit generation outputs in source, record them explicitly,
+  and lint/compile through `tarav skw document`. Compilation must not refresh
+  generation baselines or suppress stale-generation findings.
+
 - `tarav.skillware.generation` is an independent Python-first generation
   workflow. Keep its template, invocation, and dependency semantics separate
   from the existing compiler and Index. Checks report evidence without repair

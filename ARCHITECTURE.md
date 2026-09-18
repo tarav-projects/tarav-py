@@ -133,6 +133,10 @@ contract and Git boundaries.
   template blocks, invocation snapshots, output dependencies, and read-only
   findings. Its mechanics use only the standard library and do not query
   Index, Diagram, or contextualization. See `notes/skillware-generation.md`.
+- `tarav.skillware.document` composes those helpers into typed document sources,
+  generation annotations, and locks. It owns whole-document assembly and
+  source linting. Runtime registers its Record authorities; CLI operations at
+  `tarav skw document` delegate to the library.
 - `tarav.skw` owns backend-neutral network algorithms shared by consumers; it
   does not own Skillware policy.
 - `tarav.poi` owns the shared finding model and resolution adapters. Producers

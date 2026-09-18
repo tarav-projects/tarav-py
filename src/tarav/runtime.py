@@ -192,6 +192,7 @@ def create_runtime(
     """
     from tarav.archive.workflow import ArchiveWorkflow
     from tarav.diagram.workflow import DiagramWorkflow
+    from tarav.skillware.document import SkillwareWorkflow
 
     registrations = WorkflowRegistry(
         TypeRegistry(
@@ -209,6 +210,7 @@ def create_runtime(
         references,
         ArchiveWorkflow(),
         DiagramWorkflow(),
+        SkillwareWorkflow(),
         navigation,
         *workflows,
     ):

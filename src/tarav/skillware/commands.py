@@ -873,6 +873,9 @@ def register_skillware_commands(
         edition_history_support_resolver=edition_history_support_resolver
     )
     skillware_subparsers = skillware_parser.add_subparsers(dest="skillware_command")
+    from .document import register_commands
+
+    register_commands(skillware_subparsers)
     _add_edition_history_commands(
         skillware_subparsers,
         support_resolver=edition_history_support_resolver,
