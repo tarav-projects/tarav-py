@@ -15,6 +15,8 @@ from urllib.parse import urlsplit
 import warnings
 
 from tarav._core.persistence import atomic_write_json, atomic_write_text
+from tarav._core.data_root import default_tarav_data_root
+from .records import ArchiveRecord, ArtifactRecord, TombstoneRecord, record_registry
 
 
 ARCHIVE_CLASS = "Tarav.Archive"
@@ -24,7 +26,14 @@ GIT_HINT_CLASS = "Tarav.Archive.Artifact.GitHint.Record"
 GIT_COORDINATE_CLASS = "Tarav.Archive.Artifact.GitCoordinate.Record"
 FILE_VERSION_CLASS = "Tarav.Archive.Artifact.FileVersion.Record"
 EXTERNAL_DESCRIPTORS_CLASS = "Tarav.Archive.Artifact.ExternalDescriptors.Record"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+
+def default_archive_root() -> Path:
+    """The library-owned default; callers retain the selected location."""
+    return default_tarav_data_root() / "archive"
+
+
 ARTIFACT_ID_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 SCP_GIT_LOCATOR_PATTERN = re.compile(r"^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9.-]+:[^\s?#]+$")
 DERIVED_ID_SCHEME = "tarav.archive.git-contained.v1"
@@ -159,7 +168,7 @@ class Archive:
         atomic_write_json(
             records_root / "archive.json",
             {
-                "class": ARCHIVE_CLASS,
+                "type": ARCHIVE_CLASS,
                 "schema_version": SCHEMA_VERSION,
                 "recorded_at": _timestamp(),
             },
@@ -172,8 +181,12 @@ class Archive:
         return cls(root=resolved)
 
     @classmethod
-    def open(cls, root: Path) -> Archive:
-        resolved = root.expanduser().resolve()
+    def open(cls, root: Path | None = None) -> Archive:
+        resolved = (
+            (root if root is not None else default_archive_root())
+            .expanduser()
+            .resolve()
+        )
         records_root = resolved / "records"
         repositories_root = resolved / "repositories"
         if not (records_root / ".git").is_dir():
@@ -185,6 +198,14 @@ class Archive:
         if not repositories_root.is_dir():
             raise ArchiveError(
                 f"Archive repositories directory is missing: {repositories_root}"
+            )
+        definition = _read_json_object(records_root / "archive.json")
+        if (
+            record_registry().resolve(definition) is not ArchiveRecord
+            or definition.get("schema_version") != SCHEMA_VERSION
+        ):
+            raise ArchiveError(
+                "Archive schema requires an explicit developer migration"
             )
         return cls(root=resolved)
 
@@ -336,13 +357,14 @@ class Archive:
         first_commit = commits[0].get("hash")
         if not isinstance(first_commit, str) or not first_commit:
             raise ArchiveError(f"Repository Git Hint has no first commit: {hint_path}")
-        return {
-            "kind": GIT_REPOSITORY_KIND,
-            "archive_id": repository.id,
-            "locator": locator,
-            "name": repository.name,
-            "first_commit": first_commit,
-        }
+        from .references import reference_record
+
+        return reference_record(
+            self,
+            repository.id,
+            check={"contains_commit": first_commit},
+            hints={"path": locator, "name": repository.name},
+        )
 
     def reference_git_file(
         self,
@@ -364,15 +386,18 @@ class Archive:
         coordinate = _read_json_object(
             self._artifact_root(artifact.id) / "git-coordinate.json"
         )
-        return {
-            "kind": GIT_FILE_VERSION_KIND,
-            "archive_id": artifact.id,
-            "repository_id": repository.id,
-            "locator": coordinate["path"],
-            "commit": coordinate["commit"],
-            "git_oid": coordinate["object_oid"],
-            "size": coordinate["size"],
-        }
+        from .references import reference_record
+
+        return reference_record(
+            self,
+            artifact.id,
+            check={"git_oid": coordinate["object_oid"]},
+            hints={
+                "path": coordinate["path"],
+                "commit": coordinate["commit"],
+                "size": coordinate["size"],
+            },
+        )
 
     def reference_file(self, locator: str) -> dict[str, object]:
         """Produce one flat Reference for an exact repoless local file version."""
@@ -405,15 +430,19 @@ class Archive:
                 content_hash=content_hash,
                 size=size,
             )
-        return {
-            "kind": FILE_VERSION_KIND,
-            "archive_id": artifact.id,
-            "locator": locator,
-            "recorded_at": artifact.recorded_at,
-            "sha256": content_hash,
-            "size": size,
-            "name": source.name,
-        }
+        from .references import reference_record
+
+        return reference_record(
+            self,
+            artifact.id,
+            check={"sha256": content_hash},
+            hints={
+                "path": locator,
+                "recorded_at": artifact.recorded_at,
+                "size": size,
+                "name": source.name,
+            },
+        )
 
     def materialize_git_artifact(
         self,
@@ -473,7 +502,7 @@ class Archive:
             object_root / "locators.jsonl",
             [
                 {
-                    "class": LOCATOR_CLASS,
+                    "type": LOCATOR_CLASS,
                     "schema_version": SCHEMA_VERSION,
                     "target": artifact.id,
                     "recorded_at": recorded_at,
@@ -487,7 +516,7 @@ class Archive:
         atomic_write_json(
             object_root / "git-coordinate.json",
             {
-                "class": GIT_COORDINATE_CLASS,
+                "type": GIT_COORDINATE_CLASS,
                 "schema_version": SCHEMA_VERSION,
                 "target": artifact.id,
                 "recorded_at": recorded_at,
@@ -530,7 +559,7 @@ class Archive:
             record = _read_json_object(record_path)
         else:
             record = {
-                "class": EXTERNAL_DESCRIPTORS_CLASS,
+                "type": EXTERNAL_DESCRIPTORS_CLASS,
                 "schema_version": SCHEMA_VERSION,
                 "target": target.id,
                 "recorded_at": _timestamp(),
@@ -607,6 +636,35 @@ class Archive:
             else:
                 records[path.name] = _read_json_object(path)
         return ArtifactDossier(artifact=artifact, records=records)
+
+    def record(self, selector: str | Path) -> ArtifactRecord:
+        """Load an Artifact's directory through its registered Record class."""
+        artifact = self.resolve_artifact(selector)
+        return ArtifactRecord.load(
+            self._artifact_root(artifact.id), registry=record_registry()
+        )
+
+    def retire(self, selector: str, *, reason: str, hints: object = None) -> None:
+        """Record unavailability without destroying the DOI or its evidence."""
+        artifact = self.resolve_artifact(selector)
+        path = self._artifact_root(artifact.id) / "tombstones.jsonl"
+        records = _read_jsonl_objects(path) if path.exists() else []
+        records.append(
+            {
+                "type": TombstoneRecord.type_name,
+                "schema_version": SCHEMA_VERSION,
+                "target": artifact.id,
+                "recorded_at": _timestamp(),
+                "reason": reason,
+                "hints": hints,
+            }
+        )
+        _write_jsonl(path, records)
+        _commit_paths(
+            self.records_root,
+            (path.relative_to(self.records_root),),
+            message=f"archive: retain retirement of {artifact.id}",
+        )
 
     def _register_root(
         self,
@@ -694,7 +752,7 @@ class Archive:
         atomic_write_json(
             object_root / "file-version.json",
             {
-                "class": FILE_VERSION_CLASS,
+                "type": FILE_VERSION_CLASS,
                 "schema_version": SCHEMA_VERSION,
                 "target": artifact.id,
                 "recorded_at": recorded_at,
@@ -731,7 +789,7 @@ class Archive:
         except (KeyError, TypeError, ValueError) as exc:
             raise ArchiveError(f"invalid Artifact registration: {record_path}") from exc
         if (
-            payload.get("class") != REGISTRATION_CLASS
+            record_registry().resolve(payload) is not ArtifactRecord
             or not ARTIFACT_ID_PATTERN.fullmatch(artifact.id)
             or object_root.name != artifact.id
         ):
@@ -821,13 +879,14 @@ def _registration_payload(
     identity: dict[str, object],
 ) -> dict[str, object]:
     return {
-        "class": REGISTRATION_CLASS,
+        "type": REGISTRATION_CLASS,
         "schema_version": SCHEMA_VERSION,
         "id": artifact.id,
         "kind": artifact.kind,
         "name": artifact.name,
         "recorded_at": artifact.recorded_at,
         "identity": identity,
+        "contract": {"kind": artifact.kind, "identity": identity},
     }
 
 
@@ -872,7 +931,7 @@ def _locator_record(
     recorded_at: str,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
-        "class": LOCATOR_CLASS,
+        "type": LOCATOR_CLASS,
         "schema_version": SCHEMA_VERSION,
         "target": target,
         "recorded_at": recorded_at,
@@ -916,7 +975,7 @@ def _repository_git_hint(
     commits = _branch_commits(repository, branch=branch)
     sampled = _sample_commits(commits)
     return {
-        "class": GIT_HINT_CLASS,
+        "type": GIT_HINT_CLASS,
         "schema_version": SCHEMA_VERSION,
         "recorded_at": recorded_at,
         "object_format": _run_git(repository, "rev-parse", "--show-object-format"),
@@ -1132,6 +1191,7 @@ def _read_json_object(path: Path) -> dict[str, object]:
         raise ArchiveError(f"cannot read Archive Record: {path}") from exc
     if not isinstance(payload, dict):
         raise ArchiveError(f"Archive Record must contain a JSON object: {path}")
+    record_registry().resolve(payload)(payload)
     return payload
 
 
@@ -1152,6 +1212,7 @@ def _read_jsonl_objects(path: Path) -> list[dict[str, object]]:
             raise ArchiveError(
                 f"Archive Record must contain a JSON object: {path}:{line_number}"
             )
+        record_registry().resolve(payload)(payload)
         records.append(payload)
     return records
 

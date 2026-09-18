@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+from pathlib import Path
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import BinaryIO, ClassVar, Final, Generic, Self, TextIO, TypeVar
@@ -45,6 +47,52 @@ class TaravRecord(TaravType):
         if type(self) is TaravRecord:
             raise TypeError("TaravRecord is not an opaque Record wrapper")
         self.record = dict(record)
+        self.source: Path | None = None
+
+    @classmethod
+    def help(cls) -> dict[str, object]:
+        """Return mechanical context for this class, without loading a Record.
+
+        Subclasses may extend this information with documentation, skills, or
+        other context entry points. Missing source information stays explicit;
+        this method never generates explanatory content or prints output.
+        ``source_path`` describes code, not an instance's retained ``source``.
+        """
+        result: dict[str, object] = {
+            "class": f"{cls.__module__}.{cls.__qualname__}",
+            "source_path": None,
+            "source_line": None,
+            "hints": {},
+        }
+        unavailable: dict[str, str] = {}
+        result["hints"] = {"unavailable": unavailable}
+        try:
+            filename = inspect.getsourcefile(cls)
+            if filename is None:
+                raise OSError("Python could not locate a source file")
+            path = Path(filename).resolve(strict=True)
+            if not path.is_file():
+                raise OSError("Source path is not a file")
+            result["source_path"] = str(path)
+        except (OSError, TypeError, ValueError) as exc:
+            unavailable["source_path"] = str(exc)
+            unavailable["source_line"] = "Source file unavailable"
+            return result
+        try:
+            _, line = inspect.getsourcelines(cls)
+            result["source_line"] = line
+        except (OSError, TypeError, ValueError) as exc:
+            unavailable["source_line"] = str(exc)
+        if not unavailable:
+            result["hints"] = {}
+        return result
+
+    @classmethod
+    def load(cls, path: str | Path, *, registry: TypeRegistry[TaravRecord]) -> Self:
+        """Load a retained representation through its registered authority."""
+        from .records import load_record
+
+        return load_record(path, registry=registry, record_class=cls)
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -265,6 +313,16 @@ class TypeRegistry(Generic[RecordTypeT]):
     @property
     def base_type(self) -> type[RecordTypeT]:
         return self._base_type
+
+    @property
+    def record_types(self) -> tuple[type[RecordTypeT], ...]:
+        """Registered authority classes, in registration order."""
+        return tuple(self._ships.values())
+
+    def load(self, path: str | Path) -> RecordTypeT:
+        from .records import load_record
+
+        return load_record(path, registry=self)
 
     def register(self, record_type: type[RecordTypeT]) -> None:
         if not issubclass(record_type, self._base_type):

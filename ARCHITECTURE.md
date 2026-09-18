@@ -129,6 +129,10 @@ contract and Git boundaries.
   policy.
 - `tarav.skillware` maps native surface models into annotations, managed
   blocks, builds, checks, context projections, and edition history.
+- `tarav.skillware.generation` owns the independent generation MVP: typed
+  template blocks, invocation snapshots, output dependencies, and read-only
+  findings. Its mechanics use only the standard library and do not query
+  Index, Diagram, or contextualization. See `notes/skillware-generation.md`.
 - `tarav.skw` owns backend-neutral network algorithms shared by consumers; it
   does not own Skillware policy.
 - `tarav.poi` owns the shared finding model and resolution adapters. Producers
@@ -210,3 +214,84 @@ and Normal Model cache are derived surfaces and may be rebuilt.
 
 `tests/test_architecture.py` enforces the import graph and the most important
 ownership boundaries.
+
+## Record network library
+
+The library is the operating surface; scripts and CLI commands are consumers.
+Using its Records, references, navigation and checks supplies the implicit
+harness graph. There is no required action-graph executor.
+
+`RecordClass.help()` (also callable as `record.help()`) is the inherited
+class-level context entry point. It returns a dictionary with `class` (the
+qualified Python name), `source_path` (an absolute code file path),
+`source_line` (one-based), and `hints` (opaque diagnostic context).
+Missing-source explanations live under `hints.unavailable` as a field-to-reason
+mapping; successful discovery returns empty hints. Mechanics use the source
+fields, not the diagnostic explanations.
+Unavailable values are `None`; a missing definition line does not discard a
+known file path. This information comes from Python inspection, not generated
+prose. Classes can override and extend it to expose documentation, skills and
+further context. The method returns information without printing or mutating
+Records; its code location is distinct from a Record instance's storage path.
+
+- `tarav.harness.records` classifies FileRecord and DirectoryRecord and owns
+  path loading. Directory entry discovery checks `__tarav.json`, `main.json`,
+  `type.json`, `archive.json`, then `registration.json`. The latter two are
+  Archive's concrete entry conventions. The first present entry wins even if
+  malformed. Its ordinary type declaration selects the registered authority;
+  `record.source` supplies the retained file location, and DirectoryRecord
+  exposes its parent directory. Payload files need not be Records.
+- `tarav.references` owns locator/check/hints roles. FileReference
+  resolves a path and optionally checks SHA-256. Hints are never read by
+  mechanical location or checking. ReferenceResult exposes findings without
+  repairing data. Concrete domain references own further semantics.
+- `tarav.harness.workflows` owns explicit Workflow registration and trusted
+  Python-file entry points. It does not execute workflows or inspect arbitrary
+  Record payloads for code. Registered Record classes remain authoritative.
+- `tarav.navigation` owns typed provider interfaces and a virtual root of
+  mounted collections. Provider errors and invalid responses become POIs.
+  FilesystemProvider uses the common loader; ArchiveProvider exposes JSONL
+  collections and DiagramProvider preserves Namespace/address bindings.
+- `create_runtime(workflows=..., config=...)` composes built-in Archive,
+  Diagram, and Navigation workflows. Scripts use `runtime.records`,
+  `runtime.navigation`, `runtime.load(path)`, and `runtime.source_root`.
+  Optional explicit configuration declares `workflow_files` and `providers`
+  (`name`, `workflow`, `root`); paths are relative to the configuration file.
+- Archive Records now declare `type` under schema 2 and use Harness dispatch.
+  Artifact registration directories retain a DOI contract and can be loaded
+  as DirectoryRecords. Retirement appends evidence and preserves the DOI.
+  Archive references contain `locator: {archive, doi}`, `check`, and opaque
+  `hints`; the old flat reference schema is not accepted as this type.
+- Wayfinder references now retain `type`, `locator`, `check`, and `hints`.
+  Their locator owns the managed resource type, root, and address. Wayfinder's
+  domain resolver supplies the target; optional SHA-256 checks verify content.
+  Existing symbolic address syntax remains a convenience constructor.
+
+Schema migration is explicit developer work, never a reader fallback.
+`tooling/migrate_793_archive_records.py` validates a complete clean Archive
+Record repository before updating it, retaining the prior Git checkpoint.
+Historical Archive observations and Artifact IDs are unchanged.
+
+### Reference construction and resolution
+
+Scripts construct `FileReference(path)` from `tarav.references` or
+`GitFileReference(repository=..., commit=..., path=...)` from
+`tarav.references.git`. File construction observes name, size and modification
+time when available. Git construction resolves the revision to an exact commit
+and records its blob check and mechanical hints. Neither generates prose.
+Passing a retained mapping loads it without refreshing hints or selecting new
+defaults. Reference Type Ships and serialized type names survive the module
+move; callers must import the new module directly.
+
+`runtime.references` is the registered ReferenceWorkflow. Its `load(record)`
+uses the shared Type registry and `resolve(reference_or_record, **context)`
+dispatches to the owning class. Unknown types return findings rather than
+triggering imports. Explicit context is forwarded to specialized references;
+Wayfinder still requires its configured `wayfinder` and returns its domain
+result. Resolution does not itself search for annotations or equate targets.
+
+Archive imports shared reference/Git mechanics; the reference foundation never
+imports Archive. `ArchiveReference(doi=...)` selects the library's
+`default_archive_root()` unless `archive=...` is supplied. The selected absolute
+location is retained in the locator so a later machine default does not retarget
+the saved reference. `Archive.open()` and the CLI use the same default.

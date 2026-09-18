@@ -6,16 +6,15 @@ import argparse
 import json
 from pathlib import Path
 
-from tarav._core.data_root import default_tarav_data_root
 from tarav._core.errors import CliError
 
-from . import Archive, ArchiveError, RegisteredArtifact
+from . import Archive, ArchiveError, RegisteredArtifact, default_archive_root
 
 
 def _archive_root(value: str | None) -> Path:
     if value is not None:
         return Path(value).expanduser().resolve()
-    return default_tarav_data_root() / "archive"
+    return default_archive_root()
 
 
 def _artifact_payload(artifact: RegisteredArtifact) -> dict[str, object]:

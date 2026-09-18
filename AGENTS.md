@@ -48,6 +48,11 @@
 
 ## Native surfaces and Skillware
 
+- `tarav.skillware.generation` is an independent Python-first generation
+  workflow. Keep its template, invocation, and dependency semantics separate
+  from the existing compiler and Index. Checks report evidence without repair
+  or automatic generation; callers own agent execution and explicit persistence.
+
 - `tarav.surfaces` owns deliberately thin Python and Markdown normal models.
   Native parsers expose syntax and source spans only; they do not know Skillware
   attachment policy or Index domain policy.
@@ -89,6 +94,29 @@
   diagnostics, and retain their own schemas and locations.
 
 ## Editing and tests
+
+- The Python library is the primary interface. Use `tarav python run --file`
+  for scripts in Tarav's installed environment; source paths are available
+  through `create_runtime().source_root`.
+- Record/provider registration is explicit trusted code. Records never select
+  import paths. Resolution hints never affect location or identity checks.
+- Prefer an explicit `hints` field for opaque consumer context so its role is
+  self-documenting. This is a convention across objects, not a requirement that
+  all hints occupy that field; mechanics must ignore hint content.
+- Every Record inherits class-level `help()` as a context entry point. Its
+  default returns the qualified class name, source path and line when available;
+  classes can extend it with documentation and skills. Keep this mechanically
+  sourced and return information rather than printing it.
+- Schema changes migrate code and affected data explicitly. Runtime readers
+  and validators never repair retained state.
+- Prefer mechanically obtained facts, especially from the operating system
+  and Git, or leave information absent. Introduce agent-generated claims only
+  when necessary for a defined purpose; keep their amount deliberate and bounded.
+  Examples and fixtures must model this practice too.
+- Agent-facing data does not imply agent authorship. This is a development
+  principle, not a runtime origin check on opaque hints. Diagram's producer,
+  support, and Assertion mechanisms make agent-generated claims traceable and
+  subject to validation and scoring.
 
 - Preserve unrelated changes in the shared worktree.
 - Use `apply_patch` for hand edits.

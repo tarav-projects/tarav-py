@@ -212,7 +212,7 @@ def test_mdblocks_blocks_find_and_lint_use_line_regions(
     )
     pois = captured_json(capsys)["pois"]
     assert "Markdown.Block.Linter/Separator.OutsideBlockSemantics" in [
-        poi["class"]["address"] for poi in pois
+        poi["class"]["locator"]["address"] for poi in pois
     ]
 
 

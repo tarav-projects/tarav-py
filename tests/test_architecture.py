@@ -10,6 +10,19 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+def test_generation_mechanics_have_no_tarav_domain_dependencies() -> None:
+    import sys
+
+    tree = ast.parse((PACKAGE_ROOT / "skillware" / "generation.py").read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            assert all(alias.name.split(".")[0] in sys.stdlib_module_names
+                       for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            assert node.level == 0
+            assert node.module.split(".")[0] in sys.stdlib_module_names
+
+
 def _top_level_import_graph() -> dict[str, set[str]]:
     graph: dict[str, set[str]] = defaultdict(set)
     for path in PACKAGE_ROOT.rglob("*.py"):
@@ -137,6 +150,12 @@ def test_harness_is_a_dependency_clean_application_base() -> None:
 
     assert imports["harness"] == set()
     assert "harness" in imports["diagram"]
+    assert "harness" in imports["archive"]
+    assert "harness" in imports["navigation"]
+    assert "poi" in imports["navigation"]
+    assert "navigation" not in imports["harness"]
+    assert imports["references"] <= {"harness"}
+    assert "references" in imports["archive"]
 
 
 def test_ship_identity_is_owned_by_harness_and_only_declared_by_diagram() -> None:

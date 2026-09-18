@@ -6,6 +6,13 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
+import json
+
+from tarav.harness import DirectoryRecord, FileRecord, TaravRecord, TypeRegistry
+from tarav.references.workflow import ReferenceWorkflow
+from tarav.harness.workflows import Workflow, WorkflowRegistry
+from tarav.navigation import FilesystemProvider, Navigation
+from tarav.wayfinder import WayfinderReference
 
 from tarav.chatlas.hook_consumers import register_chatlas_hook_callbacks
 from tarav.agent.providers.claude_code.usage_hooks import (
@@ -28,6 +35,23 @@ class TaravRuntime:
     """One composed in-process Tarav runtime."""
 
     hooks: HookRegistry
+    workflows: WorkflowRegistry
+    navigation: Navigation
+
+    @property
+    def references(self) -> ReferenceWorkflow:
+        return self.workflows.workflows["references"]
+
+    @property
+    def records(self) -> TypeRegistry[TaravRecord]:
+        return self.workflows.records
+
+    @property
+    def source_root(self) -> Path:
+        return Path(__file__).parent
+
+    def load(self, path: str | Path) -> TaravRecord:
+        return self.records.load(path)
 
     def register_commands(
         self,
@@ -157,7 +181,54 @@ def _register_stdlib_commands(
 def create_runtime(
     *,
     hook_registrars: Sequence[HookRegistrar] = (),
+    workflows: Sequence[Workflow] = (),
+    config: Path | None = None,
 ) -> TaravRuntime:
+    """Compose library capabilities. Configuration is explicit trusted input.
+
+    The optional JSON config contains `workflow_files` (Python source paths)
+    and `providers` ({name, workflow, root}). Paths are relative to that file.
+    `filesystem` providers browse plain local Record collections.
+    """
+    from tarav.archive.workflow import ArchiveWorkflow
+    from tarav.diagram.workflow import DiagramWorkflow
+
+    registrations = WorkflowRegistry(
+        TypeRegistry(
+            TaravRecord,
+            (
+                FileRecord,
+                DirectoryRecord,
+                WayfinderReference,
+            ),
+        )
+    )
+    navigation = Navigation()
+    references = ReferenceWorkflow(registrations.records)
+    for workflow in (
+        references,
+        ArchiveWorkflow(),
+        DiagramWorkflow(),
+        navigation,
+        *workflows,
+    ):
+        registrations.register(workflow)
+    if config is not None:
+        config = config.expanduser().resolve()
+        settings = json.loads(config.read_text(encoding="utf-8"))
+        for source in settings.get("workflow_files", []):
+            registrations.load(config.parent / source)
+        for entry in settings.get("providers", []):
+            root = config.parent / entry["root"]
+            owner = entry["workflow"]
+            provider = (
+                FilesystemProvider(root, registrations.records)
+                if owner == "filesystem"
+                else registrations.workflows[owner].provider(
+                    root, registrations.records
+                )
+            )
+            navigation.mount(entry["name"], provider)
     registry = HookRegistry()
     register_hook_sampling_callbacks(registry)
     register_claude_usage_hook_callbacks(registry)
@@ -165,7 +236,7 @@ def create_runtime(
     register_chatlas_hook_callbacks(registry)
     for registrar in hook_registrars:
         registrar(registry)
-    return TaravRuntime(hooks=registry)
+    return TaravRuntime(hooks=registry, workflows=registrations, navigation=navigation)
 
 
 __all__ = ["TaravRuntime", "HookRegistrar", "create_runtime"]

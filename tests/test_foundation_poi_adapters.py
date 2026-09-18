@@ -26,7 +26,7 @@ def test_anchory_check_adapts_existing_findings_to_common_pois(
     payload = report.as_dict()
 
     assert set(ANCHORY_POI_CODES) >= {finding.code for finding in result.findings}
-    assert payload["pois"][0]["class"]["address"] == "Anchory.Linter/Json.Invalid"
+    assert payload["pois"][0]["class"]["locator"]["address"] == "Anchory.Linter/Json.Invalid"
     assert payload["domain"]["status"] == "error"
     assert "findings" not in payload
 
@@ -70,7 +70,7 @@ def test_mdblocks_report_preserves_counts_without_duplicate_issue_records(
     result = report.as_dict()
 
     assert set(MDBLOCKS_POI_CODES) >= {"unclosed_code_fence"}
-    assert result["pois"][0]["class"]["address"] == (
+    assert result["pois"][0]["class"]["locator"]["address"] == (
         "Markdown.Block.Linter/CodeFence.Unclosed"
     )
     assert result["summary"]["error_count"] == 1

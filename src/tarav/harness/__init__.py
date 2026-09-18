@@ -1,6 +1,7 @@
 """Small semantic roles and trusted Type dispatch for Tarav applications."""
 
 from .ships import Ship, ShipIdentityError, TypeShip
+from .records import DIRECTORY_ENTRY_PATH, DirectoryRecord, FileRecord, entry_file, load_record
 from .types import (
     TYPE_RESOLUTION_PATH,
     DuplicateTypeRegistration,
@@ -22,6 +23,11 @@ from .types import (
 )
 
 __all__ = [
+    "DIRECTORY_ENTRY_PATH",
+    "DirectoryRecord",
+    "FileRecord",
+    "entry_file",
+    "load_record",
     "DuplicateTypeRegistration",
     "InvalidRecordJSON",
     "InvalidRecordType",

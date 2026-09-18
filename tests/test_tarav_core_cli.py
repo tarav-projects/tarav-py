@@ -339,9 +339,9 @@ def test_cli_produces_bare_kind_defined_reference_json(
         == 0
     )
     repository_reference = json.loads(capsys.readouterr().out)
-    assert repository_reference["kind"] == "git-repository"
-    assert repository_reference["archive_id"] == registered["id"]
-    assert repository_reference["locator"] == str(source)
+    assert repository_reference["type"] == "Tarav.Archive.Reference"
+    assert repository_reference["locator"]["doi"] == registered["id"]
+    assert repository_reference["hints"]["path"] == str(source)
 
     assert (
         main(
@@ -362,9 +362,10 @@ def test_cli_produces_bare_kind_defined_reference_json(
         == 0
     )
     git_file_reference = json.loads(capsys.readouterr().out)
-    assert git_file_reference["kind"] == "git-file-version"
-    assert git_file_reference["repository_id"] == registered["id"]
-    assert git_file_reference["locator"] == "chat.jsonl"
+    assert git_file_reference["type"] == "Tarav.Archive.Reference"
+    assert git_file_reference["locator"]["doi"] != registered["id"]
+    assert git_file_reference["hints"]["path"] == "chat.jsonl"
+    assert git_file_reference["check"]["git_oid"]
 
     external_file = tmp_path / "report.txt"
     external_file.write_text("report\n", encoding="utf-8")
@@ -383,6 +384,6 @@ def test_cli_produces_bare_kind_defined_reference_json(
         == 0
     )
     file_reference = json.loads(capsys.readouterr().out)
-    assert file_reference["kind"] == "file-version"
-    assert file_reference["locator"] == str(external_file)
-    assert file_reference["recorded_at"]
+    assert file_reference["type"] == "Tarav.Archive.Reference"
+    assert file_reference["hints"]["path"] == str(external_file)
+    assert file_reference["hints"]["recorded_at"]

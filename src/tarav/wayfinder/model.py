@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from urllib.parse import quote, unquote, urlsplit
 
 from tarav._core.project import TARAV_PROJECT_ID
+from tarav.harness import TypeShip, RecordTypeReference, locate_record_type
+from tarav.references import Reference
 
-REFERENCE_SCHEMA = "tarav.wayfinder.reference.v1"
-REFERENCE_KEYS = frozenset({"schema", "type", "root", "address"})
+REFERENCE_SCHEMA = "tarav.wayfinder.reference.v2"
+REFERENCE_KEYS = frozenset({"type", "locator", "check", "hints"})
 ROOT_KEYS = frozenset({"type", "id"})
 MANAGED_BLOCK_TYPE = "managed.block"
 PROJECT_ROOT_TYPE = "agentos.project"
@@ -54,33 +56,58 @@ class WayfinderReferenceRoot:
         return _canonical_json(self.as_dict())
 
 
-@dataclass(frozen=True)
-class WayfinderReference:
-    type: str
-    root: WayfinderReferenceRoot
-    address: object
-    schema: str = REFERENCE_SCHEMA
+class WayfinderReference(Reference):
+    type_name = "Tarav.Wayfinder.Reference"
+    type_ship = TypeShip("0982b6dc-212b-45fb-9573-3dc2ed74e9b4")
 
-    def __post_init__(self) -> None:
-        if self.schema != REFERENCE_SCHEMA:
+    def __init__(
+        self, record=None, *, type=None, root=None, address=None, check=None, hints=None
+    ):
+        if record is None:
+            _require_string(type, "reference type")
+            record = {
+                "type": self.type_name,
+                "locator": {"type": type, "root": root.as_dict(), "address": address},
+                "check": check,
+                "hints": {} if hints is None else hints,
+            }
+        if not isinstance(record, dict) or set(record) not in (
+            REFERENCE_KEYS,
+            (REFERENCE_KEYS - {"type"}) | {"__tarav__"},
+            REFERENCE_KEYS | {"__tarav__"},
+        ):
             raise InvalidWayfinderReference(
-                f"unsupported Wayfinder reference schema: {self.schema!r}"
+                "Reference requires type, locator, check, hints"
             )
-        _require_string(self.type, "reference type")
-        object.__setattr__(self, "address", _normalize_json(self.address))
+        location = locate_record_type(record)
+        if location is None or not self.matches(
+            RecordTypeReference.parse(location.value)
+        ):
+            raise InvalidWayfinderReference("Unexpected Wayfinder Record type")
+        locator = record["locator"]
+        if not isinstance(locator, dict) or set(locator) != {"type", "root", "address"}:
+            raise InvalidWayfinderReference(
+                "Wayfinder locator requires type, root, address"
+            )
+        _require_string(locator["type"], "reference type")
+        WayfinderReferenceRoot.from_dict(locator["root"])
+        super().__init__(_normalize_json(record))
+
+    @property
+    def type(self) -> str:
+        return self.locator["type"]
+
+    @property
+    def root(self) -> WayfinderReferenceRoot:
+        return WayfinderReferenceRoot.from_dict(self.locator["root"])
+
+    @property
+    def address(self) -> object:
+        return self.locator["address"]
 
     @classmethod
     def from_dict(cls, payload: object) -> WayfinderReference:
-        if not isinstance(payload, dict) or set(payload) != REFERENCE_KEYS:
-            raise InvalidWayfinderReference(
-                "reference must contain exactly schema, type, root, and address"
-            )
-        return cls(
-            schema=payload["schema"],  # type: ignore[arg-type]
-            type=payload["type"],  # type: ignore[arg-type]
-            root=WayfinderReferenceRoot.from_dict(payload["root"]),
-            address=payload["address"],
-        )
+        return cls(payload)
 
     @classmethod
     def from_json(cls, value: str) -> WayfinderReference:
@@ -91,15 +118,21 @@ class WayfinderReference:
         return cls.from_dict(payload)
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "schema": self.schema,
-            "type": self.type,
-            "root": self.root.as_dict(),
-            "address": self.address,
-        }
+        return dict(self.record)
 
     def to_json(self) -> str:
         return _canonical_json(self.as_dict())
+
+    def resolve(self, wayfinder=None):
+        if wayfinder is None:
+            raise ValueError("WayfinderReference requires a configured Wayfinder")
+        return wayfinder.resolve(self)
+
+    def __eq__(self, other):
+        return isinstance(other, WayfinderReference) and self.record == other.record
+
+    def __hash__(self):
+        return hash(self.to_json())
 
 
 @dataclass(frozen=True)

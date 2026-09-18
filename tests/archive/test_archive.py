@@ -116,11 +116,12 @@ def test_registers_a_repository_as_timestamped_records_and_git_hint(
         "git-hint.json",
     }
     assert _json(object_root / "registration.json") == {
-        "class": "Tarav.Archive.Artifact.Registration.Record",
-        "schema_version": 1,
+        "type": "Tarav.Archive.Artifact.Registration.Record",
+        "schema_version": 2,
         "id": repository.id,
         "kind": "git-repository",
         "name": "tarav.chatlas",
+        "contract": {"kind": "git-repository", "identity": {"method": "issued", "algorithm": "random", "bits": 256}},
         "recorded_at": repository.recorded_at,
         "identity": {
             "method": "issued",
@@ -130,8 +131,8 @@ def test_registers_a_repository_as_timestamped_records_and_git_hint(
     }
     assert _jsonl(object_root / "locators.jsonl") == [
         {
-            "class": "Tarav.Archive.Artifact.Locator.Record",
-            "schema_version": 1,
+            "type": "Tarav.Archive.Artifact.Locator.Record",
+            "schema_version": 2,
             "target": repository.id,
             "recorded_at": repository.recorded_at,
             "kind": "local-path",
@@ -140,7 +141,7 @@ def test_registers_a_repository_as_timestamped_records_and_git_hint(
         }
     ]
     git_hint = _json(object_root / "git-hint.json")
-    assert git_hint["class"] == "Tarav.Archive.Artifact.GitHint.Record"
+    assert git_hint["type"] == "Tarav.Archive.Artifact.GitHint.Record"
     assert git_hint["target"] == repository.id
     assert git_hint["recorded_at"] == repository.recorded_at
     assert git_hint["object_format"] == "sha1"
@@ -262,8 +263,8 @@ def test_repository_registration_captures_admitted_remotes_and_skips_weird_ones(
     remotes = [item for item in locators if item["kind"] == "git-remote"]
     assert remotes == [
         {
-            "class": "Tarav.Archive.Artifact.Locator.Record",
-            "schema_version": 1,
+            "type": "Tarav.Archive.Artifact.Locator.Record",
+            "schema_version": 2,
             "target": repository.id,
             "recorded_at": repository.recorded_at,
             "kind": "git-remote",
@@ -272,8 +273,8 @@ def test_repository_registration_captures_admitted_remotes_and_skips_weird_ones(
             "value": "https://example.test/owner/chatlas.git",
         },
         {
-            "class": "Tarav.Archive.Artifact.Locator.Record",
-            "schema_version": 1,
+            "type": "Tarav.Archive.Artifact.Locator.Record",
+            "schema_version": 2,
             "target": repository.id,
             "recorded_at": repository.recorded_at,
             "kind": "git-remote",
@@ -480,8 +481,8 @@ def test_external_descriptors_are_timestamped_attributed_records(
     assert not repeated.created
     assert repeated.recorded_at == first.recorded_at
     assert archive.dossier(video.id).records["external-descriptors.json"] == {
-        "class": "Tarav.Archive.Artifact.ExternalDescriptors.Record",
-        "schema_version": 1,
+        "type": "Tarav.Archive.Artifact.ExternalDescriptors.Record",
+        "schema_version": 2,
         "target": video.id,
         "recorded_at": first.recorded_at,
         "descriptors": [
@@ -523,14 +524,14 @@ def test_repository_reference_is_flat_cheap_and_does_not_mutate_records(
     reference = archive.reference_repository(str(source))
     remote_reference = archive.reference_repository(remote)
 
-    assert reference == {
-        "kind": "git-repository",
-        "archive_id": repository.id,
-        "locator": str(source),
-        "name": "tarav.chatlas",
-        "first_commit": first_commit,
-    }
-    assert remote_reference == {**reference, "locator": remote}
+    from tarav.archive.references import ArchiveReference
+
+    assert reference["locator"]["doi"] == repository.id
+    assert reference["check"] == {"contains_commit": first_commit}
+    assert reference["hints"] == {"path": str(source), "name": "tarav.chatlas"}
+    assert remote_reference["locator"] == reference["locator"]
+    assert remote_reference["hints"]["path"] == remote
+    assert ArchiveReference(reference).resolve().ok
     assert _git(archive.records_root, "rev-list", "--count", "HEAD") == commits_before
 
 
@@ -547,20 +548,18 @@ def test_git_file_reference_materializes_one_exact_version(tmp_path: Path) -> No
         locator="nested/tracked.txt",
     )
 
-    assert reference == {
-        "kind": "git-file-version",
-        "archive_id": derive_git_artifact_id(
+    from tarav.archive.references import ArchiveReference
+
+    assert reference["locator"]["doi"] == derive_git_artifact_id(
             repository_id=repository.id,
             object_format="sha1",
             commit=commit,
             path="nested/tracked.txt",
-        ),
-        "repository_id": repository.id,
-        "locator": "nested/tracked.txt",
-        "commit": commit,
-        "git_oid": blob,
-        "size": len("hello\n"),
-    }
+        )
+    assert reference["check"] == {"git_oid": blob}
+    resolved = ArchiveReference(reference).resolve()
+    assert resolved.ok
+    assert resolved.target.content == b"hello\n"
 
 
 def test_repoless_file_reference_tracks_exact_versions_and_reuses_unchanged_bytes(
@@ -574,29 +573,25 @@ def test_repoless_file_reference_tracks_exact_versions_and_reuses_unchanged_byte
     repeated = archive.reference_file(str(source))
 
     assert repeated == first
-    assert first == {
-        "kind": "file-version",
-        "archive_id": first["archive_id"],
-        "locator": str(source),
-        "recorded_at": first["recorded_at"],
-        "sha256": hashlib.sha256(b"first\n").hexdigest(),
-        "size": len("first\n"),
-        "name": "report.txt",
-    }
-    dossier = archive.dossier(str(first["archive_id"]))
+    from tarav.archive.references import ArchiveReference
+
+    assert first["check"] == {"sha256": hashlib.sha256(b"first\n").hexdigest()}
+    assert ArchiveReference(first).resolve().ok
+    dossier = archive.dossier(str(first["locator"]["doi"]))
     assert dossier.artifact.kind == "file-version"
     assert dossier.records["file-version.json"] == {
-        "class": "Tarav.Archive.Artifact.FileVersion.Record",
-        "schema_version": 1,
-        "target": first["archive_id"],
-        "recorded_at": first["recorded_at"],
-        "sha256": first["sha256"],
+        "type": "Tarav.Archive.Artifact.FileVersion.Record",
+        "schema_version": 2,
+        "target": first["locator"]["doi"],
+        "recorded_at": first["hints"]["recorded_at"],
+        "sha256": first["check"]["sha256"],
         "size": len("first\n"),
     }
 
     source.write_text("second\n", encoding="utf-8")
     second = archive.reference_file(str(source))
 
-    assert second["archive_id"] != first["archive_id"]
-    assert second["sha256"] == hashlib.sha256(b"second\n").hexdigest()
-    assert second["locator"] == first["locator"]
+    assert second["locator"]["doi"] != first["locator"]["doi"]
+    assert second["check"]["sha256"] == hashlib.sha256(b"second\n").hexdigest()
+    assert not ArchiveReference(first).resolve().ok
+    assert ArchiveReference(second).resolve().ok

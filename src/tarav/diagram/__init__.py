@@ -28,6 +28,7 @@ from tarav.harness import (
     TaravAssertion,
     TaravPOIInstance,
     TaravRecord,
+    FileRecord,
     TypeRegistry,
     TypeShip,
     UnknownRecordType,
@@ -520,7 +521,7 @@ class DiagramShip:
         return self.namespace.specialize_ship(self)
 
 
-class TypedShip(TaravRecord):
+class TypedShip(FileRecord):
     """Registered Ship Record interpreter, optionally bound to Diagram storage."""
 
     type_ship: ClassVar[TypeShip] = TypeShip("f495fc94-a511-4a9f-b058-7e2957890529")
@@ -765,7 +766,7 @@ class DiagramAnnotation:
         return self.namespace.specialize(self)
 
 
-class TypedAnnotation(TaravRecord):
+class TypedAnnotation(FileRecord):
     """Registered Annotation interpreter, optionally bound to Diagram storage."""
 
     type_ship: ClassVar[TypeShip] = TypeShip("e01f77fb-4155-4efd-94f7-a0abcecadc27")
