@@ -114,11 +114,13 @@ checks User-Turn evidence without claiming approval or semantic fidelity.
   Every object inherits a Pydantic `RecordInterface`. The base contract is
   strict and open to additional fields; concrete classes declare required
   fields and may close their own interface. Type dispatch remains separate
-  from these field contracts. `is_record_subtype_of(parent)` requires both
-  Python and interface inheritance; `preserves_parent_record_interface()`
-  checks all direct Tarav parents (true when there are none). Independent
-  interfaces are explicit class declarations, without an extra flag. These
-  queries describe ancestry, not proofs of field-override compatibility.
+  from these field contracts. `issubrecord(B, A)` checks interface inheritance
+  alone, while `isrecordsubclass(B, A)` requires both Python and interface
+  inheritance. `preserves_parent_record_interface()` checks the combined
+  relationship against all direct Tarav parents (true when there are none).
+  Independent interfaces are explicit class declarations, without an extra
+  flag. These queries describe ancestry, not proofs of field-override
+  compatibility.
   `from_json` and `to_json` validate without replacing retained data with
   Pydantic output. Transforming or dropping supplied fields is rejected;
   defaults are not inserted into stored representations. `record_data` gives

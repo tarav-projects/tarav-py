@@ -3,7 +3,14 @@ from uuid import uuid4
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-from tarav.harness import TaravObject, TypeShip, TypeRegistry, InvalidRecordJSON
+from tarav.harness import (
+    InvalidRecordJSON,
+    TaravObject,
+    TypeRegistry,
+    TypeShip,
+    isrecordsubclass,
+    issubrecord,
+)
 
 
 class A(TaravObject):
@@ -42,12 +49,17 @@ class D(A):
 
 
 def test_inherited_and_independent_representations():
-    assert B.is_record_subtype_of(A)
+    assert issubrecord(B, A)
+    assert isrecordsubclass(B, A)
+    assert issubrecord(A, A)
+    assert isrecordsubclass(A, A)
     assert C.preserves_parent_record_interface()
     assert C.RecordInterface is B.RecordInterface
-    assert not D.is_record_subtype_of(A)
+    assert not issubrecord(D, A)
+    assert not isrecordsubclass(D, A)
     assert not D.preserves_parent_record_interface()
-    assert not A.is_record_subtype_of(B)
+    assert not issubrecord(A, B)
+    assert not isrecordsubclass(A, B)
     assert TaravObject.preserves_parent_record_interface()
     registry = TypeRegistry(TaravObject, (B, D))
     for value in ({'type': 'Example.B', 'name': 'Calculator', 'path': 'calc.py'},
@@ -67,7 +79,7 @@ def test_all_direct_tarav_parents():
         type_ship = TypeShip(str(uuid4()))
 
     assert not Both.preserves_parent_record_interface()
-    assert Both.is_record_subtype_of(B)
+    assert isrecordsubclass(Both, B)
 
     class Combined(B, D):
         type_ship = TypeShip(str(uuid4()))
@@ -76,6 +88,27 @@ def test_all_direct_tarav_parents():
             pass
 
     assert Combined.preserves_parent_record_interface()
+
+
+def test_record_relationship_can_be_inspected_separately_from_behavior():
+    class SharedRecord(D):
+        type_ship = TypeShip(str(uuid4()))
+
+        RecordInterface = B.RecordInterface
+
+    assert issubrecord(SharedRecord, B)
+    assert not issubclass(SharedRecord, B)
+    assert not isrecordsubclass(SharedRecord, B)
+
+    for invalid in (None, object(), BaseModel):
+        with pytest.raises(TypeError):
+            issubrecord(B, invalid)
+        with pytest.raises(TypeError):
+            issubrecord(invalid, A)
+        with pytest.raises(TypeError):
+            isrecordsubclass(B, invalid)
+        with pytest.raises(TypeError):
+            isrecordsubclass(invalid, A)
 
 
 def test_closed_child_accepts_inherited_fields_and_rejects_extras():

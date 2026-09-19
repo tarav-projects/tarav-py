@@ -53,20 +53,10 @@ class TaravObject(TaravType):
         model_config = ConfigDict(strict=True, extra="allow")
 
     @classmethod
-    def is_record_subtype_of(cls, parent: type[TaravObject]) -> bool:
-        """Report declared class and representation inheritance, not field compatibility."""
-        return (
-            isinstance(parent, type)
-            and issubclass(parent, TaravObject)
-            and issubclass(cls, parent)
-            and issubclass(cls.RecordInterface, parent.RecordInterface)
-        )
-
-    @classmethod
     def preserves_parent_record_interface(cls) -> bool:
         """Whether all direct Tarav parents' interfaces are inherited."""
         return all(
-            cls.is_record_subtype_of(parent)
+            isrecordsubclass(cls, parent)
             for parent in cls.__bases__
             if issubclass(parent, TaravObject)
         )
@@ -213,6 +203,31 @@ class TaravObject(TaravType):
                 f"{registered_class.__name__}"
             )
         return cls.from_json(record)
+
+
+def _tarav_object_class(value: object, *, argument: str) -> type[TaravObject]:
+    if not isinstance(value, type) or not issubclass(value, TaravObject):
+        raise TypeError(f"{argument} must be a TaravObject class")
+    return value
+
+
+def issubrecord(subtype: object, supertype: object) -> bool:
+    """Whether two Tarav classes have the declared RecordInterface relationship."""
+
+    sub_class = _tarav_object_class(subtype, argument="subtype")
+    super_class = _tarav_object_class(supertype, argument="supertype")
+    return issubclass(
+        sub_class.RecordInterface,
+        super_class.RecordInterface,
+    )
+
+
+def isrecordsubclass(subtype: object, supertype: object) -> bool:
+    """Whether behavioral and RecordInterface inheritance both hold."""
+
+    sub_class = _tarav_object_class(subtype, argument="subtype")
+    super_class = _tarav_object_class(supertype, argument="supertype")
+    return issubclass(sub_class, super_class) and issubrecord(sub_class, super_class)
 
 
 class TaravAssertion(TaravType):
