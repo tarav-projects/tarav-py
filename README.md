@@ -2,7 +2,7 @@
 
 `tarav-py` is the maintained Python distribution for Agentos. It ships one
 modular monolith under the `tarav` package: the CLI, runtime, daemon, Chatlas,
-Index, Skillware, Canvas, agent/provider support, and Iterante runtimes.
+Archive, Diagram, SKW, agent/provider support, and Iterante runtimes.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership and dependency direction.
 `tarav.harness` provides the dependency-clean semantic roles and trusted Record
@@ -48,12 +48,11 @@ belong in their owning registries or state roots, not in `project.json`.
 - `tarav scoring` — Assertion-owned candidate adaptation, explicitly enrolled
   concrete Ranking Pool Types, frozen Ranking Runs, retained experiment evidence, live
   derived scores, compact per-Assertion scoring histories, and graph tracing.
-- `tarav index` — distributed Index surfaces, records, capture, and linting.
-- `tarav skw` — Skillware build, checking, context, and edition history.
-- `tarav surfaces` — thin native source normal models.
-- `tarav anchory`, `bloberia`, and `wayfinder` — storage and reference
-  primitives.
-- `tarav poi` — shared POI resolution and inspection.
+- `tarav skw document` and `tarav skw skills` — document compilation and skill packages.
+- `tarav bloberia` — hosted JSON registry.
+- `tarav.references` — typed reference construction and resolution library.
+- `tarav.poi` — typed findings, bounded reports, and recorded blessings library.
+- `tarav.surfaces` — retained native parsers; standalone CLI disconnected.
 - `tarav stdlib` — small reusable command and library primitives.
 
 The complete current command set is always available through `tarav --help`.

@@ -12,7 +12,6 @@ from tarav.harness import DirectoryRecord, FileRecord, TaravRecord, TypeRegistry
 from tarav.references.workflow import ReferenceWorkflow
 from tarav.harness.workflows import Workflow, WorkflowRegistry
 from tarav.navigation import FilesystemProvider, Navigation
-from tarav.wayfinder import WayfinderReference
 
 from tarav.chatlas.hook_consumers import register_chatlas_hook_callbacks
 from tarav.agent.providers.claude_code.usage_hooks import (
@@ -73,31 +72,18 @@ class TaravRuntime:
         from tarav.forum import register_forum_commands
         from tarav.hooks import register_hook_commands
         from tarav.diagram.commands import register_diagram_commands
-        from tarav.skillware._build_core import find_project_root
-        from tarav.skillware.managed_blocks import create_tarav_wayfinder
-        from tarav.skillware.related_surfaces import RelatedSurfaceResolver
         from tarav.stdlib.mdblocks.commands import register_mdblocks_commands
-        from tarav.poi.commands import register_poi_commands
-        from tarav.poi.adapters.mdblocks import build_mdblocks_linter_report
-        from tarav.poi.adapters.wayfinder import (
-            build_wayfinder_registry_linter_report,
-        )
         from tarav.stdlib.prefix.commands import register_prefix_commands
         from tarav.project import register_project_commands
         from tarav.python_env import register_python_commands
         from tarav.reading_club.commands import register_reading_club_commands
         from tarav.scoring.commands import register_scoring_commands
         from tarav.stdlib.refs import register_refs_commands
-        from tarav.surfaces.commands import register_surface_commands
         from tarav.skills import register_skills_commands
-        from tarav.skillware.commands import register_skillware_commands
+        from tarav.skw.commands import register_skw_commands
         from tarav.system import register_system_commands
         from tarav.stdlib.utils import register_utils_commands
-        from tarav.wayfinder.commands import register_wayfinder_commands
         from tarav.workspaces.commands import register_workspace_commands
-
-        project_root = find_project_root(Path(__file__))
-        wayfinder = create_tarav_wayfinder(project_root=project_root)
 
         register_agent_commands(subparsers)
         register_daemon_commands(
@@ -121,42 +107,18 @@ class TaravRuntime:
         register_python_commands(subparsers)
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
-        register_surface_commands(subparsers)
         _register_stdlib_commands(
             subparsers,
             registrars=(
-                partial(
-                    register_mdblocks_commands,
-                    lint_report_builder=lambda payload: build_mdblocks_linter_report(
-                        payload,
-                        wayfinder=wayfinder,
-                    ),
-                ),
+                register_mdblocks_commands,
                 register_prefix_commands,
                 register_refs_commands,
                 register_utils_commands,
             ),
         )
-        register_wayfinder_commands(
-            subparsers,
-            wayfinder=wayfinder,
-            check_report_builder=lambda result, registry_path: (
-                build_wayfinder_registry_linter_report(
-                    result,
-                    registry_path=registry_path,
-                    wayfinder=wayfinder,
-                )
-            ),
-        )
         register_scoring_commands(subparsers)
         register_workspace_commands(subparsers)
-        register_poi_commands(
-            subparsers,
-            wayfinder=wayfinder,
-            related_resolver=RelatedSurfaceResolver(wayfinder),
-        )
-        from tarav.skw.skills import register_commands, skill_document
-        register_commands(register_skillware_commands(subparsers, document_factory=skill_document))
+        register_skw_commands(subparsers, registry=self.records)
 
 
 CommandRegistrar = Callable[["argparse._SubParsersAction"], None]
@@ -193,7 +155,7 @@ def create_runtime(
     """
     from tarav.archive.workflow import ArchiveWorkflow
     from tarav.diagram.workflow import DiagramWorkflow
-    from tarav.skillware.document import SkillwareWorkflow
+    from tarav.skw.document import SkillwareWorkflow
     from tarav.skw.skills import SkillsWorkflow
     from tarav.chatlas.references import ChatlasTurnReference
 
@@ -203,7 +165,6 @@ def create_runtime(
             (
                 FileRecord,
                 DirectoryRecord,
-                WayfinderReference,
                 ChatlasTurnReference,
             ),
         )

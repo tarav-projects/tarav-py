@@ -2,7 +2,7 @@
 
 ## Document-source workflow
 
-The document workflow is `tarav.skillware.document.Document`. Sources default
+The document workflow is `tarav.skw.document.Document`. Sources default
 to `.skw/src/<product-name>.skw.json`; generation annotations live under
 `.skw/generations/`, and `.skw/lock.json` retains per-document baselines.
 The whole product is derived from literal lines and generated output lines.
@@ -113,6 +113,16 @@ address findings. `available-unchecked` means the file exists, not that its
 pointer or identity check has been validated. Other reference types without
 address inspection remain explicitly `uninspected`.
 
+Navigation commands render concise inspection views by default. Pass
+`--rendered` to select that view explicitly or `--json` to receive the complete
+structured result.
+
+The same presentation modes apply to every `tarav skw document` and
+`tarav skw skills` operation. Rendered mutation results report the outcome and
+principal identifiers; rendered checks show bounded POI summaries. Automation
+and agents that need complete prompts, hashes, evidence, or retained Records
+use `--json`.
+
 Select one entry explicitly:
 
 ```sh
@@ -151,12 +161,12 @@ checks the declarations and baselines actually present; absent generation
 history is not itself a finding. Missing output remains a finding. Once a
 generation is explicitly recorded, its recipe/output baseline is checked.
 
-`tarav.skillware.generation` provides a Python-first generation workflow.
+`tarav.skw.generation` provides a Python-first generation workflow.
 It does not resolve Index concepts, query Diagram, launch agents, or acquire
 context. The caller supplies context explicitly as arguments or prompt text.
 
 ```python
-from tarav.skillware.generation import Argument, Block, Generation, Output
+from tarav.skw.generation import Argument, Block, Generation, Output
 
 skw = Generation((
     Block("explain", "Explain this code: ${code}", (Argument("code"),)),
@@ -205,6 +215,12 @@ inside the project and let the CLI discover the nearest `.skw/` upward.
 rejected. Output paths remain project-relative, and context reference paths
 remain relative to their containing source. All CLI inputs use named flags.
 # Skill-package specialization
+
+Package CLI check/build/deploy results now use bounded POI reports: counts,
+class paths, page rows, and blessing status. Full detection remains available
+through `SkwSkill.check()` and typed emission through `.evaluate()`.
+See [application-owned POIs](poi-primitives.md) for explicit blessing and
+assessment commands. No existing finding is blessed by this migration.
 
 ## Declared consumer loading model
 
@@ -277,7 +293,7 @@ implementation binds package-owned source blocks; external skill context is
 not silently imported. Inline Markdown links lacking primitive declarations
 produce `unannotated-output-link` conformance findings but never become edges.
 
-Use `SkillPackage(root).loading().analyze()` or `.inspect(block, limit=5)` in
+Use `runtime.load(root / '.skw').loading().analyze()` or `.inspect(block, limit=5)` in
 Python. `tarav skw skills context --project <root> --block <id> --limit 2` shows
 one declaration, its parents, bounded path examples and findings. Package
 `check` runs static analysis; `build` compiles primitives and retains findings.
@@ -293,8 +309,9 @@ baselines were explicitly observed. Three external `tarav-pkg` links remain
 visible conformance findings pending explicit external block modeling.
 
 
-`tarav.skw.skills.SkillPackage(root)` composes document sources into a skill.
-Its typed `.skw/skill.json` manifest declares `type`:
+`runtime.load(root / '.skw')` returns the registered `SkwSkill`, a `SkwDepot`
+subclass that composes document sources into a skill. Both are ordinary Tarav
+directory records. Its typed `.skw/main.json` entry declares `type`:
 `Tarav.Skillware.SkillPackage`, `schema_version`: 1, `entrypoint`, `sources`,
 `files`, and `dependencies`. Sources and deployed files are package-relative
 paths. Dependencies have `kind` (`skill` or developer-only `file`), a relative
@@ -303,6 +320,13 @@ are separate from context roles. Document context remains maintenance input;
 declaring a consumer dependency never dumps that context into compiled text.
 
 Library operations are `check()`, `build()`, and `deploy(destination)`.
+For compact navigation, `skill.ls(limit=5)` lists sources with absolute paths;
+`skill.ls(source='SKILL.skw.json', limit=5)` lists block IDs and kinds.
+`skill.read_block(source='SKILL.skw.json', block='routing')` returns one retained
+block without expanding references. Sources are relative to `.skw/src`.
+CLI equivalents are `tarav skw skills ls` and `read`, using named `--source`,
+`--block`, `--offset`, and `--limit` options where applicable. Context and
+loading-path inspection remain separate existing operations.
 CLI equivalents use `tarav skw skills check|build|deploy --project <root>`;
 deploy additionally requires `--destination <new-directory>`.
 Build compiles all declared documents without accepting context baselines.
@@ -320,7 +344,7 @@ a separate publication capability described below.
 
 ## Diagram.Model publication
 
-Add `publications` to `.skw/skill.json`: an array of package-relative source
+Add `publications` to `.skw/main.json`: an array of package-relative source
 paths, for example `[".skw/src/model.publication.json"]`. Add its output to
 the manifest's `files` so it ships to consumers. A publication source is:
 

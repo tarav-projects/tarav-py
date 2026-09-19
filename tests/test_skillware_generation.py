@@ -1,6 +1,6 @@
 import pytest
 
-from tarav.skillware.generation import Argument, Block, Generation, Output
+from tarav.skw.generation import Argument, Block, Generation, Output
 
 
 def test_generation_chain_survives_reload_and_detects_upstream_change(tmp_path):

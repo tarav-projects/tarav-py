@@ -44,12 +44,21 @@ contract and Git boundaries.
 
 ## Ownership map
 
-`tarav.skw.skills` specializes the general `tarav.skillware.document` engine
-for deployable skill packages. It owns `.skw/skill.json`, developer/consumer
+`tarav.poi.primitives` provides application-owned POI subclasses, immutable
+finding snapshots, non-throwing collection, and bounded reports.
+`tarav.poi.blessings` records explicit acceptance/assessment actions at a path
+supplied by the application. It imports no SKW domain. `tarav.skw.pois` owns
+SKW class policy and evidence assembly; SKW selects `.skw/blessings/`.
+Class paths are obtained through inherited `help()`. Missing assessments stay
+visible independently of blessing applicability and detector results.
+
+`tarav.skw.skills` specializes the general `tarav.skw.document` engine
+for deployable skill packages. `SkwSkill` specializes the `SkwDepot`
+DirectoryRecord; `.skw/main.json` declares its registered type. Ordinary
+Tarav loading returns the actionable object. It owns developer/consumer
 dependency purposes, product selection, and package checks. General Skillware
 does not import this specialization; runtime composes its CLI and Record types.
-`skw.skills` is a composition leaf; `skw.network` remains the independent
-lower-level network algorithms used by existing Skillware mechanics.
+`skw.skills` is a composition leaf above the generic document engine.
 `skw.publication` belongs to that composition layer and consumes Diagram's
 public Model projection and Kernel renderer. Explicit selections publish
 Markdown without generation; the publication lock records source/model/product
@@ -147,33 +156,29 @@ checks User-Turn evidence without claiming approval or semantic fidelity.
   navigation CLI for Git-tracked Reading Projects under the independent
   `~/Documents/tarav/reading-club/` data surface. It does not identify
   documents, interpret reading content, or own Agent reading workflows.
-- `tarav.index_model` owns only the written form of an Index line: label grammar
-  and the identity hashes asserted over the `Line.Type + body + anchor` triplet.
-  It does not model the Index.
 - `tarav.surfaces` owns deliberately thin native Python and Markdown models.
   It exposes host-language structure, not Skillware attachment policy or Index
-  policy.
-- `tarav.skillware` maps native surface models into annotations, managed
-  blocks, builds, checks, context projections, and edition history.
-- `tarav.skillware.generation` owns the independent generation MVP: typed
+  policy. Its standalone CLI is disconnected; parsers remain in place for
+  future source-aware workflows and current `stdlib.mdblocks` consumption.
+  See `src/tarav/surfaces/README.md` for retained intent.
+- `tarav.skw.generation` owns the independent generation MVP: typed
   template blocks, invocation snapshots, output dependencies, and read-only
   findings. Its mechanics use only the standard library and do not query
   Index, Diagram, or contextualization. See `notes/skillware-generation.md`.
-- `tarav.skillware.document` composes those helpers into typed document sources,
+- `tarav.skw.document` composes those helpers into typed document sources,
   generation annotations, and locks. It owns whole-document assembly and
   source linting. Runtime registers its Record authorities; CLI operations at
   `tarav skw document` delegate to the library.
   Context listings inspect reference addresses without loading target bodies;
   explicit reads select one entry. Structured references own source-relative
   address resolution. Lint/record retain full fingerprint checks independently.
-- `tarav.skw` owns backend-neutral network algorithms shared by consumers; it
-  does not own Skillware policy.
-- `tarav.poi` owns the shared finding model and resolution adapters. Producers
-  retain their check classes and POI class definitions. The shared runner
-  instantiates selected checks with one domain context; ordinary earlier check
-  results express execution dependencies.
-- `tarav.anchory` remains a legacy importable primitive for retained consumers;
-  it has no public umbrella-CLI command.
+- `tarav.skw` owns typed document compilation and skill-package specialization.
+  The retired Skillware annotation and compiler stack is preserved only in
+  Archive.Attic.
+- `tarav.poi` owns application-defined POI primitives, immutable finding
+  snapshots, non-throwing collection, bounded reports, and append-only
+  blessing/assessment records at caller-owned paths. Producers retain their
+  check classes and decide how to respond to findings.
 - `tarav.python_env` owns the public `tarav python` namespace, which exposes
   the interpreter already running Tarav so an external script can import it
   without locating or installing the distribution. The environment is reported,
@@ -206,17 +211,15 @@ file's syntax. Project-aware discovery supplies context and surface membership.
 Domain adapters interpret those facts. A file parser must not infer domain
 meaning from its path or current working directory.
 
-Annotated code is discovered through the project's `.skw/skw.json`.
 
 ## Integration boundaries
 
 - Hooks owns validation and dispatch; runtime injects daemon delivery and
   exposes submission as `tarav daemon hook`.
-- Wayfinder owns generic reference resolution and is exposed publicly as
-  `tarav reference`; domains provide resolvers for the resources they
-  understand.
-- Skillware consumes native surface models through adapters. Nothing reparses
-  Python.
+- `tarav.references` owns shared typed reference mechanics; runtime registers
+  domain reference classes explicitly. There is no top-level `tarav reference`
+  command.
+- Native surface parsers remain independent of workflow annotation semantics.
 - Chatlas consumers import the public `tarav.chatlas.normal_model` package, not its
   internal modules. Only Chatlas command composition reaches into that layer
   to register its CLI.
@@ -295,10 +298,6 @@ Records; its code location is distinct from a Record instance's storage path.
   as DirectoryRecords. Retirement appends evidence and preserves the DOI.
   Archive references contain `locator: {archive, doi}`, `check`, and opaque
   `hints`; the old flat reference schema is not accepted as this type.
-- Wayfinder references now retain `type`, `locator`, `check`, and `hints`.
-  Their locator owns the managed resource type, root, and address. Wayfinder's
-  domain resolver supplies the target; optional SHA-256 checks verify content.
-  Existing symbolic address syntax remains a convenience constructor.
 
 Schema migration is explicit developer work, never a reader fallback.
 `tooling/migrate_793_archive_records.py` validates a complete clean Archive
@@ -317,11 +316,9 @@ defaults. Reference Type Ships and serialized type names survive the module
 move; callers must import the new module directly.
 
 `runtime.references` is the registered ReferenceWorkflow. Its `load(record)`
-uses the shared Type registry and `resolve(reference_or_record, **context)`
-dispatches to the owning class. Unknown types return findings rather than
-triggering imports. Explicit context is forwarded to specialized references;
-Wayfinder still requires its configured `wayfinder` and returns its domain
-result. Resolution does not itself search for annotations or equate targets.
+uses the shared Type registry and `resolve(reference_or_record)` dispatches to
+the owning class. Unknown types return findings rather than triggering imports.
+Resolution does not itself search for annotations or equate targets.
 
 Archive imports shared reference/Git mechanics; the reference foundation never
 imports Archive. `ArchiveReference(doi=...)` selects the library's

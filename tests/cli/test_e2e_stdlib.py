@@ -210,10 +210,8 @@ def test_mdblocks_blocks_find_and_lint_use_line_regions(
         )
         == 0
     )
-    pois = captured_json(capsys)["pois"]
-    assert "Markdown.Block.Linter/Separator.OutsideBlockSemantics" in [
-        poi["class"]["locator"]["address"] for poi in pois
-    ]
+    issues = captured_json(capsys)["issues"]
+    assert "separator_outside_block_semantics" in [issue["code"] for issue in issues]
 
 
 def test_mdblocks_uses_complete_native_fence_boundaries(

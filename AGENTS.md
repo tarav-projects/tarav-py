@@ -46,7 +46,7 @@
 - Environment variables and machine-state paths retain the names encoded by
   their current storage contracts until an explicit migration changes them.
 
-## Native surfaces and Skillware
+## Native surfaces and SKW
 
 - Skill packages with a `loading` declaration use `tarav.skw.skills` for
   compilation. The installed `skw document` CLI receives this specialization
@@ -54,8 +54,8 @@
   substitute for compiling skill primitives. Loading graphs are declared data;
   never infer parent attachments or context satisfaction from Markdown links.
 
-- Skillware context navigation defaults to compact listings. Agents select
-  entries for head/tail/cat reads or use exposed absolute paths. Keep payload
+- SKW context navigation defaults to compact listings. Agents select entries
+  for head/tail/cat reads or use exposed absolute paths. Keep payload
   resolution for dependency checks separate from context presentation.
 
 - JSON document sources under `.skw/src/` own all literal and generated text
@@ -63,23 +63,20 @@
   and lint/compile through `tarav skw document`. Compilation must not refresh
   generation baselines or suppress stale-generation findings.
 
-- `tarav.skillware.generation` is an independent Python-first generation
+- `tarav.skw.generation` is an independent Python-first generation
   workflow. Keep its template, invocation, and dependency semantics separate
   from the existing compiler and Index. Checks report evidence without repair
   or automatic generation; callers own agent execution and explicit persistence.
 
 - `tarav.surfaces` owns deliberately thin Python and Markdown normal models.
-  Native parsers expose syntax and source spans only; they do not know Skillware
+  Native parsers expose syntax and source spans only; they do not know SKW
   attachment policy or Index domain policy.
 - Project-aware discovery supplies a file plus its surface context. Domain
   adapters assign domain interpretation from that context.
-- `tarav.skillware` consumes native models and decides legal annotation points.
-  It discovers Python annotations statically and never imports product modules
-  for discovery.
-- `.skw/skw.json` is the project declaration for tracked Skillware/code
-  surfaces. `tarav skw` is the sole public command name.
-- Skillware managed files are generated from `.skw/src/**/*.skw.md`. Never edit
-  a generated copy as a substitute for changing its source.
+- `tarav.skw.document` owns typed JSON document sources under `.skw/src/`.
+  `tarav.skw.skills` specializes those documents for deployable packages.
+  The retired Skillware annotation compiler and `.skw.md` machinery has no
+  live compatibility path.
 
 ## Chatlas
 

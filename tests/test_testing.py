@@ -45,12 +45,6 @@ def test_environment_builds_loader_valid_agentos_state(
     assert environment.environment_variables() == {
         "HOME": str(environment.home),
         "TARAV_HOME": str(environment.tarav_home),
-        "TARAV_ANCHORY_REGISTRY": str(
-            environment.tarav_home / "anchory" / "registry.json"
-        ),
-        "TARAV_ANCHORY_GLOBAL_DEPOT": str(
-            environment.tarav_home / "anchory" / "depot"
-        ),
     }
     assert (
         load_global_config(environment.tarav_home / "config.json")["class"]

@@ -1,15 +1,8 @@
-import hashlib
 import json
 
 from tarav.archive import Archive
+from tarav.references import FileReference
 from tarav.runtime import create_runtime
-from tarav.wayfinder import (
-    Wayfinder,
-    WayfinderReference,
-    WayfinderReferenceRoot,
-    WayfinderResolutionPOI,
-    WayfinderResolutionResult,
-)
 
 
 def test_runtime_browses_archive_and_loads_reference_without_cli(tmp_path):
@@ -53,30 +46,23 @@ def test_runtime_browses_archive_and_loads_reference_without_cli(tmp_path):
     assert (runtime.source_root / "references" / "__init__.py").is_file()
 
 
-def test_wayfinder_check_and_hints_are_separate(tmp_path):
-    reference = WayfinderReference(
-        type="example",
-        root=WayfinderReferenceRoot("project", "test"),
-        address="item",
-        check={"sha256": hashlib.sha256(b"correct").hexdigest()},
+def test_reference_check_and_hints_are_separate(tmp_path):
+    payload = tmp_path / "payload.txt"
+    payload.write_text("correct")
+    reference = FileReference(
+        payload,
+        check={"sha256": "15a596e3c98c407e043751ff3b21ff0358a1bdfdf3fe948b1523893a8e5de2e8"},
         hints={"content": "wrong"},
     )
-    resolver = Wayfinder(
-        resolvers=(
-            lambda ref, registry: WayfinderResolutionResult(
-                ref,
-                {"content": "correct"},
-                (),
-            ),
-        )
-    )
-    assert isinstance(reference.resolve(resolver), WayfinderResolutionResult)
+    assert create_runtime().references.resolve(reference.record).ok
     reference.record["check"] = {"sha256": "0" * 64}
-    reference.record["hints"] = {"sha256": hashlib.sha256(b"correct").hexdigest()}
-    assert isinstance(reference.resolve(resolver), WayfinderResolutionPOI)
-    restored = WayfinderReference.from_dict(reference.as_dict())
-    assert restored == reference
-    assert set(restored.as_dict()) == {"type", "locator", "check", "hints"}
+    reference.record["hints"] = {
+        "sha256": "15a596e3c98c407e043751ff3b21ff0358a1bdfdf3fe948b1523893a8e5de2e8"
+    }
+    result = create_runtime().references.resolve(reference.record)
+    assert not result.ok
+    assert result.status == "mismatch"
+    assert result.hints == reference.hints
 
 
 def test_old_archive_data_requires_explicit_migration(tmp_path):
@@ -96,16 +82,14 @@ def test_old_archive_data_requires_explicit_migration(tmp_path):
 
 
 def test_reference_classes_respect_structural_type_authority(tmp_path):
-    reference = WayfinderReference(
-        type="example", root=WayfinderReferenceRoot("project", "test"), address="item"
-    ).as_dict()
+    reference = FileReference(tmp_path / "reference-target.txt").record
     reference.pop("type")
     reference["__tarav__"] = {
-        "type": {"uuid": str(WayfinderReference.type_ship), "label": "old human label"}
+        "type": {"uuid": str(FileReference.type_ship), "label": "old human label"}
     }
     path = tmp_path / "reference.json"
     path.write_text(json.dumps(reference))
-    assert isinstance(create_runtime().load(path), WayfinderReference)
+    assert isinstance(create_runtime().load(path), FileReference)
     archive = Archive.create(tmp_path / "archive")
     artifact = archive.register_artifact(locator=str(tmp_path / "data"))
     entry = archive.record(artifact.id)

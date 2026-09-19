@@ -4,7 +4,8 @@ import pytest
 from tarav.diagram import DiagramError
 
 from tarav.skw.publication import ModelPublication, ModelPublicationRecord
-from tarav.skw.skills import SkillPackage, SkillPackageRecord
+from tarav.runtime import create_runtime
+from tarav.skw.skills import SkwSkill
 from test_rendering import _diagram_with_line
 
 
@@ -45,12 +46,12 @@ def test_publish_tracks_source_and_product_without_repair(tmp_path):
 def test_package_compiles_and_deploys_publication(tmp_path):
     p, _ = publication(tmp_path)
     (p.root / 'SKILL.md').write_text('[Model](references/model.md)\n')
-    (p.root / '.skw/skill.json').write_text(json.dumps({
-        'type': SkillPackageRecord.type_name, 'schema_version': 1,
+    (p.root / '.skw/main.json').write_text(json.dumps({
+        'type': SkwSkill.type_name, 'schema_version': 1,
         'entrypoint': 'SKILL.md', 'sources': [],
         'publications': ['.skw/src/model.json'],
         'files': ['SKILL.md', 'references/model.md']}))
-    package = SkillPackage(p.root)
+    package = create_runtime().load(p.root / '.skw')
     package.build()
     target = tmp_path / 'deployed'
     package.deploy(target)

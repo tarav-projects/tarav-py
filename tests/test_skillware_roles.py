@@ -1,7 +1,7 @@
 import json
 
 from tarav.chatlas.references import ChatlasTurnReference
-from tarav.skillware.document import Document
+from tarav.skw.document import Document
 
 
 def test_chatlas_exact_turn_and_grounding_role(tmp_path, monkeypatch):

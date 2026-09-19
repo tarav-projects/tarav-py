@@ -2,9 +2,28 @@
 from __future__ import annotations
 
 import json
+import argparse
+import sys
 from pathlib import Path
 
-from tarav.cli.cli import main
+from tarav._core.errors import CliError
+from tarav.surfaces.commands import register_surface_commands
+
+
+def build_parser():
+    """Exercise the retained adapter without reattaching it to Tarav."""
+    parser = argparse.ArgumentParser()
+    register_surface_commands(parser.add_subparsers(required=True))
+    return parser
+
+
+def main(argv):
+    args = build_parser().parse_args(argv)
+    try:
+        return args.handler(args)
+    except CliError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
 
 def test_normalize_infers_python_and_prints_complete_json(
@@ -61,8 +80,6 @@ def test_normalize_errors_when_language_cannot_be_inferred(
 
 
 def test_normalize_has_no_positional_file_argument() -> None:
-    from tarav.cli.cli import build_parser
-
     parser = build_parser()
     try:
         parser.parse_args(["surfaces", "normalize", "module.py"])

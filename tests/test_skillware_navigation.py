@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.skillware.document import Document
+from tarav.skw.document import Document
 
 
 def document(tmp_path):
@@ -67,15 +67,29 @@ def test_cli_lists_then_reads_selected_entry(tmp_path):
     command = [sys.executable, "-c", "from tarav.cli import main; raise SystemExit(main())",
                "skw", "document", "context", "--project", str(tmp_path), "--source", "demo.skw.json", "--block", "body"]
     listing = subprocess.run(command, capture_output=True, text=True, check=True)
-    assert "content" not in json.loads(listing.stdout)[0]
+    explicit = subprocess.run(command + ["--rendered"], capture_output=True, text=True, check=True)
+    assert listing.stdout == explicit.stdout
+    assert "[0] reference  available-unchecked" in listing.stdout
+    structured = subprocess.run(command + ["--json"], capture_output=True, text=True, check=True)
+    structured_result = json.loads(structured.stdout)
+    assert structured_result == doc.context("body")
+    assert "content" not in structured_result[0]
     preview = subprocess.run(command + ["--head", "0", "--lines", "1"],
                              capture_output=True, text=True, check=True)
     assert preview.stdout == "first\n"
     assert "truncated" in preview.stderr
+    preview_json = subprocess.run(command + ["--head", "0", "--lines", "1", "--json"],
+                                  capture_output=True, text=True, check=True)
+    assert json.loads(preview_json.stdout) == doc.read_context(
+        "body", 0, mode="head", line_limit=1, char_limit=4000
+    ) == {
+        "index": 0, "mode": "head", "text": "first\n", "truncated": True,
+    }
+    assert preview_json.stderr == ""
 
 
 def test_project_discovery_and_source_boundaries(tmp_path, monkeypatch):
-    from tarav.skillware.document import project_document, project_root
+    from tarav.skw.document import project_document, project_root
 
     doc, _ = document(tmp_path)
     nested = tmp_path / "nested/deep"

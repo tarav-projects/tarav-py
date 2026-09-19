@@ -3,9 +3,16 @@
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from tarav.harness import DIRECTORY_ENTRY_PATH, TaravRecord, TypeRegistry
+from tarav.harness import DIRECTORY_ENTRY_PATH, TaravRecord, TypeRegistry, TypeShip
 from tarav.harness.workflows import Workflow
-from tarav.poi.runtime import Finding
+from tarav.poi import POI, POIFinding
+
+
+class ProviderError(POI):
+    """A provider operation could not produce a valid navigation result."""
+
+    type_name = "Tarav.Navigation.ProviderError"
+    type_ship = TypeShip("8980b4de-fb5f-4aa1-8ff3-5e6c82246ce3")
 
 
 @dataclass(frozen=True)
@@ -17,7 +24,7 @@ class Entry:
 @dataclass(frozen=True)
 class NavigationResult:
     value: object = None
-    findings: tuple[Finding, ...] = ()
+    findings: tuple[POIFinding, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -111,10 +118,9 @@ class Navigation(Workflow):
         except Exception as exc:
             return NavigationResult(
                 findings=(
-                    Finding(
-                        "Navigation.Provider.Error",
+                    ProviderError.finding(
                         {"path": path, "operation": operation},
-                        {"error": type(exc).__name__, "message": str(exc)},
+                        evidence={"error": type(exc).__name__, "message": str(exc)},
                     ),
                 )
             )

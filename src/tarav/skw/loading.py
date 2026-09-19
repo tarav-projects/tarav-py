@@ -9,8 +9,8 @@ from markdown_it import MarkdownIt
 
 from tarav.harness import FileRecord, TypeShip
 from tarav.references.structured import StructuredFileReference
-from tarav.skillware.document import Document, read, write
-from tarav.skillware.generation import _hash
+from .document import Document, read, write
+from .generation import _hash
 
 
 class LoadingRecord(FileRecord):

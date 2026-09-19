@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tarav.skillware.document import Document, DocumentRecord
+from tarav.skw.document import Document, DocumentRecord
 
 
 def source(tmp_path):
@@ -96,7 +96,7 @@ def test_cli_dispatches_full_document_workflow(tmp_path):
 
     path, data = source(tmp_path)
     def run(*args):
-        result = subprocess.run([sys.executable, "-c", "from tarav.cli import main; raise SystemExit(main())", "skw", "document", *args],
+        result = subprocess.run([sys.executable, "-c", "from tarav.cli import main; raise SystemExit(main())", "skw", "document", *args, "--json"],
                                 capture_output=True, text=True)
         assert result.returncode == 0, result.stdout + result.stderr
         return json.loads(result.stdout)
@@ -106,6 +106,42 @@ def test_cli_dispatches_full_document_workflow(tmp_path):
     run("record", "--source", "explanation.skw.json", "--project", str(tmp_path), "--generation", prepared["id"])
     assert run("compile", "--project", str(tmp_path), "--source", "explanation.skw.json")["written"]
     assert run("lint", "--project", str(tmp_path), "--source", "explanation.skw.json") == []
+
+
+def test_cli_document_operations_default_to_rendered(tmp_path, capsys):
+    from tarav.cli.cli import main
+
+    path, data = source(tmp_path)
+    base = ['--source', 'explanation.skw.json', '--project', str(tmp_path)]
+
+    assert main(['skw', 'document', 'lint', *base]) == 1
+    output = capsys.readouterr().out
+    assert output.startswith('Findings: ')
+    assert 'missing-output' in output
+
+    assert main(['skw', 'document', 'prepare', *base, '--block', 'explain']) == 0
+    prepared_output = capsys.readouterr().out
+    assert prepared_output.startswith('Generation prepared: ')
+    assert '\nPrompt:\nExplain print(1)\n' in prepared_output
+    generation = next((tmp_path / '.skw/generations').glob('*.json')).stem
+
+    data['blocks'][1]['output'] = ['Prints one.']
+    path.write_text(json.dumps(data))
+    assert main(['skw', 'document', 'record', *base, '--generation', generation]) == 0
+    assert capsys.readouterr().out.startswith(f'Generation recorded: {generation}\n')
+
+    assert main(['skw', 'document', 'compile', *base]) == 0
+    assert capsys.readouterr().out == 'Product: written\nNo findings.\n'
+
+    data['blocks'][1]['context'] = [
+        {'kind': 'prompt', 'roles': ['dependency'], 'lines': ['Maintain this output.']}
+    ]
+    path.write_text(json.dumps(data))
+    assert main(['skw', 'document', 'observe-context', *base, '--block', 'explain']) == 0
+    assert capsys.readouterr().out.startswith('Context observed: explain\ncontext hash: ')
+
+    assert main(['skw', 'document', 'lint', *base, '--json']) == 1
+    assert isinstance(json.loads(capsys.readouterr().out), list)
 
 
 def test_context_observation_order_and_relative_file_change(tmp_path):

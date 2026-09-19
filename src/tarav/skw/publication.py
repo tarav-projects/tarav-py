@@ -6,7 +6,7 @@ from pathlib import Path
 from tarav.diagram import DiagramError, DiagramNamespace
 from tarav.diagram.rendering import DiagramRenderTarget, renderer
 from tarav.harness import FileRecord, TypeShip
-from tarav.skillware.document import read, write
+from .document import read, write
 
 
 class ModelPublicationRecord(FileRecord):

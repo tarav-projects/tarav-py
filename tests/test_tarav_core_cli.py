@@ -49,6 +49,7 @@ def test_promoted_tarav_domains_are_top_level_commands(
     assert "diagram" in help_text
     assert "tarav2" not in help_text
     assert "anchory" not in help_text
+    assert "reference" not in help_text
     assert "indexlab" not in help_text
     assert "mission" not in help_text
     assert "canvas" not in help_text
@@ -62,6 +63,15 @@ def test_promoted_tarav_domains_are_top_level_commands(
     with pytest.raises(SystemExit, match="0"):
         main(["stdlib", "--help"])
     assert "bloberia" not in capsys.readouterr().out
+
+
+def test_retired_wayfinder_cli_is_absent(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit, match="2"):
+        main(["wayfinder"])
+
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_archive_init_creates_records_and_repository_roots(

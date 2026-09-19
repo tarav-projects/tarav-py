@@ -92,12 +92,6 @@ class TaravTestEnvironment:
         return {
             "HOME": str(self.home),
             "TARAV_HOME": str(self.tarav_home),
-            "TARAV_ANCHORY_REGISTRY": str(
-                self.tarav_home / "anchory" / "registry.json"
-            ),
-            "TARAV_ANCHORY_GLOBAL_DEPOT": str(
-                self.tarav_home / "anchory" / "depot"
-            ),
         }
 
     def apply_environment(self, setenv: Callable[[str, str], object]) -> None:

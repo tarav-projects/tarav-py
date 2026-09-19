@@ -4,9 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol
 
 from tarav._core.scan import resolve_root_dir, resolve_targets_under_root
 
@@ -25,15 +23,6 @@ from .core import (
     validate_markdown_level_range,
     validate_markdown_scan_window,
 )
-
-
-class MarkdownLintReport(Protocol):
-    def as_dict(self) -> dict[str, object]: ...
-
-    def render_text(self) -> str: ...
-
-
-MarkdownLintReportBuilder = Callable[[dict[str, object]], MarkdownLintReport]
 
 
 def _build_markdown_scan_config(args: argparse.Namespace) -> MarkdownScanConfig:
@@ -204,8 +193,6 @@ def _cmd_md_links(args: argparse.Namespace) -> int:
 
 def _cmd_md_lint(
     args: argparse.Namespace,
-    *,
-    report_builder: MarkdownLintReportBuilder,
 ) -> int:
     config = _build_markdown_scan_config(args)
     lint_payload = lint_markdown_blocks(config=config)
@@ -216,10 +203,8 @@ def _cmd_md_lint(
         hard_max_block_lines=HARD_MAX_BLOCK_LINES,
         **lint_payload,
     )
-    report = report_builder(payload)
-
     if args.json:
-        print(json.dumps(report.as_dict(), indent=2))
+        print(json.dumps(payload, indent=2))
     else:
         if payload["issue_count"] == 0:
             print(
@@ -230,7 +215,8 @@ def _cmd_md_lint(
                 f"Scanned {payload['file_count']} file(s): "
                 f"{payload['error_count']} error(s), {payload['warning_count']} warning(s)"
             )
-            print(report.render_text())
+        for issue in payload["issues"]:
+            print(f"{issue['path']}:{issue['line']}: {issue['message']}")
 
     if args.fail_on == "warning" and payload["issue_count"] > 0:
         return 1
@@ -345,8 +331,6 @@ def _add_md_scan_arguments(parser: argparse.ArgumentParser) -> None:
 
 def register_mdblocks_commands(
     subparsers: argparse._SubParsersAction,
-    *,
-    lint_report_builder: MarkdownLintReportBuilder,
 ) -> None:
     md_parser = subparsers.add_parser(
         "mdblocks",
@@ -409,10 +393,7 @@ def register_mdblocks_commands(
         help="Emit structured JSON output.",
     )
     md_lint_parser.set_defaults(
-        handler=lambda args: _cmd_md_lint(
-            args,
-            report_builder=lint_report_builder,
-        ),
+        handler=_cmd_md_lint,
         with_content=False,
     )
 

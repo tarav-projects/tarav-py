@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from tarav.skw.skills import SkillPackage, SkillPackageRecord
+from tarav.runtime import create_runtime
+from tarav.skw.skills import SkwSkill
 from tarav.skw.loading import LoadingRecord
 
 
@@ -26,11 +27,11 @@ def package(tmp_path):
     nodes[4]['parents'] = []
     (tmp_path / '.skw/loading.json').write_text(json.dumps({
         'type': LoadingRecord.type_name, 'schema_version': 1, 'blocks': nodes}))
-    (tmp_path / '.skw/skill.json').write_text(json.dumps({
-        'type': SkillPackageRecord.type_name, 'schema_version': 1,
+    (tmp_path / '.skw/main.json').write_text(json.dumps({
+        'type': SkwSkill.type_name, 'schema_version': 1,
         'entrypoint': 'SKILL.md', 'sources': ['.skw/src/main.json'],
         'files': ['SKILL.md'], 'loading': '.skw/loading.json'}))
-    return SkillPackage(tmp_path)
+    return create_runtime().load(tmp_path / '.skw')
 
 
 def test_static_paths_default_parent_and_coverage(tmp_path):
@@ -43,6 +44,24 @@ def test_static_paths_default_parent_and_coverage(tmp_path):
     assert {'kind': 'unreachable-block', 'block': 'orphan'} in analysis['findings']
     assert p.loading().inspect('use', limit=1)['path_count'] == 2
     assert len(p.loading().inspect('use', limit=1)['paths']) == 1
+
+
+def test_cli_context_defaults_to_rendered_and_preserves_json(tmp_path, capsys):
+    from tarav.cli.cli import main
+
+    p = package(tmp_path)
+    command = ['skw', 'skills', 'context', '--project', str(p.root),
+               '--block', 'use', '--limit', '1']
+    assert main(command) == 0
+    rendered = capsys.readouterr().out
+    assert 'block: use' in rendered
+    assert 'parents: vocabulary, bypass' in rendered
+    assert 'paths: 1 shown of 2' in rendered
+    assert main([*command, '--rendered']) == 0
+    assert capsys.readouterr().out == rendered
+    assert main([*command, '--json']) == 0
+    structured = json.loads(capsys.readouterr().out)
+    assert structured == p.loading().inspect('use', limit=1)
 
 
 def test_links_are_generated_but_do_not_imply_loaded_content(tmp_path):
