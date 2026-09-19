@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tarav.harness import Ship, TaravRecord, TypeShip
+from tarav.harness import Ship, TaravObject, TypeShip
 
 TYPE_SHIP = "a1c4e6b8-2d3f-4051-9273-84a6b5c7d8e9"
 CARGO = "b2d5f7c9-3e40-4162-8384-95b7c6d8e9f0"
 UNRELATED = "c3e6a8da-4f51-4273-9495-a6c8d7e9f0a1"
 
 
-class PlainRecord(TaravRecord):
+class PlainRecord(TaravObject):
     type_ship = TypeShip(TYPE_SHIP)
     type_name = "Plain.Record"
 
 
 @dataclass(frozen=True, slots=True)
-class CarryingRecord(TaravRecord):
+class CarryingRecord(TaravObject):
     type_ship = TypeShip(TYPE_SHIP)
     type_name = "Carrying.Record"
 

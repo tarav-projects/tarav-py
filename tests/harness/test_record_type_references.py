@@ -5,7 +5,7 @@ import pytest
 from tarav.harness import (
     InvalidRecordType,
     RecordTypeReference,
-    TaravRecord,
+    TaravObject,
     TypeReferenceFinding,
     TypeRegistry,
     TypeShip,
@@ -16,18 +16,18 @@ SHIP = "7a2c9e10-51b4-4a2f-9d31-6b8e0f4c2a77"
 UNKNOWN_SHIP = "0b6f4d21-9c3a-4e58-8f10-2d7a5b3c9e44"
 
 
-class ReferencedRecord(TaravRecord):
+class ReferencedRecord(TaravObject):
     type_ship = TypeShip(SHIP)
     type_name = "Referenced.Record"
 
 
 @pytest.fixture
-def registry() -> TypeRegistry[TaravRecord]:
-    return TypeRegistry(TaravRecord, (ReferencedRecord,))
+def registry() -> TypeRegistry[TaravObject]:
+    return TypeRegistry(TaravObject, (ReferencedRecord,))
 
 
 def test_structured_and_legacy_references_resolve_to_the_same_class(
-    registry: TypeRegistry[TaravRecord],
+    registry: TypeRegistry[TaravObject],
 ) -> None:
     structured = {"type": {"uuid": SHIP, "label": "Referenced.Record"}}
     legacy = {"type": "Referenced.Record"}
@@ -37,7 +37,7 @@ def test_structured_and_legacy_references_resolve_to_the_same_class(
 
 
 def test_a_known_type_ship_resolves_independently_of_label_drift(
-    registry: TypeRegistry[TaravRecord],
+    registry: TypeRegistry[TaravObject],
 ) -> None:
     drifted = {"type": {"uuid": SHIP, "label": "Renamed.Record"}}
 
@@ -53,7 +53,7 @@ def test_a_known_type_ship_resolves_independently_of_label_drift(
 
 
 def test_an_unknown_ship_never_falls_back_to_a_registered_label(
-    registry: TypeRegistry[TaravRecord],
+    registry: TypeRegistry[TaravObject],
 ) -> None:
     record = {"type": {"uuid": UNKNOWN_SHIP, "label": "Referenced.Record"}}
 
@@ -64,7 +64,7 @@ def test_an_unknown_ship_never_falls_back_to_a_registered_label(
 
 
 def test_missing_and_unknown_reference_components_are_reported(
-    registry: TypeRegistry[TaravRecord],
+    registry: TypeRegistry[TaravObject],
 ) -> None:
     def codes(record: dict[str, object]) -> tuple[str, ...]:
         return tuple(finding.code for finding in registry.record_findings(record))

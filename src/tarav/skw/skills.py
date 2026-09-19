@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from tarav.harness import TaravRecord, TypeRegistry, TypeShip
+from tarav.harness import TaravObject, TypeRegistry, TypeShip
 from tarav.harness.records import entry_file
 from tarav.harness.workflows import Workflow
 from .depot import SkwDepot
@@ -120,7 +120,7 @@ class SkwSkill(SkwDepot):
         if block not in document.blocks:
             raise ValueError(f'Unknown block: {block}')
         return {'source': str(document.source), 'output': str(document.target),
-                'block': document.blocks[block]}
+                'block': document.blocks[block].to_json()}
 
     def loading(self):
         if 'loading' not in self.data:
@@ -250,7 +250,7 @@ class SkillsWorkflow(Workflow):
                     BlessingRecord, BlessingAssessmentRecord, *CLASSES.values(), DiagramAssessment)
 
 
-def load_skill(root, *, registry: TypeRegistry[TaravRecord]) -> SkwSkill:
+def load_skill(root, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:
     """Load a Skill depot through registered Record dispatch."""
 
     depot = registry.load(Path(root) / ".skw")
@@ -259,7 +259,7 @@ def load_skill(root, *, registry: TypeRegistry[TaravRecord]) -> SkwSkill:
     return depot
 
 
-def skill_document(source, *, project=None, registry: TypeRegistry[TaravRecord]):
+def skill_document(source, *, project=None, registry: TypeRegistry[TaravObject]):
     document = project_document(source, project=project)
     depot = document.root / '.skw'
     try:
@@ -275,7 +275,7 @@ def skill_document(source, *, project=None, registry: TypeRegistry[TaravRecord])
     return document
 
 
-def register_commands(subparsers, *, registry: TypeRegistry[TaravRecord]):
+def register_commands(subparsers, *, registry: TypeRegistry[TaravObject]):
     parser = subparsers.add_parser("skills", help="Build and deploy skill packages")
     commands = parser.add_subparsers(dest="skills_action", required=True)
     for action in ("check", "build", "deploy", "context", "poi", "bless", "assess-blessing", "ls", "read"):

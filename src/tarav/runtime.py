@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 import json
 
-from tarav.harness import DirectoryRecord, FileRecord, TaravRecord, TypeRegistry
+from tarav.harness import DirectoryRecord, FileRecord, TaravObject, TypeRegistry
 from tarav.references.workflow import ReferenceWorkflow
 from tarav.harness.workflows import Workflow, WorkflowRegistry
 from tarav.navigation import FilesystemProvider, Navigation
@@ -42,14 +42,14 @@ class TaravRuntime:
         return self.workflows.workflows["references"]
 
     @property
-    def records(self) -> TypeRegistry[TaravRecord]:
+    def records(self) -> TypeRegistry[TaravObject]:
         return self.workflows.records
 
     @property
     def source_root(self) -> Path:
         return Path(__file__).parent
 
-    def load(self, path: str | Path) -> TaravRecord:
+    def load(self, path: str | Path) -> TaravObject:
         return self.records.load(path)
 
     def register_commands(
@@ -161,7 +161,7 @@ def create_runtime(
 
     registrations = WorkflowRegistry(
         TypeRegistry(
-            TaravRecord,
+            TaravObject,
             (
                 FileRecord,
                 DirectoryRecord,

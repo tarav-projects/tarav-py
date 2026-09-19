@@ -27,7 +27,7 @@ from tarav.harness import (
     Ship,
     TaravAssertion,
     TaravPOIInstance,
-    TaravRecord,
+    TaravObject,
     FileRecord,
     TypeRegistry,
     TypeShip,
@@ -120,6 +120,13 @@ SCHEMA_VERSION = 2
 CONFIG_SCHEMA_VERSION = 1
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 JsonObject = dict[str, Any]
+_EXAMPLE_MODEL = "00000000-0000-4000-8000-000000000001"
+_EXAMPLE_BLOCK = "00000000-0000-4000-8000-000000000002"
+_EXAMPLE_LINE = "00000000-0000-4000-8000-000000000003"
+_EXAMPLE_COLLECTION = "00000000-0000-4000-8000-000000000004"
+_EXAMPLE_EDITION = "00000000-0000-4000-8000-000000000005"
+_EXAMPLE_NAMESPACE = "00000000-0000-4000-8000-000000000006"
+_EXAMPLE_DIGEST = "0" * 64
 
 
 class DiagramError(RuntimeError):
@@ -539,6 +546,15 @@ class TypedShip(FileRecord):
     def _validate_record(self) -> None:
         return None
 
+    @classmethod
+    def json_example(cls) -> JsonObject:
+        example = super().json_example()
+        if cls.type_name in {BLOCK_SHIP_TYPE, LINE_SHIP_TYPE, COLLECTION_SHIP_TYPE}:
+            example["model_ship"] = _EXAMPLE_MODEL
+        if cls.type_name == LINE_SHIP_TYPE:
+            example["block_ship"] = _EXAMPLE_BLOCK
+        return example
+
     def _binding(self) -> DiagramShip:
         if self.ship is None:
             raise DiagramModelError(
@@ -783,6 +799,95 @@ class TypedAnnotation(FileRecord):
 
     def _validate_record(self) -> None:
         return None
+
+    @classmethod
+    def json_example(cls) -> JsonObject:
+        example = super().json_example()
+        location = {
+            "model_ship": _EXAMPLE_MODEL,
+            "block_ship": _EXAMPLE_BLOCK,
+            "line_ship": _EXAMPLE_LINE,
+        }
+        if cls.type_name == MODEL_EDITION_TYPE:
+            example["model_ship"] = _EXAMPLE_MODEL
+        elif cls.type_name == LINE_ANNOTATION_TYPE:
+            example.update(
+                model_ship=_EXAMPLE_MODEL,
+                editions=[
+                    {
+                        "id": _EXAMPLE_EDITION,
+                        "arguments": [
+                            {
+                                "namespace_id": _EXAMPLE_NAMESPACE,
+                                "kind": "ship",
+                                "id": _EXAMPLE_LINE,
+                            }
+                        ],
+                        "data": {"text": "Example line"},
+                    }
+                ],
+            )
+        elif cls.type_name == LINE_EDITION_TYPE:
+            example.update(location=location, data={"text": "Example line"})
+        elif cls.type_name == BLOCK_EDITION_TYPE:
+            example.update(
+                location={key: location[key] for key in ("model_ship", "block_ship")},
+                data={"label": "Example block"},
+            )
+        elif cls.type_name == COLLECTION_EDITION_TYPE:
+            example.update(
+                model_ship=_EXAMPLE_MODEL,
+                collection_ship=_EXAMPLE_COLLECTION,
+                collection_type=DIAGRAM_COLLECTION_OBJECT_TYPE,
+                data={"label": "Example collection"},
+            )
+        elif cls.type_name == CAPTURE_AUTHORIZATION_GATE_TYPE:
+            turn = {
+                "session_identity": _EXAMPLE_DIGEST,
+                "turn_address": _EXAMPLE_DIGEST,
+                "turn_hash": _EXAMPLE_DIGEST,
+            }
+            example.update(
+                model_ship=_EXAMPLE_MODEL,
+                token="example-authorization",
+                workflow="example",
+                permission_turn=turn,
+                operations=["example"],
+                target_scope=[
+                    {
+                        "namespace_id": _EXAMPLE_NAMESPACE,
+                        "kind": "ship",
+                        "id": _EXAMPLE_MODEL,
+                    }
+                ],
+            )
+        elif cls.type_name == BLOCK_TYPE_ANNOTATION_TYPE:
+            example.update(
+                location={key: location[key] for key in ("model_ship", "block_ship")},
+                block_type=DIAGRAM_BLOCK_OBJECT_TYPE,
+            )
+        elif cls.type_name == LINE_SUPPORT_ANNOTATION_TYPE:
+            example["location"] = location
+        elif cls.type_name == LINE_TYPE_ANNOTATION_TYPE:
+            example.update(location=location, line_type=DIAGRAM_LINE_OBJECT_TYPE)
+        elif cls.type_name == LINE_GATE_ANNOTATION_TYPE:
+            turn = {
+                "session_identity": _EXAMPLE_DIGEST,
+                "turn_address": _EXAMPLE_DIGEST,
+                "turn_hash": _EXAMPLE_DIGEST,
+            }
+            example.update(
+                target_edition=_EXAMPLE_EDITION,
+                gates=[
+                    {
+                        "type": VERBATIM_GATE_TYPE,
+                        "token": "example-gate",
+                        "proposal_turn": turn,
+                        "approval_turn": turn,
+                    }
+                ],
+            )
+        return example
 
     def _binding(self) -> DiagramAnnotation:
         if self.annotation is None:
@@ -5257,7 +5362,7 @@ def _record_type_name(record: Mapping[str, Any], *, field: str) -> str:
     return reference.label
 
 
-def _record_is(record: Mapping[str, Any], record_type: type[TaravRecord]) -> bool:
+def _record_is(record: Mapping[str, Any], record_type: type[TaravObject]) -> bool:
     """Whether one Record's Type reference designates a registered class."""
 
     location = locate_record_type(record)
@@ -5267,7 +5372,7 @@ def _record_is(record: Mapping[str, Any], record_type: type[TaravRecord]) -> boo
 
 
 def _record_is_any(
-    record: Mapping[str, Any], record_types: tuple[type[TaravRecord], ...]
+    record: Mapping[str, Any], record_types: tuple[type[TaravObject], ...]
 ) -> bool:
     return any(_record_is(record, item) for item in record_types)
 

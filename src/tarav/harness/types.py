@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
+from copy import deepcopy
 from pathlib import Path
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import BinaryIO, ClassVar, Final, Generic, Self, TextIO, TypeVar
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
 
 from .ships import Ship, ShipIdentityError, TypeShip
 
@@ -32,8 +36,8 @@ class RecordTypeMismatch(TypeError):
 JsonFile = TextIO | BinaryIO
 
 
-class TaravRecord(TaravType):
-    """Authoritative Python interpreter for one typed serialized Record.
+class TaravObject(TaravType):
+    """Semantic Python object with a typed JSON representation.
 
     ``type_ship`` is the Type's durable identity and ``type_name`` its current
     human-facing label. Every subclass, including intermediate bases, declares
@@ -43,11 +47,72 @@ class TaravRecord(TaravType):
     type_name: ClassVar[str]
     type_ship: ClassVar[TypeShip]
 
+    class RecordInterface(BaseModel):
+        """Minimal open record contract; subclasses declare their own fields."""
+
+        model_config = ConfigDict(strict=True, extra="allow")
+
+    @classmethod
+    def is_record_subtype_of(cls, parent: type[TaravObject]) -> bool:
+        """Report declared class and representation inheritance, not field compatibility."""
+        return (
+            isinstance(parent, type)
+            and issubclass(parent, TaravObject)
+            and issubclass(cls, parent)
+            and issubclass(cls.RecordInterface, parent.RecordInterface)
+        )
+
+    @classmethod
+    def preserves_parent_record_interface(cls) -> bool:
+        """Whether all direct Tarav parents' interfaces are inherited."""
+        return all(
+            cls.is_record_subtype_of(parent)
+            for parent in cls.__bases__
+            if issubclass(parent, TaravObject)
+        )
+
+    @classmethod
+    def validate_record(cls, value: object) -> BaseModel:
+        """Validate without accepting transformations of supplied JSON data."""
+        record = _json_object(value)
+        model = cls.RecordInterface.model_validate(deepcopy(record), strict=True)
+        represented = model.model_dump(mode="json", exclude_unset=True, by_alias=True)
+        if json.dumps(represented, sort_keys=True) != json.dumps(record, sort_keys=True):
+            raise InvalidRecordJSON("RecordInterface must not transform or discard supplied data")
+        return model
+
+    @property
+    def record_data(self) -> BaseModel:
+        """Fresh validated typed view; editing this view does not edit the record."""
+        return type(self).validate_record(self.record)
+
     def __init__(self, record: Mapping[str, object]) -> None:
-        if type(self) is TaravRecord:
-            raise TypeError("TaravRecord is not an opaque Record wrapper")
+        if type(self) is TaravObject:
+            raise TypeError("TaravObject is not an opaque JSON wrapper")
         self.record = dict(record)
         self.source: Path | None = None
+
+    @classmethod
+    def from_json(cls, value: object) -> Self:
+        """Construct this semantic class from one JSON-compatible object."""
+
+        if cls is TaravObject:
+            raise TypeError("TaravObject is not an opaque JSON wrapper")
+        record = _json_object(value)
+        cls.validate_record(record)
+        return cls(record)
+
+    def to_json(self) -> dict[str, object]:
+        """Return a detached JSON-compatible representation of this object."""
+
+        type(self).validate_record(self.record)
+        return _json_object(self.record)
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        """Return a minimal storage-independent representation for this Type."""
+
+        return {"type": cls.type_name}
 
     @classmethod
     def help(cls) -> dict[str, object]:
@@ -88,7 +153,7 @@ class TaravRecord(TaravType):
         return result
 
     @classmethod
-    def load(cls, path: str | Path, *, registry: TypeRegistry[TaravRecord]) -> Self:
+    def load(cls, path: str | Path, *, registry: TypeRegistry[TaravObject]) -> Self:
         """Load a retained representation through its registered authority."""
         from .records import load_record
 
@@ -96,6 +161,8 @@ class TaravRecord(TaravType):
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
+        if not isinstance(cls.RecordInterface, type) or not issubclass(cls.RecordInterface, BaseModel):
+            raise RecordTypeDeclarationError("RecordInterface must be a Pydantic BaseModel class")
         declared = cls.__dict__.get("type_ship")
         if declared is None:
             raise RecordTypeDeclarationError(
@@ -134,7 +201,7 @@ class TaravRecord(TaravType):
         cls,
         file: JsonFile,
         *,
-        registry: TypeRegistry[TaravRecord],
+        registry: TypeRegistry[TaravObject],
     ) -> Self:
         """Load one Record as this registered class or a deliberate subclass."""
 
@@ -145,7 +212,7 @@ class TaravRecord(TaravType):
                 f"{cls.__name__} does not specialize registered Record class "
                 f"{registered_class.__name__}"
             )
-        return cls(record)
+        return cls.from_json(record)
 
 
 class TaravAssertion(TaravType):
@@ -171,11 +238,33 @@ it, so any Record's Type reference is found the same way everywhere.
 _MISSING = object()
 
 
-def _json_load_record(file: JsonFile) -> Mapping[str, object]:
+def _json_object(value: object) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise InvalidRecordJSON("Tarav JSON root must be an object")
+    def copy_json(item):
+        if item is None or type(item) in (str, bool, int):
+            return item
+        if type(item) is float and math.isfinite(item):
+            return item
+        if isinstance(item, Mapping):
+            if any(not isinstance(key, str) for key in item):
+                raise InvalidRecordJSON("JSON object keys must be strings")
+            return {key: copy_json(child) for key, child in item.items()}
+        if type(item) is list:
+            return [copy_json(child) for child in item]
+        raise InvalidRecordJSON(f"Not a JSON value: {type(item).__name__}")
+
+    try:
+        return copy_json(value)
+    except RecursionError as exc:
+        raise InvalidRecordJSON("JSON representation must not contain cycles") from exc
+
+
+def _json_load_record(file: JsonFile) -> dict[str, object]:
     value = json.load(file)
     if not isinstance(value, Mapping):
-        raise InvalidRecordJSON("Tarav Record JSON root must be an object")
-    return value
+        raise InvalidRecordJSON("Tarav JSON root must be an object")
+    return _json_object(value)
 
 
 def _traverse(record: Mapping[str, object], path: tuple[str, ...]) -> object:
@@ -284,7 +373,7 @@ class InvalidRecordType(TypeRegistrationError):
     pass
 
 
-RecordTypeT = TypeVar("RecordTypeT", bound=TaravRecord)
+RecordTypeT = TypeVar("RecordTypeT", bound=TaravObject)
 
 
 class TypeRegistry(Generic[RecordTypeT]):
@@ -300,9 +389,9 @@ class TypeRegistry(Generic[RecordTypeT]):
         base_type: type[RecordTypeT],
         record_types: Iterable[type[RecordTypeT]] = (),
     ) -> None:
-        if not issubclass(base_type, TaravRecord):
+        if not issubclass(base_type, TaravObject):
             raise TypeRegistrationError(
-                "TypeRegistry base must be a TaravRecord subclass"
+                "TypeRegistry base must be a TaravObject subclass"
             )
         self._base_type = base_type
         self._types: dict[str, type[RecordTypeT]] = {}
@@ -410,8 +499,13 @@ class TypeRegistry(Generic[RecordTypeT]):
     def json_load(self, file: JsonFile) -> RecordTypeT:
         """Load one JSON Record as an instance of its exact registered class."""
 
-        record = _json_load_record(file)
-        return self.resolve(record)(record)
+        return self.from_json(_json_load_record(file))
+
+    def from_json(self, value: object) -> RecordTypeT:
+        """Resolve JSON and construct it through the selected semantic class."""
+
+        record = _json_object(value)
+        return self.resolve(record).from_json(record)
 
     def record_findings(
         self, record: Mapping[str, object]

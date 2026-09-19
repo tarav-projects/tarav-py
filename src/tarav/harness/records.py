@@ -10,7 +10,7 @@ from typing import TypeVar
 from .ships import TypeShip
 from .types import (
     RecordTypeMismatch,
-    TaravRecord,
+    TaravObject,
     TypeRegistry,
     _json_load_record,
 )
@@ -24,12 +24,12 @@ DIRECTORY_ENTRY_PATH = (
 )
 
 
-class FileRecord(TaravRecord):
+class FileRecord(TaravObject):
     type_ship = TypeShip("fca80371-e492-497b-bf43-044ab2c10220")
     type_name = "Tarav.FileRecord"
 
 
-class DirectoryRecord(TaravRecord):
+class DirectoryRecord(TaravObject):
     type_ship = TypeShip("1e07c649-a55f-4805-915e-464a8e9b2de1")
     type_name = "Tarav.DirectoryRecord"
 
@@ -52,7 +52,7 @@ def entry_file(path: str | Path) -> Path:
     return source
 
 
-RecordT = TypeVar("RecordT", bound=TaravRecord)
+RecordT = TypeVar("RecordT", bound=TaravObject)
 
 
 def load_record(
@@ -72,6 +72,6 @@ def load_record(
         )
     if Path(path).expanduser().is_dir() and not issubclass(authority, DirectoryRecord):
         raise RecordTypeMismatch(f"{source} does not declare a DirectoryRecord")
-    result = selected(payload)
+    result = selected.from_json(payload)
     result.source = source
     return result

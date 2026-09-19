@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 
-from tarav.harness import TaravRecord, TypeRegistry
+from tarav.harness import TaravObject, TypeRegistry
 from tarav.harness.workflows import Workflow
 from . import FileReference, Reference, ReferenceResult
 from .git import GitFileReference
@@ -17,7 +17,7 @@ class ReferenceWorkflow(Workflow):
         self.records = (
             records
             if records is not None
-            else TypeRegistry(TaravRecord, self.record_types)
+            else TypeRegistry(TaravObject, self.record_types)
         )
 
     def load(self, record: Mapping) -> Reference:

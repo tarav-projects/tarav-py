@@ -1,9 +1,11 @@
 """Typed generation source and deterministic whole-document compilation."""
 import json
 import hashlib
+from collections.abc import Iterator, Mapping
 from pathlib import Path
+from typing import Literal
 
-from tarav.harness import FileRecord, TypeShip
+from tarav.harness import FileRecord, TaravObject, TypeShip
 from tarav.harness.workflows import Workflow
 from tarav.references.workflow import ReferenceWorkflow
 from .generation import Argument, Block, Generation, _hash
@@ -54,6 +56,79 @@ def lines(value):
     return value
 
 
+class SkwBlock(TaravObject, Mapping[str, object]):
+    """One actionable block retained inline in a Skillware document."""
+
+    type_name = "Tarav.Skillware.Block"
+    type_ship = TypeShip("6dad5fc0-fcee-4285-b7ac-9dd89802410c")
+
+    class RecordInterface(TaravObject.RecordInterface):
+        id: str
+        kind: Literal["literal", "generation"]
+
+
+    def __init__(self, record: Mapping[str, object]) -> None:
+        super().__init__(record)
+        if not isinstance(self.record.get("id"), str) or not self.record["id"]:
+            raise ValueError("Blocks require non-empty IDs")
+        kind = self.record.get("kind")
+        if kind == "literal":
+            lines(self.record.get("lines"))
+        elif kind == "generation":
+            self.definition()
+            if self.record.get("output") is not None:
+                lines(self.record["output"])
+        else:
+            raise ValueError("Unknown block kind")
+
+    def __getitem__(self, key: str) -> object:
+        return self.record[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.record)
+
+    def __len__(self) -> int:
+        return len(self.record)
+
+    @property
+    def id(self) -> str:
+        return self.record["id"]  # type: ignore[return-value]
+
+    @property
+    def kind(self) -> str:
+        return self.record["kind"]  # type: ignore[return-value]
+
+    def definition(self) -> Block:
+        if self.kind != "generation":
+            raise ValueError("Literal blocks do not define generations")
+        arguments = self.record.get("arguments", {})
+        if not isinstance(arguments, Mapping):
+            raise ValueError("Block arguments must be an object")
+        declared = []
+        for name, spec in arguments.items():
+            if not isinstance(name, str) or not isinstance(spec, Mapping):
+                raise ValueError("Block arguments require named object declarations")
+            argument_type = spec.get("type")
+            if not isinstance(argument_type, str):
+                raise ValueError("Block argument type must be a string")
+            declared.append(Argument(name, argument_type))
+        return Block(
+            self.id,
+            "\n".join(lines(self.record.get("prompt"))),
+            tuple(declared),
+        )
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return {
+            "id": "example",
+            "kind": "generation",
+            "prompt": ["Write an example."],
+            "arguments": {},
+            "output": None,
+        }
+
+
 class Document:
     """Load a fresh source for each operation. Storage is explicitly single-writer."""
 
@@ -75,19 +150,13 @@ class Document:
         self.target = self.path(self.data["output"])
         if self.target == self.source or self.target.is_relative_to(self.root / ".skw"):
             raise ValueError("Output must be a product outside .skw")
-        self.blocks = {}
-        for b in self.data["blocks"]:
-            if not isinstance(b.get("id"), str) or not b["id"] or b["id"] in self.blocks:
+        self.blocks: dict[str, SkwBlock] = {}
+        for index, b in enumerate(self.data["blocks"]):
+            block = SkwBlock.from_json(b)
+            self.data["blocks"][index] = block.record
+            if block.id in self.blocks:
                 raise ValueError("Blocks require unique IDs")
-            self.blocks[b["id"]] = b
-            if b["kind"] == "literal":
-                lines(b["lines"])
-            elif b["kind"] == "generation":
-                self.definition(b)
-                if b.get("output") is not None:
-                    lines(b["output"])
-            else:
-                raise ValueError("Unknown block kind")
+            self.blocks[block.id] = block
         self.lock_path = self.root / ".skw" / "lock.json"
 
     def path(self, value):
@@ -98,9 +167,8 @@ class Document:
             raise ValueError("Path escapes project")
         return path
 
-    def definition(self, block):
-        return Block(block["id"], "\n".join(lines(block["prompt"])), tuple(
-            Argument(name, spec["type"]) for name, spec in block.get("arguments", {}).items()))
+    def definition(self, block: SkwBlock):
+        return block.definition()
 
     def inputs(self, identity, active=()):
         if identity in active:

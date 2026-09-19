@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tarav.skw.document import Document, DocumentRecord
+from tarav.skw.document import Document, DocumentRecord, SkwBlock
 
 
 def source(tmp_path):
@@ -73,6 +73,15 @@ def test_runtime_loads_document_as_registered_record(tmp_path):
 
     path, _ = source(tmp_path)
     assert isinstance(create_runtime().load(path), DocumentRecord)
+
+
+def test_document_blocks_use_the_common_json_contract(tmp_path):
+    path, data = source(tmp_path)
+    block = Document(path).blocks["explain"]
+
+    assert isinstance(block, SkwBlock)
+    assert block.to_json() == data["blocks"][1]
+    assert SkwBlock.from_json(block.to_json()).to_json() == block.to_json()
 
 
 def test_product_drift_missing_annotation_and_read_only_lint(tmp_path):

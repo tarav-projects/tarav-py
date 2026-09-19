@@ -9,6 +9,16 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+def test_record_interfaces_belong_to_harness():
+    from pydantic import BaseModel
+    from tarav.harness import TaravObject
+    from tarav.skw.document import SkwBlock
+
+    assert issubclass(TaravObject.RecordInterface, BaseModel)
+    assert SkwBlock.is_record_subtype_of(TaravObject)
+    assert SkwBlock.preserves_parent_record_interface()
+
+
 def test_generation_mechanics_have_no_tarav_domain_dependencies() -> None:
     import sys
 

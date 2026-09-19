@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from tarav.harness import DIRECTORY_ENTRY_PATH, TaravRecord, TypeRegistry, TypeShip
+from tarav.harness import DIRECTORY_ENTRY_PATH, TaravObject, TypeRegistry, TypeShip
 from tarav.harness.workflows import Workflow
 from tarav.poi import POI, POIFinding
 
@@ -37,14 +37,14 @@ class RecordProvider:
     def list(self, address: str = "") -> tuple[Entry, ...]:
         raise NotImplementedError
 
-    def load(self, address: str) -> TaravRecord:
+    def load(self, address: str) -> TaravObject:
         raise NotImplementedError
 
 
 class FilesystemProvider(RecordProvider):
     """Browse an explicitly registered local collection; no content guessing."""
 
-    def __init__(self, root: Path, records: TypeRegistry[TaravRecord]) -> None:
+    def __init__(self, root: Path, records: TypeRegistry[TaravObject]) -> None:
         self.root = root.expanduser().resolve()
         self.records = records
 
@@ -73,7 +73,7 @@ class FilesystemProvider(RecordProvider):
             entries.append(Entry(path.name, kind))
         return tuple(entries)
 
-    def load(self, address: str) -> TaravRecord:
+    def load(self, address: str) -> TaravObject:
         return self.records.load(self.path(address))
 
 
@@ -107,7 +107,7 @@ class Navigation(Workflow):
             name, _, address = path.lstrip("/").partition("/")
             provider = self.providers[name]
             value = getattr(provider, operation)(address)
-            if operation == "load" and not isinstance(value, TaravRecord):
+            if operation == "load" and not isinstance(value, TaravObject):
                 raise TypeError("Provider did not return a Record")
             if operation == "list" and (
                 not isinstance(value, tuple)

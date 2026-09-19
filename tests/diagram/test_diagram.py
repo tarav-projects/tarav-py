@@ -58,7 +58,7 @@ from tarav.diagram import (
 from tarav.harness import (
     TaravAssertion,
     TaravPOIInstance,
-    TaravRecord,
+    TaravObject,
 )
 
 
@@ -198,8 +198,8 @@ def test_diagram_types_participate_in_harness_without_schema_changes() -> None:
         TypedShip,
     )
 
-    assert issubclass(TypedShip, TaravRecord)
-    assert issubclass(TypedAnnotation, TaravRecord)
+    assert issubclass(TypedShip, TaravObject)
+    assert issubclass(TypedAnnotation, TaravObject)
     assert issubclass(DiagramObjectAssertion, TaravAssertion)
     assert issubclass(Finding, TaravPOIInstance)
 

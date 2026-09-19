@@ -12,7 +12,7 @@ behavior of an object; serialization alone does not require another base class.
 <!-- tarav.context 5626cd5f:a9e2ecce8eb580b5 -->
 
 This request records the implementation scope using inline wiki-style
-grounding. Status: executing.
+grounding. Status: implemented; Diagram capture retry pending.
 <!-- tarav.context 5626cd5f:10acac359a1759d9 -->
 
 ## Impl.Req.Diagram
@@ -49,7 +49,8 @@ static `json_example()` for concrete registered classes. The example is usable
 by agents as documentation and describes the object independently of storage.
 <!-- tarav.context 5626cd5f:d13375746bf42765 -->
 
-Provide a minimum default test across registered classes:
+Provide one ordinary `tarav-py` pytest contract across runtime-registered
+classes; this is not a runtime startup check:
 example JSON → object → JSON → object → JSON. Verify that conversion succeeds
 and information is retained across the round trip.
 <!-- tarav.context 5626cd5f:d13375746bf42765 -->
@@ -89,5 +90,19 @@ Design context: [Tarav objects and JSON representation](../../../tarav-md/notes/
 
 ## Impl.Log
 
-Written as an implementation request only. Grounding is inline; no Diagram
-Collection or Draft is created. No implementation execution is recorded.
+- Created the required pre-edit checkpoint at `c4d6fcc`.
+- Replaced the semantic root name with `TaravObject` across maintained code,
+  tests, and architecture guidance, without a compatibility alias.
+- Added `from_json`, `to_json`, and storage-independent `json_example`
+  mechanics. Registry, stream, file, and directory loading now construct
+  through the selected class's `from_json`.
+- Added the ordinary pytest contract over every class registered by the
+  composed runtime. Diagram Types provide valid storage-independent examples.
+- Added actionable inline `SkwBlock` objects while retaining the existing
+  document JSON shape and live binding to their containing document.
+- Verification: repository Ruff passed; `1151` pytest tests passed.
+- Diagram capture POI: refreshing the current Chatlas context still ends before
+  the User's `nice, implement 800` execute turn. The Draft and Collection remain
+  open rather than inventing an unsupported authorization reference or
+  claiming a Capture receipt. Retry against Draft
+  `026011c6-1675-4f23-b903-79f2a04b97b7` when that turn becomes available.

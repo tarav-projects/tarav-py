@@ -11,25 +11,25 @@ import importlib.util
 from pathlib import Path
 import sys
 
-from .types import TaravRecord, TypeRegistry
+from .types import TaravObject, TypeRegistry
 
 
 class Workflow:
     name: str
-    record_types: tuple[type[TaravRecord], ...] = ()
+    record_types: tuple[type[TaravObject], ...] = ()
 
     def register(self, registry: WorkflowRegistry) -> None:
         """Register this workflow's Record authorities."""
         for record_type in self.record_types:
             registry.records.register(record_type)
 
-    def provider(self, root: Path, records: TypeRegistry[TaravRecord]):
+    def provider(self, root: Path, records: TypeRegistry[TaravObject]):
         raise NotImplementedError(f"{self.name} does not provide navigation")
 
 
 class WorkflowRegistry:
-    def __init__(self, records: TypeRegistry[TaravRecord] | None = None) -> None:
-        self.records = records if records is not None else TypeRegistry(TaravRecord)
+    def __init__(self, records: TypeRegistry[TaravObject] | None = None) -> None:
+        self.records = records if records is not None else TypeRegistry(TaravObject)
         self.workflows: dict[str, Workflow] = {}
 
     def register(self, workflow: Workflow) -> None:
@@ -50,7 +50,7 @@ class WorkflowRegistry:
         self._accept(trial)
 
     def _trial(self) -> WorkflowRegistry:
-        trial = WorkflowRegistry(TypeRegistry(TaravRecord, self.records.record_types))
+        trial = WorkflowRegistry(TypeRegistry(TaravObject, self.records.record_types))
         trial.workflows.update(self.workflows)
         return trial
 

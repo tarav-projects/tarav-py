@@ -23,7 +23,7 @@ entrypoints (`tarav.cli`, `tarav.daemon`)
 - `tarav.runtime` is the composition root for registries and cross-domain
   adapters.
 - Domain foundations do not import the runtime or CLI to obtain dependencies.
-- `tarav.harness` contains schema-neutral semantic roles, Ship identity
+- `tarav.harness` contains semantic roles, class-owned record interfaces, Ship identity
   primitives, and the explicit, trusted Record Type registry used by
   applications. Applications import Harness; Harness never imports an
   application.
@@ -82,7 +82,7 @@ checks User-Turn evidence without claiming approval or semantic fidelity.
 - `tarav.harness` owns the small application-facing semantic base classes,
   the `Ship` identity primitives, and retained Type-reference to trusted Python
   class dispatch. A `Ship` wraps one UUID and nothing else, so identity comparison
-  ignores the specialized class. Every `TaravRecord` subclass, including
+  ignores the specialized class. Every `TaravObject` subclass, including
   intermediate bases, declares a class-local `type_ship` beside its
   human-facing `type_name`; the registry indexes both and treats the Type Ship
   as authoritative, so a known Type keeps resolving after a rename. A retained
@@ -95,7 +95,12 @@ checks User-Turn evidence without claiming approval or semantic fidelity.
   is null or empty, so a malformed reference fails at its own location instead
   of being shadowed by a later one. `__tarav__` is the reserved namespace an
   application uses when its own records already give `type` another meaning.
-  Records expose the Ships they semantically recognize through `ships()`, which
+  `TaravObject` is the semantic root; a Record is its JSON representation,
+  particularly when retained in storage. Objects expose `from_json(value)`,
+  `to_json()`, and a storage-independent `json_example()`. Registry dispatch,
+  file loading, and directory loading construct through the selected class's
+  `from_json`; `json_load(file)` remains the stream entry point. Records expose
+  the Ships they semantically recognize through `ships()`, which
   a subclass extends by returning concrete `Ship` instances; the projection
   carries no serialized paths, and Harness never infers a Ship by scanning
   UUID-shaped data. `TypeRegistry.json_load(file)` loads a JSON object and
@@ -103,8 +108,24 @@ checks User-Turn evidence without claiming approval or semantic fidelity.
   `RecordClass.json_load(file, registry=...)` instead constructs the calling
   class only when it is that registered authority or a subclass. Harness has
   no opaque fallback Record wrapper: uninterpreted JSON remains ordinary JSON.
-  It does not impose an application storage model or shared behavior merely
-  because classes subtype its roles.
+  It does not impose a writer or application storage model. Skillware's
+  `SkwBlock` uses the same object contract while remaining inline in its
+  document's JSON.
+  Every object inherits a Pydantic `RecordInterface`. The base contract is
+  strict and open to additional fields; concrete classes declare required
+  fields and may close their own interface. Type dispatch remains separate
+  from these field contracts. `is_record_subtype_of(parent)` requires both
+  Python and interface inheritance; `preserves_parent_record_interface()`
+  checks all direct Tarav parents (true when there are none). Independent
+  interfaces are explicit class declarations, without an extra flag. These
+  queries describe ancestry, not proofs of field-override compatibility.
+  `from_json` and `to_json` validate without replacing retained data with
+  Pydantic output. Transforming or dropping supplied fields is rejected;
+  defaults are not inserted into stored representations. `record_data` gives
+  a fresh typed view, including interface defaults, whose edits do not mutate
+  the retained record. Direct constructors remain class-owned; use
+  `validate_record` to check a representation independently. Schema tooling
+  uses `RecordInterface.model_json_schema()`.
 - `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,
   and provider adapters under `tarav.agent.providers`.
 - `tarav.chatlas` owns the chat data train from provider-native capture through

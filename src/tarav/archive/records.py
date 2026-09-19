@@ -3,7 +3,7 @@
 from tarav.harness import (
     DirectoryRecord,
     FileRecord,
-    TaravRecord,
+    TaravObject,
     TypeRegistry,
     TypeShip,
 )
@@ -69,5 +69,5 @@ ARCHIVE_RECORD_TYPES = (
 )
 
 
-def record_registry() -> TypeRegistry[TaravRecord]:
-    return TypeRegistry(TaravRecord, ARCHIVE_RECORD_TYPES)
+def record_registry() -> TypeRegistry[TaravObject]:
+    return TypeRegistry(TaravObject, ARCHIVE_RECORD_TYPES)
