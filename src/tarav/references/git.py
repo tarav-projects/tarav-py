@@ -4,8 +4,24 @@ from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 import subprocess
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from tarav.harness import TypeShip
 from . import Reference
+
+
+class GitFileLocator(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    repository: str = Field(min_length=1)
+    commit: str = Field(min_length=1)
+    path: str = Field(min_length=1)
+
+
+class GitOidCheck(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    git_oid: str = Field(min_length=1)
 
 
 def git_bytes(repository: str | Path, *args: str) -> bytes:
@@ -36,6 +52,21 @@ def git_file(repository: str | Path, commit: str, path: str) -> tuple[str, bytes
 class GitFileReference(Reference):
     type_name = "Tarav.Reference.GitFile"
     type_ship = TypeShip("64b04e85-9899-4ab6-93a1-492d06e4509a")
+
+    class RecordInterface(Reference.RecordInterface):
+        locator: GitFileLocator
+        check: GitOidCheck | None = None
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return {
+            "type": cls.type_name,
+            "locator": {
+                "repository": "/example/repository",
+                "commit": "0" * 40,
+                "path": "README.md",
+            },
+        }
 
     def __init__(
         self,

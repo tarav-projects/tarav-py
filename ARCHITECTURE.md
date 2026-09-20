@@ -303,7 +303,11 @@ Records; its code location is distinct from a Record instance's storage path.
 - `tarav.references` owns locator/check/hints roles. FileReference
   resolves a path and optionally checks SHA-256. Hints are never read by
   mechanical location or checking. ReferenceResult exposes findings without
-  repairing data. Concrete domain references own further semantics.
+  repairing data. `Reference.RecordInterface` requires the retained Type and
+  locator; concrete interfaces declare locator and check structures for File,
+  Git, Structured File, Archive, and Chatlas Turn references. Checks and hints
+  are optional and producers omit them when absent. Concrete domain references
+  own further semantics.
 - `tarav.harness.workflows` owns explicit Workflow registration and trusted
   Python-file entry points. It does not execute workflows or inspect arbitrary
   Record payloads for code. Registered Record classes remain authoritative.
@@ -319,8 +323,9 @@ Records; its code location is distinct from a Record instance's storage path.
 - Archive Records now declare `type` under schema 2 and use Harness dispatch.
   Artifact registration directories retain a DOI contract and can be loaded
   as DirectoryRecords. Retirement appends evidence and preserves the DOI.
-  Archive references contain `locator: {archive, doi}`, `check`, and opaque
-  `hints`; the old flat reference schema is not accepted as this type.
+  Archive references contain `locator: {archive, doi}` plus optional `check`
+  and opaque `hints`; the old flat reference schema is not accepted as this
+  type.
 
 Schema migration is explicit developer work, never a reader fallback.
 `tooling/migrate_793_archive_records.py` validates a complete clean Archive
@@ -339,9 +344,11 @@ defaults. Reference Type Ships and serialized type names survive the module
 move; callers must import the new module directly.
 
 `runtime.references` is the registered ReferenceWorkflow. Its `load(record)`
-uses the shared Type registry and `resolve(reference_or_record)` dispatches to
-the owning class. Unknown types return findings rather than triggering imports.
-Resolution does not itself search for annotations or equate targets.
+uses the shared Type registry and constructs through the selected class's
+`from_json()`, enforcing its RecordInterface. `resolve(reference_or_record)`
+dispatches to the owning class. Unknown types and invalid interfaces return
+findings rather than triggering imports. Resolution does not itself search for
+annotations or equate targets.
 
 Archive imports shared reference/Git mechanics; the reference foundation never
 imports Archive. `ArchiveReference(doi=...)` selects the library's

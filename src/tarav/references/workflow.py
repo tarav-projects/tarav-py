@@ -21,10 +21,10 @@ class ReferenceWorkflow(Workflow):
         )
 
     def load(self, record: Mapping) -> Reference:
-        authority = self.records.resolve(record)
-        if not issubclass(authority, Reference):
+        loaded = self.records.from_json(record)
+        if not isinstance(loaded, Reference):
             raise TypeError("Registered type is not a Reference")
-        return authority(record)
+        return loaded
 
     def resolve(self, reference: Reference | Mapping, **context):
         try:

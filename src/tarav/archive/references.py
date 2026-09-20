@@ -4,6 +4,9 @@ import hashlib
 import socket
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from tarav.harness import TypeShip
 from tarav.references import Reference, ReferenceResult
@@ -28,9 +31,50 @@ class ArchiveTarget:
     git_oid: str | None = None
 
 
+class ArchiveLocator(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    archive: str = Field(min_length=1)
+    doi: Annotated[str, Field(pattern=ARTIFACT_ID_PATTERN.pattern)]
+
+
+class ArchiveSha256Check(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+
+
+class ArchiveGitOidCheck(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    git_oid: str = Field(min_length=1)
+
+
+class ArchiveContainsCommitCheck(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    contains_commit: str = Field(min_length=1)
+
+
 class ArchiveReference(Reference):
     type_ship = TypeShip("c2b01ef3-5c7a-4c60-9826-b16828660fa9")
     type_name = "Tarav.Archive.Reference"
+
+    class RecordInterface(Reference.RecordInterface):
+        locator: ArchiveLocator
+        check: (
+            ArchiveSha256Check
+            | ArchiveGitOidCheck
+            | ArchiveContainsCommitCheck
+            | None
+        ) = None
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return {
+            "type": cls.type_name,
+            "locator": {"archive": "/example/archive", "doi": "0" * 64},
+        }
 
     def __init__(
         self,
@@ -55,9 +99,10 @@ class ArchiveReference(Reference):
             record = {
                 "type": self.type_name,
                 "locator": {"archive": str(root), "doi": doi},
-                "check": check,
                 "hints": observed,
             }
+            if check is not None:
+                record["check"] = check
         elif any(value is not None for value in (doi, archive, check, hints)):
             raise ValueError("Loading retained data cannot override reference fields")
         super().__init__(record)
@@ -147,10 +192,19 @@ class ArchiveReference(Reference):
             return ReferenceResult(None, "unresolvable", str(exc), self.hints)
 
 
-def reference_record(archive: Archive, doi: str, *, check: dict, hints: dict) -> dict:
-    return {
+def reference_record(
+    archive: Archive,
+    doi: str,
+    *,
+    check: dict | None = None,
+    hints: dict | None = None,
+) -> dict:
+    record = {
         "type": ArchiveReference.type_name,
         "locator": {"archive": str(archive.root), "doi": doi},
-        "check": check,
-        "hints": hints,
     }
+    if check is not None:
+        record["check"] = check
+    if hints:
+        record["hints"] = hints
+    return record

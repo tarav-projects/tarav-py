@@ -4,7 +4,7 @@ import subprocess
 from tarav.references import FileReference
 from tarav.references.git import GitFileReference
 from tarav.archive import Archive
-from tarav.archive.references import ArchiveReference
+from tarav.archive.references import ArchiveReference, reference_record
 from tarav.runtime import create_runtime
 
 
@@ -22,6 +22,18 @@ def test_file_hints_are_observed_once_and_loading_does_not_refresh(tmp_path):
     path.unlink()
     assert not runtime.references.resolve(retained).ok
     assert FileReference(path).hints["unavailable"]
+
+
+def test_reference_producers_omit_absent_optional_fields(tmp_path):
+    missing = FileReference(tmp_path / "missing")
+    archive = Archive.create(tmp_path / "archive")
+
+    assert "check" not in missing.to_json()
+    assert missing.hints
+    assert reference_record(archive, "0" * 64) == {
+        "type": ArchiveReference.type_name,
+        "locator": {"archive": str(archive.root), "doi": "0" * 64},
+    }
 
 
 def test_archive_default_is_retained_and_not_reselected(tmp_path, monkeypatch):

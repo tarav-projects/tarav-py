@@ -5,13 +5,33 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from tarav.harness import TypeShip
-from . import Reference
+from . import Reference, Sha256Check
+
+
+class StructuredFileLocator(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    path: str = Field(min_length=1)
+    pointer: str = Field(default="", pattern=r"^(?:$|/)")
 
 
 class StructuredFileReference(Reference):
     type_name = "Tarav.Reference.StructuredFile"
     type_ship = TypeShip("d8e8b967-b3a2-4c62-9fa7-d6604b95d3c0")
+
+    class RecordInterface(Reference.RecordInterface):
+        locator: StructuredFileLocator
+        check: Sha256Check | None = None
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return {
+            "type": cls.type_name,
+            "locator": {"path": "example.json", "pointer": "/example"},
+        }
 
     def address(self):
         """Return an absolute path and optional pointer without reading payloads."""

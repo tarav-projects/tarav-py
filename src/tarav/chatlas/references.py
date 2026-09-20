@@ -1,6 +1,8 @@
 """Exact Chatlas Turn references; no Diagram or Skillware semantics."""
 import re
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from tarav.harness import TypeShip
 from tarav.references import Reference
 from tarav.chatlas.normal_model import (
@@ -8,9 +10,36 @@ from tarav.chatlas.normal_model import (
 )
 
 
+class ChatlasTurnLocator(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    session_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    turn_address: str = Field(pattern=r"^[0-9a-f]{64}$")
+    turn_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class EmptyReferenceCheck(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+
 class ChatlasTurnReference(Reference):
     type_name = "Tarav.Chatlas.Reference.Turn"
     type_ship = TypeShip("aa3a6dc3-3c17-409f-a151-041ff0a05a74")
+
+    class RecordInterface(Reference.RecordInterface):
+        locator: ChatlasTurnLocator
+        check: EmptyReferenceCheck | None = None
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return {
+            "type": cls.type_name,
+            "locator": {
+                "session_identity": "0" * 64,
+                "turn_address": "0" * 64,
+                "turn_hash": "0" * 64,
+            },
+        }
 
     def address(self):
         locator = self.locator

@@ -4,6 +4,9 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from tarav.harness.records import FileRecord
 from tarav.harness.ships import TypeShip
@@ -37,9 +40,46 @@ class ReferenceResult:
         )
 
 
+class Sha256Check(BaseModel):
+    """Exact content check shared by file-backed References."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    sha256: Annotated[str, Field(pattern=r"^[0-9a-fA-F]{64}$")]
+
+
+RecordTypeValue = str | dict[str, JsonValue]
+
+
+class ReferenceTaravMetadata(BaseModel):
+    model_config = ConfigDict(strict=True, extra="allow")
+
+    type: RecordTypeValue
+
+
 class Reference(FileRecord):
     type_ship = TypeShip("946c9a30-a7ef-4b52-ac29-86adbf97ec63")
     type_name = "Tarav.Reference"
+
+    class RecordInterface(FileRecord.RecordInterface):
+        type: RecordTypeValue | None = None
+        tarav_metadata: ReferenceTaravMetadata | None = Field(
+            default=None,
+            alias="__tarav__",
+        )
+        locator: JsonValue
+        check: JsonValue | None = None
+        hints: JsonValue | None = None
+
+        @model_validator(mode="after")
+        def require_type_declaration(self):
+            if self.type is None and self.tarav_metadata is None:
+                raise ValueError("Reference requires type or __tarav__.type")
+            return self
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return {"type": cls.type_name, "locator": "example"}
 
     @property
     def locator(self) -> object:
@@ -51,7 +91,7 @@ class Reference(FileRecord):
 
     @property
     def hints(self) -> object:
-        return self.record.get("hints", {})
+        return self.record.get("hints")
 
     def locate(self, locator: object) -> object:
         raise NotImplementedError
@@ -76,6 +116,14 @@ class FileReference(Reference):
     type_ship = TypeShip("24ee35fb-fd60-4187-b0aa-07d1585a2645")
     type_name = "Tarav.Reference.File"
 
+    class RecordInterface(Reference.RecordInterface):
+        locator: Annotated[str, Field(min_length=1)]
+        check: Sha256Check | None = None
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return {"type": cls.type_name, "locator": "/example/file.txt"}
+
     def __init__(self, record: Mapping | str | Path, *, check=None, hints=None):
         if not isinstance(record, Mapping):
             path = Path(record).expanduser().absolute()
@@ -90,9 +138,10 @@ class FileReference(Reference):
             record = {
                 "type": self.type_name,
                 "locator": str(path),
-                "check": check,
                 "hints": observed,
             }
+            if check is not None:
+                record["check"] = check
         elif check is not None or hints is not None:
             raise ValueError("Loading retained data cannot override check or hints")
         super().__init__(record)
