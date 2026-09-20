@@ -8,13 +8,16 @@ import stat
 from typing import TYPE_CHECKING, Any, Literal
 
 from tarav._core.errors import CliError
+from tarav._core.persistence import atomic_write_json
 from tarav.agent.primitives import SessionSource
 from tarav.chatlas._cache_io import write_text_if_changed
 
 if TYPE_CHECKING:
     from tarav.chatlas.provider_home_adapter import ChatlasDeltaSession, ChatlasProviderInstance
 
-RAW_PARTITION_MANIFEST_CLASS = "agentos_chatlas.raw_partition_manifest"
+RAW_PARTITION_MANIFEST_SCHEMA = "tarav.chatlas.raw-partition-manifest"
+RAW_PARTITION_MANIFEST_SCHEMA_VERSION = 2
+_LEGACY_RAW_PARTITION_MANIFEST_CLASS = "agentos_chatlas.raw_partition_manifest"
 RAW_PARTITION_MANIFEST_FILENAME = "manifest.json"
 
 CopyResult = Literal["added", "updated", "unchanged", "skipped"]
@@ -128,7 +131,13 @@ def _load_raw_partition_manifest(path: Path) -> dict[str, Any] | None:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    return payload if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != RAW_PARTITION_MANIFEST_SCHEMA
+        or payload.get("schema_version") != RAW_PARTITION_MANIFEST_SCHEMA_VERSION
+    ):
+        return None
+    return payload
 
 
 def _raw_partition_manifest_string(manifest: dict[str, Any] | None, field_name: str) -> str | None:
@@ -163,8 +172,8 @@ def _raw_partition_manifest_payload(
             }
         )
     return {
-        "class": RAW_PARTITION_MANIFEST_CLASS,
-        "schema_version": 1,
+        "schema": RAW_PARTITION_MANIFEST_SCHEMA,
+        "schema_version": RAW_PARTITION_MANIFEST_SCHEMA_VERSION,
         "provider": instance.provider,
         "provider_instance_fingerprint": instance.fingerprint,
         "instance": instance.instance,
@@ -190,6 +199,49 @@ def _create_raw_partition_manifest_if_missing(
         provider_instance_home=provider_instance_home,
     )
     write_text_if_changed(path, json.dumps(payload, sort_keys=True, indent=2) + "\n")
+
+
+def migrate_raw_partition_manifests(raw_root: Path) -> dict[str, object]:
+    """Explicitly migrate retained v1 manifests; ordinary readers stay strict."""
+
+    migrated: list[str] = []
+    current: list[str] = []
+    unrecognized: list[str] = []
+    for path in sorted(raw_root.glob(f"*/*/{RAW_PARTITION_MANIFEST_FILENAME}")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            unrecognized.append(str(path))
+            continue
+        if not isinstance(payload, dict):
+            unrecognized.append(str(path))
+            continue
+        if (
+            payload.get("schema") == RAW_PARTITION_MANIFEST_SCHEMA
+            and payload.get("schema_version") == RAW_PARTITION_MANIFEST_SCHEMA_VERSION
+        ):
+            current.append(str(path))
+            continue
+        if (
+            payload.get("class") != _LEGACY_RAW_PARTITION_MANIFEST_CLASS
+            or payload.get("schema_version") != 1
+        ):
+            unrecognized.append(str(path))
+            continue
+        migrated_payload = dict(payload)
+        migrated_payload.pop("class")
+        migrated_payload["schema"] = RAW_PARTITION_MANIFEST_SCHEMA
+        migrated_payload["schema_version"] = RAW_PARTITION_MANIFEST_SCHEMA_VERSION
+        atomic_write_json(path, migrated_payload, ensure_ascii=False)
+        migrated.append(str(path))
+    return {
+        "status": "ok" if not unrecognized else "attention",
+        "command": "chatlas index migrate",
+        "raw_root": str(raw_root),
+        "migrated": migrated,
+        "current": current,
+        "unrecognized": unrecognized,
+    }
 
 
 def _path_metadata_signature(path: Path) -> dict[str, object]:

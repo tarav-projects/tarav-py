@@ -165,6 +165,7 @@ def create_runtime(
     from tarav.skw.document import SkillwareWorkflow
     from tarav.skw.skills import SkillsWorkflow
     from tarav.chatlas.references import ChatlasTurnReference
+    from tarav.chatlas.normal_model import CHATLAS_SEMANTIC_RECORD_TYPES
 
     registrations = WorkflowRegistry(
         TypeRegistry(
@@ -173,6 +174,7 @@ def create_runtime(
                 FileRecord,
                 DirectoryRecord,
                 ChatlasTurnReference,
+                *CHATLAS_SEMANTIC_RECORD_TYPES,
             ),
         )
     )

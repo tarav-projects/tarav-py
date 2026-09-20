@@ -1718,6 +1718,7 @@ def test_verbatim_gate_surfaces_protocol_failures(
 
 
 def _normal_model(identity: str, *turn_values: tuple[str, str]) -> dict[str, object]:
+    events = []
     messages = []
     turns = []
     digits = iter("123456789abcdef")
@@ -1730,19 +1731,52 @@ def _normal_model(identity: str, *turn_values: tuple[str, str]) -> dict[str, obj
             "message_address": message_address,
             "message_hash": message_hash,
         }
-        messages.append({**message_ref, "side": side, "text": text})
+        event_ref = {
+            "event_address": turn_address,
+            "event_hash": turn_hash,
+        }
+        events.append(
+            {
+                "type": "User.Event" if side == "user" else "Agent.Event",
+                **event_ref,
+                "started_at": "2026-09-20T00:00:00Z",
+                "origin": side,
+                "observations": [
+                    {
+                        "observed_at": "2026-09-20T00:00:00Z",
+                        "source_ref": {
+                            "source_id": "source-one",
+                            "record_index": len(events) + 1,
+                            "line": len(events) + 1,
+                        },
+                    }
+                ],
+                "opaque_payload_hash": "0" * 64,
+                "content": {"text": text},
+            }
+        )
+        messages.append(
+            {
+                "type": "Chat.Message",
+                **message_ref,
+                "side": side,
+                "text": text,
+                "event_refs": [event_ref],
+            }
+        )
         turns.append(
             {
+                "type": "Chat.Turn",
                 "turn_address": turn_address,
                 "turn_hash": turn_hash,
                 "side": side,
                 "message_refs": [message_ref],
-                "event_refs": [],
+                "event_refs": [event_ref],
             }
         )
     return {
         "session": {"identity_hash": identity, "session_id": "session-one"},
-        "events": [],
+        "events": events,
         "messages": messages,
         "turns": turns,
     }

@@ -135,7 +135,12 @@ checks User-Turn evidence without claiming approval or semantic fidelity.
   over that Model, and named presentation of Query findings. Query owns
   selection and record assembly; Renderers own presentation. Chatlas preserves
   source traceability but does not own semantic interpretation, annotation,
-  contextualization, or workflow products.
+  contextualization, or workflow products. Independently meaningful Normal
+  Model Events, Messages, Turns, and loaded contexts are registered
+  `TaravObject` records and carry `type`. Containers, commands, queries,
+  results, caches, indexes, manifests, and resolution projections remain
+  ordinary values; persisted ordinary formats identify their format with
+  `schema` and `schema_version`.
 - `tarav.archive` owns stable Artifact identity, retained Archive Records, and
   portable references to retained or externally located data.
 - `tarav.breadcrumbs` owns opaque anchors embedded in Product.Surfaces. Each

@@ -122,7 +122,7 @@ class CodexRawNormalizer:
                 place={"record_index": record.record_index},
             )
             event = {
-                "class": _event_class(record.value),
+                "type": _event_type(record.value),
                 "event_address": event_address,
                 "started_at": record.observed_at,
                 "origin": _event_origin(record.value),
@@ -146,7 +146,7 @@ class CodexRawNormalizer:
             if message_side is not None:
                 chat_messages.append(
                     {
-                        "class": "Chat.Message",
+                        "type": "Chat.Message",
                         "message_address": compute_chat_message_address(
                             provider="codex",
                             scope=session_scope,
@@ -173,7 +173,7 @@ class CodexRawNormalizer:
                 if active_context:
                     loaded_contexts.append(
                         {
-                            "class": "Agent.Loaded.Context",
+                            "type": "Agent.Loaded.Context",
                             "agent_event_address": event_address,
                             "event_addresses": list(active_context),
                         }
@@ -285,7 +285,7 @@ def _event_origin(record: JsonObject) -> str:
     return "unresolved"
 
 
-def _event_class(record: JsonObject) -> str:
+def _event_type(record: JsonObject) -> str:
     return {
         "user": "User.Event",
         "agent": "Agent.Event",

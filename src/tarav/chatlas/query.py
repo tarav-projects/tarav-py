@@ -62,7 +62,6 @@ class ChatlasQuery:
 
     def to_dict(self) -> JsonObject:
         return {
-            "class": "Chatlas.Query",
             "turn_hash_prefixes": list(self.turn_hash_prefixes),
             "side": self.side,
             "text_contains": self.text_contains,
@@ -80,7 +79,6 @@ class ChatlasTurnFinding:
 
     def to_dict(self) -> JsonObject:
         return {
-            "class": "Chatlas.Query.Turn.Finding",
             "prefix": self.prefix,
             "turn": deepcopy(self.turn),
             "messages": deepcopy(list(self.messages)),
@@ -96,7 +94,6 @@ class ChatlasQueryResult:
 
     def to_dict(self) -> JsonObject:
         return {
-            "class": "Chatlas.Query.Result",
             "query": self.query.to_dict(),
             "session": deepcopy(self.session),
             "findings": [item.to_dict() for item in self.findings],

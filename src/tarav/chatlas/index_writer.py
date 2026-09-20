@@ -60,8 +60,8 @@ def _session_index_row(
             "last_activity_at": _format_stats_timestamp(session_ref.sort_timestamp()),
         }
     return {
-        "class": "agentos_chatlas.session",
-        "schema_version": 1,
+        "schema": "tarav.chatlas.session-index-row",
+        "schema_version": 2,
         "provider": session.provider_instance.provider,
         "instance": session.provider_instance.instance,
         "provider_instance_fingerprint": session.provider_instance.fingerprint,

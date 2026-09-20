@@ -60,7 +60,7 @@ def build_chat_turn_candidates(
                 messages.append(message)
         turns.append(
             {
-                "class": "Chat.Turn",
+                "type": "Chat.Turn",
                 "turn_address": compute_chat_turn_address(
                     provider=provider,
                     scope=scope,

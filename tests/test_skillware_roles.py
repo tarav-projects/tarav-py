@@ -7,9 +7,12 @@ from tarav.skw.document import Document
 def test_chatlas_exact_turn_and_grounding_role(tmp_path, monkeypatch):
     import tarav.chatlas.references as refs
 
-    turn = {'side': 'user', 'turn_address': 'a' * 64, 'turn_hash': 'b' * 64,
+    event_ref = {'event_address': '1' * 64, 'event_hash': '2' * 64}
+    turn = {'type': 'Chat.Turn', 'side': 'user', 'turn_address': 'a' * 64,
+            'turn_hash': 'b' * 64, 'event_refs': [event_ref],
             'message_refs': [{'message_address': 'c' * 64, 'message_hash': 'd' * 64}]}
-    message = {'message_address': 'c' * 64, 'message_hash': 'd' * 64,
+    message = {'type': 'Chat.Message', 'message_address': 'c' * 64,
+               'message_hash': 'd' * 64, 'side': 'user', 'event_refs': [event_ref],
                'text': 'Exact user wording'}
     monkeypatch.setattr(refs, 'provide_normal_model', lambda **kw: {'turns': [turn], 'messages': [message]})
     reference = {'type': ChatlasTurnReference.type_name, 'locator': {

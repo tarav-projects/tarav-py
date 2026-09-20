@@ -6,9 +6,11 @@ import re
 from typing import Iterable
 
 from .model import JsonObject
+from .records import event_record
 
 
 _FULL_SHA256 = re.compile(r"[0-9a-f]{64}")
+_LEGACY_EVENT_HASH_KEY = "class"
 
 
 def compute_event_address(
@@ -27,8 +29,11 @@ def compute_event_address(
 
 
 def compute_event_hash(event: JsonObject) -> str:
+    event_type = event.get("type")
     body = {
-        "class": event.get("class"),
+        # Event identity predates registered Record Types. Keep its original
+        # hash preimage while the retained representation moves to ``type``.
+        _LEGACY_EVENT_HASH_KEY: event_type,
         "origin": event.get("origin"),
         "started_at": event.get("started_at"),
         "content": event.get("content"),
@@ -37,6 +42,7 @@ def compute_event_hash(event: JsonObject) -> str:
 
 
 def event_ref(event: JsonObject) -> JsonObject:
+    event = event_record(event).to_json()
     address = _full_digest(event.get("event_address"), field="event_address")
     digest = _full_digest(event.get("event_hash"), field="event_hash")
     return {"event_address": address, "event_hash": digest}
@@ -53,14 +59,12 @@ def resolve_event_ref(
         raise ValueError(f"current event tape contains duplicate address {address}")
     if not addressed:
         return {
-            "class": "Event.Ref.Resolution",
             "standing": "MISSING",
             "event": None,
         }
-    current = addressed[0]
+    current = event_record(addressed[0]).to_json()
     current_hash = _full_digest(current.get("event_hash"), field="event_hash")
     return {
-        "class": "Event.Ref.Resolution",
         "standing": "MATCHED" if current_hash == expected_hash else "AMENDED",
         "event": current,
     }

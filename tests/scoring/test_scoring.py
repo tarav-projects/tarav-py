@@ -627,25 +627,48 @@ def test_grounding_task_resolves_diagram_line_editions_and_support(
             )
         )
     namespace.apply(CaptureManifest.create(model.ship, (block, *lines)), commit=False)
+    event_ref = {"event_address": "7" * 64, "event_hash": "8" * 64}
     normal_model = {
         "session": {"identity_hash": "a" * 64, "session_id": "session"},
-        "events": [],
+        "events": [
+            {
+                "type": "User.Event",
+                **event_ref,
+                "started_at": "2026-09-20T00:00:00Z",
+                "origin": "user",
+                "observations": [
+                    {
+                        "observed_at": "2026-09-20T00:00:00Z",
+                        "source_ref": {
+                            "source_id": "source-one",
+                            "record_index": 1,
+                            "line": 1,
+                        },
+                    }
+                ],
+                "opaque_payload_hash": "9" * 64,
+            }
+        ],
         "messages": [
             {
+                "type": "Chat.Message",
                 "message_address": "3" * 64,
                 "message_hash": "4" * 64,
                 "side": "user",
                 "text": "Keep ranking evidence separate from scores.",
+                "event_refs": [event_ref],
             }
         ],
         "turns": [
             {
-                **user_ref,
+                "type": "Chat.Turn",
+                "turn_address": user_ref["turn_address"],
+                "turn_hash": user_ref["turn_hash"],
                 "side": "user",
                 "message_refs": [
                     {"message_address": "3" * 64, "message_hash": "4" * 64}
                 ],
-                "event_refs": [],
+                "event_refs": [event_ref],
             }
         ],
     }

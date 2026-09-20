@@ -18,8 +18,8 @@ def _row(source: Path) -> dict[str, object]:
 
 def _model(source: Path) -> dict[str, object]:
     return {
-        "class": "tarav.chatlas.normal_model",
-        "schema_version": 1,
+        "schema": "tarav.chatlas.normal-model",
+        "schema_version": 2,
         "metadata": {"commit": "1" * 40},
         "session": {
             "provider": "codex",
@@ -27,10 +27,64 @@ def _model(source: Path) -> dict[str, object]:
             "identity_hash": "f" * 64,
         },
         "sources": [{"source_id": "source-one", "path": str(source)}],
-        "events": [{"event_address": "event-one"}],
-        "messages": [{"message_address": "message-one"}],
-        "turns": [{"turn_address": "turn-one"}],
-        "loaded_contexts": [{"class": "Agent.Loaded.Context"}],
+        "events": [
+            {
+                "type": "User.Event",
+                "event_address": "1" * 64,
+                "event_hash": "2" * 64,
+                "started_at": "2026-09-20T00:00:00Z",
+                "origin": "user",
+                "observations": [
+                    {
+                        "observed_at": "2026-09-20T00:00:00Z",
+                        "source_ref": {
+                            "source_id": "source-one",
+                            "record_index": 1,
+                            "line": 1,
+                        },
+                    }
+                ],
+                "opaque_payload_hash": "3" * 64,
+            }
+        ],
+        "messages": [
+            {
+                "type": "Chat.Message",
+                "message_address": "4" * 64,
+                "message_hash": "5" * 64,
+                "side": "user",
+                "text": "hello",
+                "event_refs": [
+                    {"event_address": "1" * 64, "event_hash": "2" * 64}
+                ],
+            }
+        ],
+        "turns": [
+            {
+                "type": "Chat.Turn",
+                "turn_address": "6" * 64,
+                "turn_hash": "7" * 64,
+                "side": "user",
+                "event_refs": [
+                    {"event_address": "1" * 64, "event_hash": "2" * 64}
+                ],
+                "message_refs": [
+                    {"message_address": "4" * 64, "message_hash": "5" * 64}
+                ],
+            }
+        ],
+        "loaded_contexts": [
+            {
+                "type": "Agent.Loaded.Context",
+                "agent_event_ref": {
+                    "event_address": "1" * 64,
+                    "event_hash": "2" * 64,
+                },
+                "event_refs": [
+                    {"event_address": "1" * 64, "event_hash": "2" * 64}
+                ],
+            }
+        ],
     }
 
 
@@ -65,11 +119,11 @@ def test_cache_is_one_streamable_directory_per_normal_model(
         "loaded-contexts.jsonl",
     }
     metadata = json.loads((path / "metadata.json").read_text(encoding="utf-8"))
-    assert metadata["class"] == "tarav.chatlas.normal_model_cache"
-    assert metadata["schema_version"] == 2
+    assert metadata["schema"] == "tarav.chatlas.normal-model-cache"
+    assert metadata["schema_version"] == 3
     assert metadata["model"] == {
         key: model[key]
-        for key in ("class", "schema_version", "metadata", "session", "sources")
+        for key in ("schema", "schema_version", "metadata", "session", "sources")
     }
     assert metadata["counts"] == {
         "events": 1,

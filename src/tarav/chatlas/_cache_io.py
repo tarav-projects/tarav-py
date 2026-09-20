@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-_CHATLAS_CACHE_SCHEMA_VERSION = 1
+_CHATLAS_CACHE_SCHEMA_VERSION = 2
 
 
 def load_chatlas_cache_section(
@@ -29,12 +29,12 @@ def load_chatlas_cache_section(
 def write_chatlas_cache_section(
     cache_path: Path,
     *,
-    cache_class: str,
+    cache_schema: str,
     entries_key: str,
     entries: dict[str, Any],
 ) -> None:
     payload = {
-        "class": cache_class,
+        "schema": cache_schema,
         "schema_version": _CHATLAS_CACHE_SCHEMA_VERSION,
         entries_key: entries,
     }

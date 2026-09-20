@@ -6,6 +6,7 @@ import re
 from typing import Iterable
 
 from .model import JsonObject
+from .records import ChatMessage
 
 
 _FULL_SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -42,6 +43,7 @@ def compute_chat_message_hash(message: JsonObject) -> str:
 
 
 def chat_message_ref(message: JsonObject) -> JsonObject:
+    message = ChatMessage.from_json(message).to_json()
     address = _full_digest(
         message.get("message_address"), field="message_address"
     )
@@ -62,14 +64,12 @@ def resolve_chat_message_ref(
         raise ValueError(f"current Chat.Message projection contains duplicate address {address}")
     if not addressed:
         return {
-            "class": "Chat.Message.Ref.Resolution",
             "standing": "MISSING",
             "message": None,
         }
-    current = addressed[0]
+    current = ChatMessage.from_json(addressed[0]).to_json()
     current_hash = _full_digest(current.get("message_hash"), field="message_hash")
     return {
-        "class": "Chat.Message.Ref.Resolution",
         "standing": "MATCHED" if current_hash == expected_hash else "AMENDED",
         "message": current,
     }

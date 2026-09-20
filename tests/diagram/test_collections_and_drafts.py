@@ -145,18 +145,41 @@ def _authorization_gate(
 
 
 def _evidence() -> ChatlasEvidence:
+    event_ref = {"event_address": "b" * 64, "event_hash": "c" * 64}
     message = {
+        "type": "Chat.Message",
         "message_address": "d" * 64,
         "message_hash": "e" * 64,
         "side": "user",
         "text": "$tarav-hugentics --impl --dev",
+        "event_refs": [event_ref],
     }
     model = {
         "session": {"identity_hash": "a" * 64, "session_id": "session"},
-        "events": [],
+        "events": [
+            {
+                "type": "User.Event",
+                **event_ref,
+                "started_at": "2026-09-20T00:00:00Z",
+                "origin": "user",
+                "observations": [
+                    {
+                        "observed_at": "2026-09-20T00:00:00Z",
+                        "source_ref": {
+                            "source_id": "source-one",
+                            "record_index": 1,
+                            "line": 1,
+                        },
+                    }
+                ],
+                "opaque_payload_hash": "0" * 64,
+                "content": {"text": "$tarav-hugentics --impl --dev"},
+            }
+        ],
         "messages": [message],
         "turns": [
             {
+                "type": "Chat.Turn",
                 "turn_address": "b" * 64,
                 "turn_hash": "c" * 64,
                 "side": "user",
@@ -166,7 +189,7 @@ def _evidence() -> ChatlasEvidence:
                         "message_hash": "e" * 64,
                     }
                 ],
-                "event_refs": [],
+                "event_refs": [event_ref],
             }
         ],
     }

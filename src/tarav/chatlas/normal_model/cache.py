@@ -24,10 +24,11 @@ from .pipeline import (
     normal_model_producer_commit,
     transcript_paths,
 )
+from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record
 
 
-CACHE_CLASS = "tarav.chatlas.normal_model_cache"
-CACHE_SCHEMA_VERSION = 2
+CACHE_SCHEMA = "tarav.chatlas.normal-model-cache"
+CACHE_SCHEMA_VERSION = 3
 CACHE_ROOT = Path("normal-model")
 LOCK_ROOT = CACHE_ROOT / "locks"
 METADATA_FILENAME = "metadata.json"
@@ -41,7 +42,7 @@ _COLLECTION_FILES = {
     "turns": TURNS_FILENAME,
     "loaded_contexts": LOADED_CONTEXTS_FILENAME,
 }
-_MODEL_HEADER_KEYS = ("class", "schema_version", "metadata", "session", "sources")
+_MODEL_HEADER_KEYS = ("schema", "schema_version", "metadata", "session", "sources")
 CacheStanding = Literal["FRESH", "STALE", "MISSING"]
 
 
@@ -94,7 +95,15 @@ class NormalModelCacheReader:
 
     def _iter_collection(self, name: str) -> Iterator[JsonObject]:
         filename = _COLLECTION_FILES[name]
-        yield from _iter_jsonl(self.path / filename)
+        for value in _iter_jsonl(self.path / filename):
+            if name == "events":
+                yield event_record(value).to_json()
+            elif name == "messages":
+                yield ChatMessage.from_json(value).to_json()
+            elif name == "turns":
+                yield ChatTurn.from_json(value).to_json()
+            else:
+                yield AgentLoadedContext.from_json(value).to_json()
 
 
 def normal_model_cache_path(
@@ -227,7 +236,7 @@ def _source_fingerprints(row: JsonObject) -> list[JsonObject]:
 
 
 def _validate_model(model: JsonObject, *, identity: str) -> None:
-    if model.get("class") != "tarav.chatlas.normal_model":
+    if model.get("schema") != "tarav.chatlas.normal-model":
         raise CliError("normalization did not produce a Normal Model")
     if model.get("schema_version") != NORMAL_MODEL_SCHEMA_VERSION:
         raise CliError("normalization produced an unsupported Normal Model schema")
@@ -250,7 +259,7 @@ def _replace_cache_directory(
     temporary.mkdir(parents=True, exist_ok=False)
     try:
         metadata: JsonObject = {
-            "class": CACHE_CLASS,
+            "schema": CACHE_SCHEMA,
             "schema_version": CACHE_SCHEMA_VERSION,
             **deepcopy(cache_identity),
             "model": {key: deepcopy(model[key]) for key in _MODEL_HEADER_KEYS},
@@ -325,7 +334,7 @@ def _read_metadata(path: Path, *, required: bool) -> JsonObject | None:
         return None
     if (
         not isinstance(value, dict)
-        or value.get("class") != CACHE_CLASS
+        or value.get("schema") != CACHE_SCHEMA
         or value.get("schema_version") != CACHE_SCHEMA_VERSION
     ):
         if required:

@@ -186,7 +186,7 @@ def _normalize(
             is_primary_user_message=is_primary_user_message,
         )
         event: JsonObject = {
-            "class": {
+            "type": {
                 "user": "User.Event",
                 "agent": "Agent.Event",
                 "unresolved": "Unresolved.Event",
@@ -216,7 +216,7 @@ def _normalize(
         if message_side is not None:
             chat_messages.append(
                 {
-                    "class": "Chat.Message",
+                    "type": "Chat.Message",
                     "message_address": compute_chat_message_address(
                         provider="claude-code",
                         scope=session_scope,
@@ -252,7 +252,7 @@ def _normalize(
         if context:
             loaded_contexts.append(
                 {
-                    "class": "Agent.Loaded.Context",
+                    "type": "Agent.Loaded.Context",
                     "agent_event_address": event_address_by_uuid[native_uuid],
                     "event_addresses": list(context),
                 }

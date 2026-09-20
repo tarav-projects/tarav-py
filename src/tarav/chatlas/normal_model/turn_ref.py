@@ -6,6 +6,7 @@ import re
 from typing import Iterable
 
 from .model import JsonObject
+from .records import ChatTurn
 
 
 _FULL_SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -71,6 +72,7 @@ def compute_chat_turn_hash(
 
 
 def chat_turn_ref(turn: JsonObject) -> JsonObject:
+    turn = ChatTurn.from_json(turn).to_json()
     return {
         "turn_address": _full_digest(turn.get("turn_address"), field="turn_address"),
         "turn_hash": _full_digest(turn.get("turn_hash"), field="turn_hash"),
@@ -90,14 +92,12 @@ def resolve_chat_turn_ref(
         )
     if not addressed:
         return {
-            "class": "Chat.Turn.Ref.Resolution",
             "standing": "MISSING",
             "turn": None,
         }
-    current = addressed[0]
+    current = ChatTurn.from_json(addressed[0]).to_json()
     current_hash = _full_digest(current.get("turn_hash"), field="turn_hash")
     return {
-        "class": "Chat.Turn.Ref.Resolution",
         "standing": "MATCHED" if current_hash == expected_hash else "AMENDED",
         "turn": current,
     }

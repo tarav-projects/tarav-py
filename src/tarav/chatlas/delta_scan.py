@@ -589,8 +589,8 @@ def _native_derivation_signature(
 ) -> dict[str, object]:
     timestamp = session.session_ref.sort_timestamp()
     signature: dict[str, object] = {
-        "class": "agentos_chatlas.session_index_derivation",
-        "schema_version": 1,
+        "schema": "tarav.chatlas.session-index-derivation",
+        "schema_version": 2,
         "provider": session.provider_instance.provider,
         "provider_instance_fingerprint": session.provider_instance.fingerprint,
         "home": provider_instance_home(session.provider_instance),
@@ -675,7 +675,11 @@ def _load_derivation_cache_partition(
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != "tarav.chatlas.session-index-derivations"
+        or payload.get("schema_version") != 2
+    ):
         return {}
     entries = payload.get("sessions")
     if not isinstance(entries, dict):
@@ -695,8 +699,8 @@ def _write_derivation_cache_partition(
 ) -> None:
     path = _derivation_cache_partition_path(cache_root, instance=instance)
     payload = {
-        "class": "agentos_chatlas.session_index_derivations",
-        "schema_version": 1,
+        "schema": "tarav.chatlas.session-index-derivations",
+        "schema_version": 2,
         "provider": instance.provider,
         "provider_instance_fingerprint": instance.fingerprint,
         "sessions": {

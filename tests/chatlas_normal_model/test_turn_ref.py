@@ -12,7 +12,7 @@ from tarav.chatlas.normal_model.turn_ref import (
 
 def _turn() -> dict[str, object]:
     turn = {
-        "class": "Chat.Turn",
+        "type": "Chat.Turn",
         "turn_address": compute_chat_turn_address(
             provider="codex",
             scope="session-one",

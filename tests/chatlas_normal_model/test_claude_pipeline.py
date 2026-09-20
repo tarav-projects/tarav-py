@@ -391,7 +391,8 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
     model = build_normal_model_from_row(_row(path))
 
     assert model["session"]["provider"] == "claude-code"
-    assert model["schema_version"] == 1
+    assert model["schema"] == "tarav.chatlas.normal-model"
+    assert model["schema_version"] == 2
     assert "raw" not in model
     assert all(
         "record" not in event and "raw" not in event for event in model["events"]
@@ -509,7 +510,7 @@ def test_claude_human_queued_command_is_a_user_message_at_queue_time(
     queued_message = messages[2]
     queued_ref = queued_message["event_refs"][0]
     queued_event = resolve_event_ref(model["events"], queued_ref)["event"]
-    assert queued_event["class"] == "User.Event"
+    assert queued_event["type"] == "User.Event"
     assert queued_event["origin"] == "user"
     assert queued_event["started_at"] == "2026-08-15T00:00:03Z"
     assert queued_event["content"] == {"text": "do this too"}
@@ -670,7 +671,7 @@ def test_claude_unknown_timed_origins_remain_unresolved(
         "agent",
         "agent",
     ]
-    assert [event["class"] for event in model["events"]] == [
+    assert [event["type"] for event in model["events"]] == [
         "Unresolved.Event",
         "Unresolved.Event",
         "Agent.Event",

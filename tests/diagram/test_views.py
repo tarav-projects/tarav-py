@@ -370,41 +370,83 @@ def test_view_verbatim_fence_is_collision_free() -> None:
 
 
 def _normal_model() -> dict[str, object]:
+    user_event_ref = {
+        "event_address": REF["turn_address"],
+        "event_hash": REF["turn_hash"],
+    }
+    agent_event_ref = {
+        "event_address": AGENT_REF["turn_address"],
+        "event_hash": AGENT_REF["turn_hash"],
+    }
     return {
         "session": {"identity_hash": REF["session_identity"]},
-        "events": [],
+        "events": [
+            _event_record("user", user_event_ref, "Please keep context selection Agent-operated."),
+            _event_record("agent", agent_event_ref, "Settled compact View context."),
+        ],
         "messages": [
             {
+                "type": "Chat.Message",
                 "message_address": "f" * 64,
                 "message_hash": "0" * 64,
                 "side": "user",
                 "text": "Please keep context selection Agent-operated.",
+                "event_refs": [user_event_ref],
             },
             {
+                "type": "Chat.Message",
                 "message_address": "1" * 64,
                 "message_hash": "2" * 64,
                 "side": "agent",
                 "text": "Settled compact View context.",
+                "event_refs": [agent_event_ref],
             },
         ],
         "turns": [
             {
-                **REF,
+                "type": "Chat.Turn",
+                "turn_address": REF["turn_address"],
+                "turn_hash": REF["turn_hash"],
                 "side": "user",
                 "message_refs": [
                     {"message_address": "f" * 64, "message_hash": "0" * 64}
                 ],
-                "event_refs": [],
+                "event_refs": [user_event_ref],
             },
             {
-                **AGENT_REF,
+                "type": "Chat.Turn",
+                "turn_address": AGENT_REF["turn_address"],
+                "turn_hash": AGENT_REF["turn_hash"],
                 "side": "agent",
                 "message_refs": [
                     {"message_address": "1" * 64, "message_hash": "2" * 64}
                 ],
-                "event_refs": [],
+                "event_refs": [agent_event_ref],
             },
         ],
+    }
+
+
+def _event_record(
+    side: str, event_ref: dict[str, str], text: str
+) -> dict[str, object]:
+    return {
+        "type": "User.Event" if side == "user" else "Agent.Event",
+        **event_ref,
+        "started_at": "2026-09-20T00:00:00Z",
+        "origin": side,
+        "observations": [
+            {
+                "observed_at": "2026-09-20T00:00:00Z",
+                "source_ref": {
+                    "source_id": "source-one",
+                    "record_index": 1,
+                    "line": 1,
+                },
+            }
+        ],
+        "opaque_payload_hash": "0" * 64,
+        "content": {"text": text},
     }
 
 

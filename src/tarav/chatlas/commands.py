@@ -14,6 +14,7 @@ from tarav.chatlas.normal_model import (
     provide_normal_model_reader,
 )
 from tarav.chatlas.query import ChatlasQuery, ChatlasQueryEngine, ChatlasQueryError
+from tarav.chatlas.raw_archive import migrate_raw_partition_manifests
 from tarav.chatlas.rendering import (
     DEFAULT_CHATLAS_RENDERER,
     ChatlasRenderError,
@@ -67,6 +68,11 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_root_option(reset)
     reset.set_defaults(handler=_cmd_index_reset)
+    migrate = index_commands.add_parser(
+        "migrate", help="Migrate retained Chatlas records to current schemas."
+    )
+    _add_root_option(migrate)
+    migrate.set_defaults(handler=_cmd_index_migrate)
 
     raw = commands.add_parser(
         "raw", help="Resolve retained raw artifacts for one exact session."
@@ -258,7 +264,6 @@ def _cmd_update(args: argparse.Namespace) -> int:
 def _cmd_current_session(args: argparse.Namespace) -> int:
     provider, session_id = _resolve_current_session(args.provider)
     payload = {
-        "class": "Chatlas.Current.Session",
         "provider": provider,
         "session_id": session_id,
     }
@@ -277,6 +282,14 @@ def _cmd_index_redo(args: argparse.Namespace) -> int:
             progress=_progress,
         )
     )
+
+
+def _cmd_index_migrate(args: argparse.Namespace) -> int:
+    root = _root(args)
+    from tarav.chatlas.paths import default_chatlas_root
+
+    chatlas_root = (root or default_chatlas_root()).expanduser().resolve()
+    return _print(migrate_raw_partition_manifests(chatlas_root / "raw"))
 
 
 def _cmd_index_reset(args: argparse.Namespace) -> int:
@@ -452,7 +465,7 @@ def _project_computed_model(
     projected = {
         key: model[key]
         for key in (
-            "class",
+            "schema",
             "schema_version",
             "metadata",
             "session",

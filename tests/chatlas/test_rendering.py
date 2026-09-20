@@ -22,7 +22,7 @@ def _result(
     turn_hash = "a" * 64
     messages = tuple(
         {
-            "class": "Chat.Message",
+            "type": "Chat.Message",
             "message_address": f"{index + 1:064x}",
             "message_hash": f"{index + 101:064x}",
             "side": "user",
@@ -33,7 +33,7 @@ def _result(
     finding = ChatlasTurnFinding(
         turn_hash[:8],
         {
-            "class": "Chat.Turn",
+            "type": "Chat.Turn",
             "turn_address": "b" * 64,
             "turn_hash": turn_hash,
             "side": "user",
@@ -62,7 +62,7 @@ def test_default_renderer_presents_every_message_in_one_turn() -> None:
     assert rendered.content == (
         "## User Turn `aaaaaaaa`\n\nfirst message\n\nsecond message"
     )
-    assert rendered.to_dict()["query_result"]["class"] == "Chatlas.Query.Result"
+    assert "class" not in rendered.to_dict()["query_result"]
 
 
 def test_renderer_registry_accepts_an_opaque_fully_qualified_name() -> None:

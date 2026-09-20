@@ -114,25 +114,41 @@ def _diagram_with_line(tmp_path: Path):
 
 
 def _normal_model() -> dict[str, object]:
+    user_event_ref = {
+        "event_address": USER_REF["turn_address"],
+        "event_hash": USER_REF["turn_hash"],
+    }
+    agent_event_ref = {
+        "event_address": AGENT_REF["turn_address"],
+        "event_hash": AGENT_REF["turn_hash"],
+    }
     return {
         "session": {"identity_hash": IDENTITY, "session_id": "session-one"},
-        "events": [],
+        "events": [
+            _event_record("user", user_event_ref, "Please make Diagram renderers named."),
+            _event_record("agent", agent_event_ref, "Settled rendering proposal."),
+        ],
         "messages": [
             {
+                "type": "Chat.Message",
                 "message_address": "3" * 64,
                 "message_hash": "4" * 64,
                 "side": "user",
                 "text": "Please make Diagram renderers named.",
+                "event_refs": [user_event_ref],
             },
             {
+                "type": "Chat.Message",
                 "message_address": "7" * 64,
                 "message_hash": "8" * 64,
                 "side": "agent",
                 "text": "Settled rendering proposal.",
+                "event_refs": [agent_event_ref],
             },
         ],
         "turns": [
             {
+                "type": "Chat.Turn",
                 "turn_address": USER_REF["turn_address"],
                 "turn_hash": USER_REF["turn_hash"],
                 "side": "user",
@@ -142,9 +158,10 @@ def _normal_model() -> dict[str, object]:
                         "message_hash": "4" * 64,
                     }
                 ],
-                "event_refs": [],
+                "event_refs": [user_event_ref],
             },
             {
+                "type": "Chat.Turn",
                 "turn_address": AGENT_REF["turn_address"],
                 "turn_hash": AGENT_REF["turn_hash"],
                 "side": "agent",
@@ -154,9 +171,32 @@ def _normal_model() -> dict[str, object]:
                         "message_hash": "8" * 64,
                     }
                 ],
-                "event_refs": [],
+                "event_refs": [agent_event_ref],
             },
         ],
+    }
+
+
+def _event_record(
+    side: str, event_ref: dict[str, str], text: str
+) -> dict[str, object]:
+    return {
+        "type": "User.Event" if side == "user" else "Agent.Event",
+        **event_ref,
+        "started_at": "2026-09-20T00:00:00Z",
+        "origin": side,
+        "observations": [
+            {
+                "observed_at": "2026-09-20T00:00:00Z",
+                "source_ref": {
+                    "source_id": "source-one",
+                    "record_index": 1,
+                    "line": 1,
+                },
+            }
+        ],
+        "opaque_payload_hash": "0" * 64,
+        "content": {"text": text},
     }
 
 
@@ -271,9 +311,28 @@ def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -
     )
     model.namespace.apply(CaptureManifest.create(model.ship, annotations=(gate,)))
     normal_model = _normal_model()
+    proposal_event_ref = {
+        "event_address": proposal_ref.turn_address,
+        "event_hash": proposal_ref.turn_hash,
+    }
+    approval_event_ref = {
+        "event_address": approval_ref.turn_address,
+        "event_hash": approval_ref.turn_hash,
+    }
+    normal_model["events"].extend(
+        [
+            _event_record(
+                "agent",
+                proposal_event_ref,
+                "Renderers are named read-only projections.",
+            ),
+            _event_record("user", approval_event_ref, f"::approve {token}"),
+        ]
+    )
     normal_model["messages"].extend(
         [
             {
+                "type": "Chat.Message",
                 "message_address": "b" * 64,
                 "message_hash": "c" * 64,
                 "side": "agent",
@@ -281,19 +340,24 @@ def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -
                     "Renderers are named read-only projections.\n"
                     f"Approve with ::approve {token}"
                 ),
+                "event_refs": [proposal_event_ref],
             },
             {
+                "type": "Chat.Message",
                 "message_address": "f" * 64,
                 "message_hash": "0" * 64,
                 "side": "user",
                 "text": f"::approve {token}",
+                "event_refs": [approval_event_ref],
             },
         ]
     )
     normal_model["turns"].extend(
         [
             {
-                **proposal_ref.model_dump(mode="json"),
+                "type": "Chat.Turn",
+                "turn_address": proposal_ref.turn_address,
+                "turn_hash": proposal_ref.turn_hash,
                 "side": "agent",
                 "message_refs": [
                     {
@@ -301,10 +365,12 @@ def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -
                         "message_hash": "c" * 64,
                     }
                 ],
-                "event_refs": [],
+                "event_refs": [proposal_event_ref],
             },
             {
-                **approval_ref.model_dump(mode="json"),
+                "type": "Chat.Turn",
+                "turn_address": approval_ref.turn_address,
+                "turn_hash": approval_ref.turn_hash,
                 "side": "user",
                 "message_refs": [
                     {
@@ -312,7 +378,7 @@ def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -
                         "message_hash": "0" * 64,
                     }
                 ],
-                "event_refs": [],
+                "event_refs": [approval_event_ref],
             },
         ]
     )

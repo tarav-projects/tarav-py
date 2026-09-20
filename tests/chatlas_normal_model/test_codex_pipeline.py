@@ -143,7 +143,7 @@ def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
         "agent",
         "unresolved",
     ]
-    assert [event["class"] for event in model["events"]] == [
+    assert [event["type"] for event in model["events"]] == [
         "Agent.Event",
         "Agent.Event",
         "Agent.Event",
@@ -170,14 +170,15 @@ def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
     )
     contexts = model["loaded_contexts"]
     assert all(
-        message["class"] == "Chat.Message"
+        message["type"] == "Chat.Message"
         for message in model["messages"]
     )
-    assert all(context["class"] == "Agent.Loaded.Context" for context in contexts)
+    assert all(context["type"] == "Agent.Loaded.Context" for context in contexts)
     assert len(contexts) == 2
     assert contexts[0]["event_refs"] == contexts[1]["event_refs"]
     assert len(contexts[0]["event_refs"]) == 3
-    assert model["schema_version"] == 1
+    assert model["schema"] == "tarav.chatlas.normal-model"
+    assert model["schema_version"] == 2
     assert "raw" not in model
     assert all(
         "record" not in event and "raw" not in event for event in model["events"]

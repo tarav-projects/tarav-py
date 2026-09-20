@@ -18,13 +18,14 @@ def _message(
     second_hash: str = "2" * 64,
 ) -> dict[str, object]:
     message: dict[str, object] = {
-        "class": "Chat.Message",
+        "type": "Chat.Message",
         "message_address": compute_chat_message_address(
             provider="codex",
             scope="session-1",
             place={"record_index": 3},
         ),
         "side": side,
+        "text": "hello",
         "event_refs": [
             {"event_address": "a" * 64, "event_hash": first_hash},
             {"event_address": "b" * 64, "event_hash": second_hash},
@@ -62,17 +63,14 @@ def test_chat_message_ref_resolution_is_stateless_and_consumer_neutral() -> None
     stored_ref = chat_message_ref(original)
 
     assert resolve_chat_message_ref([original], stored_ref) == {
-        "class": "Chat.Message.Ref.Resolution",
         "standing": "MATCHED",
         "message": original,
     }
     assert resolve_chat_message_ref([current], stored_ref) == {
-        "class": "Chat.Message.Ref.Resolution",
         "standing": "AMENDED",
         "message": current,
     }
     assert resolve_chat_message_ref([], stored_ref) == {
-        "class": "Chat.Message.Ref.Resolution",
         "standing": "MISSING",
         "message": None,
     }

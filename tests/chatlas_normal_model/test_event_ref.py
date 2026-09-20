@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from hashlib import sha256
 from inspect import signature
+import json
 
 from tarav.chatlas.normal_model.event_ref import (
     compute_event_address,
@@ -13,7 +15,7 @@ from tarav.chatlas.normal_model.event_ref import (
 
 def _event(*, text: str = "hello", raw_marker: str = "first") -> dict[str, object]:
     event: dict[str, object] = {
-        "class": "User.Event",
+        "type": "User.Event",
         "event_address": compute_event_address(
             provider="codex",
             scope="session-1",
@@ -22,8 +24,17 @@ def _event(*, text: str = "hello", raw_marker: str = "first") -> dict[str, objec
         "started_at": "2026-08-15T00:00:03Z",
         "origin": "user",
         "content": {"text": text},
-        "raw": {"provider_marker": raw_marker},
-        "observations": [],
+        "observations": [
+            {
+                "observed_at": "2026-08-15T00:00:03Z",
+                "source_ref": {
+                    "source_id": f"source-{raw_marker}",
+                    "record_index": 3,
+                    "line": 3,
+                },
+            }
+        ],
+        "opaque_payload_hash": "f" * 64,
     }
     event["event_hash"] = compute_event_hash(event)
     return event
@@ -51,6 +62,25 @@ def test_event_address_has_no_raw_model_version_axis() -> None:
     assert "raw_model_version" not in signature(compute_event_address).parameters
 
 
+def test_registered_type_preserves_the_legacy_event_hash_preimage() -> None:
+    event = _event()
+    legacy_body = {
+        "class": "User.Event",
+        "origin": "user",
+        "started_at": "2026-08-15T00:00:03Z",
+        "content": {"text": "hello"},
+    }
+    encoded = json.dumps(
+        legacy_body,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+    assert event["event_hash"] == sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def test_event_ref_resolution_is_stateless_and_consumer_neutral() -> None:
     original = _event()
     current = _event(text="amended")
@@ -61,17 +91,14 @@ def test_event_ref_resolution_is_stateless_and_consumer_neutral() -> None:
     missing = resolve_event_ref([], stored_ref)
 
     assert matched == {
-        "class": "Event.Ref.Resolution",
         "standing": "MATCHED",
         "event": original,
     }
     assert amended == {
-        "class": "Event.Ref.Resolution",
         "standing": "AMENDED",
         "event": current,
     }
     assert missing == {
-        "class": "Event.Ref.Resolution",
         "standing": "MISSING",
         "event": None,
     }

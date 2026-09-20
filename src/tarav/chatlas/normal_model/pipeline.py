@@ -28,11 +28,12 @@ from .event_ref import event_ref
 from .message_ref import compute_chat_message_hash
 from .model import JsonObject
 from .message_ref import chat_message_ref
+from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record
 from .turn_ref import compute_chat_turn_hash
 from .turns import build_chat_turn_candidates
 
 
-NORMAL_MODEL_SCHEMA_VERSION = 1
+NORMAL_MODEL_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +155,10 @@ def build_normal_model_from_row(
             f"Chatlas found no recognized {provider} transcript artifact for the selected session"
         )
 
-    events = sorted(events_by_address.values(), key=_event_sort_key)
+    events = sorted(
+        (event_record(event).to_json() for event in events_by_address.values()),
+        key=_event_sort_key,
+    )
     event_by_address = {str(event["event_address"]): event for event in events}
     event_order = {
         str(event["event_address"]): index for index, event in enumerate(events)
@@ -195,7 +199,7 @@ def build_normal_model_from_row(
         key=lambda context: _context_sort_key(context, event_order=event_order),
     )
     model: JsonObject = {
-        "class": "tarav.chatlas.normal_model",
+        "schema": "tarav.chatlas.normal-model",
         "schema_version": NORMAL_MODEL_SCHEMA_VERSION,
         "metadata": {"commit": normal_model_producer_commit()},
         "session": {
@@ -319,7 +323,7 @@ def _finalize_chat_message(
         event_by_address=event_by_address,
     )
     result["message_hash"] = compute_chat_message_hash(result)
-    return result
+    return ChatMessage.from_json(result).to_json()
 
 
 def _finalize_loaded_context(
@@ -336,7 +340,7 @@ def _finalize_loaded_context(
         result.pop("event_addresses", None),
         event_by_address=event_by_address,
     )
-    return result
+    return AgentLoadedContext.from_json(result).to_json()
 
 
 def _finalize_chat_turn(
@@ -374,7 +378,7 @@ def _finalize_chat_turn(
         )
     except ValueError as exc:
         raise CliError(f"Chatlas cannot hash Chat.Turn: {exc}") from exc
-    return result
+    return ChatTurn.from_json(result).to_json()
 
 
 def _validate_message_turn_containment(

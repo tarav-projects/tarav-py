@@ -9,6 +9,30 @@ from tarav.chatlas.rendering import (
 )
 
 
+def _event_ref() -> dict[str, str]:
+    return {"event_address": "4" * 64, "event_hash": "5" * 64}
+
+
+def _event() -> dict[str, object]:
+    return {
+        "type": "User.Event",
+        **_event_ref(),
+        "started_at": "2026-09-20T00:00:00Z",
+        "origin": "user",
+        "observations": [
+            {
+                "observed_at": "2026-09-20T00:00:00Z",
+                "source_ref": {
+                    "source_id": "source-one",
+                    "record_index": 1,
+                    "line": 1,
+                },
+            }
+        ],
+        "opaque_payload_hash": "6" * 64,
+    }
+
+
 def test_chatlas_help_exposes_current_commands() -> None:
     parser = build_parser()
     chatlas = next(
@@ -50,11 +74,13 @@ def test_query_and_default_render_share_query_execution_and_output(
         def iter_turns(self):
             calls.append(("turns",))
             yield {
-                "class": "Chat.Turn",
+                "type": "Chat.Turn",
                 "turn_address": "1" * 64,
                 "turn_hash": "a" * 64,
                 "side": "user",
-                "event_refs": [],
+                "event_refs": [
+                    {"event_address": "4" * 64, "event_hash": "5" * 64}
+                ],
                 "message_refs": [
                     {
                         "message_address": "2" * 64,
@@ -66,12 +92,35 @@ def test_query_and_default_render_share_query_execution_and_output(
         def iter_messages(self):
             calls.append(("messages",))
             yield {
-                "class": "Chat.Message",
+                "type": "Chat.Message",
                 "message_address": "2" * 64,
                 "message_hash": "3" * 64,
                 "side": "user",
-                "event_refs": [],
+                "event_refs": [
+                    {"event_address": "4" * 64, "event_hash": "5" * 64}
+                ],
                 "text": "selected text",
+            }
+
+        def iter_events(self):
+            calls.append(("events",))
+            yield {
+                "type": "User.Event",
+                "event_address": "4" * 64,
+                "event_hash": "5" * 64,
+                "started_at": "2026-09-20T00:00:00Z",
+                "origin": "user",
+                "observations": [
+                    {
+                        "observed_at": "2026-09-20T00:00:00Z",
+                        "source_ref": {
+                            "source_id": "source-one",
+                            "record_index": 1,
+                            "line": 1,
+                        },
+                    }
+                ],
+                "opaque_payload_hash": "6" * 64,
             }
 
     monkeypatch.setattr(
@@ -86,7 +135,14 @@ def test_query_and_default_render_share_query_execution_and_output(
 
     assert queried == rendered
     assert "selected text" in queried
-    assert calls == [("turns",), ("messages",), ("turns",), ("messages",)]
+    assert calls == [
+        ("turns",),
+        ("messages",),
+        ("events",),
+        ("turns",),
+        ("messages",),
+        ("events",),
+    ]
 
 
 def test_current_session_reports_verified_codex_and_claude_context(
@@ -97,7 +153,6 @@ def test_current_session_reports_verified_codex_and_claude_context(
 
     assert main(["chatlas", "current-session", "--provider", "codex", "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == {
-        "class": "Chatlas.Current.Session",
         "provider": "codex",
         "session_id": "codex-session",
     }
@@ -118,7 +173,6 @@ def test_current_session_reports_verified_codex_and_claude_context(
         == 0
     )
     assert json.loads(capsys.readouterr().out) == {
-        "class": "Chatlas.Current.Session",
         "provider": "claude-code",
         "session_id": "claude-session",
     }
@@ -145,15 +199,19 @@ def test_render_selects_a_registered_renderer_and_passes_options(
 
         def iter_turns(self):
             yield {
+                "type": "Chat.Turn",
                 "turn_address": "1" * 64,
                 "turn_hash": "a" * 64,
                 "side": "user",
-                "event_refs": [],
+                "event_refs": [_event_ref()],
                 "message_refs": [],
             }
 
         def iter_messages(self):
             return iter(())
+
+        def iter_events(self):
+            yield _event()
 
     monkeypatch.setattr(
         "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
@@ -195,15 +253,19 @@ def test_query_json_uses_the_default_renderer_envelope(monkeypatch, capsys) -> N
 
         def iter_turns(self):
             yield {
+                "type": "Chat.Turn",
                 "turn_address": "1" * 64,
                 "turn_hash": "a" * 64,
                 "side": "user",
-                "event_refs": [],
+                "event_refs": [_event_ref()],
                 "message_refs": [],
             }
 
         def iter_messages(self):
             return iter(())
+
+        def iter_events(self):
+            yield _event()
 
     monkeypatch.setattr(
         "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
@@ -457,10 +519,11 @@ def test_render_uses_query_discovery_with_the_turn_ledger_renderer(
 
         def iter_turns(self):
             yield {
+                "type": "Chat.Turn",
                 "turn_address": "1" * 64,
                 "turn_hash": "a" * 64,
                 "side": "user",
-                "event_refs": [],
+                "event_refs": [_event_ref()],
                 "message_refs": [
                     {"message_address": "2" * 64, "message_hash": "3" * 64}
                 ],
@@ -468,11 +531,16 @@ def test_render_uses_query_discovery_with_the_turn_ledger_renderer(
 
         def iter_messages(self):
             yield {
+                "type": "Chat.Message",
                 "message_address": "2" * 64,
                 "message_hash": "3" * 64,
                 "side": "user",
+                "event_refs": [_event_ref()],
                 "text": "discover this Turn",
             }
+
+        def iter_events(self):
+            yield _event()
 
     monkeypatch.setattr(
         "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
@@ -497,7 +565,7 @@ def test_render_uses_query_discovery_with_the_turn_ledger_renderer(
     )
 
     assert capsys.readouterr().out == (
-        "-  aaaaaaaaaaaaaaaa  user   discover this Turn\n"
+        "2026-09-20 00:00Z  aaaaaaaaaaaaaaaa  user   discover this Turn\n"
     )
 
 
@@ -508,22 +576,27 @@ def test_render_accepts_a_repeatable_turn_prefix_batch(monkeypatch, capsys) -> N
 
         def iter_turns(self):
             yield {
+                "type": "Chat.Turn",
                 "turn_address": "1" * 64,
                 "turn_hash": "a" * 64,
                 "side": "user",
-                "event_refs": [],
+                "event_refs": [_event_ref()],
                 "message_refs": [],
             }
             yield {
+                "type": "Chat.Turn",
                 "turn_address": "2" * 64,
                 "turn_hash": "b" * 64,
                 "side": "agent",
-                "event_refs": [],
+                "event_refs": [_event_ref()],
                 "message_refs": [],
             }
 
         def iter_messages(self):
             return iter(())
+
+        def iter_events(self):
+            yield _event()
 
     monkeypatch.setattr(
         "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
@@ -563,15 +636,19 @@ def test_render_formats_an_ordered_inlined_capture_batch(monkeypatch, capsys) ->
         def iter_turns(self):
             for digit in ("a", "b"):
                 yield {
+                    "type": "Chat.Turn",
                     "turn_address": digit * 64,
                     "turn_hash": digit * 64,
                     "side": "user",
-                    "event_refs": [],
+                    "event_refs": [_event_ref()],
                     "message_refs": [],
                 }
 
         def iter_messages(self):
             return iter(())
+
+        def iter_events(self):
+            yield _event()
 
     monkeypatch.setattr(
         "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
@@ -609,7 +686,7 @@ def test_normal_model_command_uses_an_exact_session_reference(
     class Reader:
         def project(self, **kwargs):
             calls.append({"projection": kwargs})
-            return {"class": "tarav.chatlas.normal_model", "events": []}
+            return {"schema": "tarav.chatlas.normal-model", "events": []}
 
     monkeypatch.setattr(
         "tarav.chatlas.commands.provide_normal_model_reader",
@@ -618,7 +695,7 @@ def test_normal_model_command_uses_an_exact_session_reference(
 
     assert main(["chatlas", "normal-model", "--identity-hash", "abc"]) == 0
     assert json.loads(capsys.readouterr().out) == {
-        "class": "tarav.chatlas.normal_model",
+        "schema": "tarav.chatlas.normal-model",
         "events": [],
     }
     assert calls == [
@@ -679,8 +756,8 @@ def test_normal_model_collection_flags_are_additive(monkeypatch, capsys) -> None
 
 def test_normal_model_all_and_raw_use_the_same_projection(monkeypatch, capsys) -> None:
     model = {
-        "class": "tarav.chatlas.normal_model",
-        "schema_version": 1,
+        "schema": "tarav.chatlas.normal-model",
+        "schema_version": 2,
         "metadata": {},
         "session": {},
         "sources": [],

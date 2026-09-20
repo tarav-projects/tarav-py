@@ -32,11 +32,12 @@ def _turn(
     message_refs: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
     return {
-        "class": "Chat.Turn",
+        "type": "Chat.Turn",
         "turn_address": address,
         "turn_hash": turn_hash,
         "side": side,
-        "event_refs": event_refs or [],
+        "event_refs": event_refs
+        or [{"event_address": EVENT_ONE_ADDRESS, "event_hash": EVENT_ONE_HASH}],
         "message_refs": message_refs or [],
     }
 
@@ -45,23 +46,35 @@ def _message(
     address: str, digest: str, text: str, *, side: str = "user"
 ) -> dict[str, object]:
     return {
-        "class": "Chat.Message",
+        "type": "Chat.Message",
         "message_address": address,
         "message_hash": digest,
         "side": side,
-        "event_refs": [],
+        "event_refs": [
+            {"event_address": EVENT_ONE_ADDRESS, "event_hash": EVENT_ONE_HASH}
+        ],
         "text": text,
     }
 
 
-def _event(
-    address: str, digest: str, *, started_at: object
-) -> dict[str, object]:
+def _event(address: str, digest: str, *, started_at: str) -> dict[str, object]:
     return {
-        "class": "Chat.Event",
+        "type": "User.Event",
         "event_address": address,
         "event_hash": digest,
         "started_at": started_at,
+        "origin": "user",
+        "observations": [
+            {
+                "observed_at": started_at,
+                "source_ref": {
+                    "source_id": "source-one",
+                    "record_index": 1,
+                    "line": 1,
+                },
+            }
+        ],
+        "opaque_payload_hash": "5" * 64,
     }
 
 
@@ -75,12 +88,22 @@ class Reader:
     ) -> None:
         self._turns = turns
         self._messages = messages
-        self._events = events or []
+        self._events = (
+            events
+            if events is not None
+            else [
+                _event(
+                    EVENT_ONE_ADDRESS,
+                    EVENT_ONE_HASH,
+                    started_at="2026-09-05T13:00:00Z",
+                )
+            ]
+        )
 
     def model_header(self) -> dict[str, object]:
         return {
-            "class": "tarav.chatlas.normal_model",
-            "schema_version": 1,
+            "schema": "tarav.chatlas.normal-model",
+            "schema_version": 2,
             "session": {
                 "provider": "codex",
                 "session_id": "session-one",
@@ -225,7 +248,13 @@ def test_query_rejects_an_amended_turn_event() -> None:
             )
         ],
         messages=[],
-        events=[_event(EVENT_ONE_ADDRESS, EVENT_TWO_HASH, started_at=None)],
+        events=[
+            _event(
+                EVENT_ONE_ADDRESS,
+                EVENT_TWO_HASH,
+                started_at="2026-09-05T13:00:00Z",
+            )
+        ],
     )
 
     with pytest.raises(ChatlasQueryError, match="Chat.Event was amended"):

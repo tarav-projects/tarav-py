@@ -15,18 +15,38 @@ class _Reader:
 
     def iter_turns(self):
         yield {
+            "type": "Chat.Turn",
             "turn_address": "e" * 64,
             "turn_hash": TURN_HASH,
             "side": "user",
             "message_refs": [],
-            "event_refs": [],
+            "event_refs": [
+                {"event_address": "a" * 64, "event_hash": "b" * 64}
+            ],
         }
 
     def iter_messages(self):
         return iter(())
 
     def iter_events(self):
-        return iter(())
+        yield {
+            "type": "User.Event",
+            "event_address": "a" * 64,
+            "event_hash": "b" * 64,
+            "started_at": "2026-09-20T00:00:00Z",
+            "origin": "user",
+            "observations": [
+                {
+                    "observed_at": "2026-09-20T00:00:00Z",
+                    "source_ref": {
+                        "source_id": "source-one",
+                        "record_index": 1,
+                        "line": 1,
+                    },
+                }
+            ],
+            "opaque_payload_hash": "c" * 64,
+        }
 
 
 def test_show_and_resolve_commands_report_one_breadcrumb(tmp_path, capsys):

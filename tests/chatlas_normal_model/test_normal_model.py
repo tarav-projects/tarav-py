@@ -7,7 +7,7 @@ from tarav.chatlas.normal_model import normal_model
 
 def test_provide_resolves_one_index_row_then_uses_cache(monkeypatch, tmp_path: Path) -> None:
     row = {"identity_hash": "abc", "session_id": "session-one"}
-    model = {"class": "tarav.chatlas.normal_model"}
+    model = {"schema": "tarav.chatlas.normal-model"}
     calls: list[tuple[str, dict[str, object]]] = []
 
     def resolve(**kwargs):
