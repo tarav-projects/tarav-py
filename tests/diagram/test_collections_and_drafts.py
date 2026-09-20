@@ -231,6 +231,48 @@ def test_collection_hosts_editions_without_polluting_primary_model_load(
     assert "Implementation-specific wording." not in rendered.content
 
 
+def test_object_list_serializes_collection_host_interfaces(
+    tmp_path: Path, capsys
+) -> None:
+    config_path = tmp_path / "diagram.json"
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
+    model = namespace.create_model(label="Tarav")
+    parent = _collection(model.ship, label="Parent")
+    child = _collection(
+        model.ship,
+        label="Child",
+        host=_host("collection", parent.id),
+    )
+    namespace.apply(CaptureManifest.create(model.ship, (parent, child)))
+    DiagramConfiguration.load(config_path, create=True).mount(namespace, default=True)
+
+    assert (
+        main(
+            [
+                "diagram",
+                "object",
+                "list",
+                "--model-ship",
+                model.ship,
+                "--kind",
+                "collection",
+                "--label",
+                "Child",
+                "--include-collection-content",
+                "--diagram-config",
+                str(config_path),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["objects"][0]["host"] == {
+        "kind": "collection",
+        "id": parent.id,
+    }
+
+
 def test_impl_req_lifecycle_surfaces_closed_writes_and_invalid_reopening(
     tmp_path: Path,
 ) -> None:

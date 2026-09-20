@@ -4,14 +4,20 @@ from collections.abc import Mapping
 
 from tarav.harness import TaravObject, TypeRegistry
 from tarav.harness.workflows import Workflow
-from . import FileReference, Reference, ReferenceResult
+from . import FilePositionReference, FileReference, Reference, ReferenceResult
 from .git import GitFileReference
 from .structured import StructuredFileReference
 
 
 class ReferenceWorkflow(Workflow):
     name = "references"
-    record_types = (Reference, FileReference, GitFileReference, StructuredFileReference)
+    record_types = (
+        Reference,
+        FileReference,
+        FilePositionReference,
+        GitFileReference,
+        StructuredFileReference,
+    )
 
     def __init__(self, records: TypeRegistry | None = None):
         self.records = (

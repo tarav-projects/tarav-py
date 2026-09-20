@@ -198,6 +198,7 @@ def test_python_env_reports_the_environment_without_provisioning_one() -> None:
 
 def test_promoted_tarav_domains_have_normal_package_ownership() -> None:
     assert (PACKAGE_ROOT / "archive" / "commands.py").is_file()
+    assert (PACKAGE_ROOT / "breadcrumbs" / "commands.py").is_file()
     assert (PACKAGE_ROOT / "diagram" / "commands.py").is_file()
     assert (PACKAGE_ROOT / "bloberia" / "hosted.py").is_file()
     assert (PACKAGE_ROOT / "_core" / "record_depot.py").is_file()

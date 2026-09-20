@@ -44,6 +44,8 @@ belong in their owning registries or state roots, not in `project.json`.
 
 - `tarav agent` — provider-neutral agent and account operations.
 - `tarav chatlas` — retained chat data, lossless normalization, and queries.
+- `tarav breadcrumbs` — opaque surface anchors, locator observations, and
+  workflow-owned typed attachments.
 - `tarav diagram` — semantic Models, Ships, Annotations, Views, and Drafts.
 - `tarav scoring` — Assertion-owned candidate adaptation, explicitly enrolled
   concrete Ranking Pool Types, frozen Ranking Runs, retained experiment evidence, live

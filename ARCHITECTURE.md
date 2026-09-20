@@ -138,6 +138,12 @@ checks User-Turn evidence without claiming approval or semantic fidelity.
   contextualization, or workflow products.
 - `tarav.archive` owns stable Artifact identity, retained Archive Records, and
   portable references to retained or externally located data.
+- `tarav.breadcrumbs` owns opaque anchors embedded in Product.Surfaces. Each
+  anchor has a stable directory entry, append-only file-position observations,
+  and independently typed workflow attachments. Its Chatlas-context surface
+  workflow resolves provisional User-Turn markers before atomically replacing
+  them with surface-native Breadcrumb labels. Breadcrumb storage does not
+  interpret attachment schemas.
 - `tarav.diagram` owns flat Namespace collections of typed semantic Ships and
   separate Annotation claim lineages, recursive organizational Collections,
   their projections, Assertion evaluation, read-only renderers over
@@ -242,6 +248,9 @@ meaning from its path or current working directory.
 - `tarav.references` owns shared typed reference mechanics; runtime registers
   domain reference classes explicitly. There is no top-level `tarav reference`
   command.
+- Breadcrumbs composes References, Chatlas Query, and native surfaces. Those
+  lower layers do not import Breadcrumbs; runtime registers its Record types
+  and public `tarav breadcrumbs` command.
 - Native surface parsers remain independent of workflow annotation semantics.
 - Chatlas consumers import the public `tarav.chatlas.normal_model` package, not its
   internal modules. Only Chatlas command composition reaches into that layer

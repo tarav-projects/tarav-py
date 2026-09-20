@@ -42,6 +42,10 @@ class TaravRuntime:
         return self.workflows.workflows["references"]
 
     @property
+    def breadcrumbs(self):
+        return self.workflows.workflows["breadcrumbs"]
+
+    @property
     def records(self) -> TypeRegistry[TaravObject]:
         return self.workflows.records
 
@@ -65,6 +69,7 @@ class TaravRuntime:
         from tarav.agent import register_agent_commands
         from tarav.archive.commands import register_archive_commands
         from tarav.bloberia.commands import register_bloberia_commands
+        from tarav.breadcrumbs.commands import register_breadcrumb_commands
         from tarav.chatlas import register_chatlas_commands
         from tarav.daemon import register_daemon_commands
         from tarav.daemon.client import submit_hook_invocation
@@ -96,6 +101,7 @@ class TaravRuntime:
             ),
         )
         register_archive_commands(subparsers)
+        register_breadcrumb_commands(subparsers)
         register_diagram_commands(subparsers)
         register_bloberia_commands(subparsers)
         register_project_commands(
@@ -154,6 +160,7 @@ def create_runtime(
     `filesystem` providers browse plain local Record collections.
     """
     from tarav.archive.workflow import ArchiveWorkflow
+    from tarav.breadcrumbs.workflow import BreadcrumbWorkflow
     from tarav.diagram.workflow import DiagramWorkflow
     from tarav.skw.document import SkillwareWorkflow
     from tarav.skw.skills import SkillsWorkflow
@@ -173,6 +180,7 @@ def create_runtime(
     references = ReferenceWorkflow(registrations.records)
     for workflow in (
         references,
+        BreadcrumbWorkflow(),
         ArchiveWorkflow(),
         DiagramWorkflow(),
         SkillwareWorkflow(),

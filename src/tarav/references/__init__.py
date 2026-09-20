@@ -172,3 +172,25 @@ class FileReference(Reference):
         with Path(target).open("rb") as stream:
             actual = hashlib.file_digest(stream, "sha256").hexdigest()
         return actual == expected.lower()
+
+
+from .positions import (  # noqa: E402  (Reference bases must exist first)
+    FilePositionCheck,
+    FilePositionLocator,
+    FilePositionReference,
+    FilePositionTarget,
+)
+
+
+__all__ = [
+    "FilePositionCheck",
+    "FilePositionLocator",
+    "FilePositionReference",
+    "FilePositionTarget",
+    "FileReference",
+    "Reference",
+    "ReferenceFinding",
+    "ReferenceResult",
+    "ReferenceTaravMetadata",
+    "Sha256Check",
+]

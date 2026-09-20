@@ -352,7 +352,9 @@ def _object_payload(
             }
         )
         if isinstance(item, DiagramCollection):
-            payload["host"] = item.host.to_dict() if item.host is not None else None
+            payload["host"] = (
+                item.host.model_dump(mode="json") if item.host is not None else None
+            )
             payload["hosted_editions"] = [
                 hosted.to_dict() for hosted in item.hosted_editions
             ]
