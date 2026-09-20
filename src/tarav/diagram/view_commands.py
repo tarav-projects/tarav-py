@@ -104,9 +104,9 @@ def _cmd_create(args: argparse.Namespace) -> int:
             block_ships=args.block_ship or (),
             view_type=args.view_type,
             about=about,
-            configuration=DiagramViewConfiguration(
-                args.bootstrap_visible_lines,
-                args.max_visible_lines,
+            configuration=DiagramViewConfiguration.create(
+                bootstrap_visible_lines=args.bootstrap_visible_lines,
+                max_visible_lines=args.max_visible_lines,
             ),
             evidence=_evidence(args),
         )
@@ -132,7 +132,9 @@ def _cmd_list(args: argparse.Namespace) -> int:
             "view_ship": view.ship,
             "view_type": view.view_type,
             "manifest_id": view.manifest_id,
-            "scope": [item.to_dict() for item in view.scopes],
+            "scope": [
+                item.model_dump(mode="json", exclude_none=True) for item in view.scopes
+            ],
             "about": view.about,
             "edition": view.edition(),
             "path": str(view.root),
@@ -160,7 +162,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
             {
                 "manifest": view.manifest,
                 "about": view.about,
-                "config": view.configuration.to_dict(),
+                "config": view.configuration.to_json(),
                 "view": view.state,
                 "edition": view.edition(),
                 "findings": [item.to_dict() for item in view.check()],

@@ -12,15 +12,15 @@ from tarav.diagram import (
     ISSUE_BLOCK_OBJECT_TYPE,
     LINE_SHIP_TYPE,
     LINE_GATE_ANNOTATION_TYPE,
-    AnnotationDraft,
+    AnnotationDraftInterface,
     CaptureManifest,
     ChatlasEvidence,
     Diagram,
     DiagramConfiguration,
     DiagramNamespace,
-    ShipDraft,
+    ShipDraftInterface,
     VerbatimGate,
-    ChatlasTurnReference,
+    ChatlasTurnReferenceInterface,
 )
 from tarav.diagram.rendering import (
     block_render_target,
@@ -44,7 +44,7 @@ AGENT_REF = {
 }
 
 
-def _edition_id(ship: ShipDraft) -> str:
+def _edition_id(ship: ShipDraftInterface) -> str:
     return str(ship.record["editions"][0]["id"])
 
 
@@ -53,8 +53,8 @@ def _block(
     block_ship: str,
     label: str,
     block_type: str,
-) -> ShipDraft:
-    return ShipDraft(
+) -> ShipDraftInterface:
+    return ShipDraftInterface.from_record(
         block_ship,
         {
             "type": BLOCK_SHIP_TYPE,
@@ -75,8 +75,8 @@ def _line(
     block_ship: str,
     line_ship: str,
     text: str,
-) -> ShipDraft:
-    return ShipDraft(
+) -> ShipDraftInterface:
+    return ShipDraftInterface.from_record(
         line_ship,
         {
             "type": LINE_SHIP_TYPE,
@@ -109,7 +109,7 @@ def _diagram_with_line(tmp_path: Path):
         line_ship,
         "Renderers are named read-only projections.",
     )
-    namespace.apply(CaptureManifest(model.ship, (block, line)))
+    namespace.apply(CaptureManifest.create(model.ship, (block, line)))
     return Diagram((namespace,), namespace.id), model, block_ship, line_ship, line
 
 
@@ -204,7 +204,7 @@ def test_issue_block_renderer_exposes_open_state_and_poi(tmp_path: Path) -> None
         line_ship,
         "Open Issues surface attention without blocking work.",
     )
-    namespace.apply(CaptureManifest(model.ship, (block, line)))
+    namespace.apply(CaptureManifest.create(model.ship, (block, line)))
     diagram = Diagram((namespace,), namespace.id)
 
     result = renderer("Kernel.Writing.Block").render(
@@ -222,7 +222,7 @@ def test_line_renderer_uses_current_edition_while_ship_retains_history(
 ) -> None:
     diagram, model, block_ship, line_ship, _ = _diagram_with_line(tmp_path)
     second = _line(model.ship, block_ship, line_ship, "A second possible wording.")
-    model.namespace.apply(CaptureManifest(model.ship, (second,)))
+    model.namespace.apply(CaptureManifest.create(model.ship, (second,)))
 
     result = renderer("Kernel.Writing.Line").render(
         line_render_target(diagram, line_ship)
@@ -240,7 +240,7 @@ def test_block_renderer_uses_current_label_edition(tmp_path: Path) -> None:
     replacement = _block(
         model.ship, block_ship, "Current.Rendering", DESIGN_BLOCK_OBJECT_TYPE
     )
-    model.namespace.apply(CaptureManifest(model.ship, (replacement,)))
+    model.namespace.apply(CaptureManifest.create(model.ship, (replacement,)))
 
     result = renderer("Kernel.Writing.Block").render(
         block_render_target(diagram, block_ship)
@@ -255,9 +255,13 @@ def test_block_renderer_uses_current_label_edition(tmp_path: Path) -> None:
 def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -> None:
     diagram, model, block_ship, line_ship, line = _diagram_with_line(tmp_path)
     token = "review:rendering"
-    proposal_ref = ChatlasTurnReference(IDENTITY, "9" * 64, "a" * 64)
-    approval_ref = ChatlasTurnReference(IDENTITY, "d" * 64, "e" * 64)
-    gate = AnnotationDraft(
+    proposal_ref = ChatlasTurnReferenceInterface(
+        session_identity=IDENTITY, turn_address="9" * 64, turn_hash="a" * 64
+    )
+    approval_ref = ChatlasTurnReferenceInterface(
+        session_identity=IDENTITY, turn_address="d" * 64, turn_hash="e" * 64
+    )
+    gate = AnnotationDraftInterface.from_record(
         str(uuid4()),
         {
             "type": LINE_GATE_ANNOTATION_TYPE,
@@ -265,7 +269,7 @@ def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -
             "gates": [VerbatimGate(token, proposal_ref, approval_ref).to_dict()],
         },
     )
-    model.namespace.apply(CaptureManifest(model.ship, annotations=(gate,)))
+    model.namespace.apply(CaptureManifest.create(model.ship, annotations=(gate,)))
     normal_model = _normal_model()
     normal_model["messages"].extend(
         [
@@ -289,7 +293,7 @@ def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -
     normal_model["turns"].extend(
         [
             {
-                **proposal_ref.to_dict(),
+                **proposal_ref.model_dump(mode="json"),
                 "side": "agent",
                 "message_refs": [
                     {
@@ -300,7 +304,7 @@ def test_block_renderer_projects_passing_gate_only_annotations(tmp_path: Path) -
                 "event_refs": [],
             },
             {
-                **approval_ref.to_dict(),
+                **approval_ref.model_dump(mode="json"),
                 "side": "user",
                 "message_refs": [
                     {

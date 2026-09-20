@@ -15,13 +15,13 @@ from tarav.diagram import (
     DIAGRAM_COLLECTION_OBJECT_TYPE,
     IMPL_REQ_COLLECTION_OBJECT_TYPE,
     LINE_SHIP_TYPE,
-    AnnotationDraft,
+    AnnotationDraftInterface,
     CaptureManifest,
     ChatlasEvidence,
     Diagram,
     DiagramConfiguration,
     DiagramNamespace,
-    ShipDraft,
+    ShipDraftInterface,
 )
 from tarav.diagram.drafts import DiagramDraftError, DiagramDraftRepository
 from tarav.diagram.rendering import model_render_target, renderer
@@ -42,7 +42,7 @@ def _collection(
     host: dict[str, str] | None = None,
     references: list[dict[str, str]] | None = None,
     **data: object,
-) -> ShipDraft:
+) -> ShipDraftInterface:
     edition_data: dict[str, object] = {"label": label, **data}
     if state is not None:
         edition_data["state"] = state
@@ -55,7 +55,7 @@ def _collection(
         value["host"] = host
     if references is not None:
         value["references"] = references
-    return ShipDraft(
+    return ShipDraftInterface.from_record(
         ship or str(uuid4()),
         {
             "type": COLLECTION_SHIP_TYPE,
@@ -65,8 +65,8 @@ def _collection(
     )
 
 
-def _block(model_ship: str, *, ship: str | None = None) -> ShipDraft:
-    return ShipDraft(
+def _block(model_ship: str, *, ship: str | None = None) -> ShipDraftInterface:
+    return ShipDraftInterface.from_record(
         ship or str(uuid4()),
         {
             "type": BLOCK_SHIP_TYPE,
@@ -92,7 +92,7 @@ def _line(
     host: dict[str, str] | None = None,
     authorization_gates: list[str] | None = None,
     recorded_at: str | None = None,
-) -> ShipDraft:
+) -> ShipDraftInterface:
     ref = {
         "session_identity": "a" * 64,
         "turn_address": "b" * 64,
@@ -110,7 +110,7 @@ def _line(
         value["authorization_gates"] = authorization_gates
     if recorded_at is not None:
         value["recorded_at"] = recorded_at
-    return ShipDraft(
+    return ShipDraftInterface.from_record(
         ship or str(uuid4()),
         {
             "type": LINE_SHIP_TYPE,
@@ -123,8 +123,8 @@ def _line(
 
 def _authorization_gate(
     namespace_id: str, model_ship: str, gate_id: str
-) -> AnnotationDraft:
-    return AnnotationDraft(
+) -> AnnotationDraftInterface:
+    return AnnotationDraftInterface.from_record(
         gate_id,
         {
             "type": CAPTURE_AUTHORIZATION_GATE_TYPE,
@@ -184,9 +184,7 @@ def test_collection_hosts_editions_without_polluting_primary_model_load(
         collection_type=IMPL_REQ_COLLECTION_OBJECT_TYPE,
         label="771.Impl.Req",
         state="Open",
-        references=[
-            {"namespace_id": namespace.id, "kind": "ship", "id": block.id}
-        ],
+        references=[{"namespace_id": namespace.id, "kind": "ship", "id": block.id}],
     )
     line_ship = str(uuid4())
     primary = _line(model.ship, block.id, ship=line_ship, text="Primary wording.")
@@ -202,14 +200,14 @@ def test_collection_hosts_editions_without_polluting_primary_model_load(
         label="Nested slice",
         host=_host("collection", collection.id),
     )
-    preflight = CaptureManifest(
+    preflight = CaptureManifest.create(
         model.ship, (block, collection, primary, collected, child)
     ).check(namespace)
-    assert "collection-reference-unresolved" not in {
-        item.code for item in preflight
-    }
+    assert "collection-reference-unresolved" not in {item.code for item in preflight}
     namespace.apply(
-        CaptureManifest(model.ship, (block, collection, primary, collected, child)),
+        CaptureManifest.create(
+            model.ship, (block, collection, primary, collected, child)
+        ),
         commit=False,
     )
 
@@ -244,7 +242,9 @@ def test_impl_req_lifecycle_surfaces_closed_writes_and_invalid_reopening(
         collection_type=IMPL_REQ_COLLECTION_OBJECT_TYPE,
         state="Open",
     )
-    namespace.apply(CaptureManifest(model.ship, (block, collection)), commit=False)
+    namespace.apply(
+        CaptureManifest.create(model.ship, (block, collection)), commit=False
+    )
     closed = _collection(
         model.ship,
         ship=collection.id,
@@ -253,7 +253,7 @@ def test_impl_req_lifecycle_surfaces_closed_writes_and_invalid_reopening(
         closed_at="2026-01-02T00:00:00+00:00",
         reopen_until="2026-01-03T00:00:00+00:00",
     )
-    namespace.apply(CaptureManifest(model.ship, (closed,)), commit=False)
+    namespace.apply(CaptureManifest.create(model.ship, (closed,)), commit=False)
 
     late = _line(
         model.ship,
@@ -262,7 +262,7 @@ def test_impl_req_lifecycle_surfaces_closed_writes_and_invalid_reopening(
         host=_host("collection", collection.id),
         recorded_at="2026-01-04T00:00:00+00:00",
     )
-    findings = CaptureManifest(model.ship, (late,)).check(namespace)
+    findings = CaptureManifest.create(model.ship, (late,)).check(namespace)
     assert "impl-req-closed-write" in {item.code for item in findings}
 
     invalid_reopen = _collection(
@@ -272,7 +272,7 @@ def test_impl_req_lifecycle_surfaces_closed_writes_and_invalid_reopening(
         state="Open",
         reopened_at="2026-01-04T00:00:00+00:00",
     )
-    findings = CaptureManifest(model.ship, (invalid_reopen,)).check(namespace)
+    findings = CaptureManifest.create(model.ship, (invalid_reopen,)).check(namespace)
     assert "impl-req-reopen-window-invalid" in {item.code for item in findings}
 
 
@@ -282,7 +282,7 @@ def test_new_impl_req_preserves_open_then_closed_order_inside_one_draft(
     namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "index")
     model = namespace.create_model(label="Tarav")
     collection_ship = str(uuid4())
-    collection = ShipDraft(
+    collection = ShipDraftInterface.from_record(
         collection_ship,
         {
             "type": COLLECTION_SHIP_TYPE,
@@ -306,7 +306,7 @@ def test_new_impl_req_preserves_open_then_closed_order_inside_one_draft(
         },
     )
 
-    findings = CaptureManifest(model.ship, (collection,)).check(namespace)
+    findings = CaptureManifest.create(model.ship, (collection,)).check(namespace)
     assert "impl-req-reopen-window-invalid" not in {item.code for item in findings}
 
 
@@ -324,7 +324,7 @@ def test_authorization_gate_is_scored_and_receipt_retains_coverage(
         text="Authorized automatic capture.",
         authorization_gates=[gate_id],
     )
-    manifest = CaptureManifest(model.ship, (block, line), (gate,))
+    manifest = CaptureManifest.create(model.ship, (block, line), (gate,))
 
     findings = manifest.check(namespace, evidence=_evidence())
     assert not any(item.code.startswith("capture-authorization-") for item in findings)
@@ -349,7 +349,8 @@ def test_authorization_gate_is_scored_and_receipt_retains_coverage(
         authorization_gates=[str(uuid4())],
     )
     assert "capture-authorization-gate-unresolved" in {
-        item.code for item in CaptureManifest(model.ship, (missing_gate,)).check(namespace)
+        item.code
+        for item in CaptureManifest.create(model.ship, (missing_gate,)).check(namespace)
     }
 
 
@@ -377,8 +378,8 @@ def test_draft_reconciles_checks_applies_once_and_survives_reload(
     draft = repository.reconcile(draft, ships=(closed,))
 
     reloaded = DiagramDraftRepository.open(tmp_path / "drafts").draft(draft.id[:8])
-    assert reloaded.to_dict() == draft.to_dict()
-    assert len(reloaded.ships[0].record["editions"]) == 2
+    assert reloaded.to_json() == draft.to_json()
+    assert len(reloaded.ship_drafts[0].record["editions"]) == 2
     assert reloaded.check(diagram)
     receipt = repository.apply(reloaded, diagram, commit=False)
     assert collection.id in receipt.created_ships
@@ -396,54 +397,67 @@ def test_draft_cli_runs_create_update_check_apply_vertical_slice(
     DiagramConfiguration.load(config_path, create=True).mount(namespace, default=True)
     drafts_root = tmp_path / "drafts"
 
-    assert main(
-        [
-            "diagram",
-            "draft",
-            "create",
-            "--model-ship",
-            model.ship,
-            "--drafts-root",
-            str(drafts_root),
-            "--diagram-config",
-            str(config_path),
-            "--json",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "diagram",
+                "draft",
+                "create",
+                "--model-ship",
+                model.ship,
+                "--drafts-root",
+                str(drafts_root),
+                "--diagram-config",
+                str(config_path),
+                "--json",
+            ]
+        )
+        == 0
+    )
     draft_id = json.loads(capsys.readouterr().out)["draft"]["id"]
     collection = _collection(model.ship)
     delta = tmp_path / "delta.json"
-    delta.write_text(json.dumps({"ships": [collection.to_dict()]}), encoding="utf-8")
+    delta.write_text(
+        json.dumps({"ships": [collection.model_dump(mode="json", exclude_unset=True)]}),
+        encoding="utf-8",
+    )
 
     base = ["--draft", draft_id, "--drafts-root", str(drafts_root)]
-    assert main(
-        ["diagram", "draft", "update", *base, "--input", str(delta), "--json"]
-    ) == 0
+    assert (
+        main(["diagram", "draft", "update", *base, "--input", str(delta), "--json"])
+        == 0
+    )
     capsys.readouterr()
-    assert main(
-        [
-            "diagram",
-            "draft",
-            "check",
-            *base,
-            "--diagram-config",
-            str(config_path),
-            "--json",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "diagram",
+                "draft",
+                "check",
+                *base,
+                "--diagram-config",
+                str(config_path),
+                "--json",
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()
-    assert main(
-        [
-            "diagram",
-            "draft",
-            "apply",
-            *base,
-            "--diagram-config",
-            str(config_path),
-            "--no-commit",
-            "--json",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "diagram",
+                "draft",
+                "apply",
+                *base,
+                "--diagram-config",
+                str(config_path),
+                "--no-commit",
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["draft"]["status"] == "Applied"
     assert collection.id in payload["receipt"]["created_ships"]

@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import ConfigDict, Field, JsonValue, model_validator
 
 from tarav.harness.records import FileRecord
 from tarav.harness.ships import TypeShip
-from tarav.harness.types import TaravPOIInstance
+from tarav.harness.types import TaravObject, TaravPOIInstance
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ class ReferenceResult:
         )
 
 
-class Sha256Check(BaseModel):
+class Sha256Check(TaravObject.RecordInterface):
     """Exact content check shared by file-backed References."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
@@ -51,7 +51,7 @@ class Sha256Check(BaseModel):
 RecordTypeValue = str | dict[str, JsonValue]
 
 
-class ReferenceTaravMetadata(BaseModel):
+class ReferenceTaravMetadata(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="allow")
 
     type: RecordTypeValue

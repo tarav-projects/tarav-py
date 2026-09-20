@@ -13,15 +13,15 @@ from tarav.diagram import (
     DESIGN_LINE_PRINCIPLE_TYPE,
     LINE_ANNOTATION_TYPE,
     LINE_SHIP_TYPE,
-    AnnotationDraft,
+    AnnotationDraftInterface,
     CaptureManifest,
     Diagram,
-    DiagramArgumentReference,
+    DiagramArgumentReferenceInterface,
     DiagramConfiguration,
     DiagramError,
     DiagramNamespace,
     LineAnnotationRecord,
-    ShipDraft,
+    ShipDraftInterface,
 )
 from tarav.diagram.rendering import annotation_render_target, renderer
 
@@ -33,8 +33,8 @@ REFERENCE = {
 }
 
 
-def _block(model_ship: str, block_ship: str, label: str) -> ShipDraft:
-    return ShipDraft(
+def _block(model_ship: str, block_ship: str, label: str) -> ShipDraftInterface:
+    return ShipDraftInterface.from_record(
         block_ship,
         {
             "type": BLOCK_SHIP_TYPE,
@@ -50,8 +50,8 @@ def _block(model_ship: str, block_ship: str, label: str) -> ShipDraft:
     )
 
 
-def _block_line(model_ship: str, block_ship: str, text: str) -> ShipDraft:
-    return ShipDraft(
+def _block_line(model_ship: str, block_ship: str, text: str) -> ShipDraftInterface:
+    return ShipDraftInterface.from_record(
         str(uuid4()),
         {
             "type": LINE_SHIP_TYPE,
@@ -79,11 +79,13 @@ def _line_annotation(
     text: str,
     *,
     supported: bool = True,
-) -> AnnotationDraft:
+) -> AnnotationDraftInterface:
     edition: dict[str, object] = {
         "id": edition_id,
         "arguments": [
-            DiagramArgumentReference(namespace.id, "ship", identity).to_dict()
+            DiagramArgumentReferenceInterface(
+                namespace_id=namespace.id, kind="ship", id=identity
+            ).model_dump(mode="json")
             for identity in arguments
         ],
         "data": {"text": text},
@@ -95,7 +97,7 @@ def _line_annotation(
                 "support": [{"root": REFERENCE, "neighborhood": []}],
             }
         )
-    return AnnotationDraft(
+    return AnnotationDraftInterface.from_record(
         annotation_id,
         {
             "type": LINE_ANNOTATION_TYPE,
@@ -115,7 +117,7 @@ def test_line_annotation_is_a_free_standing_line_with_argument_context(
     claim = "Block Y is superseded by Block X."
     block_line = _block_line(model.ship, block_y, claim)
     namespace.apply(
-        CaptureManifest(
+        CaptureManifest.create(
             model.ship,
             ships=(
                 _block(model.ship, block_x, "Block X"),
@@ -135,7 +137,7 @@ def test_line_annotation_is_a_free_standing_line_with_argument_context(
         claim,
     )
 
-    receipt = namespace.apply(CaptureManifest(model.ship, annotations=(draft,)))
+    receipt = namespace.apply(CaptureManifest.create(model.ship, annotations=(draft,)))
     annotation = namespace.annotation(annotation_id)
     typed = annotation.specialize()
     diagram = Diagram((namespace,), namespace.id)
@@ -146,7 +148,7 @@ def test_line_annotation_is_a_free_standing_line_with_argument_context(
     assert typed.current_edition_id == edition_id
     assert typed.text == claim
     assert [item.id for item in typed.arguments] == [block_y, block_x]
-    assert typed.support.members
+    assert typed.support
     assert [item.id for item in model.annotations()] == [annotation_id]
     assert annotation_id in {item.id for item in namespace.block_annotations(block_y)}
     assert [item.id for item in diagram.annotations_for_argument(block_x)] == [
@@ -165,7 +167,7 @@ def test_line_annotation_history_appends_editions_without_rebinding(
     model = namespace.create_model(label="Tarav")
     subject = str(uuid4())
     namespace.apply(
-        CaptureManifest(
+        CaptureManifest.create(
             model.ship,
             ships=(_block(model.ship, subject, "Subject"),),
         )
@@ -174,7 +176,7 @@ def test_line_annotation_history_appends_editions_without_rebinding(
     first_edition = str(uuid4())
     second_edition = str(uuid4())
     namespace.apply(
-        CaptureManifest(
+        CaptureManifest.create(
             model.ship,
             annotations=(
                 _line_annotation(
@@ -191,7 +193,7 @@ def test_line_annotation_history_appends_editions_without_rebinding(
     )
 
     receipt = namespace.apply(
-        CaptureManifest(
+        CaptureManifest.create(
             model.ship,
             annotations=(
                 _line_annotation(
@@ -219,7 +221,7 @@ def test_line_annotation_history_appends_editions_without_rebinding(
 
     with pytest.raises(DiagramError, match="edition identity cannot be rebound"):
         namespace.apply(
-            CaptureManifest(
+            CaptureManifest.create(
                 model.ship,
                 annotations=(
                     _line_annotation(
@@ -250,7 +252,7 @@ def test_line_annotation_unresolved_argument_is_a_writable_poi(tmp_path: Path) -
         supported=False,
     )
 
-    receipt = namespace.apply(CaptureManifest(model.ship, annotations=(draft,)))
+    receipt = namespace.apply(CaptureManifest.create(model.ship, annotations=(draft,)))
 
     assert "line-annotation-argument-unresolved" in {
         item.code for item in receipt.findings
@@ -265,7 +267,7 @@ def test_line_annotation_is_discoverable_and_renderable_from_the_cli(
     model = namespace.create_model(label="Tarav")
     subject = str(uuid4())
     namespace.apply(
-        CaptureManifest(
+        CaptureManifest.create(
             model.ship,
             ships=(_block(model.ship, subject, "Subject"),),
         )
@@ -273,7 +275,7 @@ def test_line_annotation_is_discoverable_and_renderable_from_the_cli(
     annotation_id = str(uuid4())
     edition_id = str(uuid4())
     namespace.apply(
-        CaptureManifest(
+        CaptureManifest.create(
             model.ship,
             annotations=(
                 _line_annotation(

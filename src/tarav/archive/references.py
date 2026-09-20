@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
-from tarav.harness import TypeShip
+from tarav.harness import TaravObject, TypeShip
 from tarav.references import Reference, ReferenceResult
 from tarav.references.git import git_bytes, git_text
 from collections.abc import Mapping
@@ -31,26 +31,26 @@ class ArchiveTarget:
     git_oid: str | None = None
 
 
-class ArchiveLocator(BaseModel):
+class ArchiveLocator(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     archive: str = Field(min_length=1)
     doi: Annotated[str, Field(pattern=ARTIFACT_ID_PATTERN.pattern)]
 
 
-class ArchiveSha256Check(BaseModel):
+class ArchiveSha256Check(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
 
 
-class ArchiveGitOidCheck(BaseModel):
+class ArchiveGitOidCheck(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     git_oid: str = Field(min_length=1)
 
 
-class ArchiveContainsCommitCheck(BaseModel):
+class ArchiveContainsCommitCheck(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     contains_commit: str = Field(min_length=1)

@@ -17,7 +17,7 @@ from tarav.diagram import (
     Diagram,
     DiagramConfiguration,
     DiagramNamespace,
-    ShipDraft,
+    ShipDraftInterface,
 )
 from tarav.diagram import view_commands
 from tarav.diagram import views
@@ -46,8 +46,8 @@ AGENT_REF = {
 }
 
 
-def _block(model_ship: str, block_ship: str, label: str) -> ShipDraft:
-    return ShipDraft(
+def _block(model_ship: str, block_ship: str, label: str) -> ShipDraftInterface:
+    return ShipDraftInterface.from_record(
         block_ship,
         {
             "type": BLOCK_SHIP_TYPE,
@@ -63,8 +63,10 @@ def _block(model_ship: str, block_ship: str, label: str) -> ShipDraft:
     )
 
 
-def _line(model_ship: str, block_ship: str, line_ship: str, text: str) -> ShipDraft:
-    return ShipDraft(
+def _line(
+    model_ship: str, block_ship: str, line_ship: str, text: str
+) -> ShipDraftInterface:
+    return ShipDraftInterface.from_record(
         line_ship,
         {
             "type": LINE_SHIP_TYPE,
@@ -106,7 +108,7 @@ def _diagram(tmp_path: Path):
             "Agents select the context they need.",
         ),
     )
-    namespace.apply(CaptureManifest(model.ship, drafts))
+    namespace.apply(CaptureManifest.create(model.ship, drafts))
     return (
         Diagram((namespace,), namespace.id),
         model,
@@ -125,7 +127,7 @@ def test_view_repository_materializes_agent_readable_context(tmp_path: Path) -> 
         diagram,
         model_ships=(model.ship,),
         about={"workflow": "ground", "session_id": "session-one"},
-        configuration=DiagramViewConfiguration(bootstrap_visible_lines=1),
+        configuration=DiagramViewConfiguration.create(bootstrap_visible_lines=1),
     )
 
     view = mutation.view
@@ -269,7 +271,7 @@ def test_view_disclosure_and_line_selection_are_cli_managed(tmp_path: Path) -> N
     view = repository.create_view(
         diagram,
         block_ships=(provider_block,),
-        configuration=DiagramViewConfiguration(bootstrap_visible_lines=1),
+        configuration=DiagramViewConfiguration.create(bootstrap_visible_lines=1),
     ).view
 
     included = repository.select_line(
@@ -323,7 +325,7 @@ def test_view_deep_support_renders_content_without_raw_reference_json(
     view = repository.create_view(
         diagram,
         block_ships=(provider_block,),
-        configuration=DiagramViewConfiguration(bootstrap_visible_lines=1),
+        configuration=DiagramViewConfiguration.create(bootstrap_visible_lines=1),
         evidence=evidence,
     ).view
 
@@ -412,7 +414,7 @@ def test_view_full_expansion_is_an_idempotent_no_op(tmp_path: Path) -> None:
     view = repository.create_view(
         diagram,
         block_ships=(provider_block,),
-        configuration=DiagramViewConfiguration(bootstrap_visible_lines=1),
+        configuration=DiagramViewConfiguration.create(bootstrap_visible_lines=1),
     ).view
 
     expanded = repository.disclose(
@@ -545,7 +547,7 @@ def test_view_cli_mutation_renders_the_complete_affected_block(
     view = repository.create_view(
         diagram,
         model_ships=(model.ship,),
-        configuration=DiagramViewConfiguration(bootstrap_visible_lines=1),
+        configuration=DiagramViewConfiguration.create(bootstrap_visible_lines=1),
     ).view
     monkeypatch.setattr(view_commands, "_evidence", lambda _: None)
 

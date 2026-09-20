@@ -17,7 +17,7 @@ from tarav.diagram import (
     ChatlasEvidence,
     DiagramConfiguration,
     DiagramNamespace,
-    ShipDraft,
+    ShipDraftInterface,
 )
 from tarav.scoring import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
@@ -588,7 +588,7 @@ def test_grounding_task_resolves_diagram_line_editions_and_support(
         "turn_address": "5" * 64,
         "turn_hash": "6" * 64,
     }
-    block = ShipDraft(
+    block = ShipDraftInterface.from_record(
         block_ship,
         {
             "type": BLOCK_SHIP_TYPE,
@@ -608,7 +608,7 @@ def test_grounding_task_resolves_diagram_line_editions_and_support(
         line_ship = str(uuid4())
         line_ids.append(line_ship)
         lines.append(
-            ShipDraft(
+            ShipDraftInterface.from_record(
                 line_ship,
                 {
                     "type": LINE_SHIP_TYPE,
@@ -626,7 +626,7 @@ def test_grounding_task_resolves_diagram_line_editions_and_support(
                 },
             )
         )
-    namespace.apply(CaptureManifest(model.ship, (block, *lines)), commit=False)
+    namespace.apply(CaptureManifest.create(model.ship, (block, *lines)), commit=False)
     normal_model = {
         "session": {"identity_hash": "a" * 64, "session_id": "session"},
         "events": [],

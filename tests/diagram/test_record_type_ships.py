@@ -16,7 +16,7 @@ from tarav.diagram import (
     DiagramShipSpecializationError,
     LineShipRecord,
     ModelShipRecord,
-    ShipDraft,
+    ShipDraftInterface,
     default_diagram_annotation_type_registry,
     default_diagram_ship_type_registry,
 )
@@ -35,11 +35,11 @@ def _line_record(
     type_value: object,
     *,
     reserved: bool = False,
-) -> ShipDraft:
+) -> ShipDraftInterface:
     located: dict[str, object] = (
         {"__tarav__": {"type": type_value}} if reserved else {"type": type_value}
     )
-    return ShipDraft(
+    return ShipDraftInterface.from_record(
         str(uuid4()),
         {
             **located,
@@ -81,7 +81,7 @@ def test_structured_and_legacy_type_references_read_the_same_record(
         block_ship,
         {"uuid": str(LineShipRecord.type_ship.uuid), "label": LINE_SHIP_TYPE},
     )
-    namespace.apply(CaptureManifest(model.ship, (legacy, structured)))
+    namespace.apply(CaptureManifest.create(model.ship, (legacy, structured)))
 
     for ship_id in (legacy.id, structured.id):
         ship = namespace.ship(ship_id)
@@ -97,7 +97,7 @@ def test_a_known_type_ship_survives_label_drift(tmp_path: Path) -> None:
         str(uuid4()),
         {"uuid": str(LineShipRecord.type_ship.uuid), "label": "Diagram.Line.Vessel"},
     )
-    namespace.apply(CaptureManifest(model.ship, (drifted,)))
+    namespace.apply(CaptureManifest.create(model.ship, (drifted,)))
 
     ship = namespace.ship(drifted.id)
     assert ship.type == "Diagram.Line.Vessel"
@@ -118,7 +118,7 @@ def test_an_unknown_type_ship_is_recoverable_rather_than_silently_rebound(
     unknown = _line_record(
         model.ship, str(uuid4()), {"uuid": str(uuid4()), "label": LINE_SHIP_TYPE}
     )
-    namespace.apply(CaptureManifest(model.ship, (unknown,)))
+    namespace.apply(CaptureManifest.create(model.ship, (unknown,)))
 
     ship = namespace.ship(unknown.id)
     assert ship.type == LINE_SHIP_TYPE
@@ -134,7 +134,7 @@ def test_a_type_reference_without_a_usable_component_is_rejected(
 
     with pytest.raises(DiagramModelError):
         namespace.apply(
-            CaptureManifest(
+            CaptureManifest.create(
                 model.ship, (_line_record(model.ship, str(uuid4()), {"label": ""}),)
             )
         )
@@ -147,7 +147,7 @@ def test_typed_records_expose_the_ships_they_recognize(
     model = namespace.create_model(label="Tarav")
     block_ship = str(uuid4())
     line = _line_record(model.ship, block_ship, LINE_SHIP_TYPE)
-    namespace.apply(CaptureManifest(model.ship, (line,)))
+    namespace.apply(CaptureManifest.create(model.ship, (line,)))
 
     assert namespace.ship(model.ship).specialize().ships() == (
         ModelShipRecord.type_ship,
@@ -190,7 +190,7 @@ def test_diagram_reads_a_type_reference_from_the_reserved_namespace(
         {"uuid": str(LineShipRecord.type_ship.uuid), "label": LINE_SHIP_TYPE},
         reserved=True,
     )
-    namespace.apply(CaptureManifest(model.ship, (reserved,)))
+    namespace.apply(CaptureManifest.create(model.ship, (reserved,)))
 
     ship = namespace.ship(reserved.id)
     assert ship.type == LINE_SHIP_TYPE
@@ -208,7 +208,7 @@ def test_a_reserved_namespace_reference_is_never_shadowed_by_root_type(
     model = namespace.create_model(label="Tarav")
 
     with pytest.raises(DiagramModelError, match="__tarav__.type"):
-        ShipDraft(
+        ShipDraftInterface.from_record(
             str(uuid4()),
             {
                 "__tarav__": {"type": None},

@@ -3,10 +3,22 @@ import hashlib
 import pytest
 from pydantic import ValidationError
 
-from tarav.harness import isrecordsubclass, issubrecord
-from tarav.references import FileReference, Reference
-from tarav.references.git import GitFileReference
-from tarav.references.structured import StructuredFileReference
+from tarav.archive.references import (
+    ArchiveContainsCommitCheck,
+    ArchiveGitOidCheck,
+    ArchiveLocator,
+    ArchiveSha256Check,
+)
+from tarav.chatlas.references import ChatlasTurnLocator, EmptyReferenceCheck
+from tarav.harness import TaravObject, isrecordsubclass, issubrecord
+from tarav.references import (
+    FileReference,
+    Reference,
+    ReferenceTaravMetadata,
+    Sha256Check,
+)
+from tarav.references.git import GitFileLocator, GitFileReference, GitOidCheck
+from tarav.references.structured import StructuredFileLocator, StructuredFileReference
 from tarav.references.workflow import ReferenceWorkflow
 
 
@@ -61,6 +73,28 @@ def test_reference_record_interfaces_and_examples():
         FileReference.from_json({"type": FileReference.type_name})
     with pytest.raises(ValidationError):
         FileReference.from_json({**value, "locator": ""})
+
+
+def test_embedded_reference_interfaces_share_tarav_object_record_root():
+    interfaces = (
+        Sha256Check,
+        ReferenceTaravMetadata,
+        GitFileLocator,
+        GitOidCheck,
+        StructuredFileLocator,
+        ArchiveLocator,
+        ArchiveSha256Check,
+        ArchiveGitOidCheck,
+        ArchiveContainsCommitCheck,
+        ChatlasTurnLocator,
+        EmptyReferenceCheck,
+    )
+
+    assert all(
+        issubclass(interface, TaravObject.RecordInterface)
+        for interface in interfaces
+    )
+    assert all(not issubclass(interface, TaravObject) for interface in interfaces)
 
 
 def test_reference_workflow_constructs_through_record_interface():

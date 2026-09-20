@@ -77,7 +77,7 @@ def _draft_summary(draft: DiagramDraft) -> dict[str, object]:
         "path": str(draft.path),
         "model_ship": draft.model_ship,
         "status": draft.status,
-        "ship_count": len(draft.ships),
+        "ship_count": len(draft.ship_drafts),
         "annotation_count": len(draft.annotations),
         "receipt": draft.receipt,
     }
@@ -131,7 +131,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
         {
             "status": "ok",
             "command": "tarav diagram draft show",
-            "draft": draft.to_dict(),
+            "draft": draft.to_json(),
             "path": str(draft.path),
         },
     )
@@ -197,7 +197,7 @@ def _cmd_apply(args: argparse.Namespace) -> int:
             "status": "poi" if receipt.findings else "ok",
             "command": "tarav diagram draft apply",
             "draft": _draft_summary(applied),
-            "receipt": receipt.to_dict(),
+            "receipt": receipt.to_json(),
         },
     )
 

@@ -1,16 +1,16 @@
 """Exact Chatlas Turn references; no Diagram or Skillware semantics."""
 import re
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
-from tarav.harness import TypeShip
+from tarav.harness import TaravObject, TypeShip
 from tarav.references import Reference
 from tarav.chatlas.normal_model import (
     provide_normal_model, resolve_chat_turn_ref, resolve_chat_message_ref,
 )
 
 
-class ChatlasTurnLocator(BaseModel):
+class ChatlasTurnLocator(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     session_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -18,7 +18,7 @@ class ChatlasTurnLocator(BaseModel):
     turn_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
-class EmptyReferenceCheck(BaseModel):
+class EmptyReferenceCheck(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid")
 
 

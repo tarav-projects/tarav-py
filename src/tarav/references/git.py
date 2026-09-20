@@ -4,13 +4,13 @@ from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 import subprocess
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
-from tarav.harness import TypeShip
+from tarav.harness import TaravObject, TypeShip
 from . import Reference
 
 
-class GitFileLocator(BaseModel):
+class GitFileLocator(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     repository: str = Field(min_length=1)
@@ -18,7 +18,7 @@ class GitFileLocator(BaseModel):
     path: str = Field(min_length=1)
 
 
-class GitOidCheck(BaseModel):
+class GitOidCheck(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     git_oid: str = Field(min_length=1)

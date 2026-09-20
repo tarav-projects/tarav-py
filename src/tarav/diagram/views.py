@@ -8,11 +8,19 @@ import json
 from pathlib import Path
 import re
 import subprocess
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal, TypeVar, cast
 from uuid import UUID, uuid4
+
+from pydantic import (
+    ConfigDict,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from tarav._core.data_root import default_tarav_data_root
 from tarav._core.persistence import atomic_write_json
+from tarav.harness import TaravObject, TypeRegistry, TypeShip
 
 from . import (
     ChatlasEvidence,
@@ -26,13 +34,14 @@ from . import (
 )
 
 
-VIEW_REPOSITORY_CLASS = "Tarav.Diagram.View.Repository"
+VIEW_REPOSITORY_TYPE = "Tarav.Diagram.View.Repository"
 VIEW_MANIFEST_TYPE = "Diagram.View.Manifest"
-VIEW_CLASS = "Tarav.Diagram.View"
+VIEW_STATE_TYPE = "Tarav.Diagram.View"
+VIEW_ABOUT_TYPE = "Tarav.Diagram.View.About"
 DIAGRAM_VIEW_TYPE = "Diagram.View"
 SESSION_DIAGRAM_VIEW_TYPE = "Session.Diagram.View"
 PROJECT_DIAGRAM_VIEW_TYPE = "Project.Diagram.View"
-VIEW_CONFIGURATION_CLASS = "Tarav.Diagram.View.Configuration"
+VIEW_CONFIGURATION_TYPE = "Tarav.Diagram.View.Configuration"
 VIEW_SCHEMA_VERSION = 2
 VIEW_REPOSITORY_FILENAME = "repository.json"
 DISCLOSURE_LEVELS = ("collapsed", "lines", "support", "deep-support")
@@ -47,79 +56,160 @@ def default_diagram_views_root() -> Path:
     return default_tarav_data_root() / "diagram" / "views"
 
 
-@dataclass(frozen=True, slots=True)
-class DiagramViewScope:
-    kind: str
+class DiagramViewScopeInterface(TaravObject.RecordInterface):
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+
+    type: Literal["Diagram.Model", "Diagram.Block"]
     namespace_id: str
     model_ship: str
     block_ship: str | None = None
 
-    def __post_init__(self) -> None:
-        if self.kind not in ("Diagram.Model", "Diagram.Block"):
-            raise DiagramViewError(f"Unsupported Diagram.View Scope kind: {self.kind}")
-        _uuid(self.namespace_id, field="View.Scope.namespace_id")
-        _uuid(self.model_ship, field="View.Scope.model_ship")
-        if self.kind == "Diagram.Block":
+    @field_validator("namespace_id", "model_ship")
+    @classmethod
+    def validate_uuid(cls, value: str) -> str:
+        return _uuid(value, field="View.Scope")
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> DiagramViewScopeInterface:
+        if self.type == "Diagram.Block":
             _uuid(self.block_ship, field="View.Scope.block_ship")
         elif self.block_ship is not None:
             raise DiagramViewError("Model View.Scope cannot retain block_ship")
+        return self
 
-    def to_dict(self) -> JsonObject:
-        result: JsonObject = {
-            "type": self.kind,
-            "namespace_id": self.namespace_id,
-            "model_ship": self.model_ship,
-        }
-        if self.block_ship is not None:
-            result["block_ship"] = self.block_ship
-        return result
+
+class DiagramViewManifest(TaravObject):
+    type_ship = TypeShip("1c9a9e7e-76a9-4cf0-b823-79fc5032884d")
+    type_name = VIEW_MANIFEST_TYPE
+
+    class RecordInterface(TaravObject.RecordInterface):
+        model_config = ConfigDict(strict=True, extra="forbid")
+
+        id: str
+        schema_version: Literal[VIEW_SCHEMA_VERSION]
+        type: Literal[VIEW_MANIFEST_TYPE]
+        view_ship: str
+        view_type: Literal[
+            "Diagram.View", "Session.Diagram.View", "Project.Diagram.View"
+        ]
+
+        @field_validator("id", "view_ship")
+        @classmethod
+        def validate_uuid(cls, value: str) -> str:
+            return _uuid(value, field="View.Manifest")
+
+
+class DiagramViewConfiguration(TaravObject):
+    type_ship = TypeShip("1c70b581-641e-429a-9305-d4ee65c78ad1")
+    type_name = VIEW_CONFIGURATION_TYPE
+
+    class RecordInterface(TaravObject.RecordInterface):
+        model_config = ConfigDict(strict=True, extra="forbid")
+
+        type: Literal[VIEW_CONFIGURATION_TYPE]
+        schema_version: Literal[VIEW_SCHEMA_VERSION]
+        bootstrap_visible_lines: int
+        max_visible_lines: int
+        renderer: Literal["Kernel.Writing.View"]
+
+        @model_validator(mode="after")
+        def validate_limits(self) -> DiagramViewConfiguration.RecordInterface:
+            if self.bootstrap_visible_lines < 0:
+                raise DiagramViewError("bootstrap_visible_lines cannot be negative")
+            if self.max_visible_lines < 1:
+                raise DiagramViewError("max_visible_lines must be positive")
+            return self
 
     @classmethod
-    def from_dict(cls, value: object) -> DiagramViewScope:
-        data = _object(value, field="View.Scope")
-        return cls(
-            _string(data.get("type"), field="View.Scope.type"),
-            _string(data.get("namespace_id"), field="View.Scope.namespace_id"),
-            _string(data.get("model_ship"), field="View.Scope.model_ship"),
-            _optional_string(data.get("block_ship"), field="View.Scope.block_ship"),
+    def create(
+        cls, bootstrap_visible_lines: int = 4, max_visible_lines: int = 120
+    ) -> DiagramViewConfiguration:
+        return cls.from_json(
+            {
+                "type": cls.type_name,
+                "schema_version": VIEW_SCHEMA_VERSION,
+                "bootstrap_visible_lines": bootstrap_visible_lines,
+                "max_visible_lines": max_visible_lines,
+                "renderer": "Kernel.Writing.View",
+            }
         )
 
+    @property
+    def bootstrap_visible_lines(self) -> int:
+        return self.record_data.bootstrap_visible_lines
 
-@dataclass(frozen=True, slots=True)
-class DiagramViewConfiguration:
-    bootstrap_visible_lines: int = 4
-    max_visible_lines: int = 120
+    @property
+    def max_visible_lines(self) -> int:
+        return self.record_data.max_visible_lines
 
-    def __post_init__(self) -> None:
-        if self.bootstrap_visible_lines < 0:
-            raise DiagramViewError("bootstrap_visible_lines cannot be negative")
-        if self.max_visible_lines < 1:
-            raise DiagramViewError("max_visible_lines must be positive")
 
-    def to_dict(self) -> JsonObject:
-        return {
-            "class": VIEW_CONFIGURATION_CLASS,
-            "schema_version": VIEW_SCHEMA_VERSION,
-            "bootstrap_visible_lines": self.bootstrap_visible_lines,
-            "max_visible_lines": self.max_visible_lines,
-            "renderer": "Kernel.Writing.View",
-        }
+class DiagramViewState(TaravObject):
+    type_ship = TypeShip("ff3f638a-43e4-4df2-99d7-3295a485f9df")
+    type_name = VIEW_STATE_TYPE
 
-    @classmethod
-    def from_dict(cls, value: object) -> DiagramViewConfiguration:
-        data = _object(value, field="Diagram.View.Configuration")
-        if (
-            data.get("class") != VIEW_CONFIGURATION_CLASS
-            or data.get("schema_version") != VIEW_SCHEMA_VERSION
-        ):
-            raise DiagramViewError("Unsupported Diagram.View Configuration")
-        return cls(
-            _integer(
-                data.get("bootstrap_visible_lines"),
-                field="bootstrap_visible_lines",
-            ),
-            _integer(data.get("max_visible_lines"), field="max_visible_lines"),
-        )
+    class RecordInterface(TaravObject.RecordInterface):
+        model_config = ConfigDict(strict=True, extra="forbid")
+
+        type: Literal[VIEW_STATE_TYPE]
+        schema_version: Literal[VIEW_SCHEMA_VERSION]
+        view_ship: str
+        source_editions: dict[str, str]
+        scope: list[DiagramViewScopeInterface]
+        blocks: list[JsonObject]
+
+        @field_validator("view_ship")
+        @classmethod
+        def validate_view_ship(cls, value: str) -> str:
+            return _uuid(value, field="View.view_ship")
+
+
+class DiagramViewAbout(TaravObject):
+    type_ship = TypeShip("20d90137-05cd-4fe8-8926-999fc47e3e16")
+    type_name = VIEW_ABOUT_TYPE
+
+    class RecordInterface(TaravObject.RecordInterface):
+        model_config = ConfigDict(strict=True, extra="forbid")
+
+        type: Literal[VIEW_ABOUT_TYPE]
+        data: JsonObject
+
+    @property
+    def data(self) -> JsonObject:
+        return dict(self.record_data.data)
+
+
+class DiagramViewRepositoryRecord(TaravObject):
+    type_ship = TypeShip("f2decb1e-3727-4a1c-8196-c8bf4ca59448")
+    type_name = VIEW_REPOSITORY_TYPE
+
+    class RecordInterface(TaravObject.RecordInterface):
+        model_config = ConfigDict(strict=True, extra="forbid")
+
+        type: Literal[VIEW_REPOSITORY_TYPE]
+        schema_version: Literal[VIEW_SCHEMA_VERSION]
+
+
+ViewRecordT = TypeVar("ViewRecordT", bound=TaravObject)
+
+
+def _view_record(path: Path, expected: type[ViewRecordT]) -> ViewRecordT:
+    data = _read_json(path)
+    registry = TypeRegistry(
+        TaravObject,
+        (
+            DiagramViewManifest,
+            DiagramViewConfiguration,
+            DiagramViewState,
+            DiagramViewAbout,
+            DiagramViewRepositoryRecord,
+        ),
+    )
+    authority = registry.resolve(data)
+    if authority is not expected:
+        raise DiagramViewError(f"Unexpected Diagram.View Record Type: {path}")
+    result = authority.from_json(data)
+    result.source = path
+    return cast(ViewRecordT, result)
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,19 +268,31 @@ class DiagramView:
 
     @property
     def manifest(self) -> JsonObject:
-        return _read_json(self.manifest_path)
+        return self.manifest_record.to_json()
+
+    @property
+    def manifest_record(self) -> DiagramViewManifest:
+        return _view_record(self.manifest_path, DiagramViewManifest)
 
     @property
     def about(self) -> JsonObject:
-        return _read_json(self.about_path)
+        return self.about_record.data
+
+    @property
+    def about_record(self) -> DiagramViewAbout:
+        return _view_record(self.about_path, DiagramViewAbout)
 
     @property
     def configuration(self) -> DiagramViewConfiguration:
-        return DiagramViewConfiguration.from_dict(_read_json(self.config_path))
+        return _view_record(self.config_path, DiagramViewConfiguration)
 
     @property
     def state(self) -> JsonObject:
-        return _read_json(self.state_path)
+        return self.state_record.to_json()
+
+    @property
+    def state_record(self) -> DiagramViewState:
+        return _view_record(self.state_path, DiagramViewState)
 
     @property
     def ship(self) -> str:
@@ -205,9 +307,9 @@ class DiagramView:
         return _string(self.manifest.get("view_type"), field="View.view_type")
 
     @property
-    def scopes(self) -> tuple[DiagramViewScope, ...]:
+    def scopes(self) -> tuple[DiagramViewScopeInterface, ...]:
         return tuple(
-            DiagramViewScope.from_dict(item)
+            DiagramViewScopeInterface.model_validate(item)
             for item in _array(self.state.get("scope"), field="View.scope")
         )
 
@@ -236,15 +338,11 @@ class DiagramView:
                 expected_type=self.type_id,
             )
             state = self.state
-            if (
-                state.get("class") != VIEW_CLASS
-                or state.get("schema_version") != VIEW_SCHEMA_VERSION
-                or state.get("view_ship") != self.ship
-            ):
+            if state.get("view_ship") != self.ship:
                 raise DiagramViewError("view.json does not identify this Diagram.View")
             self.configuration
             self.scopes
-        except DiagramError as exc:
+        except (DiagramError, ValidationError) as exc:
             return (Finding("diagram-view-invalid", str(self.root), str(exc)),)
 
         blocks = _array(state.get("blocks"), field="View.blocks")
@@ -601,7 +699,7 @@ class DiagramViewRepository:
         atomic_write_json(
             definition,
             {
-                "class": VIEW_REPOSITORY_CLASS,
+                "type": VIEW_REPOSITORY_TYPE,
                 "schema_version": VIEW_SCHEMA_VERSION,
             },
         )
@@ -619,12 +717,14 @@ class DiagramViewRepository:
             raise DiagramViewError(
                 f"Diagram.View repository is not initialized: {resolved}"
             )
-        definition = _read_json(resolved / VIEW_REPOSITORY_FILENAME)
-        if definition != {
-            "class": VIEW_REPOSITORY_CLASS,
-            "schema_version": VIEW_SCHEMA_VERSION,
-        }:
-            raise DiagramViewError(f"Unsupported Diagram.View repository: {resolved}")
+        try:
+            _view_record(
+                resolved / VIEW_REPOSITORY_FILENAME, DiagramViewRepositoryRecord
+            )
+        except (TypeError, ValueError) as exc:
+            raise DiagramViewError(
+                f"Unsupported Diagram.View repository: {resolved}"
+            ) from exc
         return cls(resolved)
 
     def views(self) -> tuple[DiagramView, ...]:
@@ -722,20 +822,32 @@ class DiagramViewRepository:
         ship = str(uuid4())
         root = self.root / ship
         root.mkdir()
-        config = configuration or DiagramViewConfiguration()
+        config = configuration or DiagramViewConfiguration.create()
         atomic_write_json(
             root / "manifest.json",
-            {
-                "id": str(uuid4()),
-                "type": VIEW_MANIFEST_TYPE,
-                "view_type": view_type,
-                "schema_version": VIEW_SCHEMA_VERSION,
-                "view_ship": ship,
-            },
+            DiagramViewManifest.from_json(
+                {
+                    "id": str(uuid4()),
+                    "type": VIEW_MANIFEST_TYPE,
+                    "view_type": view_type,
+                    "schema_version": VIEW_SCHEMA_VERSION,
+                    "view_ship": ship,
+                }
+            ).to_json(),
             ensure_ascii=False,
         )
-        atomic_write_json(root / "about.json", dict(about or {}), ensure_ascii=False)
-        atomic_write_json(root / "config.json", config.to_dict(), ensure_ascii=False)
+        atomic_write_json(
+            root / "about.json",
+            DiagramViewAbout.from_json(
+                {"type": VIEW_ABOUT_TYPE, "data": dict(about or {})}
+            ).to_json(),
+            ensure_ascii=False,
+        )
+        atomic_write_json(
+            root / "config.json",
+            config.to_json(),
+            ensure_ascii=False,
+        )
         state = _materialize(
             diagram,
             scopes,
@@ -744,7 +856,11 @@ class DiagramViewRepository:
             evidence=evidence,
         )
         state["view_ship"] = ship
-        atomic_write_json(root / "view.json", state, ensure_ascii=False)
+        atomic_write_json(
+            root / "view.json",
+            DiagramViewState.from_json(state).to_json(),
+            ensure_ascii=False,
+        )
         paths = tuple(path.relative_to(self.root) for path in sorted(root.iterdir()))
         commit = _commit(self.root, paths, f"diagram(view): create {ship}")
         view = view_class(root)
@@ -897,15 +1013,26 @@ def _resolve_scopes(
     diagram: Diagram,
     model_ships: Iterable[str],
     block_ships: Iterable[str],
-) -> tuple[DiagramViewScope, ...]:
-    scopes: list[DiagramViewScope] = []
+) -> tuple[DiagramViewScopeInterface, ...]:
+    scopes: list[DiagramViewScopeInterface] = []
     for ship in model_ships:
         model = diagram.model(ship)
-        scopes.append(DiagramViewScope("Diagram.Model", model.namespace.id, model.ship))
+        scopes.append(
+            DiagramViewScopeInterface(
+                type="Diagram.Model",
+                namespace_id=model.namespace.id,
+                model_ship=model.ship,
+            )
+        )
     for ship in block_ships:
         model, _ = _resolve_block(diagram, ship)
         scopes.append(
-            DiagramViewScope("Diagram.Block", model.namespace.id, model.ship, ship)
+            DiagramViewScopeInterface(
+                type="Diagram.Block",
+                namespace_id=model.namespace.id,
+                model_ship=model.ship,
+                block_ship=ship,
+            )
         )
     return tuple(dict.fromkeys(scopes))
 
@@ -927,7 +1054,7 @@ def _resolve_block(
 
 def _materialize(
     diagram: Diagram,
-    scopes: Iterable[DiagramViewScope],
+    scopes: Iterable[DiagramViewScopeInterface],
     configuration: DiagramViewConfiguration,
     *,
     previous: Mapping[str, Any] | None,
@@ -943,7 +1070,7 @@ def _materialize(
         projection = model.project()
         blocks = (
             projection.blocks
-            if scope.kind == "Diagram.Model"
+            if scope.type == "Diagram.Model"
             else (projection.block(_string(scope.block_ship, field="block_ship")),)
         )
         scoped.extend((model, block) for block in blocks)
@@ -1004,7 +1131,7 @@ def _materialize(
         dict.fromkeys(model.namespace.id for model, _ in unique.values())
     )
     return {
-        "class": VIEW_CLASS,
+        "type": VIEW_STATE_TYPE,
         "schema_version": VIEW_SCHEMA_VERSION,
         "view_ship": previous.get("view_ship") if previous else None,
         "source_editions": {
@@ -1013,7 +1140,7 @@ def _materialize(
             )
             for namespace_id in namespace_ids
         },
-        "scope": [item.to_dict() for item in scopes],
+        "scope": [item.model_dump(mode="json", exclude_none=True) for item in scopes],
         "blocks": blocks,
     }
 
@@ -1200,7 +1327,7 @@ def _support_stats(line: DiagramLineShip) -> tuple[int, int]:
     for annotation in line.annotations:
         if not isinstance(annotation, UserTouchedAnnotation):
             continue
-        for member in annotation.support.members:
+        for member in annotation.support:
             root = (
                 member.root.session_identity,
                 member.root.turn_address,
@@ -1471,8 +1598,8 @@ def _view_class(view_type: str) -> type[DiagramView]:
 
 
 def _load_view(root: Path) -> DiagramView:
-    manifest = _read_json(root / "manifest.json")
-    view_type = _string(manifest.get("view_type"), field="View.view_type")
+    manifest = _view_record(root / "manifest.json", DiagramViewManifest)
+    view_type = manifest.record_data.view_type
     return _view_class(view_type)(root)
 
 
@@ -1590,8 +1717,8 @@ __all__ = [
     "DiagramViewError",
     "DiagramViewMutation",
     "DiagramViewRepository",
-    "DiagramViewScope",
-    "VIEW_CLASS",
+    "DiagramViewScopeInterface",
+    "VIEW_STATE_TYPE",
     "VIEW_MANIFEST_TYPE",
     "default_diagram_views_root",
 ]

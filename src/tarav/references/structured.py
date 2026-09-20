@@ -5,13 +5,13 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
-from tarav.harness import TypeShip
+from tarav.harness import TaravObject, TypeShip
 from . import Reference, Sha256Check
 
 
-class StructuredFileLocator(BaseModel):
+class StructuredFileLocator(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     path: str = Field(min_length=1)

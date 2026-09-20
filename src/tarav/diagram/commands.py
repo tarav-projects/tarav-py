@@ -14,7 +14,7 @@ from tarav.chatlas.normal_model import provide_normal_model
 from . import (
     CaptureManifest,
     ChatlasEvidence,
-    ChatlasTurnReference,
+    ChatlasTurnReferenceInterface,
     DIAGRAM_ATTIC,
     DiagramConfiguration,
     DiagramBlock,
@@ -276,9 +276,7 @@ def _object_payload(
 ) -> tuple[dict[str, object], tuple[dict[str, object], ...]]:
     annotations = _object_annotations(item)
     engine = namespace.assertion_engine(evidence=None)
-    assessments = tuple(
-        engine.assess(annotation) for annotation in annotations
-    )
+    assessments = tuple(engine.assess(annotation) for annotation in annotations)
     assertion_scores = tuple(
         assessment.score_vector.get(assertion_type)
         for assessment in assessments
@@ -289,9 +287,7 @@ def _object_payload(
         if isinstance(item, DiagramBlock)
         else (() if isinstance(item, DiagramCollection) else (item,))
     )
-    reviews = tuple(
-        namespace.line_review(line.ship, evidence=None) for line in lines
-    )
+    reviews = tuple(namespace.line_review(line.ship, evidence=None) for line in lines)
     findings = (
         *item.findings,
         *(
@@ -340,9 +336,7 @@ def _object_payload(
             "assertions": len(assertion_scores),
             "asserted": sum(score is not None for score in assertion_scores),
             "unasserted": sum(score is None for score in assertion_scores),
-            "reviewed_lines": sum(
-                review.standing == "Reviewed" for review in reviews
-            ),
+            "reviewed_lines": sum(review.standing == "Reviewed" for review in reviews),
             "unreviewed_lines": sum(
                 review.standing != "Reviewed" for review in reviews
             ),
@@ -483,14 +477,14 @@ def _cmd_diagram_capture_context(args: argparse.Namespace) -> int:
         for turn in selected:
             if not isinstance(turn, dict):
                 raise DiagramError("Chatlas Normal Model contains an invalid turn")
-            reference = ChatlasTurnReference(
-                identity,
-                str(turn.get("turn_address")),
-                str(turn.get("turn_hash")),
+            reference = ChatlasTurnReferenceInterface(
+                session_identity=identity,
+                turn_address=str(turn.get("turn_address")),
+                turn_hash=str(turn.get("turn_hash")),
             )
             turn_payloads.append(
                 {
-                    "reference": reference.to_dict(),
+                    "reference": reference.model_dump(mode="json"),
                     "side": turn.get("side"),
                     "text": evidence.turn_text(reference),
                 }
@@ -533,7 +527,7 @@ def _cmd_diagram_capture_template(args: argparse.Namespace) -> int:
     try:
         _, model = _capture_model(args)
         manifest = CaptureManifest.template(model_ship=model.ship)
-        atomic_write_json(path, manifest.to_dict(), ensure_ascii=False)
+        atomic_write_json(path, manifest.to_json(), ensure_ascii=False)
     except (DiagramError, DiagramModelError, OSError, ValueError) as exc:
         raise CliError(str(exc)) from exc
     return _emit(
@@ -542,7 +536,7 @@ def _cmd_diagram_capture_template(args: argparse.Namespace) -> int:
             "status": "ok",
             "command": "tarav diagram capture template",
             "manifest": str(path),
-            "capture": manifest.to_dict(),
+            "capture": manifest.to_json(),
         },
         (f"manifest: {path}",),
     )
@@ -593,7 +587,7 @@ def _cmd_diagram_capture_apply(args: argparse.Namespace) -> int:
         "command": "tarav diagram capture apply",
         "namespace_id": receipt.namespace_id,
         "manifest": str(path),
-        "receipt": receipt.to_dict(),
+        "receipt": receipt.to_json(),
     }
     return _emit(
         args,

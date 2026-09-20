@@ -9,9 +9,11 @@ import json
 from pathlib import Path
 import re
 import subprocess
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar, Literal, Protocol
 import unicodedata
 from uuid import UUID, uuid4
+
+from pydantic import ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from tarav._core.persistence import atomic_write_json
 from tarav._core.project import load_project_marker, project_marker_path
@@ -35,9 +37,10 @@ from tarav.harness import (
 )
 
 NAMESPACE_CLASS = "Tarav.Diagram.Namespace"
-DIAGRAM_CONFIG_CLASS = "Tarav.Diagram.Configuration"
-CAPTURE_MANIFEST_CLASS = "Tarav.Diagram.Capture.Manifest"
-DIAGRAM_DRAFT_CLASS = "Tarav.Diagram.Draft"
+DIAGRAM_CONFIG_TYPE = "Tarav.Diagram.Configuration"
+CAPTURE_MANIFEST_TYPE = "Tarav.Diagram.Capture.Manifest"
+CAPTURE_RECEIPT_TYPE = "Tarav.Diagram.Capture.Receipt"
+DIAGRAM_DRAFT_TYPE = "Tarav.Diagram.Draft"
 USER_TOUCHED_CHATLAS_INDEX = "User.Touched.Chatlas.Index"
 DIAGRAM_ATTIC = "Diagram.Attic"
 MODEL_SHIP_TYPE = "Diagram.Model.Ship"
@@ -160,39 +163,19 @@ class Finding(TaravPOIInstance):
         }
 
 
-@dataclass(frozen=True, slots=True)
-class ChatlasTurnReference:
-    session_identity: str
-    turn_address: str
-    turn_hash: str
+class ChatlasTurnReferenceInterface(TaravObject.RecordInterface):
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
 
-    def __post_init__(self) -> None:
-        _digest(self.session_identity, field="Chatlas.Reference.session_identity")
-        _digest(self.turn_address, field="Chatlas.Reference.turn_address")
-        _digest(self.turn_hash, field="Chatlas.Reference.turn_hash")
-
-    def to_dict(self) -> dict[str, str]:
-        return {
-            "session_identity": self.session_identity,
-            "turn_address": self.turn_address,
-            "turn_hash": self.turn_hash,
-        }
-
-    @classmethod
-    def from_dict(cls, value: object) -> ChatlasTurnReference:
-        data = _object(value, field="Chatlas.Reference")
-        return cls(
-            _string(data.get("session_identity"), field="session_identity"),
-            _string(data.get("turn_address"), field="turn_address"),
-            _string(data.get("turn_hash"), field="turn_hash"),
-        )
+    session_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    turn_address: str = Field(pattern=r"^[0-9a-f]{64}$")
+    turn_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True, slots=True)
 class VerbatimGate:
     token: str
-    proposal_turn: ChatlasTurnReference
-    approval_turn: ChatlasTurnReference
+    proposal_turn: ChatlasTurnReferenceInterface
+    approval_turn: ChatlasTurnReferenceInterface
 
     def __post_init__(self) -> None:
         _string(self.token, field="Verbatim.Gate.token")
@@ -201,8 +184,8 @@ class VerbatimGate:
         return {
             "type": VERBATIM_GATE_TYPE,
             "token": self.token,
-            "proposal_turn": self.proposal_turn.to_dict(),
-            "approval_turn": self.approval_turn.to_dict(),
+            "proposal_turn": self.proposal_turn.model_dump(mode="json"),
+            "approval_turn": self.approval_turn.model_dump(mode="json"),
         }
 
     @classmethod
@@ -212,8 +195,8 @@ class VerbatimGate:
             raise DiagramModelError(f"unsupported Line Gate type: {data.get('type')}")
         return cls(
             _string(data.get("token"), field="Verbatim.Gate.token"),
-            ChatlasTurnReference.from_dict(data.get("proposal_turn")),
-            ChatlasTurnReference.from_dict(data.get("approval_turn")),
+            ChatlasTurnReferenceInterface.model_validate(data.get("proposal_turn")),
+            ChatlasTurnReferenceInterface.model_validate(data.get("approval_turn")),
         )
 
 
@@ -294,209 +277,146 @@ class IssueAssessment:
         }
 
 
-@dataclass(frozen=True, slots=True)
-class SupportMember:
-    root: ChatlasTurnReference
-    neighborhood: tuple[ChatlasTurnReference, ...] = ()
+class SupportMemberInterface(TaravObject.RecordInterface):
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
 
-    def to_dict(self) -> JsonObject:
-        return {
-            "root": self.root.to_dict(),
-            "neighborhood": [item.to_dict() for item in self.neighborhood],
-        }
-
-    @classmethod
-    def from_dict(cls, value: object) -> SupportMember:
-        data = _object(value, field="Support.Member")
-        return cls(
-            ChatlasTurnReference.from_dict(data.get("root")),
-            tuple(
-                ChatlasTurnReference.from_dict(item)
-                for item in _array(data.get("neighborhood", []), field="neighborhood")
-            ),
-        )
+    root: ChatlasTurnReferenceInterface
+    neighborhood: list[ChatlasTurnReferenceInterface] = Field(default_factory=list)
 
 
-@dataclass(frozen=True, slots=True)
-class SupportSet:
-    members: tuple[SupportMember, ...]
-
-    def to_list(self) -> list[JsonObject]:
-        return [item.to_dict() for item in self.members]
-
-    @classmethod
-    def from_list(cls, value: object) -> SupportSet:
-        return cls(
-            tuple(
-                SupportMember.from_dict(item)
-                for item in _array(value, field="Annotation.support")
-            )
-        )
+def _support_members(value: object) -> tuple[SupportMemberInterface, ...]:
+    return tuple(
+        SupportMemberInterface.model_validate(item)
+        for item in _array(value, field="Annotation.support")
+    )
 
 
-@dataclass(frozen=True, slots=True)
-class DiagramLocation:
+class DiagramLocationInterface(TaravObject.RecordInterface):
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+
     model_ship: str
     block_ship: str
     line_ship: str
 
-    def __post_init__(self) -> None:
-        for key, value in self.to_dict().items():
-            _uuid(value, field=f"Annotation.location.{key}")
-
-    def to_dict(self) -> dict[str, str]:
-        return {
-            "model_ship": self.model_ship,
-            "block_ship": self.block_ship,
-            "line_ship": self.line_ship,
-        }
-
+    @field_validator("model_ship", "block_ship", "line_ship")
     @classmethod
-    def from_dict(cls, value: object) -> DiagramLocation:
-        data = _object(value, field="Annotation.location")
-        return cls(
-            *(
-                _string(data.get(key), field=f"Annotation.location.{key}")
-                for key in ("model_ship", "block_ship", "line_ship")
-            )
-        )
+    def validate_uuid(cls, value: str) -> str:
+        return _uuid(value, field="Annotation.location")
 
 
-@dataclass(frozen=True, slots=True)
-class DiagramBlockLocation:
+class DiagramBlockLocationInterface(TaravObject.RecordInterface):
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+
     model_ship: str
     block_ship: str
 
-    def __post_init__(self) -> None:
-        for key, value in self.to_dict().items():
-            _uuid(value, field=f"Annotation.location.{key}")
-
-    def to_dict(self) -> dict[str, str]:
-        return {
-            "model_ship": self.model_ship,
-            "block_ship": self.block_ship,
-        }
-
+    @field_validator("model_ship", "block_ship")
     @classmethod
-    def from_dict(cls, value: object) -> DiagramBlockLocation:
-        data = _object(value, field="Annotation.location")
-        return cls(
-            *(
-                _string(data.get(key), field=f"Annotation.location.{key}")
-                for key in ("model_ship", "block_ship")
-            )
-        )
+    def validate_uuid(cls, value: str) -> str:
+        return _uuid(value, field="Annotation.location")
 
 
-@dataclass(frozen=True, slots=True)
-class DiagramArgumentReference:
+class DiagramArgumentReferenceInterface(TaravObject.RecordInterface):
     """Stable reference used by a free-standing Line.Annotation."""
 
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+
     namespace_id: str
-    kind: str
+    kind: Literal["ship", "edition", "annotation"]
     id: str
 
-    def __post_init__(self) -> None:
-        _uuid(self.namespace_id, field="Argument.Reference.namespace_id")
-        if self.kind not in {"ship", "edition", "annotation"}:
-            raise DiagramModelError(
-                "Argument.Reference.kind must be ship, edition, or annotation"
-            )
-        _uuid(self.id, field="Argument.Reference.id")
-
-    def to_dict(self) -> dict[str, str]:
-        return {
-            "namespace_id": self.namespace_id,
-            "kind": self.kind,
-            "id": self.id,
-        }
-
+    @field_validator("namespace_id", "id")
     @classmethod
-    def from_dict(cls, value: object) -> DiagramArgumentReference:
-        data = _object(value, field="Argument.Reference")
-        return cls(
-            _string(data.get("namespace_id"), field="Argument.Reference.namespace_id"),
-            _string(data.get("kind"), field="Argument.Reference.kind"),
-            _string(data.get("id"), field="Argument.Reference.id"),
-        )
+    def validate_uuid(cls, value: str) -> str:
+        return _uuid(value, field="Argument.Reference")
 
 
-@dataclass(frozen=True, slots=True)
-class DiagramHostReference:
+class DiagramHostReferenceInterface(TaravObject.RecordInterface):
     """Organizational host of one Diagram Ship edition."""
 
-    kind: str
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+
+    kind: Literal["model", "collection"]
     id: str
 
-    def __post_init__(self) -> None:
-        if self.kind not in {"model", "collection"}:
-            raise DiagramModelError("Edition.host.kind must be model or collection")
-        _uuid(self.id, field="Edition.host.id")
-
-    def to_dict(self) -> dict[str, str]:
-        return {"kind": self.kind, "id": self.id}
-
+    @field_validator("id")
     @classmethod
-    def from_dict(cls, value: object) -> DiagramHostReference:
-        data = _object(value, field="Edition.host")
-        return cls(
-            _string(data.get("kind"), field="Edition.host.kind"),
-            _string(data.get("id"), field="Edition.host.id"),
-        )
+    def validate_uuid(cls, value: str) -> str:
+        return _uuid(value, field="Edition.host.id")
 
 
-def _record_host(record: Mapping[str, Any], model_ship: str) -> DiagramHostReference:
+def _record_host(
+    record: Mapping[str, Any], model_ship: str
+) -> DiagramHostReferenceInterface:
     value = record.get("host")
     return (
-        DiagramHostReference.from_dict(value)
+        DiagramHostReferenceInterface.model_validate(value)
         if value is not None
-        else DiagramHostReference("model", model_ship)
+        else DiagramHostReferenceInterface(kind="model", id=model_ship)
     )
 
 
-@dataclass(frozen=True, slots=True)
-class AnnotationDraft:
+class AnnotationDraftInterface(TaravObject.RecordInterface):
+    model_config = ConfigDict(strict=True, extra="allow", frozen=True)
+
     id: str
-    record: JsonObject
+    type: str | dict[str, JsonValue] | None = None
 
-    def __post_init__(self) -> None:
-        _uuid(self.id, field="Annotation.id")
-        copied = _object(self.record, field="Annotation")
-        _record_type_reference(copied, field="Annotation")
-        object.__setattr__(self, "record", copied)
+    @field_validator("id")
+    @classmethod
+    def validate_uuid(cls, value: str) -> str:
+        return _uuid(value, field="Annotation.id")
 
-    def to_dict(self) -> JsonObject:
-        return {"id": self.id, **self.record}
+    @model_validator(mode="after")
+    def validate_record_type(self) -> AnnotationDraftInterface:
+        _record_type_reference(self.record, field="Annotation")
+        return self
+
+    @property
+    def record(self) -> JsonObject:
+        return self.model_dump(mode="json", exclude={"id"}, exclude_unset=True)
 
     @classmethod
-    def from_dict(cls, value: object) -> AnnotationDraft:
-        data = _object(value, field="Capture.Annotation")
-        annotation_id = data.pop("id", None)
-        return cls(_string(annotation_id, field="Annotation.id"), data)
+    def from_record(
+        cls, identity: str, record: Mapping[str, Any]
+    ) -> AnnotationDraftInterface:
+        copied = _object(record, field="Annotation")
+        _record_type_reference(copied, field="Annotation")
+        return cls.model_validate({**copied, "id": identity})
 
 
-@dataclass(frozen=True, slots=True)
-class ShipDraft:
+class ShipDraftInterface(TaravObject.RecordInterface):
     """One complete or incremental typed Ship record supplied by Capture."""
 
+    model_config = ConfigDict(strict=True, extra="allow", frozen=True)
+
     id: str
-    record: JsonObject
+    type: str | dict[str, JsonValue] | None = None
+    editions: list[JsonObject] = Field(default_factory=list)
 
-    def __post_init__(self) -> None:
-        _uuid(self.id, field="Ship.id")
-        copied = _object(self.record, field="Ship")
-        _record_type_reference(copied, field="Ship")
-        _array(copied.get("editions", []), field="Ship.editions")
-        object.__setattr__(self, "record", copied)
+    @field_validator("id")
+    @classmethod
+    def validate_uuid(cls, value: str) -> str:
+        return _uuid(value, field="Ship.id")
 
-    def to_dict(self) -> JsonObject:
-        return {"id": self.id, **self.record}
+    @model_validator(mode="after")
+    def validate_record_type(self) -> ShipDraftInterface:
+        _record_type_reference(self.record, field="Ship")
+        _array(self.record.get("editions", []), field="Ship.editions")
+        return self
+
+    @property
+    def record(self) -> JsonObject:
+        return self.model_dump(mode="json", exclude={"id"}, exclude_unset=True)
 
     @classmethod
-    def from_dict(cls, value: object) -> ShipDraft:
-        data = _object(value, field="Capture.Ship")
-        ship_id = data.pop("id", None)
-        return cls(_string(ship_id, field="Ship.id"), data)
+    def from_record(
+        cls, identity: str, record: Mapping[str, Any]
+    ) -> ShipDraftInterface:
+        copied = _object(record, field="Ship")
+        _record_type_reference(copied, field="Ship")
+        _array(copied.get("editions", []), field="Ship.editions")
+        return cls.model_validate({**copied, "id": identity})
 
 
 @dataclass(frozen=True, slots=True)
@@ -970,15 +890,15 @@ class UserTouchedAnnotation(TypedAnnotation):
     type_ship: ClassVar[TypeShip] = TypeShip("35958f0b-e78f-4b94-b5d2-d1e74c56b355")
 
     @property
-    def producer(self) -> ChatlasTurnReference:
-        return ChatlasTurnReference.from_dict(self.record.get("producer"))
+    def producer(self) -> ChatlasTurnReferenceInterface:
+        return ChatlasTurnReferenceInterface.model_validate(self.record.get("producer"))
 
     @property
-    def support(self) -> SupportSet:
-        return SupportSet.from_list(self.record.get("support", []))
+    def support(self) -> tuple[SupportMemberInterface, ...]:
+        return _support_members(self.record.get("support", []))
 
     def render_support(self, evidence: ChatlasEvidence) -> list[JsonObject]:
-        return [evidence.render_member(item) for item in self.support.members]
+        return [evidence.render_member(item) for item in self.support]
 
 
 class LineAnnotationRecord(TypedAnnotation):
@@ -1020,9 +940,9 @@ class LineAnnotationRecord(TypedAnnotation):
         return _edition_id(self.current_edition)
 
     @property
-    def arguments(self) -> tuple[DiagramArgumentReference, ...]:
+    def arguments(self) -> tuple[DiagramArgumentReferenceInterface, ...]:
         return tuple(
-            DiagramArgumentReference.from_dict(item)
+            DiagramArgumentReferenceInterface.model_validate(item)
             for item in _array(
                 self.current_edition.get("arguments", []),
                 field="Line.Annotation.Edition.arguments",
@@ -1044,12 +964,14 @@ class LineAnnotationRecord(TypedAnnotation):
         return self.current_edition.get("producer") is not None
 
     @property
-    def producer(self) -> ChatlasTurnReference:
-        return ChatlasTurnReference.from_dict(self.current_edition.get("producer"))
+    def producer(self) -> ChatlasTurnReferenceInterface:
+        return ChatlasTurnReferenceInterface.model_validate(
+            self.current_edition.get("producer")
+        )
 
     @property
-    def support(self) -> SupportSet:
-        return SupportSet.from_list(self.current_edition.get("support", []))
+    def support(self) -> tuple[SupportMemberInterface, ...]:
+        return _support_members(self.current_edition.get("support", []))
 
     @property
     def gates(self) -> tuple[VerbatimGate, ...]:
@@ -1080,7 +1002,7 @@ class LineAnnotationRecord(TypedAnnotation):
         )
 
     def render_support(self, evidence: ChatlasEvidence) -> list[JsonObject]:
-        return [evidence.render_member(item) for item in self.support.members]
+        return [evidence.render_member(item) for item in self.support]
 
     def model_location(self) -> tuple[str, str]:
         return self.model_ship, "model_ship"
@@ -1132,7 +1054,7 @@ class LineAnnotationRecord(TypedAnnotation):
                         ),
                     )
                 )
-        if self.support.members:
+        if self.support:
             if not self.has_producer:
                 findings.append(
                     Finding(
@@ -1159,7 +1081,7 @@ class LineEditionRecord(UserTouchedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramLocation.from_dict(self.record.get("location"))
+        DiagramLocationInterface.model_validate(self.record.get("location"))
         _string(
             _object(self.record.get("data", {}), field="data").get("text"),
             field="data.text",
@@ -1169,8 +1091,8 @@ class LineEditionRecord(UserTouchedAnnotation):
         self.authorization_gates
 
     @property
-    def location(self) -> DiagramLocation:
-        return DiagramLocation.from_dict(self.record.get("location"))
+    def location(self) -> DiagramLocationInterface:
+        return DiagramLocationInterface.model_validate(self.record.get("location"))
 
     @property
     def text(self) -> str:
@@ -1189,7 +1111,7 @@ class LineEditionRecord(UserTouchedAnnotation):
         return _string(value, field="line_type") if value is not None else None
 
     @property
-    def host(self) -> DiagramHostReference:
+    def host(self) -> DiagramHostReferenceInterface:
         return _record_host(self.record, self.location.model_ship)
 
     @property
@@ -1238,7 +1160,7 @@ class BlockEditionRecord(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramBlockLocation.from_dict(self.record.get("location"))
+        DiagramBlockLocationInterface.model_validate(self.record.get("location"))
         _string(
             _object(self.record.get("data", {}), field="data").get("label"),
             field="data.label",
@@ -1247,8 +1169,8 @@ class BlockEditionRecord(TypedAnnotation):
         self.authorization_gates
 
     @property
-    def location(self) -> DiagramBlockLocation:
-        return DiagramBlockLocation.from_dict(self.record.get("location"))
+    def location(self) -> DiagramBlockLocationInterface:
+        return DiagramBlockLocationInterface.model_validate(self.record.get("location"))
 
     @property
     def label(self) -> str:
@@ -1263,7 +1185,7 @@ class BlockEditionRecord(TypedAnnotation):
         return _string(value, field="block_type") if value is not None else None
 
     @property
-    def host(self) -> DiagramHostReference:
+    def host(self) -> DiagramHostReferenceInterface:
         return _record_host(self.record, self.location.model_ship)
 
     @property
@@ -1339,13 +1261,13 @@ class CollectionEditionRecord(TypedAnnotation):
         return _object(self.record.get("data", {}), field="data")
 
     @property
-    def host(self) -> DiagramHostReference:
+    def host(self) -> DiagramHostReferenceInterface:
         return _record_host(self.record, self.model_ship)
 
     @property
-    def references(self) -> tuple[DiagramArgumentReference, ...]:
+    def references(self) -> tuple[DiagramArgumentReferenceInterface, ...]:
         return tuple(
-            DiagramArgumentReference.from_dict(item)
+            DiagramArgumentReferenceInterface.model_validate(item)
             for item in _array(self.record.get("references", []), field="references")
         )
 
@@ -1383,7 +1305,7 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
         _uuid(self.record.get("model_ship"), field="Capture.Authorization.model_ship")
         _string(self.record.get("token"), field="Capture.Authorization.token")
         _string(self.record.get("workflow"), field="Capture.Authorization.workflow")
-        ChatlasTurnReference.from_dict(self.record.get("permission_turn"))
+        ChatlasTurnReferenceInterface.model_validate(self.record.get("permission_turn"))
         operations = tuple(
             _string(item, field="Capture.Authorization.operations[]")
             for item in _array(
@@ -1396,7 +1318,7 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
                 "Capture.Authorization.operations must not be empty"
             )
         scopes = tuple(
-            DiagramArgumentReference.from_dict(item)
+            DiagramArgumentReferenceInterface.model_validate(item)
             for item in _array(
                 self.record.get("target_scope", []),
                 field="Capture.Authorization.target_scope",
@@ -1420,8 +1342,10 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
         return _string(self.record.get("workflow"), field="workflow")
 
     @property
-    def permission_turn(self) -> ChatlasTurnReference:
-        return ChatlasTurnReference.from_dict(self.record.get("permission_turn"))
+    def permission_turn(self) -> ChatlasTurnReferenceInterface:
+        return ChatlasTurnReferenceInterface.model_validate(
+            self.record.get("permission_turn")
+        )
 
     @property
     def operations(self) -> tuple[str, ...]:
@@ -1431,9 +1355,9 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
         )
 
     @property
-    def target_scope(self) -> tuple[DiagramArgumentReference, ...]:
+    def target_scope(self) -> tuple[DiagramArgumentReferenceInterface, ...]:
         return tuple(
-            DiagramArgumentReference.from_dict(item)
+            DiagramArgumentReferenceInterface.model_validate(item)
             for item in _array(
                 self.record.get("target_scope", []), field="target_scope"
             )
@@ -1472,12 +1396,12 @@ class BlockTypeAnnotation(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramBlockLocation.from_dict(self.record.get("location"))
+        DiagramBlockLocationInterface.model_validate(self.record.get("location"))
         _string(self.record.get("block_type"), field="block_type")
 
     @property
-    def location(self) -> DiagramBlockLocation:
-        return DiagramBlockLocation.from_dict(self.record.get("location"))
+    def location(self) -> DiagramBlockLocationInterface:
+        return DiagramBlockLocationInterface.model_validate(self.record.get("location"))
 
     @property
     def block_type(self) -> str:
@@ -1505,11 +1429,11 @@ class LineSupportAnnotation(UserTouchedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramLocation.from_dict(self.record.get("location"))
+        DiagramLocationInterface.model_validate(self.record.get("location"))
 
     @property
-    def location(self) -> DiagramLocation:
-        return DiagramLocation.from_dict(self.record.get("location"))
+    def location(self) -> DiagramLocationInterface:
+        return DiagramLocationInterface.model_validate(self.record.get("location"))
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -1542,12 +1466,12 @@ class LineTypeAnnotation(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramLocation.from_dict(self.record.get("location"))
+        DiagramLocationInterface.model_validate(self.record.get("location"))
         _string(self.record.get("line_type"), field="line_type")
 
     @property
-    def location(self) -> DiagramLocation:
-        return DiagramLocation.from_dict(self.record.get("location"))
+    def location(self) -> DiagramLocationInterface:
+        return DiagramLocationInterface.model_validate(self.record.get("location"))
 
     @property
     def line_type(self) -> str:
@@ -1609,7 +1533,7 @@ class LineGateAnnotation(TypedAnnotation):
         return typed
 
     @property
-    def location(self) -> DiagramLocation:
+    def location(self) -> DiagramLocationInterface:
         return self.target.location
 
     def model_location(self) -> tuple[str, str]:
@@ -2051,12 +1975,12 @@ class DiagramCollection:
         return current.label if current is not None else None
 
     @property
-    def host(self) -> DiagramHostReference | None:
+    def host(self) -> DiagramHostReferenceInterface | None:
         current = self.current_edition
         return current.host if current is not None else None
 
     @property
-    def references(self) -> tuple[DiagramArgumentReference, ...]:
+    def references(self) -> tuple[DiagramArgumentReferenceInterface, ...]:
         current = self.current_edition
         return current.references if current is not None else ()
 
@@ -2236,14 +2160,16 @@ class DiagramProjection:
                     "object_type": collection.object_type,
                     "labels": list(collection.labels),
                     "host": (
-                        collection.host.to_dict()
+                        collection.host.model_dump(mode="json")
                         if collection.host is not None
                         else None
                     ),
                     "hosted_editions": [
                         item.to_dict() for item in collection.hosted_editions
                     ],
-                    "references": [item.to_dict() for item in collection.references],
+                    "references": [
+                        item.model_dump(mode="json") for item in collection.references
+                    ],
                 }
                 for collection in self.collections
             ],
@@ -2671,7 +2597,7 @@ class DiagramProjectionBuilder:
         return collection
 
     def _resolves_projection_reference(
-        self, reference: DiagramArgumentReference
+        self, reference: DiagramArgumentReferenceInterface
     ) -> bool:
         if reference.kind in {"edition", "annotation"}:
             return reference.id in self.typed_by_id
@@ -2937,47 +2863,65 @@ def _sort_typed(
     )
 
 
-@dataclass(frozen=True, slots=True)
-class CaptureManifest:
-    model_ship: str
-    ships: tuple[ShipDraft, ...] = ()
-    annotations: tuple[AnnotationDraft, ...] = ()
+class CaptureManifest(TaravObject):
+    type_ship = TypeShip("48c00327-fc23-4cff-99f8-d8f053546aa1")
+    type_name = CAPTURE_MANIFEST_TYPE
 
-    def __post_init__(self) -> None:
-        _uuid(self.model_ship, field="Capture.Manifest.model_ship")
+    class RecordInterface(TaravObject.RecordInterface):
+        model_config = ConfigDict(strict=True, extra="forbid")
 
-    def to_dict(self) -> JsonObject:
-        return {
-            "class": CAPTURE_MANIFEST_CLASS,
-            "schema_version": SCHEMA_VERSION,
-            "model_ship": self.model_ship,
-            "ships": [item.to_dict() for item in self.ships],
-            "annotations": [item.to_dict() for item in self.annotations],
-        }
+        type: Literal[CAPTURE_MANIFEST_TYPE]
+        schema_version: Literal[SCHEMA_VERSION]
+        model_ship: str
+        ships: list[ShipDraftInterface]
+        annotations: list[AnnotationDraftInterface]
+
+        @field_validator("model_ship")
+        @classmethod
+        def validate_model_ship(cls, value: str) -> str:
+            return _uuid(value, field="Capture.Manifest.model_ship")
 
     @classmethod
-    def from_dict(cls, value: object) -> CaptureManifest:
-        data = _object(value, field="Capture.Manifest")
-        if (
-            data.get("class") != CAPTURE_MANIFEST_CLASS
-            or data.get("schema_version") != SCHEMA_VERSION
-        ):
-            raise DiagramModelError("unsupported Tarav Diagram Capture.Manifest")
-        return cls(
-            _string(data.get("model_ship"), field="model_ship"),
-            tuple(
-                ShipDraft.from_dict(item)
-                for item in _array(data.get("ships", []), field="ships")
-            ),
-            tuple(
-                AnnotationDraft.from_dict(item)
-                for item in _array(data.get("annotations", []), field="annotations")
-            ),
+    def create(
+        cls,
+        model_ship: str,
+        ships: Iterable[ShipDraftInterface] = (),
+        annotations: Iterable[AnnotationDraftInterface] = (),
+    ) -> CaptureManifest:
+        return cls.from_json(
+            {
+                "type": cls.type_name,
+                "schema_version": SCHEMA_VERSION,
+                "model_ship": model_ship,
+                "ships": [
+                    item.model_dump(mode="json", exclude_unset=True) for item in ships
+                ],
+                "annotations": [
+                    item.model_dump(mode="json", exclude_unset=True)
+                    for item in annotations
+                ],
+            }
         )
+
+    @property
+    def model_ship(self) -> str:
+        return self.record_data.model_ship
+
+    @property
+    def ship_drafts(self) -> tuple[ShipDraftInterface, ...]:
+        return tuple(self.record_data.ships)
+
+    @property
+    def annotations(self) -> tuple[AnnotationDraftInterface, ...]:
+        return tuple(self.record_data.annotations)
 
     @classmethod
     def read(cls, path: Path) -> CaptureManifest:
-        return cls.from_dict(_read_json(path))
+        registry = TypeRegistry(TaravObject, (cls, CaptureReceipt))
+        record_type = registry.resolve(_read_json(path))
+        if record_type is not cls:
+            raise DiagramModelError("record is not a Capture.Manifest")
+        return cls.from_json(_read_json(path))
 
     @classmethod
     def template(
@@ -2985,7 +2929,7 @@ class CaptureManifest:
         *,
         model_ship: str,
     ) -> CaptureManifest:
-        return cls(model_ship)
+        return cls.create(model_ship)
 
     def check(
         self, namespace: DiagramNamespace, *, evidence: ChatlasEvidence | None = None
@@ -2994,7 +2938,7 @@ class CaptureManifest:
         seen: dict[str, JsonObject] = {}
         draft_annotations: list[DiagramAnnotation] = []
         seen_ships: dict[str, JsonObject] = {}
-        for index, draft in enumerate(self.ships):
+        for index, draft in enumerate(self.ship_drafts):
             path = f"ships[{index}]"
             if draft.id in seen_ships:
                 findings.append(
@@ -3114,10 +3058,10 @@ class CaptureManifest:
             item.id for item in namespace.ships() if item.type == COLLECTION_SHIP_TYPE
         } | {
             item.id
-            for item in self.ships
+            for item in self.ship_drafts
             if _record_is(item.record, CollectionShipRecord)
         }
-        for index, draft in enumerate(self.ships):
+        for index, draft in enumerate(self.ship_drafts):
             for edition_index, value in enumerate(
                 _array(draft.record.get("editions", []), field="Ship.editions")
             ):
@@ -3125,7 +3069,7 @@ class CaptureManifest:
                 path = f"ships[{index}].editions[{edition_index}]"
                 host = edition.get("host")
                 if host is not None:
-                    reference = DiagramHostReference.from_dict(host)
+                    reference = DiagramHostReferenceInterface.model_validate(host)
                     if (
                         reference.kind == "collection"
                         and reference.id not in known_collection_ids
@@ -3179,41 +3123,82 @@ class CaptureManifest:
         return _dedupe_findings(findings)
 
 
-@dataclass(frozen=True, slots=True)
-class CaptureReceipt:
-    namespace_id: str
-    created: tuple[str, ...]
-    existing: tuple[str, ...]
-    findings: tuple[Finding, ...]
-    committed: bool
-    base_commit: str
-    commit: str | None
-    created_ships: tuple[str, ...] = ()
-    updated_ships: tuple[str, ...] = ()
-    created_editions: tuple[str, ...] = ()
-    existing_editions: tuple[str, ...] = ()
-    created_annotations: tuple[str, ...] = ()
-    existing_annotations: tuple[str, ...] = ()
-    authorizations: tuple[JsonObject, ...] = ()
+class CaptureReceipt(TaravObject):
+    type_ship = TypeShip("1443e564-ae45-4f42-97e8-6877af4162c6")
+    type_name = CAPTURE_RECEIPT_TYPE
 
-    def to_dict(self) -> JsonObject:
-        return {
-            "class": "Tarav.Diagram.Capture.Receipt",
-            "namespace_id": self.namespace_id,
-            "created": list(self.created),
-            "existing": list(self.existing),
-            "created_ships": list(self.created_ships),
-            "updated_ships": list(self.updated_ships),
-            "created_editions": list(self.created_editions),
-            "existing_editions": list(self.existing_editions),
-            "created_annotations": list(self.created_annotations),
-            "existing_annotations": list(self.existing_annotations),
-            "authorizations": [dict(item) for item in self.authorizations],
-            "findings": [item.to_dict() for item in self.findings],
-            "committed": self.committed,
-            "base_commit": self.base_commit,
-            "commit": self.commit,
-        }
+    class RecordInterface(TaravObject.RecordInterface):
+        model_config = ConfigDict(strict=True, extra="forbid")
+
+        type: Literal[CAPTURE_RECEIPT_TYPE]
+        namespace_id: str
+        created: list[str]
+        existing: list[str]
+        findings: list[JsonObject]
+        committed: bool
+        base_commit: str
+        commit: str | None
+        created_ships: list[str]
+        updated_ships: list[str]
+        created_editions: list[str]
+        existing_editions: list[str]
+        created_annotations: list[str]
+        existing_annotations: list[str]
+        authorizations: list[JsonObject]
+
+    @classmethod
+    def create(
+        cls,
+        namespace_id: str,
+        created: Iterable[str],
+        existing: Iterable[str],
+        findings: Iterable[Finding],
+        committed: bool,
+        base_commit: str,
+        commit: str | None,
+        created_ships: Iterable[str] = (),
+        updated_ships: Iterable[str] = (),
+        created_editions: Iterable[str] = (),
+        existing_editions: Iterable[str] = (),
+        created_annotations: Iterable[str] = (),
+        existing_annotations: Iterable[str] = (),
+        authorizations: Iterable[JsonObject] = (),
+    ) -> CaptureReceipt:
+        return cls.from_json(
+            {
+                "type": cls.type_name,
+                "namespace_id": namespace_id,
+                "created": list(created),
+                "existing": list(existing),
+                "created_ships": list(created_ships),
+                "updated_ships": list(updated_ships),
+                "created_editions": list(created_editions),
+                "existing_editions": list(existing_editions),
+                "created_annotations": list(created_annotations),
+                "existing_annotations": list(existing_annotations),
+                "authorizations": [dict(item) for item in authorizations],
+                "findings": [item.to_dict() for item in findings],
+                "committed": committed,
+                "base_commit": base_commit,
+                "commit": commit,
+            }
+        )
+
+    def __getattr__(self, name: str) -> object:
+        data = self.record_data
+        if name == "findings":
+            return tuple(
+                Finding(
+                    _string(item.get("code"), field="Finding.code"),
+                    _string(item.get("path"), field="Finding.path"),
+                    _string(item.get("message"), field="Finding.message"),
+                )
+                for item in data.findings
+            )
+        if name in type(data).model_fields:
+            value = getattr(data, name)
+            return tuple(value) if isinstance(value, list) else value
+        raise AttributeError(name)
 
 
 class ChatlasEvidence:
@@ -3238,7 +3223,7 @@ class ChatlasEvidence:
             self._models[identity] = model
         return self._models[identity]
 
-    def resolve(self, ref: ChatlasTurnReference) -> JsonObject:
+    def resolve(self, ref: ChatlasTurnReferenceInterface) -> JsonObject:
         turns = self.model(ref.session_identity).get("turns")
         if not isinstance(turns, list):
             raise DiagramError("Chatlas Normal Model has no turns collection")
@@ -3267,7 +3252,7 @@ class ChatlasEvidence:
                     "Annotation producer is not an Agent turn.",
                 )
             )
-        for index, member in enumerate(annotation.support.members):
+        for index, member in enumerate(annotation.support):
             member_path = f"{path}.support[{index}]"
             root_path = f"{member_path}.root"
             root = self._matched(
@@ -3313,7 +3298,9 @@ class ChatlasEvidence:
         return findings
 
     def was_available(
-        self, producer: ChatlasTurnReference, support: ChatlasTurnReference
+        self,
+        producer: ChatlasTurnReferenceInterface,
+        support: ChatlasTurnReferenceInterface,
     ) -> bool:
         producer_position = self._position(producer)
         if producer.session_identity == support.session_identity:
@@ -3327,15 +3314,15 @@ class ChatlasEvidence:
         )
         return support_text in preceding_text
 
-    def render_member(self, member: SupportMember) -> JsonObject:
+    def render_member(self, member: SupportMemberInterface) -> JsonObject:
         refs = list((member.root, *member.neighborhood))
         if all(ref.session_identity == member.root.session_identity for ref in refs):
             refs.sort(key=self._position)
         return {
-            "root": member.root.to_dict(),
+            "root": member.root.model_dump(mode="json"),
             "turns": [
                 {
-                    "reference": ref.to_dict(),
+                    "reference": ref.model_dump(mode="json"),
                     "side": self._turn(ref).get("side"),
                     "text": self.turn_text(ref),
                     "root": ref == member.root,
@@ -3344,13 +3331,13 @@ class ChatlasEvidence:
             ],
         }
 
-    def turn_text(self, ref: ChatlasTurnReference) -> str:
+    def turn_text(self, ref: ChatlasTurnReferenceInterface) -> str:
         return self._turn_text(ref.session_identity, self._turn(ref))
 
-    def turn(self, ref: ChatlasTurnReference) -> JsonObject:
+    def turn(self, ref: ChatlasTurnReferenceInterface) -> JsonObject:
         return self._turn(ref)
 
-    def position(self, ref: ChatlasTurnReference) -> int:
+    def position(self, ref: ChatlasTurnReferenceInterface) -> int:
         return self._position(ref)
 
     def _turn_text(self, identity: str, turn: JsonObject) -> str:
@@ -3389,7 +3376,7 @@ class ChatlasEvidence:
             raise DiagramError("Chatlas Normal Model has no valid turns collection")
         return turns
 
-    def _position(self, ref: ChatlasTurnReference) -> int:
+    def _position(self, ref: ChatlasTurnReferenceInterface) -> int:
         for index, turn in enumerate(self._turns(ref.session_identity)):
             if turn.get("turn_address") == ref.turn_address:
                 if turn.get("turn_hash") != ref.turn_hash:
@@ -3400,7 +3387,11 @@ class ChatlasEvidence:
         raise DiagramError("Chatlas Turn reference is missing")
 
     def _matched(
-        self, ref: ChatlasTurnReference, path: str, code: str, findings: list[Finding]
+        self,
+        ref: ChatlasTurnReferenceInterface,
+        path: str,
+        code: str,
+        findings: list[Finding],
     ) -> JsonObject | None:
         try:
             resolved = self.resolve(ref)
@@ -3419,7 +3410,7 @@ class ChatlasEvidence:
             return None
         return turn
 
-    def _turn(self, ref: ChatlasTurnReference) -> JsonObject:
+    def _turn(self, ref: ChatlasTurnReferenceInterface) -> JsonObject:
         findings: list[Finding] = []
         turn = self._matched(ref, "reference", "turn-unresolved", findings)
         if turn is None:
@@ -4027,7 +4018,7 @@ class DiagramNamespace:
                 result.append(annotation)
         return tuple(result)
 
-    def resolves_argument(self, reference: DiagramArgumentReference) -> bool:
+    def resolves_argument(self, reference: DiagramArgumentReferenceInterface) -> bool:
         """Resolve a local Argument.Reference without interpreting its relation."""
 
         if reference.namespace_id != self.id:
@@ -4066,7 +4057,7 @@ class DiagramNamespace:
             {"type": "Semantic.Record.Representation.Assertion"},
         )
         if isinstance(typed, UserTouchedAnnotation) or (
-            isinstance(typed, LineAnnotationRecord) and typed.support.members
+            isinstance(typed, LineAnnotationRecord) and typed.support
         ):
             assertions += ({"type": "User.Touch.Support.Assertion"},)
         return (*assertions, *typed.type_assertions())
@@ -4126,7 +4117,7 @@ class DiagramNamespace:
             )
             return tuple(findings)
         if isinstance(typed, UserTouchedAnnotation):
-            if not typed.support.members:
+            if not typed.support:
                 findings.append(
                     Finding(
                         "empty-support-set",
@@ -4163,16 +4154,16 @@ class DiagramNamespace:
 
     def append(
         self,
-        drafts: Iterable[ShipDraft | AnnotationDraft],
+        drafts: Iterable[ShipDraftInterface | AnnotationDraftInterface],
         *,
         findings: Iterable[Finding] = (),
         message: str = "diagram: append annotations",
         commit: bool = True,
     ) -> CaptureReceipt:
-        ship_drafts: list[ShipDraft] = []
-        annotation_drafts: list[AnnotationDraft] = []
+        ship_drafts: list[ShipDraftInterface] = []
+        annotation_drafts: list[AnnotationDraftInterface] = []
         for draft in drafts:
-            if isinstance(draft, ShipDraft):
+            if isinstance(draft, ShipDraftInterface):
                 ship_drafts.append(draft)
             else:
                 annotation_drafts.append(draft)
@@ -4186,8 +4177,8 @@ class DiagramNamespace:
 
     def _write_records(
         self,
-        ships: Iterable[ShipDraft],
-        annotations: Iterable[AnnotationDraft],
+        ships: Iterable[ShipDraftInterface],
+        annotations: Iterable[AnnotationDraftInterface],
         *,
         findings: Iterable[Finding] = (),
         message: str,
@@ -4284,7 +4275,7 @@ class DiagramNamespace:
                 (path.relative_to(self.root) for path in pending),
                 message=message,
             )
-        return CaptureReceipt(
+        return CaptureReceipt.create(
             self.id,
             tuple(created),
             tuple(existing),
@@ -4306,7 +4297,7 @@ class DiagramNamespace:
     ) -> DiagramModel:
         ship = model_ship or str(uuid4())
         edition_id = str(uuid4())
-        draft = ShipDraft(
+        draft = ShipDraftInterface.from_record(
             ship,
             {
                 "type": MODEL_SHIP_TYPE,
@@ -4361,7 +4352,7 @@ class DiagramNamespace:
         commit: bool = True,
     ) -> CaptureReceipt:
         self.model(manifest.model_ship)
-        ship_drafts = list(manifest.ships)
+        ship_drafts = list(manifest.ship_drafts)
         annotation_drafts = list(manifest.annotations)
         count = len(ship_drafts) + len(annotation_drafts)
         return self._write_records(
@@ -4548,11 +4539,43 @@ class DiagramModel:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class DiagramConfiguration:
-    path: Path
-    namespace_locations: tuple[Path, ...]
-    default_namespace_id: str | None = None
+class DiagramConfiguration(TaravObject):
+    type_ship = TypeShip("16cf8e4f-5a1d-4a8e-9954-e30375c0d554")
+    type_name = DIAGRAM_CONFIG_TYPE
+
+    class RecordInterface(TaravObject.RecordInterface):
+        model_config = ConfigDict(strict=True, extra="forbid")
+
+        type: Literal[DIAGRAM_CONFIG_TYPE]
+        schema_version: Literal[CONFIG_SCHEMA_VERSION]
+        namespace_locations: list[str]
+        default_namespace_id: str | None
+
+        @field_validator("default_namespace_id")
+        @classmethod
+        def validate_default_namespace(cls, value: str | None) -> str | None:
+            return (
+                _uuid(value, field="default_namespace_id")
+                if value is not None
+                else None
+            )
+
+    @property
+    def path(self) -> Path:
+        if self.source is None:
+            raise DiagramError("Diagram.Configuration has no retained source")
+        return self.source
+
+    @property
+    def namespace_locations(self) -> tuple[Path, ...]:
+        return tuple(
+            Path(item).expanduser().resolve()
+            for item in self.record_data.namespace_locations
+        )
+
+    @property
+    def default_namespace_id(self) -> str | None:
+        return self.record_data.default_namespace_id
 
     @staticmethod
     def default_path() -> Path:
@@ -4570,33 +4593,19 @@ class DiagramConfiguration:
             atomic_write_json(
                 resolved,
                 {
-                    "class": DIAGRAM_CONFIG_CLASS,
+                    "type": cls.type_name,
                     "schema_version": CONFIG_SCHEMA_VERSION,
                     "namespace_locations": [],
                     "default_namespace_id": None,
                 },
             )
         data = _read_json(resolved)
-        if (
-            data.get("class") != DIAGRAM_CONFIG_CLASS
-            or data.get("schema_version") != CONFIG_SCHEMA_VERSION
-        ):
+        registry = TypeRegistry(TaravObject, (cls,))
+        if registry.resolve(data) is not cls:
             raise DiagramError(f"Diagram configuration is invalid: {resolved}")
-        default = data.get("default_namespace_id")
-        return cls(
-            resolved,
-            tuple(
-                Path(_string(item, field="namespace_locations[]"))
-                .expanduser()
-                .resolve()
-                for item in _array(
-                    data.get("namespace_locations", []), field="namespace_locations"
-                )
-            ),
-            _uuid(default, field="default_namespace_id")
-            if default is not None
-            else None,
-        )
+        result = cls.from_json(data)
+        result.source = resolved
+        return result
 
     def mount(
         self, namespace: DiagramNamespace, *, default: bool = False
@@ -4608,7 +4617,7 @@ class DiagramConfiguration:
         atomic_write_json(
             self.path,
             {
-                "class": DIAGRAM_CONFIG_CLASS,
+                "type": self.type_name,
                 "schema_version": CONFIG_SCHEMA_VERSION,
                 "namespace_locations": [str(item) for item in locations],
                 "default_namespace_id": default_id,
@@ -4890,9 +4899,9 @@ def _line_annotation_editions(record: Mapping[str, Any]) -> tuple[JsonObject, ..
 
 def _line_annotation_arguments(
     edition: Mapping[str, Any],
-) -> tuple[DiagramArgumentReference, ...]:
+) -> tuple[DiagramArgumentReferenceInterface, ...]:
     return tuple(
-        DiagramArgumentReference.from_dict(item)
+        DiagramArgumentReferenceInterface.model_validate(item)
         for item in _array(
             edition.get("arguments", []),
             field="Line.Annotation.Edition.arguments",
@@ -4915,9 +4924,9 @@ def _validate_line_annotation_edition(
         field=f"{field}.data.text",
     )
     if edition.get("producer") is not None:
-        ChatlasTurnReference.from_dict(edition.get("producer"))
+        ChatlasTurnReferenceInterface.model_validate(edition.get("producer"))
     if edition.get("support") is not None:
-        SupportSet.from_list(edition.get("support"))
+        _support_members(edition.get("support"))
     _verbatim_gates(edition.get("gates", []))
     for index, assertion in enumerate(
         _array(edition.get("assertions", []), field=f"{field}.assertions")
@@ -5233,7 +5242,7 @@ def _assess_verbatim_gate(
 
 def _gate_turn(
     evidence: ChatlasEvidence,
-    reference: ChatlasTurnReference,
+    reference: ChatlasTurnReferenceInterface,
     path: str,
     code: str,
     findings: list[Finding],
@@ -5294,7 +5303,7 @@ def _authorization_gate_ids(record: Mapping[str, Any]) -> tuple[str, ...]:
 
 
 def _authorization_coverage(
-    ships: Iterable[ShipDraft], annotations: Iterable[AnnotationDraft]
+    ships: Iterable[ShipDraftInterface], annotations: Iterable[AnnotationDraftInterface]
 ) -> tuple[JsonObject, ...]:
     coverage: dict[str, list[JsonObject]] = {}
     for draft in ships:
@@ -5333,9 +5342,9 @@ def _array(value: object, *, field: str) -> list[object]:
 
 
 def _location_ships(
-    location: DiagramLocation | DiagramBlockLocation,
+    location: DiagramLocationInterface | DiagramBlockLocationInterface,
 ) -> tuple[Ship, ...]:
-    return tuple(Ship(value) for value in location.to_dict().values())
+    return tuple(Ship(value) for value in location.model_dump(mode="json").values())
 
 
 def _record_type_reference(
@@ -5453,13 +5462,41 @@ def _optional_timestamp(value: object) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
 
+def default_diagram_record_type_registry() -> TypeRegistry[TaravObject]:
+    """Return the registered authorities for standalone Diagram records."""
+
+    from .drafts import DiagramDraft
+    from .views import (
+        DiagramViewAbout,
+        DiagramViewConfiguration,
+        DiagramViewManifest,
+        DiagramViewRepositoryRecord,
+        DiagramViewState,
+    )
+
+    return TypeRegistry(
+        TaravObject,
+        (
+            CaptureManifest,
+            CaptureReceipt,
+            DiagramConfiguration,
+            DiagramDraft,
+            DiagramViewManifest,
+            DiagramViewConfiguration,
+            DiagramViewState,
+            DiagramViewAbout,
+            DiagramViewRepositoryRecord,
+        ),
+    )
+
+
 __all__ = [
     name
     for name in globals()
     if name.startswith(("Diagram", "Design"))
     or name
     in {
-        "AnnotationDraft",
+        "AnnotationDraftInterface",
         "AnnotationAssessment",
         "AssertionEngine",
         "AssertionEvaluation",
@@ -5467,14 +5504,13 @@ __all__ = [
         "CaptureReceipt",
         "CaptureAuthorizationGateRecord",
         "ChatlasEvidence",
-        "ChatlasTurnReference",
+        "ChatlasTurnReferenceInterface",
         "Finding",
         "GateAssessment",
         "IssueAssessment",
         "LineReview",
-        "SupportMember",
-        "SupportSet",
-        "ShipDraft",
+        "SupportMemberInterface",
+        "ShipDraftInterface",
         "TypedShip",
         "ModelShipRecord",
         "BlockShipRecord",

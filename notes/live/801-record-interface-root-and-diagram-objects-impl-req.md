@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-- **Status:** Ready for execution.
+- **Status:** Completed.
 - **Alignment.Mode:** Autonomous.
 - **Objective:** make `TaravObject.RecordInterface` the common root for every Pydantic model describing complete or embedded Tarav record structure, then apply the clarified object/interface boundary to References and Diagram.
 - **Starting state:** the worktree already contains the uncommitted Reference `RecordInterface` implementation and its tests. Preserve and complete that work.
@@ -32,6 +32,8 @@ The object boundary applies across Tarav, while this request implements it in th
 
 ### Slice 1 — Embedded Reference interfaces
 
+**Status:** Completed.
+
 - Change every Pydantic locator, check, and metadata model introduced by the active Reference work to derive from `TaravObject.RecordInterface`.
 - Retain each model's explicit open or closed `extra` policy and strict field validation.
 - Keep `issubrecord()` and `isrecordsubclass()` scoped to `TaravObject` classes; use ordinary `issubclass()` for interface ancestry.
@@ -39,6 +41,8 @@ The object boundary applies across Tarav, while this request implements it in th
 - **Check:** focused Reference/Harness tests validate ancestry, exact round trips, type dispatch, optional-field omission, and resolution behavior.
 
 ### Slice 2 — Diagram structural interfaces
+
+**Status:** Completed.
 
 - Replace Diagram's plain structural dataclasses and manual `to_dict()` / `from_dict()` paths with module-level interfaces rooted at `TaravObject.RecordInterface`.
 - Cover Chatlas turn coordinates, support members, locations, argument and host references, capture Ship/Annotation drafts, and retained View scope/configuration structures.
@@ -49,6 +53,8 @@ The object boundary applies across Tarav, while this request implements it in th
 
 ### Slice 3 — Standalone Diagram TaravObjects
 
+**Status:** Completed.
+
 - Migrate independently serialized Diagram data including capture manifests/receipts, durable drafts, retained View records, and Diagram configuration to concrete `TaravObject` classes with declared Type Ships and nested `RecordInterface`s.
 - Keep filesystem paths, Namespace bindings, repositories, and multi-file storage mechanics as runtime bindings around those object records rather than serialized semantic fields.
 - Replace ad hoc `"class"` dispatch with ordinary Tarav Type resolution. Explicitly migrate affected maintained retained data before removing the old readers.
@@ -57,6 +63,8 @@ The object boundary applies across Tarav, while this request implements it in th
 - **Check:** runtime registration round trips, retained-corpus loading, Draft/View/Configuration persistence tests, CLI vertical slices, and an explicit migration verification.
 
 ### Slice 4 — Integration and closure
+
+**Status:** Completed.
 
 - Update architecture guidance only where the public contract changes.
 - Run Ruff, focused suites after each slice, architecture checks, then the complete pytest suite.
@@ -86,3 +94,7 @@ The object boundary applies across Tarav, while this request implements it in th
 - The existing `Tarav.Record` Block is the semantic attachment point; its grounded View has 14 Lines and no View findings.
 - A full-Model View bootstrap was stopped after exposing quadratic-style repeated corpus scans during review assessment. A focused Block View completed successfully. This performance behavior is a retryable Diagram.View POI and does not block the implementation.
 - Initial Draft overlay checking produced only expected semantic/Archive/staleness and pre-existing corpus POIs; no capture-shape, support-resolution, gate, or Object.Type error was found for the new material.
+- Slice 1 migrated all eleven Reference locator/check/metadata models to the common interface root. Focused Harness/Reference verification passed (`15 passed`) and Ruff was clean.
+- Slice 2 replaced Diagram's embedded turn, support, location, reference, capture-draft, and View-scope dataclasses with `TaravObject.RecordInterface` models. The full Diagram suite passed (`88 passed`).
+- Slice 3 introduced nine registered standalone Diagram record Types for capture manifests and receipts, Diagram configuration and drafts, and the four retained View records plus its repository record. A one-way migration converted 48 Drafts, 11 Views, the View repository, and the user Diagram configuration (83 rewritten records); every result resolved through its registered authority. The View migration is retained in View commit `c603c3e`.
+- Slice 4 passed Ruff and the complete test suite (`1163 passed`), reinstalled the editable CLI, and smoked retained Draft/View loading through the migrated records. The final overlay contained only the accepted unasserted, Archive-grounding, and pre-existing Model-staleness POIs. Draft `3939a6e2-0134-4b19-a04e-fb2495fa8542` applied once and closed `801.Impl.Req` in Diagram commit `8fabf0111e7c78c1c7670366e4acaaaedeeab88e`.
