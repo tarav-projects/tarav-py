@@ -20,9 +20,7 @@ class _Reader:
             "turn_hash": TURN_HASH,
             "side": "user",
             "message_refs": [],
-            "event_refs": [
-                {"event_address": "a" * 64, "event_hash": "b" * 64}
-            ],
+            "event_refs": [{"event_address": "a" * 64, "event_hash": "b" * 64}],
         }
 
     def iter_messages(self):
@@ -61,15 +59,37 @@ def test_show_and_resolve_commands_report_one_breadcrumb(tmp_path, capsys):
     surface.write_text(f"<!-- {breadcrumb_label(breadcrumb_id)} -->\n")
     store.observe_position(breadcrumb_id, file=str(surface), line=1)
 
-    assert main(
-        ["breadcrumbs", "show", "--label", breadcrumb_id, "--breadcrumbs-root", str(root), "--json"]
-    ) == 0
+    assert (
+        main(
+            [
+                "breadcrumbs",
+                "show",
+                "--label",
+                breadcrumb_id,
+                "--breadcrumbs-root",
+                str(root),
+                "--json",
+            ]
+        )
+        == 0
+    )
     shown = json.loads(capsys.readouterr().out)
     assert shown["breadcrumb"]["id"] == breadcrumb_id
 
-    assert main(
-        ["breadcrumbs", "resolve", "--label", breadcrumb_id, "--breadcrumbs-root", str(root), "--json"]
-    ) == 0
+    assert (
+        main(
+            [
+                "breadcrumbs",
+                "resolve",
+                "--label",
+                breadcrumb_id,
+                "--breadcrumbs-root",
+                str(root),
+                "--json",
+            ]
+        )
+        == 0
+    )
     resolved = json.loads(capsys.readouterr().out)
     assert resolved["position"] == {
         "file": str(surface),
@@ -80,7 +100,7 @@ def test_show_and_resolve_commands_report_one_breadcrumb(tmp_path, capsys):
 
 def test_submit_command_runs_chatlas_context_workflow(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(
-        "tarav.breadcrumbs.surfaces.provide_normal_model_reader",
+        "tarav.breadcrumb_workflows.chatlas_context.workflow.provide_normal_model_reader",
         lambda **_kwargs: _Reader(),
     )
     root = tmp_path / "breadcrumbs"
@@ -90,22 +110,127 @@ def test_submit_command_runs_chatlas_context_workflow(tmp_path, capsys, monkeypa
         encoding="utf-8",
     )
 
-    assert main(
-        [
-            "breadcrumbs",
-            "submit",
-            "--surface",
-            str(surface),
-            "--provider",
-            "codex",
-            "--session-id",
-            "session",
-            "--breadcrumbs-root",
-            str(root),
-            "--json",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "breadcrumbs",
+                "submit",
+                "chatlas-context",
+                "--surface",
+                str(surface),
+                "--provider",
+                "codex",
+                "--session-id",
+                "session",
+                "--breadcrumbs-root",
+                str(root),
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
-    assert payload["workflow"] == "Tarav.Breadcrumbs.ChatlasContext"
+    assert payload["workflow"] == "chatlas-context"
     assert len(payload["breadcrumbs"]) == 1
     assert "tarav.breadcrumb" in surface.read_text()
+
+
+def test_workflows_command_lists_registered_integrations(capsys):
+    assert main(["breadcrumbs", "workflows", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["workflows"] == [
+        {"name": "chatlas-context", "capabilities": ["submit", "audit"]}
+    ]
+
+
+def test_audit_command_checks_position_attachment_and_user_turn(
+    tmp_path, capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        "tarav.breadcrumb_workflows.chatlas_context.workflow.provide_normal_model_reader",
+        lambda **_kwargs: _Reader(),
+    )
+    monkeypatch.setattr(
+        "tarav.breadcrumb_workflows.chatlas_context.workflow.compute_normal_model",
+        lambda **_kwargs: {"turns": list(_Reader().iter_turns())},
+    )
+    root = tmp_path / "breadcrumbs"
+    surface = tmp_path / "note.md"
+    surface.write_text(
+        f"<!-- tarav.context {IDENTITY[:8]}:{TURN_HASH[:16]} -->\n",
+        encoding="utf-8",
+    )
+    assert (
+        main(
+            [
+                "breadcrumbs",
+                "submit",
+                "chatlas-context",
+                "--surface",
+                str(surface),
+                "--provider",
+                "codex",
+                "--session-id",
+                "session",
+                "--breadcrumbs-root",
+                str(root),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "breadcrumbs",
+                "audit",
+                "chatlas-context",
+                "--surface",
+                str(surface),
+                "--breadcrumbs-root",
+                str(root),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["findings"] == []
+    assert len(payload["breadcrumbs"]) == 1
+
+
+def test_audit_command_reports_unsubmitted_marker(tmp_path, capsys):
+    root = tmp_path / "breadcrumbs"
+    surface = tmp_path / "note.md"
+    surface.write_text(
+        f"<!-- tarav.context {IDENTITY[:8]}:{TURN_HASH[:16]} -->\n",
+        encoding="utf-8",
+    )
+    original_surface = surface.read_bytes()
+
+    assert (
+        main(
+            [
+                "breadcrumbs",
+                "audit",
+                "chatlas-context",
+                "--surface",
+                str(surface),
+                "--breadcrumbs-root",
+                str(root),
+                "--json",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "pois"
+    assert [item["code"] for item in payload["findings"]] == [
+        "chatlas-context-marker-unsubmitted"
+    ]
+    assert surface.read_bytes() == original_surface
+    assert not root.exists()

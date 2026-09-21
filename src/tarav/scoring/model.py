@@ -7,9 +7,14 @@ import json
 import random
 import shlex
 import string
+from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any, Mapping, Sequence
+from typing import Any, Literal, Mapping, Sequence
 from uuid import UUID, uuid4
+
+from pydantic import Field, ValidationError
+
+from tarav.harness import InvalidRecordJSON, TaravObject, TypeShip
 
 
 JsonObject = dict[str, Any]
@@ -42,6 +47,295 @@ RECORD_REFERENCE_TARGETS = {
 }
 
 
+class RecordReferenceInterface(TaravObject.RecordInterface):
+    type: str
+    id: str
+    record_sha256: str
+
+
+class LineEditionReferenceInterface(TaravObject.RecordInterface):
+    type: Literal[DIAGRAM_LINE_EDITION_REFERENCE_TYPE]
+    namespace_id: str
+    line_ship: str
+    edition_id: str
+
+
+class GroundingAssertionReferenceInterface(TaravObject.RecordInterface):
+    type: Literal[GROUNDING_ASSERTION_REFERENCE_TYPE]
+    subject_ref: LineEditionReferenceInterface
+
+
+class RankingCandidateInterface(TaravObject.RecordInterface):
+    id: str
+    presentation: str
+    enrollment_ref: RecordReferenceInterface
+    appendix: list[str] = Field(default_factory=list)
+
+
+class CodeProvenanceInterface(TaravObject.RecordInterface):
+    version: str
+    git_commit: str | None = None
+    dirty: bool
+
+
+class RankingRendererInterface(TaravObject.RecordInterface):
+    type: str
+    code_provenance: CodeProvenanceInterface
+
+
+class RankingSubmissionInterface(TaravObject.RecordInterface):
+    repository_root: str
+
+
+class ScoringRecord(TaravObject, Mapping[str, object]):
+    """Common behavior and retained fields for Assertion Scoring Records."""
+
+    type_name = "Tarav.Assertion.Scoring.Record"
+    type_ship = TypeShip("234e10e8-f207-459f-afcb-26266a8b2278")
+
+    class RecordInterface(TaravObject.RecordInterface):
+        type: str
+        schema_version: Literal[1]
+        id: str
+        created_at: str
+
+    def __init__(self, record: Mapping[str, object]) -> None:
+        type(self).validate_record(record)
+        super().__init__(record)
+        _validate_record_semantics(self.record)
+
+    def __getitem__(self, key: str) -> object:
+        return self.record[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.record)
+
+    def __len__(self) -> int:
+        return len(self.record)
+
+
+class GroundingRankingPoolRecord(ScoringRecord):
+    type_name = GROUNDING_POOL_TYPE
+    type_ship = TypeShip("785fdd36-19d9-429f-86e4-801629633e3d")
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[GROUNDING_POOL_TYPE]
+        name: str
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return _record_example(cls.type_name, name="example-grounding-pool")
+
+
+class PoolEnrollmentRecord(ScoringRecord):
+    type_name = POOL_ENROLLMENT_TYPE
+    type_ship = TypeShip("18098b05-9aa7-49aa-b23e-06bf9c1a629f")
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[POOL_ENROLLMENT_TYPE]
+        pool_ref: RecordReferenceInterface
+        assertion_ref: GroundingAssertionReferenceInterface
+        status: str
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return _record_example(
+            cls.type_name,
+            pool_ref=_record_reference_example(GROUNDING_POOL_TYPE),
+            assertion_ref=_assertion_reference_example(),
+            status="Enrolled",
+        )
+
+
+class GroundingRankingTaskRecord(ScoringRecord):
+    type_name = GROUNDING_TASK_TYPE
+    type_ship = TypeShip("d14f3987-212a-45aa-8350-425235db7dab")
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[GROUNDING_TASK_TYPE]
+        pool_ref: RecordReferenceInterface
+        background: str
+        question: str
+        appendix: list[str] = Field(default_factory=list)
+        candidates: list[RankingCandidateInterface]
+        response_contract: dict[str, object] = Field(default_factory=dict)
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        enrollment_ref = _record_reference_example(POOL_ENROLLMENT_TYPE)
+        return _record_example(
+            cls.type_name,
+            pool_ref=_record_reference_example(GROUNDING_POOL_TYPE),
+            background="Example ranking background.",
+            question="Which candidate is better supported?",
+            appendix=[],
+            candidates=[
+                {"id": "candidate-a", "presentation": "A", "enrollment_ref": enrollment_ref},
+                {"id": "candidate-b", "presentation": "B", "enrollment_ref": enrollment_ref},
+            ],
+            response_contract={"outcomes": ["ranked", "abstained"]},
+        )
+
+
+class RankingRunRecord(ScoringRecord):
+    type_name = RUN_TYPE
+    type_ship = TypeShip("7c2cc7d4-9bb7-4e2f-9fa1-997d56b0d11f")
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[RUN_TYPE]
+        task_ref: RecordReferenceInterface
+        runner: dict[str, object]
+        labels: dict[str, str]
+        renderer: RankingRendererInterface
+        submission: RankingSubmissionInterface
+        rendered_prompt_sha256: str
+        status: str
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return _record_example(
+            cls.type_name,
+            task_ref=_record_reference_example(GROUNDING_TASK_TYPE),
+            runner={"type": "Unknown.Ranking.Runner"},
+            labels={"A": "candidate-a", "B": "candidate-b"},
+            renderer={
+                "type": GROUNDING_TASK_RENDERER,
+                "code_provenance": _code_provenance_example(),
+            },
+            submission={"repository_root": "/example/scoring"},
+            rendered_prompt_sha256="0" * 64,
+            status="Awaiting.Result",
+        )
+
+
+class RankingResultRecord(ScoringRecord):
+    type_name = RESULT_TYPE
+    type_ship = TypeShip("9802acd7-15ee-429c-957b-b4e5c044da4c")
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[RESULT_TYPE]
+        run_ref: RecordReferenceInterface
+        outcome: str
+        tiers: list[list[str]]
+        rationale: str | None = None
+        abstain_reason: str | None = None
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return _record_example(
+            cls.type_name,
+            run_ref=_record_reference_example(RUN_TYPE),
+            outcome="ranked",
+            tiers=[["A"], ["B"]],
+            rationale="Candidate A is better supported.",
+            abstain_reason=None,
+        )
+
+
+class ScoringTraceRecord(ScoringRecord):
+    type_name = SCORING_TRACE_TYPE
+    type_ship = TypeShip("521c50d4-e96f-47e6-8553-e70f608c84fa")
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[SCORING_TRACE_TYPE]
+        assertion_ref: GroundingAssertionReferenceInterface
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return _record_example(
+            cls.type_name,
+            assertion_ref=_assertion_reference_example(),
+        )
+
+
+class ScoringEventRecord(ScoringRecord):
+    type_name = SCORING_EVENT_TYPE
+    type_ship = TypeShip("2b84630c-0880-4a88-8fa9-6b35aa64338f")
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[SCORING_EVENT_TYPE]
+        computed_at: str
+        trace_ref: RecordReferenceInterface
+        method: str
+        pool_ids: list[str]
+        results_commit: str
+        code_provenance: CodeProvenanceInterface
+        result_count: int
+        abstention_count: int
+        wins: int
+        losses: int
+        ties: int
+        comparisons: int
+        value: float | int | None
+
+    @classmethod
+    def json_example(cls) -> dict[str, object]:
+        return _record_example(
+            cls.type_name,
+            computed_at="2026-01-01T00:00:00+00:00",
+            trace_ref=_record_reference_example(SCORING_TRACE_TYPE),
+            method=WIN_RATE_SCORE,
+            pool_ids=["00000000-0000-4000-8000-000000000002"],
+            results_commit="0" * 40,
+            code_provenance=_code_provenance_example(),
+            result_count=1,
+            abstention_count=0,
+            wins=1,
+            losses=0,
+            ties=0,
+            comparisons=1,
+            value=1.0,
+        )
+
+
+SCORING_RECORD_TYPES = (
+    GroundingRankingPoolRecord,
+    PoolEnrollmentRecord,
+    GroundingRankingTaskRecord,
+    RankingRunRecord,
+    RankingResultRecord,
+    ScoringTraceRecord,
+    ScoringEventRecord,
+)
+SCORING_RECORD_TYPES_BY_NAME = {
+    record_type.type_name: record_type for record_type in SCORING_RECORD_TYPES
+}
+
+
+def _record_example(record_type: str, **fields: object) -> dict[str, object]:
+    return {
+        "type": record_type,
+        "schema_version": 1,
+        "id": "00000000-0000-4000-8000-000000000001",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        **fields,
+    }
+
+
+def _record_reference_example(record_type: str) -> dict[str, object]:
+    return {
+        "type": f"{record_type}.Reference",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "record_sha256": "0" * 64,
+    }
+
+
+def _assertion_reference_example() -> dict[str, object]:
+    return {
+        "type": GROUNDING_ASSERTION_REFERENCE_TYPE,
+        "subject_ref": {
+            "type": DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
+            "namespace_id": "00000000-0000-4000-8000-000000000003",
+            "line_ship": "00000000-0000-4000-8000-000000000004",
+            "edition_id": "00000000-0000-4000-8000-000000000005",
+        },
+    }
+
+
+def _code_provenance_example() -> dict[str, object]:
+    return {"version": "0.0.0", "git_commit": "0" * 40, "dirty": False}
+
+
 class ScoringError(ValueError):
     """A malformed scoring record or invalid scoring operation."""
 
@@ -70,8 +364,8 @@ def new_record(record_type: str, **fields: object) -> JsonObject:
         "created_at": now_iso(),
     }
     record.update(fields)
-    validate_record(record)
-    return record
+    record_class = scoring_record_class(record_type)
+    return record_class.from_json(record).to_json()
 
 
 def record_reference(record: Mapping[str, object]) -> JsonObject:
@@ -598,7 +892,14 @@ def _validate_score_statistics(record: Mapping[str, object]) -> None:
         raise ScoringError("Score value must be numeric or null")
 
 
-def validate_record(record: Mapping[str, object]) -> None:
+def scoring_record_class(record_type: str) -> type[ScoringRecord]:
+    try:
+        return SCORING_RECORD_TYPES_BY_NAME[record_type]
+    except KeyError as exc:
+        raise ScoringError(f"unsupported scoring Record type: {record_type}") from exc
+
+
+def _validate_record_semantics(record: Mapping[str, object]) -> None:
     record_type = _required_string(record, "type")
     if record_type not in RECORD_KINDS:
         raise ScoringError(f"unsupported scoring Record type: {record_type}")
@@ -618,6 +919,17 @@ def validate_record(record: Mapping[str, object]) -> None:
         _validate_pool if is_pool_record_type(record_type) else validators[record_type]
     )
     validator(record)
+
+
+def validate_record(record: Mapping[str, object]) -> None:
+    """Validate a retained scoring representation through its Type authority."""
+
+    record_type = _required_string(record, "type")
+    record_class = scoring_record_class(record_type)
+    try:
+        record_class.from_json(record)
+    except (InvalidRecordJSON, ValidationError) as exc:
+        raise ScoringError(f"invalid {record_type} Record: {exc}") from exc
 
 
 def is_pool_record_type(record_type: str) -> bool:
@@ -732,8 +1044,24 @@ __all__ = [
     "RESULT_TYPE",
     "RUN_TYPE",
     "SCORING_EVENT_TYPE",
+    "SCORING_RECORD_TYPES",
     "SCORING_TRACE_TYPE",
+    "CodeProvenanceInterface",
+    "GroundingAssertionReferenceInterface",
+    "GroundingRankingPoolRecord",
+    "GroundingRankingTaskRecord",
+    "LineEditionReferenceInterface",
+    "PoolEnrollmentRecord",
+    "RankingCandidateInterface",
+    "RankingRendererInterface",
+    "RankingResultRecord",
+    "RankingRunRecord",
+    "RankingSubmissionInterface",
+    "RecordReferenceInterface",
+    "ScoringEventRecord",
     "ScoringError",
+    "ScoringRecord",
+    "ScoringTraceRecord",
     "WIN_RATE_SCORE",
     "candidate_labels",
     "compute_win_rate_scores",
@@ -750,4 +1078,5 @@ __all__ = [
     "render_run",
     "render_task",
     "validate_record",
+    "scoring_record_class",
 ]

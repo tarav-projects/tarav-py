@@ -102,8 +102,8 @@ class Reader:
 
     def model_header(self) -> dict[str, object]:
         return {
-            "schema": "tarav.chatlas.normal-model",
-            "schema_version": 2,
+            "type": "Chatlas.Normal.Model",
+            "schema_version": 1,
             "session": {
                 "provider": "codex",
                 "session_id": "session-one",

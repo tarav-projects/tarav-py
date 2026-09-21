@@ -177,8 +177,8 @@ def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
     assert len(contexts) == 2
     assert contexts[0]["event_refs"] == contexts[1]["event_refs"]
     assert len(contexts[0]["event_refs"]) == 3
-    assert model["schema"] == "tarav.chatlas.normal-model"
-    assert model["schema_version"] == 2
+    assert model["type"] == "Chatlas.Normal.Model"
+    assert model["schema_version"] == 1
     assert "raw" not in model
     assert all(
         "record" not in event and "raw" not in event for event in model["events"]

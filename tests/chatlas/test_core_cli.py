@@ -686,7 +686,7 @@ def test_normal_model_command_uses_an_exact_session_reference(
     class Reader:
         def project(self, **kwargs):
             calls.append({"projection": kwargs})
-            return {"schema": "tarav.chatlas.normal-model", "events": []}
+            return {"type": "Chatlas.Normal.Model", "events": []}
 
     monkeypatch.setattr(
         "tarav.chatlas.commands.provide_normal_model_reader",
@@ -695,7 +695,7 @@ def test_normal_model_command_uses_an_exact_session_reference(
 
     assert main(["chatlas", "normal-model", "--identity-hash", "abc"]) == 0
     assert json.loads(capsys.readouterr().out) == {
-        "schema": "tarav.chatlas.normal-model",
+        "type": "Chatlas.Normal.Model",
         "events": [],
     }
     assert calls == [
@@ -756,8 +756,8 @@ def test_normal_model_collection_flags_are_additive(monkeypatch, capsys) -> None
 
 def test_normal_model_all_and_raw_use_the_same_projection(monkeypatch, capsys) -> None:
     model = {
-        "schema": "tarav.chatlas.normal-model",
-        "schema_version": 2,
+        "type": "Chatlas.Normal.Model",
+        "schema_version": 1,
         "metadata": {},
         "session": {},
         "sources": [],
@@ -765,6 +765,12 @@ def test_normal_model_all_and_raw_use_the_same_projection(monkeypatch, capsys) -
         "messages": [2],
         "turns": [3],
         "loaded_contexts": [4],
+        "counts": {
+            "events": 1,
+            "messages": 1,
+            "turns": 1,
+            "loaded_contexts": 1,
+        },
         "raw": [5],
     }
     monkeypatch.setattr(

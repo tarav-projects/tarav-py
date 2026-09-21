@@ -19,6 +19,8 @@ from tarav.diagram import (
     DiagramNamespace,
     ShipDraftInterface,
 )
+from tarav.harness import TaravObject, issubrecord
+from tarav.runtime import create_runtime
 from tarav.scoring import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_REFERENCE_TYPE,
@@ -29,6 +31,7 @@ from tarav.scoring import (
     RUN_TYPE,
     LIVE_SCORE_CLASS,
     SCORING_EVENT_TYPE,
+    SCORING_RECORD_TYPES,
     SCORING_TRACE_TYPE,
     ScoringError,
     ScoringRepository,
@@ -42,6 +45,12 @@ from tarav.scoring import (
     record_reference,
     render_run,
     render_task,
+)
+from tarav.scoring.model import (
+    CodeProvenanceInterface,
+    GroundingAssertionReferenceInterface,
+    RankingCandidateInterface,
+    RecordReferenceInterface,
 )
 from tarav.scoring.tasks import (
     DEFAULT_RANKING_POOL_REGISTRY,
@@ -103,6 +112,41 @@ def _task():
         ),
     )
     return pool, enrollments, task, first, second
+
+
+def test_scoring_records_are_registered_tarav_objects_with_shared_interfaces(
+    tmp_path: Path,
+) -> None:
+    runtime = create_runtime()
+    repository = ScoringRepository.initialize(tmp_path / "scoring")
+    pool = repository.create(_pool("registered"))
+
+    assert runtime.scoring.record_types == SCORING_RECORD_TYPES
+    assert all(
+        record_type in runtime.records.record_types
+        for record_type in SCORING_RECORD_TYPES
+    )
+    assert all(
+        issubrecord(record_type, TaravObject)
+        for record_type in SCORING_RECORD_TYPES
+    )
+    assert all(
+        record_type.preserves_parent_record_interface()
+        for record_type in SCORING_RECORD_TYPES
+    )
+    assert all(
+        issubclass(interface, TaravObject.RecordInterface)
+        for interface in (
+            RecordReferenceInterface,
+            GroundingAssertionReferenceInterface,
+            RankingCandidateInterface,
+            CodeProvenanceInterface,
+        )
+    )
+
+    loaded = runtime.load(repository.path_for(pool))
+    assert type(loaded) is SCORING_RECORD_TYPES[0]
+    assert loaded.to_json() == pool
 
 
 def test_repository_retains_typed_records_in_git_and_resolves_prefixes(

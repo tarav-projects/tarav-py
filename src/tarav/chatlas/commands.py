@@ -465,11 +465,12 @@ def _project_computed_model(
     projected = {
         key: model[key]
         for key in (
-            "schema",
+            "type",
             "schema_version",
             "metadata",
             "session",
             "sources",
+            "counts",
             "events",
         )
     }

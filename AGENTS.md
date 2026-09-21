@@ -91,10 +91,15 @@
   composition is the exception that registers the public `tarav chatlas`
   leaves.
 - Consumers import `tarav.chatlas.normal_model`, not its internal modules.
+- The aggregate Normal Model is a registered `DirectoryRecord`; its `main.json`
+  and JSONL streams are semantic representation. Chatlas cache mechanics live
+  outside that module and may decorate a cache-managed model directory with
+  `cache.json` without participating in model validity.
 - `chatlas.references` is a Normal Model consumer owning typed Turn references;
   capture/index modules remain independent of normalization.
-- Retained raw artifacts are the evidence surface. The Session Index and Normal
-  Model cache are derived, replaceable, and rebuildable.
+- Retained raw artifacts are the evidence surface. The Session Index and
+  materialized Normal Model directories are derived, replaceable, and
+  rebuildable.
 
 ## Operational logging
 

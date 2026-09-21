@@ -391,8 +391,8 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
     model = build_normal_model_from_row(_row(path))
 
     assert model["session"]["provider"] == "claude-code"
-    assert model["schema"] == "tarav.chatlas.normal-model"
-    assert model["schema_version"] == 2
+    assert model["type"] == "Chatlas.Normal.Model"
+    assert model["schema_version"] == 1
     assert "raw" not in model
     assert all(
         "record" not in event and "raw" not in event for event in model["events"]

@@ -26,8 +26,10 @@ def test_generation_mechanics_have_no_tarav_domain_dependencies() -> None:
     tree = ast.parse((PACKAGE_ROOT / "skw" / "generation.py").read_text())
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            assert all(alias.name.split(".")[0] in sys.stdlib_module_names
-                       for alias in node.names)
+            assert all(
+                alias.name.split(".")[0] in sys.stdlib_module_names
+                for alias in node.names
+            )
         elif isinstance(node, ast.ImportFrom):
             assert node.level == 0
             assert node.module.split(".")[0] in sys.stdlib_module_names
@@ -39,7 +41,12 @@ def _top_level_import_graph() -> dict[str, set[str]]:
         relative = path.relative_to(PACKAGE_ROOT)
         source = relative.parts[0] if len(relative.parts) > 1 else "<root>"
         # skw.skills is a composition leaf above the generic SKW document kernel.
-        if relative.as_posix() in {"skw/skills.py", "skw/publication.py", "skw/loading.py", "skw/pois.py"}:
+        if relative.as_posix() in {
+            "skw/skills.py",
+            "skw/publication.py",
+            "skw/loading.py",
+            "skw/pois.py",
+        }:
             source = "skw.skills"
         graph[source]
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -153,7 +160,9 @@ def test_native_surfaces_do_not_import_skillware() -> None:
     assert "skw" not in imports["surfaces"]
     # Chatlas stopped consuming native surfaces when the Chat.Index Markdown
     # projection was removed.
-    assert "stdlib" in {name for name, targets in imports.items() if "surfaces" in targets}
+    assert "stdlib" in {
+        name for name, targets in imports.items() if "surfaces" in targets
+    }
     assert "surfaces" not in imports["chatlas"]
 
 
@@ -208,6 +217,18 @@ def test_promoted_tarav_domains_have_normal_package_ownership() -> None:
     assert not (PACKAGE_ROOT / "canvas").exists()
 
 
+def test_breadcrumb_chatlas_integration_is_independently_owned() -> None:
+    imports = _top_level_import_graph()
+
+    assert "chatlas" not in imports["breadcrumbs"]
+    assert "breadcrumbs" not in imports["chatlas"]
+    assert {"breadcrumbs", "chatlas", "surfaces"} <= imports["breadcrumb_workflows"]
+    assert (PACKAGE_ROOT / "breadcrumb_workflows" / "chatlas_context").is_dir()
+    assert (
+        PACKAGE_ROOT / "breadcrumb_workflows" / "chatlas_context" / "integration.py"
+    ).is_file()
+
+
 def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
     """The Normal Model consumes capture/index mechanics without reversing them.
 
@@ -232,11 +253,13 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
                 and not m.startswith("tarav.chatlas.normal_model")
                 for m in modules
             )
-        elif path.name not in {"commands.py", "references.py"}:
+        elif path.name not in {"commands.py", "references.py", "normal_model_cache.py"}:
             # commands.py is the composition point: it builds the one `tarav chatlas`
             # group and hands its subparsers to the layer. Everything else in
             # chatlas/ must stay below the layer, not reach up into it.
             # references.py is an explicit Normal Model consumer exposing typed Turns.
+            # normal_model_cache.py is the Chatlas-owned logistical decorator around
+            # canonical Normal Model directories.
             assert not any(
                 m.startswith("tarav.chatlas.normal_model") for m in modules
             ), path
@@ -256,7 +279,7 @@ def test_consumers_import_the_normal_model_package_not_its_submodules() -> None:
     normal_model = PACKAGE_ROOT / "chatlas" / "normal_model"
     offenders: list[str] = []
     for path in PACKAGE_ROOT.rglob("*.py"):
-        if normal_model in path.parents:
+        if normal_model in path.parents or path.name == "normal_model_cache.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):

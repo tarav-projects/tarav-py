@@ -1,11 +1,10 @@
+"""Chatlas cache mechanics for canonical Normal Model directories."""
+
 from __future__ import annotations
 
-from collections.abc import Iterator
 from copy import deepcopy
-from dataclasses import dataclass
 from hashlib import sha256
 import json
-import os
 from pathlib import Path
 import shutil
 from typing import Literal
@@ -17,93 +16,26 @@ from tarav._core.errors import CliError
 from tarav._core.persistence import atomic_write_json
 from tarav.chatlas.paths import default_chatlas_root
 
-from .model import JsonObject
-from .pipeline import (
+from .normal_model.model import (
+    ChatlasNormalModel,
+    COLLECTION_FILES,
+    JsonObject,
+    MAIN_FILENAME,
     NORMAL_MODEL_SCHEMA_VERSION,
+)
+from .normal_model.pipeline import (
     build_normal_model_from_row,
     normal_model_producer_commit,
     transcript_paths,
 )
-from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record
 
 
 CACHE_SCHEMA = "tarav.chatlas.normal-model-cache"
-CACHE_SCHEMA_VERSION = 3
+CACHE_SCHEMA_VERSION = 4
 CACHE_ROOT = Path("normal-model")
 LOCK_ROOT = CACHE_ROOT / "locks"
-METADATA_FILENAME = "metadata.json"
-EVENTS_FILENAME = "events.jsonl"
-MESSAGES_FILENAME = "messages.jsonl"
-TURNS_FILENAME = "turns.jsonl"
-LOADED_CONTEXTS_FILENAME = "loaded-contexts.jsonl"
-_COLLECTION_FILES = {
-    "events": EVENTS_FILENAME,
-    "messages": MESSAGES_FILENAME,
-    "turns": TURNS_FILENAME,
-    "loaded_contexts": LOADED_CONTEXTS_FILENAME,
-}
-_MODEL_HEADER_KEYS = ("schema", "schema_version", "metadata", "session", "sources")
+CACHE_FILENAME = "cache.json"
 CacheStanding = Literal["FRESH", "STALE", "MISSING"]
-
-
-@dataclass(frozen=True, slots=True)
-class NormalModelCacheReader:
-    path: Path
-    metadata: JsonObject
-
-    def iter_events(self) -> Iterator[JsonObject]:
-        yield from self._iter_collection("events")
-
-    def iter_messages(self) -> Iterator[JsonObject]:
-        yield from self._iter_collection("messages")
-
-    def iter_turns(self) -> Iterator[JsonObject]:
-        yield from self._iter_collection("turns")
-
-    def iter_loaded_contexts(self) -> Iterator[JsonObject]:
-        yield from self._iter_collection("loaded_contexts")
-
-    def model_header(self) -> JsonObject:
-        model = self.metadata.get("model")
-        if not isinstance(model, dict):
-            raise CliError(f"Normal Model cache has no model header: {self.path}")
-        return deepcopy(model)
-
-    def project(
-        self,
-        *,
-        include_messages: bool = False,
-        include_turns: bool = False,
-        include_loaded_contexts: bool = False,
-    ) -> JsonObject:
-        model = self.model_header()
-        model["events"] = list(self.iter_events())
-        if include_messages:
-            model["messages"] = list(self.iter_messages())
-        if include_turns:
-            model["turns"] = list(self.iter_turns())
-        if include_loaded_contexts:
-            model["loaded_contexts"] = list(self.iter_loaded_contexts())
-        return model
-
-    def load_normal_model(self) -> JsonObject:
-        return self.project(
-            include_messages=True,
-            include_turns=True,
-            include_loaded_contexts=True,
-        )
-
-    def _iter_collection(self, name: str) -> Iterator[JsonObject]:
-        filename = _COLLECTION_FILES[name]
-        for value in _iter_jsonl(self.path / filename):
-            if name == "events":
-                yield event_record(value).to_json()
-            elif name == "messages":
-                yield ChatMessage.from_json(value).to_json()
-            elif name == "turns":
-                yield ChatTurn.from_json(value).to_json()
-            else:
-                yield AgentLoadedContext.from_json(value).to_json()
 
 
 def normal_model_cache_path(
@@ -114,6 +46,7 @@ def normal_model_cache_path(
     return _root(chatlas_root) / CACHE_ROOT / _identity_hash(row)
 
 
+# tarav.breadcrumb 0221441d98de41950b96fa7dae8da102cbfbba80964204c02c362cbc6946a248
 def normal_model_cache_status_from_row(
     row: JsonObject,
     *,
@@ -124,11 +57,15 @@ def normal_model_cache_status_from_row(
         return "MISSING"
     if not path.is_dir() or not all(
         (path / filename).is_file()
-        for filename in (METADATA_FILENAME, *_COLLECTION_FILES.values())
+        for filename in (MAIN_FILENAME, *COLLECTION_FILES.values(), CACHE_FILENAME)
     ):
         return "STALE"
-    metadata = _read_metadata(path, required=False)
+    metadata = _read_cache_metadata(path, required=False)
     if metadata is None or metadata.get("cache_key") != _cache_identity(row)["cache_key"]:
+        return "STALE"
+    try:
+        ChatlasNormalModel.open(path)
+    except (CliError, ValueError):
         return "STALE"
     return "FRESH"
 
@@ -137,11 +74,11 @@ def open_normal_model_cache_from_row(
     row: JsonObject,
     *,
     chatlas_root: Path | None = None,
-) -> NormalModelCacheReader:
+) -> ChatlasNormalModel:
     path = normal_model_cache_path(row, chatlas_root=chatlas_root)
     if normal_model_cache_status_from_row(row, chatlas_root=chatlas_root) != "FRESH":
         raise CliError(f"Normal Model cache is not fresh: {path}")
-    return NormalModelCacheReader(path=path, metadata=_read_metadata(path, required=True))
+    return ChatlasNormalModel.open(path)
 
 
 def read_normal_model_cache_from_row(
@@ -159,7 +96,7 @@ def materialize_normal_model_cache_from_row(
     row: JsonObject,
     *,
     chatlas_root: Path | None = None,
-) -> NormalModelCacheReader:
+) -> ChatlasNormalModel:
     root = _root(chatlas_root)
     path = normal_model_cache_path(row, chatlas_root=root)
     identity = _identity_hash(row)
@@ -173,7 +110,7 @@ def materialize_normal_model_cache_from_row(
             raise CliError("chat transcript sources changed during normalization")
         _validate_model(model, identity=identity)
         _replace_cache_directory(path, model=model, cache_identity=after)
-    return NormalModelCacheReader(path=path, metadata=_read_metadata(path, required=True))
+    return ChatlasNormalModel.open(path)
 
 
 def provide_normal_model_reader_from_row(
@@ -181,7 +118,7 @@ def provide_normal_model_reader_from_row(
     *,
     chatlas_root: Path | None = None,
     refresh: bool = False,
-) -> NormalModelCacheReader:
+) -> ChatlasNormalModel:
     if not refresh and normal_model_cache_status_from_row(
         row, chatlas_root=chatlas_root
     ) == "FRESH":
@@ -236,16 +173,10 @@ def _source_fingerprints(row: JsonObject) -> list[JsonObject]:
 
 
 def _validate_model(model: JsonObject, *, identity: str) -> None:
-    if model.get("schema") != "tarav.chatlas.normal-model":
-        raise CliError("normalization did not produce a Normal Model")
-    if model.get("schema_version") != NORMAL_MODEL_SCHEMA_VERSION:
-        raise CliError("normalization produced an unsupported Normal Model schema")
-    session = model.get("session")
+    header, _collections = ChatlasNormalModel.validate_projection(model)
+    session = header.get("session")
     if not isinstance(session, dict) or session.get("identity_hash") != identity:
         raise CliError("Normal Model session identity does not match its index row")
-    for name in _COLLECTION_FILES:
-        if not isinstance(model.get(name), list):
-            raise CliError(f"Normal Model has no {name} collection")
 
 
 def _replace_cache_directory(
@@ -256,24 +187,17 @@ def _replace_cache_directory(
 ) -> None:
     temporary = path.with_name(f".{path.name}.tmp-{uuid4().hex}")
     backup = path.with_name(f".{path.name}.old-{uuid4().hex}")
-    temporary.mkdir(parents=True, exist_ok=False)
     try:
-        metadata: JsonObject = {
-            "schema": CACHE_SCHEMA,
-            "schema_version": CACHE_SCHEMA_VERSION,
-            **deepcopy(cache_identity),
-            "model": {key: deepcopy(model[key]) for key in _MODEL_HEADER_KEYS},
-            "counts": {
-                name: len(model[name]) for name in _COLLECTION_FILES
-            },
-        }
+        ChatlasNormalModel.materialize(temporary, model)
         atomic_write_json(
-            temporary / METADATA_FILENAME,
-            metadata,
+            temporary / CACHE_FILENAME,
+            {
+                "schema": CACHE_SCHEMA,
+                "schema_version": CACHE_SCHEMA_VERSION,
+                **deepcopy(cache_identity),
+            },
             ensure_ascii=False,
         )
-        for name, filename in _COLLECTION_FILES.items():
-            _write_jsonl(temporary / filename, model[name])
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             path.rename(backup)
@@ -290,42 +214,8 @@ def _replace_cache_directory(
             shutil.rmtree(temporary)
 
 
-def _write_jsonl(path: Path, values: object) -> None:
-    if not isinstance(values, list):
-        raise CliError(f"Normal Model collection is not a list: {path.name}")
-    with path.open("w", encoding="utf-8") as handle:
-        for value in values:
-            handle.write(
-                json.dumps(
-                    value,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-            )
-            handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-
-
-def _iter_jsonl(path: Path) -> Iterator[JsonObject]:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                if not line.strip():
-                    continue
-                value = json.loads(line)
-                if not isinstance(value, dict):
-                    raise CliError(
-                        f"Normal Model cache row is not an object: {path}:{line_number}"
-                    )
-                yield value
-    except (OSError, json.JSONDecodeError) as exc:
-        raise CliError(f"invalid Normal Model cache stream: {path}") from exc
-
-
-def _read_metadata(path: Path, *, required: bool) -> JsonObject | None:
-    metadata_path = path / METADATA_FILENAME
+def _read_cache_metadata(path: Path, *, required: bool) -> JsonObject | None:
+    metadata_path = path / CACHE_FILENAME
     try:
         value = json.loads(metadata_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -355,7 +245,6 @@ def _root(chatlas_root: Path | None) -> Path:
 
 
 __all__ = [
-    "NormalModelCacheReader",
     "materialize_normal_model_cache_from_row",
     "normal_model_cache_path",
     "normal_model_cache_status_from_row",

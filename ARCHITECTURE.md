@@ -136,19 +136,29 @@ checks User-Turn evidence without claiming approval or semantic fidelity.
   selection and record assembly; Renderers own presentation. Chatlas preserves
   source traceability but does not own semantic interpretation, annotation,
   contextualization, or workflow products. Independently meaningful Normal
-  Model Events, Messages, Turns, and loaded contexts are registered
-  `TaravObject` records and carry `type`. Containers, commands, queries,
-  results, caches, indexes, manifests, and resolution projections remain
-  ordinary values; persisted ordinary formats identify their format with
-  `schema` and `schema_version`.
+  Model aggregate, Events, Messages, Turns, and loaded contexts are registered
+  `TaravObject` records and carry `type`. The aggregate is a `DirectoryRecord`
+  whose `main.json` entry and JSONL collections form its canonical streamable
+  representation. Commands, queries, results, caches, indexes, manifests, and
+  resolution projections remain ordinary values; persisted ordinary formats
+  identify their format with `schema` and `schema_version`.
 - `tarav.archive` owns stable Artifact identity, retained Archive Records, and
   portable references to retained or externally located data.
 - `tarav.breadcrumbs` owns opaque anchors embedded in Product.Surfaces. Each
   anchor has a stable directory entry, append-only file-position observations,
-  and independently typed workflow attachments. Its Chatlas-context surface
-  workflow resolves provisional User-Turn markers before atomically replacing
-  them with surface-native Breadcrumb labels. Breadcrumb storage does not
-  interpret attachment schemas.
+  independently typed workflow attachments, and a registry and generic surface
+  transaction for annotation workflows. A `BreadcrumbIntegration` is the
+  complete runtime registration unit containing one workflow and its command
+  adapter. Generic audit discovers labels and resolves retained positions and
+  attachments; workflow audit interprets its own attachment schema. Breadcrumb
+  storage does not interpret attachment schemas.
+- `tarav.breadcrumb_workflows.chatlas_context` independently integrates
+  Breadcrumbs, Chatlas Query, and native surfaces. It resolves provisional
+  User-Turn markers and produces typed Chatlas-context attachments before the
+  generic transaction atomically replaces the markers with surface-native
+  Breadcrumb labels. Its read-only audit verifies provisional-marker standing,
+  attachment shape, and referenced User Turns without refreshing Chatlas or
+  retaining audit results.
 - `tarav.diagram` owns flat Namespace collections of typed semantic Ships and
   separate Annotation claim lineages, recursive organizational Collections,
   their projections, Assertion evaluation, read-only renderers over
@@ -182,7 +192,11 @@ checks User-Turn evidence without claiming approval or semantic fidelity.
   index keeps the Record graph navigable without stored backlinks. Diagram
   owns the Assertions being evaluated; Scoring owns evaluation evidence and
   derived interpretations. Runner code executes a rendered Task but does not
-  define Assertion semantics.
+  define Assertion semantics. Every independently retained Scoring Record is a
+  runtime-registered `TaravObject`; its nested references, candidates, renderer,
+  submission, and provenance structures share the common RecordInterface root.
+  The repository marker, repository service, live Scores, and renderings remain
+  ordinary formats or runtime values.
 - `tarav.bloberia` owns the hosted global `Tarav.Bloberia` registry. The public
   `tarav bloberia` command addresses that registry directly; its private JSON
   storage is not a second Tarav system or command surface.
@@ -253,13 +267,20 @@ meaning from its path or current working directory.
 - `tarav.references` owns shared typed reference mechanics; runtime registers
   domain reference classes explicitly. There is no top-level `tarav reference`
   command.
-- Breadcrumbs composes References, Chatlas Query, and native surfaces. Those
-  lower layers do not import Breadcrumbs; runtime registers its Record types
-  and public `tarav breadcrumbs` command.
+- Breadcrumbs composes References for its position observations and exposes the
+  annotation workflow contract, registry, store, and generic surface
+  transaction. It does not import Chatlas.
+- Independent packages under `tarav.breadcrumb_workflows` integrate Breadcrumbs
+  with producer domains. The Chatlas-context integration imports Breadcrumbs,
+  Chatlas Query, and native surfaces; none of those domains imports the
+  integration. Runtime registers one integration bundle, from which Breadcrumbs
+  obtains its workflow, Record types, submission command, and audit command.
 - Native surface parsers remain independent of workflow annotation semantics.
-- Chatlas consumers import the public `tarav.chatlas.normal_model` package, not its
-  internal modules. Only Chatlas command composition reaches into that layer
-  to register its CLI.
+- Chatlas consumers import the public `tarav.chatlas.normal_model` package, not
+  its internal modules. Chatlas's `normal_model_cache` is the one logistical
+  adapter over those internals: it adds optional `cache.json` freshness evidence
+  without participating in Normal Model validity. Only Chatlas command
+  composition reaches into the layer to register its CLI.
 - Chatlas Query consumes streamable Normal Model collections. Named Chatlas
   Renderers consume structured Query results and never reimplement selection.
 - Diagram consumes Chatlas's public Normal Model for producer and support
@@ -283,7 +304,9 @@ meaning from its path or current working directory.
   Scoring Record repository.
 
 Retained Chatlas raw artifacts are authoritative evidence. Its Session Index
-and Normal Model cache are derived surfaces and may be rebuilt.
+and materialized Normal Model directories are derived surfaces and may be rebuilt;
+each directory is nevertheless a valid semantic Normal Model independently of
+its optional cache metadata.
 
 `tests/test_architecture.py` enforces the import graph and the most important
 ownership boundaries.

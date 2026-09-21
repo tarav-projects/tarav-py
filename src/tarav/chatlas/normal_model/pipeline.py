@@ -26,14 +26,11 @@ from .codex import (
 )
 from .event_ref import event_ref
 from .message_ref import compute_chat_message_hash
-from .model import JsonObject
+from .model import JsonObject, NORMAL_MODEL_SCHEMA_VERSION
 from .message_ref import chat_message_ref
 from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record
 from .turn_ref import compute_chat_turn_hash
 from .turns import build_chat_turn_candidates
-
-
-NORMAL_MODEL_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +196,7 @@ def build_normal_model_from_row(
         key=lambda context: _context_sort_key(context, event_order=event_order),
     )
     model: JsonObject = {
-        "schema": "tarav.chatlas.normal-model",
+        "type": "Chatlas.Normal.Model",
         "schema_version": NORMAL_MODEL_SCHEMA_VERSION,
         "metadata": {"commit": normal_model_producer_commit()},
         "session": {
@@ -212,6 +209,12 @@ def build_normal_model_from_row(
         "messages": chat_messages,
         "turns": chat_turns,
         "loaded_contexts": contexts,
+        "counts": {
+            "events": len(events),
+            "messages": len(chat_messages),
+            "turns": len(chat_turns),
+            "loaded_contexts": len(contexts),
+        },
     }
     if include_raw:
         model["raw"] = raw_fragments

@@ -25,6 +25,10 @@ from tarav.hooks import HookRegistry, register_hook_sampling_callbacks
 if TYPE_CHECKING:
     import argparse
 
+    from tarav.breadcrumbs.integrations import BreadcrumbIntegration
+    from tarav.breadcrumbs.workflow import BreadcrumbWorkflow
+    from tarav.scoring.workflow import ScoringWorkflow
+
 
 HookRegistrar = Callable[[HookRegistry], None]
 
@@ -36,14 +40,19 @@ class TaravRuntime:
     hooks: HookRegistry
     workflows: WorkflowRegistry
     navigation: Navigation
+    breadcrumb_integrations: tuple[BreadcrumbIntegration, ...]
 
     @property
     def references(self) -> ReferenceWorkflow:
         return self.workflows.workflows["references"]
 
     @property
-    def breadcrumbs(self):
+    def breadcrumbs(self) -> BreadcrumbWorkflow:
         return self.workflows.workflows["breadcrumbs"]
+
+    @property
+    def scoring(self) -> ScoringWorkflow:
+        return self.workflows.workflows["scoring"]
 
     @property
     def records(self) -> TypeRegistry[TaravObject]:
@@ -101,7 +110,10 @@ class TaravRuntime:
             ),
         )
         register_archive_commands(subparsers)
-        register_breadcrumb_commands(subparsers)
+        register_breadcrumb_commands(
+            subparsers,
+            integrations=self.breadcrumb_integrations,
+        )
         register_diagram_commands(subparsers)
         register_bloberia_commands(subparsers)
         register_project_commands(
@@ -151,6 +163,7 @@ def create_runtime(
     *,
     hook_registrars: Sequence[HookRegistrar] = (),
     workflows: Sequence[Workflow] = (),
+    breadcrumb_integrations: Sequence[BreadcrumbIntegration] = (),
     config: Path | None = None,
 ) -> TaravRuntime:
     """Compose library capabilities. Configuration is explicit trusted input.
@@ -160,12 +173,17 @@ def create_runtime(
     `filesystem` providers browse plain local Record collections.
     """
     from tarav.archive.workflow import ArchiveWorkflow
+    from tarav.breadcrumb_workflows.chatlas_context import CHATLAS_CONTEXT
     from tarav.breadcrumbs.workflow import BreadcrumbWorkflow
     from tarav.diagram.workflow import DiagramWorkflow
     from tarav.skw.document import SkillwareWorkflow
     from tarav.skw.skills import SkillsWorkflow
+    from tarav.scoring.workflow import ScoringWorkflow
     from tarav.chatlas.references import ChatlasTurnReference
-    from tarav.chatlas.normal_model import CHATLAS_SEMANTIC_RECORD_TYPES
+    from tarav.chatlas.normal_model import (
+        CHATLAS_SEMANTIC_RECORD_TYPES,
+        ChatlasNormalModel,
+    )
 
     registrations = WorkflowRegistry(
         TypeRegistry(
@@ -174,17 +192,23 @@ def create_runtime(
                 FileRecord,
                 DirectoryRecord,
                 ChatlasTurnReference,
+                ChatlasNormalModel,
                 *CHATLAS_SEMANTIC_RECORD_TYPES,
             ),
         )
     )
     navigation = Navigation()
     references = ReferenceWorkflow(registrations.records)
+    composed_breadcrumb_integrations = (
+        CHATLAS_CONTEXT,
+        *breadcrumb_integrations,
+    )
     for workflow in (
         references,
-        BreadcrumbWorkflow(),
+        BreadcrumbWorkflow(composed_breadcrumb_integrations),
         ArchiveWorkflow(),
         DiagramWorkflow(),
+        ScoringWorkflow(),
         SkillwareWorkflow(),
         SkillsWorkflow(),
         navigation,
@@ -214,7 +238,12 @@ def create_runtime(
     register_chatlas_hook_callbacks(registry)
     for registrar in hook_registrars:
         registrar(registry)
-    return TaravRuntime(hooks=registry, workflows=registrations, navigation=navigation)
+    return TaravRuntime(
+        hooks=registry,
+        workflows=registrations,
+        navigation=navigation,
+        breadcrumb_integrations=composed_breadcrumb_integrations,
+    )
 
 
 __all__ = ["TaravRuntime", "HookRegistrar", "create_runtime"]
