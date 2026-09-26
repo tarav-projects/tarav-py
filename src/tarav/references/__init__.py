@@ -1,5 +1,7 @@
 """Typed references. Hints are evidence for consumers, never resolver inputs."""
 
+from tarav.kernel import TaravClass, entity
+
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -8,13 +10,21 @@ from typing import Annotated
 
 from pydantic import ConfigDict, Field, JsonValue, model_validator
 
-from tarav.harness.records import FileRecord
-from tarav.harness.ships import TypeShip
-from tarav.harness.types import TaravObject, TaravPOIInstance
+from tarav.kernel.identity import TypeShip
+from tarav.kernel.records import FileRecord, TaravObject, TaravPOIInstance, _json_object
+from tarav.references.identity import REFERENCES_WORKFLOW_SHIP
 
 
 @dataclass(frozen=True)
 class ReferenceFinding(TaravPOIInstance):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('cd189772-73f1-4ddb-9fdd-610bc12a7fd3'),
+            name='Tarav.References.Finding',
+        )
+
     code: str
     message: str
     hints: object
@@ -58,8 +68,14 @@ class ReferenceTaravMetadata(TaravObject.RecordInterface):
 
 
 class Reference(FileRecord):
-    type_ship = TypeShip("946c9a30-a7ef-4b52-ac29-86adbf97ec63")
-    type_name = "Tarav.Reference"
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('946c9a30-a7ef-4b52-ac29-86adbf97ec63'),
+            name='Tarav.Reference',
+            workflow=REFERENCES_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(FileRecord.RecordInterface):
         type: RecordTypeValue | None = None
@@ -78,20 +94,26 @@ class Reference(FileRecord):
             return self
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
-        return {"type": cls.type_name, "locator": "example"}
+    def record_example(cls) -> dict[str, object]:
+        return {"type": entity(cls).name, "locator": "example"}
 
     @property
     def locator(self) -> object:
-        return self.record["locator"]
+        if self._record is None:
+            raise RuntimeError("Reference has no runtime representation")
+        return self._record["locator"]
 
     @property
     def check(self) -> object:
-        return self.record.get("check")
+        if self._record is None:
+            raise RuntimeError("Reference has no runtime representation")
+        return self._record.get("check")
 
     @property
     def hints(self) -> object:
-        return self.record.get("hints")
+        if self._record is None:
+            raise RuntimeError("Reference has no runtime representation")
+        return self._record.get("hints")
 
     def locate(self, locator: object) -> object:
         raise NotImplementedError
@@ -113,16 +135,21 @@ class Reference(FileRecord):
 
 
 class FileReference(Reference):
-    type_ship = TypeShip("24ee35fb-fd60-4187-b0aa-07d1585a2645")
-    type_name = "Tarav.Reference.File"
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('24ee35fb-fd60-4187-b0aa-07d1585a2645'),
+            name='Tarav.Reference.File',
+        )
 
     class RecordInterface(Reference.RecordInterface):
         locator: Annotated[str, Field(min_length=1)]
         check: Sha256Check | None = None
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
-        return {"type": cls.type_name, "locator": "/example/file.txt"}
+    def record_example(cls) -> dict[str, object]:
+        return {"type": entity(cls).name, "locator": "/example/file.txt"}
 
     def __init__(self, record: Mapping | str | Path, *, check=None, hints=None):
         if not isinstance(record, Mapping):
@@ -136,7 +163,7 @@ class FileReference(Reference):
             if hints is not None:
                 observed.update(hints)
             record = {
-                "type": self.type_name,
+                "type": entity(type(self)).name,
                 "locator": str(path),
                 "hints": observed,
             }
@@ -144,7 +171,10 @@ class FileReference(Reference):
                 record["check"] = check
         elif check is not None or hints is not None:
             raise ValueError("Loading retained data cannot override check or hints")
-        super().__init__(record)
+        elif "type" not in record and "__tarav__" not in record:
+            record = {"type": entity(type(self)).name, **record}
+        super().__init__()
+        self._record = _json_object(record)
 
     def locate(self, locator: object) -> Path:
         if not isinstance(locator, str) or not locator:

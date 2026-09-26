@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
-from io import StringIO
+from tarav.kernel import entity
+
 from pathlib import Path
 from uuid import uuid4
 
@@ -20,7 +20,7 @@ from tarav.diagram import (
     default_diagram_annotation_type_registry,
     default_diagram_ship_type_registry,
 )
-from tarav.harness import RecordTypeReference, Ship, TypeShip
+from tarav.kernel import RecordTypeReference, Ship, TypeShip
 
 REF = {
     "session_identity": "a" * 64,
@@ -63,7 +63,7 @@ def test_every_diagram_record_type_declares_a_unique_type_ship() -> None:
         default_diagram_annotation_type_registry(include_chatlas_index_types=True),
     )
     record_types = tuple(item for registry in registries for item in registry.types())
-    ships = [item.type_ship for item in record_types]
+    ships = [entity(item).id for item in record_types]
 
     assert all(isinstance(ship, TypeShip) for ship in ships)
     assert len(set(ships)) == len(ships)
@@ -79,7 +79,7 @@ def test_structured_and_legacy_type_references_read_the_same_record(
     structured = _line_record(
         model.ship,
         block_ship,
-        {"uuid": str(LineShipRecord.type_ship.uuid), "label": LINE_SHIP_TYPE},
+        {"uuid": str(entity(LineShipRecord).id.uuid), "label": LINE_SHIP_TYPE},
     )
     namespace.apply(CaptureManifest.create(model.ship, (legacy, structured)))
 
@@ -95,7 +95,7 @@ def test_a_known_type_ship_survives_label_drift(tmp_path: Path) -> None:
     drifted = _line_record(
         model.ship,
         str(uuid4()),
-        {"uuid": str(LineShipRecord.type_ship.uuid), "label": "Diagram.Line.Vessel"},
+        {"uuid": str(entity(LineShipRecord).id.uuid), "label": "Diagram.Line.Vessel"},
     )
     namespace.apply(CaptureManifest.create(model.ship, (drifted,)))
 
@@ -150,11 +150,11 @@ def test_typed_records_expose_the_ships_they_recognize(
     namespace.apply(CaptureManifest.create(model.ship, (line,)))
 
     assert namespace.ship(model.ship).specialize().ships() == (
-        ModelShipRecord.type_ship,
+        entity(ModelShipRecord).id,
         Ship(model.ship),
     )
     assert namespace.ship(line.id).specialize().ships() == (
-        LineShipRecord.type_ship,
+        entity(LineShipRecord).id,
         Ship(line.id),
         Ship(model.ship),
         Ship(block_ship),
@@ -187,7 +187,7 @@ def test_diagram_reads_a_type_reference_from_the_reserved_namespace(
     reserved = _line_record(
         model.ship,
         block_ship,
-        {"uuid": str(LineShipRecord.type_ship.uuid), "label": LINE_SHIP_TYPE},
+        {"uuid": str(entity(LineShipRecord).id.uuid), "label": LINE_SHIP_TYPE},
         reserved=True,
     )
     namespace.apply(CaptureManifest.create(model.ship, (reserved,)))
@@ -196,7 +196,7 @@ def test_diagram_reads_a_type_reference_from_the_reserved_namespace(
     assert ship.type == LINE_SHIP_TYPE
     assert isinstance(ship.specialize(), LineShipRecord)
     assert ship.to_record()["__tarav__"] == {
-        "type": {"uuid": str(LineShipRecord.type_ship.uuid), "label": LINE_SHIP_TYPE}
+        "type": {"uuid": str(entity(LineShipRecord).id.uuid), "label": LINE_SHIP_TYPE}
     }
     assert "type" not in ship.to_record()
 
@@ -220,20 +220,18 @@ def test_a_reserved_namespace_reference_is_never_shadowed_by_root_type(
         )
 
 
-def test_diagram_registered_records_can_load_directly_from_json() -> None:
+def test_diagram_registered_records_can_load_directly_from_record() -> None:
     record = _line_record(
         str(uuid4()),
         str(uuid4()),
-        {"uuid": str(LineShipRecord.type_ship.uuid), "label": LINE_SHIP_TYPE},
+        {"uuid": str(entity(LineShipRecord).id.uuid), "label": LINE_SHIP_TYPE},
     ).record
     registry = default_diagram_ship_type_registry()
 
-    dynamically_loaded = registry.json_load(StringIO(json.dumps(record)))
-    explicitly_loaded = LineShipRecord.json_load(
-        StringIO(json.dumps(record)), registry=registry
-    )
+    dynamically_loaded = registry.from_record(record)
+    explicitly_loaded = LineShipRecord.from_record(record)
 
     assert type(dynamically_loaded) is LineShipRecord
     assert type(explicitly_loaded) is LineShipRecord
-    assert dynamically_loaded.record == record
+    assert dynamically_loaded.to_record() == record
     assert explicitly_loaded.model_ship == record["model_ship"]

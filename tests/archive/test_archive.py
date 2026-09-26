@@ -107,15 +107,15 @@ def test_registers_a_repository_as_timestamped_records_and_git_hint(
     assert repository.name == "tarav.chatlas"
     assert {path.name for path in archive.root.iterdir()} == {"records", "repositories"}
     assert list(archive.repositories_root.iterdir()) == []
-    assert _json(archive.records_root / "archive.json")["recorded_at"]
+    assert _json(archive.records_root / "main.json")["recorded_at"]
 
     object_root = archive.artifacts_root / repository.id
     assert {path.name for path in object_root.iterdir()} == {
-        "registration.json",
+        "main.json",
         "locators.jsonl",
         "git-hint.json",
     }
-    assert _json(object_root / "registration.json") == {
+    assert _json(object_root / "main.json") == {
         "type": "Tarav.Archive.Artifact.Registration.Record",
         "schema_version": 2,
         "id": repository.id,
@@ -314,7 +314,7 @@ def test_registers_a_repoless_artifact_and_appends_locator_records(
 
     dossier = archive.dossier("example.video")
     assert dossier.artifact == video
-    assert set(dossier.records) == {"registration.json", "locators.jsonl"}
+    assert set(dossier.records) == {"main.json", "locators.jsonl"}
     locators = dossier.records["locators.jsonl"]
     assert isinstance(locators, list)
     assert [item["value"] for item in locators] == [
@@ -437,7 +437,7 @@ def test_materializes_only_requested_git_artifacts_with_deterministic_ids(
     assert len(list(archive.artifacts_root.iterdir())) == 4
     dossier = archive.dossier(initial.id)
     assert set(dossier.records) == {
-        "registration.json",
+        "main.json",
         "locators.jsonl",
         "git-coordinate.json",
     }

@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from tarav.harness import TaravPOIInstance
+from tarav.kernel import TaravClass
+from tarav.kernel import TaravPOIInstance, TypeShip
 from tarav.surfaces.markdown import normalize_markdown
 from tarav.surfaces.python import normalize_python
 
@@ -30,6 +31,14 @@ class SurfaceBreadcrumbLabel:
 
 @dataclass(frozen=True, slots=True)
 class BreadcrumbAuditFinding(TaravPOIInstance):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('56705f37-5e96-4e40-a717-1989bd1387a0'),
+            name='Tarav.Breadcrumbs.Audit.Finding',
+        )
+
     code: str
     message: str
     breadcrumb_id: str | None = None

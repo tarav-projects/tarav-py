@@ -1,20 +1,32 @@
+from tarav.kernel import TaravClass
+
 from pathlib import Path
 
 import pytest
 
-from tarav.harness import TypeShip
+from tarav.kernel import TypeShip
 from tarav.poi import POI, POICollector, BlessingStore
 
 
 class AppReview(POI):
-    type_name = 'Example.AppReview'
-    type_ship = TypeShip('c49acb13-c9f7-4184-a7c9-eae3d7826c88')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('c49acb13-c9f7-4184-a7c9-eae3d7826c88'),
+            name='Example.AppReview',
+        )
     blessable = True
 
 
 class AppError(POI):
-    type_name = 'Example.AppError'
-    type_ship = TypeShip('0068a0ed-bd9c-455e-af40-14248e0e0e27')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('0068a0ed-bd9c-455e-af40-14248e0e0e27'),
+            name='Example.AppError',
+        )
 
 
 ACTOR = {'type': 'Example.Agent', 'locator': {'session': 'test-session'}}

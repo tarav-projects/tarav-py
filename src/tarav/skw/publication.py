@@ -5,18 +5,32 @@ from pathlib import Path
 
 from tarav.diagram import DiagramError, DiagramNamespace
 from tarav.diagram.rendering import DiagramRenderTarget, renderer
-from tarav.harness import FileRecord, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import FileRecord, TypeShip
+from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from .document import read, write
 
 
 class ModelPublicationRecord(FileRecord):
-    type_name = "Tarav.Skillware.ModelPublication"
-    type_ship = TypeShip("47d909ef-47b2-427b-8f6e-f8bb21887fd5")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('47d909ef-47b2-427b-8f6e-f8bb21887fd5'),
+            name='Tarav.Skillware.ModelPublication',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
 
 
 class PublicationLockRecord(FileRecord):
-    type_name = "Tarav.Skillware.PublicationLock"
-    type_ship = TypeShip("98f83a13-0d1b-4ab9-8e23-afcbe977b0a5")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('98f83a13-0d1b-4ab9-8e23-afcbe977b0a5'),
+            name='Tarav.Skillware.PublicationLock',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
 
 
 def digest(value):
@@ -30,7 +44,7 @@ class ModelPublication:
         self.root = Path(root).resolve()
         self.key = self.source.relative_to(self.root).as_posix()
         self.data = read(self.source)
-        if (self.data.get('type') != ModelPublicationRecord.type_name
+        if (self.data.get('type') != entity(ModelPublicationRecord).name
                 or self.data.get('schema_version') != 1):
             raise ValueError('Expected model publication schema 1')
         output = self.data['output']
@@ -90,10 +104,10 @@ class ModelPublication:
 
     def lock(self):
         if not self.lock_path.exists():
-            return {'type': PublicationLockRecord.type_name, 'schema_version': 1,
+            return {'type': entity(PublicationLockRecord).name, 'schema_version': 1,
                     'publications': {}}
         lock = read(self.lock_path)
-        if (lock.get('type') != PublicationLockRecord.type_name
+        if (lock.get('type') != entity(PublicationLockRecord).name
                 or lock.get('schema_version') != 1
                 or not isinstance(lock.get('publications'), dict)):
             raise ValueError('Expected publication lock schema 1')

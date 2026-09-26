@@ -1,394 +1,330 @@
 # Tarav Python Architecture
 
-`tarav-py` is one modular-monolith distribution. Subsystems remain importable
-and testable namespaces, while one runtime composes cross-domain behavior.
+`tarav-py` is Tarav's maintained Python distribution. It is one modular
+monolith: the Python library is the primary interface, and the CLI and daemon
+adapt that library for particular operating environments.
 
-## Dependency direction
+This document explains the system shape, semantic boundaries, and dependency
+rules that code alone does not make obvious. Python classes and their
+`RecordInterface`s define exact behavior and schemas; CLI help defines commands;
+tests enforce the mechanical boundaries.
+
+## System model
+
+Tarav is an executable ontology. Its foundational unit is `TaravObject`: an
+object whose Python class supplies executable meaning and whose Record supplies
+a lightweight, inspectable representation. Persistence is optional, and a
+Record does not need to contain every fact known by its class.
+
+The main concepts are:
+
+- **Artifacts** are parts of the world Tarav may operate on: files, code,
+  repositories, chats, external systems, and Tarav data itself.
+- **References** address objects or Artifacts. Their locator determines how a
+  target is found; References may also point within Tarav.
+- **Records** are lightweight JSON representations understood by Tarav.
+- **Types** are registered Python classes that assign executable meaning to
+  Records and runtime objects.
+- **Objects** couple a Type's behavior with a Record representation.
+- **Entities** are Objects with a stable, non-rebindable Ship identity.
+- **Workflows** are identified bundles of functionality, comparable to
+  applications. They may overlap and may operate on both Records and native
+  Artifacts.
+- **The Diagram** is the graph that emerges from Objects, Types, Ships,
+  References, and workflow-defined relationships. It is not limited to the
+  `tarav.diagram` package or one physical store.
+- **Context** is a progressively navigable view rooted at a Type or Object.
+
+A subject participates in the Diagram when Tarav can represent it as a
+`TaravObject`. Python classes participate through `TaravClass`, Workflows are
+non-instantiable `TaravWorkflow` classes represented by `TaravClass` entities,
+and the `TARAV` Entity represents the system itself.
+
+## Bootstrap path
+
+Tarav provides a small opinionated bootstrap so agents can discover the system
+without first selecting another discovery workflow:
 
 ```text
-entrypoints (`tarav.cli`, `tarav.daemon`)
-                    |
+TARAV
+  └── Workflow class           addressed by established WorkflowShip
+        └── Type               identified by TypeShip
+              └── Object      represented by a Record
+                    └── Entity, when needed, identified by Ship
+```
+
+Every `TaravType` defines a class-local `class_entity()` hook that directly
+constructs the `TaravClass` representing it. The public `entity(SomeType)`
+operation validates that projection. Type identity, name, Python location, and
+owning Workflow are data on that `TaravClass`, rather than parallel attributes
+on the Python class. `TypeWorkflow` owns `TaravClass`, while its instances'
+`workflow` fields continue to describe the represented classes' owners.
+`TaravClass.bases()` derives direct Tarav base entities from Python declaration
+order, omitting non-Tarav mixins. Its Context exposes `bases` and a `target`
+route to the represented class context, preserving ancestor context rather
+than merging it. Detached class Records cannot infer live bases or targets.
+`KernelWorkflow` owns the remaining foundational Types; each concrete
+Workflow class retains its established WorkflowShip address. For this migration,
+the address remains its declaration's `workflow` value; parent-workflow ownership
+and unifying WorkflowShip with class TypeShip identities are not implemented.
+Workflow instances and their Records are no longer constructed or registered.
+Workflow context is class context, addressed by the class entity's TypeShip.
+Previously retained workflow-instance Records and Context roots require explicit
+migration; readers do not repair or relocate them automatically.
+
+The registries keep mechanics separate from semantics:
+
+- `TypeRegistry` maps retained Type references to trusted Python classes.
+- The runtime's `TaravEnvironment` holds mutable external Type bindings: a
+  Type name maps to a class object or an importable `package.module:Class`
+  path in the running Python environment. The registry imports path-backed
+  classes only when needed and verifies their declarations and Workflow owner.
+  The sibling `tarav-extension-py` package exercises this boundary from its
+  own installed environment.
+- `WorkflowRegistry` maps Workflow name or established Ship to a Workflow class.
+- The Type itself declares Type-to-Workflow ownership; the registries do not
+  maintain a second reverse relationship.
+- Each Workflow class declares its code-owned text constitution alongside its
+  name; the constitution remains code-owned rather than a retained instance field.
+- Runtime-local state lives in `ContextService`, `ReferenceService`,
+  `BreadcrumbService`, and `NavigationService`, not Workflow instances or mutable
+  Workflow class attributes. Separate runtimes receive separate service objects.
+- Runtime composition verifies that every registered Type's Workflow Ship
+  resolves to a registered Workflow.
+
+`context(subject)` is the core navigation operation. It invokes
+`class_context()` for a Type and `obj_context()` for an Object, then mounts
+Archive-backed entries for identified subjects. It returns a
+`ContextExplorer`: a stateful explorer with history across nested folders and
+jumps to other subjects. A `Context` is a read-only `TaravObject` folder with
+named or positional entries and no cursor state. Each `ContextEntry` is an
+attachment point at one path; `open()` returns its value, either another Context
+folder or any other `TaravObject`. Folder status follows the opened value,
+without a separate entry flag. Entries produced by an explorer remember their
+origin. `context(entry)` follows its value in that same explorer; calling
+`context(subject)` directly starts a new one. Runtime and retained entries
+share the subject root's namespace.
+
+The Context Workflow uses Record Archive for durable roots under
+`~/Documents/tarav/archive/<context-workflow-ship>/<subject-ship>/`. The root is
+a generic Dictionary Archive; a separate Context-owned `context.json` Record
+binds its Ship to the Entity or class Ship. Nested Dictionary and Vector
+Archives provide arbitrary organization. The Archive owns retention, placement,
+and Git policy; Context owns entry attachments, folder objects, and runtime
+composition. A retained leaf ArchiveEntry stores a ContextEntry whose cargo is
+another typed Record. A retained folder ArchiveEntry stores a typed Archive;
+its `context.json` attachment is a ContextEntry whose cargo is a typed Context
+folder Record identifying that Archive. This lets either ContextEntry open its
+value without making Context inherit Archive behavior. A Context writer chooses
+leaf cargo explicitly or creates a folder with a Context attachment.
+Plain unidentified Objects can still contribute runtime entries without
+Archive backing. Opening a Context never creates retained data; the Test
+Workflow explicitly seeds synthetic Archives for end-to-end tests.
+
+`tarav.load_object(path, expected_type=...)` is the primary dynamic loading
+interface. The composed runtime locates the Record, resolves its registered
+Type, checks that any `expected_type` is the exact resolved class before
+construction, and invokes that class's `from_record()` boundary. The expected
+Type never selects a different implementation. Callers use Python inheritance
+on the loaded object when they need parent behavior.
+
+`tarav.get_runtime()` returns the lazy process-wide current runtime;
+`tarav.set_runtime(runtime)` selects a separately composed runtime. Library
+conveniences and Record Archive operations use this current runtime, so callers
+do not pass a Type registry through Archive APIs. Archive still validates on
+write and dynamically loads through the current registry on read.
+
+Each typed Record Archive keeps its identity and constitution in `main.json`.
+Its placement index lives separately in `entries.json`: names or Vector
+positions point to retained ArchiveEntry Records under `records/`. Each Entry
+Record points to a file or directory under `artifacts/`, which loads through
+trusted Type dispatch. The index owns mutable names and positions; Entry
+Records do not repeat them. Archive `ls()` exposes lightweight entries from the index, while selecting
+one entry reads its Record and `open()` loads its artifact. An artifact can be
+another typed Archive, recursively using the same layout.
+Index reads use the current `entries.json`; mutations take one lock per Archive,
+read that index again inside the lock, write the new artifact and Entry Record,
+then atomically replace the index. Readers need no lock. An interrupted write
+may leave unindexed files, which remain available for a later integrity audit.
+The global `tarav.ARCHIVE` is a read-only `ArchiveRoot` folder at the Tarav
+Archive data directory. `ArchiveExplorer` holds navigation state and history;
+folders and lists hold no cursor. An `ArchiveEntry` opens a retained object or
+another Archive folder, list, or path-only grouping. A Workflow Ship partition
+opens as an `ArchivePartition`, which can separately resolve its owning Workflow.
+Contained objects need no Archive interface, and intermediate groupings need
+no retained Record.
+`ARCHIVE.for_workflow(WorkflowType)` resolves the registered Workflow Ship and
+returns a handler for `archive/<workflow-ship>/` without creating data. The
+handler explicitly creates subdirectories and registered typed Archives,
+including Dictionary and Vector structures. Human-readable workflow names
+remain labels; renaming one does not change its storage path. Existing
+name-based partitions require a one-time
+migration, with no runtime fallback reader.
+
+The Workflow Ship partition is never a Git repository. Archive directory
+creation uses the nearest repository below that boundary, or creates one at
+the new child when none exists. A standalone typed Archive still initializes
+its own repository. Optional `git-config.json` files set a child policy of
+`auto`, `new`, or `inherit`; lookup stops at the nearest repository so a policy
+above it does not force nested repositories. Archive directories expose the
+effective policy and its source, plus each directory's native `.gitignore`
+path and presence. Existing repositories are not rewritten by this policy.
+
+## Package layers
+
+The general import direction is:
+
+```text
+adapters (`tarav.cli`, `tarav.daemon`)
+                    ↓
               `tarav.runtime`
-                    |
-       domains and integration adapters
-                    |
-              `tarav.harness`
-                    |
-    native surfaces and domain foundations
-                    |
+                    ↓
+       domains and integration bundles
+                    ↓
+              `tarav.kernel`
+                    ↓
                `tarav._core`
 ```
 
-- Entrypoints parse input and render results. They do not own domain behavior.
-- `tarav.runtime` is the composition root for registries and cross-domain
-  adapters.
-- Domain foundations do not import the runtime or CLI to obtain dependencies.
-- `tarav.harness` contains semantic roles, class-owned record interfaces, Ship identity
-  primitives, and the explicit, trusted Record Type registry used by
-  applications. Applications import Harness; Harness never imports an
-  application.
-- `tarav._core` contains dependency-free infrastructure only after multiple
-  domains have demonstrated identical semantics.
-- Cross-domain imports must remain acyclic outside the composition root.
+This is a dependency direction, not a requirement that every module pass
+through every layer.
 
-`tarav._core.operational_logging` is the shared diagnostic transport used by
-multiple domains. Libraries emit namespaced records; Tarav CLI and daemon
-entrypoints configure private, best-effort JSONL persistence and quiet console
-reporting. Durable daemon, account, monitor, and activity event logs remain
-domain-owned semantic records rather than logging backends.
+- `tarav._core` contains private implementation mechanics with no Tarav
+  semantics, such as infrastructure shared by several domains. It should stay
+  small. Promotion into `_core` follows demonstrated reuse rather than
+  anticipated reuse.
+- `tarav.kernel` contains Tarav's public semantic foundation: Types, Objects,
+  Entities, Ships, class-owned Record interfaces, Explorer contracts, Context,
+  Record-space contracts, and trusted Type and Workflow registries. Kernel
+  imports no application domain.
+- Domain packages own their vocabulary, Records, storage, validation, and
+  operations. Cross-domain imports remain acyclic.
+- Integration bundles compose independent domains without making either one
+  depend on the other.
+- `tarav.runtime.create_runtime()` is the composition root. It selects and
+  connects Workflow classes, runtime services, Record Types, providers, hooks,
+  and integrations.
+- CLI and daemon packages translate external interaction into library calls.
+  Lower layers neither import nor shell out to the umbrella CLI.
 
-`tarav._core.data_root` supplies the common default physical depot
-`~/Documents/tarav/`. Its use by several domains does not make that directory
-one repository or authority; each child system retains its own storage
-contract and Git boundaries.
+## Kernel contracts
 
-## Ownership map
+Archive and Context expose workflow membership through `ArchiveType` /
+`ArchiveObject` and `ContextType` / `ContextObject`. Explorers are workflow
+Types without requiring the Object Record contract. Their roots may be owned
+leaf objects; listing or selection then raises `NotADirectoryError`. Shared
+Explorer helpers check Folder/List capability and key typing. Workflow-specific
+explorers enforce membership at roots and navigable destinations before moving.
+Opening a foreign value remains valid and does not enter its graph.
 
-`tarav.poi.primitives` provides application-owned POI subclasses, immutable
-finding snapshots, non-throwing collection, and bounded reports.
-`tarav.poi.blessings` records explicit acceptance/assessment actions at a path
-supplied by the application. It imports no SKW domain. `tarav.skw.pois` owns
-SKW class policy and evidence assembly; SKW selects `.skw/blessings/`.
-Class paths are obtained through inherited `help()`. Missing assessments stay
-visible independently of blessing applicability and detector results.
+The Kernel establishes only the common contracts needed for interoperability:
 
-`tarav.skw.skills` specializes the general `tarav.skw.document` engine
-for deployable skill packages. `SkwSkill` specializes the `SkwDepot`
-DirectoryRecord; `.skw/main.json` declares its registered type. Ordinary
-Tarav loading returns the actionable object. It owns developer/consumer
-dependency purposes, product selection, and package checks. General Skillware
-does not import this specialization; runtime composes its CLI and Record types.
-`skw.skills` is a composition leaf above the generic document engine.
-`skw.publication` belongs to that composition layer and consumes Diagram's
-public Model projection and Kernel renderer. Explicit selections publish
-Markdown without generation; the publication lock records source/model/product
-fingerprints. Diagram never imports SKW for publication.
-`skw.loading` owns static consumer-context analysis for instruction surfaces.
-Its typed `.skw` declarations bind existing SKW blocks through StructuredFile
-references, attach parents, and declare links, inclusions, and requirements.
-Loading mechanics never infer graph edges from Markdown. Output parsing is
-only a conformance check. Runtime injects the skill document factory into the
-generic document CLI; generic Skillware never imports the specialization.
-Deployment copies declared consumer files to a fresh directory and reports
-external consumer skill requirements; it does not install dependencies.
+- `TaravType` provides class help, class context, and the `class_entity()` hook
+  used to project the Python class into the Diagram.
+- `TaravObject(TaravType)` adds an instance and a class-owned Record projection.
+- `TaravEntity(TaravObject)` adds a stable `Ship` identity as class-owned
+  runtime state and projects it through the Entity's Record interface.
+- Every concrete Type has a class-local `class_entity()` definition. Its
+  returned `TaravClass` carries a stable Type Ship; the human-readable name may
+  evolve without changing identity.
+- Every Object inherits a Pydantic `RecordInterface`. Classes may extend or
+  deliberately replace representation ancestry.
+- A Record is a projection, not the Object's runtime data model. `_record`
+  retains loader-supplied material when it exists; runtime-created Objects need
+  not populate it.
+- `to_record()` calls the class-owned `_to_record()` hook, then validates and
+  detaches the result. `from_record()` validates input before calling the
+  class-owned `_from_record()` construction hook. When a Record supplies a Type
+  reference, both boundaries require it to identify the object's exact class;
+  a direct class call may also accept a Record without that reference. Dynamic
+  loading requires a Type reference for dispatch.
+- Types decide what their Records contain, how they keep runtime state, how
+  they construct instances, and whether any representation is persisted.
+- Loading selects only explicitly registered trusted classes. Records never
+  select Python import paths; an external class path comes from a trusted
+  environment binding. The binding can change during a runtime, while Python's
+  module cache governs changes to installed code. Unknown JSON remains
+  ordinary JSON.
+- Record validation does not silently normalize, repair, or add defaults to
+  retained data. Schema changes use explicit migrations.
+- Ships are identity primitives. Their containing Type and relationships assign
+  meaning; Kernel does not infer roles by scanning UUID-shaped values.
+- `FileRecord` and `DirectoryRecord` classify retained shape without imposing
+  one application storage model.
+- `ExplorerEntry`, `ExplorerFolder`, `ExplorerList`, and `Explorer` give
+  workflows a shared navigation language. `ls()` returns entries; `get()`
+  selects one; `open()` returns its value without moving; `cd()` moves an
+  explorer into a navigable value. Back/forward track visits, independently of
+  parent traversal. Storage and relationships remain workflow-owned. External
+  implementations subclass `tarav.explorer_testing.ExplorerContractTests`
+  and supply its abstract fixture and expected-value methods. Pytest runs the
+  inherited tests without a registry or custom runner. Archive and Context use
+  the same suite; checks cover current location and both history stacks.
 
-Chatlas owns `chatlas.references.ChatlasTurnReference`, a Normal Model consumer
-exposing exact Turn coordinates and messages through the shared Reference API.
-Runtime registers it; the references foundation does not import Chatlas.
-Skillware composes that reference with its context roles. `maintenance` provides
-context, `dependency` enables target-change tracking, and `user-grounding`
-checks User-Turn evidence without claiming approval or semantic fidelity.
+Kernel supplies the shared language. It does not own workflow-specific
+relationships, storage policies, or interpretation of domain payloads.
 
-- `tarav.harness` owns the small application-facing semantic base classes,
-  the `Ship` identity primitives, and retained Type-reference to trusted Python
-  class dispatch. A `Ship` wraps one UUID and nothing else, so identity comparison
-  ignores the specialized class. Every `TaravObject` subclass, including
-  intermediate bases, declares a class-local `type_ship` beside its
-  human-facing `type_name`; the registry indexes both and treats the Type Ship
-  as authoritative, so a known Type keeps resolving after a rename. A retained
-  Type reference may be a legacy label or a structural `{uuid, label}`
-  value, and the registry reports absent, unknown, or conflicting
-  components rather than guessing. `TYPE_RESOLUTION_PATH` is the single Harness-owned ordered sequence
-  of literal key paths locating that reference — `__tarav__.type`, then root
-  `type`. It is not configurable by applications, registries, Record families,
-  or concrete Types: the first path that exists is selected even when its value
-  is null or empty, so a malformed reference fails at its own location instead
-  of being shadowed by a later one. `__tarav__` is the reserved namespace an
-  application uses when its own records already give `type` another meaning.
-  `TaravObject` is the semantic root; a Record is its JSON representation,
-  particularly when retained in storage. Objects expose `from_json(value)`,
-  `to_json()`, and a storage-independent `json_example()`. Registry dispatch,
-  file loading, and directory loading construct through the selected class's
-  `from_json`; `json_load(file)` remains the stream entry point. Records expose
-  the Ships they semantically recognize through `ships()`, which
-  a subclass extends by returning concrete `Ship` instances; the projection
-  carries no serialized paths, and Harness never infers a Ship by scanning
-  UUID-shaped data. `TypeRegistry.json_load(file)` loads a JSON object and
-  constructs its exact registered class. The inherited
-  `RecordClass.json_load(file, registry=...)` instead constructs the calling
-  class only when it is that registered authority or a subclass. Harness has
-  no opaque fallback Record wrapper: uninterpreted JSON remains ordinary JSON.
-  It does not impose a writer or application storage model. Skillware's
-  `SkwBlock` uses the same object contract while remaining inline in its
-  document's JSON.
-  Every object inherits a Pydantic `RecordInterface`. The base contract is
-  strict and open to additional fields; concrete classes declare required
-  fields and may close their own interface. Type dispatch remains separate
-  from these field contracts. `issubrecord(B, A)` checks interface inheritance
-  alone, while `isrecordsubclass(B, A)` requires both Python and interface
-  inheritance. `preserves_parent_record_interface()` checks the combined
-  relationship against all direct Tarav parents (true when there are none).
-  Independent interfaces are explicit class declarations, without an extra
-  flag. These queries describe ancestry, not proofs of field-override
-  compatibility.
-  `from_json` and `to_json` validate without replacing retained data with
-  Pydantic output. Transforming or dropping supplied fields is rejected;
-  defaults are not inserted into stored representations. `record_data` gives
-  a fresh typed view, including interface defaults, whose edits do not mutate
-  the retained record. Direct constructors remain class-owned; use
-  `validate_record` to check a representation independently. Schema tooling
-  uses `RecordInterface.model_json_schema()`.
-- `tarav.agent` owns provider-neutral agents, accounts, sessions, monitoring,
-  and provider adapters under `tarav.agent.providers`.
-- `tarav.chatlas` owns the chat data train from provider-native capture through
-  Session Index to the provider-neutral Normal Model, bounded structural Query
-  over that Model, and named presentation of Query findings. Query owns
-  selection and record assembly; Renderers own presentation. Chatlas preserves
-  source traceability but does not own semantic interpretation, annotation,
-  contextualization, or workflow products. Independently meaningful Normal
-  Model aggregate, Events, Messages, Turns, and loaded contexts are registered
-  `TaravObject` records and carry `type`. The aggregate is a `DirectoryRecord`
-  whose `main.json` entry and JSONL collections form its canonical streamable
-  representation. Commands, queries, results, caches, indexes, manifests, and
-  resolution projections remain ordinary values; persisted ordinary formats
-  identify their format with `schema` and `schema_version`.
-- `tarav.archive` owns stable Artifact identity, retained Archive Records, and
-  portable references to retained or externally located data.
-- `tarav.breadcrumbs` owns opaque anchors embedded in Product.Surfaces. Each
-  anchor has a stable directory entry, append-only file-position observations,
-  independently typed workflow attachments, and a registry and generic surface
-  transaction for annotation workflows. A `BreadcrumbIntegration` is the
-  complete runtime registration unit containing one workflow and its command
-  adapter. Generic audit discovers labels and resolves retained positions and
-  attachments; workflow audit interprets its own attachment schema. Breadcrumb
-  storage does not interpret attachment schemas.
-- `tarav.breadcrumb_workflows.chatlas_context` independently integrates
-  Breadcrumbs, Chatlas Query, and native surfaces. It resolves provisional
-  User-Turn markers and produces typed Chatlas-context attachments before the
-  generic transaction atomically replaces the markers with surface-native
-  Breadcrumb labels. Its read-only audit verifies provisional-marker standing,
-  attachment shape, and referenced User Turns without refreshing Chatlas or
-  retaining audit results.
-- `tarav.diagram` owns flat Namespace collections of typed semantic Ships and
-  separate Annotation claim lineages, recursive organizational Collections,
-  their projections, Assertion evaluation, read-only renderers over
-  Archive-grounded data, retained `Diagram.View` reading workspaces, and
-  durable `Diagram.Draft` writing workspaces. Views never mutate the semantic
-  database. Drafts reconcile proposed changes and apply them through the
-  ordinary Diagram capture boundary.
-- `tarav.scoring` owns named Assertion Pools, explicit Pool Enrollments,
-  Ranking Tasks, exact Agent Runs, retained Results, live derived Scores, and
-  compact per-Assertion Scoring Traces in the independent Git-backed
-  `~/Documents/tarav/scoring/` Record repository. Each Pool directory is the
-  default comparability boundary and owns its Enrollments, Tasks, Runs, and
-  Results. Assertion Classes declare compatible concrete Pool Types and adapt
-  exact Assertion instances into the candidate material those Pools require.
-  Each Pool Record declares that concrete Type directly; its registered class
-  owns instance creation, comparison mechanics, validation, and Task assembly.
-  Named Pool instances own their enrolled population and evidence history. Pools do not discover
-  participants: Assertion instances enroll explicitly and may join several
-  Pools, while several Pool instances may use one Pool Class. A Task CLI call
-  creates the Task and one compact frozen unresolved Run, then prints the
-  blinded prompt for an arbitrary Agent. The Run retains exact Task identity,
-  opaque candidate order, known or unknown Runner provenance, renderer/code
-  provenance, submission location, and prompt hash without duplicating the
-  prompt. A Result is submitted against exactly one previously registered Run;
-  submission never mutates that Run. Score methods may select Results from
-  several Pools and are code, not retained definitions.
-  Explicit scoring executions append typed Events to one Trace per Assertion;
-  each Event records Pool selection, the Results Git state, code provenance,
-  value, and supporting statistics. Read-only renderers expose current values
-  and history without interpreting trends. A disposable reverse-reference
-  index keeps the Record graph navigable without stored backlinks. Diagram
-  owns the Assertions being evaluated; Scoring owns evaluation evidence and
-  derived interpretations. Runner code executes a rendered Task but does not
-  define Assertion semantics. Every independently retained Scoring Record is a
-  runtime-registered `TaravObject`; its nested references, candidates, renderer,
-  submission, and provenance structures share the common RecordInterface root.
-  The repository marker, repository service, live Scores, and renderings remain
-  ordinary formats or runtime values.
-- `tarav.bloberia` owns the hosted global `Tarav.Bloberia` registry. The public
-  `tarav bloberia` command addresses that registry directly; its private JSON
-  storage is not a second Tarav system or command surface.
-- `tarav.reading_club` owns the thin, read-only logistical model and public
-  navigation CLI for Git-tracked Reading Projects under the independent
-  `~/Documents/tarav/reading-club/` data surface. It does not identify
-  documents, interpret reading content, or own Agent reading workflows.
-- `tarav.surfaces` owns deliberately thin native Python and Markdown models.
-  It exposes host-language structure, not Skillware attachment policy or Index
-  policy. Its standalone CLI is disconnected; parsers remain in place for
-  future source-aware workflows and current `stdlib.mdblocks` consumption.
-  See `src/tarav/surfaces/README.md` for retained intent.
-- `tarav.skw.generation` owns the independent generation MVP: typed
-  template blocks, invocation snapshots, output dependencies, and read-only
-  findings. Its mechanics use only the standard library and do not query
-  Index, Diagram, or contextualization. See `notes/skillware-generation.md`.
-- `tarav.skw.document` composes those helpers into typed document sources,
-  generation annotations, and locks. It owns whole-document assembly and
-  source linting. Runtime registers its Record authorities; CLI operations at
-  `tarav skw document` delegate to the library.
-  Context listings inspect reference addresses without loading target bodies;
-  explicit reads select one entry. Structured references own source-relative
-  address resolution. Lint/record retain full fingerprint checks independently.
-- `tarav.skw` owns typed document compilation and skill-package specialization.
-  The retired Skillware annotation and compiler stack is preserved only in
-  Archive.Attic.
-- `tarav.poi` owns application-defined POI primitives, immutable finding
-  snapshots, non-throwing collection, bounded reports, and append-only
-  blessing/assessment records at caller-owned paths. Producers retain their
-  check classes and decide how to respond to findings.
-- `tarav.python_env` owns the public `tarav python` namespace, which exposes
-  the interpreter already running Tarav so an external script can import it
-  without locating or installing the distribution. The environment is reported,
-  never provisioned: `interpreter()` is `sys.executable`, so a tool install and
-  a project run each answer honestly for their own process. A script is named
-  explicitly, as `--file` or as `--src`, so nothing about the command line is
-  positional and arguments belonging to the script stay behind a `--`
-  separator. Callers that need more than `python run` use `python path` and
-  drive the interpreter directly.
-- `tarav.stdlib` contains reusable `mdblocks`, `prefix`, `refs`, and `utils`
-  primitives matching the `tarav stdlib` CLI.
-- `tarav.project` owns the public `tarav project` namespace and composes its
-  initialization, discovery, resolution, verification, and project-local
-  Skills operations. `tarav.skills` remains the cohesive domain that owns
-  Skills behavior.
-- `tarav.hooks`, `tarav.daemon`, and `tarav.workspaces` are cohesive domains.
-- The former Tournament implementation is retained only under
-  `_DEPRECATED/tournament/` for design archaeology. It is neither importable
-  maintained code nor a public command surface.
-- `tarav.iterante` and `tarav.iterante2` are separate runtimes; only behavior
-  proven identical belongs in `tarav.iterante._shared`.
+## Domain ownership
 
-## Project and surface resolution
+| Package | Architectural responsibility |
+| --- | --- |
+| `agent` | Provider-neutral agent, account, session, and monitoring behavior; concrete providers live below `agent.providers`. |
+| `archive` | Artifact identity, retained Archive Records, and Archive-specific location history. |
+| `record_archive` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
+| `context_workflow` | Archive-backed Context roots and composition of retained placements with runtime Context contributions. |
+| `references` | Shared typed locator, check, hints, and resolution mechanics. |
+| `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
+| `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
+| `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
+| `diagram` | Explicit semantic Ships, Annotations, Assertions, projections, Views, and Drafts. It is one contributor to the broader emergent Diagram. |
+| `scoring` | Assertion evaluation evidence, pools, tasks, runs, results, scores, and traces. |
+| `poi` | Application-defined findings, bounded reports, and recorded assessments or blessings. |
+| `skw` | Typed document compilation, context declarations, generation mechanics, and skill-package specialization. |
+| `surfaces` | Thin syntax models for native Product.Surfaces; it does not assign workflow meaning. |
+| `project`, `skills`, `workspaces` | Project discovery and user-facing project or workspace operations. |
+| `hooks`, `daemon` | Hook validation and dispatch, plus daemon-owned delivery adapters. |
+| `stdlib` | Small reusable library and CLI primitives. |
+| `iterante`, `iterante2` | Independently maintained mission runtimes; shared behavior is promoted only after convergence. |
 
-`.tarav/project.json` identifies a Tarav project. Project identity is portable;
-machine-local path resolution is operational evidence owned outside that file.
+Other cohesive command domains follow the same rule: they own their behavior
+and use Kernel contracts without moving their semantics into Kernel.
 
-The Project Surface Model is a composed read model. Native parsers describe a
-file's syntax. Project-aware discovery supplies context and surface membership.
-Domain adapters interpret those facts. A file parser must not infer domain
-meaning from its path or current working directory.
+## Integration invariants
 
-
-## Integration boundaries
-
-- Hooks owns validation and dispatch; runtime injects daemon delivery and
-  exposes submission as `tarav daemon hook`.
-- `tarav.references` owns shared typed reference mechanics; runtime registers
-  domain reference classes explicitly. There is no top-level `tarav reference`
-  command.
-- Breadcrumbs composes References for its position observations and exposes the
-  annotation workflow contract, registry, store, and generic surface
-  transaction. It does not import Chatlas.
-- Independent packages under `tarav.breadcrumb_workflows` integrate Breadcrumbs
-  with producer domains. The Chatlas-context integration imports Breadcrumbs,
-  Chatlas Query, and native surfaces; none of those domains imports the
-  integration. Runtime registers one integration bundle, from which Breadcrumbs
-  obtains its workflow, Record types, submission command, and audit command.
-- Native surface parsers remain independent of workflow annotation semantics.
-- Chatlas consumers import the public `tarav.chatlas.normal_model` package, not
-  its internal modules. Chatlas's `normal_model_cache` is the one logistical
-  adapter over those internals: it adds optional `cache.json` freshness evidence
-  without participating in Normal Model validity. Only Chatlas command
-  composition reaches into the layer to register its CLI.
-- Chatlas Query consumes streamable Normal Model collections. Named Chatlas
-  Renderers consume structured Query results and never reimplement selection.
-- Diagram consumes Chatlas's public Normal Model for producer and support
-  evidence. Chatlas does not import Diagram.
-- Diagram specializes Harness roles and uses its trusted Type registry for
-  Ship and Annotation Record dispatch. It is the first consumer of Type Ships:
-  its record classes declare them, every Type reference read goes through
-  `TYPE_RESOLUTION_PATH` rather than Diagram reading root `type` itself, and
-  its registered Record classes accept their retained Record directly. A
-  Diagram storage binding may additionally supply the identity derived from a
-  file address and the Namespace derived from its repository; those facts are
-  not forced into the retained JSON. Generic storage bindings do not interpret
-  Type-owned fields: registered classes own validation, score-vector layout,
-  Ship projection, and other semantic behavior. Gate and Assertion payloads
-  keep their own nested `type` keys; the resolution path addresses Records,
-  not cargo. Retained label-only Records are not rewritten. Diagram retains
-  its object schemas, projections, Ships, Assertions, and storage semantics.
-- Scoring consumes Diagram's public projection and Chatlas-backed support when
-  an Assertion-owned task builder constructs an `Index.Line` grounding case.
-  Diagram does not import Scoring; score discovery can be rebuilt from the
-  Scoring Record repository.
-
-Retained Chatlas raw artifacts are authoritative evidence. Its Session Index
-and materialized Normal Model directories are derived surfaces and may be rebuilt;
-each directory is nevertheless a valid semantic Normal Model independently of
-its optional cache metadata.
+- The subsystem import graph is acyclic outside runtime composition.
+- Domains normally receive dependencies through composition. Record Archive
+  uses the process-wide current runtime at its Record write/load boundaries;
+  this is the explicit shared-loader exception.
+- References is lower than Archive and other specialized Reference producers.
+- Breadcrumbs and Chatlas remain independent. Their contextual annotation
+  behavior lives in `breadcrumb_workflows.chatlas_context`.
+- Native surface parsers expose syntax and source positions without knowing SKW
+  or annotation policy.
+- Chatlas capture and Session Index remain usable without importing the Normal
+  Model. Consumers import the public `tarav.chatlas.normal_model` surface.
+- Query owns selection; renderers own presentation.
+- Hooks owns validation and dispatch; daemon adapters own delivery.
+- Workflow-specific retained data and operational event logs remain domain
+  data. Generic logging transport does not become their authority.
+- A shared physical data root does not create one repository, schema, or
+  authority. Each domain owns its storage contract.
 
 `tests/test_architecture.py` enforces the import graph and the most important
-ownership boundaries.
+boundaries. When a new integration needs to reverse an existing dependency,
+the default solution is a runtime adapter or independent integration package.
 
-## Record network library
+## Sources of truth
 
-The library is the operating surface; scripts and CLI commands are consumers.
-Using its Records, references, navigation and checks supplies the implicit
-harness graph. There is no required action-graph executor.
+- This file owns the system shape and durable dependency rules.
+- `AGENTS.md` owns development constraints for this repository.
+- Public classes and `RecordInterface`s own exact library behavior and schemas.
+- `tarav --help` and subcommand help own the installed CLI surface.
+- Tests own mechanically enforced invariants.
+- The Project Wiki in `tarav-md` retains design rationale, alternatives,
+  subsystem narratives, and implementation history that would obscure this
+  overview.
 
-`RecordClass.help()` (also callable as `record.help()`) is the inherited
-class-level context entry point. It returns a dictionary with `class` (the
-qualified Python name), `source_path` (an absolute code file path),
-`source_line` (one-based), and `hints` (opaque diagnostic context).
-Missing-source explanations live under `hints.unavailable` as a field-to-reason
-mapping; successful discovery returns empty hints. Mechanics use the source
-fields, not the diagnostic explanations.
-Unavailable values are `None`; a missing definition line does not discard a
-known file path. This information comes from Python inspection, not generated
-prose. Classes can override and extend it to expose documentation, skills and
-further context. The method returns information without printing or mutating
-Records; its code location is distinct from a Record instance's storage path.
-
-- `tarav.harness.records` classifies FileRecord and DirectoryRecord and owns
-  path loading. Directory entry discovery checks `__tarav.json`, `main.json`,
-  `type.json`, `archive.json`, then `registration.json`. The latter two are
-  Archive's concrete entry conventions. The first present entry wins even if
-  malformed. Its ordinary type declaration selects the registered authority;
-  `record.source` supplies the retained file location, and DirectoryRecord
-  exposes its parent directory. Payload files need not be Records.
-- `tarav.references` owns locator/check/hints roles. FileReference
-  resolves a path and optionally checks SHA-256. Hints are never read by
-  mechanical location or checking. ReferenceResult exposes findings without
-  repairing data. `Reference.RecordInterface` requires the retained Type and
-  locator; concrete interfaces declare locator and check structures for File,
-  Git, Structured File, Archive, and Chatlas Turn references. Checks and hints
-  are optional and producers omit them when absent. Concrete domain references
-  own further semantics.
-- `tarav.harness.workflows` owns explicit Workflow registration and trusted
-  Python-file entry points. It does not execute workflows or inspect arbitrary
-  Record payloads for code. Registered Record classes remain authoritative.
-- `tarav.navigation` owns typed provider interfaces and a virtual root of
-  mounted collections. Provider errors and invalid responses become POIs.
-  FilesystemProvider uses the common loader; ArchiveProvider exposes JSONL
-  collections and DiagramProvider preserves Namespace/address bindings.
-- `create_runtime(workflows=..., config=...)` composes built-in Archive,
-  Diagram, and Navigation workflows. Scripts use `runtime.records`,
-  `runtime.navigation`, `runtime.load(path)`, and `runtime.source_root`.
-  Optional explicit configuration declares `workflow_files` and `providers`
-  (`name`, `workflow`, `root`); paths are relative to the configuration file.
-- Archive Records now declare `type` under schema 2 and use Harness dispatch.
-  Artifact registration directories retain a DOI contract and can be loaded
-  as DirectoryRecords. Retirement appends evidence and preserves the DOI.
-  Archive references contain `locator: {archive, doi}` plus optional `check`
-  and opaque `hints`; the old flat reference schema is not accepted as this
-  type.
-
-Schema migration is explicit developer work, never a reader fallback.
-`tooling/migrate_793_archive_records.py` validates a complete clean Archive
-Record repository before updating it, retaining the prior Git checkpoint.
-Historical Archive observations and Artifact IDs are unchanged.
-
-### Reference construction and resolution
-
-Scripts construct `FileReference(path)` from `tarav.references` or
-`GitFileReference(repository=..., commit=..., path=...)` from
-`tarav.references.git`. File construction observes name, size and modification
-time when available. Git construction resolves the revision to an exact commit
-and records its blob check and mechanical hints. Neither generates prose.
-Passing a retained mapping loads it without refreshing hints or selecting new
-defaults. Reference Type Ships and serialized type names survive the module
-move; callers must import the new module directly.
-
-`runtime.references` is the registered ReferenceWorkflow. Its `load(record)`
-uses the shared Type registry and constructs through the selected class's
-`from_json()`, enforcing its RecordInterface. `resolve(reference_or_record)`
-dispatches to the owning class. Unknown types and invalid interfaces return
-findings rather than triggering imports. Resolution does not itself search for
-annotations or equate targets.
-
-Archive imports shared reference/Git mechanics; the reference foundation never
-imports Archive. `ArchiveReference(doi=...)` selects the library's
-`default_archive_root()` unless `archive=...` is supplied. The selected absolute
-location is retained in the locator so a later machine default does not retarget
-the saved reference. `Archive.open()` and the CLI use the same default.
+The architecture document should change when those boundaries change. It
+should not duplicate class APIs, command references, migration procedures, or
+complete subsystem designs that are clearer beside their owning code or in the
+Project Wiki.

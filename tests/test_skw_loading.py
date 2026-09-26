@@ -1,3 +1,5 @@
+from tarav.kernel import entity
+
 import json
 
 import pytest
@@ -26,12 +28,12 @@ def package(tmp_path):
                     requires=[{'target': 'vocabulary', 'delivery': 'inlined'}])
     nodes[4]['parents'] = []
     (tmp_path / '.skw/loading.json').write_text(json.dumps({
-        'type': LoadingRecord.type_name, 'schema_version': 1, 'blocks': nodes}))
+        'type': entity(LoadingRecord).name, 'schema_version': 1, 'blocks': nodes}))
     (tmp_path / '.skw/main.json').write_text(json.dumps({
-        'type': SkwSkill.type_name, 'schema_version': 1,
+        'type': entity(SkwSkill).name, 'schema_version': 1,
         'entrypoint': 'SKILL.md', 'sources': ['.skw/src/main.json'],
         'files': ['SKILL.md'], 'loading': '.skw/loading.json'}))
-    return create_runtime().load(tmp_path / '.skw')
+    return create_runtime().load_object(tmp_path / '.skw')
 
 
 def test_static_paths_default_parent_and_coverage(tmp_path):

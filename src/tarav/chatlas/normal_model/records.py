@@ -6,7 +6,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from tarav.harness import TaravObject, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import TaravObject, TypeShip
+from tarav.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 
 
 _DIGEST_PATTERN = r"^[0-9a-f]{64}$"
@@ -53,47 +55,71 @@ class _EventRecordInterface(TaravObject.RecordInterface):
 
 
 class UserEvent(TaravObject):
-    type_name = "User.Event"
-    type_ship = TypeShip("5bf21365-a923-404e-a0bc-6daad8a97a02")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('5bf21365-a923-404e-a0bc-6daad8a97a02'),
+            name='User.Event',
+            workflow=CHATLAS_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(_EventRecordInterface):
         type: Literal["User.Event"]
         origin: Literal["user"]
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
-        return _event_example(cls.type_name, "user")
+    def record_example(cls) -> dict[str, object]:
+        return _event_example(entity(cls).name, "user")
 
 
 class AgentEvent(TaravObject):
-    type_name = "Agent.Event"
-    type_ship = TypeShip("21e8a9ca-4eea-4a30-b010-218eb7f07eb1")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('21e8a9ca-4eea-4a30-b010-218eb7f07eb1'),
+            name='Agent.Event',
+            workflow=CHATLAS_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(_EventRecordInterface):
         type: Literal["Agent.Event"]
         origin: Literal["agent"]
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
-        return _event_example(cls.type_name, "agent")
+    def record_example(cls) -> dict[str, object]:
+        return _event_example(entity(cls).name, "agent")
 
 
 class UnresolvedEvent(TaravObject):
-    type_name = "Unresolved.Event"
-    type_ship = TypeShip("ce6bdc18-f53d-4627-9a1a-b767581e396a")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('ce6bdc18-f53d-4627-9a1a-b767581e396a'),
+            name='Unresolved.Event',
+            workflow=CHATLAS_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(_EventRecordInterface):
         type: Literal["Unresolved.Event"]
         origin: Literal["unresolved"]
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
-        return _event_example(cls.type_name, "unresolved")
+    def record_example(cls) -> dict[str, object]:
+        return _event_example(entity(cls).name, "unresolved")
 
 
 class ChatMessage(TaravObject):
-    type_name = "Chat.Message"
-    type_ship = TypeShip("53fbe2e4-6c51-4918-8f40-c7c14b70ba5f")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('53fbe2e4-6c51-4918-8f40-c7c14b70ba5f'),
+            name='Chat.Message',
+            workflow=CHATLAS_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -106,9 +132,9 @@ class ChatMessage(TaravObject):
         event_refs: list[EventRef] = Field(min_length=1)
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "message_address": "3" * 64,
             "message_hash": "4" * 64,
             "side": "user",
@@ -118,8 +144,14 @@ class ChatMessage(TaravObject):
 
 
 class ChatTurn(TaravObject):
-    type_name = "Chat.Turn"
-    type_ship = TypeShip("6e7b53d7-590d-4423-bb16-5ec264cfb16d")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('6e7b53d7-590d-4423-bb16-5ec264cfb16d'),
+            name='Chat.Turn',
+            workflow=CHATLAS_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -132,9 +164,9 @@ class ChatTurn(TaravObject):
         message_refs: list[MessageRef]
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "turn_address": "5" * 64,
             "turn_hash": "6" * 64,
             "side": "user",
@@ -146,8 +178,14 @@ class ChatTurn(TaravObject):
 
 
 class AgentLoadedContext(TaravObject):
-    type_name = "Agent.Loaded.Context"
-    type_ship = TypeShip("67fee5e3-92ba-48cd-a561-bb3c82c99e20")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('67fee5e3-92ba-48cd-a561-bb3c82c99e20'),
+            name='Agent.Loaded.Context',
+            workflow=CHATLAS_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -157,9 +195,9 @@ class AgentLoadedContext(TaravObject):
         event_refs: list[EventRef] = Field(min_length=1)
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "agent_event_ref": _event_ref_example(),
             "event_refs": [_event_ref_example()],
         }
@@ -190,7 +228,7 @@ def _event_example(label: str, origin: str) -> dict[str, object]:
 
 
 EVENT_RECORD_TYPES = {
-    record_type.type_name: record_type
+    entity(record_type).name: record_type
     for record_type in (UserEvent, AgentEvent, UnresolvedEvent)
 }
 
@@ -211,7 +249,7 @@ def event_record(value: object) -> TaravObject:
     record_type = EVENT_RECORD_TYPES.get(label) if isinstance(label, str) else None
     if record_type is None:
         raise ValueError(f"unknown Chatlas Event Type: {label!r}")
-    return record_type.from_json(value)
+    return record_type.from_record(value)
 
 
 __all__ = [

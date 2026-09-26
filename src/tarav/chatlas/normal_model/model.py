@@ -14,7 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from tarav._core.errors import CliError
 from tarav._core.persistence import atomic_write_json
-from tarav.harness import DirectoryRecord, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import DirectoryRecord, TypeShip
+from tarav.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 
 from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record
 
@@ -68,9 +70,14 @@ class NormalModelCounts(_ClosedRecord):
 class ChatlasNormalModel(DirectoryRecord):
     """One provider-neutral chat tape stored as a streamable directory Record."""
 
-    type_name = "Chatlas.Normal.Model"
-    type_ship = TypeShip("64389d49-e0fd-4c26-8343-abf4880b3e33")
-
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('64389d49-e0fd-4c26-8343-abf4880b3e33'),
+            name='Chatlas.Normal.Model',
+            workflow=CHATLAS_WORKFLOW_SHIP,
+        )
     class RecordInterface(DirectoryRecord.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
 
@@ -82,13 +89,23 @@ class ChatlasNormalModel(DirectoryRecord):
         counts: NormalModelCounts
 
     @classmethod
+    def _from_record(cls, record_data: BaseModel) -> ChatlasNormalModel:
+        result = super()._from_record(record_data)
+        result._counts = record_data.counts.model_copy(deep=True)
+        return result
+
+    @property
+    def counts(self) -> NormalModelCounts:
+        return self._counts.model_copy(deep=True)
+
+    @classmethod
     def open(cls, directory: str | Path) -> ChatlasNormalModel:
         path = Path(directory).expanduser().absolute()
         try:
             value = json.loads((path / MAIN_FILENAME).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise CliError(f"invalid Normal Model entry: {path / MAIN_FILENAME}") from exc
-        result = cls.from_json(value)
+        result = cls.from_record(value)
         result.source = path / MAIN_FILENAME
         return result
 
@@ -124,18 +141,18 @@ class ChatlasNormalModel(DirectoryRecord):
                 + ", ".join(sorted(unexpected))
             )
         header = {key: deepcopy(model.get(key)) for key in _HEADER_KEYS}
-        record = cls.from_json(header)
+        record = cls.from_record(header)
         collections: dict[str, list[JsonObject]] = {}
         for name in COLLECTION_FILES:
             values = model.get(name)
             if not isinstance(values, list):
                 raise CliError(f"Normal Model has no {name} collection")
             collections[name] = [_validated_collection_row(name, value) for value in values]
-        counts = record.record_data.counts
+        counts = record.counts
         for name, values in collections.items():
             if getattr(counts, name) != len(values):
                 raise CliError(f"Normal Model {name} count does not match its collection")
-        return record.to_json(), collections
+        return record.to_record(), collections
 
     def iter_events(self) -> Iterator[JsonObject]:
         yield from self._iter_collection("events")
@@ -150,7 +167,7 @@ class ChatlasNormalModel(DirectoryRecord):
         yield from self._iter_collection("loaded_contexts")
 
     def model_header(self) -> JsonObject:
-        return self.to_json()
+        return self.to_record()
 
     def project(
         self,
@@ -181,9 +198,9 @@ class ChatlasNormalModel(DirectoryRecord):
             yield _validated_collection_row(name, value)
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "schema_version": NORMAL_MODEL_SCHEMA_VERSION,
             "metadata": {"commit": None},
             "session": {
@@ -211,12 +228,12 @@ class ChatlasNormalModel(DirectoryRecord):
 
 def _validated_collection_row(name: str, value: object) -> JsonObject:
     if name == "events":
-        return event_record(value).to_json()
+        return event_record(value).to_record()
     if name == "messages":
-        return ChatMessage.from_json(value).to_json()
+        return ChatMessage.from_record(value).to_record()
     if name == "turns":
-        return ChatTurn.from_json(value).to_json()
-    return AgentLoadedContext.from_json(value).to_json()
+        return ChatTurn.from_record(value).to_record()
+    return AgentLoadedContext.from_record(value).to_record()
 
 
 def _write_jsonl(path: Path, values: list[JsonObject]) -> None:

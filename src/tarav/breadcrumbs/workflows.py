@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from tarav.harness import TaravObject
+from tarav.kernel import TaravObject
 
 if TYPE_CHECKING:
     from .auditing import BreadcrumbAuditContext, BreadcrumbAuditFinding

@@ -146,7 +146,7 @@ def test_cache_is_one_streamable_directory_per_normal_model(
         for key in ("type", "schema_version", "metadata", "session", "sources", "counts")
     }
     assert isinstance(reader, ChatlasNormalModel)
-    assert create_runtime().load(path).to_json() == reader.to_json()
+    assert create_runtime().load_object(path).to_record() == reader.to_record()
     assert list(reader.iter_events()) == model["events"]
     assert list(reader.iter_messages()) == model["messages"]
     assert list(reader.iter_turns()) == model["turns"]
@@ -184,7 +184,10 @@ def test_normal_model_remains_loadable_without_valid_cache_metadata(
 
     assert cache.normal_model_cache_status_from_row(row, chatlas_root=root) == "STALE"
     assert ChatlasNormalModel.open(path).load_normal_model() == model
-    assert create_runtime().load(path).to_json()["type"] == "Chatlas.Normal.Model"
+    assert (
+        create_runtime().load_object(path).to_record()["type"]
+        == "Chatlas.Normal.Model"
+    )
 
 
 def test_raw_diagnostics_are_not_persisted_in_the_semantic_directory(

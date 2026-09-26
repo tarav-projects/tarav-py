@@ -6,14 +6,22 @@ operations and schema apply; this base deliberately adds no manifest policy.
 
 from pathlib import Path
 
-from tarav.harness import DirectoryRecord, TypeShip
+from tarav.kernel import TaravClass
+from tarav.kernel import DirectoryRecord, TypeShip
+from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
 
 class SkwDepot(DirectoryRecord):
     """A `.skw` directory selected through the trusted Record registry."""
 
-    type_name = "Tarav.Skillware.Depot"
-    type_ship = TypeShip("ea063ac9-d2a7-4927-a490-8877e61983dd")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('ea063ac9-d2a7-4927-a490-8877e61983dd'),
+            name='Tarav.Skillware.Depot',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
 
     @property
     def depot(self) -> Path:

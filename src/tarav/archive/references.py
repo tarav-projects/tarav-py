@@ -8,9 +8,12 @@ from typing import Annotated
 
 from pydantic import ConfigDict, Field
 
-from tarav.harness import TaravObject, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import TaravObject, TypeShip
+from tarav.kernel.records import _json_object
 from tarav.references import Reference, ReferenceResult
 from tarav.references.git import git_bytes, git_text
+from tarav.archive.identity import ARCHIVE_WORKFLOW_SHIP
 from collections.abc import Mapping
 from . import default_archive_root
 
@@ -57,8 +60,14 @@ class ArchiveContainsCommitCheck(TaravObject.RecordInterface):
 
 
 class ArchiveReference(Reference):
-    type_ship = TypeShip("c2b01ef3-5c7a-4c60-9826-b16828660fa9")
-    type_name = "Tarav.Archive.Reference"
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('c2b01ef3-5c7a-4c60-9826-b16828660fa9'),
+            name='Tarav.Archive.Reference',
+            workflow=ARCHIVE_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(Reference.RecordInterface):
         locator: ArchiveLocator
@@ -70,9 +79,9 @@ class ArchiveReference(Reference):
         ) = None
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "locator": {"archive": "/example/archive", "doi": "0" * 64},
         }
 
@@ -97,7 +106,7 @@ class ArchiveReference(Reference):
             if hints is not None:
                 observed.update(hints)
             record = {
-                "type": self.type_name,
+                "type": entity(type(self)).name,
                 "locator": {"archive": str(root), "doi": doi},
                 "hints": observed,
             }
@@ -105,7 +114,8 @@ class ArchiveReference(Reference):
                 record["check"] = check
         elif any(value is not None for value in (doi, archive, check, hints)):
             raise ValueError("Loading retained data cannot override reference fields")
-        super().__init__(record)
+        super().__init__()
+        self._record = _json_object(record)
 
     def locate(self, locator: object) -> ArchiveTarget:
         if not isinstance(locator, dict) or set(locator) != {"archive", "doi"}:
@@ -200,7 +210,7 @@ def reference_record(
     hints: dict | None = None,
 ) -> dict:
     record = {
-        "type": ArchiveReference.type_name,
+        "type": entity(ArchiveReference).name,
         "locator": {"archive": str(archive.root), "doi": doi},
     }
     if check is not None:

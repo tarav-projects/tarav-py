@@ -43,7 +43,7 @@ def compute_chat_message_hash(message: JsonObject) -> str:
 
 
 def chat_message_ref(message: JsonObject) -> JsonObject:
-    message = ChatMessage.from_json(message).to_json()
+    message = ChatMessage.from_record(message).to_record()
     address = _full_digest(
         message.get("message_address"), field="message_address"
     )
@@ -67,7 +67,7 @@ def resolve_chat_message_ref(
             "standing": "MISSING",
             "message": None,
         }
-    current = ChatMessage.from_json(addressed[0]).to_json()
+    current = ChatMessage.from_record(addressed[0]).to_record()
     current_hash = _full_digest(current.get("message_hash"), field="message_hash")
     return {
         "standing": "MATCHED" if current_hash == expected_hash else "AMENDED",

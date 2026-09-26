@@ -9,12 +9,15 @@ import shlex
 import string
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Literal, Mapping, Self, Sequence
 from uuid import UUID, uuid4
 
-from pydantic import Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
-from tarav.harness import InvalidRecordJSON, TaravObject, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import InvalidRecordJSON, TaravObject, TypeShip
+from tarav.kernel.records import _json_object
+from tarav.scoring.identity import SCORING_WORKFLOW_SHIP
 
 
 JsonObject = dict[str, Any]
@@ -90,8 +93,14 @@ class RankingSubmissionInterface(TaravObject.RecordInterface):
 class ScoringRecord(TaravObject, Mapping[str, object]):
     """Common behavior and retained fields for Assertion Scoring Records."""
 
-    type_name = "Tarav.Assertion.Scoring.Record"
-    type_ship = TypeShip("234e10e8-f207-459f-afcb-26266a8b2278")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('234e10e8-f207-459f-afcb-26266a8b2278'),
+            name='Tarav.Assertion.Scoring.Record',
+            workflow=SCORING_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         type: str
@@ -100,36 +109,53 @@ class ScoringRecord(TaravObject, Mapping[str, object]):
         created_at: str
 
     def __init__(self, record: Mapping[str, object]) -> None:
-        type(self).validate_record(record)
-        super().__init__(record)
-        _validate_record_semantics(self.record)
+        super().__init__()
+        self._record = _json_object(record)
+        type(self).validate_record(self._record)
+        _validate_record_semantics(self._record)
+
+    @classmethod
+    def _from_record(cls, record_data: BaseModel) -> Self:
+        return cls(
+            record_data.model_dump(mode="json", exclude_unset=True, by_alias=True)
+        )
 
     def __getitem__(self, key: str) -> object:
-        return self.record[key]
+        return self._record[key]
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self.record)
+        return iter(self._record)
 
     def __len__(self) -> int:
-        return len(self.record)
+        return len(self._record)
 
 
 class GroundingRankingPoolRecord(ScoringRecord):
-    type_name = GROUNDING_POOL_TYPE
-    type_ship = TypeShip("785fdd36-19d9-429f-86e4-801629633e3d")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('785fdd36-19d9-429f-86e4-801629633e3d'),
+            name=GROUNDING_POOL_TYPE,
+        )
 
     class RecordInterface(ScoringRecord.RecordInterface):
         type: Literal[GROUNDING_POOL_TYPE]
         name: str
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
-        return _record_example(cls.type_name, name="example-grounding-pool")
+    def record_example(cls) -> dict[str, object]:
+        return _record_example(entity(cls).name, name="example-grounding-pool")
 
 
 class PoolEnrollmentRecord(ScoringRecord):
-    type_name = POOL_ENROLLMENT_TYPE
-    type_ship = TypeShip("18098b05-9aa7-49aa-b23e-06bf9c1a629f")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('18098b05-9aa7-49aa-b23e-06bf9c1a629f'),
+            name=POOL_ENROLLMENT_TYPE,
+        )
 
     class RecordInterface(ScoringRecord.RecordInterface):
         type: Literal[POOL_ENROLLMENT_TYPE]
@@ -138,9 +164,9 @@ class PoolEnrollmentRecord(ScoringRecord):
         status: str
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return _record_example(
-            cls.type_name,
+            entity(cls).name,
             pool_ref=_record_reference_example(GROUNDING_POOL_TYPE),
             assertion_ref=_assertion_reference_example(),
             status="Enrolled",
@@ -148,8 +174,13 @@ class PoolEnrollmentRecord(ScoringRecord):
 
 
 class GroundingRankingTaskRecord(ScoringRecord):
-    type_name = GROUNDING_TASK_TYPE
-    type_ship = TypeShip("d14f3987-212a-45aa-8350-425235db7dab")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('d14f3987-212a-45aa-8350-425235db7dab'),
+            name=GROUNDING_TASK_TYPE,
+        )
 
     class RecordInterface(ScoringRecord.RecordInterface):
         type: Literal[GROUNDING_TASK_TYPE]
@@ -161,10 +192,10 @@ class GroundingRankingTaskRecord(ScoringRecord):
         response_contract: dict[str, object] = Field(default_factory=dict)
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         enrollment_ref = _record_reference_example(POOL_ENROLLMENT_TYPE)
         return _record_example(
-            cls.type_name,
+            entity(cls).name,
             pool_ref=_record_reference_example(GROUNDING_POOL_TYPE),
             background="Example ranking background.",
             question="Which candidate is better supported?",
@@ -178,8 +209,13 @@ class GroundingRankingTaskRecord(ScoringRecord):
 
 
 class RankingRunRecord(ScoringRecord):
-    type_name = RUN_TYPE
-    type_ship = TypeShip("7c2cc7d4-9bb7-4e2f-9fa1-997d56b0d11f")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('7c2cc7d4-9bb7-4e2f-9fa1-997d56b0d11f'),
+            name=RUN_TYPE,
+        )
 
     class RecordInterface(ScoringRecord.RecordInterface):
         type: Literal[RUN_TYPE]
@@ -192,9 +228,9 @@ class RankingRunRecord(ScoringRecord):
         status: str
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return _record_example(
-            cls.type_name,
+            entity(cls).name,
             task_ref=_record_reference_example(GROUNDING_TASK_TYPE),
             runner={"type": "Unknown.Ranking.Runner"},
             labels={"A": "candidate-a", "B": "candidate-b"},
@@ -209,8 +245,13 @@ class RankingRunRecord(ScoringRecord):
 
 
 class RankingResultRecord(ScoringRecord):
-    type_name = RESULT_TYPE
-    type_ship = TypeShip("9802acd7-15ee-429c-957b-b4e5c044da4c")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9802acd7-15ee-429c-957b-b4e5c044da4c'),
+            name=RESULT_TYPE,
+        )
 
     class RecordInterface(ScoringRecord.RecordInterface):
         type: Literal[RESULT_TYPE]
@@ -221,9 +262,9 @@ class RankingResultRecord(ScoringRecord):
         abstain_reason: str | None = None
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return _record_example(
-            cls.type_name,
+            entity(cls).name,
             run_ref=_record_reference_example(RUN_TYPE),
             outcome="ranked",
             tiers=[["A"], ["B"]],
@@ -233,24 +274,34 @@ class RankingResultRecord(ScoringRecord):
 
 
 class ScoringTraceRecord(ScoringRecord):
-    type_name = SCORING_TRACE_TYPE
-    type_ship = TypeShip("521c50d4-e96f-47e6-8553-e70f608c84fa")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('521c50d4-e96f-47e6-8553-e70f608c84fa'),
+            name=SCORING_TRACE_TYPE,
+        )
 
     class RecordInterface(ScoringRecord.RecordInterface):
         type: Literal[SCORING_TRACE_TYPE]
         assertion_ref: GroundingAssertionReferenceInterface
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return _record_example(
-            cls.type_name,
+            entity(cls).name,
             assertion_ref=_assertion_reference_example(),
         )
 
 
 class ScoringEventRecord(ScoringRecord):
-    type_name = SCORING_EVENT_TYPE
-    type_ship = TypeShip("2b84630c-0880-4a88-8fa9-6b35aa64338f")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('2b84630c-0880-4a88-8fa9-6b35aa64338f'),
+            name=SCORING_EVENT_TYPE,
+        )
 
     class RecordInterface(ScoringRecord.RecordInterface):
         type: Literal[SCORING_EVENT_TYPE]
@@ -269,9 +320,9 @@ class ScoringEventRecord(ScoringRecord):
         value: float | int | None
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return _record_example(
-            cls.type_name,
+            entity(cls).name,
             computed_at="2026-01-01T00:00:00+00:00",
             trace_ref=_record_reference_example(SCORING_TRACE_TYPE),
             method=WIN_RATE_SCORE,
@@ -298,7 +349,7 @@ SCORING_RECORD_TYPES = (
     ScoringEventRecord,
 )
 SCORING_RECORD_TYPES_BY_NAME = {
-    record_type.type_name: record_type for record_type in SCORING_RECORD_TYPES
+    entity(record_type).name: record_type for record_type in SCORING_RECORD_TYPES
 }
 
 
@@ -365,7 +416,7 @@ def new_record(record_type: str, **fields: object) -> JsonObject:
     }
     record.update(fields)
     record_class = scoring_record_class(record_type)
-    return record_class.from_json(record).to_json()
+    return record_class.from_record(record).to_record()
 
 
 def record_reference(record: Mapping[str, object]) -> JsonObject:
@@ -927,7 +978,7 @@ def validate_record(record: Mapping[str, object]) -> None:
     record_type = _required_string(record, "type")
     record_class = scoring_record_class(record_type)
     try:
-        record_class.from_json(record)
+        record_class.from_record(record)
     except (InvalidRecordJSON, ValidationError) as exc:
         raise ScoringError(f"invalid {record_type} Record: {exc}") from exc
 

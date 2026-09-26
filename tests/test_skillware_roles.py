@@ -1,3 +1,5 @@
+from tarav.kernel import entity
+
 import json
 
 from tarav.chatlas.references import ChatlasTurnReference
@@ -15,7 +17,7 @@ def test_chatlas_exact_turn_and_grounding_role(tmp_path, monkeypatch):
                'message_hash': 'd' * 64, 'side': 'user', 'event_refs': [event_ref],
                'text': 'Exact user wording'}
     monkeypatch.setattr(refs, 'provide_normal_model', lambda **kw: {'turns': [turn], 'messages': [message]})
-    reference = {'type': ChatlasTurnReference.type_name, 'locator': {
+    reference = {'type': entity(ChatlasTurnReference).name, 'locator': {
         'session_identity': 'e' * 64, 'turn_address': 'a' * 64, 'turn_hash': 'b' * 64}}
     path = tmp_path / '.skw/src/demo.skw.json'
     path.parent.mkdir(parents=True)
@@ -32,7 +34,7 @@ def test_chatlas_exact_turn_and_grounding_role(tmp_path, monkeypatch):
     turn['side'] = 'agent'
     assert any('User Turn' in f['detail'] for f in doc.lint())
     turn['turn_hash'] = 'f' * 64
-    assert not ChatlasTurnReference(reference).resolve().ok
+    assert not ChatlasTurnReference.from_record(reference).resolve().ok
 
 
 def test_roles_control_tracking_and_unknown_roles_are_findings(tmp_path):

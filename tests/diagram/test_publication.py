@@ -1,3 +1,5 @@
+from tarav.kernel import entity
+
 import json
 
 import pytest
@@ -17,7 +19,7 @@ def publication(tmp_path):
     source.write_text(
         json.dumps(
             {
-                "type": ModelPublicationRecord.type_name,
+                "type": entity(ModelPublicationRecord).name,
                 "schema_version": 1,
                 "namespace": "../../../index",
                 "model": model.ship,
@@ -58,7 +60,7 @@ def test_package_compiles_and_deploys_publication(tmp_path):
     (p.root / ".skw/main.json").write_text(
         json.dumps(
             {
-                "type": SkwSkill.type_name,
+                "type": entity(SkwSkill).name,
                 "schema_version": 1,
                 "entrypoint": "SKILL.md",
                 "sources": [],
@@ -67,7 +69,7 @@ def test_package_compiles_and_deploys_publication(tmp_path):
             }
         )
     )
-    package = create_runtime().load(p.root / ".skw")
+    package = create_runtime().load_object(p.root / ".skw")
     package.build()
     target = tmp_path / "deployed"
     package.deploy(target)

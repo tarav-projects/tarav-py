@@ -7,7 +7,8 @@ from pathlib import Path
 
 from pydantic import ConfigDict, Field
 
-from tarav.harness import TaravObject, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import TaravObject, TypeShip
 from . import Reference, Sha256Check
 
 
@@ -19,17 +20,22 @@ class StructuredFileLocator(TaravObject.RecordInterface):
 
 
 class StructuredFileReference(Reference):
-    type_name = "Tarav.Reference.StructuredFile"
-    type_ship = TypeShip("d8e8b967-b3a2-4c62-9fa7-d6604b95d3c0")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('d8e8b967-b3a2-4c62-9fa7-d6604b95d3c0'),
+            name='Tarav.Reference.StructuredFile',
+        )
 
     class RecordInterface(Reference.RecordInterface):
         locator: StructuredFileLocator
         check: Sha256Check | None = None
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "locator": {"path": "example.json", "pointer": "/example"},
         }
 

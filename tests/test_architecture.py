@@ -1,6 +1,8 @@
 # $kw: ^agentos-python-architecture-contract --from Agent.Navigable.Codebase --from Dependency.Profile.Split --note [CT] maintained namespaces are cohesive and their import graph is acyclic outside the runtime composition root --supp ^c20260811-62u
 from __future__ import annotations
 
+from tarav.kernel import entity
+
 import ast
 from collections import defaultdict
 from pathlib import Path
@@ -9,15 +11,74 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
-def test_record_interfaces_belong_to_harness():
+def test_type_graph_ownership_is_separate_from_represented_ownership():
+    from tarav.kernel import TaravClass, TypeWorkflow
+    from tarav.record_archive import ArchiveFolder
+
+    assert entity(TaravClass).workflow == entity(TypeWorkflow).workflow
+    assert entity(ArchiveFolder).workflow != entity(TaravClass).workflow
+
+
+def test_record_interfaces_belong_to_kernel():
     from pydantic import BaseModel
-    from tarav.harness import TaravObject, isrecordsubclass, issubrecord
+    from tarav.kernel import TaravObject, isrecordsubclass, issubrecord
     from tarav.skw.document import SkwBlock
 
     assert issubclass(TaravObject.RecordInterface, BaseModel)
     assert issubrecord(SkwBlock, TaravObject)
     assert isrecordsubclass(SkwBlock, TaravObject)
     assert SkwBlock.preserves_parent_record_interface()
+
+
+def test_record_archive_placement_index_is_outside_its_entity_record() -> None:
+    from tarav import ARCHIVE
+    from tarav.record_archive import ArchiveFolder, ArchiveRoot, ArchiveList
+    from tarav.test_workflow import TestWorkflow
+
+    assert isinstance(ARCHIVE, ArchiveRoot)
+    assert ARCHIVE.for_workflow(TestWorkflow).parts == (
+        str(entity(TestWorkflow).workflow),
+    )
+
+    for archive_type in (ArchiveFolder, ArchiveList):
+        assert "entries" not in archive_type.RecordInterface.model_fields
+        assert {"type", "id", "constitution"} <= set(
+            archive_type.RecordInterface.model_fields
+        )
+
+
+def test_archive_and_context_implement_shared_explorer_contracts() -> None:
+    from tarav.kernel import (
+        ContextEntry,
+        ContextExplorer,
+        ContextFolder,
+        Explorer,
+        ExplorerEntry,
+        ExplorerFolder,
+        ExplorerList,
+        ContextList,
+    )
+    from tarav.record_archive import (
+        ArchiveEntry,
+        ArchiveExplorer,
+        ArchiveFolder,
+        ArchiveList,
+        ArchivePartition,
+        ArchiveRoot,
+    )
+
+    assert issubclass(ContextEntry, ExplorerEntry)
+    assert issubclass(ArchiveEntry, ExplorerEntry)
+    assert issubclass(ContextFolder, ExplorerFolder)
+    assert issubclass(ContextList, ExplorerList)
+    assert entity(ContextFolder).name == "Tarav.Context.Folder"
+    assert entity(ContextList).name == "Tarav.Context.List"
+    assert issubclass(ArchiveFolder, ExplorerFolder)
+    assert issubclass(ArchiveList, ExplorerList)
+    assert issubclass(ArchiveRoot, ExplorerFolder)
+    assert issubclass(ArchivePartition, ExplorerFolder)
+    assert issubclass(ContextExplorer, Explorer)
+    assert issubclass(ArchiveExplorer, Explorer)
 
 
 def test_generation_mechanics_have_no_tarav_domain_dependencies() -> None:
@@ -175,26 +236,94 @@ def test_subsystem_import_graph_is_acyclic() -> None:
     assert _strongly_connected_components(graph) == ()
 
 
-def test_harness_is_a_dependency_clean_application_base() -> None:
+def test_kernel_is_a_dependency_clean_application_base() -> None:
     imports = _top_level_import_graph()
 
-    assert imports["harness"] == set()
-    assert "harness" in imports["diagram"]
-    assert "harness" in imports["archive"]
-    assert "harness" in imports["navigation"]
+    assert imports["kernel"] == set()
+    assert "kernel" in imports["diagram"]
+    assert "kernel" in imports["archive"]
+    assert "kernel" in imports["navigation"]
     assert "poi" in imports["navigation"]
-    assert "navigation" not in imports["harness"]
-    assert imports["references"] <= {"harness"}
+    assert "navigation" not in imports["kernel"]
+    assert imports["references"] <= {"kernel"}
     assert "references" in imports["archive"]
+    assert imports["record_archive"] <= {"kernel", "_core", "runtime"}
+    assert not (PACKAGE_ROOT / "harness").exists()
 
 
-def test_ship_identity_is_owned_by_harness_and_only_declared_by_diagram() -> None:
+def test_running_environment_is_explicit_and_shared_with_type_dispatch() -> None:
+    from tarav.kernel import TaravEnvironment
+    from tarav.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert isinstance(runtime.environment, TaravEnvironment)
+    assert runtime.records.environment is runtime.environment
+    assert runtime.records.resolve_type("Tarav.Environment") is TaravEnvironment
+
+
+def test_registered_workflows_have_code_owned_constitutions() -> None:
+    from tarav.runtime import create_runtime
+
+    for workflow in create_runtime().workflows.workflows.values():
+        constitution = workflow.__dict__.get("constitution")
+        assert isinstance(constitution, str) and constitution.strip()
+        assert "constitution" not in entity(workflow).to_record()
+
+
+def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
+    from tarav.context_workflow import (
+        ContextWorkflow,
+        StoredDictionaryContext,
+        StoredVectorContext,
+        SubjectContextRoot,
+    )
+    from tarav.kernel.context import Context, ContextEntry, ContextExplorer
+    from tarav.kernel.records import TaravObject
+    from tarav.runtime import create_runtime
+    from tarav.test_workflow import TestEntity, TestWorkflow
+
+    imports = _top_level_import_graph()
+    assert imports["kernel"] == set()
+    assert imports["context_workflow"] <= {
+        "kernel",
+        "record_archive",
+        "_core",
+        "runtime",
+    }
+    assert (PACKAGE_ROOT / "context_workflow.py").is_file()
+    assert not (PACKAGE_ROOT / "context_store.py").exists()
+    assert (PACKAGE_ROOT / "test_workflow.py").is_file()
+
+    runtime = create_runtime()
+    assert (
+        runtime.records.resolve_type("Tarav.Context.SubjectRoot") is SubjectContextRoot
+    )
+    assert runtime.workflows.get("context") is ContextWorkflow
+    assert runtime.records.resolve_type("Tarav.Context.Entry") is ContextEntry
+    assert issubclass(Context, TaravObject)
+    assert (
+        runtime.records.resolve_type("Tarav.Context.StoredDictionary")
+        is StoredDictionaryContext
+    )
+    assert (
+        runtime.records.resolve_type("Tarav.Context.StoredVector")
+        is StoredVectorContext
+    )
+    assert entity(SubjectContextRoot).workflow == runtime.contexts.id
+    assert entity(ContextEntry).workflow == runtime.contexts.id
+    assert entity(ContextExplorer).name == "Tarav.Context.Explorer"
+    assert runtime.records.resolve_type("Tarav.Test.Entity") is TestEntity
+    assert runtime.workflows.get("test") is TestWorkflow
+    assert entity(TestEntity).workflow == runtime.workflows.get("test").id
+
+
+def test_ship_identity_is_owned_by_kernel_and_only_declared_by_diagram() -> None:
     import tarav.diagram as diagram
-    from tarav.harness import Ship, TypeShip, locate_record_type
+    from tarav.kernel import Ship, TypeShip, locate_record_type
 
     assert issubclass(TypeShip, Ship)
     assert diagram.Ship is Ship
-    assert isinstance(diagram.LineShipRecord.type_ship, TypeShip)
+    assert isinstance(entity(diagram.LineShipRecord).id, TypeShip)
     assert diagram.locate_record_type is locate_record_type
 
 
@@ -253,13 +382,19 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
                 and not m.startswith("tarav.chatlas.normal_model")
                 for m in modules
             )
-        elif path.name not in {"commands.py", "references.py", "normal_model_cache.py"}:
+        elif path.name not in {
+            "commands.py",
+            "references.py",
+            "normal_model_cache.py",
+            "workflow.py",
+        }:
             # commands.py is the composition point: it builds the one `tarav chatlas`
             # group and hands its subparsers to the layer. Everything else in
             # chatlas/ must stay below the layer, not reach up into it.
             # references.py is an explicit Normal Model consumer exposing typed Turns.
             # normal_model_cache.py is the Chatlas-owned logistical decorator around
             # canonical Normal Model directories.
+            # workflow.py is the runtime registration boundary for Chatlas Records.
             assert not any(
                 m.startswith("tarav.chatlas.normal_model") for m in modules
             ), path

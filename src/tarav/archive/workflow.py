@@ -2,12 +2,14 @@
 
 from pathlib import Path
 
-from tarav.harness.workflows import Workflow
-from tarav.navigation import Entry, FilesystemProvider
+from tarav.kernel import TaravClass
+from tarav.kernel import TypeShip
+from tarav.kernel.workflows import TaravWorkflow
+from tarav.archive.identity import ARCHIVE_WORKFLOW_SHIP
+from tarav.kernel.space import Entry, FilesystemProvider
 
 from . import Archive
-from .records import ARCHIVE_RECORD_TYPES, record_registry
-from .references import ArchiveReference
+from .records import record_registry
 
 
 class ArchiveProvider(FilesystemProvider):
@@ -37,17 +39,29 @@ class ArchiveProvider(FilesystemProvider):
             from . import _read_jsonl_objects
 
             payload = _read_jsonl_objects(self.path(parent))[int(item)]
-            result = self.records.resolve(payload)(payload)
+            result = self.records.from_record(payload)
             result.source = self.path(parent)
             return result
         return super().load(address)
 
 
-class ArchiveWorkflow(Workflow):
-    name = "archive"
-    record_types = (*ARCHIVE_RECORD_TYPES, ArchiveReference)
+class ArchiveWorkflow(TaravWorkflow):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('0a5e9874-822e-424b-8a88-23b8b3ff1252'),
+            name='Tarav.Workflow.Archive',
+            workflow=ARCHIVE_WORKFLOW_SHIP,
+        )
+    workflow_name = "archive"
+    constitution = (
+        "Record artifacts and their retention evidence without interpreting "
+        "their domain meaning."
+    )
 
-    def provider(self, root, records):
+    @classmethod
+    def provider(cls, root, records):
         return ArchiveProvider(root)
 
     @staticmethod

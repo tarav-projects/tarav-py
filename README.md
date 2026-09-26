@@ -5,7 +5,7 @@ modular monolith under the `tarav` package: the CLI, runtime, daemon, Chatlas,
 Archive, Diagram, SKW, agent/provider support, and Iterante runtimes.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership and dependency direction.
-`tarav.harness` provides the dependency-clean semantic roles and trusted Record
+`tarav.kernel` provides the dependency-clean semantic roles and trusted Record
 Type dispatch that Tarav applications may specialize without sharing schemas.
 
 ## Install
@@ -64,6 +64,13 @@ The complete current command set is always available through `tarav --help`.
 ```sh
 uv run pytest
 uv run ruff check src tests
+```
+
+The [Test Workflow example](dev/test_workflow_example.py) creates a fresh
+Archive run and a retained Context for its Entity under `~/Documents/tarav/`:
+
+```sh
+uv run python dev/test_workflow_example.py
 ```
 
 After changing installed command behavior, refresh the editable tool:

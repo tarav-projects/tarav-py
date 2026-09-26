@@ -443,7 +443,7 @@ def test_draft_reconciles_checks_applies_once_and_survives_reload(
     draft = repository.reconcile(draft, ships=(closed,))
 
     reloaded = DiagramDraftRepository.open(tmp_path / "drafts").draft(draft.id[:8])
-    assert reloaded.to_json() == draft.to_json()
+    assert reloaded.to_record() == draft.to_record()
     assert len(reloaded.ship_drafts[0].record["editions"]) == 2
     assert reloaded.check(diagram)
     receipt = repository.apply(reloaded, diagram, commit=False)

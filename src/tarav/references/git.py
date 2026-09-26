@@ -6,7 +6,9 @@ import subprocess
 
 from pydantic import ConfigDict, Field
 
-from tarav.harness import TaravObject, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import TaravObject, TypeShip
+from tarav.kernel.records import _json_object
 from . import Reference
 
 
@@ -50,17 +52,22 @@ def git_file(repository: str | Path, commit: str, path: str) -> tuple[str, bytes
 
 
 class GitFileReference(Reference):
-    type_name = "Tarav.Reference.GitFile"
-    type_ship = TypeShip("64b04e85-9899-4ab6-93a1-492d06e4509a")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('64b04e85-9899-4ab6-93a1-492d06e4509a'),
+            name='Tarav.Reference.GitFile',
+        )
 
     class RecordInterface(Reference.RecordInterface):
         locator: GitFileLocator
         check: GitOidCheck | None = None
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "locator": {
                 "repository": "/example/repository",
                 "commit": "0" * 40,
@@ -103,14 +110,15 @@ class GitFileReference(Reference):
             if hints is not None:
                 observed.update(hints)
             record = {
-                "type": self.type_name,
+                "type": entity(type(self)).name,
                 "locator": {"repository": root, "commit": exact, "path": path},
                 "check": {"git_oid": oid},
                 "hints": observed,
             }
         elif any(value is not None for value in (repository, commit, path, hints)):
             raise ValueError("Loading retained data cannot override reference fields")
-        super().__init__(record)
+        super().__init__()
+        self._record = _json_object(record)
 
     def locate(self, locator):
         if not isinstance(locator, dict) or set(locator) != {

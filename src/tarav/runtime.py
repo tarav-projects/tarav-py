@@ -5,13 +5,35 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING
+from threading import Lock
+from typing import TYPE_CHECKING, TypeVar, overload
 import json
 
-from tarav.harness import DirectoryRecord, FileRecord, TaravObject, TypeRegistry
-from tarav.references.workflow import ReferenceWorkflow
-from tarav.harness.workflows import Workflow, WorkflowRegistry
-from tarav.navigation import FilesystemProvider, Navigation
+from tarav.kernel import (
+    DirectoryRecord,
+    FileRecord,
+    KernelWorkflow,
+    TypeWorkflow,
+    TARAV,
+    TaravClass,
+    TaravEnvironment,
+    TaravObject,
+    TaravSystem,
+    TypeRegistry,
+    entity,
+)
+from tarav.kernel.context import (
+    ContextEntry,
+    ContextExplorer,
+    ContextSubject,
+    context as open_context,
+)
+from tarav.context_workflow import CONTEXT_RECORD_TYPES, ContextWorkflow, ContextService
+from tarav.kernel.space import FilesystemProvider
+from tarav.kernel.workflows import TaravWorkflow, WorkflowRegistry
+from tarav.navigation import Navigation, NavigationService
+from tarav.references.workflow import ReferenceWorkflow, ReferenceService
+from tarav.breadcrumbs.workflow import BreadcrumbService
 
 from tarav.chatlas.hook_consumers import register_chatlas_hook_callbacks
 from tarav.agent.providers.claude_code.usage_hooks import (
@@ -26,11 +48,11 @@ if TYPE_CHECKING:
     import argparse
 
     from tarav.breadcrumbs.integrations import BreadcrumbIntegration
-    from tarav.breadcrumbs.workflow import BreadcrumbWorkflow
     from tarav.scoring.workflow import ScoringWorkflow
 
 
 HookRegistrar = Callable[[HookRegistry], None]
+ObjectT = TypeVar("ObjectT", bound=TaravObject)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,32 +60,48 @@ class TaravRuntime:
     """One composed in-process Tarav runtime."""
 
     hooks: HookRegistry
+    system: TaravSystem
     workflows: WorkflowRegistry
-    navigation: Navigation
+    records: TypeRegistry[TaravObject]
+    environment: TaravEnvironment
+    contexts: ContextService
+    navigation: NavigationService
+    references: ReferenceService
+    breadcrumbs: BreadcrumbService
     breadcrumb_integrations: tuple[BreadcrumbIntegration, ...]
 
     @property
-    def references(self) -> ReferenceWorkflow:
-        return self.workflows.workflows["references"]
-
-    @property
-    def breadcrumbs(self) -> BreadcrumbWorkflow:
-        return self.workflows.workflows["breadcrumbs"]
-
-    @property
-    def scoring(self) -> ScoringWorkflow:
-        return self.workflows.workflows["scoring"]
-
-    @property
-    def records(self) -> TypeRegistry[TaravObject]:
-        return self.workflows.records
+    def scoring(self) -> type[ScoringWorkflow]:
+        return self.workflows.get("scoring")
 
     @property
     def source_root(self) -> Path:
         return Path(__file__).parent
 
-    def load(self, path: str | Path) -> TaravObject:
-        return self.records.load(path)
+    @overload
+    def load_object(
+        self, path: str | Path, *, expected_type: type[ObjectT]
+    ) -> ObjectT: ...
+
+    @overload
+    def load_object(
+        self, path: str | Path, *, expected_type: None = None
+    ) -> TaravObject: ...
+
+    def load_object(
+        self,
+        path: str | Path,
+        *,
+        expected_type: type[TaravObject] | None = None,
+    ) -> TaravObject:
+        """Load one path through trusted Type dispatch and an optional check."""
+
+        return self.records.load(path, expected_type=expected_type)
+
+    def context(self, subject: ContextSubject | ContextEntry) -> ContextExplorer:
+        """Compose runtime and retained entries into one read-only view."""
+
+        return open_context(subject, contributors=(self.contexts.contribute,))
 
     def register_commands(
         self,
@@ -162,8 +200,11 @@ def _register_stdlib_commands(
 def create_runtime(
     *,
     hook_registrars: Sequence[HookRegistrar] = (),
-    workflows: Sequence[Workflow] = (),
+    workflows: Sequence[type[TaravWorkflow]] = (),
+    record_types: Sequence[type[TaravObject]] = (),
     breadcrumb_integrations: Sequence[BreadcrumbIntegration] = (),
+    environment: TaravEnvironment | None = None,
+    archive_root: Path | None = None,
     config: Path | None = None,
 ) -> TaravRuntime:
     """Compose library capabilities. Configuration is explicit trusted input.
@@ -172,46 +213,82 @@ def create_runtime(
     and `providers` ({name, workflow, root}). Paths are relative to that file.
     `filesystem` providers browse plain local Record collections.
     """
+    from tarav.archive.records import ARCHIVE_RECORD_TYPES
+    from tarav.archive.references import ArchiveReference
     from tarav.archive.workflow import ArchiveWorkflow
     from tarav.breadcrumb_workflows.chatlas_context import CHATLAS_CONTEXT
-    from tarav.breadcrumbs.workflow import BreadcrumbWorkflow
-    from tarav.diagram.workflow import DiagramWorkflow
-    from tarav.skw.document import SkillwareWorkflow
-    from tarav.skw.skills import SkillsWorkflow
+    from tarav.breadcrumbs.workflow import (
+        BREADCRUMB_RECORD_TYPES,
+        BreadcrumbWorkflow,
+    )
+    from tarav.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
+    from tarav.diagram.workflow import DIAGRAM_RECORD_TYPES, DiagramWorkflow
+    from tarav.references.workflow import REFERENCE_RECORD_TYPES
+    from tarav.record_archive import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
+    from tarav.scoring.model import SCORING_RECORD_TYPES
     from tarav.scoring.workflow import ScoringWorkflow
-    from tarav.chatlas.references import ChatlasTurnReference
-    from tarav.chatlas.normal_model import (
-        CHATLAS_SEMANTIC_RECORD_TYPES,
-        ChatlasNormalModel,
-    )
+    from tarav.skw.document import SKILLWARE_RECORD_TYPES, SkillwareWorkflow
+    from tarav.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
+    from tarav.test_workflow import TestEntity, TestItem, TestWorkflow
 
-    registrations = WorkflowRegistry(
-        TypeRegistry(
-            TaravObject,
-            (
-                FileRecord,
-                DirectoryRecord,
-                ChatlasTurnReference,
-                ChatlasNormalModel,
-                *CHATLAS_SEMANTIC_RECORD_TYPES,
-            ),
-        )
-    )
-    navigation = Navigation()
-    references = ReferenceWorkflow(registrations.records)
     composed_breadcrumb_integrations = (
         CHATLAS_CONTEXT,
         *breadcrumb_integrations,
     )
+    registered_types = tuple(
+        dict.fromkeys(
+            (
+                FileRecord,
+                DirectoryRecord,
+                *CONTEXT_RECORD_TYPES,
+                TaravClass,
+                TaravEnvironment,
+                TaravSystem,
+                TestEntity,
+                TestItem,
+                *CHATLAS_RECORD_TYPES,
+                *REFERENCE_RECORD_TYPES,
+                *BREADCRUMB_RECORD_TYPES,
+                *(
+                    record_type
+                    for integration in composed_breadcrumb_integrations
+                    for record_type in integration.workflow.record_types
+                ),
+                *ARCHIVE_RECORD_TYPES,
+                *RECORD_ARCHIVE_TYPES,
+                ArchiveReference,
+                *DIAGRAM_RECORD_TYPES,
+                *SCORING_RECORD_TYPES,
+                *SKILLWARE_RECORD_TYPES,
+                *SKILLS_RECORD_TYPES,
+                *record_types,
+            )
+        )
+    )
+    running_environment = environment if environment is not None else TaravEnvironment()
+    records = TypeRegistry(
+        TaravObject, registered_types, environment=running_environment
+    )
+    registrations = WorkflowRegistry()
+    navigation = Navigation.service()
+    references = ReferenceWorkflow.service(records)
+    contexts = ContextWorkflow.service(archive_root, records)
+    breadcrumbs = BreadcrumbWorkflow.service(composed_breadcrumb_integrations)
     for workflow in (
-        references,
-        BreadcrumbWorkflow(composed_breadcrumb_integrations),
-        ArchiveWorkflow(),
-        DiagramWorkflow(),
-        ScoringWorkflow(),
-        SkillwareWorkflow(),
-        SkillsWorkflow(),
-        navigation,
+        KernelWorkflow,
+        TypeWorkflow,
+        ContextWorkflow,
+        ChatlasWorkflow,
+        ReferenceWorkflow,
+        BreadcrumbWorkflow,
+        ArchiveWorkflow,
+        RecordArchiveWorkflow,
+        DiagramWorkflow,
+        ScoringWorkflow,
+        SkillwareWorkflow,
+        SkillsWorkflow,
+        Navigation,
+        TestWorkflow,
         *workflows,
     ):
         registrations.register(workflow)
@@ -224,13 +301,16 @@ def create_runtime(
             root = config.parent / entry["root"]
             owner = entry["workflow"]
             provider = (
-                FilesystemProvider(root, registrations.records)
+                FilesystemProvider(root, records)
                 if owner == "filesystem"
-                else registrations.workflows[owner].provider(
-                    root, registrations.records
-                )
+                else registrations.get(owner).provider(root, records)
             )
             navigation.mount(entry["name"], provider)
+    for record_type in records.record_types:
+        registrations.get(entity(record_type).workflow)
+    records.validate_external_with(
+        lambda record_type: registrations.get(entity(record_type).workflow)
+    )
     registry = HookRegistry()
     register_hook_sampling_callbacks(registry)
     register_claude_usage_hook_callbacks(registry)
@@ -240,10 +320,47 @@ def create_runtime(
         registrar(registry)
     return TaravRuntime(
         hooks=registry,
+        system=TARAV,
         workflows=registrations,
+        records=records,
+        environment=running_environment,
+        contexts=contexts,
+        references=references,
+        breadcrumbs=breadcrumbs,
         navigation=navigation,
         breadcrumb_integrations=composed_breadcrumb_integrations,
     )
 
 
-__all__ = ["TaravRuntime", "HookRegistrar", "create_runtime"]
+_current_runtime: TaravRuntime | None = None
+_current_runtime_lock = Lock()
+
+
+def get_runtime() -> TaravRuntime:
+    """Return the process's current runtime, composing it on first use."""
+
+    global _current_runtime
+    if _current_runtime is None:
+        with _current_runtime_lock:
+            if _current_runtime is None:
+                _current_runtime = create_runtime()
+    return _current_runtime
+
+
+def set_runtime(runtime: TaravRuntime | None) -> None:
+    """Select one composed runtime for process-wide library operations."""
+
+    global _current_runtime
+    if runtime is not None and not isinstance(runtime, TaravRuntime):
+        raise TypeError("Current runtime must be a TaravRuntime or None")
+    with _current_runtime_lock:
+        _current_runtime = runtime
+
+
+__all__ = [
+    "TaravRuntime",
+    "HookRegistrar",
+    "create_runtime",
+    "get_runtime",
+    "set_runtime",
+]

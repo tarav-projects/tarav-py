@@ -1,7 +1,10 @@
 """Diagram registers its existing semantic interpreters with the library."""
 
-from tarav.harness.workflows import Workflow
-from tarav.navigation import FilesystemProvider
+from tarav.kernel import TaravClass
+from tarav.kernel import TypeShip
+from tarav.kernel.workflows import TaravWorkflow
+from tarav.diagram.identity import DIAGRAM_WORKFLOW_SHIP
+from tarav.kernel.space import FilesystemProvider
 
 from . import (
     DiagramNamespace,
@@ -10,16 +13,28 @@ from . import (
 )
 
 
-class DiagramWorkflow(Workflow):
-    name = "diagram"
-    record_types = (
-        *default_diagram_ship_type_registry().record_types,
-        *default_diagram_annotation_type_registry(
-            include_chatlas_index_types=True
-        ).record_types,
-    )
+DIAGRAM_RECORD_TYPES = (
+    *default_diagram_ship_type_registry().record_types,
+    *default_diagram_annotation_type_registry(
+        include_chatlas_index_types=True
+    ).record_types,
+)
 
-    def provider(self, root, records):
+
+class DiagramWorkflow(TaravWorkflow):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('5c2f77b6-8994-4fa9-a330-966beb13bec1'),
+            name='Tarav.Workflow.Diagram',
+            workflow=DIAGRAM_WORKFLOW_SHIP,
+        )
+    workflow_name = "diagram"
+    constitution = "Retain explicit semantic records, relationships, and claims about subjects."
+
+    @classmethod
+    def provider(cls, root, records):
         return DiagramProvider(DiagramNamespace.open(root), records)
 
 

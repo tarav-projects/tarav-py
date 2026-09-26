@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tarav.kernel import entity
+
 from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -101,9 +103,9 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             PreparedAnnotation(
                 item.position,
                 f"tarav.context {item.alias}:{item.turn_prefix}",
-                ChatlasTurnReference.from_json(
+                ChatlasTurnReference.from_record(
                     turn_records[(item.alias, item.turn_prefix)]
-                ).to_json(),
+                ).to_record(),
             )
             for item in markers
         )
@@ -114,12 +116,12 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
         breadcrumb_id: str,
     ) -> tuple[Mapping[str, object], ...]:
         attachment = {
-            "type": ChatlasContextAttachment.type_name,
+            "type": entity(ChatlasContextAttachment).name,
             "breadcrumb_id": breadcrumb_id,
             "workflow": "Tarav.Breadcrumbs.ChatlasContext",
             "context": annotation.state,
         }
-        return (ChatlasContextAttachment.from_json(attachment).to_json(),)
+        return (ChatlasContextAttachment.from_record(attachment).to_record(),)
 
     def audit(
         self,
@@ -153,7 +155,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             attachments = [
                 value
                 for value in breadcrumb.attachments
-                if value.get("type") == ChatlasContextAttachment.type_name
+                if value.get("type") == entity(ChatlasContextAttachment).name
             ]
             if not attachments:
                 if breadcrumb.attachments:
@@ -177,8 +179,8 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                 )
                 continue
             try:
-                attachment = ChatlasContextAttachment.from_json(attachments[0])
-                payload = attachment.to_json()
+                attachment = ChatlasContextAttachment.from_record(attachments[0])
+                payload = attachment.to_record()
                 if payload["breadcrumb_id"] != breadcrumb.breadcrumb_id:
                     raise ValueError(
                         "Chatlas-context attachment belongs to another Breadcrumb"
@@ -392,7 +394,7 @@ def _resolve_chatlas_turns(
                     f"Breadcrumb context must resolve to a User Turn: {finding.prefix}"
                 )
             records[(alias, finding.prefix)] = {
-                "type": ChatlasTurnReference.type_name,
+                "type": entity(ChatlasTurnReference).name,
                 "locator": {
                     "session_identity": identity,
                     "turn_address": finding.turn.get("turn_address"),

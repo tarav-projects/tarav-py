@@ -151,7 +151,7 @@ def test_repository_registration_and_generic_artifact_show(
     assert shown["command"] == "tarav archive artifact show"
     assert shown["artifact"] == repository
     assert set(shown["records"]) == {
-        "registration.json",
+        "main.json",
         "locators.jsonl",
         "git-hint.json",
     }

@@ -131,7 +131,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
         {
             "status": "ok",
             "command": "tarav diagram draft show",
-            "draft": draft.to_json(),
+            "draft": draft.to_record(),
             "path": str(draft.path),
         },
     )
@@ -197,7 +197,7 @@ def _cmd_apply(args: argparse.Namespace) -> int:
             "status": "poi" if receipt.findings else "ok",
             "command": "tarav diagram draft apply",
             "draft": _draft_summary(applied),
-            "receipt": receipt.to_json(),
+            "receipt": receipt.to_record(),
         },
     )
 

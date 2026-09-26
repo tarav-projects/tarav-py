@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tarav.kernel import entity
+
 from tarav.breadcrumb_workflows.chatlas_context import (
     ChatlasContextBreadcrumbWorkflow,
     ChatlasContextRequest,
@@ -23,7 +25,7 @@ def _resolver(alias: str, prefix: str):
     assert alias == IDENTITY[:8]
     assert TURN_HASH.startswith(prefix)
     return {
-        "type": ChatlasTurnReference.type_name,
+        "type": entity(ChatlasTurnReference).name,
         "locator": {
             "session_identity": IDENTITY,
             "turn_address": TURN_ADDRESS,

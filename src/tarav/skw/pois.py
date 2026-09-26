@@ -4,10 +4,26 @@ Checks live in skw/loading.py, skw/skills.py, skw/publication.py and
 skw/document.py. Only annotation omissions and semantic freshness
 questions permit attributed acceptance. Structural failures require repair.
 """
-from tarav.harness import TypeShip
+from tarav.kernel import TaravClass
+from tarav.kernel import TypeShip
 from tarav.poi import POI, POICollector
+from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
-class UnannotatedOutputLink(POI):
+
+class SkwPOI(POI):
+    """Ownership base for SKW checks represented as POI Record Types."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('6e215eaf-b1d4-4ff9-ae51-9a89e542ffd3'),
+            name='Tarav.SKW.POI',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+
+class UnannotatedOutputLink(SkwPOI):
     """An authored Markdown link has no SKW link primitive declaration.
 
     LoadingModel binds source blocks, then parses their authored output solely
@@ -16,332 +32,532 @@ class UnannotatedOutputLink(POI):
     an acceptance does not add an edge or satisfy a context requirement.
     """
 
-    type_name = 'Tarav.SKW.POI.UnannotatedOutputLink'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000001')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000001'),
+            name='Tarav.SKW.POI.UnannotatedOutputLink',
+        )
     blessable = True
 
 
-class MissingContext(POI):
+class MissingContext(SkwPOI):
     """LoadingModel.analyze reached a requirement without its requested delivery.
 
     Evidence identifies the target, delivery and exact incoming path. Correct
     declarations or delivery primitives; this class does not permit blessing.
     """
 
-    type_name = 'Tarav.SKW.POI.MissingContext'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000002')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000002'),
+            name='Tarav.SKW.POI.MissingContext',
+        )
     blessable = False
 
 
-class PathDependentContext(POI):
+class PathDependentContext(SkwPOI):
     """path-dependent-context: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.PathDependentContext'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000003')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000003'),
+            name='Tarav.SKW.POI.PathDependentContext',
+        )
     blessable = False
 
 
-class UnreachableBlock(POI):
+class UnreachableBlock(SkwPOI):
     """unreachable-block: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.UnreachableBlock'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000004')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000004'),
+            name='Tarav.SKW.POI.UnreachableBlock',
+        )
     blessable = False
 
 
-class AttachmentCycle(POI):
+class AttachmentCycle(SkwPOI):
     """attachment-cycle: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.AttachmentCycle'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000005')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000005'),
+            name='Tarav.SKW.POI.AttachmentCycle',
+        )
     blessable = False
 
 
-class InclusionCycle(POI):
+class InclusionCycle(SkwPOI):
     """inclusion-cycle: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InclusionCycle'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000006')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000006'),
+            name='Tarav.SKW.POI.InclusionCycle',
+        )
     blessable = False
 
 
-class InvalidBlockReference(POI):
+class InvalidBlockReference(SkwPOI):
     """invalid-block-reference: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InvalidBlockReference'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000007')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000007'),
+            name='Tarav.SKW.POI.InvalidBlockReference',
+        )
     blessable = False
 
 
-class UndeclaredBlock(POI):
+class UndeclaredBlock(SkwPOI):
     """undeclared-block: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.UndeclaredBlock'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000008')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000008'),
+            name='Tarav.SKW.POI.UndeclaredBlock',
+        )
     blessable = False
 
 
-class InvalidParent(POI):
+class InvalidParent(SkwPOI):
     """invalid-parent: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InvalidParent'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000009')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000009'),
+            name='Tarav.SKW.POI.InvalidParent',
+        )
     blessable = False
 
 
-class InvalidContextTarget(POI):
+class InvalidContextTarget(SkwPOI):
     """invalid-context-target: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InvalidContextTarget'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000010')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000010'),
+            name='Tarav.SKW.POI.InvalidContextTarget',
+        )
     blessable = False
 
 
-class InvalidLoadingRoot(POI):
+class InvalidLoadingRoot(SkwPOI):
     """invalid-loading-root: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InvalidLoadingRoot'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000011')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000011'),
+            name='Tarav.SKW.POI.InvalidLoadingRoot',
+        )
     blessable = False
 
 
-class RootHasParent(POI):
+class RootHasParent(SkwPOI):
     """root-has-parent: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.RootHasParent'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000012')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000012'),
+            name='Tarav.SKW.POI.RootHasParent',
+        )
     blessable = False
 
 
-class LoadingAnalysisIncomplete(POI):
+class LoadingAnalysisIncomplete(SkwPOI):
     """loading-analysis-incomplete: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.LoadingAnalysisIncomplete'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000013')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000013'),
+            name='Tarav.SKW.POI.LoadingAnalysisIncomplete',
+        )
     blessable = False
 
 
-class LoadingDeclarationStale(POI):
+class LoadingDeclarationStale(SkwPOI):
     """loading-declaration-stale: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.LoadingDeclarationStale'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000014')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000014'),
+            name='Tarav.SKW.POI.LoadingDeclarationStale',
+        )
     blessable = False
 
 
-class LoadingRenderError(POI):
+class LoadingRenderError(SkwPOI):
     """loading-render-error: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.LoadingRenderError'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000015')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000015'),
+            name='Tarav.SKW.POI.LoadingRenderError',
+        )
     blessable = False
 
 
-class InvalidLoadingModel(POI):
+class InvalidLoadingModel(SkwPOI):
     """invalid-loading-model: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InvalidLoadingModel'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000016')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000016'),
+            name='Tarav.SKW.POI.InvalidLoadingModel',
+        )
     blessable = False
 
 
-class InvalidPublication(POI):
+class InvalidPublication(SkwPOI):
     """invalid-publication: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InvalidPublication'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000017')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000017'),
+            name='Tarav.SKW.POI.InvalidPublication',
+        )
     blessable = False
 
 
-class DuplicateOutput(POI):
+class DuplicateOutput(SkwPOI):
     """duplicate-output: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.DuplicateOutput'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000018')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000018'),
+            name='Tarav.SKW.POI.DuplicateOutput',
+        )
     blessable = False
 
 
-class OutputNotDeployed(POI):
+class OutputNotDeployed(SkwPOI):
     """output-not-deployed: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.OutputNotDeployed'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000019')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000019'),
+            name='Tarav.SKW.POI.OutputNotDeployed',
+        )
     blessable = False
 
 
-class InvalidSource(POI):
+class InvalidSource(SkwPOI):
     """invalid-source: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InvalidSource'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000020')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000020'),
+            name='Tarav.SKW.POI.InvalidSource',
+        )
     blessable = False
 
 
-class MissingConsumerFile(POI):
+class MissingConsumerFile(SkwPOI):
     """missing-consumer-file: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.MissingConsumerFile'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000021')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000021'),
+            name='Tarav.SKW.POI.MissingConsumerFile',
+        )
     blessable = False
 
 
-class UnbundledLink(POI):
+class UnbundledLink(SkwPOI):
     """unbundled-link: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.UnbundledLink'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000022')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000022'),
+            name='Tarav.SKW.POI.UnbundledLink',
+        )
     blessable = False
 
 
-class UndeclaredConsumerLink(POI):
+class UndeclaredConsumerLink(SkwPOI):
     """undeclared-consumer-link: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.UndeclaredConsumerLink'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000023')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000023'),
+            name='Tarav.SKW.POI.UndeclaredConsumerLink',
+        )
     blessable = False
 
 
-class MissingLinkTarget(POI):
+class MissingLinkTarget(SkwPOI):
     """missing-link-target: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.MissingLinkTarget'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000024')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000024'),
+            name='Tarav.SKW.POI.MissingLinkTarget',
+        )
     blessable = False
 
 
-class MissingDependency(POI):
+class MissingDependency(SkwPOI):
     """missing-dependency: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.MissingDependency'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000025')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000025'),
+            name='Tarav.SKW.POI.MissingDependency',
+        )
     blessable = False
 
 
-class PublicationUnresolvable(POI):
+class PublicationUnresolvable(SkwPOI):
     """publication-unresolvable: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.PublicationUnresolvable'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000026')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000026'),
+            name='Tarav.SKW.POI.PublicationUnresolvable',
+        )
     blessable = False
 
 
-class PublicationStale(POI):
+class PublicationStale(SkwPOI):
     """publication-stale: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.PublicationStale'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000027')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000027'),
+            name='Tarav.SKW.POI.PublicationStale',
+        )
     blessable = False
 
 
-class PublicationDrift(POI):
+class PublicationDrift(SkwPOI):
     """publication-drift: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.PublicationDrift'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000028')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000028'),
+            name='Tarav.SKW.POI.PublicationDrift',
+        )
     blessable = False
 
 
-class ContextUnresolvable(POI):
+class ContextUnresolvable(SkwPOI):
     """context-unresolvable: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.ContextUnresolvable'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000029')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000029'),
+            name='Tarav.SKW.POI.ContextUnresolvable',
+        )
     blessable = False
 
 
-class ContextUnobserved(POI):
+class ContextUnobserved(SkwPOI):
     """context-unobserved: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.ContextUnobserved'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000030')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000030'),
+            name='Tarav.SKW.POI.ContextUnobserved',
+        )
     blessable = False
 
 
-class StaleContext(POI):
+class StaleContext(SkwPOI):
     """Document.lint found changed maintenance context since explicit observation.
 
     An agent may accept the unchanged product after reviewing the new context.
     Blessing records that assessment; it never advances the document baseline.
     """
 
-    type_name = 'Tarav.SKW.POI.StaleContext'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000031')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000031'),
+            name='Tarav.SKW.POI.StaleContext',
+        )
     blessable = True
 
 
-class MissingOutput(POI):
+class MissingOutput(SkwPOI):
     """missing-output: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.MissingOutput'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000032')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000032'),
+            name='Tarav.SKW.POI.MissingOutput',
+        )
     blessable = False
 
 
-class InvalidInput(POI):
+class InvalidInput(SkwPOI):
     """invalid-input: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InvalidInput'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000033')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000033'),
+            name='Tarav.SKW.POI.InvalidInput',
+        )
     blessable = False
 
 
-class StaleGeneration(POI):
+class StaleGeneration(SkwPOI):
     """Document.lint found changed generation inputs against recorded provenance.
 
     Bless only after assessing that existing output is acceptable for the
     changed inputs. Source, output, and generation history are not rewritten.
     """
 
-    type_name = 'Tarav.SKW.POI.StaleGeneration'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000034')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000034'),
+            name='Tarav.SKW.POI.StaleGeneration',
+        )
     blessable = True
 
 
-class OutputChanged(POI):
+class OutputChanged(SkwPOI):
     """output-changed: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.OutputChanged'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000035')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000035'),
+            name='Tarav.SKW.POI.OutputChanged',
+        )
     blessable = False
 
 
-class InvalidAnnotation(POI):
+class InvalidAnnotation(SkwPOI):
     """invalid-annotation: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.InvalidAnnotation'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000036')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000036'),
+            name='Tarav.SKW.POI.InvalidAnnotation',
+        )
     blessable = False
 
 
-class SourceUncompiled(POI):
+class SourceUncompiled(SkwPOI):
     """source-uncompiled: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.SourceUncompiled'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000037')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000037'),
+            name='Tarav.SKW.POI.SourceUncompiled',
+        )
     blessable = False
 
 
-class ProductUnavailable(POI):
+class ProductUnavailable(SkwPOI):
     """product-unavailable: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.ProductUnavailable'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000038')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000038'),
+            name='Tarav.SKW.POI.ProductUnavailable',
+        )
     blessable = False
 
 
-class ProductDrift(POI):
+class ProductDrift(SkwPOI):
     """product-drift: inspect the retained evidence and owning check before acting."""
 
-    type_name = 'Tarav.SKW.POI.ProductDrift'
-    type_ship = TypeShip('9a70b6c2-63ea-4b73-9273-000000000039')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000039'),
+            name='Tarav.SKW.POI.ProductDrift',
+        )
     blessable = False
 
 
-class DiagramAssessment(POI):
+class DiagramAssessment(SkwPOI):
     """A Diagram renderer returned an assessment finding; inspect its evidence."""
 
-    type_name = 'Tarav.SKW.POI.DiagramAssessment'
-    type_ship = TypeShip('7e309479-ccae-4780-b2f1-bd3af54f9f42')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('7e309479-ccae-4780-b2f1-bd3af54f9f42'),
+            name='Tarav.SKW.POI.DiagramAssessment',
+        )
 
 
 CLASSES = {

@@ -9,11 +9,12 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from tarav._core.data_root import default_tarav_data_root
 from tarav._core.persistence import atomic_write_json
-from tarav.harness import TaravObject, TypeRegistry, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import TaravObject, TypeRegistry, TypeShip
 
 from . import (
     AnnotationDraftInterface,
@@ -41,8 +42,13 @@ def default_diagram_drafts_root() -> Path:
 
 
 class DiagramDraft(TaravObject):
-    type_ship = TypeShip("12c217aa-0a84-4e49-a0a4-2c963bd250e8")
-    type_name = DIAGRAM_DRAFT_TYPE
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('12c217aa-0a84-4e49-a0a4-2c963bd250e8'),
+            name=DIAGRAM_DRAFT_TYPE,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -71,6 +77,12 @@ class DiagramDraft(TaravObject):
             return self
 
     @classmethod
+    def _from_record(cls, record_data: BaseModel) -> DiagramDraft:
+        result = super()._from_record(record_data)
+        result._data = record_data.model_copy(deep=True)
+        return result
+
+    @classmethod
     def create(
         cls,
         path: Path,
@@ -82,7 +94,7 @@ class DiagramDraft(TaravObject):
         receipt: JsonObject | None = None,
     ) -> DiagramDraft:
         record: JsonObject = {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "schema_version": DRAFT_SCHEMA_VERSION,
             "id": identity,
             "model_ship": model_ship,
@@ -96,7 +108,7 @@ class DiagramDraft(TaravObject):
         }
         if receipt is not None:
             record["receipt"] = receipt
-        draft = cls.from_json(record)
+        draft = cls.from_record(record)
         draft.source = path.expanduser().resolve()
         return draft
 
@@ -108,10 +120,10 @@ class DiagramDraft(TaravObject):
 
     @property
     def ship_drafts(self) -> tuple[ShipDraftInterface, ...]:
-        return tuple(self.record_data.ships)
+        return tuple(self._data.ships)
 
     def __getattr__(self, name: str) -> object:
-        data = self.record_data
+        data = self._data
         if name == "annotations":
             return tuple(getattr(data, name))
         if name in type(data).model_fields:
@@ -125,7 +137,7 @@ class DiagramDraft(TaravObject):
         registry = TypeRegistry(TaravObject, (cls,))
         if registry.resolve(data) is not cls:
             raise DiagramDraftError("Record is not a Diagram.Draft")
-        draft = cls.from_json(data)
+        draft = cls.from_record(data)
         draft.source = resolved
         return draft
 
@@ -225,7 +237,7 @@ class DiagramDraftRepository:
     def save(self, draft: DiagramDraft) -> DiagramDraft:
         if draft.path.parent != self.root:
             raise DiagramDraftError("Diagram.Draft belongs to another repository")
-        atomic_write_json(draft.path, draft.to_json(), ensure_ascii=False)
+        atomic_write_json(draft.path, draft.to_record(), ensure_ascii=False)
         return DiagramDraft.read(draft.path)
 
     def reconcile(
@@ -264,7 +276,7 @@ class DiagramDraftRepository:
             "Applied",
             draft.ship_drafts,
             draft.annotations,
-            receipt.to_json(),
+            receipt.to_record(),
         )
         self.save(applied)
         return receipt

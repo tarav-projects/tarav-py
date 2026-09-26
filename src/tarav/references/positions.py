@@ -9,7 +9,8 @@ from typing import Annotated
 
 from pydantic import ConfigDict, Field
 
-from tarav.harness import TaravObject, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import TaravObject, TypeShip
 
 from . import FileReference, Reference
 
@@ -39,17 +40,22 @@ class FilePositionTarget:
 
 class FilePositionReference(Reference):
     # tarav.breadcrumb 87a69f83f5a3abd468c5e47ee04225622e066ec4eab4cf2d6ce479c7427ed40a
-    type_ship = TypeShip("ecb603a6-ef9b-4673-98ea-9e93569e321c")
-    type_name = "Tarav.Reference.FilePosition"
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('ecb603a6-ef9b-4673-98ea-9e93569e321c'),
+            name='Tarav.Reference.FilePosition',
+        )
 
     class RecordInterface(Reference.RecordInterface):
         locator: FilePositionLocator
         check: FilePositionCheck | None = None
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "locator": {"file": "/example/file.txt", "line": 1},
         }
 
@@ -61,11 +67,11 @@ class FilePositionReference(Reference):
         if not isinstance(line, int) or isinstance(line, bool) or line < 1:
             raise ValueError("File-position line must be a positive integer")
         if isinstance(file_value, str):
-            file_reference = FileReference.from_json(
-                {"type": FileReference.type_name, "locator": file_value}
+            file_reference = FileReference.from_record(
+                {"type": entity(FileReference).name, "locator": file_value}
             )
         elif isinstance(file_value, Mapping):
-            file_reference = FileReference.from_json(file_value)
+            file_reference = FileReference.from_record(file_value)
         else:
             raise ValueError("File-position file must be a path or File Reference")
         file_reference.source = self.source

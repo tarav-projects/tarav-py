@@ -2,32 +2,52 @@
 
 from collections.abc import Mapping
 
-from tarav.harness import TaravObject, TypeRegistry
-from tarav.harness.workflows import Workflow
+from tarav.kernel import TaravClass
+from tarav.kernel import TaravObject, TypeRegistry, TypeShip
+from tarav.kernel.workflows import TaravWorkflow
+from tarav.references.identity import REFERENCES_WORKFLOW_SHIP
 from . import FilePositionReference, FileReference, Reference, ReferenceResult
 from .git import GitFileReference
 from .structured import StructuredFileReference
 
 
-class ReferenceWorkflow(Workflow):
-    name = "references"
-    record_types = (
-        Reference,
-        FileReference,
-        FilePositionReference,
-        GitFileReference,
-        StructuredFileReference,
-    )
+REFERENCE_RECORD_TYPES = (
+    Reference,
+    FileReference,
+    FilePositionReference,
+    GitFileReference,
+    StructuredFileReference,
+)
+
+
+class ReferenceWorkflow(TaravWorkflow):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('8dc4e610-6823-4aa7-8546-e2caf253074e'),
+            name='Tarav.Workflow.References',
+            workflow=REFERENCES_WORKFLOW_SHIP,
+        )
+    workflow_name = "references"
+    constitution = "Address and resolve Tarav subjects and external artifacts through typed References."
+
+    @staticmethod
+    def service(records: TypeRegistry | None = None) -> "ReferenceService":
+        return ReferenceService(records)
+
+class ReferenceService:
+    """Reference resolution state for one runtime."""
 
     def __init__(self, records: TypeRegistry | None = None):
         self.records = (
             records
             if records is not None
-            else TypeRegistry(TaravObject, self.record_types)
+            else TypeRegistry(TaravObject, REFERENCE_RECORD_TYPES)
         )
 
     def load(self, record: Mapping) -> Reference:
-        loaded = self.records.from_json(record)
+        loaded = self.records.from_record(record)
         if not isinstance(loaded, Reference):
             raise TypeError("Registered type is not a Reference")
         return loaded

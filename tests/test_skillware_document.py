@@ -1,3 +1,5 @@
+from tarav.kernel import entity
+
 import json
 
 import pytest
@@ -9,7 +11,7 @@ def source(tmp_path):
     path = tmp_path / ".skw/src/explanation.skw.json"
     path.parent.mkdir(parents=True)
     (tmp_path / "input.py").write_text("print(1)")
-    data = {"type": DocumentRecord.type_name, "schema_version": 1,
+    data = {"type": entity(DocumentRecord).name, "schema_version": 1,
             "output": "explanation.md", "blocks": [
                 {"kind": "literal", "id": "title", "lines": ["# Explanation", ""]},
                 {"kind": "generation", "id": "explain", "prompt": ["Explain ${code}"],
@@ -72,7 +74,7 @@ def test_runtime_loads_document_as_registered_record(tmp_path):
     from tarav.runtime import create_runtime
 
     path, _ = source(tmp_path)
-    assert isinstance(create_runtime().load(path), DocumentRecord)
+    assert isinstance(create_runtime().load_object(path), DocumentRecord)
 
 
 def test_document_blocks_use_the_common_json_contract(tmp_path):
@@ -80,8 +82,8 @@ def test_document_blocks_use_the_common_json_contract(tmp_path):
     block = Document(path).blocks["explain"]
 
     assert isinstance(block, SkwBlock)
-    assert block.to_json() == data["blocks"][1]
-    assert SkwBlock.from_json(block.to_json()).to_json() == block.to_json()
+    assert block.to_record() == data["blocks"][1]
+    assert SkwBlock.from_record(block.to_record()).to_record() == block.to_record()
 
 
 def test_product_drift_missing_annotation_and_read_only_lint(tmp_path):
@@ -179,7 +181,7 @@ def test_context_observation_order_and_relative_file_change(tmp_path):
 def test_block_context_fingerprints_selected_whole_block(tmp_path):
     path, data = source(tmp_path)
     other = path.parent / "other.skw.json"
-    target = {"type": DocumentRecord.type_name, "blocks": [
+    target = {"type": entity(DocumentRecord).name, "blocks": [
         {"id": "selected", "kind": "generation", "prompt": ["Explain"], "output": ["Old"]},
         {"id": "unrelated", "kind": "literal", "lines": ["One"]}]}
     other.write_text(json.dumps(target))

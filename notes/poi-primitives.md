@@ -9,7 +9,7 @@ is needed to emit an application class. Register it explicitly with a Tarav
 TypeRegistry when retained Record loading is needed.
 
 ```python
-from tarav.harness import TypeShip
+from tarav.kernel import TypeShip
 from tarav.poi import POI, POICollector, BlessingStore
 
 class DependencyReview(POI):

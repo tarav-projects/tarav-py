@@ -1,13 +1,21 @@
 """Assertion Scoring Record registration."""
 
-from tarav.harness.workflows import Workflow
+from tarav.kernel import TaravClass
+from tarav.kernel import TypeShip
+from tarav.kernel.workflows import TaravWorkflow
+from tarav.scoring.identity import SCORING_WORKFLOW_SHIP
 
-from .model import SCORING_RECORD_TYPES
-
-
-class ScoringWorkflow(Workflow):
-    name = "scoring"
-    record_types = SCORING_RECORD_TYPES
+class ScoringWorkflow(TaravWorkflow):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('01eafc16-1a9b-4a19-b27c-422d3c3e8a0b'),
+            name='Tarav.Workflow.Scoring',
+            workflow=SCORING_WORKFLOW_SHIP,
+        )
+    workflow_name = "scoring"
+    constitution = "Assess semantic assertions and expose their scores and findings."
 
 
 __all__ = ["ScoringWorkflow"]

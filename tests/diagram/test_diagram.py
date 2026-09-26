@@ -69,7 +69,7 @@ from tarav.diagram.views import (
     DiagramViewScopeInterface,
     DiagramViewState,
 )
-from tarav.harness import (
+from tarav.kernel import (
     TaravAssertion,
     TaravPOIInstance,
     TaravObject,
@@ -459,8 +459,8 @@ def test_block_annotation_is_a_structural_attachment_point(tmp_path: Path) -> No
     assert isinstance(typed, BlockEditionRecord)
     assert typed.location.block_ship == block_ship
     assert typed.label == "Kernel.Writing"
-    assert "producer" not in typed.record
-    assert "support" not in typed.record
+    assert "producer" not in typed.to_record()
+    assert "support" not in typed.to_record()
 
 
 def test_capture_reports_pois_but_remains_writable(tmp_path: Path) -> None:
@@ -491,7 +491,7 @@ def test_capture_apply_cli_can_write_without_committing(
     line = _line(model.ship)
     manifest_path = tmp_path / "capture.json"
     manifest_path.write_text(
-        json.dumps(CaptureManifest.create(model.ship, (line,)).to_json()),
+        json.dumps(CaptureManifest.create(model.ship, (line,)).to_record()),
         encoding="utf-8",
     )
     base_commit = subprocess.run(
@@ -869,10 +869,10 @@ def test_type_annotations_classify_existing_objects_without_user_support(
 
     assert isinstance(typed_block_annotation, BlockTypeAnnotation)
     assert isinstance(typed_line_annotation, LineTypeAnnotation)
-    assert "support" not in typed_block_annotation.record
-    assert "producer" not in typed_block_annotation.record
-    assert "support" not in typed_line_annotation.record
-    assert "producer" not in typed_line_annotation.record
+    assert "support" not in typed_block_annotation.to_record()
+    assert "producer" not in typed_block_annotation.to_record()
+    assert "support" not in typed_line_annotation.to_record()
+    assert "producer" not in typed_line_annotation.to_record()
     assert typed_block_annotation.annotation.assertions() == (
         {"type": "Semantic.Record.Representation.Assertion"},
         {"type": "Block.Type.Conformance.Assertion"},

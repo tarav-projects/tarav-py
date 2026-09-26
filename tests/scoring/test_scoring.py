@@ -19,7 +19,7 @@ from tarav.diagram import (
     DiagramNamespace,
     ShipDraftInterface,
 )
-from tarav.harness import TaravObject, issubrecord
+from tarav.kernel import TaravObject, issubrecord
 from tarav.runtime import create_runtime
 from tarav.scoring import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
@@ -121,7 +121,7 @@ def test_scoring_records_are_registered_tarav_objects_with_shared_interfaces(
     repository = ScoringRepository.initialize(tmp_path / "scoring")
     pool = repository.create(_pool("registered"))
 
-    assert runtime.scoring.record_types == SCORING_RECORD_TYPES
+    assert runtime.scoring.workflow_name == "scoring"
     assert all(
         record_type in runtime.records.record_types
         for record_type in SCORING_RECORD_TYPES
@@ -144,9 +144,9 @@ def test_scoring_records_are_registered_tarav_objects_with_shared_interfaces(
         )
     )
 
-    loaded = runtime.load(repository.path_for(pool))
+    loaded = runtime.load_object(repository.path_for(pool))
     assert type(loaded) is SCORING_RECORD_TYPES[0]
-    assert loaded.to_json() == pool
+    assert loaded.to_record() == pool
 
 
 def test_repository_retains_typed_records_in_git_and_resolves_prefixes(

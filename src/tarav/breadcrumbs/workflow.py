@@ -1,15 +1,40 @@
 """Breadcrumb Record and annotation-workflow registration."""
 
-from tarav.harness.workflows import Workflow, WorkflowRegistry
+from tarav.kernel import TaravClass
+from tarav.kernel import TypeShip
+from tarav.kernel.workflows import TaravWorkflow
+from tarav.breadcrumbs.identity import BREADCRUMBS_WORKFLOW_SHIP
 
 from .integrations import BreadcrumbIntegration
 from .model import Breadcrumb, LocatorObservation
 from .workflows import BreadcrumbAnnotationWorkflowRegistry
 
 
-class BreadcrumbWorkflow(Workflow):
-    name = "breadcrumbs"
-    record_types = (Breadcrumb, LocatorObservation)
+BREADCRUMB_RECORD_TYPES = (Breadcrumb, LocatorObservation)
+
+
+class BreadcrumbWorkflow(TaravWorkflow):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('172133fa-7ec0-43f0-92f7-38ba54c45824'),
+            name='Tarav.Workflow.Breadcrumbs',
+            workflow=BREADCRUMBS_WORKFLOW_SHIP,
+        )
+    workflow_name = "breadcrumbs"
+    constitution = (
+        "Annotate product surfaces with stable Breadcrumbs, positions, and "
+        "workflow-owned attachments."
+    )
+
+    @staticmethod
+    def service(integrations: tuple[BreadcrumbIntegration, ...] = ()) -> "BreadcrumbService":
+        return BreadcrumbService(integrations)
+
+
+class BreadcrumbService:
+    """Runtime-specific annotation integrations."""
 
     def __init__(
         self,
@@ -20,11 +45,4 @@ class BreadcrumbWorkflow(Workflow):
             integration.workflow for integration in integrations
         )
 
-    def register(self, registry: WorkflowRegistry) -> None:
-        super().register(registry)
-        for workflow in self.annotations.workflows.values():
-            for record_type in workflow.record_types:
-                registry.records.register(record_type)
-
-
-__all__ = ["BreadcrumbWorkflow"]
+__all__ = ["BreadcrumbWorkflow", "BreadcrumbService"]

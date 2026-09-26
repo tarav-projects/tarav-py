@@ -12,7 +12,13 @@ import secrets
 import shutil
 
 from tarav._core.persistence import atomic_write_json, atomic_write_text
-from tarav.harness import RecordTypeReference, TaravPOIInstance, locate_record_type
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import (
+    RecordTypeReference,
+    TaravPOIInstance,
+    TypeShip,
+    locate_record_type,
+)
 from tarav.references import FilePositionReference, FilePositionTarget
 
 from .model import Breadcrumb, LocatorObservation
@@ -28,6 +34,14 @@ class BreadcrumbError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class BreadcrumbFinding(TaravPOIInstance):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('23e961ba-5383-4fc0-a386-b646b8b10240'),
+            name='Tarav.Breadcrumbs.Finding',
+        )
+
     code: str
     message: str
 
@@ -46,7 +60,7 @@ class BreadcrumbResolution:
     def to_json(self) -> dict[str, object]:
         return {
             "status": self.status,
-            "breadcrumb": self.breadcrumb.to_json(),
+            "breadcrumb": self.breadcrumb.to_record(),
             "position": (
                 {
                     "file": str(self.position.path),
@@ -98,8 +112,8 @@ class BreadcrumbStore:
                     raise BreadcrumbError(f"Breadcrumb already exists: {selected}") from None
                 continue
             try:
-                record = {"type": Breadcrumb.type_name, "id": selected}
-                Breadcrumb.from_json(record)
+                record = {"type": entity(Breadcrumb).name, "id": selected}
+                Breadcrumb.from_record(record)
                 atomic_write_json(directory / "main.json", record)
                 (directory / "attachments").mkdir()
             except Exception:
@@ -114,20 +128,20 @@ class BreadcrumbStore:
             payload = json.loads(source.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise BreadcrumbError(f"Cannot load Breadcrumb {breadcrumb_id}: {exc}") from exc
-        record = Breadcrumb.from_json(payload)
-        if record.record["id"] != breadcrumb_id:
+        record = Breadcrumb.from_record(payload)
+        if record.to_record()["id"] != breadcrumb_id:
             raise BreadcrumbError("Breadcrumb directory and retained ID disagree")
         record.source = source
         return record
 
     def append_observation(self, label: str, record: Mapping[str, object]) -> None:
         breadcrumb = self.load(label)
-        observation = LocatorObservation.from_json(record)
-        if observation.record["breadcrumb_id"] != breadcrumb.record["id"]:
+        observation = LocatorObservation.from_record(record)
+        if observation.to_record()["breadcrumb_id"] != breadcrumb.to_record()["id"]:
             raise BreadcrumbError("Locator observation belongs to another Breadcrumb")
         path = breadcrumb.directory / "locator-observations.jsonl"
         prior = path.read_text(encoding="utf-8") if path.exists() else ""
-        serialized = json.dumps(observation.to_json(), sort_keys=True, ensure_ascii=False)
+        serialized = json.dumps(observation.to_record(), sort_keys=True, ensure_ascii=False)
         atomic_write_text(path, prior + serialized + "\n")
 
     def observe_position(
@@ -141,11 +155,11 @@ class BreadcrumbStore:
     ) -> dict[str, object]:
         breadcrumb = self.load(label)
         record: dict[str, object] = {
-            "type": LocatorObservation.type_name,
-            "breadcrumb_id": breadcrumb.record["id"],
+            "type": entity(LocatorObservation).name,
+            "breadcrumb_id": breadcrumb.to_record()["id"],
             "observed_at": _now(),
             "locator": {
-                "type": FilePositionReference.type_name,
+                "type": entity(FilePositionReference).name,
                 "locator": {"file": file, "line": line},
             },
         }
@@ -154,7 +168,7 @@ class BreadcrumbStore:
                 "previous_line": previous_line,
                 "next_line": next_line,
             }
-        self.append_observation(str(breadcrumb.record["id"]), record)
+        self.append_observation(str(breadcrumb.to_record()["id"]), record)
         return record
 
     def observations(self, label: str) -> tuple[dict[str, object], ...]:
@@ -168,10 +182,10 @@ class BreadcrumbStore:
                 continue
             try:
                 value = json.loads(line)
-                observation = LocatorObservation.from_json(value)
+                observation = LocatorObservation.from_record(value)
             except (json.JSONDecodeError, ValueError, TypeError) as exc:
                 raise BreadcrumbError(f"Invalid locator observation at line {number}: {exc}") from exc
-            records.append(observation.to_json())
+            records.append(observation.to_record())
         return tuple(records)
 
     def attach(self, label: str, record: Mapping[str, object]) -> Path:
@@ -195,21 +209,21 @@ class BreadcrumbStore:
     def show(self, label: str) -> dict[str, object]:
         breadcrumb = self.load(label)
         return {
-            "breadcrumb": breadcrumb.to_json(),
+            "breadcrumb": breadcrumb.to_record(),
             "observations": list(self.observations(label)),
             "attachments": list(self.attachments(label)),
         }
 
     def resolve(self, label: str) -> BreadcrumbResolution:
         breadcrumb = self.load(label)
-        core_label = breadcrumb_label(str(breadcrumb.record["id"]))
+        core_label = breadcrumb_label(str(breadcrumb.to_record()["id"]))
         positions: dict[tuple[Path, int], FilePositionTarget] = {}
         for observation in reversed(self.observations(label)):
             locator = observation["locator"]
             assert isinstance(locator, dict)
             checked = dict(locator)
             checked["check"] = {"contains": core_label}
-            reference = FilePositionReference.from_json(checked)
+            reference = FilePositionReference.from_record(checked)
             reference.source = breadcrumb.source
             result = reference.resolve()
             if result.ok and isinstance(result.target, FilePositionTarget):

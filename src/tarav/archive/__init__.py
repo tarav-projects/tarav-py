@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tarav.kernel import entity
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -27,6 +29,7 @@ GIT_COORDINATE_CLASS = "Tarav.Archive.Artifact.GitCoordinate.Record"
 FILE_VERSION_CLASS = "Tarav.Archive.Artifact.FileVersion.Record"
 EXTERNAL_DESCRIPTORS_CLASS = "Tarav.Archive.Artifact.ExternalDescriptors.Record"
 SCHEMA_VERSION = 2
+DIRECTORY_ENTRY_FILENAME = "main.json"
 
 
 def default_archive_root() -> Path:
@@ -166,7 +169,7 @@ class Archive:
         repositories_root.mkdir(parents=True, exist_ok=True)
         _run_git(records_root, "init", "-q")
         atomic_write_json(
-            records_root / "archive.json",
+            records_root / DIRECTORY_ENTRY_FILENAME,
             {
                 "type": ARCHIVE_CLASS,
                 "schema_version": SCHEMA_VERSION,
@@ -175,7 +178,7 @@ class Archive:
         )
         _commit_paths(
             records_root,
-            (Path("archive.json"),),
+            (Path(DIRECTORY_ENTRY_FILENAME),),
             message="archive: initialize records",
         )
         return cls(root=resolved)
@@ -191,15 +194,16 @@ class Archive:
         repositories_root = resolved / "repositories"
         if not (records_root / ".git").is_dir():
             raise ArchiveError(f"Archive Record repository is missing: {records_root}")
-        if not (records_root / "archive.json").is_file():
+        entry = records_root / DIRECTORY_ENTRY_FILENAME
+        if not entry.is_file():
             raise ArchiveError(
-                f"Archive definition is missing: {records_root / 'archive.json'}"
+                f"Archive definition is missing: {entry}"
             )
         if not repositories_root.is_dir():
             raise ArchiveError(
                 f"Archive repositories directory is missing: {repositories_root}"
             )
-        definition = _read_json_object(records_root / "archive.json")
+        definition = _read_json_object(entry)
         if (
             record_registry().resolve(definition) is not ArchiveRecord
             or definition.get("schema_version") != SCHEMA_VERSION
@@ -488,7 +492,7 @@ class Archive:
             recorded_at=recorded_at,
         )
         atomic_write_json(
-            object_root / "registration.json",
+            object_root / DIRECTORY_ENTRY_FILENAME,
             _registration_payload(
                 artifact,
                 identity={
@@ -640,9 +644,12 @@ class Archive:
     def record(self, selector: str | Path) -> ArtifactRecord:
         """Load an Artifact's directory through its registered Record class."""
         artifact = self.resolve_artifact(selector)
-        return ArtifactRecord.load(
-            self._artifact_root(artifact.id), registry=record_registry()
+        loaded = record_registry().load(
+            self._artifact_root(artifact.id), expected_type=ArtifactRecord
         )
+        if not isinstance(loaded, ArtifactRecord):
+            raise ArchiveError("Archive Artifact resolved to the wrong Record Type")
+        return loaded
 
     def retire(self, selector: str, *, reason: str, hints: object = None) -> None:
         """Record unavailability without destroying the DOI or its evidence."""
@@ -651,7 +658,7 @@ class Archive:
         records = _read_jsonl_objects(path) if path.exists() else []
         records.append(
             {
-                "type": TombstoneRecord.type_name,
+                "type": entity(TombstoneRecord).name,
                 "schema_version": SCHEMA_VERSION,
                 "target": artifact.id,
                 "recorded_at": _timestamp(),
@@ -686,7 +693,7 @@ class Archive:
         if object_root.exists():
             raise ArchiveError(f"random Artifact ID collision: {artifact.id}")
         atomic_write_json(
-            object_root / "registration.json",
+            object_root / DIRECTORY_ENTRY_FILENAME,
             _registration_payload(
                 artifact,
                 identity={
@@ -731,7 +738,7 @@ class Archive:
         if object_root.exists():
             raise ArchiveError(f"random Artifact ID collision: {artifact.id}")
         atomic_write_json(
-            object_root / "registration.json",
+            object_root / DIRECTORY_ENTRY_FILENAME,
             _registration_payload(
                 artifact,
                 identity={
@@ -777,7 +784,7 @@ class Archive:
         return tuple(artifacts)
 
     def _read_registration(self, object_root: Path) -> RegisteredArtifact:
-        record_path = object_root / "registration.json"
+        record_path = object_root / DIRECTORY_ENTRY_FILENAME
         payload = _read_json_object(record_path)
         try:
             artifact = RegisteredArtifact(
@@ -1191,7 +1198,7 @@ def _read_json_object(path: Path) -> dict[str, object]:
         raise ArchiveError(f"cannot read Archive Record: {path}") from exc
     if not isinstance(payload, dict):
         raise ArchiveError(f"Archive Record must contain a JSON object: {path}")
-    record_registry().resolve(payload)(payload)
+    record_registry().from_record(payload)
     return payload
 
 
@@ -1212,7 +1219,7 @@ def _read_jsonl_objects(path: Path) -> list[dict[str, object]]:
             raise ArchiveError(
                 f"Archive Record must contain a JSON object: {path}:{line_number}"
             )
-        record_registry().resolve(payload)(payload)
+        record_registry().from_record(payload)
         records.append(payload)
     return records
 

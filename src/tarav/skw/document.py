@@ -3,11 +3,16 @@ import json
 import hashlib
 from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from tarav.harness import FileRecord, TaravObject, TypeShip
-from tarav.harness.workflows import Workflow
-from tarav.references.workflow import ReferenceWorkflow
+from pydantic import BaseModel
+
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import FileRecord, TaravObject, TypeShip
+from tarav.kernel.records import _json_object
+from tarav.kernel.workflows import TaravWorkflow
+from tarav.skw.identity import SKILLWARE_WORKFLOW_SHIP
+from tarav.references.workflow import ReferenceService
 from .generation import Argument, Block, Generation, _hash
 from .context_roles import ContextRoles
 from .presentation import (
@@ -21,23 +26,52 @@ from tarav.chatlas.references import ChatlasTurnReference
 
 
 class DocumentRecord(FileRecord):
-    type_name = "Tarav.Skillware.Document"
-    type_ship = TypeShip("5ba54fe5-40d0-451f-9d32-74d868ec2011")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('5ba54fe5-40d0-451f-9d32-74d868ec2011'),
+            name='Tarav.Skillware.Document',
+            workflow=SKILLWARE_WORKFLOW_SHIP,
+        )
 
 
 class GenerationRecord(FileRecord):
-    type_name = "Tarav.Skillware.Generation"
-    type_ship = TypeShip("bf3b76ac-9766-45f5-a086-870b54cf8b66")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('bf3b76ac-9766-45f5-a086-870b54cf8b66'),
+            name='Tarav.Skillware.Generation',
+            workflow=SKILLWARE_WORKFLOW_SHIP,
+        )
 
 
 class LockRecord(FileRecord):
-    type_name = "Tarav.Skillware.Lock"
-    type_ship = TypeShip("f133b686-7de8-4a0a-9d4a-e61962a980bf")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('f133b686-7de8-4a0a-9d4a-e61962a980bf'),
+            name='Tarav.Skillware.Lock',
+            workflow=SKILLWARE_WORKFLOW_SHIP,
+        )
 
 
-class SkillwareWorkflow(Workflow):
-    name = "skillware"
-    record_types = (DocumentRecord, GenerationRecord, LockRecord)
+SKILLWARE_RECORD_TYPES = (DocumentRecord, GenerationRecord, LockRecord)
+
+
+class SkillwareWorkflow(TaravWorkflow):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('0ec23e63-f4f5-44e7-b9c0-890e9c63474a'),
+            name='Tarav.Workflow.Skillware',
+            workflow=SKILLWARE_WORKFLOW_SHIP,
+        )
+    workflow_name = "skillware"
+    constitution = "Build and check structured Skillware documents."
 
 
 def read(path):
@@ -59,8 +93,14 @@ def lines(value):
 class SkwBlock(TaravObject, Mapping[str, object]):
     """One actionable block retained inline in a Skillware document."""
 
-    type_name = "Tarav.Skillware.Block"
-    type_ship = TypeShip("6dad5fc0-fcee-4285-b7ac-9dd89802410c")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('6dad5fc0-fcee-4285-b7ac-9dd89802410c'),
+            name='Tarav.Skillware.Block',
+            workflow=SKILLWARE_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         id: str
@@ -68,40 +108,48 @@ class SkwBlock(TaravObject, Mapping[str, object]):
 
 
     def __init__(self, record: Mapping[str, object]) -> None:
-        super().__init__(record)
-        if not isinstance(self.record.get("id"), str) or not self.record["id"]:
+        super().__init__()
+        self._record = _json_object(record)
+        type(self).validate_record(self._record)
+        if not isinstance(self._record.get("id"), str) or not self._record["id"]:
             raise ValueError("Blocks require non-empty IDs")
-        kind = self.record.get("kind")
+        kind = self._record.get("kind")
         if kind == "literal":
-            lines(self.record.get("lines"))
+            lines(self._record.get("lines"))
         elif kind == "generation":
             self.definition()
-            if self.record.get("output") is not None:
-                lines(self.record["output"])
+            if self._record.get("output") is not None:
+                lines(self._record["output"])
         else:
             raise ValueError("Unknown block kind")
 
+    @classmethod
+    def _from_record(cls, record_data: BaseModel) -> Self:
+        return cls(
+            record_data.model_dump(mode="json", exclude_unset=True, by_alias=True)
+        )
+
     def __getitem__(self, key: str) -> object:
-        return self.record[key]
+        return self._record[key]
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self.record)
+        return iter(self._record)
 
     def __len__(self) -> int:
-        return len(self.record)
+        return len(self._record)
 
     @property
     def id(self) -> str:
-        return self.record["id"]  # type: ignore[return-value]
+        return self._record["id"]  # type: ignore[return-value]
 
     @property
     def kind(self) -> str:
-        return self.record["kind"]  # type: ignore[return-value]
+        return self._record["kind"]  # type: ignore[return-value]
 
     def definition(self) -> Block:
         if self.kind != "generation":
             raise ValueError("Literal blocks do not define generations")
-        arguments = self.record.get("arguments", {})
+        arguments = self._record.get("arguments", {})
         if not isinstance(arguments, Mapping):
             raise ValueError("Block arguments must be an object")
         declared = []
@@ -114,12 +162,12 @@ class SkwBlock(TaravObject, Mapping[str, object]):
             declared.append(Argument(name, argument_type))
         return Block(
             self.id,
-            "\n".join(lines(self.record.get("prompt"))),
+            "\n".join(lines(self._record.get("prompt"))),
             tuple(declared),
         )
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
             "id": "example",
             "kind": "generation",
@@ -134,7 +182,7 @@ class Document:
 
     def __init__(self, source, *, root=None, roles=None):
         self.roles = roles if roles is not None else ContextRoles()
-        self.references = ReferenceWorkflow()
+        self.references = ReferenceService()
         self.references.records.register(ChatlasTurnReference)
         self.source = Path(source).resolve()
         if root is None:
@@ -145,15 +193,17 @@ class Document:
         self.root = Path(root).resolve()
         self.key = self.source.relative_to(self.root).as_posix()
         self.data = read(self.source)
-        if self.data.get("type") != DocumentRecord.type_name or self.data.get("schema_version") != 1:
+        if self.data.get("type") != entity(DocumentRecord).name or self.data.get("schema_version") != 1:
             raise ValueError("Expected Skillware document schema 1")
         self.target = self.path(self.data["output"])
         if self.target == self.source or self.target.is_relative_to(self.root / ".skw"):
             raise ValueError("Output must be a product outside .skw")
         self.blocks: dict[str, SkwBlock] = {}
         for index, b in enumerate(self.data["blocks"]):
-            block = SkwBlock.from_json(b)
-            self.data["blocks"][index] = block.record
+            block = SkwBlock.from_record(b)
+            if block._record is None:
+                raise RuntimeError("Loaded Skillware block has no retained Record")
+            self.data["blocks"][index] = block._record
             if block.id in self.blocks:
                 raise ValueError("Blocks require unique IDs")
             self.blocks[block.id] = block
@@ -316,9 +366,9 @@ class Document:
 
     def lock(self):
         if not self.lock_path.exists():
-            return {"type": LockRecord.type_name, "schema_version": 1, "documents": {}}
+            return {"type": entity(LockRecord).name, "schema_version": 1, "documents": {}}
         data = read(self.lock_path)
-        if data.get("type") != LockRecord.type_name or data.get("schema_version") != 1:
+        if data.get("type") != entity(LockRecord).name or data.get("schema_version") != 1:
             raise ValueError("Unsupported lock schema")
         return data
 
@@ -333,7 +383,7 @@ class Document:
         values, fingerprint = self.inputs(identity)
         generation = Generation((self.definition(block),))
         invocation = generation.prepare(identity, values, chat=chat)
-        record = {"type": GenerationRecord.type_name, "schema_version": 1,
+        record = {"type": entity(GenerationRecord).name, "schema_version": 1,
                   "id": invocation, "source": self.key, "block": identity,
                   "input_hash": fingerprint, "status": "Prepared",
                   "prompt": generation.invocations[invocation]["prompt"],

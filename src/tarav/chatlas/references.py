@@ -3,8 +3,10 @@ import re
 
 from pydantic import ConfigDict, Field
 
-from tarav.harness import TaravObject, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import TaravObject, TypeShip
 from tarav.references import Reference
+from tarav.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 from tarav.chatlas.normal_model import (
     provide_normal_model, resolve_chat_turn_ref, resolve_chat_message_ref,
 )
@@ -23,17 +25,23 @@ class EmptyReferenceCheck(TaravObject.RecordInterface):
 
 
 class ChatlasTurnReference(Reference):
-    type_name = "Tarav.Chatlas.Reference.Turn"
-    type_ship = TypeShip("aa3a6dc3-3c17-409f-a151-041ff0a05a74")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('aa3a6dc3-3c17-409f-a151-041ff0a05a74'),
+            name='Tarav.Chatlas.Reference.Turn',
+            workflow=CHATLAS_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(Reference.RecordInterface):
         locator: ChatlasTurnLocator
         check: EmptyReferenceCheck | None = None
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "locator": {
                 "session_identity": "0" * 64,
                 "turn_address": "0" * 64,
@@ -63,7 +71,12 @@ class ChatlasTurnReference(Reference):
             if message['standing'] != 'MATCHED':
                 raise ValueError(f"Chatlas Message is {message['standing']}")
             messages.append(message['message'])
-        return {'type': self.type_name, 'locator': coordinates, 'turn': turn, 'messages': messages}
+        return {
+            "type": entity(type(self)).name,
+            "locator": coordinates,
+            "turn": turn,
+            "messages": messages,
+        }
 
     def check_target(self, target, check):
         if check not in (None, {}):

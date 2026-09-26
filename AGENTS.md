@@ -27,6 +27,9 @@
 
 - `tarav.runtime.create_runtime()` is the composition root. CLI and daemon
   adapters may import it; domain foundations must not.
+- `tarav.get_runtime()` exposes the lazy process-wide current runtime. Record
+  Archive uses it at Record write/load boundaries; custom runtimes must be
+  selected with `tarav.set_runtime()` before such operations.
 - Keep subsystem imports acyclic outside runtime composition.
 - Provider-neutral orchestration belongs in `tarav.agent`; concrete adapters
   belong in `tarav.agent.providers.<provider>`.
@@ -117,15 +120,20 @@
 - The Python library is the primary interface. Use `tarav python run --file`
   for scripts in Tarav's installed environment; source paths are available
   through `create_runtime().source_root`.
-- Record/provider registration is explicit trusted code. Records never select
-  import paths. Resolution hints never affect location or identity checks.
+- Record/provider registration is explicit trusted code. External Record Types
+  may be bound to installed class paths through `TaravEnvironment`; Records
+  never select import paths. Resolution hints never affect location or identity
+  checks.
 - Prefer an explicit `hints` field for opaque consumer context so its role is
   self-documenting. This is a convention across objects, not a requirement that
   all hints occupy that field; mechanics must ignore hint content.
-- Every Record inherits class-level `help()` as a context entry point. Its
+- Every `TaravType` inherits class-level `help()` as a context entry point. Its
   default returns the qualified class name, source path and line when available;
   classes can extend it with documentation and skills. Keep this mechanically
   sourced and return information rather than printing it.
+- Every `TaravType` subclass defines a class-local `class_entity()` that returns
+  its direct `TaravClass` ontology projection. Access Diagram identity and
+  Workflow ownership through `entity(Type)`, not parallel class attributes.
 - Schema changes migrate code and affected data explicitly. Runtime readers
   and validators never repair retained state.
 - Prefer mechanically obtained facts, especially from the operating system

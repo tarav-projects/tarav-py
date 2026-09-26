@@ -12,6 +12,7 @@ from typing import Any, ClassVar, Literal, TypeVar, cast
 from uuid import UUID, uuid4
 
 from pydantic import (
+    BaseModel,
     ConfigDict,
     ValidationError,
     field_validator,
@@ -20,7 +21,8 @@ from pydantic import (
 
 from tarav._core.data_root import default_tarav_data_root
 from tarav._core.persistence import atomic_write_json
-from tarav.harness import TaravObject, TypeRegistry, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import TaravObject, TypeRegistry, TypeShip
 
 from . import (
     ChatlasEvidence,
@@ -79,8 +81,13 @@ class DiagramViewScopeInterface(TaravObject.RecordInterface):
 
 
 class DiagramViewManifest(TaravObject):
-    type_ship = TypeShip("1c9a9e7e-76a9-4cf0-b823-79fc5032884d")
-    type_name = VIEW_MANIFEST_TYPE
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('1c9a9e7e-76a9-4cf0-b823-79fc5032884d'),
+            name=VIEW_MANIFEST_TYPE,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -98,10 +105,25 @@ class DiagramViewManifest(TaravObject):
         def validate_uuid(cls, value: str) -> str:
             return _uuid(value, field="View.Manifest")
 
+    @classmethod
+    def _from_record(cls, record_data: BaseModel) -> DiagramViewManifest:
+        result = super()._from_record(record_data)
+        result._view_type = record_data.view_type
+        return result
+
+    @property
+    def view_type(self) -> str:
+        return self._view_type
+
 
 class DiagramViewConfiguration(TaravObject):
-    type_ship = TypeShip("1c70b581-641e-429a-9305-d4ee65c78ad1")
-    type_name = VIEW_CONFIGURATION_TYPE
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('1c70b581-641e-429a-9305-d4ee65c78ad1'),
+            name=VIEW_CONFIGURATION_TYPE,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -124,9 +146,9 @@ class DiagramViewConfiguration(TaravObject):
     def create(
         cls, bootstrap_visible_lines: int = 4, max_visible_lines: int = 120
     ) -> DiagramViewConfiguration:
-        return cls.from_json(
+        return cls.from_record(
             {
-                "type": cls.type_name,
+                "type": entity(cls).name,
                 "schema_version": VIEW_SCHEMA_VERSION,
                 "bootstrap_visible_lines": bootstrap_visible_lines,
                 "max_visible_lines": max_visible_lines,
@@ -134,18 +156,30 @@ class DiagramViewConfiguration(TaravObject):
             }
         )
 
+    @classmethod
+    def _from_record(cls, record_data: BaseModel) -> DiagramViewConfiguration:
+        result = super()._from_record(record_data)
+        result._bootstrap_visible_lines = record_data.bootstrap_visible_lines
+        result._max_visible_lines = record_data.max_visible_lines
+        return result
+
     @property
     def bootstrap_visible_lines(self) -> int:
-        return self.record_data.bootstrap_visible_lines
+        return self._bootstrap_visible_lines
 
     @property
     def max_visible_lines(self) -> int:
-        return self.record_data.max_visible_lines
+        return self._max_visible_lines
 
 
 class DiagramViewState(TaravObject):
-    type_ship = TypeShip("ff3f638a-43e4-4df2-99d7-3295a485f9df")
-    type_name = VIEW_STATE_TYPE
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('ff3f638a-43e4-4df2-99d7-3295a485f9df'),
+            name=VIEW_STATE_TYPE,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -164,8 +198,13 @@ class DiagramViewState(TaravObject):
 
 
 class DiagramViewAbout(TaravObject):
-    type_ship = TypeShip("20d90137-05cd-4fe8-8926-999fc47e3e16")
-    type_name = VIEW_ABOUT_TYPE
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('20d90137-05cd-4fe8-8926-999fc47e3e16'),
+            name=VIEW_ABOUT_TYPE,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -173,14 +212,25 @@ class DiagramViewAbout(TaravObject):
         type: Literal[VIEW_ABOUT_TYPE]
         data: JsonObject
 
+    @classmethod
+    def _from_record(cls, record_data: BaseModel) -> DiagramViewAbout:
+        result = super()._from_record(record_data)
+        result._data = dict(record_data.data)
+        return result
+
     @property
     def data(self) -> JsonObject:
-        return dict(self.record_data.data)
+        return dict(self._data)
 
 
 class DiagramViewRepositoryRecord(TaravObject):
-    type_ship = TypeShip("f2decb1e-3727-4a1c-8196-c8bf4ca59448")
-    type_name = VIEW_REPOSITORY_TYPE
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('f2decb1e-3727-4a1c-8196-c8bf4ca59448'),
+            name=VIEW_REPOSITORY_TYPE,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -207,7 +257,7 @@ def _view_record(path: Path, expected: type[ViewRecordT]) -> ViewRecordT:
     authority = registry.resolve(data)
     if authority is not expected:
         raise DiagramViewError(f"Unexpected Diagram.View Record Type: {path}")
-    result = authority.from_json(data)
+    result = authority.from_record(data)
     result.source = path
     return cast(ViewRecordT, result)
 
@@ -268,7 +318,7 @@ class DiagramView:
 
     @property
     def manifest(self) -> JsonObject:
-        return self.manifest_record.to_json()
+        return self.manifest_record.to_record()
 
     @property
     def manifest_record(self) -> DiagramViewManifest:
@@ -288,7 +338,7 @@ class DiagramView:
 
     @property
     def state(self) -> JsonObject:
-        return self.state_record.to_json()
+        return self.state_record.to_record()
 
     @property
     def state_record(self) -> DiagramViewState:
@@ -825,7 +875,7 @@ class DiagramViewRepository:
         config = configuration or DiagramViewConfiguration.create()
         atomic_write_json(
             root / "manifest.json",
-            DiagramViewManifest.from_json(
+            DiagramViewManifest.from_record(
                 {
                     "id": str(uuid4()),
                     "type": VIEW_MANIFEST_TYPE,
@@ -833,19 +883,19 @@ class DiagramViewRepository:
                     "schema_version": VIEW_SCHEMA_VERSION,
                     "view_ship": ship,
                 }
-            ).to_json(),
+            ).to_record(),
             ensure_ascii=False,
         )
         atomic_write_json(
             root / "about.json",
-            DiagramViewAbout.from_json(
+            DiagramViewAbout.from_record(
                 {"type": VIEW_ABOUT_TYPE, "data": dict(about or {})}
-            ).to_json(),
+            ).to_record(),
             ensure_ascii=False,
         )
         atomic_write_json(
             root / "config.json",
-            config.to_json(),
+            config.to_record(),
             ensure_ascii=False,
         )
         state = _materialize(
@@ -858,7 +908,7 @@ class DiagramViewRepository:
         state["view_ship"] = ship
         atomic_write_json(
             root / "view.json",
-            DiagramViewState.from_json(state).to_json(),
+            DiagramViewState.from_record(state).to_record(),
             ensure_ascii=False,
         )
         paths = tuple(path.relative_to(self.root) for path in sorted(root.iterdir()))
@@ -1599,8 +1649,7 @@ def _view_class(view_type: str) -> type[DiagramView]:
 
 def _load_view(root: Path) -> DiagramView:
     manifest = _view_record(root / "manifest.json", DiagramViewManifest)
-    view_type = manifest.record_data.view_type
-    return _view_class(view_type)(root)
+    return _view_class(manifest.view_type)(root)
 
 
 def _validate_manifest(

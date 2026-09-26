@@ -7,15 +7,23 @@ from urllib.parse import quote
 
 from markdown_it import MarkdownIt
 
-from tarav.harness import FileRecord, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import FileRecord, TypeShip
+from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.references.structured import StructuredFileReference
 from .document import Document, read, write
 from .generation import _hash
 
 
 class LoadingRecord(FileRecord):
-    type_name = 'Tarav.Skillware.SkillLoading'
-    type_ship = TypeShip('931ded86-5679-42be-b71c-71e84baf9d75')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('931ded86-5679-42be-b71c-71e84baf9d75'),
+            name='Tarav.Skillware.SkillLoading',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
 
 
 class SkillDocument(Document):
@@ -51,7 +59,7 @@ class LoadingModel:
         self.package = package
         self.source = package.path(package.data['loading'])
         self.data = read(self.source)
-        if (self.data.get('type') != LoadingRecord.type_name
+        if (self.data.get('type') != entity(LoadingRecord).name
                 or self.data.get('schema_version') != 1):
             raise ValueError('Expected skill loading schema 1')
         self.documents = {d.source: d for d in documents}
@@ -66,9 +74,9 @@ class LoadingModel:
                 raise ValueError('Loading blocks require unique simple IDs')
             self.nodes[identity] = node
             try:
-                if node['reference'].get('type') != StructuredFileReference.type_name:
+                if node['reference'].get('type') != entity(StructuredFileReference).name:
                     raise ValueError('Expected StructuredFile block reference')
-                reference = StructuredFileReference(node['reference'])
+                reference = StructuredFileReference.from_record(node['reference'])
                 reference.source = self.source
                 result = reference.resolve()
                 if not result.ok:

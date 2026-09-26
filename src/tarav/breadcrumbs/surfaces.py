@@ -82,7 +82,7 @@ def submit_annotations(
     submitted: list[SubmittedBreadcrumb] = []
     for annotation in annotations:
         breadcrumb = store.create()
-        breadcrumb_id = str(breadcrumb.record["id"])
+        breadcrumb_id = str(breadcrumb.to_record()["id"])
         core_label = breadcrumb_label(breadcrumb_id)
         rendered = render_surface_label(selected_language, core_label)
         marker = annotation.marker

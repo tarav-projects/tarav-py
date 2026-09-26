@@ -4,9 +4,11 @@ import shutil
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from tarav.harness import TaravObject, TypeRegistry, TypeShip
-from tarav.harness.records import entry_file
-from tarav.harness.workflows import Workflow
+from tarav.kernel import TaravClass
+from tarav.kernel import TaravObject, TypeRegistry, TypeShip
+from tarav.kernel.records import entry_file
+from tarav.kernel.workflows import TaravWorkflow
+from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from .depot import SkwDepot
 from .document import Document, project_document, project_root, read
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
@@ -34,18 +36,27 @@ class SkwSkill(SkwDepot):
     check never accept context baselines or regenerate agent-authored content.
     """
 
-    type_name = "Tarav.Skillware.SkillPackage"
-    type_ship = TypeShip("1b456d93-9d24-40df-a4a6-f1d0470ec949")
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('1b456d93-9d24-40df-a4a6-f1d0470ec949'),
+            name='Tarav.Skillware.SkillPackage',
+        )
 
     @property
     def data(self):
         """Validated Skill manifest, after Harness has attached its source."""
 
         self._validate()
-        return self.record
+        if self._record is None:
+            raise RuntimeError("Skill package has no loaded Record")
+        return self._record
 
     def _validate(self):
-        data = self.record
+        if self._record is None:
+            raise RuntimeError("Skill package has no loaded Record")
+        data = self._record
         if data.get("schema_version") != 1:
             raise ValueError("Expected skill package schema 1")
         for key in ("sources", "files"):
@@ -120,7 +131,7 @@ class SkwSkill(SkwDepot):
         if block not in document.blocks:
             raise ValueError(f'Unknown block: {block}')
         return {'source': str(document.source), 'output': str(document.target),
-                'block': document.blocks[block].to_json()}
+                'block': document.blocks[block].to_record()}
 
     def loading(self):
         if 'loading' not in self.data:
@@ -244,10 +255,30 @@ class SkwSkill(SkwDepot):
                                  if "consumer" in d["purposes"]], "findings": findings}
 
 
-class SkillsWorkflow(Workflow):
-    name = "skw.skills"
-    record_types = (SkwDepot, SkwSkill, ModelPublicationRecord, PublicationLockRecord, LoadingRecord,
-                    BlessingRecord, BlessingAssessmentRecord, *CLASSES.values(), DiagramAssessment)
+SKILLS_RECORD_TYPES = (
+    SkwDepot,
+    SkwSkill,
+    ModelPublicationRecord,
+    PublicationLockRecord,
+    LoadingRecord,
+    BlessingRecord,
+    BlessingAssessmentRecord,
+    *CLASSES.values(),
+    DiagramAssessment,
+)
+
+
+class SkillsWorkflow(TaravWorkflow):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('013c95b7-57db-485a-ac88-590d05af475a'),
+            name='Tarav.Workflow.SKWSkills',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+    workflow_name = "skw.skills"
+    constitution = "Compile and inspect deployable SKW skills and their loading context."
 
 
 def load_skill(root, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:

@@ -51,13 +51,13 @@ def test_explicit_migration_preserves_identity_payload_and_history(tmp_path):
         "-m",
         "Previous schema evidence",
     )
-    before = (records / "archive.json").read_bytes()
+    before = (records / "main.json").read_bytes()
     plan = migration.migrate(archive.root)
     assert plan["changed_files"] >= 4
-    assert (records / "archive.json").read_bytes() == before
+    assert (records / "main.json").read_bytes() == before
     result = migration.migrate(archive.root, apply=True)
     assert result["checkpoint"] == git(records, "rev-parse", "HEAD")
-    assert git(records, "show", "HEAD:archive.json") == before.decode().strip()
+    assert git(records, "show", "HEAD:main.json") == before.decode().strip()
     retained = Archive.open(archive.root).record(doi)
     assert retained.doi == doi
     assert retained.contract["kind"] == "file-version"

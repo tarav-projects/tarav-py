@@ -3,7 +3,8 @@ import hashlib
 import json
 from collections import Counter
 
-from tarav.harness import FileRecord, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import FileRecord, TypeShip
 
 
 def canonical(value):
@@ -18,13 +19,19 @@ def fingerprint(value):
 class POI(FileRecord):
     """Subclass beside an application's checks. Emission does not raise.
 
-    Declare a unique type_ship and type_name, as for any Tarav Record.
+    Declare a unique ``TaravClass`` through ``class_entity()``, as for any
+    Tarav Type.
     blessable is explicit policy; a workflow still owns its response.
     Increment check_version when the evaluation contract changes.
     """
 
-    type_name = 'Tarav.POI'
-    type_ship = TypeShip('c8b62a96-070b-488a-b560-c0231f249b16')
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('c8b62a96-070b-488a-b560-c0231f249b16'),
+            name='Tarav.POI',
+        )
     blessable = False
     check_version = 1
 
@@ -44,7 +51,7 @@ class POIFinding:
         self.poi_class = poi_class
         self._subject = canonical(subject)
         self._evidence = canonical(evidence)
-        self.class_id = str(poi_class.type_ship)
+        self.class_id = str(entity(poi_class).id)
         self.check_version = poi_class.check_version
         self.identity = fingerprint([self.class_id, subject])
         self.state = fingerprint([self.identity, self.check_version, evidence])
@@ -62,7 +69,7 @@ class POIFinding:
         if not context.get('hints'):
             context.pop('hints', None)
         result = {'id': self.identity, 'state': self.state,
-                  'type': self.poi_class.type_name, 'class_id': self.class_id,
+                  'type': entity(self.poi_class).name, 'class_id': self.class_id,
                   'check_version': self.check_version, 'subject': self.subject,
                   'blessable': self.poi_class.blessable,
                   'help': context}
@@ -109,7 +116,7 @@ class POICollector:
                         else {'status': 'unblessed', 'records': []})
             rows.append((finding, standing))
         selected = [(f, s) for f, s in rows
-                    if (class_name is None or f.poi_class.type_name == class_name)
+                    if (class_name is None or entity(f.poi_class).name == class_name)
                     and (blessing is None or s['status'] == blessing)]
         page = []
         for finding, standing in selected[offset:offset + limit]:
@@ -119,7 +126,7 @@ class POICollector:
         return {'total': len(rows), 'matching': len(selected), 'offset': offset,
                 'shown': len(page), 'next_offset': offset + limit
                 if offset + limit < len(selected) else None,
-                'by_class': dict(Counter(f.poi_class.type_name for f, _ in rows)),
+                'by_class': dict(Counter(entity(f.poi_class).name for f, _ in rows)),
                 'by_blessing': dict(Counter(s['status'] for _, s in rows)),
                 'by_assessment_finding': dict(Counter(
                     f['kind'] for _, standing in rows

@@ -293,7 +293,7 @@ implementation binds package-owned source blocks; external skill context is
 not silently imported. Inline Markdown links lacking primitive declarations
 produce `unannotated-output-link` conformance findings but never become edges.
 
-Use `runtime.load(root / '.skw').loading().analyze()` or `.inspect(block, limit=5)` in
+Use `runtime.load_object(root / '.skw').loading().analyze()` or `.inspect(block, limit=5)` in
 Python. `tarav skw skills context --project <root> --block <id> --limit 2` shows
 one declaration, its parents, bounded path examples and findings. Package
 `check` runs static analysis; `build` compiles primitives and retains findings.
@@ -309,7 +309,7 @@ baselines were explicitly observed. Three external `tarav-pkg` links remain
 visible conformance findings pending explicit external block modeling.
 
 
-`runtime.load(root / '.skw')` returns the registered `SkwSkill`, a `SkwDepot`
+`runtime.load_object(root / '.skw')` returns the registered `SkwSkill`, a `SkwDepot`
 subclass that composes document sources into a skill. Both are ordinary Tarav
 directory records. Its typed `.skw/main.json` entry declares `type`:
 `Tarav.Skillware.SkillPackage`, `schema_version`: 1, `entrypoint`, `sources`,

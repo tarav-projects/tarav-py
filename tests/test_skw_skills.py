@@ -1,3 +1,5 @@
+from tarav.kernel import TaravClass, entity
+
 import json
 
 import pytest
@@ -14,11 +16,11 @@ def package(tmp_path):
               'output': 'SKILL.md', 'blocks': [
                   {'id': 'main', 'kind': 'literal', 'lines': ['# Skill']}]}
     (root / '.skw/src/main.skw.json').write_text(json.dumps(source))
-    manifest = {'type': SkwSkill.type_name, 'schema_version': 1,
+    manifest = {'type': entity(SkwSkill).name, 'schema_version': 1,
                 'entrypoint': 'SKILL.md', 'sources': ['.skw/src/main.skw.json'],
                 'files': ['SKILL.md'], 'dependencies': []}
     (root / '.skw/main.json').write_text(json.dumps(manifest))
-    return create_runtime().load(root / '.skw')
+    return create_runtime().load_object(root / '.skw')
 
 
 def test_build_deploy_excludes_developer_surface(tmp_path):
@@ -77,7 +79,7 @@ def test_reject_escape_and_build_surface_deployment(tmp_path):
         data = dict(p.data, files=['SKILL.md', path])
         (p.depot / 'main.json').write_text(json.dumps(data))
         with pytest.raises(ValueError):
-            create_runtime().load(p.depot).data
+            create_runtime().load_object(p.depot).data
 
 
 def test_deploy_cannot_create_product_inside_source_package(tmp_path):
@@ -101,24 +103,29 @@ def test_duplicate_output_rejected_before_build(tmp_path):
 
 def test_runtime_load_specializes_skw_depot_and_accepts_stale_label(tmp_path):
     skill = package(tmp_path)
-    data = dict(skill.record)
-    data['type'] = {'uuid': str(SkwSkill.type_ship), 'label': 'renamed Skill type'}
+    data = skill.to_record()
+    data['type'] = {'uuid': str(entity(SkwSkill).id), 'label': 'renamed Skill type'}
     (skill.depot / 'main.json').write_text(json.dumps(data))
-    loaded = create_runtime().load(skill.depot)
+    loaded = create_runtime().load_object(skill.depot)
     assert isinstance(loaded, SkwSkill)
     assert loaded.data['schema_version'] == 1
 
 
 def test_runtime_load_can_select_another_skw_depot_subtype(tmp_path):
-    from tarav.harness import TypeRegistry, TypeShip
+    from tarav.kernel import TypeRegistry, TypeShip
 
     class OtherDepot(SkwDepot):
-        type_name = 'Test.OtherSkwDepot'
-        type_ship = TypeShip('e8387eeb-baa5-4f03-8ec8-9330017e6864')
+        @classmethod
+        def class_entity(cls) -> TaravClass:
+            return TaravClass(
+                target=cls,
+                id=TypeShip('e8387eeb-baa5-4f03-8ec8-9330017e6864'),
+                name='Test.OtherSkwDepot',
+            )
 
     depot = tmp_path / '.skw'
     depot.mkdir()
-    (depot / 'main.json').write_text(json.dumps({'type': OtherDepot.type_name}))
+    (depot / 'main.json').write_text(json.dumps({'type': entity(OtherDepot).name}))
     loaded = TypeRegistry(SkwDepot, [SkwDepot, OtherDepot]).load(depot)
     assert type(loaded) is OtherDepot
 
@@ -128,7 +135,7 @@ def test_runtime_load_rejects_unknown_depot_type(tmp_path):
     depot.mkdir()
     (depot / 'main.json').write_text(json.dumps({'type': 'Test.UnknownSkwDepot'}))
     with pytest.raises(ValueError, match='not registered'):
-        create_runtime().load(depot)
+        create_runtime().load_object(depot)
 
 
 def test_document_dispatch_uses_directory_entry_priority_and_concrete_type(tmp_path):
@@ -137,7 +144,7 @@ def test_document_dispatch_uses_directory_entry_priority_and_concrete_type(tmp_p
     skill = package(tmp_path)
     runtime = create_runtime()
     preferred = skill.depot / '__tarav.json'
-    preferred.write_text(json.dumps({'type': SkwDepot.type_name}))
+    preferred.write_text(json.dumps({'type': entity(SkwDepot).name}))
     document = skill_document('main.skw.json', project=skill.root,
                               registry=runtime.records)
     assert document.data['output'] == 'SKILL.md'
@@ -149,7 +156,8 @@ def test_document_dispatch_uses_directory_entry_priority_and_concrete_type(tmp_p
 def test_skill_validation_tracks_mutated_records(tmp_path):
     skill = package(tmp_path)
     assert skill.data['schema_version'] == 1
-    skill.record['files'] = ['../escape']
+    assert skill._record is not None
+    skill._record['files'] = ['../escape']
     with pytest.raises(ValueError, match='relative path'):
         _ = skill.data
     assert skill.check()
@@ -159,9 +167,9 @@ def test_skill_shape_is_checked_when_its_operation_reads_the_record(tmp_path):
     depot = tmp_path / '.skw'
     depot.mkdir()
     (depot / 'main.json').write_text(json.dumps({
-        'type': SkwSkill.type_name, 'schema_version': 1,
+        'type': entity(SkwSkill).name, 'schema_version': 1,
     }))
-    skill = create_runtime().load(depot)
+    skill = create_runtime().load_object(depot)
     with pytest.raises(KeyError, match='sources'):
         skill.data
 
@@ -170,7 +178,7 @@ def test_depot_root_is_canonical_for_a_relative_path_with_parent_segments(tmp_pa
     monkeypatch.chdir(tmp_path)
     skill = package(tmp_path)
     relative = 'skill/../skill/.skw'
-    loaded = create_runtime().load(relative)
+    loaded = create_runtime().load_object(relative)
     assert loaded.root == skill.root
 
 

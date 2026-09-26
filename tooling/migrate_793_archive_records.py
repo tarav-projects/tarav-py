@@ -57,7 +57,7 @@ def migrate(root: Path, *, apply: bool = False) -> dict:
                     "kind": payload["kind"],
                     "identity": payload["identity"],
                 }
-            registry.resolve(payload)(payload)
+            registry.from_record(payload)
             changed = True
         if changed:
             content = (

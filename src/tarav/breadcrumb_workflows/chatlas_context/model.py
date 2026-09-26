@@ -6,12 +6,20 @@ from pydantic import ConfigDict
 
 from tarav.breadcrumbs.model import BreadcrumbId
 from tarav.chatlas.references import ChatlasTurnReference
-from tarav.harness import TaravObject, TypeShip
+from tarav.kernel import TaravClass, entity
+from tarav.kernel import TaravObject, TypeShip
+from tarav.breadcrumbs.identity import BREADCRUMBS_WORKFLOW_SHIP
 
 
 class ChatlasContextAttachment(TaravObject):
-    type_ship = TypeShip("69ffdb4e-0fbc-430e-8480-3533311b2ac7")
-    type_name = "Tarav.Breadcrumb.Attachment.ChatlasContext"
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('69ffdb4e-0fbc-430e-8480-3533311b2ac7'),
+            name='Tarav.Breadcrumb.Attachment.ChatlasContext',
+            workflow=BREADCRUMBS_WORKFLOW_SHIP,
+        )
 
     class RecordInterface(TaravObject.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
@@ -22,12 +30,12 @@ class ChatlasContextAttachment(TaravObject):
         context: ChatlasTurnReference.RecordInterface
 
     @classmethod
-    def json_example(cls) -> dict[str, object]:
+    def record_example(cls) -> dict[str, object]:
         return {
-            "type": cls.type_name,
+            "type": entity(cls).name,
             "breadcrumb_id": "0" * 64,
             "workflow": "Tarav.Breadcrumbs.ChatlasContext",
-            "context": ChatlasTurnReference.json_example(),
+            "context": ChatlasTurnReference.record_example(),
         }
 
 
