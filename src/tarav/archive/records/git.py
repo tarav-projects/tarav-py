@@ -1,4 +1,4 @@
-"""Git placement policy within one Record Archive Workflow partition."""
+"""Git placement policy within Archive's Record-storage partitions."""
 
 from __future__ import annotations
 

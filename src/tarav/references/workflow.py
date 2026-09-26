@@ -29,6 +29,10 @@ class ReferenceWorkflow(TaravWorkflow):
             name='Tarav.Workflow.References',
             workflow=REFERENCES_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return REFERENCES_WORKFLOW_SHIP
     workflow_name = "references"
     constitution = "Address and resolve Tarav subjects and external artifacts through typed References."
 

@@ -14,6 +14,10 @@ class ScoringWorkflow(TaravWorkflow):
             name='Tarav.Workflow.Scoring',
             workflow=SCORING_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return SCORING_WORKFLOW_SHIP
     workflow_name = "scoring"
     constitution = "Assess semantic assertions and expose their scores and findings."
 

@@ -7,7 +7,7 @@ import json
 import math
 from copy import deepcopy
 from pathlib import Path
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, BinaryIO, Self, TextIO, TypeVar
 
 from pydantic import BaseModel, ConfigDict
@@ -21,7 +21,8 @@ from .identity import (
 )
 
 if TYPE_CHECKING:
-    from .context import ContextBuilder
+    from .workflows import TaravWorkflow
+    from tarav.context import ContextBuilder
     from .types import RecordTypeReference, TypeRegistry
 
 
@@ -38,6 +39,20 @@ class RecordTypeMismatch(TypeError):
 
 
 JsonFile = TextIO | BinaryIO
+
+_workflow_resolver: Callable[[WorkflowShip], TaravWorkflow] | None = None
+
+
+def configure_workflow_resolver(resolver: Callable[[WorkflowShip], TaravWorkflow]) -> None:
+    """Let library composition supply workflow resolution without domain imports."""
+    global _workflow_resolver
+    _workflow_resolver = resolver
+
+
+def resolve_workflow(ship: WorkflowShip) -> TaravWorkflow:
+    if _workflow_resolver is None:
+        raise RuntimeError("Workflow resolution has not been configured")
+    return _workflow_resolver(ship)
 
 
 class TaravType:
@@ -118,6 +133,11 @@ class TaravObject(TaravType):
         """Minimal open record contract; subclasses declare their own fields."""
 
         model_config = ConfigDict(strict=True, extra="allow")
+
+    @property
+    def workflow(self) -> TaravWorkflow:
+        """Return this object's containing workflow."""
+        return entity(type(self)).workflow
 
     @classmethod
     def preserves_parent_record_interface(cls) -> bool:
@@ -366,8 +386,12 @@ class TaravClass(TaravEntity):
         return self._name
 
     @property
-    def workflow(self) -> WorkflowShip:
+    def workflow_ship(self) -> WorkflowShip:
         return self._workflow
+
+    @property
+    def workflow(self) -> TaravWorkflow:
+        return resolve_workflow(self._workflow)
 
     @property
     def target(self) -> type[TaravType]:
@@ -388,16 +412,6 @@ class TaravClass(TaravEntity):
             for base in self.target.__bases__
             if issubclass(base, TaravType)
         )
-
-    def obj_context(self, builder: ContextBuilder) -> None:
-        """Expose direct base entities without flattening ancestor context."""
-        from .context import ContextList
-
-        def populate(bases_builder: ContextBuilder) -> None:
-            for index, base in enumerate(self.bases()):
-                bases_builder.add(index, opener=lambda base=base: base)
-
-        builder.add("bases", opener=lambda: ContextList(self, populate))
 
 
 def entity(target: type[TaravType]) -> TaravClass:
@@ -420,7 +434,7 @@ def entity(target: type[TaravType]) -> TaravClass:
 def _inherited_workflow(target: type[TaravType]) -> WorkflowShip:
     for parent in target.__mro__[1:]:
         if issubclass(parent, TaravType):
-            return entity(parent).workflow
+            return entity(parent).workflow_ship
     raise TaravTypeDeclarationError(
         f"{target.__name__}.class_entity() must declare a WorkflowShip"
     )

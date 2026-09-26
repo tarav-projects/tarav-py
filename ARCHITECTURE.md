@@ -37,7 +37,7 @@ The main concepts are:
 
 A subject participates in the Diagram when Tarav can represent it as a
 `TaravObject`. Python classes participate through `TaravClass`, Workflows are
-non-instantiable `TaravWorkflow` classes represented by `TaravClass` entities,
+singleton `TaravWorkflow` entities with independently represented implementation classes,
 and the `TARAV` Entity represents the system itself.
 
 ## Bootstrap path
@@ -47,7 +47,7 @@ without first selecting another discovery workflow:
 
 ```text
 TARAV
-  └── Workflow class           addressed by established WorkflowShip
+  └── Workflow entity          addressed by established WorkflowShip
         └── Type               identified by TypeShip
               └── Object      represented by a Record
                     └── Entity, when needed, identified by Ship
@@ -64,13 +64,27 @@ order, omitting non-Tarav mixins. Its Context exposes `bases` and a `target`
 route to the represented class context, preserving ancestor context rather
 than merging it. Detached class Records cannot infer live bases or targets.
 `KernelWorkflow` owns the remaining foundational Types; each concrete
-Workflow class retains its established WorkflowShip address. For this migration,
-the address remains its declaration's `workflow` value; parent-workflow ownership
-and unifying WorkflowShip with class TypeShip identities are not implemented.
-Workflow instances and their Records are no longer constructed or registered.
-Workflow context is class context, addressed by the class entity's TypeShip.
-Previously retained workflow-instance Records and Context roots require explicit
-migration; readers do not repair or relocate them automatically.
+Workflow entity retains its established WorkflowShip address. Each concrete
+Workflow declares that fixed identity independently through `_workflow_id()`;
+`WorkflowClass()` returns the same process-wide entity on repeated calls.
+`entity(WorkflowClass)` represents only the implementation class, retaining its
+separate TypeShip. Its `workflow` field declares ownership, not instance identity.
+Class and object Context therefore have separate subject addresses. Both UUIDs
+remain unchanged; existing Archive partitions do not move. Workflow Records
+can be projected and explicitly loaded through their class, but Workflow Types
+are not automatically registered for dynamic Record loading.
+
+`TaravWorkflow()` is the umbrella workflow with its own fixed Ship and no parent
+(`workflow is None`). Other workflows default to that root; Record Archive is
+contained by Archive. Workflow nesting is explicit, not inferred from Python
+inheritance. The workflow object's `workflow` returns its parent instance.
+Class entities' `workflow` returns the containing workflow instance, while
+`workflow_ship` exposes the stored address. Ordinary Objects inherit ownership
+from their class; Archive partitions resolve their declared owning workflow.
+Library composition supplies lazy resolution through the current runtime's
+registry, so Kernel does not import runtime or domain packages. Unknown owners
+raise on resolution; class Records can still be read and inspected by Ship.
+Stored class and partition Records retain UUID strings without migration.
 
 The registries keep mechanics separate from semantics:
 
@@ -92,7 +106,7 @@ The registries keep mechanics separate from semantics:
 - Runtime composition verifies that every registered Type's Workflow Ship
   resolves to a registered Workflow.
 
-`context(subject)` is the core navigation operation. It invokes
+`from tarav.context import context` exposes the core navigation operation. It invokes
 `class_context()` for a Type and `obj_context()` for an Object, then mounts
 Archive-backed entries for identified subjects. It returns a
 `ContextExplorer`: a stateful explorer with history across nested folders and
@@ -194,11 +208,22 @@ through every layer.
   small. Promotion into `_core` follows demonstrated reuse rather than
   anticipated reuse.
 - `tarav.kernel` contains Tarav's public semantic foundation: Types, Objects,
-  Entities, Ships, class-owned Record interfaces, Explorer contracts, Context,
+  Entities, Ships, class-owned Record interfaces, Explorer contracts,
   Record-space contracts, and trusted Type and Workflow registries. Kernel
   imports no application domain.
+- `tarav.context` owns Context types, navigation, and class-bases presentation.
+  Its `explore()` primitive accepts explicit contributors without loading storage;
+  its `context()` helper selects the current runtime. `context.storage` composes
+  Archive-backed entries, while `context.workflow` declares the workflow.
+  Kernel retains extensible context hooks with annotation-only builder imports,
+  not runtime Context imports or re-exports. The `tarav.context` root attribute
+  is now the package, not a callable helper.
 - Domain packages own their vocabulary, Records, storage, validation, and
   operations. Cross-domain imports remain acyclic.
+- `tarav.archive.records` implements Record Archive, nested beneath its parent
+  Archive workflow. Artifact-registration Record definitions live separately in
+  `tarav.archive.artifact_records`; Archive's parent implementation does not
+  import its Record Archive child.
 - Integration bundles compose independent domains without making either one
   depend on the other.
 - `tarav.runtime.create_runtime()` is the composition root. It selects and
@@ -270,8 +295,8 @@ relationships, storage policies, or interpretation of domain payloads.
 | --- | --- |
 | `agent` | Provider-neutral agent, account, session, and monitoring behavior; concrete providers live below `agent.providers`. |
 | `archive` | Artifact identity, retained Archive Records, and Archive-specific location history. |
-| `record_archive` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
-| `context_workflow` | Archive-backed Context roots and composition of retained placements with runtime Context contributions. |
+| `archive.records` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
+| `context` | Context types and navigation; `context.storage` adds Archive-backed roots and retained placements, and `context.workflow` declares ownership. |
 | `references` | Shared typed locator, check, hints, and resolution mechanics. |
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |

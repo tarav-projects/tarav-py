@@ -2,20 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from tarav.kernel import (
-    Context,
-    ContextFolder,
-    ContextBuilder,
-    ContextExplorer,
-    FileRecord,
-    TaravClass,
-    TaravObject,
-    TaravType,
-    TaravTypeDeclarationError,
-    TypeShip,
-    context,
-    entity,
-)
+from tarav.kernel import FileRecord, TaravClass, TaravObject, TaravType, TaravTypeDeclarationError, TypeShip, entity
+from tarav.context import Context, ContextFolder, ContextBuilder, ContextExplorer, explore as context
 
 
 class ContextExample(TaravObject):

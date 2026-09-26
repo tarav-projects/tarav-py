@@ -1,7 +1,8 @@
 import pytest
 
-from tarav.kernel import TaravClass, TaravObject, TypeWorkflow, context, entity
-from tarav.record_archive import ArchiveFolder
+from tarav.kernel import TaravClass, TaravObject, TypeWorkflow, entity
+from tarav.context import explore as context
+from tarav.archive.records import ArchiveFolder
 from tarav.runtime import create_runtime
 
 
@@ -9,8 +10,8 @@ def test_type_workflow_ownership_and_registration():
     runtime = create_runtime()
     owner = runtime.workflows.get("type")
     assert owner is TypeWorkflow
-    assert entity(TaravClass).workflow == owner.id
-    assert entity(ArchiveFolder).workflow != owner.id
+    assert entity(TaravClass).workflow_ship == owner().id
+    assert entity(ArchiveFolder).workflow_ship != owner().id
     assert entity(TaravClass).id == TaravClass.class_entity().id
 
 

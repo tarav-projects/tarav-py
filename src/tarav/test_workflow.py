@@ -10,8 +10,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from tarav.context_workflow import ContextService
-from tarav.kernel.context import ContextBuilder
+from tarav.context.storage import ContextService
+from tarav.context import ContextBuilder
 from tarav.kernel.identity import Ship, TypeShip, WorkflowShip
 from tarav.kernel.records import (
     FileRecord,
@@ -20,7 +20,7 @@ from tarav.kernel.records import (
     entity,
 )
 from tarav.kernel.workflows import TaravWorkflow
-from tarav.record_archive import (
+from tarav.archive.records import (
     ArchiveEntry,
     ArchivePartition,
     ArchiveFolder,
@@ -112,6 +112,10 @@ class TestWorkflow(TaravWorkflow):
             workflow=TEST_WORKFLOW_SHIP,
         )
 
+    @classmethod
+    def _workflow_id(cls):
+        return TEST_WORKFLOW_SHIP
+
     workflow_name = "test"
     constitution = (
         "Provide a disposable test workspace for Tarav mechanics. Its entries "
@@ -189,7 +193,7 @@ class TestWorkflow(TaravWorkflow):
     ) -> tuple[ArchiveFolder, ArchiveList]:
         """Explicit disposable fixture using both built-in Archive structures."""
 
-        if partition.workflow != self.id:
+        if partition.workflow_ship != self().id:
             raise ValueError("Archive partition belongs to a different Workflow")
         run = partition.create_directory(run_name)
         dictionary = run.create_dictionary(

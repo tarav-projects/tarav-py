@@ -33,6 +33,10 @@ class Example(TaravWorkflow):
             name="Test.Workflow.External",
             workflow=WorkflowShip("f710989b-2a05-4e5c-88a0-c9cdba37d8ce"),
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return WorkflowShip("f710989b-2a05-4e5c-88a0-c9cdba37d8ce")
     workflow_name = "example"
     constitution = "Provide a disposable external test workspace."
 def register(registry):
@@ -82,6 +86,10 @@ class Example(TaravWorkflow):
             name="Test.Workflow.Broken",
             workflow=WorkflowShip("43e653fb-c43e-4b9f-9dc8-2a40ec7552bf"),
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return WorkflowShip("43e653fb-c43e-4b9f-9dc8-2a40ec7552bf")
     workflow_name = "example"
     constitution = "Provide a disposable broken test workspace."
 def register(registry):
@@ -118,6 +126,10 @@ def test_registry_resolves_workflow_entities_by_name_and_ship():
                 workflow=WorkflowShip("0e21310e-8fa1-44ce-bf12-ebc285747b9f"),
             )
 
+        @classmethod
+        def _workflow_id(cls):
+            return WorkflowShip("0e21310e-8fa1-44ce-bf12-ebc285747b9f")
+
         workflow_name = "example"
         constitution = "Provide a disposable test workspace."
 
@@ -126,13 +138,12 @@ def test_registry_resolves_workflow_entities_by_name_and_ship():
     registry.register(workflow)
 
     assert registry.get("example") is workflow
-    assert registry.get(entity(Example).workflow) is workflow
-    assert workflow.id == entity(Example).workflow
+    assert registry.get(entity(Example).workflow_ship) is workflow
+    assert workflow().id == entity(Example).workflow_ship
     assert Example.constitution == "Provide a disposable test workspace."
     assert entity(workflow).target is workflow
-    assert not issubclass(workflow, TaravObject)
-    with pytest.raises(TypeError, match="do not instantiate"):
-        workflow()
+    assert issubclass(workflow, TaravObject)
+    assert workflow() is workflow()
 
 
 def test_registry_rejects_duplicate_workflow_identities():
@@ -145,6 +156,10 @@ def test_registry_rejects_duplicate_workflow_identities():
                 name="Test.Workflow.First",
                 workflow=WorkflowShip("2edb4f91-874d-4cd9-9427-bda3a37de1b8"),
             )
+
+        @classmethod
+        def _workflow_id(cls):
+            return WorkflowShip("2edb4f91-874d-4cd9-9427-bda3a37de1b8")
 
         workflow_name = "shared"
         constitution = "Provide the first test workspace."
@@ -159,6 +174,10 @@ def test_registry_rejects_duplicate_workflow_identities():
                 workflow=WorkflowShip("4c175dca-e2fd-45a8-a0d0-cc03fe2bd1ea"),
             )
 
+        @classmethod
+        def _workflow_id(cls):
+            return WorkflowShip("4c175dca-e2fd-45a8-a0d0-cc03fe2bd1ea")
+
         workflow_name = "shared"
         constitution = "Provide another test workspace with the same name."
 
@@ -169,8 +188,12 @@ def test_registry_rejects_duplicate_workflow_identities():
                 target=cls,
                 id=TypeShip("d9080bbe-c9c5-4de1-b03e-fe3a7ac4fa81"),
                 name="Test.Workflow.SameShip",
-                workflow=entity(First).workflow,
+                workflow=entity(First).workflow_ship,
             )
+
+        @classmethod
+        def _workflow_id(cls):
+            return entity(First).workflow_ship
 
         workflow_name = "other"
         constitution = "Provide another test workspace with the same Ship."

@@ -31,6 +31,11 @@
   Archive uses it at Record write/load boundaries; custom runtimes must be
   selected with `tarav.set_runtime()` before such operations.
 - Keep subsystem imports acyclic outside runtime composition.
+- Record Archive lives in `tarav.archive.records`, matching its Archive parent.
+  Artifact-registration Record types live in `tarav.archive.artifact_records`.
+- Import Context types and the runtime-aware `context()` helper from
+  `tarav.context`, not Kernel or the library root. Context storage is a separate
+  composition layer; Kernel's context hooks have no runtime Context dependency.
 - Provider-neutral orchestration belongs in `tarav.agent`; concrete adapters
   belong in `tarav.agent.providers.<provider>`.
 - Shared infrastructure enters `tarav._core` only after multiple consumers have

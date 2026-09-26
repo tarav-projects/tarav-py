@@ -1,4 +1,4 @@
-"""Archive-owned Record authorities and serialization contracts."""
+"""Artifact-registration Record authorities and serialization contracts."""
 
 from tarav.kernel import TaravClass
 from tarav.kernel import (

@@ -70,6 +70,10 @@ class SkillwareWorkflow(TaravWorkflow):
             name='Tarav.Workflow.Skillware',
             workflow=SKILLWARE_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return SKILLWARE_WORKFLOW_SHIP
     workflow_name = "skillware"
     constitution = "Build and check structured Skillware documents."
 

@@ -11,7 +11,7 @@ from pathlib import Path
 import subprocess
 
 from tarav._core.persistence import atomic_write_text
-from tarav.archive.records import record_registry
+from tarav.archive.artifact_records import record_registry
 
 
 def migrate(root: Path, *, apply: bool = False) -> dict:

@@ -16,7 +16,7 @@ from tarav.kernel import (
     TypeShip,
     UnknownRecordType,
 )
-from tarav.record_archive import (
+from tarav.archive.records import (
     ArchiveEntry,
     ArchiveExplorer,
     ArchiveFolder,
@@ -157,13 +157,13 @@ def test_archive_entries_can_open_and_navigate_nested_typed_archives(tmp_path) -
     assert isinstance(notes, ArchiveFolder)
     notes.put("note", WorkspaceItem("nested"))
 
-    cursor = ArchiveExplorer(archive).cd(f"{workflow.id}/nested-run/named/queue/1")
-    assert cursor.pwd() == f"/{workflow.id}/nested-run/named/queue/1"
+    cursor = ArchiveExplorer(archive).cd(f"{workflow().id}/nested-run/named/queue/1")
+    assert cursor.pwd() == f"/{workflow().id}/nested-run/named/queue/1"
     assert cursor.current.container.root == notes.root
     assert cursor.get("note").open().label == "nested"
     assert cursor.cd("..").get(0).open().label == "first"
     with pytest.raises(NotADirectoryError):
-        ArchiveExplorer(archive).cd(f"{workflow.id}/nested-run/named/greeting")
+        ArchiveExplorer(archive).cd(f"{workflow().id}/nested-run/named/greeting")
 
 
 def test_archive_handles_reload_indexes_before_writing(tmp_path) -> None:
@@ -302,7 +302,7 @@ def test_archive_root_git_is_not_inherited_and_existing_nested_repos_still_open(
     assert (nested.root / ".git").is_dir()
     assert (
         ArchiveExplorer(ArchiveRoot(root))
-        .cd(f"{workflow.id}/run/old-named")
+        .cd(f"{workflow().id}/run/old-named")
         .get("item")
         .open()
         .label
@@ -335,47 +335,47 @@ def test_archive_tree_navigates_placements_without_changing_workflow_objects(
     archive = ArchiveRoot(root)
     partition = archive.for_workflow(workflow)
     assert archive.for_workflow(WorkspaceWorkflow).directory == partition.directory
-    assert partition.directory == root / str(workflow.id)
+    assert partition.directory == root / str(workflow().id)
     assert not partition.directory.exists()
     restored_partition = runtime.records.from_record(partition.to_record())
     assert restored_partition.directory == partition.directory
     named, ordered = workflow.create_record_archives(partition, run)
 
     assert ARCHIVE is not archive
-    assert (str(workflow.id),) == tuple(entry.name for entry in archive.ls())
-    workflow_entry = archive.get(str(workflow.id))
+    assert (str(workflow().id),) == tuple(entry.name for entry in archive.ls())
+    workflow_entry = archive.get(str(workflow().id))
     assert isinstance(workflow_entry, ArchiveEntry)
     assert isinstance(workflow_entry.open(), ArchivePartition)
     assert workflow_entry.open().owning_workflow() is workflow
     assert not hasattr(workflow, "cd")
 
-    test_cursor = ArchiveExplorer(archive).cd(str(workflow.id))
+    test_cursor = ArchiveExplorer(archive).cd(str(workflow().id))
     run_entry = test_cursor.get(run)
     assert isinstance(run_entry.open(), ArchivePartition)
-    run_cursor = ArchiveExplorer(archive).cd(f"{workflow.id}/{run}")
+    run_cursor = ArchiveExplorer(archive).cd(f"{workflow().id}/{run}")
     assert {entry.name for entry in run_cursor.ls()} == {"named", "ordered"}
     assert run_cursor.get("named").open().id == named.id
     assert run_cursor.get("ordered").open().id == ordered.id
     assert run_cursor.cd("named").get("greeting").open().label == "hello tarav"
     assert [
         entry.open().label
-        for entry in ArchiveExplorer(archive).cd(f"{workflow.id}/{run}/ordered").ls()
+        for entry in ArchiveExplorer(archive).cd(f"{workflow().id}/{run}/ordered").ls()
     ] == [
         "first",
         "second",
     ]
     assert ArchiveExplorer(archive).pwd() == "/"
-    assert test_cursor.pwd() == f"/{workflow.id}"
+    assert test_cursor.pwd() == f"/{workflow().id}"
     with pytest.raises(NotADirectoryError):
-        ArchiveExplorer(archive).cd(f"{workflow.id}/{run}/named/greeting")
+        ArchiveExplorer(archive).cd(f"{workflow().id}/{run}/named/greeting")
     stored = named.get("greeting")
     (named.root / stored.artifact).write_text('{"type":"Unregistered.Test"}\n')
     assert [
         entry.name
-        for entry in ArchiveExplorer(archive).cd(f"{workflow.id}/{run}/named").ls()
+        for entry in ArchiveExplorer(archive).cd(f"{workflow().id}/{run}/named").ls()
     ] == ["greeting"]
     with pytest.raises(UnknownRecordType):
-        ArchiveExplorer(archive).cd(f"{workflow.id}/{run}/named").get("greeting").open()
+        ArchiveExplorer(archive).cd(f"{workflow().id}/{run}/named").get("greeting").open()
 
 
 def test_dictionary_name_is_not_a_ship_and_unknown_types_remain_inspectable(

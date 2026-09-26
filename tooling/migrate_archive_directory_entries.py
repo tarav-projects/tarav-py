@@ -15,7 +15,7 @@ from pathlib import Path
 import subprocess
 
 from tarav.archive import Archive
-from tarav.archive.records import ArchiveRecord, ArtifactRecord, record_registry
+from tarav.archive.artifact_records import ArchiveRecord, ArtifactRecord, record_registry
 
 
 def _git(records: Path, *args: str) -> str:

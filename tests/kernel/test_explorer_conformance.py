@@ -8,18 +8,9 @@ import pytest
 
 from tarav.explorer_testing import ExplorerCase, ExplorerContractTests, check_collection
 from tarav import get_runtime
-from tarav.kernel import (
-    ContextBuilder,
-    ContextEntry,
-    ContextExplorer,
-    ContextFolder,
-    ExplorerEntry,
-    ExplorerFolder,
-    TaravClass,
-    TypeShip,
-    ContextList,
-)
-from tarav.record_archive import (
+from tarav.kernel import ExplorerEntry, ExplorerFolder, TaravClass, TypeShip
+from tarav.context import ContextBuilder, ContextEntry, ContextExplorer, ContextFolder, ContextList
+from tarav.archive.records import (
     ArchiveExplorer,
     ArchiveFolder,
     ArchiveList,
@@ -47,7 +38,7 @@ def _archive_root(root: Path) -> ExplorerCase:
     workflow = get_runtime().workflows.get("test")
     archive = ArchiveRoot(root / "archive")
     archive.for_workflow(workflow).create_directory("run")
-    key = str(workflow.id)
+    key = str(workflow().id)
     return ExplorerCase(
         archive,
         (key,),

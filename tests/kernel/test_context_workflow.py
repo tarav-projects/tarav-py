@@ -7,18 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from tarav import context, get_runtime, set_runtime
-from tarav.context_workflow import StoredDictionaryContext, SubjectContextRoot
-from tarav.kernel import (
-    Context,
-    ContextEntry,
-    ContextExplorer,
-    ContextFolder,
-    RecordTypeMismatch,
-    ContextList,
-    TaravObject,
-)
-from tarav.record_archive import (
+from tarav import get_runtime, set_runtime
+from tarav.context import context
+from tarav.context.storage import StoredDictionaryContext, SubjectContextRoot
+from tarav.kernel import RecordTypeMismatch, TaravObject
+from tarav.context import Context, ContextEntry, ContextExplorer, ContextFolder, ContextList
+from tarav.archive.records import (
     ArchiveEntry,
     ArchiveExplorer,
     ArchiveFolder,
@@ -122,7 +116,7 @@ def test_entity_and_class_ships_address_their_own_context_roots(runtime) -> None
     workflow_root, _ = workflow.create_context_workspace(runtime.contexts)
 
     archive_view = ArchiveExplorer(ArchiveRoot(runtime.contexts.archive_root)).cd(
-        f"{runtime.contexts.id}/{entity(workflow).id}"
+        f"{runtime.workflows.get("context")().id}/{entity(workflow).id}"
     )
     assert archive_view.current.container.directory == workflow_root.root
     assert archive_view.get("retained-example").open().open().label == "retained"

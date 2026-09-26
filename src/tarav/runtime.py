@@ -22,13 +22,14 @@ from tarav.kernel import (
     TypeRegistry,
     entity,
 )
-from tarav.kernel.context import (
+from tarav.context import (
     ContextEntry,
     ContextExplorer,
     ContextSubject,
-    context as open_context,
+    explore as open_context,
 )
-from tarav.context_workflow import CONTEXT_RECORD_TYPES, ContextWorkflow, ContextService
+from tarav.context.storage import CONTEXT_RECORD_TYPES, ContextService
+from tarav.context.workflow import ContextWorkflow
 from tarav.kernel.space import FilesystemProvider
 from tarav.kernel.workflows import TaravWorkflow, WorkflowRegistry
 from tarav.navigation import Navigation, NavigationService
@@ -213,7 +214,7 @@ def create_runtime(
     and `providers` ({name, workflow, root}). Paths are relative to that file.
     `filesystem` providers browse plain local Record collections.
     """
-    from tarav.archive.records import ARCHIVE_RECORD_TYPES
+    from tarav.archive.artifact_records import ARCHIVE_RECORD_TYPES
     from tarav.archive.references import ArchiveReference
     from tarav.archive.workflow import ArchiveWorkflow
     from tarav.breadcrumb_workflows.chatlas_context import CHATLAS_CONTEXT
@@ -224,7 +225,7 @@ def create_runtime(
     from tarav.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.diagram.workflow import DIAGRAM_RECORD_TYPES, DiagramWorkflow
     from tarav.references.workflow import REFERENCE_RECORD_TYPES
-    from tarav.record_archive import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
+    from tarav.archive.records import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
     from tarav.scoring.model import SCORING_RECORD_TYPES
     from tarav.scoring.workflow import ScoringWorkflow
     from tarav.skw.document import SKILLWARE_RECORD_TYPES, SkillwareWorkflow
@@ -275,6 +276,7 @@ def create_runtime(
     contexts = ContextWorkflow.service(archive_root, records)
     breadcrumbs = BreadcrumbWorkflow.service(composed_breadcrumb_integrations)
     for workflow in (
+        TaravWorkflow,
         KernelWorkflow,
         TypeWorkflow,
         ContextWorkflow,
@@ -307,9 +309,9 @@ def create_runtime(
             )
             navigation.mount(entry["name"], provider)
     for record_type in records.record_types:
-        registrations.get(entity(record_type).workflow)
+        registrations.get(entity(record_type).workflow_ship)
     records.validate_external_with(
-        lambda record_type: registrations.get(entity(record_type).workflow)
+        lambda record_type: registrations.get(entity(record_type).workflow_ship)
     )
     registry = HookRegistry()
     register_hook_sampling_callbacks(registry)

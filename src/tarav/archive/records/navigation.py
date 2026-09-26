@@ -1,4 +1,4 @@
-"""Archive folders, workflow partitions, and route-aware exploration."""
+"""Record Archive folders, workflow partitions, and route-aware exploration."""
 
 from __future__ import annotations
 
@@ -111,7 +111,7 @@ class ArchiveRoot(ExplorerFolder, ArchiveObject):
         workflow_type = workflow
         if not isinstance(workflow_type, type) or not issubclass(workflow_type, TaravWorkflow):
             raise TypeError("Archive partition requires a TaravWorkflow")
-        ship = entity(workflow_type).workflow
+        ship = workflow_type().id
         registered = get_runtime().workflows.get(ship)
         if registered is not workflow_type:
             raise TypeError("Workflow Ship resolves to a different Workflow class")
@@ -149,7 +149,7 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
         if not selected or selected[0] != str(workflow):
             raise ValueError("Archive partition must start with its Workflow Ship")
         self.root = root.expanduser().resolve()
-        self.workflow = workflow
+        self.workflow_ship = workflow
         self.parts = tuple(_name(part) for part in selected)
 
     @classmethod
@@ -171,7 +171,7 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
     def _to_record(self) -> dict[str, object]:
         return {
             "type": entity(type(self)).name,
-            "workflow": str(self.workflow),
+            "workflow": str(self.workflow_ship),
             "root": str(self.root),
             "parts": list(self.parts),
         }
@@ -188,7 +188,11 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
 
         from tarav.runtime import get_runtime
 
-        return get_runtime().workflows.get(self.workflow)
+        return get_runtime().workflows.get(self.workflow_ship)
+
+    @property
+    def workflow(self) -> TaravWorkflow:
+        return self.owning_workflow()()
 
     @property
     def git_config_path(self) -> Path:
@@ -203,7 +207,7 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
         return self.gitignore_path.is_file()
 
     def git_settings(self) -> dict[str, object]:
-        placement = placement_for_child(self.directory, self.root / str(self.workflow))
+        placement = placement_for_child(self.directory, self.root / str(self.workflow_ship))
         return {
             "children": placement.mode,
             "source": placement.source,
@@ -227,7 +231,7 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
 
                 def opener(name: str = child.name) -> TaravObject:
                     return ArchivePartition(
-                        self.root, self.workflow, (*self.parts, name)
+                        self.root, self.workflow_ship, (*self.parts, name)
                     )
 
             entries.append(
@@ -252,13 +256,13 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
 
         name = _name(name)
         self.directory.mkdir(parents=True, exist_ok=True)
-        placement = placement_for_child(self.directory, self.root / str(self.workflow))
+        placement = placement_for_child(self.directory, self.root / str(self.workflow_ship))
         initialize = placement.initialize
         child = self.directory / name
         child.mkdir(exist_ok=False)
         if initialize:
             initialize_repository(child)
-        return ArchivePartition(self.root, self.workflow, (*self.parts, name))
+        return ArchivePartition(self.root, self.workflow_ship, (*self.parts, name))
 
     def create_archive(
         self,
@@ -283,7 +287,7 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
             raise ValueError("Archive must have its exact registered Type")
         name = _name(name)
         self.directory.mkdir(parents=True, exist_ok=True)
-        placement = placement_for_child(self.directory, self.root / str(self.workflow))
+        placement = placement_for_child(self.directory, self.root / str(self.workflow_ship))
         return archive_type.create(
             self.directory / name,
             constitution=constitution,

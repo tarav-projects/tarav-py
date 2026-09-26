@@ -6,11 +6,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, overload
 
-from tarav.record_archive import ARCHIVE
+from tarav.archive.records import ARCHIVE
+from tarav.kernel.records import configure_workflow_resolver
 
 if TYPE_CHECKING:
     from tarav.kernel import TaravObject
-    from tarav.kernel.context import ContextEntry, ContextExplorer, ContextSubject
     from tarav.runtime import TaravRuntime
 
 
@@ -19,7 +19,6 @@ ObjectT = TypeVar("ObjectT", bound="TaravObject")
 __all__ = [
     "ARCHIVE",
     "__version__",
-    "context",
     "get_runtime",
     "load_object",
     "set_runtime",
@@ -27,6 +26,9 @@ __all__ = [
 
 
 __version__ = "0.1.0"
+
+# Resolve lazily against the selected runtime, never during kernel bootstrap.
+configure_workflow_resolver(lambda ship: get_runtime().workflows.get(ship)())
 
 # Tarav libraries emit diagnostics but leave handler configuration to the host.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
@@ -50,14 +52,6 @@ def load_object(
     from tarav.runtime import get_runtime
 
     return get_runtime().load_object(path, expected_type=expected_type)
-
-
-def context(subject: ContextSubject | ContextEntry) -> ContextExplorer:
-    """Open one subject's runtime and retained Context through the default runtime."""
-
-    from tarav.runtime import get_runtime
-
-    return get_runtime().context(subject)
 
 
 def get_runtime() -> TaravRuntime:

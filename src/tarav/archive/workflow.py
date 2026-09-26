@@ -9,7 +9,7 @@ from tarav.archive.identity import ARCHIVE_WORKFLOW_SHIP
 from tarav.kernel.space import Entry, FilesystemProvider
 
 from . import Archive
-from .records import record_registry
+from .artifact_records import record_registry
 
 
 class ArchiveProvider(FilesystemProvider):
@@ -54,6 +54,10 @@ class ArchiveWorkflow(TaravWorkflow):
             name='Tarav.Workflow.Archive',
             workflow=ARCHIVE_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return ARCHIVE_WORKFLOW_SHIP
     workflow_name = "archive"
     constitution = (
         "Record artifacts and their retention evidence without interpreting "

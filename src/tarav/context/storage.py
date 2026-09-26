@@ -9,13 +9,12 @@ from pydantic import BaseModel, ConfigDict
 
 from tarav._core.data_root import default_tarav_data_root
 from tarav._core.persistence import atomic_write_json
-from tarav.kernel.context import (
+from tarav.context import (
     CONTEXT_WORKFLOW_SHIP,
     Context,
     ContextBuilder,
     ContextEntry,
     ContextObject,
-    ContextType,
     ContextSubject,
     ContextFolder,
     ContextList,
@@ -23,8 +22,7 @@ from tarav.kernel.context import (
 from tarav.kernel.identity import Ship, TypeShip
 from tarav.kernel.records import TaravClass, TaravEntity, TaravObject, TaravType, entity
 from tarav.kernel.types import TypeRegistry
-from tarav.kernel.workflows import TaravWorkflow
-from tarav.record_archive import (
+from tarav.archive.records import (
     ArchiveEntry,
     ArchivePartition,
     ArchiveFolder,
@@ -181,36 +179,8 @@ class SubjectContextRoot(ContextObject):
         }
 
 
-class ContextWorkflow(TaravWorkflow, ContextType):
-    """Compose runtime Context with Archive-backed subject directories."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip("31e50d71-3ffd-44b0-8d91-aee36f82968a"),
-            name="Tarav.Workflow.Context",
-            workflow=CONTEXT_WORKFLOW_SHIP,
-        )
-
-    workflow_name = "context"
-    constitution = (
-        "Provide read-only progressive Context navigation and retain identified "
-        "subjects' Context entries through Record Archive."
-    )
-
-    @staticmethod
-    def service(
-        archive_root: Path | None = None,
-        records: TypeRegistry[TaravObject] | None = None,
-    ) -> "ContextService":
-        return ContextService(archive_root, records)
-
-
 class ContextService:
     """Runtime-specific Context storage and composition."""
-
-    id = CONTEXT_WORKFLOW_SHIP
 
     def __init__(
         self,
@@ -484,7 +454,6 @@ __all__ = [
     "ContextService",
     "CONTEXT_RECORD_TYPES",
     "CONTEXT_WORKFLOW_SHIP",
-    "ContextWorkflow",
     "SubjectContextRoot",
     "StoredDictionaryContext",
     "StoredVectorContext",

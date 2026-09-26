@@ -7,15 +7,8 @@ import pytest
 from tarav import load_object
 from tarav.archive import Archive
 from tarav.chatlas.workflow import ChatlasWorkflow
-from tarav.kernel import (
-    DirectoryRecord,
-    FileRecord,
-    KERNEL_WORKFLOW_SHIP,
-    RecordTypeMismatch,
-    TARAV,
-    KernelWorkflow,
-    context,
-)
+from tarav.kernel import DirectoryRecord, FileRecord, KERNEL_WORKFLOW_SHIP, RecordTypeMismatch, TARAV, KernelWorkflow
+from tarav.context import explore as context
 from tarav.references import FileReference
 from tarav.runtime import create_runtime
 
@@ -25,7 +18,7 @@ def test_runtime_discovers_workflow_entities_by_name_and_ship():
     workflow = runtime.workflows.get("chatlas")
 
     assert workflow is ChatlasWorkflow
-    assert runtime.workflows.get(workflow.id) is workflow
+    assert runtime.workflows.get(workflow().id) is workflow
 
 
 def test_runtime_bootstraps_tarav_and_the_kernel_workflow():
@@ -58,8 +51,8 @@ def test_every_registered_type_names_a_registered_owning_workflow():
     runtime = create_runtime()
 
     for record_type in runtime.records.record_types:
-        owner = runtime.workflows.get(entity(record_type).workflow)
-        assert entity(record_type).workflow == owner.id
+        owner = runtime.workflows.get(entity(record_type).workflow_ship)
+        assert entity(record_type).workflow_ship == owner().id
 
 
 def test_runtime_browses_archive_and_loads_reference_without_cli(tmp_path):

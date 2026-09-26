@@ -1,4 +1,4 @@
-"""Typed, explicitly located Archives for storing Tarav Records."""
+"""Archive's typed, explicitly located Record-storage workflow."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from tarav.kernel import (
     WorkflowShip,
     entity,
 )
-from tarav.kernel.context import ContextFolder, ContextBuilder
+from tarav.context import ContextFolder, ContextBuilder
 from tarav.kernel.workflows import TaravWorkflow
 
 from .git import (
@@ -552,6 +552,16 @@ class ArchiveList(ArchiveEntity, ExplorerList):
 
 class RecordArchiveWorkflow(TaravWorkflow, ArchiveType):
     """Optional typed Record storage for workflows that choose an Archive root."""
+
+    @property
+    def workflow(self) -> TaravWorkflow:
+        from tarav.archive.workflow import ArchiveWorkflow
+
+        return ArchiveWorkflow()
+
+    @classmethod
+    def _workflow_id(cls):
+        return RECORD_ARCHIVE_WORKFLOW_SHIP
 
     @classmethod
     def class_entity(cls) -> TaravClass:

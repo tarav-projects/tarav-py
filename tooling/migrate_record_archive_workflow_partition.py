@@ -21,7 +21,7 @@ def migrate(
         raise ValueError(f"Archive root must be a directory: {root}")
     workflow = get_runtime().workflows.get(workflow_name)
     source = root / workflow.workflow_name
-    target = root / str(workflow.id)
+    target = root / str(workflow().id)
     if source.is_symlink():
         raise ValueError(f"Workflow partition must not be a symlink: {source}")
     if source.exists() and not source.is_dir():

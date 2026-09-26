@@ -9,9 +9,9 @@ from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict
 
-from .identity import TypeShip, WorkflowShip
-from .explorer import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
-from .records import TaravClass, TaravObject, TaravType, entity
+from tarav.kernel.identity import TypeShip, WorkflowShip
+from tarav.kernel.explorer import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
+from tarav.kernel.records import TaravClass, TaravObject, TaravType, entity
 
 
 CONTEXT_WORKFLOW_SHIP = WorkflowShip("ae6fb02b-b82f-4f64-82e8-67f28a76d179")
@@ -426,6 +426,11 @@ def _view(
             )
             subject.obj_context(builder)
             if isinstance(subject, TaravClass):
+                def populate_bases(bases_builder: ContextBuilder) -> None:
+                    for index, base in enumerate(subject.bases()):
+                        bases_builder.add(index, opener=lambda base=base: base)
+
+                builder.add("bases", opener=lambda: ContextList(subject, populate_bases))
                 builder.add(
                     "target",
                     opener=lambda: _view(subject.target, contributors=contributors),
@@ -438,7 +443,7 @@ def _view(
     raise TypeError("context subject must be a TaravType class or TaravObject")
 
 
-def context(
+def explore(
     subject: ContextSubject | ContextEntry,
     *,
     contributors: Iterable[ContextContributor] = (),
@@ -454,3 +459,10 @@ def context(
         _view(subject, contributors=contributions),
         lambda target: _view(target, contributors=contributions),
     )
+
+
+def context(subject: ContextSubject | ContextEntry) -> ContextExplorer:
+    """Explore a subject with the current runtime's retained Context entries."""
+    from tarav.runtime import get_runtime
+
+    return get_runtime().context(subject)

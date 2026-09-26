@@ -277,6 +277,10 @@ class SkillsWorkflow(TaravWorkflow):
             name='Tarav.Workflow.SKWSkills',
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return SKW_SKILLS_WORKFLOW_SHIP
     workflow_name = "skw.skills"
     constitution = "Compile and inspect deployable SKW skills and their loading context."
 

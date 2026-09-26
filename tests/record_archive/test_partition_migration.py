@@ -29,7 +29,7 @@ def test_workflow_partition_migration_moves_the_complete_tree(tmp_path) -> None:
     retained.write_text(content)
 
     preview = migrate(root, "test")
-    target = root / str(get_runtime().workflows.get("test").id)
+    target = root / str(get_runtime().workflows.get("test")().id)
     assert preview["target"] == str(target)
     assert source.is_dir()
     assert not target.exists()
@@ -42,7 +42,7 @@ def test_workflow_partition_migration_moves_the_complete_tree(tmp_path) -> None:
 def test_workflow_partition_migration_refuses_an_existing_ship_path(tmp_path) -> None:
     root = tmp_path / "archive"
     (root / "test").mkdir(parents=True)
-    target = root / str(get_runtime().workflows.get("test").id)
+    target = root / str(get_runtime().workflows.get("test")().id)
     target.mkdir()
 
     with pytest.raises(FileExistsError, match="Ship partition already exists"):

@@ -42,6 +42,10 @@ class Navigation(TaravWorkflow):
             name='Tarav.Workflow.Navigation',
             workflow=NAVIGATION_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return NAVIGATION_WORKFLOW_SHIP
     workflow_name = "navigation"
     constitution = "Mount Record providers into a navigable virtual space."
 

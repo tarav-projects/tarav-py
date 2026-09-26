@@ -17,9 +17,10 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from tarav import ARCHIVE, context, get_runtime
-from tarav.kernel import ContextEntry
-from tarav.record_archive import (
+from tarav import ARCHIVE, get_runtime
+from tarav.context import context
+from tarav.context import ContextEntry
+from tarav.archive.records import (
     ArchiveEntry,
     ArchiveExplorer,
     ArchiveFolder,
@@ -58,21 +59,21 @@ def run_example(archive: ArchiveRoot, runtime: TaravRuntime) -> tuple[Path, Path
 
     # ls() reads the placement index. get() validates one ArchiveEntry Record;
     # entry.open() dispatches its artifact to the trusted TestEntity Type.
-    explorer = ArchiveExplorer(archive).cd(f"{test.id}/{run_name}/named")
+    explorer = ArchiveExplorer(archive).cd(f"{test().id}/{run_name}/named")
     print("Archive route:", explorer.pwd())
     print("Archive entries:", [entry.name for entry in explorer.ls()])
     greeting_entry = explorer.get("greeting")
     greeting = greeting_entry.open()
     assert isinstance(greeting, TestEntity)
-    assert explorer.pwd() == f"/{test.id}/{run_name}/named"  # open does not cd
+    assert explorer.pwd() == f"/{test().id}/{run_name}/named"  # open does not cd
     print("Archived Entity:", greeting.id, greeting.label)
     print("Entry Record:", named.root / greeting_entry.record_path)
     print("Entity Record:", greeting_entry.artifact_location())
     print("Ordered values:", [entry.open().label for entry in ordered.ls()])
 
     explorer.cd("..")
-    assert explorer.back().pwd() == f"/{test.id}/{run_name}/named"
-    assert explorer.forward().pwd() == f"/{test.id}/{run_name}"
+    assert explorer.back().pwd() == f"/{test().id}/{run_name}/named"
+    assert explorer.forward().pwd() == f"/{test().id}/{run_name}"
 
     # The Entity Ship gives Context a durable attachment point. This root
     # lives in Context's Archive partition, independently of the Test run.
@@ -141,7 +142,7 @@ def run_example(archive: ArchiveRoot, runtime: TaravRuntime) -> tuple[Path, Path
 
     # Archive can also reach the physical Context backing. It opens the
     # wrapper Record first; ContextEntry.open() then opens its TestItem cargo.
-    retained = ArchiveExplorer(archive).cd(f"{runtime.contexts.id}/{greeting.id}")
+    retained = ArchiveExplorer(archive).cd(f"{runtime.workflows.get("context")().id}/{greeting.id}")
     stored_wrapper = retained.get("note").open()
     assert isinstance(stored_wrapper, ContextEntry)
     assert stored_wrapper.open().label == "hello from Context"

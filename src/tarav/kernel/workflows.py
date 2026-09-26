@@ -1,4 +1,4 @@
-"""Non-instantiable Workflow classes and their runtime directory."""
+"""Singleton Workflow entities and their implementation-class directory."""
 
 from __future__ import annotations
 
@@ -6,22 +6,31 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import sys
+from threading import RLock
 from typing import ClassVar
 
 from .identity import KERNEL_WORKFLOW_SHIP, TYPE_WORKFLOW_SHIP, TypeShip, WorkflowShip
 from .records import (
     TaravClass,
-    TaravType,
-    entity,
+    TaravEntity,
 )
+
+TARAV_WORKFLOW_SHIP = WorkflowShip("7873fdd4-27d3-41e7-a6b4-92acfe4ceaa7")
 
 
 class WorkflowDeclarationError(TypeError):
     """A Workflow class does not declare its required identities."""
 
 
-class TaravWorkflow(TaravType):
-    """Class-defined capability represented in the Diagram by its class entity."""
+class TaravWorkflow(TaravEntity):
+    """One workflow entity per concrete implementation class.
+
+    Class identity belongs to class_entity(); workflow identity is independently
+    declared by _workflow_id(). Runtime-local configuration belongs in services.
+    """
+
+    _instances: ClassVar[dict[type, TaravWorkflow]] = {}
+    _instance_lock: ClassVar[RLock] = RLock()
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -29,15 +38,41 @@ class TaravWorkflow(TaravType):
             target=cls,
             id=TypeShip('f67713b1-fa70-4f41-9d2e-de512ce7c2ce'),
             name='Tarav.Workflow',
-            workflow=KERNEL_WORKFLOW_SHIP,
+            workflow=TARAV_WORKFLOW_SHIP,
         )
 
-    workflow_name: ClassVar[str]
-    constitution: ClassVar[str]
-    id: ClassVar[WorkflowShip]
+    workflow_name: ClassVar[str] = "tarav"
+    constitution: ClassVar[str] = "Contain and organize Tarav workflows."
 
-    def __new__(cls, *args, **kwargs):
-        raise TypeError(f"{cls.__name__} is a workflow class; do not instantiate it")
+    @classmethod
+    def _workflow_id(cls) -> WorkflowShip:
+        return TARAV_WORKFLOW_SHIP
+
+    @property
+    def workflow(self) -> TaravWorkflow | None:
+        """Root has no parent; ordinary workflows default to the umbrella."""
+        return None if type(self) is TaravWorkflow else TaravWorkflow()
+
+    def __new__(cls):
+        with TaravWorkflow._instance_lock:
+            if cls not in TaravWorkflow._instances:
+                identity = cls._workflow_id()
+                if not isinstance(identity, WorkflowShip):
+                    raise TypeError("Workflow identity must be a WorkflowShip")
+                instance = super().__new__(cls)
+                TaravEntity.__init__(instance, identity)
+                TaravWorkflow._instances[cls] = instance
+            return TaravWorkflow._instances[cls]
+
+    def __init__(self) -> None:
+        # Python calls __init__ on every construction, including cached returns.
+        pass
+
+    @classmethod
+    def _from_record(cls, record_data):
+        if record_data.id != cls._workflow_id():
+            raise ValueError("Record does not identify this workflow")
+        return cls()
 
     @classmethod
     def provider(cls, root: Path, records: object):
@@ -57,9 +92,10 @@ class TaravWorkflow(TaravType):
             raise WorkflowDeclarationError(
                 f"{cls.__name__} must declare a class-local constitution"
             )
-        # Preserve established WorkflowShip addresses during class-only migration.
-        # This is not the TypeShip of the class entity, nor a parent-workflow API.
-        cls.id = entity(cls).workflow
+        if not isinstance(cls.__dict__.get("_workflow_id"), classmethod):
+            raise WorkflowDeclarationError(
+                f"{cls.__name__} must declare a class-local _workflow_id()"
+            )
 
 
 class KernelWorkflow(TaravWorkflow):
@@ -73,6 +109,11 @@ class KernelWorkflow(TaravWorkflow):
             name='Tarav.Workflow.Kernel',
             workflow=KERNEL_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return KERNEL_WORKFLOW_SHIP
+
     workflow_name = "kernel"
     constitution = (
         "Provide Tarav's foundational Types, identities, Records, and "
@@ -91,6 +132,10 @@ class TypeWorkflow(TaravWorkflow):
             name="Tarav.Workflow.Type",
             workflow=TYPE_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return TYPE_WORKFLOW_SHIP
 
     workflow_name = "type"
     constitution = (
@@ -119,7 +164,7 @@ class WorkflowRegistry:
         if not isinstance(workflow, type) or not issubclass(workflow, TaravWorkflow):
             raise TypeError("Expected a TaravWorkflow class")
         name = workflow.workflow_name
-        ship = entity(workflow).workflow
+        ship = workflow().id
         if not isinstance(ship, WorkflowShip):
             raise TypeError("Workflow Entity id must be a WorkflowShip")
         if name in self.workflows:

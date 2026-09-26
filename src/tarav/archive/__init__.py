@@ -18,7 +18,7 @@ import warnings
 
 from tarav._core.persistence import atomic_write_json, atomic_write_text
 from tarav._core.data_root import default_tarav_data_root
-from .records import ArchiveRecord, ArtifactRecord, TombstoneRecord, record_registry
+from .artifact_records import ArchiveRecord, ArtifactRecord, TombstoneRecord, record_registry
 
 
 ARCHIVE_CLASS = "Tarav.Archive"

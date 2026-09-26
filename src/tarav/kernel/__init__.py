@@ -1,17 +1,5 @@
 """Tarav's dependency-clean semantic and composition foundation."""
 
-from .context import (
-    CONTEXT_WORKFLOW_SHIP,
-    Context,
-    ContextBuilder,
-    ContextEntry,
-    ContextType,
-    ContextObject,
-    ContextExplorer,
-    ContextFolder,
-    ContextList,
-    context,
-)
 from .environment import EnvironmentTypeError, TaravEnvironment
 from .explorer import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
 from .identity import (
@@ -62,16 +50,6 @@ from .workflows import (
 )
 
 __all__ = [
-    "ContextType",
-    "ContextObject",
-    "Context",
-    "ContextBuilder",
-    "ContextEntry",
-    "ContextExplorer",
-    "CONTEXT_WORKFLOW_SHIP",
-    "ContextFolder",
-    "ContextList",
-    "context",
     "DIRECTORY_ENTRY_PATH",
     "DirectoryRecord",
     "FileRecord",

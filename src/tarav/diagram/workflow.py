@@ -30,6 +30,10 @@ class DiagramWorkflow(TaravWorkflow):
             name='Tarav.Workflow.Diagram',
             workflow=DIAGRAM_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return DIAGRAM_WORKFLOW_SHIP
     workflow_name = "diagram"
     constitution = "Retain explicit semantic records, relationships, and claims about subjects."
 

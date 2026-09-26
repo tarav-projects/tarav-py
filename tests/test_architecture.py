@@ -11,12 +11,62 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+def test_context_package_import_order_and_runtime_boundary():
+    import subprocess
+    import sys
+
+    for first_import in (
+        "import tarav.context",
+        "from tarav.context.workflow import ContextWorkflow",
+        "from tarav.context.storage import ContextService",
+        "from tarav.archive.records import ArchiveFolder",
+    ):
+        code = first_import + '''
+import types
+import tarav
+import tarav.kernel as kernel
+from tarav.context import context, explore, ContextFolder
+from tarav.context.workflow import ContextWorkflow
+from tarav.kernel import TaravType, entity
+assert isinstance(tarav.context, types.ModuleType)
+assert tarav.context.context is context
+assert not hasattr(kernel, "ContextFolder")
+assert not hasattr(kernel, "context")
+assert ContextFolder.__module__ == "tarav.context"
+assert entity(ContextFolder).workflow is ContextWorkflow()
+assert context(TaravType).get("entity").open().id == entity(TaravType).id
+assert explore(TaravType).get("entity").open().id == entity(TaravType).id
+'''
+        subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)
+
+
+def test_archive_package_paths_match_workflow_ownership():
+    from tarav.archive.artifact_records import ArtifactRecord
+    from tarav.archive.records import ArchiveFolder, RecordArchiveWorkflow
+    from tarav.archive.workflow import ArchiveWorkflow
+    from tarav.runtime import create_runtime
+
+    assert ArchiveFolder.__module__ == "tarav.archive.records"
+    assert ArtifactRecord.__module__ == "tarav.archive.artifact_records"
+    assert entity(ArchiveFolder).workflow is RecordArchiveWorkflow()
+    assert RecordArchiveWorkflow().workflow is ArchiveWorkflow()
+    assert entity(ArtifactRecord).workflow is ArchiveWorkflow()
+    assert str(entity(ArchiveFolder).id) == "e67748c1-6ae8-4e9e-b868-913c57ec479d"
+    assert str(entity(ArtifactRecord).id) == "683fd453-7425-5a91-a382-5753a986e324"
+    assert create_runtime().records.resolve_type(entity(ArchiveFolder).name) is ArchiveFolder
+    for name in ("__init__.py", "workflow.py", "artifact_records.py"):
+        tree = ast.parse((PACKAGE_ROOT / "archive" / name).read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                assert node.module not in {"tarav.archive.records", "records"}
+
+
 def test_type_graph_ownership_is_separate_from_represented_ownership():
     from tarav.kernel import TaravClass, TypeWorkflow
-    from tarav.record_archive import ArchiveFolder
+    from tarav.archive.records import ArchiveFolder
 
-    assert entity(TaravClass).workflow == entity(TypeWorkflow).workflow
-    assert entity(ArchiveFolder).workflow != entity(TaravClass).workflow
+    assert entity(TaravClass).workflow_ship == entity(TypeWorkflow).workflow_ship
+    assert entity(ArchiveFolder).workflow_ship != entity(TaravClass).workflow_ship
 
 
 def test_record_interfaces_belong_to_kernel():
@@ -32,12 +82,12 @@ def test_record_interfaces_belong_to_kernel():
 
 def test_record_archive_placement_index_is_outside_its_entity_record() -> None:
     from tarav import ARCHIVE
-    from tarav.record_archive import ArchiveFolder, ArchiveRoot, ArchiveList
+    from tarav.archive.records import ArchiveFolder, ArchiveRoot, ArchiveList
     from tarav.test_workflow import TestWorkflow
 
     assert isinstance(ARCHIVE, ArchiveRoot)
     assert ARCHIVE.for_workflow(TestWorkflow).parts == (
-        str(entity(TestWorkflow).workflow),
+        str(entity(TestWorkflow).workflow_ship),
     )
 
     for archive_type in (ArchiveFolder, ArchiveList):
@@ -48,17 +98,9 @@ def test_record_archive_placement_index_is_outside_its_entity_record() -> None:
 
 
 def test_archive_and_context_implement_shared_explorer_contracts() -> None:
-    from tarav.kernel import (
-        ContextEntry,
-        ContextExplorer,
-        ContextFolder,
-        Explorer,
-        ExplorerEntry,
-        ExplorerFolder,
-        ExplorerList,
-        ContextList,
-    )
-    from tarav.record_archive import (
+    from tarav.kernel import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
+    from tarav.context import ContextEntry, ContextExplorer, ContextFolder, ContextList
+    from tarav.archive.records import (
         ArchiveEntry,
         ArchiveExplorer,
         ArchiveFolder,
@@ -109,8 +151,14 @@ def _top_level_import_graph() -> dict[str, set[str]]:
             "skw/pois.py",
         }:
             source = "skw.skills"
+        if relative.as_posix() in {"context/storage.py", "context/workflow.py"}:
+            source = "context.storage"
         graph[source]
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        # Annotation-only imports do not create runtime dependency edges.
+        for guarded in ast.walk(tree):
+            if isinstance(guarded, ast.If) and isinstance(guarded.test, ast.Name) and guarded.test.id == "TYPE_CHECKING":
+                guarded.body = []
         for node in ast.walk(tree):
             imported: tuple[str, ...] = ()
             if isinstance(node, ast.Import):
@@ -121,6 +169,8 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 if not name.startswith("tarav."):
                     continue
                 target = name.split(".", 2)[1]
+                if name in {"tarav.context.storage", "tarav.context.workflow"}:
+                    target = "context.storage"
                 if name == "tarav.skw.skills" or name.startswith("tarav.skw.skills."):
                     target = "skw.skills"
                 if target != source:
@@ -247,7 +297,8 @@ def test_kernel_is_a_dependency_clean_application_base() -> None:
     assert "navigation" not in imports["kernel"]
     assert imports["references"] <= {"kernel"}
     assert "references" in imports["archive"]
-    assert imports["record_archive"] <= {"kernel", "_core", "runtime"}
+    assert "record_archive" not in imports
+    assert not (PACKAGE_ROOT / "record_archive" / "__init__.py").exists()
     assert not (PACKAGE_ROOT / "harness").exists()
 
 
@@ -271,26 +322,29 @@ def test_registered_workflows_have_code_owned_constitutions() -> None:
 
 
 def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
-    from tarav.context_workflow import (
-        ContextWorkflow,
+    from tarav.context.workflow import ContextWorkflow
+    from tarav.context.storage import (
         StoredDictionaryContext,
         StoredVectorContext,
         SubjectContextRoot,
     )
-    from tarav.kernel.context import Context, ContextEntry, ContextExplorer
+    from tarav.context import Context, ContextEntry, ContextExplorer
     from tarav.kernel.records import TaravObject
     from tarav.runtime import create_runtime
     from tarav.test_workflow import TestEntity, TestWorkflow
 
     imports = _top_level_import_graph()
     assert imports["kernel"] == set()
-    assert imports["context_workflow"] <= {
+    assert imports["context.storage"] <= {
+        "context",
         "kernel",
-        "record_archive",
+        "archive",
         "_core",
         "runtime",
     }
-    assert (PACKAGE_ROOT / "context_workflow.py").is_file()
+    assert (PACKAGE_ROOT / "context" / "storage.py").is_file()
+    assert not (PACKAGE_ROOT / "context_workflow.py").exists()
+    assert not (PACKAGE_ROOT / "kernel" / "context.py").exists()
     assert not (PACKAGE_ROOT / "context_store.py").exists()
     assert (PACKAGE_ROOT / "test_workflow.py").is_file()
 
@@ -309,12 +363,12 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
         runtime.records.resolve_type("Tarav.Context.StoredVector")
         is StoredVectorContext
     )
-    assert entity(SubjectContextRoot).workflow == runtime.contexts.id
-    assert entity(ContextEntry).workflow == runtime.contexts.id
+    assert entity(SubjectContextRoot).workflow_ship == runtime.workflows.get("context")().id
+    assert entity(ContextEntry).workflow_ship == runtime.workflows.get("context")().id
     assert entity(ContextExplorer).name == "Tarav.Context.Explorer"
     assert runtime.records.resolve_type("Tarav.Test.Entity") is TestEntity
     assert runtime.workflows.get("test") is TestWorkflow
-    assert entity(TestEntity).workflow == runtime.workflows.get("test").id
+    assert entity(TestEntity).workflow_ship == runtime.workflows.get("test")().id
 
 
 def test_ship_identity_is_owned_by_kernel_and_only_declared_by_diagram() -> None:

@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 from uuid import uuid4
 
-from tarav.record_archive import ArchiveExplorer, ArchiveFolder, ArchiveList
+from tarav.archive.records import ArchiveExplorer, ArchiveFolder, ArchiveList
 from tarav import ARCHIVE, get_runtime
 from tarav.test_workflow import TestEntity, TestItem, TestWorkflow
 
@@ -42,7 +42,7 @@ def main() -> None:
     print(
         "Run Git policy:",
         ArchiveExplorer(ARCHIVE)
-        .cd(f"{test.id}/{run_name}")
+        .cd(f"{test().id}/{run_name}")
         .current.container.git_settings(),
     )
 
@@ -50,8 +50,8 @@ def main() -> None:
     # neither object needs an Archive navigation API.
     print("\nArchive tree")
     print("root entries:", [entry.name for entry in ARCHIVE.ls()])
-    print("test entry opens:", type(ARCHIVE.get(str(test.id)).open()).__name__)
-    run_cursor = ArchiveExplorer(ARCHIVE).cd(f"{test.id}/{run_name}")
+    print("test entry opens:", type(ARCHIVE.get(str(test().id)).open()).__name__)
+    run_cursor = ArchiveExplorer(ARCHIVE).cd(f"{test().id}/{run_name}")
     print("run path:", run_cursor.pwd())
     print("run entries:", [entry.name for entry in run_cursor.ls()])
     print("named entry opens:", type(run_cursor.get("named").open()).__name__)
@@ -100,7 +100,7 @@ def main() -> None:
     )
     notes = notes_entry.open()
     notes.put("note", TestItem("nested note"))
-    cursor = ArchiveExplorer(ARCHIVE).cd(f"{test.id}/{run_name}/named/queue/1")
+    cursor = ArchiveExplorer(ARCHIVE).cd(f"{test().id}/{run_name}/named/queue/1")
     print("nested path:", cursor.pwd())
     print("nested note:", cursor.get("note").open().label)
 
@@ -114,7 +114,7 @@ def main() -> None:
     class_entity = runtime.context(type(discovered)).open("entity")
     print(
         "Type's owning Workflow:",
-        runtime.workflows.get(class_entity.workflow).workflow_name,
+        runtime.workflows.get(class_entity.workflow_ship).workflow_name,
     )
 
     print("\nInspect these retained files:")

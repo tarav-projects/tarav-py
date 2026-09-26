@@ -1,11 +1,9 @@
 import pytest
 
-from tarav.kernel import (
-    ContextEntry, ContextExplorer, ContextFolder, ContextObject, ContextType,
-    TaravObject, entity,
-)
-from tarav.kernel.context import CONTEXT_WORKFLOW_SHIP
-from tarav.record_archive import (
+from tarav.kernel import TaravObject, entity
+from tarav.context import ContextEntry, ContextExplorer, ContextFolder, ContextObject, ContextType
+from tarav.context import CONTEXT_WORKFLOW_SHIP
+from tarav.archive.records import (
     ArchiveEntry, ArchiveExplorer, ArchiveFolder, ArchiveObject, ArchiveRoot, ArchiveType,
 )
 from tarav.explorer_testing import navigation_state
@@ -17,8 +15,8 @@ def test_family_membership_and_ownership():
     assert issubclass(ArchiveRoot, ArchiveObject)
     assert issubclass(ContextExplorer, ContextType)
     assert issubclass(ContextFolder, ContextObject)
-    assert entity(ContextFolder).workflow == CONTEXT_WORKFLOW_SHIP
-    assert entity(ContextExplorer).workflow == CONTEXT_WORKFLOW_SHIP
+    assert entity(ContextFolder).workflow_ship == CONTEXT_WORKFLOW_SHIP
+    assert entity(ContextExplorer).workflow_ship == CONTEXT_WORKFLOW_SHIP
 
 
 def test_leaf_roots_are_members_but_not_containers():

@@ -16,7 +16,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from tarav._core.persistence import atomic_write_json
 from tarav.kernel import Ship
-from tarav.record_archive import ArchiveEntry
+from tarav.archive.records import ArchiveEntry
 
 
 OLD_INDEX_FILENAME = "entries.before-entry-records.json"

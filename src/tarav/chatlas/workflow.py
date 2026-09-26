@@ -25,6 +25,10 @@ class ChatlasWorkflow(TaravWorkflow):
             name='Tarav.Workflow.Chatlas',
             workflow=CHATLAS_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _workflow_id(cls):
+        return CHATLAS_WORKFLOW_SHIP
     workflow_name = "chatlas"
     constitution = (
         "Retain provider-native chats and expose a provider-neutral Normal Model "
