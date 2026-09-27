@@ -2,8 +2,9 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Phase: Design. Alignment.Mode: Interactive.
-Status: ready for review; no product implementation authorized by this phase.
+Knowledge.Surface: wiki. Phase: Develop. Alignment.Mode: Interactive.
+Status: first implementation verified; subsequent semantic clarification
+captured below. Implementation alignment with that clarification remains pending.
 
 Introduce LoadingWorkflow and an opt-in LoadingProfile interface for caller-
 selected Record discovery configuration. Types may implement it; ordinary
@@ -56,6 +57,30 @@ continues to require exact identity of the resolved Python class.
 
 ## Selection semantics
 
+### Clarification after implementation review
+
+The user clarified that `load(path=path, profile=TaravProject)` is a general
+Record-loading operation. `path` is the location of the Record being loaded,
+not a project-root argument. LoadingProfile is an interface owned by
+LoadingWorkflow; TaravProject hooks into it as a configuration provider.
+The loading process applies that configuration using Record-loading semantics.
+It has no knowledge of Projects, project roots, or the meaning of `.tarav`.
+
+Project discovery and interpretation of a loaded Record's location belong to
+Project code. The project root is the parent of its `.tarav` metadata folder;
+its Record is `.tarav/project.json`. Neither convention becomes special logic
+in the generic loader. `Project.from_path()` remains a distinct discovery API.
+
+This supersedes the earlier explanation that the loader supports three
+Project-specific entry modes (project root, metadata folder, and marker file),
+and the inference that finding `project.json` establishes a new project layout.
+A configuration may supply relative candidate paths, but those are interpreted
+by the general loading contract, not as Project discovery modes. The exact
+Project profile candidate list needs review against this distinction; this
+clarification does not prescribe a replacement list or change product code.
+
+The generic selection rules below remain independent of Project conventions.
+
 - No profile: preserve existing default entry ordering and DirectoryRecord
   behavior exactly.
 - Explicit file: read that file; do not search sibling candidates.
@@ -75,25 +100,27 @@ continues to require exact identity of the resolved Python class.
   profile selection never rewrites its Type or executes code from its folder.
 - Attach the actual selected file as source after successful construction.
 
-TaravProject opts in with (.tarav/project.json, project.json). These describe
-project-root and metadata-folder loading. The existing from_path upward search
-remains separate and unchanged in this slice; dynamic load preserves the
-Record-declared class instead of selecting cls.
+The first implementation configured TaravProject with
+(.tarav/project.json, project.json) and broadened its root inference to two
+layouts. Those implementation facts are not the clarified contract and need
+alignment review. Dynamic loading still preserves the Record-declared class;
+it does not select the profile provider as the concrete Type.
 
 ## Execution.Plan
 
-1. Add tarav.loading with LoadingWorkflow, LoadingProfile, bounded entry
-   selection, and one engine accepting an explicit trusted registry internally.
-   Public load uses the current runtime. Keep kernel imports acyclic: isolate
-   profile/selection foundations from runtime convenience composition, and
-   update architecture tests at module granularity if necessary.
-2. Move loader orchestration out of Kernel into the loading foundation and
-   route TypeRegistry.load, runtime.load_object, and public load_object through
-   it. Preserve existing callers and default behavior; inspect entry_file and
-   private loader consumers before relocating helpers. Kernel must not import
-   runtime or project domains.
+1. Add tarav.loading with LoadingWorkflow, LoadingProfile, and the public load
+   facade. Public load uses the current runtime. Profile selection yields an
+   ordered path tuple at the runtime boundary; Kernel never imports the
+   workflow or runtime.
+2. Keep one generic loading engine in Kernel. Extend its entry selection with
+   optional candidate paths, and route TypeRegistry.load, runtime.load_object,
+   public load_object, and public load through it. Preserve existing entry_file
+   consumers and default behavior. Kernel validates candidate path safety and
+   selected-file behavior; it never imports project domains.
 3. Register LoadingWorkflow; declare ontology identity for any new TaravTypes.
    Mix the opt-in profile into TaravProject without adding it to TaravObject.
+   Keep Project location interpretation outside generic loading. Review the
+   first implementation's two-layout root inference against the clarification.
 4. Add tests using explicitly typed temporary Project markers. Verify profile
    independence, selection order, errors, no side effects, trusted dispatch,
    source attachment, and expected_type exactness. Run focused loader,
@@ -123,8 +150,10 @@ Record-declared class instead of selecting cls.
 - A non-Project test Type implements LoadingProfile successfully.
 - An ordinary TaravObject requires no profile method.
 - Profile methods cannot bypass registry trust or exact expected_type checks.
-- Project root, .tarav folder, and explicit project.json resolve the same typed
-  Project; a missing marker never selects the parent project.
+- Profile paths are interpreted by the same generic rules for Project and
+  non-Project providers, with no special Project entry modes or ancestor search.
+- Project discovery and root interpretation are tested separately from loading;
+  loading a candidate does not itself establish another supported Project layout.
 - Custom Project Type is instantiated through its registered Record identity.
 - Default directory loading retains its existing DirectoryRecord checks.
 - Different candidates obey explicit precedence; selected bad data fails.
@@ -132,10 +161,23 @@ Record-declared class instead of selecting cls.
 
 ## Impl.Log
 
-Design only. Profile argument does not claim family filtering. Proposed
-profile-directory semantics resolve a real incompatibility with today's
-DirectoryRecord guard without reclassifying all Project objects as directories.
-No product edits, product checkpoint, or retained-data migration performed.
-Wiki capture completed in loading.md and daily/2026-09-27.md. Both
-Breadcrumb audits passed; shifted older daily-note positions were explicitly
-observed without changing their attachments. Wiki-only closure completed.
+The implementation results below describe the first implementation, before the
+subsequent user clarification. Passing tests do not establish alignment with
+the revised semantic boundary. This update changes the note only.
+
+Profile selection remains independent of Type dispatch and expected_type.
+The Kernel retains one loader engine; the Loading workflow supplies optional
+entry paths through the runtime. Default loading retains its DirectoryRecord
+guard. TaravProject supplies both marker paths and computes its root from
+either layout. No retained-data migration was performed.
+
+The pre-execution product checkpoint was cfaddda. The implementation added
+LoadingWorkflow, LoadingProfile, tarav.loading.load, profile arguments on
+load_object, and focused behavioral and architecture tests. A Context test
+exposed an existing wrapper around TypeRegistry.load; unprofiled runtime calls
+retain the old call shape. Full pytest: 1,358 passed. Ruff: clean. Existing
+typed Project markers were tested with temporary files; untyped markers still
+need the separate authorized migration slice.
+Wiki capture updated loading.md and daily/2026-09-27.md with exact User-Turn
+Breadcrumbs; both audits passed after shifted older positions were observed.
+Wiki-only closure: b67dc3c.

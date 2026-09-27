@@ -11,6 +11,7 @@ from tarav.kernel.records import configure_workflow_resolver
 
 if TYPE_CHECKING:
     from tarav.kernel import TaravObject
+    from tarav.loading import LoadingProfile
     from tarav.runtime import TaravRuntime
 
 
@@ -35,23 +36,32 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 
 @overload
-def load_object(path: str | Path, *, expected_type: type[ObjectT]) -> ObjectT: ...
+def load_object(
+    path: str | Path, *, profile: type[LoadingProfile] | None = None,
+    expected_type: type[ObjectT],
+) -> ObjectT: ...
 
 
 @overload
-def load_object(path: str | Path, *, expected_type: None = None) -> TaravObject: ...
+def load_object(
+    path: str | Path, *, profile: type[LoadingProfile] | None = None,
+    expected_type: None = None,
+) -> TaravObject: ...
 
 
 def load_object(
     path: str | Path,
     *,
+    profile: type[LoadingProfile] | None = None,
     expected_type: type[TaravObject] | None = None,
 ) -> TaravObject:
     """Load one object through Tarav's default composed runtime."""
 
     from tarav.runtime import get_runtime
 
-    return get_runtime().load_object(path, expected_type=expected_type)
+    return get_runtime().load_object(
+        path, profile=profile, expected_type=expected_type
+    )
 
 
 def get_runtime() -> TaravRuntime:

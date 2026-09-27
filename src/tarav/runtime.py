@@ -32,6 +32,7 @@ from tarav.context.storage import CONTEXT_RECORD_TYPES, ContextService
 from tarav.context.workflow import ContextWorkflow
 from tarav.kernel.space import FilesystemProvider
 from tarav.kernel.workflows import TaravWorkflow, WorkflowRegistry
+from tarav.loading import LoadingProfile, profile_paths
 from tarav.navigation import Navigation, NavigationService
 from tarav.references.workflow import ReferenceWorkflow, ReferenceService
 from tarav.breadcrumbs.workflow import BreadcrumbService
@@ -84,23 +85,30 @@ class TaravRuntime:
 
     @overload
     def load_object(
-        self, path: str | Path, *, expected_type: type[ObjectT]
+        self, path: str | Path, *, profile: type[LoadingProfile] | None = None,
+        expected_type: type[ObjectT]
     ) -> ObjectT: ...
 
     @overload
     def load_object(
-        self, path: str | Path, *, expected_type: None = None
+        self, path: str | Path, *, profile: type[LoadingProfile] | None = None,
+        expected_type: None = None
     ) -> TaravObject: ...
 
     def load_object(
         self,
         path: str | Path,
         *,
+        profile: type[LoadingProfile] | None = None,
         expected_type: type[TaravObject] | None = None,
     ) -> TaravObject:
         """Load one path through trusted Type dispatch and an optional check."""
 
-        return self.records.load(path, expected_type=expected_type)
+        if profile is None:
+            return self.records.load(path, expected_type=expected_type)
+        return self.records.load(
+            path, expected_type=expected_type, entry_paths=profile_paths(profile)
+        )
 
     def context(self, subject: ContextSubject | ContextEntry) -> ContextExplorer:
         """Compose runtime and retained entries into one read-only view."""
@@ -228,6 +236,7 @@ def create_runtime(
     from tarav.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.lines.workflow import LinesWorkflow
+    from tarav.loading import LoadingWorkflow
     from tarav.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.models import ModelsWorkflow
     from tarav.project import Project, ProjectWorkflow, TaravProject
@@ -310,6 +319,7 @@ def create_runtime(
         TaravWorkflow,
         KernelWorkflow,
         TypeWorkflow,
+        LoadingWorkflow,
         ContextWorkflow,
         ChatlasWorkflow,
         ReferenceWorkflow,

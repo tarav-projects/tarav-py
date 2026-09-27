@@ -598,15 +598,30 @@ class DirectoryRecord(TaravObject):
         return self.source.parent
 
 
-def entry_file(path: str | Path) -> Path:
+def entry_file(
+    path: str | Path, *, candidates: tuple[str, ...] | None = None
+) -> Path:
     """Select one entry without opening payload files or searching recursively."""
     source = Path(path).expanduser().absolute()
+    if candidates is not None:
+        if not isinstance(candidates, tuple):
+            raise TypeError("Record entry paths must be a tuple")
+        for name in candidates:
+            if (
+                not isinstance(name, str)
+                or not name
+                or Path(name).is_absolute()
+                or any(part == ".." for part in Path(name).parts)
+                or Path(name) == Path(".")
+            ):
+                raise ValueError(f"Invalid relative Record entry path: {name!r}")
     if source.is_dir():
-        for name in DIRECTORY_ENTRY_PATH:
+        for name in DIRECTORY_ENTRY_PATH if candidates is None else candidates:
             candidate = source / name
             if candidate.exists() or candidate.is_symlink():
                 return candidate
-        raise FileNotFoundError(f"No Record entry in {source}: {DIRECTORY_ENTRY_PATH}")
+        paths = DIRECTORY_ENTRY_PATH if candidates is None else candidates
+        raise FileNotFoundError(f"No Record entry in {source}: {paths}")
     return source
 
 
@@ -618,8 +633,9 @@ def _load_record(
     *,
     registry: TypeRegistry[RecordT],
     expected_type: type[RecordT] | None = None,
+    entry_paths: tuple[str, ...] | None = None,
 ) -> RecordT:
-    source = entry_file(path)
+    source = entry_file(path, candidates=entry_paths)
     with source.open(encoding="utf-8") as stream:
         payload = _json_load_record(stream)
     authority = registry.resolve(payload)
@@ -633,7 +649,11 @@ def _load_record(
                 f"Record resolves to {authority.__name__}, expected exact Type "
                 f"{expected_type.__name__}"
             )
-    if Path(path).expanduser().is_dir() and not issubclass(authority, DirectoryRecord):
+    if (
+        entry_paths is None
+        and Path(path).expanduser().is_dir()
+        and not issubclass(authority, DirectoryRecord)
+    ):
         raise RecordTypeMismatch(f"{source} does not declare a DirectoryRecord")
     result = registry._construct(payload, authority)
     result.source = source

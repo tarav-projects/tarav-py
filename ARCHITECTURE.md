@@ -142,6 +142,14 @@ construction, and invokes that class's `from_record()` boundary. The expected
 Type never selects a different implementation. Callers use Python inheritance
 on the loaded object when they need parent behavior.
 
+`tarav.loading.load(path=..., profile=...)` is a caller-selected discovery
+facade over that same loading engine. A `LoadingProfile` class supplies an
+ordered set of relative entry paths for a directory; it does not select the
+Record Type or constrain its family. Without a profile, the existing default
+entries and `DirectoryRecord` guard apply. An explicit file bypasses entry
+search. Selection remains in the Kernel engine; the Loading workflow and
+runtime supply configuration without reversing Kernel dependencies.
+
 `tarav.get_runtime()` returns the lazy process-wide current runtime;
 `tarav.set_runtime(runtime)` selects a separately composed runtime. Library
 conveniences and Record Archive operations use this current runtime, so callers

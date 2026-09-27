@@ -24,6 +24,18 @@ def test_project_ownership_and_consumer_direction():
     assert not any(name.startswith("project") for name in graph["models.model"])
 
 
+def test_loading_workflow_configures_kernel_without_reverse_imports():
+    from tarav.loading import LoadingProfile, LoadingWorkflow
+    from tarav.project import TaravProject
+    from tarav.runtime import create_runtime
+
+    graph = _top_level_import_graph()
+    assert create_runtime().workflows.get("loading") is LoadingWorkflow
+    assert issubclass(TaravProject, LoadingProfile)
+    assert not any(name.startswith("loading") for name in graph["kernel.records"])
+    assert not any(name.startswith("loading") for name in graph["kernel.types"])
+
+
 def test_poi_workflow_ownership_and_runtime_composition():
     from tarav.poi import POI_RECORD_TYPES, POIWorkflow
     from tarav.runtime import create_runtime

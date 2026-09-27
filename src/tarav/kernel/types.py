@@ -189,10 +189,13 @@ class TypeRegistry(Generic[RecordTypeT]):
         path: str | Path,
         *,
         expected_type: type[RecordTypeT] | None = None,
+        entry_paths: tuple[str, ...] | None = None,
     ) -> RecordTypeT:
         from .records import _load_record
 
-        return _load_record(path, registry=self, expected_type=expected_type)
+        return _load_record(
+            path, registry=self, expected_type=expected_type, entry_paths=entry_paths
+        )
 
     def register(self, record_type: type[RecordTypeT]) -> None:
         if not issubclass(record_type, self._base_type):

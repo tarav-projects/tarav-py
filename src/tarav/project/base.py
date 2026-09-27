@@ -7,11 +7,16 @@ from pydantic import Field
 
 from tarav._core.project import project_marker_name, require_agentos_project
 from tarav.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
+from tarav.loading import LoadingProfile
 
 from .workflow import PROJECT_WORKFLOW_SHIP
 
 
-class TaravProject(TaravEntity):
+class TaravProject(TaravEntity, LoadingProfile):
+    @classmethod
+    def loading_paths(cls) -> tuple[str, ...]:
+        return (".tarav/project.json", "project.json")
+
     @classmethod
     def class_entity(cls):
         return TaravClass(
@@ -48,7 +53,11 @@ class TaravProject(TaravEntity):
     def root(self) -> Path:
         if self.source is None:
             raise ValueError("Detached Project has no filesystem location; use from_path()")
-        return self.source.parent.parent
+        return (
+            self.source.parent.parent
+            if self.source.parent.name == ".tarav"
+            else self.source.parent
+        )
 
     @property
     def name(self) -> str:
@@ -70,4 +79,3 @@ class TaravProject(TaravEntity):
             "class": "agentos.project",
             "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
         }
-
