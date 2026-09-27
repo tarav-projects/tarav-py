@@ -6,7 +6,7 @@ import runpy
 from pathlib import Path
 
 from tarav import get_runtime, set_runtime
-from tarav.archive.records import ArchiveRoot
+from tarav.l1.archive.records import ArchiveRoot
 from tarav.runtime import create_runtime
 
 run_example = runpy.run_path(

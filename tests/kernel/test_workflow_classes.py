@@ -5,8 +5,8 @@ from tarav.runtime import create_runtime
 
 
 def test_workflow_containment_returns_objects_and_terminates_at_root(tmp_path):
-    from tarav.archive.workflow import ArchiveWorkflow
-    from tarav.archive.records import ArchiveFolder, ArchivePartition, RecordArchiveWorkflow
+    from tarav.l1.archive.workflow import ArchiveWorkflow
+    from tarav.l1.archive.records import ArchiveFolder, ArchivePartition, RecordArchiveWorkflow
     from tarav.l0.kernel import TaravClass
 
     root = TaravWorkflow()

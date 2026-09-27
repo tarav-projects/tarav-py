@@ -3,8 +3,8 @@
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Phase: Execute. Alignment.Mode: Interactive.
-Status: foundation slice implemented and verified; later layer assignments
-remain proposals to validate against module dependencies.
+Status: l0 foundation and l1 Context, Loading, Project, and Archive placement
+implemented; runtime-composition edges remain for later classification.
 
 Introduce explicit dependency levels across Tarav namespaces. A namespace can
 appear at several levels; level N may import its own and lower levels, not
@@ -147,10 +147,10 @@ are composition entry points, not low-level imports.
   exact affected stores and request scope before rewriting external retained
   data. Keep historical Chatlas/Attic evidence unchanged. No runtime repair.
 
-Only the foundation slice is sufficiently bounded for immediate Execute;
-later slices require refreshing their exact map. If a first-slice dependency
-requires a material behavior redesign, return to alignment rather than pull
-all domains into the change.
+The l0 foundation and requested l1 namespace placement have been executed.
+Later dependency splits require refreshing their exact map. If a slice requires
+a material behavior redesign, return to alignment rather than pull all domains
+into the change.
 
 ## Verification and acceptance
 
@@ -202,3 +202,19 @@ all domains into the change.
 - Wiki capture added a bounded implementation edition to diagram-workflows.md
   and the daily note. Both Chatlas-context Breadcrumb audits passed; Wiki-only
   closure is `2fad1f8`.
+- On the next Execute pass, checkpointed the verified l0 state as `9059408`.
+  Moved the complete Context, Loading, Project, and Archive package namespaces
+  to `tarav.l1`, updated maintained imports, architecture checks, dev examples,
+  and guidance. No old-path compatibility packages were added; Record labels,
+  Ships, and archive disk layouts stayed unchanged. This is physical namespace
+  placement, not a claim that their runtime-backed operations are already
+  dependency-clean l1 primitives. Context storage, Loading's facade, and Record
+  Archive reads still reach runtime composition and need a later l2 split or
+  narrower service boundary.
+- Verification for this placement: 102 focused tests and 1,359 full-suite tests
+  passed; the new l1 import-order test passed separately; Ruff and
+  `git diff --check` passed. The editable CLI was reinstalled, and version/help
+  smoke checks passed. No retained data was rewritten.
+- Wiki capture added the l1 placement to `diagram-workflows.md` and the daily
+  note. Both Chatlas-context Breadcrumb audits passed with no findings; the
+  scoped Wiki closure commit is `7967025`.

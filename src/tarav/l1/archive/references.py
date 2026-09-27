@@ -13,7 +13,7 @@ from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.l0.kernel.records import _json_object
 from tarav.references import Reference, ReferenceResult
 from tarav.references.git import git_bytes, git_text
-from tarav.archive.identity import ARCHIVE_WORKFLOW_SHIP
+from tarav.l1.archive.identity import ARCHIVE_WORKFLOW_SHIP
 from collections.abc import Mapping
 from . import default_archive_root
 

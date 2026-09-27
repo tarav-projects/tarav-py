@@ -5,10 +5,10 @@ import json
 import pytest
 
 from tarav import load_object
-from tarav.archive import Archive
+from tarav.l1.archive import Archive
 from tarav.chatlas.workflow import ChatlasWorkflow
 from tarav.l0.kernel import DirectoryRecord, FileRecord, KERNEL_WORKFLOW_SHIP, RecordTypeMismatch, TARAV, KernelWorkflow
-from tarav.context import explore as context
+from tarav.l1.context import explore as context
 from tarav.references import FileReference
 from tarav.runtime import create_runtime
 
@@ -155,7 +155,7 @@ def test_reference_classes_respect_structural_type_authority(tmp_path):
 
 
 def test_archive_reference_requires_exact_doi(tmp_path):
-    from tarav.archive.references import ArchiveReference
+    from tarav.l1.archive.references import ArchiveReference
 
     archive = Archive.create(tmp_path / "archive")
     artifact = archive.register_artifact(locator=str(tmp_path / "data"), name="example")

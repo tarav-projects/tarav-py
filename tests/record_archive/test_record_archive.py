@@ -16,7 +16,7 @@ from tarav.l0.kernel import (
     TypeShip,
     UnknownRecordType,
 )
-from tarav.archive.records import (
+from tarav.l1.archive.records import (
     ArchiveEntry,
     ArchiveExplorer,
     ArchiveFolder,

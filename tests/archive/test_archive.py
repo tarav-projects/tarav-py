@@ -9,8 +9,8 @@ import subprocess
 
 import pytest
 
-from tarav import archive as archive_module
-from tarav.archive import (
+from tarav.l1 import archive as archive_module
+from tarav.l1.archive import (
     AmbiguousArtifactError,
     Archive,
     ArchiveWarning,
@@ -524,7 +524,7 @@ def test_repository_reference_is_flat_cheap_and_does_not_mutate_records(
     reference = archive.reference_repository(str(source))
     remote_reference = archive.reference_repository(remote)
 
-    from tarav.archive.references import ArchiveReference
+    from tarav.l1.archive.references import ArchiveReference
 
     assert reference["locator"]["doi"] == repository.id
     assert reference["check"] == {"contains_commit": first_commit}
@@ -548,7 +548,7 @@ def test_git_file_reference_materializes_one_exact_version(tmp_path: Path) -> No
         locator="nested/tracked.txt",
     )
 
-    from tarav.archive.references import ArchiveReference
+    from tarav.l1.archive.references import ArchiveReference
 
     assert reference["locator"]["doi"] == derive_git_artifact_id(
             repository_id=repository.id,
@@ -573,7 +573,7 @@ def test_repoless_file_reference_tracks_exact_versions_and_reuses_unchanged_byte
     repeated = archive.reference_file(str(source))
 
     assert repeated == first
-    from tarav.archive.references import ArchiveReference
+    from tarav.l1.archive.references import ArchiveReference
 
     assert first["check"] == {"sha256": hashlib.sha256(b"first\n").hexdigest()}
     assert ArchiveReference(first).resolve().ok

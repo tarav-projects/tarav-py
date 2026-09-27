@@ -14,8 +14,8 @@ from collections.abc import Mapping
 from pathlib import Path
 import subprocess
 
-from tarav.archive import Archive
-from tarav.archive.artifact_records import ArchiveRecord, ArtifactRecord, record_registry
+from tarav.l1.archive import Archive
+from tarav.l1.archive.artifact_records import ArchiveRecord, ArtifactRecord, record_registry
 
 
 def _git(records: Path, *args: str) -> str:

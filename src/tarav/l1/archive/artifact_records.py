@@ -8,7 +8,7 @@ from tarav.l0.kernel import (
     TypeRegistry,
     TypeShip,
 )
-from tarav.archive.identity import ARCHIVE_WORKFLOW_SHIP
+from tarav.l1.archive.identity import ARCHIVE_WORKFLOW_SHIP
 
 
 class ArchiveRecord(DirectoryRecord):

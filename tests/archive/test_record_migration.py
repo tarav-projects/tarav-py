@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from tarav.archive import Archive
+from tarav.l1.archive import Archive
 
 
 def git(root, *args):

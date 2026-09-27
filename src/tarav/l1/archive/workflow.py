@@ -5,7 +5,7 @@ from pathlib import Path
 from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TypeShip
 from tarav.l0.kernel.workflows import TaravWorkflow
-from tarav.archive.identity import ARCHIVE_WORKFLOW_SHIP
+from tarav.l1.archive.identity import ARCHIVE_WORKFLOW_SHIP
 from tarav.l0.kernel.space import Entry, FilesystemProvider
 
 from . import Archive

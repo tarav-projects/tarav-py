@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 
 from tarav import get_runtime, set_runtime
-from tarav.context import context
-from tarav.context.storage import StoredDictionaryContext, SubjectContextRoot
+from tarav.l1.context import context
+from tarav.l1.context.storage import StoredDictionaryContext, SubjectContextRoot
 from tarav.l0.kernel import RecordTypeMismatch, TaravObject
-from tarav.context import Context, ContextEntry, ContextExplorer, ContextFolder, ContextList
-from tarav.archive.records import (
+from tarav.l1.context import Context, ContextEntry, ContextExplorer, ContextFolder, ContextList
+from tarav.l1.archive.records import (
     ArchiveEntry,
     ArchiveExplorer,
     ArchiveFolder,

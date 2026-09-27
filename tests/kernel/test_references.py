@@ -5,7 +5,7 @@ import hashlib
 import pytest
 from pydantic import ValidationError
 
-from tarav.archive.references import (
+from tarav.l1.archive.references import (
     ArchiveContainsCommitCheck,
     ArchiveGitOidCheck,
     ArchiveLocator,

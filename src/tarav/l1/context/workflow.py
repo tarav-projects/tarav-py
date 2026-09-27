@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tarav.context import ContextType, CONTEXT_WORKFLOW_SHIP
+from tarav.l1.context import ContextType, CONTEXT_WORKFLOW_SHIP
 from tarav.l0.kernel import TaravClass, TaravObject, TypeRegistry, TypeShip, TaravWorkflow
 
 if TYPE_CHECKING:

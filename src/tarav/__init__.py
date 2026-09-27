@@ -10,7 +10,7 @@ from tarav.l0.kernel.records import configure_workflow_resolver
 
 if TYPE_CHECKING:
     from tarav.l0.kernel import TaravObject
-    from tarav.loading import LoadingProfile
+    from tarav.l1.loading import LoadingProfile
     from tarav.runtime import TaravRuntime
 
 
@@ -38,7 +38,7 @@ def __getattr__(name: str) -> object:
     """Keep root conveniences without initializing workflows on import."""
 
     if name == "ARCHIVE":
-        from tarav.archive.records import ARCHIVE
+        from tarav.l1.archive.records import ARCHIVE
 
         return ARCHIVE
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

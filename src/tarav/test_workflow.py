@@ -10,8 +10,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from tarav.context.storage import ContextService
-from tarav.context import ContextBuilder
+from tarav.l1.context.storage import ContextService
+from tarav.l1.context import ContextBuilder
 from tarav.l0.kernel.identity import Ship, TypeShip, WorkflowShip
 from tarav.l0.kernel.records import (
     FileRecord,
@@ -20,7 +20,7 @@ from tarav.l0.kernel.records import (
     entity,
 )
 from tarav.l0.kernel.workflows import TaravWorkflow
-from tarav.archive.records import (
+from tarav.l1.archive.records import (
     ArchiveEntry,
     ArchivePartition,
     ArchiveFolder,

@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from tarav.archive import Archive, ArchiveError
+from tarav.l1.archive import Archive, ArchiveError
 
 
 def git(root: Path, *args: str) -> str:

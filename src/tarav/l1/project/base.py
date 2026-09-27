@@ -7,7 +7,7 @@ from pydantic import Field
 
 from tarav.l0._core.project import project_marker_name, require_agentos_project
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
-from tarav.loading import LoadingProfile
+from tarav.l1.loading import LoadingProfile
 
 from .workflow import PROJECT_WORKFLOW_SHIP
 

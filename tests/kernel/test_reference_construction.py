@@ -5,8 +5,8 @@ import subprocess
 
 from tarav.references import FileReference
 from tarav.references.git import GitFileReference
-from tarav.archive import Archive
-from tarav.archive.references import ArchiveReference, reference_record
+from tarav.l1.archive import Archive
+from tarav.l1.archive.references import ArchiveReference, reference_record
 from tarav.runtime import create_runtime
 
 
@@ -39,7 +39,7 @@ def test_reference_producers_omit_absent_optional_fields(tmp_path):
 
 
 def test_archive_default_is_retained_and_not_reselected(tmp_path, monkeypatch):
-    import tarav.archive.references as references
+    import tarav.l1.archive.references as references
 
     archive = Archive.create(tmp_path / "archive")
     target = tmp_path / "file"

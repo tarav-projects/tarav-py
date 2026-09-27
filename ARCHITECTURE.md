@@ -106,7 +106,7 @@ The registries keep mechanics separate from semantics:
 - Runtime composition verifies that every registered Type's Workflow Ship
   resolves to a registered Workflow.
 
-`from tarav.context import context` exposes the core navigation operation. It invokes
+`from tarav.l1.context import context` exposes the core navigation operation. It invokes
 `class_context()` for a Type and `obj_context()` for an Object, then mounts
 Archive-backed entries for identified subjects. It returns a
 `ContextExplorer`: a stateful explorer with history across nested folders and
@@ -142,7 +142,7 @@ construction, and invokes that class's `from_record()` boundary. The expected
 Type never selects a different implementation. Callers use Python inheritance
 on the loaded object when they need parent behavior.
 
-`tarav.loading.load(path=..., profile=...)` is a caller-selected discovery
+`tarav.l1.loading.load(path=..., profile=...)` is a caller-selected discovery
 facade over that same loading engine. A `LoadingProfile` class supplies an
 ordered set of relative entry paths for a directory; it does not select the
 Record Type or constrain its family. Without a profile, the existing default
@@ -209,9 +209,9 @@ adapters (`tarav.cli`, `tarav.daemon`)
 ```
 
 This is a dependency direction, not a requirement that every module pass
-through every layer. `l0` is the first physical layer. Later domain slices
-may introduce `l1` and `l2`; present domain package paths remain in place
-until they are classified and moved. A semantic workflow namespace can span
+through every layer. `l0` contains the foundation; `l1` now contains Context,
+Loading, Project, and Archive. Other domain paths remain in place until their
+own classification. A semantic workflow namespace can span
 levels; levels do not establish Workflow parentage.
 
 - `tarav.l0._core` is the moved private utility package. It currently includes
@@ -222,19 +222,22 @@ levels; levels do not establish Workflow parentage.
   Entities, Ships, class-owned Record interfaces, Explorer contracts,
   Record-space contracts, and trusted Type and Workflow registries. Kernel
   imports no application domain.
-- `tarav.context` owns Context types, navigation, and class-bases presentation.
+- `tarav.l1.context` owns Context types, navigation, and class-bases presentation.
   Its `explore()` primitive accepts explicit contributors without loading storage;
   its `context()` helper selects the current runtime. `context.storage` composes
   Archive-backed entries, while `context.workflow` declares the workflow.
   Kernel retains extensible context hooks with opaque builder arguments,
-  not Context imports or re-exports. The `tarav.context` root attribute
-  is now the package, not a callable helper.
+  not Context imports or re-exports. Runtime-backed Context storage remains
+  a composition edge to split out in a later slice.
 - Domain packages own their vocabulary, Records, storage, validation, and
   operations. Cross-domain imports remain acyclic.
-- `tarav.archive.records` implements Record Archive, nested beneath its parent
+- `tarav.l1.archive.records` implements Record Archive, nested beneath its parent
   Archive workflow. Artifact-registration Record definitions live separately in
-  `tarav.archive.artifact_records`; Archive's parent implementation does not
+  `tarav.l1.archive.artifact_records`; Archive's parent implementation does not
   import its Record Archive child.
+- `tarav.l1.loading` owns profile discovery and the runtime-backed load facade;
+  `tarav.l1.project` owns minimal and featured Projects. Runtime-backed loading
+  and Archive operations remain explicit transitional composition edges.
 - Integration bundles compose independent domains without making either one
   depend on the other.
 - `tarav.runtime.create_runtime()` is the composition root. It selects and

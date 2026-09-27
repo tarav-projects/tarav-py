@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 from uuid import uuid4
 
-from tarav.archive.records import ArchiveExplorer, ArchiveFolder, ArchiveList
+from tarav.l1.archive.records import ArchiveExplorer, ArchiveFolder, ArchiveList
 from tarav import ARCHIVE, get_runtime
 from tarav.test_workflow import TestEntity, TestItem, TestWorkflow
 

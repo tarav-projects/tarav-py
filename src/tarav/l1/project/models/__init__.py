@@ -1,8 +1,8 @@
 """Project associations to Models, separate from both domain cores."""
 
 from tarav.l0.kernel import TaravClass, TaravType, TaravWorkflow, TypeShip, WorkflowShip
-from tarav.project.base import TaravProject
-from tarav.project.workflow import ProjectWorkflow
+from tarav.l1.project.base import TaravProject
+from tarav.l1.project.workflow import ProjectWorkflow
 
 PROJECT_MODELS_WORKFLOW_SHIP = WorkflowShip("a195af42-7509-4939-aa6c-90f73c241eb5")
 

@@ -31,19 +31,20 @@
   Archive uses it at Record write/load boundaries; custom runtimes must be
   selected with `tarav.set_runtime()` before such operations.
 - Keep subsystem imports acyclic outside runtime composition.
-- Record Archive lives in `tarav.archive.records`, matching its Archive parent.
-  Artifact-registration Record types live in `tarav.archive.artifact_records`.
+- Record Archive lives in `tarav.l1.archive.records`, matching its Archive parent.
+  Artifact-registration Record types live in `tarav.l1.archive.artifact_records`.
 - Import Context types and the runtime-aware `context()` helper from
-  `tarav.context`, not Kernel or the library root. Context storage is a separate
+  `tarav.l1.context`, not Kernel or the library root. Context storage is a separate
   composition layer; Kernel's context hooks have no runtime Context dependency.
 - Provider-neutral orchestration belongs in `tarav.agent`; concrete adapters
   belong in `tarav.agent.providers.<provider>`.
 - Shared infrastructure enters `tarav.l0._core` only after multiple consumers have
   demonstrated the same semantics. Callers retain policy, schema validation,
   locking, and error translation.
-- The first dependency-layer slice places shared utilities and Kernel under
-  `tarav.l0`. The root package remains import-light; `ARCHIVE` resolves lazily.
-  Other domains retain their present paths until their own layer slice.
+- Shared utilities and Kernel live under `tarav.l0`; Context, Loading, Project,
+  and Archive now live under `tarav.l1`. The root package remains import-light;
+  `ARCHIVE` resolves lazily. Runtime-backed operations in these l1 domains are
+  transitional composition edges to classify in later slices.
 - Lower-level modules do not import or shell out to the umbrella CLI.
 - Do not add compatibility aliases or fallback paths unless the user explicitly
   requests a migration design.

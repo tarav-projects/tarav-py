@@ -22,17 +22,17 @@ from tarav.l0.kernel import (
     TypeRegistry,
     entity,
 )
-from tarav.context import (
+from tarav.l1.context import (
     ContextEntry,
     ContextExplorer,
     ContextSubject,
     explore as open_context,
 )
-from tarav.context.storage import CONTEXT_RECORD_TYPES, ContextService
-from tarav.context.workflow import ContextWorkflow
+from tarav.l1.context.storage import CONTEXT_RECORD_TYPES, ContextService
+from tarav.l1.context.workflow import ContextWorkflow
 from tarav.l0.kernel.space import FilesystemProvider
 from tarav.l0.kernel.workflows import TaravWorkflow, WorkflowRegistry
-from tarav.loading import LoadingProfile, profile_paths
+from tarav.l1.loading import LoadingProfile, profile_paths
 from tarav.navigation import Navigation, NavigationService
 from tarav.references.workflow import ReferenceWorkflow, ReferenceService
 from tarav.breadcrumbs.workflow import BreadcrumbService
@@ -126,7 +126,7 @@ class TaravRuntime:
         every feature command module.
         """
         from tarav.agent import register_agent_commands
-        from tarav.archive.commands import register_archive_commands
+        from tarav.l1.archive.commands import register_archive_commands
         from tarav.bloberia.commands import register_bloberia_commands
         from tarav.breadcrumbs.commands import register_breadcrumb_commands
         from tarav.chatlas import register_chatlas_commands
@@ -138,7 +138,7 @@ class TaravRuntime:
         from tarav.unsorted.commands import register_diagram_commands
         from tarav.stdlib.mdblocks.commands import register_mdblocks_commands
         from tarav.stdlib.prefix.commands import register_prefix_commands
-        from tarav.project.commands import register_project_commands
+        from tarav.l1.project.commands import register_project_commands
         from tarav.python_env import register_python_commands
         from tarav.reading_club.commands import register_reading_club_commands
         from tarav.scoring.commands import register_scoring_commands
@@ -225,9 +225,9 @@ def create_runtime(
     and `providers` ({name, workflow, root}). Paths are relative to that file.
     `filesystem` providers browse plain local Record collections.
     """
-    from tarav.archive.artifact_records import ARCHIVE_RECORD_TYPES
-    from tarav.archive.references import ArchiveReference
-    from tarav.archive.workflow import ArchiveWorkflow
+    from tarav.l1.archive.artifact_records import ARCHIVE_RECORD_TYPES
+    from tarav.l1.archive.references import ArchiveReference
+    from tarav.l1.archive.workflow import ArchiveWorkflow
     from tarav.breadcrumb_workflows.chatlas_context import CHATLAS_CONTEXT
     from tarav.breadcrumbs.workflow import (
         BREADCRUMB_RECORD_TYPES,
@@ -236,12 +236,12 @@ def create_runtime(
     from tarav.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.lines.workflow import LinesWorkflow
-    from tarav.loading import LoadingWorkflow
+    from tarav.l1.loading import LoadingWorkflow
     from tarav.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.models import ModelsWorkflow
-    from tarav.project import Project, ProjectWorkflow, TaravProject
-    from tarav.project.models import ProjectModelsWorkflow
-    from tarav.project.wiki import ProjectWikiWorkflow
+    from tarav.l1.project import Project, ProjectWorkflow, TaravProject
+    from tarav.l1.project.models import ProjectModelsWorkflow
+    from tarav.l1.project.wiki import ProjectWikiWorkflow
     from tarav.poi import (
         POI_RECORD_TYPES, POIWorkflow, POICollector, BlessingStore,
         BlessingRecord, BlessingAssessmentRecord,
@@ -252,7 +252,7 @@ def create_runtime(
     from tarav.surfaces.python import PythonNormalModel
     from tarav.unsorted.workflow import UnsortedWorkflow
     from tarav.references.workflow import REFERENCE_RECORD_TYPES
-    from tarav.archive.records import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
+    from tarav.l1.archive.records import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
     from tarav.scoring.model import SCORING_RECORD_TYPES
     from tarav.scoring import Assertion, ScoringDetails, ScoringReference
     from tarav.lines.assertions import LineGroundingAssertion

@@ -14,8 +14,8 @@ from tarav.l0.kernel import (
     TypeShip,
     entity,
 )
-from tarav.loading import LoadingProfile, load
-from tarav.project import Project
+from tarav.l1.loading import LoadingProfile, load
+from tarav.l1.project import Project
 from tarav.runtime import create_runtime, get_runtime
 
 
