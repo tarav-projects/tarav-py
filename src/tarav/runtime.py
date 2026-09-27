@@ -50,6 +50,7 @@ if TYPE_CHECKING:
 
     from tarav.breadcrumbs.integrations import BreadcrumbIntegration
     from tarav.scoring.workflow import ScoringWorkflow
+    from tarav.poi import POICollector, BlessingStore
 
 
 HookRegistrar = Callable[[HookRegistry], None]
@@ -70,6 +71,8 @@ class TaravRuntime:
     references: ReferenceService
     breadcrumbs: BreadcrumbService
     breadcrumb_integrations: tuple[BreadcrumbIntegration, ...]
+    pois: POICollector
+    blessings: BlessingStore
 
     @property
     def scoring(self) -> type[ScoringWorkflow]:
@@ -226,6 +229,11 @@ def create_runtime(
     from tarav.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.lines.workflow import LinesWorkflow
     from tarav.wiki import Wiki, WikiNote, WikiWorkflow
+    from tarav.poi import (
+        POI_RECORD_TYPES, POIWorkflow, POICollector, BlessingStore,
+        BlessingRecord, BlessingAssessmentRecord,
+    )
+    from tarav.poi.workflow import POI_WORKFLOW_SHIP
     from tarav.surfaces import SurfacesWorkflow
     from tarav.surfaces.markdown import MarkdownNormalModel
     from tarav.surfaces.python import PythonNormalModel
@@ -267,6 +275,7 @@ def create_runtime(
                 *DIAGRAM_RECORD_TYPES,
                 Wiki,
                 WikiNote,
+                *POI_RECORD_TYPES,
                 MarkdownNormalModel,
                 PythonNormalModel,
                 *SCORING_RECORD_TYPES,
@@ -297,6 +306,7 @@ def create_runtime(
         RecordArchiveWorkflow,
         LinesWorkflow,
         WikiWorkflow,
+        POIWorkflow,
         SurfacesWorkflow,
         UnsortedWorkflow,
         ScoringWorkflow,
@@ -344,6 +354,12 @@ def create_runtime(
         breadcrumbs=breadcrumbs,
         navigation=navigation,
         breadcrumb_integrations=composed_breadcrumb_integrations,
+        pois=POICollector(),
+        blessings=BlessingStore(
+            contexts.archive_root / str(POI_WORKFLOW_SHIP) / 'blessings',
+            record_types=tuple(t for t in registered_types
+                               if issubclass(t, (BlessingRecord, BlessingAssessmentRecord))),
+        ),
     )
 
 

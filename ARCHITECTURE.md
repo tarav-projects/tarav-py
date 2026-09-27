@@ -304,7 +304,7 @@ relationships, storage policies, or interpretation of domain payloads.
 | `lines` | LinesWorkflow owns Line, Block, Model, Collection, edition, and relationship Record types, projections, and rendering. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `scoring` | Assertion evaluation evidence, pools, tasks, runs, results, scores, and traces. |
-| `poi` | Application-defined findings, bounded reports, and recorded assessments or blessings. |
+| `poi` | POIWorkflow owns extensible check declarations, identified findings, typed blessings and assessments. Context exposes checks, coordinates, and evidence. Runtime composition supplies an isolated collector and Archive-partition blessing store; detection and response remain consumer-owned. |
 | `skw` | Typed document compilation, context declarations, generation mechanics, and skill-package specialization. |
 | `surfaces` | SurfacesWorkflow owns MarkdownNormalModel and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. Consumers assign domain meaning. |
 | `wiki` | Folder-based Markdown Wiki and WikiNote objects, project Wiki convention, parsing through surfaces, and Wiki-scoped Git closure. WikiWorkflow exposes the agent capture skill through class help. |

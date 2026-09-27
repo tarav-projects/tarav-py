@@ -11,6 +11,18 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+def test_poi_workflow_ownership_and_runtime_composition():
+    from tarav.poi import POI_RECORD_TYPES, POIWorkflow
+    from tarav.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.workflows.get('poi') is POIWorkflow
+    for record_type in POI_RECORD_TYPES:
+        assert entity(record_type).workflow is POIWorkflow()
+        assert runtime.records.resolve_ship(entity(record_type).id) is record_type
+    assert 'runtime' not in _top_level_import_graph()['poi']
+
+
 def test_wiki_ownership_and_parsing_boundary():
     from tarav.runtime import create_runtime
     from tarav.wiki import Wiki, WikiNote, WikiWorkflow
