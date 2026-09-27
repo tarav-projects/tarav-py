@@ -28,16 +28,16 @@ from tarav.l1.context import (
     ContextSubject,
     explore as open_context,
 )
-from tarav.l1.context.storage import CONTEXT_RECORD_TYPES, ContextService
+from tarav.l2.context.storage import CONTEXT_RECORD_TYPES, ContextService
 from tarav.l1.context.workflow import ContextWorkflow
 from tarav.l0.kernel.space import FilesystemProvider
 from tarav.l0.kernel.workflows import TaravWorkflow, WorkflowRegistry
 from tarav.l1.loading import LoadingProfile, profile_paths
 from tarav.navigation import Navigation, NavigationService
-from tarav.references.workflow import ReferenceWorkflow, ReferenceService
-from tarav.breadcrumbs.workflow import BreadcrumbService
+from tarav.l1.references.workflow import ReferenceWorkflow, ReferenceService
+from tarav.l1.breadcrumbs.workflow import BreadcrumbService
 
-from tarav.chatlas.hook_consumers import register_chatlas_hook_callbacks
+from tarav.l1.chatlas.hook_consumers import register_chatlas_hook_callbacks
 from tarav.agent.providers.claude_code.usage_hooks import (
     register_claude_usage_hook_callbacks,
 )
@@ -49,9 +49,9 @@ from tarav.hooks import HookRegistry, register_hook_sampling_callbacks
 if TYPE_CHECKING:
     import argparse
 
-    from tarav.breadcrumbs.integrations import BreadcrumbIntegration
+    from tarav.l1.breadcrumbs.integrations import BreadcrumbIntegration
     from tarav.scoring.workflow import ScoringWorkflow
-    from tarav.poi import POICollector, BlessingStore
+    from tarav.l1.poi import POICollector, BlessingStore
 
 
 HookRegistrar = Callable[[HookRegistry], None]
@@ -128,8 +128,8 @@ class TaravRuntime:
         from tarav.agent import register_agent_commands
         from tarav.l1.archive.commands import register_archive_commands
         from tarav.bloberia.commands import register_bloberia_commands
-        from tarav.breadcrumbs.commands import register_breadcrumb_commands
-        from tarav.chatlas import register_chatlas_commands
+        from tarav.l1.breadcrumbs.commands import register_breadcrumb_commands
+        from tarav.l1.chatlas import register_chatlas_commands
         from tarav.daemon import register_daemon_commands
         from tarav.daemon.client import submit_hook_invocation
         from tarav.daemon.log import report_hook_delivery_failure
@@ -144,7 +144,7 @@ class TaravRuntime:
         from tarav.scoring.commands import register_scoring_commands
         from tarav.stdlib.refs import register_refs_commands
         from tarav.skills import register_skills_commands
-        from tarav.skw.commands import register_skw_commands
+        from tarav.l1.skw.commands import register_skw_commands
         from tarav.system import register_system_commands
         from tarav.stdlib.utils import register_utils_commands
         from tarav.workspaces.commands import register_workspace_commands
@@ -229,36 +229,36 @@ def create_runtime(
     from tarav.l1.archive.references import ArchiveReference
     from tarav.l1.archive.workflow import ArchiveWorkflow
     from tarav.breadcrumb_workflows.chatlas_context import CHATLAS_CONTEXT
-    from tarav.breadcrumbs.workflow import (
+    from tarav.l1.breadcrumbs.workflow import (
         BREADCRUMB_RECORD_TYPES,
         BreadcrumbWorkflow,
     )
-    from tarav.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
+    from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.lines.workflow import LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
-    from tarav.wiki import Wiki, WikiNote, WikiWorkflow
+    from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.models import ModelsWorkflow
     from tarav.l1.project import Project, ProjectWorkflow, TaravProject
     from tarav.l1.project.models import ProjectModelsWorkflow
     from tarav.l1.project.wiki import ProjectWikiWorkflow
-    from tarav.poi import (
+    from tarav.l1.poi import (
         POI_RECORD_TYPES, POIWorkflow, POICollector, BlessingStore,
         BlessingRecord, BlessingAssessmentRecord,
     )
-    from tarav.poi.workflow import POI_WORKFLOW_SHIP
-    from tarav.surfaces import SurfacesWorkflow
-    from tarav.surfaces.markdown import MarkdownNormalModel
-    from tarav.surfaces.python import PythonNormalModel
+    from tarav.l1.poi.workflow import POI_WORKFLOW_SHIP
+    from tarav.l1.surfaces import SurfacesWorkflow
+    from tarav.l1.surfaces.markdown import MarkdownNormalModel
+    from tarav.l1.surfaces.python import PythonNormalModel
     from tarav.unsorted.workflow import UnsortedWorkflow
-    from tarav.references.workflow import REFERENCE_RECORD_TYPES
+    from tarav.l1.references.workflow import REFERENCE_RECORD_TYPES
     from tarav.l1.archive.records import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
     from tarav.scoring.model import SCORING_RECORD_TYPES
     from tarav.scoring import Assertion, ScoringDetails, ScoringReference
     from tarav.lines.assertions import LineGroundingAssertion
     from tarav.scoring.workflow import ScoringWorkflow
-    from tarav.skw.document import SKILLWARE_RECORD_TYPES, SkillwareWorkflow
-    from tarav.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
+    from tarav.l1.skw.document import SKILLWARE_RECORD_TYPES, SkillwareWorkflow
+    from tarav.l1.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
     from tarav.test_workflow import TestEntity, TestItem, TestWorkflow
 
     composed_breadcrumb_integrations = (
@@ -313,7 +313,7 @@ def create_runtime(
     registrations = WorkflowRegistry()
     navigation = Navigation.service()
     references = ReferenceWorkflow.service(records)
-    contexts = ContextWorkflow.service(archive_root, records)
+    contexts = ContextService(archive_root, records)
     breadcrumbs = BreadcrumbWorkflow.service(composed_breadcrumb_integrations)
     for workflow in (
         TaravWorkflow,

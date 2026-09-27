@@ -7,7 +7,7 @@ from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.l0.kernel.space import Entry, RecordProvider
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.navigation.identity import NAVIGATION_WORKFLOW_SHIP
-from tarav.poi import POI, POIFinding
+from tarav.l1.poi import POI, POIFinding
 
 
 class ProviderError(POI):

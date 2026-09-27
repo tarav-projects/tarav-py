@@ -6,14 +6,14 @@ from tarav.breadcrumb_workflows.chatlas_context import (
     ChatlasContextBreadcrumbWorkflow,
     ChatlasContextRequest,
 )
-from tarav.breadcrumbs import (
+from tarav.l1.breadcrumbs import (
     BreadcrumbAnnotationWorkflow,
     BreadcrumbStore,
     PreparedAnnotation,
     SurfaceMarker,
     submit_annotations,
 )
-from tarav.chatlas.references import ChatlasTurnReference
+from tarav.l1.chatlas.references import ChatlasTurnReference
 
 
 IDENTITY = "1a2b3c4d" + "0" * 56

@@ -1,14 +1,14 @@
 # $kw: ^native-surface-tests --from Floor.Model --from Normalization.Pipeline --note [TP] native models remain small and independent of Skillware syntax ^c20260812-0u
 from __future__ import annotations
 
-from tarav.surfaces.markdown import MarkdownNormalModel
-from tarav.surfaces.python import PythonNormalModel
+from tarav.l1.surfaces.markdown import MarkdownNormalModel
+from tarav.l1.surfaces.python import PythonNormalModel
 
 
 def test_models_own_parsing_and_round_trip_without_reparsing(tmp_path, monkeypatch):
     from tarav.l0.kernel import TaravObject, entity
     from tarav.runtime import create_runtime
-    from tarav.surfaces import SurfacesWorkflow
+    from tarav.l1.surfaces import SurfacesWorkflow
 
     runtime = create_runtime()
     assert runtime.workflows.get("surfaces") is SurfacesWorkflow

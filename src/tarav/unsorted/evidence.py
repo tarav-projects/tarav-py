@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from tarav.unsorted.primitives import DiagramError
 from tarav.unsorted.contracts import Finding
-from tarav.chatlas.normal_model import provide_normal_model
-from tarav.chatlas.normal_model import resolve_chat_message_ref
-from tarav.chatlas.normal_model import resolve_chat_turn_ref
-from tarav.chatlas.normal_model import resolve_event_ref
+from tarav.l1.chatlas.normal_model import provide_normal_model
+from tarav.l1.chatlas.normal_model import resolve_chat_message_ref
+from tarav.l1.chatlas.normal_model import resolve_chat_turn_ref
+from tarav.l1.chatlas.normal_model import resolve_event_ref
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

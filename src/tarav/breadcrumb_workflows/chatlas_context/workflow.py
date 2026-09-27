@@ -12,23 +12,23 @@ import re
 from typing import Any
 
 from tarav.l0._core.errors import CliError
-from tarav.breadcrumbs import BreadcrumbError
-from tarav.breadcrumbs.auditing import (
+from tarav.l1.breadcrumbs import BreadcrumbError
+from tarav.l1.breadcrumbs.auditing import (
     BreadcrumbAuditContext,
     BreadcrumbAuditFinding,
 )
-from tarav.breadcrumbs.surfaces import BreadcrumbSurface
-from tarav.breadcrumbs.workflows import (
+from tarav.l1.breadcrumbs.surfaces import BreadcrumbSurface
+from tarav.l1.breadcrumbs.workflows import (
     BreadcrumbAnnotationWorkflow,
     PreparedAnnotation,
     SurfaceMarker,
 )
-from tarav.chatlas.normal_model import compute_normal_model, provide_normal_model_reader
-from tarav.chatlas.normal_model import resolve_chat_turn_ref
-from tarav.chatlas.query import ChatlasQuery, ChatlasQueryEngine, ChatlasQueryError
-from tarav.chatlas.references import ChatlasTurnReference
-from tarav.surfaces.markdown import MarkdownNormalModel
-from tarav.surfaces.python import PythonNormalModel
+from tarav.l1.chatlas.normal_model import compute_normal_model, provide_normal_model_reader
+from tarav.l1.chatlas.normal_model import resolve_chat_turn_ref
+from tarav.l1.chatlas.query import ChatlasQuery, ChatlasQueryEngine, ChatlasQueryError
+from tarav.l1.chatlas.references import ChatlasTurnReference
+from tarav.l1.surfaces.markdown import MarkdownNormalModel
+from tarav.l1.surfaces.python import PythonNormalModel
 
 from .model import ChatlasContextAttachment
 

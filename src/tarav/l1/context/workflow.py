@@ -1,15 +1,9 @@
-"""Context workflow identity and service factory."""
+"""Context workflow identity."""
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING
-
 from tarav.l1.context import ContextType, CONTEXT_WORKFLOW_SHIP
-from tarav.l0.kernel import TaravClass, TaravObject, TypeRegistry, TypeShip, TaravWorkflow
-
-if TYPE_CHECKING:
-    from .storage import ContextService
+from tarav.l0.kernel import TaravClass, TypeShip, TaravWorkflow
 
 
 class ContextWorkflow(TaravWorkflow, ContextType):
@@ -33,13 +27,3 @@ class ContextWorkflow(TaravWorkflow, ContextType):
         "Provide read-only progressive Context navigation and retain identified "
         "subjects' Context entries through Record Archive."
     )
-
-    @staticmethod
-    def service(
-        archive_root: Path | None = None,
-        records: TypeRegistry[TaravObject] | None = None,
-    ) -> "ContextService":
-        from .storage import ContextService
-
-        return ContextService(archive_root, records)
-

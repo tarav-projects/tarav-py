@@ -3,7 +3,7 @@
 from tarav.l0.kernel import TaravClass, TaravType, TaravWorkflow, TypeShip, WorkflowShip
 from tarav.l1.project.base import TaravProject
 from tarav.l1.project.workflow import ProjectWorkflow
-from tarav.wiki import Wiki
+from tarav.l1.wiki import Wiki
 
 PROJECT_WIKI_WORKFLOW_SHIP = WorkflowShip("27922f68-ecea-43ae-9316-2c81ed387e95")
 

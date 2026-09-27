@@ -11,8 +11,8 @@ from pydantic import ConfigDict, Field
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.l0.kernel.records import _json_object
-from tarav.references import Reference, ReferenceResult
-from tarav.references.git import git_bytes, git_text
+from tarav.l1.references import Reference, ReferenceResult
+from tarav.l1.references.git import git_bytes, git_text
 from tarav.l1.archive.identity import ARCHIVE_WORKFLOW_SHIP
 from collections.abc import Mapping
 from . import default_archive_root

@@ -52,7 +52,7 @@ def test_show_and_resolve_commands_report_one_breadcrumb(tmp_path, capsys):
     surface = tmp_path / "note.md"
     breadcrumb_id = "c" * 64
 
-    from tarav.breadcrumbs import BreadcrumbStore, breadcrumb_label
+    from tarav.l1.breadcrumbs import BreadcrumbStore, breadcrumb_label
 
     store = BreadcrumbStore(root)
     store.create(breadcrumb_id)

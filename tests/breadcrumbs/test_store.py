@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from tarav.breadcrumbs import BreadcrumbStore, breadcrumb_label
+from tarav.l1.breadcrumbs import BreadcrumbStore, breadcrumb_label
 
 
 def test_store_separates_identity_observations_and_typed_attachments(tmp_path):

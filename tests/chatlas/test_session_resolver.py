@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from tarav.l0._core.errors import CliError
-from tarav.chatlas.session_resolver import resolve_session_index_row
+from tarav.l1.chatlas.session_resolver import resolve_session_index_row
 
 
 def _write_row(root: Path, row: dict[str, object]) -> None:

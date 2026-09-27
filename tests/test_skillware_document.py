@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from tarav.skw.document import Document, DocumentRecord, SkwBlock
+from tarav.l1.skw.document import Document, DocumentRecord, SkwBlock
 
 
 def source(tmp_path):

@@ -71,7 +71,7 @@ def test_missing_and_invalid_markers_do_not_create_or_repair(tmp_path):
 
 
 def test_project_context_is_available_without_creating_archive(tmp_path):
-    from tarav.l1.context import context
+    from tarav.l2.context import context
     from tarav import get_runtime, set_runtime
 
     initialize_project_layout(tmp_path)
@@ -133,7 +133,7 @@ from tarav.l1.project import TaravProject, Project
 assert "tarav.l1.project.models" not in sys.modules
 assert "tarav.l1.project.wiki" not in sys.modules
 assert "tarav.models" not in sys.modules
-assert "tarav.wiki" not in sys.modules
+assert "tarav.l1.wiki" not in sys.modules
 '''], check=True)
 
 

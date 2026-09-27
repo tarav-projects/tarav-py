@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from tarav.l0._core.errors import CliError
-from tarav.chatlas.normal_model.jsonl import JsonlCandidateScan, iter_jsonl_objects
+from tarav.l1.chatlas.normal_model.jsonl import JsonlCandidateScan, iter_jsonl_objects
 
 
 def test_scan_happens_before_decode_and_may_admit_false_positives(

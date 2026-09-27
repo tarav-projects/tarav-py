@@ -2,12 +2,12 @@ from tarav.l0.kernel import entity
 
 import json
 
-from tarav.chatlas.references import ChatlasTurnReference
-from tarav.skw.document import Document
+from tarav.l1.chatlas.references import ChatlasTurnReference
+from tarav.l1.skw.document import Document
 
 
 def test_chatlas_exact_turn_and_grounding_role(tmp_path, monkeypatch):
-    import tarav.chatlas.references as refs
+    import tarav.l1.chatlas.references as refs
 
     event_ref = {'event_address': '1' * 64, 'event_hash': '2' * 64}
     turn = {'type': 'Chat.Turn', 'side': 'user', 'turn_address': 'a' * 64,

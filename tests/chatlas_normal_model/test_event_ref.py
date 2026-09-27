@@ -5,7 +5,7 @@ from hashlib import sha256
 from inspect import signature
 import json
 
-from tarav.chatlas.normal_model.event_ref import (
+from tarav.l1.chatlas.normal_model.event_ref import (
     compute_event_address,
     compute_event_hash,
     event_ref,

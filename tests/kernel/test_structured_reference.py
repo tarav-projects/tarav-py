@@ -1,6 +1,6 @@
 import json
 
-from tarav.references.workflow import ReferenceService
+from tarav.l1.references.workflow import ReferenceService
 
 
 def test_pointer_selection_and_checks_ignore_hints(tmp_path):

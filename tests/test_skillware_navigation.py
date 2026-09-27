@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.skw.document import Document
+from tarav.l1.skw.document import Document
 
 
 def document(tmp_path):
@@ -89,7 +89,7 @@ def test_cli_lists_then_reads_selected_entry(tmp_path):
 
 
 def test_project_discovery_and_source_boundaries(tmp_path, monkeypatch):
-    from tarav.skw.document import project_document, project_root
+    from tarav.l1.skw.document import project_document, project_root
 
     doc, _ = document(tmp_path)
     nested = tmp_path / "nested/deep"

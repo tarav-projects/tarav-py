@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from tarav.cli.cli import build_parser, main
-from tarav.chatlas.rendering import (
+from tarav.l1.chatlas.rendering import (
     INLINED_CAPTURE_MARKDOWN_RENDERER,
     TURN_LEDGER_RENDERER,
 )
@@ -124,7 +124,7 @@ def test_query_and_default_render_share_query_execution_and_output(
             }
 
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+        "tarav.l1.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
     )
     argv = ["--identity-hash", "0" * 64, "--turn-hash-prefix", "a" * 8]
 
@@ -191,7 +191,7 @@ def test_current_session_requires_unambiguous_verified_context(
 def test_render_selects_a_registered_renderer_and_passes_options(
     monkeypatch, capsys
 ) -> None:
-    from tarav.chatlas.rendering import ChatlasRenderer, register_renderer
+    from tarav.l1.chatlas.rendering import ChatlasRenderer, register_renderer
 
     class Reader:
         def model_header(self):
@@ -214,7 +214,7 @@ def test_render_selects_a_registered_renderer_and_passes_options(
             yield _event()
 
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+        "tarav.l1.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
     )
     register_renderer(
         ChatlasRenderer(
@@ -268,7 +268,7 @@ def test_query_json_uses_the_default_renderer_envelope(monkeypatch, capsys) -> N
             yield _event()
 
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+        "tarav.l1.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
     )
 
     assert (
@@ -309,7 +309,7 @@ def test_query_discovers_current_session_with_an_explicit_provider(
     monkeypatch.setenv("CODEX_THREAD_ID", "current-session")
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader",
+        "tarav.l1.chatlas.commands.provide_normal_model_reader",
         lambda **kwargs: calls.append(kwargs) or Reader(),
     )
 
@@ -359,7 +359,7 @@ def test_update_current_session_is_an_explicit_provider_scoped_write(
     calls: list[dict[str, object]] = []
     monkeypatch.setenv("CODEX_THREAD_ID", "current-session")
     monkeypatch.setattr(
-        "tarav.chatlas.commands.chatlas_update",
+        "tarav.l1.chatlas.commands.chatlas_update",
         lambda **kwargs: calls.append(kwargs) or {"status": "ok"},
     )
 
@@ -394,8 +394,8 @@ def test_query_update_captures_exact_session_before_forced_refresh(
         calls.append(("reader", kwargs))
         return Reader()
 
-    monkeypatch.setattr("tarav.chatlas.commands.chatlas_update", update)
-    monkeypatch.setattr("tarav.chatlas.commands.provide_normal_model_reader", reader)
+    monkeypatch.setattr("tarav.l1.chatlas.commands.chatlas_update", update)
+    monkeypatch.setattr("tarav.l1.chatlas.commands.provide_normal_model_reader", reader)
 
     assert (
         main(
@@ -438,11 +438,11 @@ def test_render_update_resolves_the_provider_explicit_current_session(
 
     monkeypatch.setenv("CODEX_THREAD_ID", "current-session")
     monkeypatch.setattr(
-        "tarav.chatlas.commands.chatlas_update",
+        "tarav.l1.chatlas.commands.chatlas_update",
         lambda **kwargs: updates.append(kwargs) or {"status": "ok"},
     )
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+        "tarav.l1.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
     )
 
     assert (
@@ -469,7 +469,7 @@ def test_query_update_rejects_non_exact_update_targets_before_capture(
 ) -> None:
     calls: list[dict[str, object]] = []
     monkeypatch.setattr(
-        "tarav.chatlas.commands.chatlas_update",
+        "tarav.l1.chatlas.commands.chatlas_update",
         lambda **kwargs: calls.append(kwargs),
     )
 
@@ -543,7 +543,7 @@ def test_render_uses_query_discovery_with_the_turn_ledger_renderer(
             yield _event()
 
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+        "tarav.l1.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
     )
 
     assert (
@@ -599,7 +599,7 @@ def test_render_accepts_a_repeatable_turn_prefix_batch(monkeypatch, capsys) -> N
             yield _event()
 
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+        "tarav.l1.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
     )
 
     assert (
@@ -651,7 +651,7 @@ def test_render_formats_an_ordered_inlined_capture_batch(monkeypatch, capsys) ->
             yield _event()
 
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
+        "tarav.l1.chatlas.commands.provide_normal_model_reader", lambda **_: Reader()
     )
 
     assert (
@@ -689,7 +689,7 @@ def test_normal_model_command_uses_an_exact_session_reference(
             return {"type": "Chatlas.Normal.Model", "events": []}
 
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader",
+        "tarav.l1.chatlas.commands.provide_normal_model_reader",
         lambda **kwargs: calls.append(kwargs) or Reader(),
     )
 
@@ -726,7 +726,7 @@ def test_normal_model_collection_flags_are_additive(monkeypatch, capsys) -> None
             return {"events": [], "messages": [], "turns": [], "loaded_contexts": []}
 
     monkeypatch.setattr(
-        "tarav.chatlas.commands.provide_normal_model_reader",
+        "tarav.l1.chatlas.commands.provide_normal_model_reader",
         lambda **_: Reader(),
     )
 
@@ -774,7 +774,7 @@ def test_normal_model_all_and_raw_use_the_same_projection(monkeypatch, capsys) -
         "raw": [5],
     }
     monkeypatch.setattr(
-        "tarav.chatlas.commands.compute_normal_model",
+        "tarav.l1.chatlas.commands.compute_normal_model",
         lambda **_: model,
     )
 

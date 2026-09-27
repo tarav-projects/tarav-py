@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from tarav.l0.kernel import TypeShip
-from tarav.poi import POI, POICollector, BlessingStore
+from tarav.l1.poi import POI, POICollector, BlessingStore
 
 
 class AppReview(POI):

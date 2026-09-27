@@ -3,8 +3,8 @@ from tarav.l0.kernel import entity
 import json
 import subprocess
 
-from tarav.references import FileReference
-from tarav.references.git import GitFileReference
+from tarav.l1.references import FileReference
+from tarav.l1.references.git import GitFileReference
 from tarav.l1.archive import Archive
 from tarav.l1.archive.references import ArchiveReference, reference_record
 from tarav.runtime import create_runtime

@@ -10,7 +10,7 @@ TypeRegistry when retained Record loading is needed.
 
 ```python
 from tarav.kernel import TypeShip
-from tarav.poi import POI, POICollector, BlessingStore
+from tarav.l1.poi import POI, POICollector, BlessingStore
 
 class DependencyReview(POI):
     """The dependency fingerprint differs from the reviewed baseline."""

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.surfaces.commands import register_surface_commands
+from tarav.l1.surfaces.commands import register_surface_commands
 
 
 def build_parser():

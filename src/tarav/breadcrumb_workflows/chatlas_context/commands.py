@@ -5,11 +5,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from tarav.breadcrumbs.commands import (
+from tarav.l1.breadcrumbs.commands import (
     register_audit_command,
     register_submission_command,
 )
-from tarav.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow
+from tarav.l1.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow
 
 from .workflow import ChatlasContextRequest
 

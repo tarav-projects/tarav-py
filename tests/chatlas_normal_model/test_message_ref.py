@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from inspect import signature
 
-from tarav.chatlas.normal_model.message_ref import (
+from tarav.l1.chatlas.normal_model.message_ref import (
     chat_message_ref,
     compute_chat_message_address,
     compute_chat_message_hash,

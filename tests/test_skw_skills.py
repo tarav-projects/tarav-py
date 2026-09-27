@@ -5,8 +5,8 @@ import json
 import pytest
 
 from tarav.runtime import create_runtime
-from tarav.skw.depot import SkwDepot
-from tarav.skw.skills import SkwSkill
+from tarav.l1.skw.depot import SkwDepot
+from tarav.l1.skw.skills import SkwSkill
 
 
 def package(tmp_path):
@@ -139,7 +139,7 @@ def test_runtime_load_rejects_unknown_depot_type(tmp_path):
 
 
 def test_document_dispatch_uses_directory_entry_priority_and_concrete_type(tmp_path):
-    from tarav.skw.skills import skill_document
+    from tarav.l1.skw.skills import skill_document
 
     skill = package(tmp_path)
     runtime = create_runtime()

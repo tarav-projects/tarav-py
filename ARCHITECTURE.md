@@ -106,9 +106,10 @@ The registries keep mechanics separate from semantics:
 - Runtime composition verifies that every registered Type's Workflow Ship
   resolves to a registered Workflow.
 
-`from tarav.l1.context import context` exposes the core navigation operation. It invokes
-`class_context()` for a Type and `obj_context()` for an Object, then mounts
-Archive-backed entries for identified subjects. It returns a
+`tarav.l1.context.explore()` exposes standalone navigation and accepts explicit
+contributors. `tarav.l2.context.context()` adds the current runtime's retained
+entries. Both invoke `class_context()` for a Type and `obj_context()` for an
+Object, then return a
 `ContextExplorer`: a stateful explorer with history across nested folders and
 jumps to other subjects. A `Context` is a read-only `TaravObject` folder with
 named or positional entries and no cursor state. Each `ContextEntry` is an
@@ -209,9 +210,10 @@ adapters (`tarav.cli`, `tarav.daemon`)
 ```
 
 This is a dependency direction, not a requirement that every module pass
-through every layer. `l0` contains the foundation; `l1` now contains Context,
-Loading, Project, and Archive. Other domain paths remain in place until their
-own classification. A semantic workflow namespace can span
+through every layer. `l0` contains the foundation; `l1` contains Context,
+Loading, Project, Archive, References, Surfaces, POI, Breadcrumbs, Wiki, SKW,
+and Chatlas. Other domain paths remain in place until their own classification.
+A semantic workflow namespace can span
 levels; levels do not establish Workflow parentage.
 
 - `tarav.l0._core` is the moved private utility package. It currently includes
@@ -222,13 +224,13 @@ levels; levels do not establish Workflow parentage.
   Entities, Ships, class-owned Record interfaces, Explorer contracts,
   Record-space contracts, and trusted Type and Workflow registries. Kernel
   imports no application domain.
-- `tarav.l1.context` owns Context types, navigation, and class-bases presentation.
-  Its `explore()` primitive accepts explicit contributors without loading storage;
-  its `context()` helper selects the current runtime. `context.storage` composes
-  Archive-backed entries, while `context.workflow` declares the workflow.
-  Kernel retains extensible context hooks with opaque builder arguments,
-  not Context imports or re-exports. Runtime-backed Context storage remains
-  a composition edge to split out in a later slice.
+- `tarav.l1.context` owns Context types, standalone navigation, class-bases
+  presentation, and the Context Workflow declaration. `explore()` accepts
+  explicit contributors without loading Archive or runtime.
+- `tarav.l2.context` owns Archive-backed Context Types, `ContextService`, and
+  the runtime-aware `context()` convenience. Runtime composition constructs
+  its service directly; the l1 Workflow has no service factory. Kernel retains
+  extensible context hooks with opaque builder arguments, not Context imports.
 - Domain packages own their vocabulary, Records, storage, validation, and
   operations. Cross-domain imports remain acyclic.
 - `tarav.l1.archive.records` implements Record Archive, nested beneath its parent
@@ -310,7 +312,7 @@ relationships, storage policies, or interpretation of domain payloads.
 | `agent` | Provider-neutral agent, account, session, and monitoring behavior; concrete providers live below `agent.providers`. |
 | `archive` | Artifact identity, retained Archive Records, and Archive-specific location history. |
 | `archive.records` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
-| `context` | Context types and navigation; `context.storage` adds Archive-backed roots and retained placements, and `context.workflow` declares ownership. |
+| `l1.context`, `l2.context` | The same Context Workflow spans standalone navigation and Archive-backed runtime integration. |
 | `references` | Shared typed locator, check, hints, and resolution mechanics. |
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
@@ -391,7 +393,7 @@ mechanical assertion engine under Unsorted is not folded into this model yet.
 - Native surface parsers expose syntax and source positions without knowing SKW
   or annotation policy.
 - Chatlas capture and Session Index remain usable without importing the Normal
-  Model. Consumers import the public `tarav.chatlas.normal_model` surface.
+  Model. Consumers import the public `tarav.l1.chatlas.normal_model` surface.
 - Query owns selection; renderers own presentation.
 - Hooks owns validation and dispatch; daemon adapters own delivery.
 - Workflow-specific retained data and operational event logs remain domain

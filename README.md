@@ -52,9 +52,9 @@ belong in their owning registries or state roots, not in `project.json`.
   derived scores, compact per-Assertion scoring histories, and graph tracing.
 - `tarav skw document` and `tarav skw skills` — document compilation and skill packages.
 - `tarav bloberia` — hosted JSON registry.
-- `tarav.references` — typed reference construction and resolution library.
-- `tarav.poi` — typed findings, bounded reports, and recorded blessings library.
-- `tarav.surfaces` — retained native parsers; standalone CLI disconnected.
+- `tarav.l1.references` — typed reference construction and resolution library.
+- `tarav.l1.poi` — typed findings, bounded reports, and recorded blessings library.
+- `tarav.l1.surfaces` — retained native parsers; standalone CLI disconnected.
 - `tarav stdlib` — small reusable command and library primitives.
 
 The complete current command set is always available through `tarav --help`.

@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from tarav.chatlas.normal_model.claude import (
+from tarav.l1.chatlas.normal_model.claude import (
     CLAUDE_LEGACY_RAW_MODEL_VERSION,
     CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION,
     ClaudeLegacyRawNormalizer,
     ClaudePromptSourceRawNormalizer,
     ClaudeRawModelVersioner,
 )
-from tarav.chatlas.normal_model.event_ref import resolve_event_ref
-from tarav.chatlas.normal_model.message_ref import resolve_chat_message_ref
-from tarav.chatlas.normal_model.pipeline import build_normal_model_from_row
+from tarav.l1.chatlas.normal_model.event_ref import resolve_event_ref
+from tarav.l1.chatlas.normal_model.message_ref import resolve_chat_message_ref
+from tarav.l1.chatlas.normal_model.pipeline import build_normal_model_from_row
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.chatlas.normal_model import normal_model
+from tarav.l1.chatlas.normal_model import normal_model
 
 
 def test_provide_resolves_one_index_row_then_uses_cache(monkeypatch, tmp_path: Path) -> None:

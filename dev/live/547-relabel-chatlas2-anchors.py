@@ -24,7 +24,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from tarav.chatlas.paths import default_chatlas_root
+from tarav.l1.chatlas.paths import default_chatlas_root
 
 PROJECT_ROOT = Path("/Users/pereiro/projects/taravangian-project")
 SKIP_PARTS = ("/.skw/", "_DEPRECATED", "/.git/", "/node_modules/")

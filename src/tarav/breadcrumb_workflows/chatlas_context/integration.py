@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from tarav.breadcrumbs.integrations import (
+from tarav.l1.breadcrumbs.integrations import (
     BreadcrumbCommandAdapter,
     BreadcrumbIntegration,
 )
-from tarav.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow
+from tarav.l1.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow
 
 from .workflow import ChatlasContextBreadcrumbWorkflow
 

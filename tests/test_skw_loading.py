@@ -5,8 +5,8 @@ import json
 import pytest
 
 from tarav.runtime import create_runtime
-from tarav.skw.skills import SkwSkill
-from tarav.skw.loading import LoadingRecord
+from tarav.l1.skw.skills import SkwSkill
+from tarav.l1.skw.loading import LoadingRecord
 
 
 def package(tmp_path):

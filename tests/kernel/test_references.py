@@ -11,9 +11,9 @@ from tarav.l1.archive.references import (
     ArchiveLocator,
     ArchiveSha256Check,
 )
-from tarav.chatlas.references import ChatlasTurnLocator, EmptyReferenceCheck
+from tarav.l1.chatlas.references import ChatlasTurnLocator, EmptyReferenceCheck
 from tarav.l0.kernel import TaravObject, isrecordsubclass, issubrecord
-from tarav.references import (
+from tarav.l1.references import (
     FilePositionCheck,
     FilePositionLocator,
     FilePositionReference,
@@ -22,9 +22,9 @@ from tarav.references import (
     ReferenceTaravMetadata,
     Sha256Check,
 )
-from tarav.references.git import GitFileLocator, GitFileReference, GitOidCheck
-from tarav.references.structured import StructuredFileLocator, StructuredFileReference
-from tarav.references.workflow import ReferenceService
+from tarav.l1.references.git import GitFileLocator, GitFileReference, GitOidCheck
+from tarav.l1.references.structured import StructuredFileLocator, StructuredFileReference
+from tarav.l1.references.workflow import ReferenceService
 
 
 def test_reference_checks_identity_and_hints_never_repair(tmp_path):

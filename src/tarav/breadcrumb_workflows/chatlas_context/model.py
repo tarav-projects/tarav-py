@@ -4,11 +4,11 @@ from typing import Literal
 
 from pydantic import ConfigDict
 
-from tarav.breadcrumbs.model import BreadcrumbId
-from tarav.chatlas.references import ChatlasTurnReference
+from tarav.l1.breadcrumbs.model import BreadcrumbId
+from tarav.l1.chatlas.references import ChatlasTurnReference
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TaravObject, TypeShip
-from tarav.breadcrumbs.identity import BREADCRUMBS_WORKFLOW_SHIP
+from tarav.l1.breadcrumbs.identity import BREADCRUMBS_WORKFLOW_SHIP
 
 
 class ChatlasContextAttachment(TaravObject):

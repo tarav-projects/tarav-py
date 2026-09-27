@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from tarav.breadcrumbs import (
+from tarav.l1.breadcrumbs import (
     BreadcrumbAnnotationWorkflow,
     BreadcrumbAuditFinding,
     BreadcrumbCommandAdapter,

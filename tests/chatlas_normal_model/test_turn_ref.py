@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from tarav.chatlas.normal_model.turn_ref import (
+from tarav.l1.chatlas.normal_model.turn_ref import (
     chat_turn_ref,
     compute_chat_turn_address,
     compute_chat_turn_hash,

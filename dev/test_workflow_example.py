@@ -18,7 +18,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from tarav import ARCHIVE, get_runtime
-from tarav.l1.context import context
+from tarav.l2.context import context
 from tarav.l1.context import ContextEntry
 from tarav.l1.archive.records import (
     ArchiveEntry,

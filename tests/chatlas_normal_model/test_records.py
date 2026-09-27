@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from tarav.l0.kernel import entity
 
-from tarav.chatlas.normal_model import ChatlasNormalModel
-from tarav.chatlas.normal_model.records import CHATLAS_SEMANTIC_RECORD_TYPES
+from tarav.l1.chatlas.normal_model import ChatlasNormalModel
+from tarav.l1.chatlas.normal_model.records import CHATLAS_SEMANTIC_RECORD_TYPES
 from tarav.l0.kernel import TaravObject
 from tarav.runtime import create_runtime
 

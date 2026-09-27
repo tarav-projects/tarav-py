@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from tarav.l0._core.scan import iter_target_files
-from tarav.surfaces.markdown import MarkdownNormalModel
+from tarav.l1.surfaces.markdown import MarkdownNormalModel
 
 
 BLOCK_SEPARATOR = "****"

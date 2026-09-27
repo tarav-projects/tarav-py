@@ -33,18 +33,21 @@
 - Keep subsystem imports acyclic outside runtime composition.
 - Record Archive lives in `tarav.l1.archive.records`, matching its Archive parent.
   Artifact-registration Record types live in `tarav.l1.archive.artifact_records`.
-- Import Context types and the runtime-aware `context()` helper from
-  `tarav.l1.context`, not Kernel or the library root. Context storage is a separate
-  composition layer; Kernel's context hooks have no runtime Context dependency.
+- Import standalone Context types and `explore()` from `tarav.l1.context`.
+  Runtime-backed `context()` and retained storage live in `tarav.l2.context`;
+  neither is imported by l1 Context or its Workflow declaration. Kernel's
+  context hooks have no runtime Context dependency.
 - Provider-neutral orchestration belongs in `tarav.agent`; concrete adapters
   belong in `tarav.agent.providers.<provider>`.
 - Shared infrastructure enters `tarav.l0._core` only after multiple consumers have
   demonstrated the same semantics. Callers retain policy, schema validation,
   locking, and error translation.
 - Shared utilities and Kernel live under `tarav.l0`; Context, Loading, Project,
-  and Archive now live under `tarav.l1`. The root package remains import-light;
-  `ARCHIVE` resolves lazily. Runtime-backed operations in these l1 domains are
-  transitional composition edges to classify in later slices.
+  Archive, References, Surfaces, POI, Breadcrumbs, Wiki, SKW, and Chatlas live
+  under `tarav.l1`. Archive-backed Context storage and its
+  runtime convenience live under `tarav.l2`. The root package remains
+  import-light; `ARCHIVE` resolves lazily. Remaining runtime-backed operations
+  in l1 domains are transitional composition edges to classify in later slices.
 - Lower-level modules do not import or shell out to the umbrella CLI.
 - Do not add compatibility aliases or fallback paths unless the user explicitly
   requests a migration design.
@@ -60,7 +63,7 @@
 
 ## Native surfaces and SKW
 
-- Skill packages with a `loading` declaration use `tarav.skw.skills` for
+- Skill packages with a `loading` declaration use `tarav.l1.skw.skills` for
   compilation. The installed `skw document` CLI receives this specialization
   through runtime composition. Plain `Document` is the generic engine, not a
   substitute for compiling skill primitives. Loading graphs are declared data;
@@ -75,24 +78,24 @@
   and lint/compile through `tarav skw document`. Compilation must not refresh
   generation baselines or suppress stale-generation findings.
 
-- `tarav.skw.generation` is an independent Python-first generation
+- `tarav.l1.skw.generation` is an independent Python-first generation
   workflow. Keep its template, invocation, and dependency semantics separate
   from the existing compiler and Index. Checks report evidence without repair
   or automatic generation; callers own agent execution and explicit persistence.
 
-- `tarav.surfaces` owns deliberately thin Python and Markdown normal models.
+- `tarav.l1.surfaces` owns deliberately thin Python and Markdown normal models.
   Native parsers expose syntax and source spans only; they do not know SKW
   attachment policy or Index domain policy.
 - Project-aware discovery supplies a file plus its surface context. Domain
   adapters assign domain interpretation from that context.
-- `tarav.skw.document` owns typed JSON document sources under `.skw/src/`.
-  `tarav.skw.skills` specializes those documents for deployable packages.
+- `tarav.l1.skw.document` owns typed JSON document sources under `.skw/src/`.
+  `tarav.l1.skw.skills` specializes those documents for deployable packages.
   The retired Skillware annotation compiler and `.skw.md` machinery has no
   live compatibility path.
 
 ## Chatlas
 
-- `tarav.chatlas` captures provider-native chat artifacts, indexes sessions,
+- `tarav.l1.chatlas` captures provider-native chat artifacts, indexes sessions,
   materializes the provider-neutral Normal Model, provides bounded structural
   Query and named rendering over it, and preserves traceability from normalized
   objects to retained raw artifacts.
@@ -102,7 +105,7 @@
 - Capture and Session Index modules do not import `normal_model`; command
   composition is the exception that registers the public `tarav chatlas`
   leaves.
-- Consumers import `tarav.chatlas.normal_model`, not its internal modules.
+- Consumers import `tarav.l1.chatlas.normal_model`, not its internal modules.
 - The aggregate Normal Model is a registered `DirectoryRecord`; its `main.json`
   and JSONL streams are semantic representation. Chatlas cache mechanics live
   outside that module and may decorate a cache-managed model directory with

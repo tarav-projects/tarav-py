@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tarav.chatlas.session_identity import session_identity_hash
+from tarav.l1.chatlas.session_identity import session_identity_hash
 
 
 def test_session_identity_includes_provider_instance() -> None:

@@ -5,9 +5,9 @@ import json
 import pytest
 from tarav.unsorted.primitives import DiagramError
 
-from tarav.skw.publication import ModelPublication, ModelPublicationRecord
+from tarav.l1.skw.publication import ModelPublication, ModelPublicationRecord
 from tarav.runtime import create_runtime
-from tarav.skw.skills import SkwSkill
+from tarav.l1.skw.skills import SkwSkill
 from test_rendering import _diagram_with_line
 
 

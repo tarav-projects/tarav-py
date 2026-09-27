@@ -6,7 +6,7 @@ import pytest
 
 from tarav.l0._core.errors import CliError
 from tarav.testing import TaravTestEnvironment
-from tarav.chatlas.instance_selection import selected_provider_instances
+from tarav.l1.chatlas.instance_selection import selected_provider_instances
 
 
 def _isolate_chatlas(

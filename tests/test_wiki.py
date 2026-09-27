@@ -5,7 +5,7 @@ import pytest
 
 from tarav.l0._core.project import initialize_project_layout
 from tarav.l1.project import Project
-from tarav.wiki import Wiki
+from tarav.l1.wiki import Wiki
 
 
 def test_project_and_folder_wiki_are_lazy_and_parse_native_markdown(tmp_path):

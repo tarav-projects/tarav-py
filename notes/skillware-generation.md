@@ -166,7 +166,7 @@ It does not resolve Index concepts, query Diagram, launch agents, or acquire
 context. The caller supplies context explicitly as arguments or prompt text.
 
 ```python
-from tarav.skw.generation import Argument, Block, Generation, Output
+from tarav.l1.skw.generation import Argument, Block, Generation, Output
 
 skw = Generation((
     Block("explain", "Explain this code: ${code}", (Argument("code"),)),

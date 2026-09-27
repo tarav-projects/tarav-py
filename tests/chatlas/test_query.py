@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from tarav.chatlas.query import (
+from tarav.l1.chatlas.query import (
     ChatlasQuery,
     ChatlasQueryEngine,
     ChatlasQueryError,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tarav.chatlas.raw_archive import (
+from tarav.l1.chatlas.raw_archive import (
     RAW_PARTITION_MANIFEST_SCHEMA,
     RAW_PARTITION_MANIFEST_SCHEMA_VERSION,
     _load_raw_partition_manifest,

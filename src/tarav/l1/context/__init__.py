@@ -459,10 +459,3 @@ def explore(
         _view(subject, contributors=contributions),
         lambda target: _view(target, contributors=contributions),
     )
-
-
-def context(subject: ContextSubject | ContextEntry) -> ContextExplorer:
-    """Explore a subject with the current runtime's retained Context entries."""
-    from tarav.runtime import get_runtime
-
-    return get_runtime().context(subject)

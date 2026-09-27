@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from tarav.chatlas.query import ChatlasQuery, ChatlasQueryResult, ChatlasTurnFinding
-from tarav.chatlas.rendering import (
+from tarav.l1.chatlas.query import ChatlasQuery, ChatlasQueryResult, ChatlasTurnFinding
+from tarav.l1.chatlas.rendering import (
     DEFAULT_CHATLAS_RENDERER,
     INLINED_CAPTURE_MARKDOWN_RENDERER,
     TURN_LEDGER_RENDERER,

@@ -2,8 +2,8 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Phase: Design. Alignment.Mode: Interactive.
-Status: ready for bounded execution; no implementation performed.
+Knowledge.Surface: wiki. Phase: Execute. Alignment.Mode: Interactive.
+Status: Context split implemented and verified.
 Parent roadmap: [821](821-dependency-layer-migration.md).
 
 Separate standalone Context navigation in l1 from Archive-backed Context and
@@ -72,21 +72,21 @@ redesign belongs to the parent roadmap, not this bounded extraction.
 
 ## Execution.Plan
 
-- [ ] Cold-read instructions, this note and 821; inspect the shared worktree and
+- [x] Cold-read instructions, this note and 821; inspect the shared worktree and
   checkpoint existing product work under Execute policy before edits.
-- [ ] Inventory consumers of context(), ContextWorkflow.service(), storage Types,
+- [x] Inventory consumers of context(), ContextWorkflow.service(), storage Types,
   registration tuples and Python-path strings. Check current Context Wiki and
   retained evidence before deciding any semantic change.
-- [ ] Create l2 package, move storage and runtime-facing helper, leave l1 contracts
+- [x] Create l2 package, move storage and runtime-facing helper, leave l1 contracts
   and Workflow declaration independent of Archive/storage/runtime.
-- [ ] Remove service factory and its storage annotation from l1; update runtime
+- [x] Remove service factory and its storage annotation from l1; update runtime
   construction, registrations and consumer imports. Pure Context consumers
   stay l1; only retained/runtime-aware consumers move to l2.
-- [ ] Update existing tests, maintained examples and architecture documentation.
+- [x] Update existing tests, maintained examples and architecture documentation.
   No old-path shims, Record relabeling or retained-data rewrites. Inventory
   external trusted class paths and report affected consumers before changing
   anything outside the product repository.
-- [ ] Run verification, record results here, capture the bounded outcome in Wiki.
+- [x] Run verification, record results here, capture the bounded outcome in Wiki.
 
 ## Acceptance and verification
 
@@ -117,3 +117,20 @@ redesign belongs to the parent roadmap, not this bounded extraction.
   product commit made while writing this request.
 - Wiki handoff added to daily/2026-09-27.md; Breadcrumb audit passed without
   findings and Wiki-only closure completed. Product note remains uncommitted.
+- Execute checkpointed the preexisting l1 placement and this request as
+  `340e7bc` before product edits. The new `tarav.l2.context` package owns the
+  runtime convenience and Archive-backed Context Types/service. The same l1
+  Context Workflow retains its identity and constitution without a service
+  factory; `tarav.runtime` constructs `ContextService` directly.
+- The focused Context, Explorer, Archive, and architecture suite passed 123
+  tests. Fresh subprocesses check l1 imports and annotation resolution without
+  l2, Archive, or runtime. Maintained external example source has no binding
+  to the old Context storage Python path. Existing retained `context.json`
+  files were inspected read-only; their Type labels remain unchanged, and no
+  retained data was rewritten.
+- Full pytest passed 1,361 tests. Ruff and `git diff --check` passed; runtime
+  registration, Workflow identity, and installed CLI smoke checks passed.
+- Wiki capture added the implementation outcome to `context-graph.md` and the
+  daily note. Both Chatlas-context Breadcrumb audits passed with no findings;
+  the Wiki-only closure commit is `0736126`. No post-checkpoint product commit
+  was created.
