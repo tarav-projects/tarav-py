@@ -2,7 +2,7 @@
 """Python native surface normalization."""
 
 from .model import PythonComment, PythonDirective, PythonElement, PythonNormalModel
-from .normalize import PYTHON_EXTERNAL_DIRECTIVE_PATTERNS, normalize_python
+from .model import PYTHON_EXTERNAL_DIRECTIVE_PATTERNS
 
 __all__ = [
     "PYTHON_EXTERNAL_DIRECTIVE_PATTERNS",
@@ -10,5 +10,4 @@ __all__ = [
     "PythonDirective",
     "PythonElement",
     "PythonNormalModel",
-    "normalize_python",
 ]

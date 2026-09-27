@@ -1,4 +1,4 @@
-"""Retained, Agent-readable context selections over Tarav.Diagram."""
+"""Unsorted legacy context selections over retained semantic records."""
 
 from __future__ import annotations
 
@@ -21,19 +21,18 @@ from pydantic import (
 
 from tarav._core.data_root import default_tarav_data_root
 from tarav._core.persistence import atomic_write_json
+from tarav.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.kernel import TaravClass, entity
 from tarav.kernel import TaravObject, TypeRegistry, TypeShip
 
-from . import (
-    ChatlasEvidence,
-    Diagram,
-    DiagramBlock,
-    DiagramError,
-    DiagramLineShip,
-    DiagramModel,
-    Finding,
-    UserTouchedAnnotation,
-)
+from tarav.unsorted.evidence import ChatlasEvidence
+from tarav.unsorted.storage import Diagram
+from tarav.lines.block import DiagramBlock
+from tarav.unsorted.primitives import DiagramError
+from tarav.lines.line import DiagramLineShip
+from tarav.lines.model import DiagramModel
+from tarav.unsorted.contracts import Finding
+from tarav.unsorted.records import UserTouchedAnnotation
 
 
 VIEW_REPOSITORY_TYPE = "Tarav.Diagram.View.Repository"
@@ -87,6 +86,7 @@ class DiagramViewManifest(TaravObject):
             target=cls,
             id=TypeShip('1c9a9e7e-76a9-4cf0-b823-79fc5032884d'),
             name=VIEW_MANIFEST_TYPE,
+            workflow=UNSORTED_WORKFLOW_SHIP,
         )
 
     class RecordInterface(TaravObject.RecordInterface):
@@ -123,6 +123,7 @@ class DiagramViewConfiguration(TaravObject):
             target=cls,
             id=TypeShip('1c70b581-641e-429a-9305-d4ee65c78ad1'),
             name=VIEW_CONFIGURATION_TYPE,
+            workflow=UNSORTED_WORKFLOW_SHIP,
         )
 
     class RecordInterface(TaravObject.RecordInterface):
@@ -179,6 +180,7 @@ class DiagramViewState(TaravObject):
             target=cls,
             id=TypeShip('ff3f638a-43e4-4df2-99d7-3295a485f9df'),
             name=VIEW_STATE_TYPE,
+            workflow=UNSORTED_WORKFLOW_SHIP,
         )
 
     class RecordInterface(TaravObject.RecordInterface):
@@ -204,6 +206,7 @@ class DiagramViewAbout(TaravObject):
             target=cls,
             id=TypeShip('20d90137-05cd-4fe8-8926-999fc47e3e16'),
             name=VIEW_ABOUT_TYPE,
+            workflow=UNSORTED_WORKFLOW_SHIP,
         )
 
     class RecordInterface(TaravObject.RecordInterface):
@@ -230,6 +233,7 @@ class DiagramViewRepositoryRecord(TaravObject):
             target=cls,
             id=TypeShip('f2decb1e-3727-4a1c-8196-c8bf4ca59448'),
             name=VIEW_REPOSITORY_TYPE,
+            workflow=UNSORTED_WORKFLOW_SHIP,
         )
 
     class RecordInterface(TaravObject.RecordInterface):

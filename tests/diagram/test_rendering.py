@@ -5,24 +5,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from tarav.cli.cli import main
-from tarav.diagram import (
-    BLOCK_SHIP_TYPE,
-    DESIGN_BLOCK_OBJECT_TYPE,
-    DESIGN_LINE_PRINCIPLE_TYPE,
-    ISSUE_BLOCK_OBJECT_TYPE,
-    LINE_SHIP_TYPE,
-    LINE_GATE_ANNOTATION_TYPE,
-    AnnotationDraftInterface,
-    CaptureManifest,
-    ChatlasEvidence,
-    Diagram,
-    DiagramConfiguration,
-    DiagramNamespace,
-    ShipDraftInterface,
-    VerbatimGate,
-    ChatlasTurnReferenceInterface,
-)
-from tarav.diagram.rendering import (
+from tarav.unsorted.constants import BLOCK_SHIP_TYPE, DESIGN_BLOCK_OBJECT_TYPE, DESIGN_LINE_PRINCIPLE_TYPE, ISSUE_BLOCK_OBJECT_TYPE, LINE_SHIP_TYPE, LINE_GATE_ANNOTATION_TYPE
+from tarav.unsorted.contracts import AnnotationDraftInterface, ShipDraftInterface, VerbatimGate, ChatlasTurnReferenceInterface
+from tarav.unsorted.capture import CaptureManifest
+from tarav.unsorted.evidence import ChatlasEvidence
+from tarav.unsorted.storage import Diagram, DiagramConfiguration, DiagramNamespace
+from tarav.lines.rendering import (
     block_render_target,
     line_render_target,
     model_render_target,

@@ -1,4 +1,4 @@
-"""Named, read-only renderers for Tarav.Diagram projections."""
+"""Named, read-only renderers for Lines projections and their assessments."""
 
 from __future__ import annotations
 
@@ -7,27 +7,17 @@ from dataclasses import dataclass
 import json
 from typing import Any
 
-from . import (
-    AnnotationAssessment,
-    AssertionEngine,
-    BlockEditionRecord,
-    ChatlasEvidence,
-    Diagram,
-    DiagramAnnotation,
-    DiagramBlock,
-    DiagramCollection,
-    DiagramError,
-    DiagramLineShip,
-    DiagramModel,
-    Finding,
-    ImplReqCollection,
-    IssueBlock,
-    LineAnnotationRecord,
-    LineEditionRecord,
-    LineGateAnnotation,
-    TypedAnnotation,
-    UserTouchedAnnotation,
-)
+from tarav.unsorted.assessment import AnnotationAssessment, AssertionEngine
+from tarav.lines.records import BlockEditionRecord, LineAnnotationRecord, LineEditionRecord, LineGateAnnotation
+from tarav.unsorted.evidence import ChatlasEvidence
+from tarav.unsorted.storage import Diagram
+from tarav.unsorted.records import DiagramAnnotation, TypedAnnotation, UserTouchedAnnotation
+from tarav.lines.block import DiagramBlock, IssueBlock
+from tarav.lines.collection import DiagramCollection, ImplReqCollection
+from tarav.unsorted.primitives import DiagramError
+from tarav.lines.line import DiagramLineShip
+from tarav.lines.model import DiagramModel
+from tarav.unsorted.contracts import Finding
 
 JsonObject = dict[str, Any]
 RenderHandler = Callable[

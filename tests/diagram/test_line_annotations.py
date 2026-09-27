@@ -7,23 +7,14 @@ from uuid import uuid4
 import pytest
 
 from tarav.cli.cli import main
-from tarav.diagram import (
-    BLOCK_SHIP_TYPE,
-    DESIGN_BLOCK_OBJECT_TYPE,
-    DESIGN_LINE_PRINCIPLE_TYPE,
-    LINE_ANNOTATION_TYPE,
-    LINE_SHIP_TYPE,
-    AnnotationDraftInterface,
-    CaptureManifest,
-    Diagram,
-    DiagramArgumentReferenceInterface,
-    DiagramConfiguration,
-    DiagramError,
-    DiagramNamespace,
-    LineAnnotationRecord,
-    ShipDraftInterface,
-)
-from tarav.diagram.rendering import annotation_render_target, renderer
+from tarav.unsorted.constants import BLOCK_SHIP_TYPE, DESIGN_BLOCK_OBJECT_TYPE, DESIGN_LINE_PRINCIPLE_TYPE, LINE_ANNOTATION_TYPE, LINE_SHIP_TYPE
+from tarav.unsorted.contracts import AnnotationDraftInterface, ShipDraftInterface
+from tarav.unsorted.capture import CaptureManifest
+from tarav.unsorted.storage import Diagram, DiagramConfiguration, DiagramNamespace
+from tarav.lines.references import DiagramArgumentReferenceInterface
+from tarav.unsorted.primitives import DiagramError
+from tarav.lines.records import LineAnnotationRecord
+from tarav.lines.rendering import annotation_render_target, renderer
 
 
 REFERENCE = {

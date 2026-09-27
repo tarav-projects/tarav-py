@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any, ClassVar, Mapping, Protocol, Sequence
 
 from tarav._core.project import require_agentos_project
-from tarav.diagram import ChatlasEvidence, DiagramConfiguration, DiagramError
+from tarav.unsorted.evidence import ChatlasEvidence
+from tarav.unsorted.storage import DiagramConfiguration
+from tarav.unsorted.primitives import DiagramError
 
 from .model import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,

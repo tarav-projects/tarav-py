@@ -7,21 +7,14 @@ from uuid import uuid4
 import pytest
 
 from tarav.cli.cli import main
-from tarav.diagram import (
-    BLOCK_SHIP_TYPE,
-    DESIGN_BLOCK_OBJECT_TYPE,
-    DESIGN_LINE_PRINCIPLE_TYPE,
-    LINE_SHIP_TYPE,
-    CaptureManifest,
-    ChatlasEvidence,
-    Diagram,
-    DiagramConfiguration,
-    DiagramNamespace,
-    ShipDraftInterface,
-)
-from tarav.diagram import view_commands
-from tarav.diagram import views
-from tarav.diagram.views import (
+from tarav.unsorted.constants import BLOCK_SHIP_TYPE, DESIGN_BLOCK_OBJECT_TYPE, DESIGN_LINE_PRINCIPLE_TYPE, LINE_SHIP_TYPE
+from tarav.unsorted.capture import CaptureManifest
+from tarav.unsorted.evidence import ChatlasEvidence
+from tarav.unsorted.storage import Diagram, DiagramConfiguration, DiagramNamespace
+from tarav.unsorted.contracts import ShipDraftInterface
+from tarav.unsorted import view_commands
+from tarav.unsorted import views
+from tarav.unsorted.views import (
     DIAGRAM_VIEW_TYPE,
     PROJECT_DIAGRAM_VIEW_TYPE,
     SESSION_DIAGRAM_VIEW_TYPE,

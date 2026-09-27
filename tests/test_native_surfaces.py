@@ -1,12 +1,44 @@
 # $kw: ^native-surface-tests --from Floor.Model --from Normalization.Pipeline --note [TP] native models remain small and independent of Skillware syntax ^c20260812-0u
 from __future__ import annotations
 
-from tarav.surfaces.markdown import normalize_markdown
-from tarav.surfaces.python import normalize_python
+from tarav.surfaces.markdown import MarkdownNormalModel
+from tarav.surfaces.python import PythonNormalModel
+
+
+def test_models_own_parsing_and_round_trip_without_reparsing(tmp_path, monkeypatch):
+    from tarav.kernel import TaravObject, entity
+    from tarav.runtime import create_runtime
+    from tarav.surfaces import SurfacesWorkflow
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("surfaces") is SurfacesWorkflow
+    for model_type, text in (
+        (MarkdownNormalModel, "# Title\n```py\nx = 1\n```\n"),
+        (PythonNormalModel, "# noqa\ndef example():\n    pass\n"),
+        (PythonNormalModel, "def broken(:\n"),
+    ):
+        path = tmp_path / "source"
+        path.write_text(text)
+        model = model_type.from_path(path)
+        assert isinstance(model, TaravObject)
+        assert entity(model_type).workflow is SurfacesWorkflow()
+        assert model == model_type.from_text(text)
+        record = model.to_record()
+        with monkeypatch.context() as patch:
+
+            def fail(*args, **kwargs):
+                raise AssertionError("Record loading must not reparse")
+
+            patch.setattr(model_type, "from_text", fail)
+            restored = runtime.records.from_record(record)
+        assert restored == model
+        assert restored.to_record() == record
+        path.write_text("changed")
+        assert model.text == text
 
 
 def test_python_normalizer_uses_tokens_and_classifies_external_directives() -> None:
-    model = normalize_python(
+    model = PythonNormalModel.from_text(
         "value = '# inert'\n"
         "other = 1  # type: ignore[arg-type]\n"
         "# noqa: F403\n"
@@ -27,14 +59,14 @@ def test_python_normalizer_uses_tokens_and_classifies_external_directives() -> N
 
 
 def test_python_normalizer_retains_partial_model_on_scanner_error() -> None:
-    model = normalize_python("# retained\nvalue = '''\n")
+    model = PythonNormalModel.from_text("# retained\nvalue = '''\n")
     assert [comment.text for comment in model.comments] == ["# retained"]
     assert not model.elements
     assert len(model.diagnostics) == 1
 
 
 def test_python_normalizer_exposes_minimal_nested_declarations() -> None:
-    model = normalize_python(
+    model = PythonNormalModel.from_text(
         "@decorate(\n"
         "    option=True,\n"
         ")\n"
@@ -47,7 +79,10 @@ def test_python_normalizer_exposes_minimal_nested_declarations() -> None:
         "        return nested\n"
     )
 
-    assert [(element.kind, element.name, element.qualified_name) for element in model.elements] == [
+    assert [
+        (element.kind, element.name, element.qualified_name)
+        for element in model.elements
+    ] == [
         ("class", "Outer", "Outer"),
         ("function", "method", "Outer.method"),
         ("async-function", "nested", "Outer.method.nested"),
@@ -59,7 +94,7 @@ def test_python_normalizer_exposes_minimal_nested_declarations() -> None:
 
 
 def test_python_normalizer_reports_syntax_failure_without_inventing_elements() -> None:
-    model = normalize_python("# retained\ndef broken(:\n    pass\n")
+    model = PythonNormalModel.from_text("# retained\ndef broken(:\n    pass\n")
 
     assert [comment.text for comment in model.comments] == ["# retained"]
     assert not model.elements
@@ -67,7 +102,9 @@ def test_python_normalizer_reports_syntax_failure_without_inventing_elements() -
 
 
 def test_markdown_normalizer_recognizes_headings_outside_fences() -> None:
-    model = normalize_markdown("# First\n```python\n## Inert\n```\n### Last\n")
+    model = MarkdownNormalModel.from_text(
+        "# First\n```python\n## Inert\n```\n### Last\n"
+    )
     assert [(heading.level, heading.text) for heading in model.headings] == [
         (1, "First"),
         (3, "Last"),
@@ -79,13 +116,13 @@ def test_markdown_normalizer_recognizes_headings_outside_fences() -> None:
 
 
 def test_markdown_normalizer_retains_unclosed_fence() -> None:
-    model = normalize_markdown("~~~\ncontent\n")
+    model = MarkdownNormalModel.from_text("~~~\ncontent\n")
     assert len(model.fences) == 1
     assert model.fences[0].end is None
 
 
 def test_markdown_normalizer_requires_a_matching_complete_fence_closer() -> None:
-    model = normalize_markdown(
+    model = MarkdownNormalModel.from_text(
         "## Before ###\n"
         "````python\n"
         "```\n"

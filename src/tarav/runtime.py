@@ -124,7 +124,7 @@ class TaravRuntime:
         from tarav.daemon.log import report_hook_delivery_failure
         from tarav.forum import register_forum_commands
         from tarav.hooks import register_hook_commands
-        from tarav.diagram.commands import register_diagram_commands
+        from tarav.unsorted.commands import register_diagram_commands
         from tarav.stdlib.mdblocks.commands import register_mdblocks_commands
         from tarav.stdlib.prefix.commands import register_prefix_commands
         from tarav.project import register_project_commands
@@ -223,7 +223,13 @@ def create_runtime(
         BreadcrumbWorkflow,
     )
     from tarav.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
-    from tarav.diagram.workflow import DIAGRAM_RECORD_TYPES, DiagramWorkflow
+    from tarav.unsorted.provider import DIAGRAM_RECORD_TYPES
+    from tarav.lines.workflow import LinesWorkflow
+    from tarav.wiki import Wiki, WikiNote, WikiWorkflow
+    from tarav.surfaces import SurfacesWorkflow
+    from tarav.surfaces.markdown import MarkdownNormalModel
+    from tarav.surfaces.python import PythonNormalModel
+    from tarav.unsorted.workflow import UnsortedWorkflow
     from tarav.references.workflow import REFERENCE_RECORD_TYPES
     from tarav.archive.records import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
     from tarav.scoring.model import SCORING_RECORD_TYPES
@@ -259,6 +265,10 @@ def create_runtime(
                 *RECORD_ARCHIVE_TYPES,
                 ArchiveReference,
                 *DIAGRAM_RECORD_TYPES,
+                Wiki,
+                WikiNote,
+                MarkdownNormalModel,
+                PythonNormalModel,
                 *SCORING_RECORD_TYPES,
                 *SKILLWARE_RECORD_TYPES,
                 *SKILLS_RECORD_TYPES,
@@ -285,7 +295,10 @@ def create_runtime(
         BreadcrumbWorkflow,
         ArchiveWorkflow,
         RecordArchiveWorkflow,
-        DiagramWorkflow,
+        LinesWorkflow,
+        WikiWorkflow,
+        SurfacesWorkflow,
+        UnsortedWorkflow,
         ScoringWorkflow,
         SkillwareWorkflow,
         SkillsWorkflow,

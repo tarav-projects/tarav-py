@@ -2,12 +2,10 @@
 """Markdown native surface normalization."""
 
 from .model import MarkdownFence, MarkdownHeading, MarkdownLine, MarkdownNormalModel
-from .normalize import normalize_markdown
 
 __all__ = [
     "MarkdownFence",
     "MarkdownHeading",
     "MarkdownLine",
     "MarkdownNormalModel",
-    "normalize_markdown",
 ]

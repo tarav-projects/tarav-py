@@ -1,0 +1,238 @@
+"""tarav.unsorted.constants: extracted legacy definitions; identities and storage labels preserved."""
+
+from __future__ import annotations
+
+from typing import Any
+import re
+
+NAMESPACE_CLASS = "Tarav.Diagram.Namespace"
+
+
+DIAGRAM_CONFIG_TYPE = "Tarav.Diagram.Configuration"
+
+
+CAPTURE_MANIFEST_TYPE = "Tarav.Diagram.Capture.Manifest"
+
+
+CAPTURE_RECEIPT_TYPE = "Tarav.Diagram.Capture.Receipt"
+
+
+DIAGRAM_DRAFT_TYPE = "Tarav.Diagram.Draft"
+
+
+USER_TOUCHED_CHATLAS_INDEX = "User.Touched.Chatlas.Index"
+
+
+DIAGRAM_ATTIC = "Diagram.Attic"
+
+
+MODEL_SHIP_TYPE = "Diagram.Model.Ship"
+
+
+BLOCK_SHIP_TYPE = "Diagram.Block.Ship"
+
+
+LINE_SHIP_TYPE = "Diagram.Line.Ship"
+
+
+COLLECTION_SHIP_TYPE = "Diagram.Collection.Ship"
+
+
+MODEL_EDITION_TYPE = "Diagram.Model.Edition"
+
+
+BLOCK_EDITION_TYPE = "Diagram.Block.Edition"
+
+
+BLOCK_TYPE_ANNOTATION_TYPE = "Diagram.Block.Type.Annotation"
+
+
+LINE_EDITION_TYPE = "Diagram.Line.Edition"
+
+
+COLLECTION_EDITION_TYPE = "Diagram.Collection.Edition"
+
+
+LINE_TYPE_ANNOTATION_TYPE = "Diagram.Line.Type.Annotation"
+
+
+LINE_SUPPORT_ANNOTATION_TYPE = "Diagram.Line.Support.Annotation"
+
+
+LINE_GATE_ANNOTATION_TYPE = "Diagram.Line.Gate.Annotation"
+
+
+LINE_ANNOTATION_TYPE = "Line.Annotation"
+
+
+CAPTURE_AUTHORIZATION_GATE_TYPE = "Capture.Authorization.Gate"
+
+
+VERBATIM_GATE_TYPE = "Verbatim.Gate"
+
+
+DIAGRAM_BLOCK_OBJECT_TYPE = "Diagram.Block"
+
+
+DESIGN_BLOCK_OBJECT_TYPE = "Design.Block"
+
+
+IMPL_REQ_BLOCK_OBJECT_TYPE = "Impl.Req.Block"
+
+
+DIAGRAM_COLLECTION_OBJECT_TYPE = "Diagram.Collection"
+
+
+IMPL_REQ_COLLECTION_OBJECT_TYPE = "Impl.Req.Collection"
+
+
+ISSUE_BLOCK_OBJECT_TYPE = "Issue.Block"
+
+
+DIAGRAM_LINE_OBJECT_TYPE = "Diagram.Line"
+
+
+DESIGN_LINE_DEFINITION_TYPE = "Design.Line.Definition"
+
+
+DESIGN_LINE_DECISION_TYPE = "Design.Line.Decision"
+
+
+DESIGN_LINE_CONSTRAINT_TYPE = "Design.Line.Constraint"
+
+
+DESIGN_LINE_REJECTION_TYPE = "Design.Line.Rejection"
+
+
+DESIGN_LINE_PRINCIPLE_TYPE = "Design.Line.Principle"
+
+
+DESIGN_LINE_FREEDOM_TYPE = "Design.Line.Freedom"
+
+
+DESIGN_LINE_EXAMPLE_TYPE = "Design.Line.Example"
+
+
+ISSUE_LINE_RESOLVE_TYPE = "Issue.Line.Resolve"
+
+
+DESIGN_LINE_OBJECT_TYPES = (
+    DESIGN_LINE_DEFINITION_TYPE,
+    DESIGN_LINE_DECISION_TYPE,
+    DESIGN_LINE_CONSTRAINT_TYPE,
+    DESIGN_LINE_REJECTION_TYPE,
+    DESIGN_LINE_PRINCIPLE_TYPE,
+    DESIGN_LINE_FREEDOM_TYPE,
+    DESIGN_LINE_EXAMPLE_TYPE,
+)
+
+
+DIAGRAM_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "7b2bb6ef-37b8-47e0-8c6b-2ff5ccbdd82d"
+
+
+DESIGN_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "aa26bfa3-49f6-406d-b74f-f071ec3d11fa"
+
+
+IMPL_REQ_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "f6dfcbcb-6eb5-468c-a3f8-7f7034334b94"
+
+
+DIAGRAM_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP = "376d5a04-fae7-45ea-acaf-b5fbd176acb3"
+
+
+IMPL_REQ_COLLECTION_TYPE_DEFINITION_BLOCK_SHIP = "6d475881-1b3c-4774-bb1c-7e0ee91418bb"
+
+
+ISSUE_BLOCK_TYPE_DEFINITION_BLOCK_SHIP = "4864c2cc-9542-49ea-8295-a566eea29164"
+
+
+ISSUE_LINE_RESOLVE_TYPE_DEFINITION_BLOCK_SHIP = "3753a425-04e7-4d62-9d44-01f42af5b5e4"
+
+
+DESIGN_LINE_TYPE_DEFINITION_BLOCK_SHIPS = {
+    DESIGN_LINE_DEFINITION_TYPE: "00a33f68-90a7-4a92-87c4-c3862e879bc5",
+    DESIGN_LINE_DECISION_TYPE: "7cf2af24-e6d9-46b7-a09a-c43db69ccd68",
+    DESIGN_LINE_CONSTRAINT_TYPE: "9b0bea0f-1408-483e-85cf-504e2009ad25",
+    DESIGN_LINE_REJECTION_TYPE: "2d3dd161-b4c2-4810-9e2b-4fda1a6c8743",
+    DESIGN_LINE_PRINCIPLE_TYPE: "6c43fce3-dd2d-40d3-b676-4e58df8195ee",
+    DESIGN_LINE_FREEDOM_TYPE: "1894d99c-ddca-491d-a586-1a7a53e9c4b0",
+    DESIGN_LINE_EXAMPLE_TYPE: "1366fc61-a9fe-4ef5-91dc-6f13f0447e30",
+}
+
+
+CHATLAS_INDEX_NAMESPACES = frozenset((USER_TOUCHED_CHATLAS_INDEX, DIAGRAM_ATTIC))
+
+
+CHATLAS_INDEX_SHIP_TYPES = (
+    MODEL_SHIP_TYPE,
+    BLOCK_SHIP_TYPE,
+    LINE_SHIP_TYPE,
+    COLLECTION_SHIP_TYPE,
+)
+
+
+CHATLAS_INDEX_EDITION_TYPES = (
+    MODEL_EDITION_TYPE,
+    BLOCK_EDITION_TYPE,
+    LINE_EDITION_TYPE,
+    COLLECTION_EDITION_TYPE,
+)
+
+
+CHATLAS_INDEX_ANNOTATION_TYPES = (
+    BLOCK_TYPE_ANNOTATION_TYPE,
+    LINE_TYPE_ANNOTATION_TYPE,
+    LINE_SUPPORT_ANNOTATION_TYPE,
+    LINE_GATE_ANNOTATION_TYPE,
+    LINE_ANNOTATION_TYPE,
+    CAPTURE_AUTHORIZATION_GATE_TYPE,
+)
+
+
+SCHEMA_VERSION = 2
+
+
+CONFIG_SCHEMA_VERSION = 1
+
+
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+JsonObject = dict[str, Any]
+
+
+_EXAMPLE_MODEL = "00000000-0000-4000-8000-000000000001"
+
+
+_EXAMPLE_BLOCK = "00000000-0000-4000-8000-000000000002"
+
+
+_EXAMPLE_LINE = "00000000-0000-4000-8000-000000000003"
+
+
+_EXAMPLE_COLLECTION = "00000000-0000-4000-8000-000000000004"
+
+
+_EXAMPLE_EDITION = "00000000-0000-4000-8000-000000000005"
+
+
+_EXAMPLE_NAMESPACE = "00000000-0000-4000-8000-000000000006"
+
+
+_EXAMPLE_DIGEST = "0" * 64
+
+
+VERBATIM_GATE_ASSERTIONS = (
+    "Verbatim.Gate.Target.Assertion",
+    "Verbatim.Gate.Proposal.Role.Assertion",
+    "Verbatim.Gate.Approval.Role.Assertion",
+    "Verbatim.Gate.Token.Assertion",
+    "Verbatim.Gate.Order.Assertion",
+    "Verbatim.Gate.Content.Assertion",
+)
+
+
+CAPTURE_AUTHORIZATION_ASSERTIONS = (
+    "Capture.Authorization.Permission.Role.Assertion",
+    "Capture.Authorization.Token.Assertion",
+    "Capture.Authorization.Scope.Assertion",
+)

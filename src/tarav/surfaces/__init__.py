@@ -2,5 +2,6 @@
 """Small native source models and normalizers."""
 
 from .model import SourceDiagnostic, SourceSpan
+from .workflow import SurfacesWorkflow
 
-__all__ = ["SourceDiagnostic", "SourceSpan"]
+__all__ = ["SourceDiagnostic", "SourceSpan", "SurfacesWorkflow"]

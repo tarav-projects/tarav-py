@@ -3,8 +3,9 @@ import hashlib
 import json
 from pathlib import Path
 
-from tarav.diagram import DiagramError, DiagramNamespace
-from tarav.diagram.rendering import DiagramRenderTarget, renderer
+from tarav.unsorted.primitives import DiagramError
+from tarav.unsorted.storage import DiagramNamespace
+from tarav.lines.rendering import DiagramRenderTarget, renderer
 from tarav.kernel import TaravClass, entity
 from tarav.kernel import FileRecord, TypeShip
 from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP

@@ -1,4 +1,4 @@
-"""CLI adapter for Tarav.Diagram."""
+"""Provisional CLI composition preserving the ``tarav diagram`` command."""
 
 from __future__ import annotations
 
@@ -11,32 +11,16 @@ from tarav._core.persistence import atomic_write_json
 from tarav._core.project import require_agentos_project
 from tarav.chatlas.normal_model import provide_normal_model
 
-from . import (
-    CaptureManifest,
-    ChatlasEvidence,
-    ChatlasTurnReferenceInterface,
-    DIAGRAM_ATTIC,
-    DiagramConfiguration,
-    DiagramBlock,
-    DiagramCollection,
-    DiagramError,
-    DiagramLineShip,
-    DiagramModelError,
-    DiagramNamespace,
-    ImplReqCollection,
-    LINE_EDITION_TYPE,
-    USER_TOUCHED_CHATLAS_INDEX,
-)
-from .rendering import (
-    DiagramRenderError,
-    annotation_render_target,
-    block_render_target,
-    collection_render_target,
-    line_render_target,
-    model_render_target,
-    renderer,
-    renderers,
-)
+from tarav.unsorted.capture import CaptureManifest
+from tarav.unsorted.evidence import ChatlasEvidence
+from tarav.unsorted.contracts import ChatlasTurnReferenceInterface
+from tarav.unsorted.constants import DIAGRAM_ATTIC, LINE_EDITION_TYPE, USER_TOUCHED_CHATLAS_INDEX
+from tarav.unsorted.storage import DiagramConfiguration, DiagramNamespace
+from tarav.lines.block import DiagramBlock
+from tarav.lines.collection import DiagramCollection, ImplReqCollection
+from tarav.unsorted.primitives import DiagramError, DiagramModelError
+from tarav.lines.line import DiagramLineShip
+from tarav.lines.rendering import DiagramRenderError, annotation_render_target, block_render_target, collection_render_target, line_render_target, model_render_target, renderer, renderers
 from .view_commands import register_view_commands
 from .draft_commands import register_draft_commands
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from tarav._core.scan import iter_target_files
-from tarav.surfaces.markdown import MarkdownNormalModel, normalize_markdown
+from tarav.surfaces.markdown import MarkdownNormalModel
 
 
 BLOCK_SEPARATOR = "****"
@@ -332,7 +332,7 @@ def _parse_file_blocks(
     include_content: bool,
 ) -> dict[str, Any]:
     text = file_path.read_text(encoding="utf-8")
-    model = normalize_markdown(text)
+    model = MarkdownNormalModel.from_text(text)
     source_lines = [line.text for line in model.lines]
     rel_path = file_path.relative_to(root).as_posix()
     source_line_count = len(source_lines)

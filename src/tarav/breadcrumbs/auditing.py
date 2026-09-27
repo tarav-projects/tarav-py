@@ -9,8 +9,8 @@ import re
 
 from tarav.kernel import TaravClass
 from tarav.kernel import TaravPOIInstance, TypeShip
-from tarav.surfaces.markdown import normalize_markdown
-from tarav.surfaces.python import normalize_python
+from tarav.surfaces.markdown import MarkdownNormalModel
+from tarav.surfaces.python import PythonNormalModel
 
 from .store import BreadcrumbError, BreadcrumbResolution, BreadcrumbStore
 from .surfaces import BreadcrumbSurface, infer_surface_language
@@ -201,7 +201,7 @@ def _surface_labels(
 ) -> tuple[tuple[SurfaceBreadcrumbLabel, ...], list[BreadcrumbAuditFinding]]:
     candidates: list[tuple[int, str]] = []
     if surface.language == "markdown":
-        model = normalize_markdown(surface.text)
+        model = MarkdownNormalModel.from_text(surface.text)
         fenced = model.fenced_line_numbers()
         candidates.extend(
             (item.span.start_line, item.text)
@@ -212,7 +212,7 @@ def _surface_labels(
         )
         pattern = _MARKDOWN_BREADCRUMB
     elif surface.language == "python":
-        model = normalize_python(surface.text)
+        model = PythonNormalModel.from_text(surface.text)
         if model.diagnostics:
             raise BreadcrumbError(
                 "Python surface has normalization diagnostics: "

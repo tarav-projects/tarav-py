@@ -1,4 +1,4 @@
-"""CLI composition for retained Diagram.View context surfaces."""
+"""Unsorted CLI composition for retained Diagram.View context surfaces."""
 
 from __future__ import annotations
 
@@ -10,16 +10,10 @@ from tarav._core.errors import CliError
 from tarav._core.persistence import atomic_write_text
 from tarav._core.project import require_agentos_project
 
-from . import ChatlasEvidence, DiagramConfiguration, DiagramError
-from .views import (
-    DIAGRAM_VIEW_TYPE,
-    DiagramViewConfiguration,
-    DiagramViewError,
-    DiagramViewMutation,
-    DiagramViewRepository,
-    SessionDiagramView,
-    VIEW_TYPES,
-)
+from tarav.unsorted.evidence import ChatlasEvidence
+from tarav.unsorted.storage import DiagramConfiguration
+from tarav.unsorted.primitives import DiagramError
+from tarav.unsorted.views import DIAGRAM_VIEW_TYPE, DiagramViewConfiguration, DiagramViewError, DiagramViewMutation, DiagramViewRepository, SessionDiagramView, VIEW_TYPES
 
 
 def _configuration(args: argparse.Namespace) -> DiagramConfiguration:

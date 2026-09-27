@@ -11,6 +11,18 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+def test_wiki_ownership_and_parsing_boundary():
+    from tarav.runtime import create_runtime
+    from tarav.wiki import Wiki, WikiNote, WikiWorkflow
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("wiki") is WikiWorkflow
+    assert entity(Wiki).workflow is WikiWorkflow()
+    assert entity(WikiNote).workflow is WikiWorkflow()
+    assert "surfaces" in _top_level_import_graph()["wiki"]
+    assert WikiWorkflow.help()["capture"]["skill"] == "tarav-hugentics"
+
+
 def test_context_package_import_order_and_runtime_boundary():
     import subprocess
     import sys
@@ -143,6 +155,10 @@ def _top_level_import_graph() -> dict[str, set[str]]:
     for path in PACKAGE_ROOT.rglob("*.py"):
         relative = path.relative_to(PACKAGE_ROOT)
         source = relative.parts[0] if len(relative.parts) > 1 else "<root>"
+        # Unsorted contains both provisional foundations and composition layers.
+        # Check their actual module dependencies, not a collapsed package cycle.
+        if source in {"lines", "unsorted"}:
+            source = ".".join(relative.with_suffix("").parts).removesuffix(".__init__")
         # skw.skills is a composition leaf above the generic SKW document kernel.
         if relative.as_posix() in {
             "skw/skills.py",
@@ -165,10 +181,17 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 imported = tuple(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported = (node.module,)
+                if node.level and relative.parts[0] in {"lines", "unsorted"}:
+                    from importlib.util import resolve_name
+
+                    package = "tarav." + ".".join(relative.parts[:-1])
+                    imported = (resolve_name("." * node.level + node.module, package),)
             for name in imported:
                 if not name.startswith("tarav."):
                     continue
                 target = name.split(".", 2)[1]
+                if target in {"lines", "unsorted"}:
+                    target = name.removeprefix("tarav.")
                 if name in {"tarav.context.storage", "tarav.context.workflow"}:
                     target = "context.storage"
                 if name == "tarav.skw.skills" or name.startswith("tarav.skw.skills."):
@@ -267,6 +290,14 @@ def test_skw_owns_the_retained_document_kernel() -> None:
 
 
 def test_native_surfaces_do_not_import_skillware() -> None:
+    from tarav.kernel import TaravObject, entity
+    from tarav.surfaces import SurfacesWorkflow
+    from tarav.surfaces.markdown import MarkdownNormalModel
+    from tarav.surfaces.python import PythonNormalModel
+
+    for model in (MarkdownNormalModel, PythonNormalModel):
+        assert issubclass(model, TaravObject)
+        assert entity(model).workflow is SurfacesWorkflow()
     imports = _top_level_import_graph()
     assert "skw" not in imports["surfaces"]
     # Chatlas stopped consuming native surfaces when the Chat.Index Markdown
@@ -290,7 +321,7 @@ def test_kernel_is_a_dependency_clean_application_base() -> None:
     imports = _top_level_import_graph()
 
     assert imports["kernel"] == set()
-    assert "kernel" in imports["diagram"]
+    assert "kernel" in imports["lines.records"]
     assert "kernel" in imports["archive"]
     assert "kernel" in imports["navigation"]
     assert "poi" in imports["navigation"]
@@ -371,14 +402,14 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
     assert entity(TestEntity).workflow_ship == runtime.workflows.get("test")().id
 
 
-def test_ship_identity_is_owned_by_kernel_and_only_declared_by_diagram() -> None:
-    import tarav.diagram as diagram
+def test_ship_identity_is_owned_by_kernel_and_used_by_lines() -> None:
+    from tarav.lines.records import LineShipRecord
+    from tarav.unsorted.primitives import locate_record_type as record_type
     from tarav.kernel import Ship, TypeShip, locate_record_type
 
     assert issubclass(TypeShip, Ship)
-    assert diagram.Ship is Ship
-    assert isinstance(entity(diagram.LineShipRecord).id, TypeShip)
-    assert diagram.locate_record_type is locate_record_type
+    assert isinstance(entity(LineShipRecord).id, TypeShip)
+    assert record_type is locate_record_type
 
 
 def test_python_env_reports_the_environment_without_provisioning_one() -> None:
@@ -391,7 +422,8 @@ def test_python_env_reports_the_environment_without_provisioning_one() -> None:
 def test_promoted_tarav_domains_have_normal_package_ownership() -> None:
     assert (PACKAGE_ROOT / "archive" / "commands.py").is_file()
     assert (PACKAGE_ROOT / "breadcrumbs" / "commands.py").is_file()
-    assert (PACKAGE_ROOT / "diagram" / "commands.py").is_file()
+    assert (PACKAGE_ROOT / "unsorted" / "commands.py").is_file()
+    assert not tuple((PACKAGE_ROOT / "diagram").glob("*.py"))
     assert (PACKAGE_ROOT / "bloberia" / "hosted.py").is_file()
     assert (PACKAGE_ROOT / "_core" / "record_depot.py").is_file()
     assert not (PACKAGE_ROOT / "tarav2").exists()

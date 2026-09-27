@@ -1,4 +1,4 @@
-"""Durable writable workspaces for proposed Tarav.Diagram changes."""
+"""Unsorted legacy writable workspaces; existing storage contracts preserved."""
 
 from __future__ import annotations
 
@@ -13,20 +13,16 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from tarav._core.data_root import default_tarav_data_root
 from tarav._core.persistence import atomic_write_json
+from tarav.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.kernel import TaravClass, entity
 from tarav.kernel import TaravObject, TypeRegistry, TypeShip
 
-from . import (
-    AnnotationDraftInterface,
-    CaptureManifest,
-    CaptureReceipt,
-    ChatlasEvidence,
-    DIAGRAM_DRAFT_TYPE,
-    Diagram,
-    DiagramError,
-    Finding,
-    ShipDraftInterface,
-)
+from tarav.unsorted.contracts import AnnotationDraftInterface, Finding, ShipDraftInterface
+from tarav.unsorted.capture import CaptureManifest, CaptureReceipt
+from tarav.unsorted.evidence import ChatlasEvidence
+from tarav.unsorted.constants import DIAGRAM_DRAFT_TYPE
+from tarav.unsorted.storage import Diagram
+from tarav.unsorted.primitives import DiagramError
 
 
 DRAFT_SCHEMA_VERSION = 1
@@ -48,6 +44,7 @@ class DiagramDraft(TaravObject):
             target=cls,
             id=TypeShip('12c217aa-0a84-4e49-a0a4-2c963bd250e8'),
             name=DIAGRAM_DRAFT_TYPE,
+            workflow=UNSORTED_WORKFLOW_SHIP,
         )
 
     class RecordInterface(TaravObject.RecordInterface):

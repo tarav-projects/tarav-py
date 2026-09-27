@@ -27,8 +27,8 @@ from tarav.chatlas.normal_model import compute_normal_model, provide_normal_mode
 from tarav.chatlas.normal_model import resolve_chat_turn_ref
 from tarav.chatlas.query import ChatlasQuery, ChatlasQueryEngine, ChatlasQueryError
 from tarav.chatlas.references import ChatlasTurnReference
-from tarav.surfaces.markdown import normalize_markdown
-from tarav.surfaces.python import normalize_python
+from tarav.surfaces.markdown import MarkdownNormalModel
+from tarav.surfaces.python import PythonNormalModel
 
 from .model import ChatlasContextAttachment
 
@@ -240,7 +240,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
 
 def _markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:
     if language == "markdown":
-        model = normalize_markdown(text)
+        model = MarkdownNormalModel.from_text(text)
         fenced = model.fenced_line_numbers()
         result = []
         for item in model.lines:
@@ -261,7 +261,7 @@ def _markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:
                 )
         return tuple(result)
     if language == "python":
-        model = normalize_python(text)
+        model = PythonNormalModel.from_text(text)
         if model.diagnostics:
             raise BreadcrumbError(
                 "Python surface has normalization diagnostics: "
@@ -289,7 +289,7 @@ def _markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:
 def _malformed_marker_lines(text: str, language: str) -> tuple[int, ...]:
     candidates: list[tuple[int, str]] = []
     if language == "markdown":
-        model = normalize_markdown(text)
+        model = MarkdownNormalModel.from_text(text)
         fenced = model.fenced_line_numbers()
         candidates.extend(
             (item.span.start_line, item.text)
@@ -300,7 +300,7 @@ def _malformed_marker_lines(text: str, language: str) -> tuple[int, ...]:
         )
         pattern = _MARKDOWN_CONTEXT
     elif language == "python":
-        model = normalize_python(text)
+        model = PythonNormalModel.from_text(text)
         if model.diagnostics:
             raise BreadcrumbError(
                 "Python surface has normalization diagnostics: "
@@ -318,7 +318,7 @@ def _malformed_marker_lines(text: str, language: str) -> tuple[int, ...]:
 
 
 def _markdown_sessions(text: str) -> dict[str, SessionDeclaration]:
-    fenced = normalize_markdown(text).fenced_line_numbers()
+    fenced = MarkdownNormalModel.from_text(text).fenced_line_numbers()
     declarations: dict[str, SessionDeclaration] = {}
     for block in _SESSION_BLOCK.finditer(text):
         start_line = text.count("\n", 0, block.start()) + 1

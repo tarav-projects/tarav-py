@@ -3,7 +3,7 @@ from tarav.kernel import entity
 import json
 
 import pytest
-from tarav.diagram import DiagramError
+from tarav.unsorted.primitives import DiagramError
 
 from tarav.skw.publication import ModelPublication, ModelPublicationRecord
 from tarav.runtime import create_runtime

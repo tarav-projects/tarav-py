@@ -10,8 +10,8 @@ from pathlib import Path
 
 from tarav._core.errors import CliError
 
-from .markdown import normalize_markdown
-from .python import normalize_python
+from .markdown import MarkdownNormalModel
+from .python import PythonNormalModel
 
 
 _EXTENSION_LANGUAGES = {
@@ -21,8 +21,8 @@ _EXTENSION_LANGUAGES = {
     ".pyi": "python",
 }
 _NORMALIZERS = {
-    "markdown": normalize_markdown,
-    "python": normalize_python,
+    "markdown": MarkdownNormalModel.from_text,
+    "python": PythonNormalModel.from_text,
 }
 
 

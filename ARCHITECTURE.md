@@ -301,11 +301,13 @@ relationships, storage policies, or interpretation of domain payloads.
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
 | `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
-| `diagram` | Explicit semantic Ships, Annotations, Assertions, projections, Views, and Drafts. It is one contributor to the broader emergent Diagram. |
+| `lines` | LinesWorkflow owns Line, Block, Model, Collection, edition, and relationship Record types, projections, and rendering. |
+| `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `scoring` | Assertion evaluation evidence, pools, tasks, runs, results, scores, and traces. |
 | `poi` | Application-defined findings, bounded reports, and recorded assessments or blessings. |
 | `skw` | Typed document compilation, context declarations, generation mechanics, and skill-package specialization. |
-| `surfaces` | Thin syntax models for native Product.Surfaces; it does not assign workflow meaning. |
+| `surfaces` | SurfacesWorkflow owns MarkdownNormalModel and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. Consumers assign domain meaning. |
+| `wiki` | Folder-based Markdown Wiki and WikiNote objects, project Wiki convention, parsing through surfaces, and Wiki-scoped Git closure. WikiWorkflow exposes the agent capture skill through class help. |
 | `project`, `skills`, `workspaces` | Project discovery and user-facing project or workspace operations. |
 | `hooks`, `daemon` | Hook validation and dispatch, plus daemon-owned delivery adapters. |
 | `stdlib` | Small reusable library and CLI primitives. |
@@ -315,6 +317,14 @@ Other cohesive command domains follow the same rule: they own their behavior
 and use Kernel contracts without moving their semantics into Kernel.
 
 ## Integration invariants
+
+Lines consumes provisional low-level contracts and Record bases in Unsorted.
+Unsorted also owns the mixed legacy CLI adapters, preserving the public
+`tarav diagram` command without a `tarav.diagram` Python package.
+Higher-level Unsorted storage and capture compose Lines. These dependencies
+must remain acyclic at module level; collapsing all provisional Unsorted
+modules into one graph node would hide this distinction. Architecture tests
+therefore inspect Lines and Unsorted at module granularity.
 
 - The subsystem import graph is acyclic outside runtime composition.
 - Domains normally receive dependencies through composition. Record Archive
