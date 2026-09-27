@@ -37,11 +37,44 @@ class ProjectModels(TaravType):
         self.project = project
         self._diagram = diagram
 
-    def main(self):
-        """Resolve the existing main Model, never creating data."""
+    def _resolver(self):
         from tarav.unsorted.storage import DiagramConfiguration
 
         diagram = self._diagram
         if diagram is None:
             diagram = DiagramConfiguration.load().diagram()
-        return diagram.project_model(self.project.root)
+        return diagram
+
+    def ls(self) -> tuple[str, ...]:
+        """List configured names without loading Model storage."""
+        return tuple(sorted(self._named_models()))
+
+    def get(self, name: str):
+        """Resolve one named association; unknown names raise KeyError."""
+        if not isinstance(name, str):
+            raise TypeError("Model name must be a string")
+        ship = self._named_models()[name]
+        return self._resolver().model(ship)
+
+    def _named_models(self) -> dict[str, str]:
+        from tarav._core.project import load_project_marker, project_marker_path
+        from tarav.kernel import Ship
+
+        marker = load_project_marker(project_marker_path(self.project.root))
+        setting = marker.get("diagram", {})
+        if not isinstance(setting, dict):
+            raise ValueError("Project diagram must be an object")
+        models = setting.get("models", {})
+        if not isinstance(models, dict):
+            raise ValueError("Project diagram.models must be a name-to-Ship object")
+        for name, ship in models.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("Project Model names must be non-empty strings")
+            if not isinstance(ship, str):
+                raise ValueError(f"Project Model {name!r} must reference a Ship string")
+            Ship(ship)
+        return models
+
+    def main(self):
+        """Resolve the existing main Model, independently of named aliases."""
+        return self._resolver().project_model(self.project.root)

@@ -1,4 +1,5 @@
 import pytest
+import json
 
 from tarav._core.project import initialize_project_layout
 from tarav.kernel import entity
@@ -62,3 +63,51 @@ def test_missing_model_configuration_is_not_created(tmp_path, monkeypatch):
     with pytest.raises(DiagramError, match="configuration not found"):
         handler.main()
     assert not config.exists()
+
+
+def test_named_models_are_live_read_only_and_independent_of_main(tmp_path):
+    namespace = DiagramNamespace.create_user_touched_chatlas_index(tmp_path / "diagram")
+    main = namespace.create_model(label="Main")
+    other = namespace.create_model(label="Research")
+    diagram = DiagramConfiguration.load(tmp_path / "config.json", create=True).mount(
+        namespace, default=True).diagram()
+    initialize_project_layout(tmp_path)
+    diagram.set_project_main_model(tmp_path, main.ship)
+    handler = ProjectModels(Project.from_path(tmp_path), diagram=diagram)
+    assert handler.ls() == ()
+    assert handler.main().ship == main.ship
+    marker = tmp_path / ".tarav/project.json"
+    record = json.loads(marker.read_text())
+    record["diagram"]["models"] = {"research": other.ship, "alias": other.ship}
+    marker.write_text(json.dumps(record))
+    before = marker.read_bytes()
+    assert handler.ls() == ("alias", "research")
+    assert handler.get("research").ship == other.ship
+    assert handler.get("alias").ship == other.ship
+    assert handler.main().ship == main.ship
+    with pytest.raises(KeyError):
+        handler.get("absent")
+    with pytest.raises(TypeError):
+        handler.get(3)
+    assert marker.read_bytes() == before
+
+
+def test_listing_and_missing_names_do_not_resolve_storage(tmp_path):
+    initialize_project_layout(tmp_path)
+    handler = ProjectModels(Project.from_path(tmp_path), diagram=object())
+    assert handler.ls() == ()
+    with pytest.raises(KeyError):
+        handler.get("missing")
+
+
+@pytest.mark.parametrize("mapping", [None, [], {"": "bad"}, {"research": 3}, {"research": "bad"}])
+def test_invalid_named_mapping_is_reported_not_repaired(tmp_path, mapping):
+    initialize_project_layout(tmp_path)
+    marker = tmp_path / ".tarav/project.json"
+    record = json.loads(marker.read_text())
+    record["diagram"] = {"models": mapping}
+    marker.write_text(json.dumps(record))
+    before = marker.read_bytes()
+    with pytest.raises(ValueError):
+        Project.from_path(tmp_path).models().ls()
+    assert marker.read_bytes() == before
