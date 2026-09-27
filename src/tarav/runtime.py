@@ -230,7 +230,9 @@ def create_runtime(
     from tarav.lines.workflow import LinesWorkflow
     from tarav.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.models import ModelsWorkflow
-    from tarav.project import Project, ProjectWorkflow
+    from tarav.project import Project, ProjectWorkflow, TaravProject
+    from tarav.project.models import ProjectModelsWorkflow
+    from tarav.project.wiki import ProjectWikiWorkflow
     from tarav.poi import (
         POI_RECORD_TYPES, POIWorkflow, POICollector, BlessingStore,
         BlessingRecord, BlessingAssessmentRecord,
@@ -280,6 +282,7 @@ def create_runtime(
                 Wiki,
                 WikiNote,
                 Project,
+                TaravProject,
                 *POI_RECORD_TYPES,
                 MarkdownNormalModel,
                 PythonNormalModel,
@@ -317,6 +320,8 @@ def create_runtime(
         WikiWorkflow,
         ModelsWorkflow,
         ProjectWorkflow,
+        ProjectModelsWorkflow,
+        ProjectWikiWorkflow,
         POIWorkflow,
         SurfacesWorkflow,
         UnsortedWorkflow,

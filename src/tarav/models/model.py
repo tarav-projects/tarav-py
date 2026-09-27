@@ -27,18 +27,6 @@ class Model(TaravType):
                           id=TypeShip("be2cb289-3a11-45aa-989e-6a8403ee5e4d"),
                           name="Tarav.Models.Model", workflow=MODELS_WORKFLOW_SHIP)
 
-    @classmethod
-    def from_project(cls, project, *, diagram):
-        """Resolve an existing association without creating anything."""
-        from tarav._core.project import TaravProjectHandler, require_agentos_project
-        from tarav.project import Project
-
-        if isinstance(project, Project):
-            return diagram.project_model(project.root)
-        handler = (project.require_marker() if isinstance(project, TaravProjectHandler)
-                   else require_agentos_project(project))
-        return diagram.project_model(handler.root)
-
     @property
     def record(self) -> ModelShipRecord:
         ship = self.namespace.ship(self.ship).specialize()

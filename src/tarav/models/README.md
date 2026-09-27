@@ -4,15 +4,15 @@
 Lines, Blocks, and Collections retain their own LinesWorkflow ownership.
 
 ```python
-from tarav.models import Model, ModelsWorkflow
+from tarav.project import Project
 
-model = Model.from_project(path, diagram=diagram)
+model = Project.from_path(path).models().main()
 model = diagram.model(model_ship)  # No project required.
 ```
 
-`from_project` discovers the nearest project from a root, file, or subdirectory.
-It reads the existing `diagram.main_model` association and never creates one.
-The resolver is explicit so Models does not depend on legacy storage adapters.
+Project discovery and the `diagram.main_model` association belong to
+`tarav.project.models.ProjectModels`, not Model. The integration loads the
+existing configured storage lazily and never creates an association.
 Several projects may point to the same Model. Models can exist without projects.
 
 The existing Model handler remains a live namespace-bound handle, now a

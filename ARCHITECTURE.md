@@ -308,8 +308,9 @@ relationships, storage policies, or interpretation of domain payloads.
 | `poi` | POIWorkflow owns extensible check declarations, identified findings, typed blessings and assessments. Context exposes checks, coordinates, and evidence. Runtime composition supplies an isolated collector and Archive-partition blessing store; detection and response remain consumer-owned. |
 | `skw` | Typed document compilation, context declarations, generation mechanics, and skill-package specialization. |
 | `surfaces` | SurfacesWorkflow owns MarkdownNormalModel and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. Consumers assign domain meaning. |
-| `wiki` | Folder-based Markdown Wiki and WikiNote objects, project Wiki convention, parsing through surfaces, and Wiki-scoped Git closure. WikiWorkflow exposes the agent capture skill through class help. |
-| `project` | ProjectWorkflow owns Project entities. Existing project_id is the Ship identity; project.json remains the portable record, while the discovered root is runtime location. Wiki and Models independently resolve their project associations. |
+| `wiki` | Folder-based Markdown Wiki and WikiNote objects, parsing through surfaces, and Wiki-scoped Git closure. No Project dependency. |
+| `project` | ProjectWorkflow owns minimal TaravProject and featured Project. Existing project_id is the Ship identity; discovered location stays outside the portable marker. |
+| `project.models`, `project.wiki` | Specialized child workflows own Project associations. Project lazily delegates models() and wiki(); the minimal base imports neither integration. |
 | `skills`, `workspaces` | User-facing skill and workspace operations. |
 | `hooks`, `daemon` | Hook validation and dispatch, plus daemon-owned delivery adapters. |
 | `stdlib` | Small reusable library and CLI primitives. |
@@ -318,13 +319,21 @@ relationships, storage policies, or interpretation of domain payloads.
 Other cohesive command domains follow the same rule: they own their behavior
 and use Kernel contracts without moving their semantics into Kernel.
 
-`Project.from_path()` discovers the nearest marker and explicitly interprets
+`TaravProject.from_path()` discovers the nearest marker and explicitly interprets
 its existing schema, preserving every retained field. Entity identity is
 serialized as `project_id`, not a second `id`. Records loaded without a source
 remain detached: their location cannot be inferred from identity. Existing
 untyped markers are not rewritten; newly constructed Project projections carry
-the ordinary `type` reference for generic dispatch. Wiki and Models consume
-Project without making Project depend on those workflows.
+the ordinary `type` reference for generic dispatch. Explicit
+`SomeProject.from_path()` constructs that selected class, reprojecting any
+retained Type tag in memory without changing the file. Generic from_record()
+and load_object() retain exact Type checks. Project-local code is never
+automatically imported by discovery. Subtypes define class_entity() normally.
+
+ProjectModels.main() resolves through existing Diagram configuration by default;
+an explicit resolver is optional for isolated integrations. ProjectWiki.open()
+returns the conventional notes/wiki folder. Neither operation creates data.
+Project.models() returns its integration handler; Project.wiki() returns a Wiki.
 
 ## Integration invariants
 
@@ -336,10 +345,10 @@ must remain acyclic at module level; collapsing all provisional Unsorted
 modules into one graph node would hide this distinction. Architecture tests
 therefore inspect Lines and Unsorted at module granularity.
 
-Models is also checked at module granularity. Its retained Record definitions
-depend only on provisional low-level foundations. The public Model handler
-resolves project associations through an explicitly supplied Diagram adapter;
-it does not import legacy storage composition. `tarav.models.Model` replaces
+Models and Project are also checked at module granularity. Model's retained
+Record definitions depend only on provisional low-level foundations. Project
+associations belong to project.models; the public Model handler does not import
+Project or legacy storage composition. `tarav.models.Model` replaces
 the old `tarav.lines.model.DiagramModel` Python path; retained TypeShips,
 Record labels, Model UUIDs, and `diagram.main_model` associations are unchanged.
 

@@ -3,7 +3,8 @@ import subprocess
 
 import pytest
 
-from tarav._core.project import TaravProjectHandler, initialize_project_layout
+from tarav._core.project import initialize_project_layout
+from tarav.project import Project
 from tarav.wiki import Wiki
 
 
@@ -11,8 +12,8 @@ def test_project_and_folder_wiki_are_lazy_and_parse_native_markdown(tmp_path):
     initialize_project_layout(tmp_path)
     child = tmp_path / "src"
     child.mkdir()
-    wiki = Wiki.from_project(child)
-    assert wiki.root == Wiki.from_project(TaravProjectHandler(tmp_path)).root
+    wiki = Project.from_path(child).wiki()
+    assert wiki.root == Project.from_path(tmp_path).wiki().root
     assert wiki.root == Wiki.from_path(tmp_path / "notes/wiki").root
     note = wiki.daily(date(2026, 9, 26))
     assert not wiki.root.exists()

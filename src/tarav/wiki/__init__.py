@@ -5,9 +5,7 @@ from pathlib import Path
 import subprocess
 
 from tarav._core.persistence import atomic_write_text
-from tarav._core.project import TaravProjectHandler, require_agentos_project
 from tarav.kernel import TaravClass, TaravObject, TypeShip, entity
-from tarav.project import Project
 from tarav.surfaces.markdown import MarkdownNormalModel
 
 from .workflow import WIKI_WORKFLOW_SHIP, WikiWorkflow
@@ -37,17 +35,6 @@ class Wiki(TaravObject):
     @classmethod
     def from_path(cls, root: Path | str):
         return cls(root)
-
-    @classmethod
-    def from_project(cls, project: Project | TaravProjectHandler | Path | str):
-        if isinstance(project, Project):
-            return cls(project.root / "notes" / "wiki")
-        handler = (
-            project.require_marker()
-            if isinstance(project, TaravProjectHandler)
-            else require_agentos_project(project)
-        )
-        return cls(handler.root / "notes" / "wiki")
 
     def get(self, path: Path | str):
         return WikiNote(self, path)

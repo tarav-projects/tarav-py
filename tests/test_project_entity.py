@@ -5,9 +5,8 @@ import pytest
 from tarav._core.errors import CliError
 from tarav._core.project import initialize_project_layout
 from tarav.kernel import Ship, entity
-from tarav.project import Project, ProjectWorkflow
+from tarav.project import Project, ProjectWorkflow, TaravProject
 from tarav.runtime import create_runtime
-from tarav.wiki import Wiki
 
 
 def test_discovery_preserves_marker_and_selects_nearest_project(tmp_path):
@@ -28,7 +27,7 @@ def test_discovery_preserves_marker_and_selects_nearest_project(tmp_path):
         assert project.name == "nested"
         assert project.to_record() == json.loads(before)
         assert project.workflow is ProjectWorkflow()
-        assert Wiki.from_project(project).root == nested / "notes/wiki"
+        assert project.wiki().root == nested / "notes/wiki"
     assert marker.read_bytes() == before
     assert not (nested / "notes/wiki").exists()
     assert Project.from_path(tmp_path).id != project.id
@@ -87,3 +86,65 @@ def test_project_context_is_available_without_creating_archive(tmp_path):
     finally:
         set_runtime(previous)
     assert runtime.records.resolve_ship(entity(Project).id) is Project
+
+
+@pytest.mark.parametrize("typed", [False, True])
+def test_explicit_project_subtypes_share_identity_without_rewriting(tmp_path, typed):
+    from tarav.kernel import TaravClass, TypeShip
+
+    class LocalProject(Project):
+        @classmethod
+        def class_entity(cls):
+            return TaravClass(target=cls, id=TypeShip("f97f48ca-e48c-4720-aa3d-3caf4f81ea22"),
+                              name="Test.LocalProject")
+
+        def local_config(self):
+            return self.root / "local.json"
+
+    initialize_project_layout(tmp_path)
+    marker = tmp_path / ".tarav/project.json"
+    if typed:
+        record = json.loads(marker.read_text())
+        record["type"] = entity(Project).name
+        marker.write_text(json.dumps(record))
+    before = marker.read_bytes()
+    base = TaravProject.from_path(tmp_path)
+    featured = Project.from_path(tmp_path)
+    local = LocalProject.from_path(tmp_path)
+    assert type(base) is TaravProject
+    assert type(local) is LocalProject
+    assert base.id == featured.id == local.id
+    assert not hasattr(base, "models") and not hasattr(base, "wiki")
+    assert local.local_config() == tmp_path / "local.json"
+    assert local.wiki().root == featured.wiki().root
+    assert marker.read_bytes() == before
+    if typed:
+        assert base.to_record()["type"] == entity(TaravProject).name
+        assert local.to_record()["type"] == entity(LocalProject).name
+
+
+def test_minimal_import_does_not_load_integrations():
+    import subprocess
+    import sys
+
+    subprocess.run([sys.executable, "-c", '''
+import sys
+from tarav.project import TaravProject, Project
+assert "tarav.project.models" not in sys.modules
+assert "tarav.project.wiki" not in sys.modules
+assert "tarav.models" not in sys.modules
+assert "tarav.wiki" not in sys.modules
+'''], check=True)
+
+
+def test_integrations_have_explicit_child_workflow_ownership(tmp_path):
+    from tarav.project.models import ProjectModels, ProjectModelsWorkflow
+    from tarav.project.wiki import ProjectWiki, ProjectWikiWorkflow
+
+    initialize_project_layout(tmp_path)
+    project = TaravProject.from_path(tmp_path)
+    assert ProjectWiki(project).open().root == tmp_path / "notes/wiki"
+    assert entity(ProjectModels).workflow is ProjectModelsWorkflow()
+    assert entity(ProjectWiki).workflow is ProjectWikiWorkflow()
+    assert ProjectModelsWorkflow().workflow is ProjectWorkflow()
+    assert ProjectWikiWorkflow().workflow is ProjectWorkflow()

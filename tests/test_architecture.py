@@ -19,7 +19,9 @@ def test_project_ownership_and_consumer_direction():
     assert runtime.workflows.get("project") is ProjectWorkflow
     assert entity(Project).workflow is ProjectWorkflow()
     graph = _top_level_import_graph()
-    assert not ({"wiki", "models", "runtime", "cli"} & graph["project"])
+    assert not ({"wiki", "models", "runtime", "cli"} & graph["project.base"])
+    assert not any(name.startswith("project") for name in graph["wiki"])
+    assert not any(name.startswith("project") for name in graph["models.model"])
 
 
 def test_poi_workflow_ownership_and_runtime_composition():
@@ -194,7 +196,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
         source = relative.parts[0] if len(relative.parts) > 1 else "<root>"
         # Unsorted contains both provisional foundations and composition layers.
         # Check their actual module dependencies, not a collapsed package cycle.
-        if source in {"lines", "unsorted", "scoring", "models"}:
+        if source in {"lines", "unsorted", "scoring", "models", "project"}:
             source = ".".join(relative.with_suffix("").parts).removesuffix(".__init__")
         # skw.skills is a composition leaf above the generic SKW document kernel.
         if relative.as_posix() in {
@@ -218,7 +220,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 imported = tuple(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported = (node.module,)
-                if node.level and relative.parts[0] in {"lines", "unsorted", "scoring", "models"}:
+                if node.level and relative.parts[0] in {"lines", "unsorted", "scoring", "models", "project"}:
                     from importlib.util import resolve_name
 
                     package = "tarav." + ".".join(relative.parts[:-1])
@@ -227,7 +229,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 if not name.startswith("tarav."):
                     continue
                 target = name.split(".", 2)[1]
-                if target in {"lines", "unsorted", "scoring", "models"}:
+                if target in {"lines", "unsorted", "scoring", "models", "project"}:
                     target = name.removeprefix("tarav.")
                 if name in {"tarav.context.storage", "tarav.context.workflow"}:
                     target = "context.storage"
