@@ -309,13 +309,22 @@ relationships, storage policies, or interpretation of domain payloads.
 | `skw` | Typed document compilation, context declarations, generation mechanics, and skill-package specialization. |
 | `surfaces` | SurfacesWorkflow owns MarkdownNormalModel and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. Consumers assign domain meaning. |
 | `wiki` | Folder-based Markdown Wiki and WikiNote objects, project Wiki convention, parsing through surfaces, and Wiki-scoped Git closure. WikiWorkflow exposes the agent capture skill through class help. |
-| `project`, `skills`, `workspaces` | Project discovery and user-facing project or workspace operations. |
+| `project` | ProjectWorkflow owns Project entities. Existing project_id is the Ship identity; project.json remains the portable record, while the discovered root is runtime location. Wiki and Models independently resolve their project associations. |
+| `skills`, `workspaces` | User-facing skill and workspace operations. |
 | `hooks`, `daemon` | Hook validation and dispatch, plus daemon-owned delivery adapters. |
 | `stdlib` | Small reusable library and CLI primitives. |
 | `iterante`, `iterante2` | Independently maintained mission runtimes; shared behavior is promoted only after convergence. |
 
 Other cohesive command domains follow the same rule: they own their behavior
 and use Kernel contracts without moving their semantics into Kernel.
+
+`Project.from_path()` discovers the nearest marker and explicitly interprets
+its existing schema, preserving every retained field. Entity identity is
+serialized as `project_id`, not a second `id`. Records loaded without a source
+remain detached: their location cannot be inferred from identity. Existing
+untyped markers are not rewritten; newly constructed Project projections carry
+the ordinary `type` reference for generic dispatch. Wiki and Models consume
+Project without making Project depend on those workflows.
 
 ## Integration invariants
 

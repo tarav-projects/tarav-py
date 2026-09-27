@@ -130,7 +130,7 @@ class TaravRuntime:
         from tarav.unsorted.commands import register_diagram_commands
         from tarav.stdlib.mdblocks.commands import register_mdblocks_commands
         from tarav.stdlib.prefix.commands import register_prefix_commands
-        from tarav.project import register_project_commands
+        from tarav.project.commands import register_project_commands
         from tarav.python_env import register_python_commands
         from tarav.reading_club.commands import register_reading_club_commands
         from tarav.scoring.commands import register_scoring_commands
@@ -230,6 +230,7 @@ def create_runtime(
     from tarav.lines.workflow import LinesWorkflow
     from tarav.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.models import ModelsWorkflow
+    from tarav.project import Project, ProjectWorkflow
     from tarav.poi import (
         POI_RECORD_TYPES, POIWorkflow, POICollector, BlessingStore,
         BlessingRecord, BlessingAssessmentRecord,
@@ -278,6 +279,7 @@ def create_runtime(
                 *DIAGRAM_RECORD_TYPES,
                 Wiki,
                 WikiNote,
+                Project,
                 *POI_RECORD_TYPES,
                 MarkdownNormalModel,
                 PythonNormalModel,
@@ -314,6 +316,7 @@ def create_runtime(
         LinesWorkflow,
         WikiWorkflow,
         ModelsWorkflow,
+        ProjectWorkflow,
         POIWorkflow,
         SurfacesWorkflow,
         UnsortedWorkflow,

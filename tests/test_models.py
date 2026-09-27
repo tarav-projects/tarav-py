@@ -36,6 +36,8 @@ def test_model_project_association_is_shared_and_read_only(tmp_path):
         marker = root / '.tarav/project.json'
         before = marker.read_bytes()
         resolved = Model.from_project(sub, diagram=diagram)
+        from tarav.project import Project
+        assert Model.from_project(Project.from_path(sub), diagram=diagram).ship == model.ship
         assert resolved.ship == model.ship
         assert resolved.record.class_entity().workflow is ModelsWorkflow()
         assert marker.read_bytes() == before

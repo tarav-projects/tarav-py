@@ -31,7 +31,10 @@ class Model(TaravType):
     def from_project(cls, project, *, diagram):
         """Resolve an existing association without creating anything."""
         from tarav._core.project import TaravProjectHandler, require_agentos_project
+        from tarav.project import Project
 
+        if isinstance(project, Project):
+            return diagram.project_model(project.root)
         handler = (project.require_marker() if isinstance(project, TaravProjectHandler)
                    else require_agentos_project(project))
         return diagram.project_model(handler.root)

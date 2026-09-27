@@ -11,6 +11,17 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+def test_project_ownership_and_consumer_direction():
+    from tarav.project import Project, ProjectWorkflow
+    from tarav.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("project") is ProjectWorkflow
+    assert entity(Project).workflow is ProjectWorkflow()
+    graph = _top_level_import_graph()
+    assert not ({"wiki", "models", "runtime", "cli"} & graph["project"])
+
+
 def test_poi_workflow_ownership_and_runtime_composition():
     from tarav.poi import POI_RECORD_TYPES, POIWorkflow
     from tarav.runtime import create_runtime
