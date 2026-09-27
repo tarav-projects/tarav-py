@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from tarav._core.project import normalize_project_target
+from tarav.l0._core.project import normalize_project_target
 from tarav.agent.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(

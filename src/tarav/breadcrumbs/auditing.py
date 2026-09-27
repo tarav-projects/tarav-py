@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from tarav.kernel import TaravClass
-from tarav.kernel import TaravPOIInstance, TypeShip
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TaravPOIInstance, TypeShip
 from tarav.surfaces.markdown import MarkdownNormalModel
 from tarav.surfaces.python import PythonNormalModel
 

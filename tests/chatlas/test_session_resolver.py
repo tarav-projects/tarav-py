@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.chatlas.session_resolver import resolve_session_index_row
 
 

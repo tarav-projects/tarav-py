@@ -7,10 +7,10 @@ from typing import Literal, Self
 
 from pydantic import BaseModel
 
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import FileRecord, TaravObject, TypeShip
-from tarav.kernel.records import _json_object
-from tarav.kernel.workflows import TaravWorkflow
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import FileRecord, TaravObject, TypeShip
+from tarav.l0.kernel.records import _json_object
+from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.skw.identity import SKILLWARE_WORKFLOW_SHIP
 from tarav.references.workflow import ReferenceService
 from .generation import Argument, Block, Generation, _hash

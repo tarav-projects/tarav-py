@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from tarav._core.errors import CliError
-from tarav._core.process import ProcessError, ProcessMode, run_process
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.process import ProcessError, ProcessMode, run_process
 from tarav.agent.providers import canonical_provider_family_for_name
 
 

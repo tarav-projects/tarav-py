@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from tarav.kernel import Ship, ShipIdentityError, TypeShip
+from tarav.l0.kernel import Ship, ShipIdentityError, TypeShip
 
 EXAMPLE = "3f7f6f7c-8d5c-4f1a-9c4e-1c0d3b2a5e6f"
 OTHER = "9a1d2c3b-4e5f-4a6b-8c7d-0e1f2a3b4c5d"

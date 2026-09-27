@@ -1,6 +1,6 @@
 """Project ownership, independently of attached consumer workflows."""
 
-from tarav.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
+from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
 
 PROJECT_WORKFLOW_SHIP = WorkflowShip("1ad784dd-17b4-48fc-a989-68b12c261326")
 

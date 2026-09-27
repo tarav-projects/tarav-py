@@ -13,7 +13,7 @@ from tarav.agent.run_runtime import (
     AgentCommand,
     AgentCommandConfig,
 )
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.providers.pi.session import (
     PiSession,
     PiSessionRef,

@@ -24,7 +24,7 @@ def _auth_json(uuid: str, email: str) -> dict[str, object]:
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     return tarav_home_dir()
 

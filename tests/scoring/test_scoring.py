@@ -6,14 +6,14 @@ from uuid import uuid4
 
 import pytest
 
-from tarav._core.project import initialize_project_layout
+from tarav.l0._core.project import initialize_project_layout
 from tarav.cli.cli import main
 from tarav.unsorted.constants import BLOCK_SHIP_TYPE, DESIGN_BLOCK_OBJECT_TYPE, DESIGN_LINE_PRINCIPLE_TYPE, LINE_SHIP_TYPE
 from tarav.unsorted.capture import CaptureManifest
 from tarav.unsorted.evidence import ChatlasEvidence
 from tarav.unsorted.storage import DiagramConfiguration, DiagramNamespace
 from tarav.unsorted.contracts import ShipDraftInterface
-from tarav.kernel import TaravObject, issubrecord
+from tarav.l0.kernel import TaravObject, issubrecord
 from tarav.runtime import create_runtime
 from tarav.lines.assertions import LineGroundingAssertion
 from tarav.scoring import (

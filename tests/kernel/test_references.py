@@ -1,4 +1,4 @@
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 import hashlib
 
@@ -12,7 +12,7 @@ from tarav.archive.references import (
     ArchiveSha256Check,
 )
 from tarav.chatlas.references import ChatlasTurnLocator, EmptyReferenceCheck
-from tarav.kernel import TaravObject, isrecordsubclass, issubrecord
+from tarav.l0.kernel import TaravObject, isrecordsubclass, issubrecord
 from tarav.references import (
     FilePositionCheck,
     FilePositionLocator,

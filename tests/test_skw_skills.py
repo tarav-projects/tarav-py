@@ -1,4 +1,4 @@
-from tarav.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravClass, entity
 
 import json
 
@@ -112,7 +112,7 @@ def test_runtime_load_specializes_skw_depot_and_accepts_stale_label(tmp_path):
 
 
 def test_runtime_load_can_select_another_skw_depot_subtype(tmp_path):
-    from tarav.kernel import TypeRegistry, TypeShip
+    from tarav.l0.kernel import TypeRegistry, TypeShip
 
     class OtherDepot(SkwDepot):
         @classmethod

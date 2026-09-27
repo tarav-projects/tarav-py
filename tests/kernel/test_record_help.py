@@ -1,10 +1,10 @@
-from tarav.kernel import TaravClass
+from tarav.l0.kernel import TaravClass
 
 import json
 from pathlib import Path
 
-from tarav.kernel import FileRecord, TypeShip
-from tarav.kernel import records
+from tarav.l0.kernel import FileRecord, TypeShip
+from tarav.l0.kernel import records
 
 
 class ExampleRecord(FileRecord):

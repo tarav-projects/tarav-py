@@ -1,6 +1,6 @@
 """Wiki ownership and its agent entrypoint."""
 
-from tarav.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
+from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
 
 WIKI_WORKFLOW_SHIP = WorkflowShip("9f226798-f201-431b-bc2e-a77a2e48bc53")
 

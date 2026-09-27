@@ -32,7 +32,7 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 def _settings() -> None:
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     prov = tarav_home_dir() / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)

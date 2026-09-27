@@ -27,10 +27,10 @@ from tarav.lines.records import LineShipRecord
 from typing import Literal
 from tarav.unsorted.constants import SCHEMA_VERSION
 from tarav.unsorted.contracts import ShipDraftInterface
-from tarav.kernel import TaravClass
-from tarav.kernel import TaravObject
-from tarav.kernel import TypeRegistry
-from tarav.kernel import TypeShip
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TaravObject
+from tarav.l0.kernel import TypeRegistry
+from tarav.l0.kernel import TypeShip
 from tarav.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.unsorted.primitives import _array
 from tarav.unsorted.primitives import _authorization_gate_ids
@@ -43,7 +43,7 @@ from tarav.unsorted.primitives import _record_is
 from tarav.unsorted.primitives import _record_is_any
 from tarav.unsorted.primitives import _string
 from tarav.unsorted.primitives import _uuid
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 from pydantic import field_validator
 from typing import TYPE_CHECKING
 

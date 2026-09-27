@@ -2,9 +2,9 @@
 
 from collections.abc import Mapping
 
-from tarav.kernel import TaravClass
-from tarav.kernel import TaravObject, TypeRegistry, TypeShip
-from tarav.kernel.workflows import TaravWorkflow
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
+from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.references.identity import REFERENCES_WORKFLOW_SHIP
 from . import FilePositionReference, FileReference, Reference, ReferenceResult
 from .git import GitFileReference

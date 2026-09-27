@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from urllib.parse import quote, unquote, urlparse
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 _REF_PATH_FRAGMENT_RE = re.compile(r"^L(\d+)C(\d+)-L(\d+)C(\d+)$")
 

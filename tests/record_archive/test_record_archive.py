@@ -9,7 +9,7 @@ from typing import Literal
 import pytest
 
 from tarav import ARCHIVE, get_runtime, set_runtime
-from tarav.kernel import (
+from tarav.l0.kernel import (
     Ship,
     TaravClass,
     TaravEnvironment,

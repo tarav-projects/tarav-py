@@ -8,7 +8,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 from .markdown import MarkdownNormalModel
 from .python import PythonNormalModel

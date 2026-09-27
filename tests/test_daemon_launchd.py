@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.daemon.launchd import (
     LAUNCH_AGENT_LABEL,
     LAUNCH_AGENT_THROTTLE_SECONDS,

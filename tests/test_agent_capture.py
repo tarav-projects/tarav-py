@@ -25,7 +25,7 @@ def _auth_json(uuid: str) -> dict[str, object]:
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     home_root = tarav_home_dir()
     prov = home_root / "accounts" / "codex"

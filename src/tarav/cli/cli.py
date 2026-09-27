@@ -6,8 +6,8 @@ import sys
 from typing import Sequence
 
 from tarav import __version__
-from tarav._core.errors import CliError
-from tarav._core.operational_logging import configure_operational_logging
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.operational_logging import configure_operational_logging
 from tarav.runtime import TaravRuntime, HookRegistrar, create_runtime
 
 

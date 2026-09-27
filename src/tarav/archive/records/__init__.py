@@ -11,8 +11,8 @@ from uuid import uuid4
 from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from tarav._core.persistence import atomic_write_json
-from tarav.kernel import (
+from tarav.l0._core.persistence import atomic_write_json
+from tarav.l0.kernel import (
     DirectoryRecord,
     ExplorerEntry,
     ExplorerFolder,
@@ -27,7 +27,7 @@ from tarav.kernel import (
     entity,
 )
 from tarav.context import ContextFolder, ContextBuilder
-from tarav.kernel.workflows import TaravWorkflow
+from tarav.l0.kernel.workflows import TaravWorkflow
 
 from .git import (
     GIT_CONFIG_FILENAME,

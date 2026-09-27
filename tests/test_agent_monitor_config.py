@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.monitor.config import (
     _auto_prime_triggers,
     _target_limit_ids,

@@ -1,6 +1,6 @@
 """Common project types; integrations load only when selected."""
 
-from tarav.kernel import TaravClass, TypeShip
+from tarav.l0.kernel import TaravClass, TypeShip
 from .base import TaravProject
 from .workflow import PROJECT_WORKFLOW_SHIP, ProjectWorkflow
 

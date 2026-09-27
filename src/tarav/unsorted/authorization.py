@@ -6,9 +6,9 @@ from tarav.unsorted.constants import CAPTURE_AUTHORIZATION_GATE_TYPE
 from tarav.unsorted.contracts import ChatlasTurnReferenceInterface
 from tarav.lines.references import DiagramArgumentReferenceInterface
 from tarav.unsorted.primitives import DiagramModelError
-from tarav.kernel import Ship
-from tarav.kernel import TaravClass
-from tarav.kernel import TypeShip
+from tarav.l0.kernel import Ship
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TypeShip
 from tarav.unsorted.records import TypedAnnotation
 from tarav.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.unsorted.primitives import _array

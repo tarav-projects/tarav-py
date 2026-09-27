@@ -10,7 +10,7 @@ import argparse
 import json
 from pathlib import Path
 
-from tarav._core.persistence import atomic_write_json
+from tarav.l0._core.persistence import atomic_write_json
 
 
 def _old_object_path(value: str) -> None:

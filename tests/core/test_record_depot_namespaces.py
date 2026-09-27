@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav._core.record_depot import OpaqueRecordDepot
-from tarav._core.record_depot import InvalidRecordDepotInputError
+from tarav.l0._core.record_depot import OpaqueRecordDepot
+from tarav.l0._core.record_depot import InvalidRecordDepotInputError
 
 
 def _depot(tmp_path: Path) -> OpaqueRecordDepot:

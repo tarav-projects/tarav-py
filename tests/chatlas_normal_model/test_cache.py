@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.chatlas import normal_model_cache as cache
 from tarav.chatlas.normal_model import ChatlasNormalModel
 from tarav.runtime import create_runtime

@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Mapping, Sequence
 
-from tarav._core.project import require_agentos_project
+from tarav.l0._core.project import require_agentos_project
 from tarav.unsorted.evidence import ChatlasEvidence
 from tarav.unsorted.storage import DiagramConfiguration
 from tarav.unsorted.primitives import DiagramError
-from tarav.kernel import TaravClass, TaravType, TypeShip, entity
+from tarav.l0.kernel import TaravClass, TaravType, TypeShip, entity
 from tarav.lines.assertions import LineGroundingAssertion
 from .assertions import Assertion
 from .identity import SCORING_WORKFLOW_SHIP

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 
 AccountCheckStatus = Literal["ok", "error"]

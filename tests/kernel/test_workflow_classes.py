@@ -1,13 +1,13 @@
 import pytest
 
-from tarav.kernel import TaravObject, TaravWorkflow, entity
+from tarav.l0.kernel import TaravObject, TaravWorkflow, entity
 from tarav.runtime import create_runtime
 
 
 def test_workflow_containment_returns_objects_and_terminates_at_root(tmp_path):
     from tarav.archive.workflow import ArchiveWorkflow
     from tarav.archive.records import ArchiveFolder, ArchivePartition, RecordArchiveWorkflow
-    from tarav.kernel import TaravClass
+    from tarav.l0.kernel import TaravClass
 
     root = TaravWorkflow()
     assert root is TaravWorkflow()
@@ -35,8 +35,8 @@ def test_workflow_containment_returns_objects_and_terminates_at_root(tmp_path):
 
 def test_workflow_identity_is_independent_of_class_ownership():
     from concurrent.futures import ThreadPoolExecutor
-    from tarav.kernel import TaravClass, TypeShip, WorkflowShip, WorkflowRegistry
-    from tarav.kernel.workflows import KernelWorkflow
+    from tarav.l0.kernel import TaravClass, TypeShip, WorkflowShip, WorkflowRegistry
+    from tarav.l0.kernel.workflows import KernelWorkflow
 
     class Example(TaravWorkflow):
         workflow_name = "singleton-example"
@@ -92,8 +92,8 @@ def test_all_registered_workflows_have_separate_singleton_entities():
 
 
 def test_workflow_subclasses_must_declare_their_own_identity():
-    from tarav.kernel import TaravClass, TypeShip, WorkflowDeclarationError
-    from tarav.kernel.workflows import KernelWorkflow
+    from tarav.l0.kernel import TaravClass, TypeShip, WorkflowDeclarationError
+    from tarav.l0.kernel.workflows import KernelWorkflow
 
     with pytest.raises(WorkflowDeclarationError, match="class-local _workflow_id"):
         class MissingIdentity(KernelWorkflow):

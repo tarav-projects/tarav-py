@@ -50,7 +50,7 @@ def test_resolve_account_by_identity_matches_claude_account_uuid(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     _write_settings(tarav_home_dir() / "accounts" / "claude-code")
 
@@ -66,7 +66,7 @@ def test_capture_target_known_identity_routes_to_account_method(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     _write_settings(tarav_home_dir() / "accounts" / "claude-code")
 
@@ -146,7 +146,7 @@ def test_set_active_rejects_unknown_bucket(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.errors import CliError
+    from tarav.l0._core.errors import CliError
 
     with pytest.raises(CliError):
         set_active("claude-code", UNKNOWN_ACCOUNT, "ambient-browser-login", "abc")

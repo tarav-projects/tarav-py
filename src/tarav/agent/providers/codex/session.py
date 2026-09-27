@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.primitives import SessionSource
 from tarav.agent.session_utils import (
     artifact_paths_by_role as _artifact_paths_by_role,

@@ -5,14 +5,14 @@ import argparse
 import json
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.ids import generate_uuid4_string, validate_uuid_string
-from tarav._core.project import (
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.ids import generate_uuid4_string, validate_uuid_string
+from tarav.l0._core.project import (
     TaravProjectHandler,
     add_explicit_project_arguments,
     require_explicit_agentos_project,
 )
-from tarav._core.project_command_log import (
+from tarav.l0._core.project_command_log import (
     activity_log_path,
     record_project_command_from_args,
 )

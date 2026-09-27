@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.sessions import resolve_chat_sessions
 from tarav.agent.providers.claude_code.extractor import (
     extract_claude_code_chat_session_from_path,

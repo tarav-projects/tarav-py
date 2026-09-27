@@ -9,8 +9,8 @@ from typing import Annotated
 
 from pydantic import ConfigDict, Field
 
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import TaravObject, TypeShip
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravObject, TypeShip
 
 from . import FileReference, Reference
 

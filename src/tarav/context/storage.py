@@ -7,8 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from tarav._core.data_root import default_tarav_data_root
-from tarav._core.persistence import atomic_write_json
+from tarav.l0._core.data_root import default_tarav_data_root
+from tarav.l0._core.persistence import atomic_write_json
 from tarav.context import (
     CONTEXT_WORKFLOW_SHIP,
     Context,
@@ -19,9 +19,9 @@ from tarav.context import (
     ContextFolder,
     ContextList,
 )
-from tarav.kernel.identity import Ship, TypeShip
-from tarav.kernel.records import TaravClass, TaravEntity, TaravObject, TaravType, entity
-from tarav.kernel.types import TypeRegistry
+from tarav.l0.kernel.identity import Ship, TypeShip
+from tarav.l0.kernel.records import TaravClass, TaravEntity, TaravObject, TaravType, entity
+from tarav.l0.kernel.types import TypeRegistry
 from tarav.archive.records import (
     ArchiveEntry,
     ArchivePartition,

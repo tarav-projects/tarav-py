@@ -1,6 +1,6 @@
 """Ownership of native surface models and parsing operations."""
 
-from tarav.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
+from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
 
 SURFACES_WORKFLOW_SHIP = WorkflowShip("6a85e98f-20ca-43b6-8bf4-38f5c07227a9")
 

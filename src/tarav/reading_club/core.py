@@ -7,7 +7,7 @@ import json
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from tarav._core.data_root import default_tarav_data_root
+from tarav.l0._core.data_root import default_tarav_data_root
 
 
 READING_PROJECT_CLASS = "Tarav.Reading.Project"

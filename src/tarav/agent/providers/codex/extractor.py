@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.providers.extractor_common import (
     DialogTurn,
     format_turns_output,

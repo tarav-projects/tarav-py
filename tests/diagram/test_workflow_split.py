@@ -2,7 +2,7 @@ import pytest
 import subprocess
 import sys
 
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 from tarav.runtime import create_runtime
 from tarav.lines.records import LineShipRecord, LineAnnotationRecord
 from tarav.unsorted.capture import CaptureManifest

@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from tarav._core.record_depot import OpaqueRecordDepot
-from tarav._core.record_depot import InvalidRecordDepotInputError
-from tarav._core.git_checkpoint import GitCheckpoint
+from tarav.l0._core.record_depot import OpaqueRecordDepot
+from tarav.l0._core.record_depot import InvalidRecordDepotInputError
+from tarav.l0._core.git_checkpoint import GitCheckpoint
 
 
 def _repo(path: Path) -> Path:

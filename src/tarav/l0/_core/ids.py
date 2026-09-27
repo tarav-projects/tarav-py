@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 
 def generate_uuid4_string() -> str:

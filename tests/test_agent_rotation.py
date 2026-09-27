@@ -11,7 +11,7 @@ from tarav.testing import TaravTestEnvironment
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     prov = tarav_home_dir() / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
@@ -212,7 +212,7 @@ def test_claude_rotation_rank_prefers_later_expiresat(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
     prov = tarav_home_dir() / "accounts" / "claude-code"
     prov.mkdir(parents=True, exist_ok=True)
     (prov / "accounts.json").write_text(json.dumps({

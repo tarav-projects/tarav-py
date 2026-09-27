@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarav._core.persistence import atomic_write_text
+from tarav.l0._core.persistence import atomic_write_text
 
 from .store import BreadcrumbError, BreadcrumbStore, breadcrumb_label
 from .workflows import BreadcrumbAnnotationWorkflow, PreparedAnnotation

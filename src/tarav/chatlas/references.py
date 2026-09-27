@@ -3,8 +3,8 @@ import re
 
 from pydantic import ConfigDict, Field
 
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import TaravObject, TypeShip
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.references import Reference
 from tarav.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 from tarav.chatlas.normal_model import (

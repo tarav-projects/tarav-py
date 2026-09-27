@@ -14,7 +14,7 @@ from tarav.unsorted.constants import DIAGRAM_COLLECTION_OBJECT_TYPE
 from tarav.unsorted.constants import DIAGRAM_LINE_OBJECT_TYPE
 from tarav.unsorted.primitives import DiagramAnnotationSpecializationError
 from tarav.unsorted.primitives import DiagramModelError
-from tarav.kernel import FileRecord
+from tarav.l0.kernel import FileRecord
 from tarav.unsorted.constants import LINE_ANNOTATION_TYPE
 from tarav.unsorted.constants import LINE_EDITION_TYPE
 from tarav.unsorted.constants import LINE_GATE_ANNOTATION_TYPE
@@ -22,9 +22,9 @@ from tarav.unsorted.constants import LINE_SHIP_TYPE
 from tarav.unsorted.constants import LINE_SUPPORT_ANNOTATION_TYPE
 from tarav.unsorted.constants import LINE_TYPE_ANNOTATION_TYPE
 from tarav.unsorted.constants import MODEL_EDITION_TYPE
-from tarav.kernel import Ship
-from tarav.kernel import TaravClass
-from tarav.kernel import TypeShip
+from tarav.l0.kernel import Ship
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TypeShip
 from tarav.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.unsorted.constants import VERBATIM_GATE_TYPE
 from tarav.unsorted.constants import _EXAMPLE_BLOCK
@@ -35,14 +35,14 @@ from tarav.unsorted.constants import _EXAMPLE_LINE
 from tarav.unsorted.constants import _EXAMPLE_MODEL
 from tarav.unsorted.constants import _EXAMPLE_NAMESPACE
 from tarav.unsorted.primitives import _array
-from tarav.kernel.records import _json_object
+from tarav.l0.kernel.records import _json_object
 from tarav.unsorted.primitives import _object
 from tarav.unsorted.primitives import _record_type_name
 from tarav.unsorted.primitives import _record_type_reference
 from tarav.unsorted.contracts import _support_members
 from tarav.unsorted.primitives import _uuid
 from dataclasses import dataclass
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from tarav.unsorted.constants import JsonObject
     from collections.abc import Mapping
-    from tarav.kernel import RecordTypeReference
+    from tarav.l0.kernel import RecordTypeReference
     from typing import Self
     from tarav.unsorted.contracts import SupportMemberInterface
 

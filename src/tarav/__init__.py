@@ -6,11 +6,10 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, overload
 
-from tarav.archive.records import ARCHIVE
-from tarav.kernel.records import configure_workflow_resolver
+from tarav.l0.kernel.records import configure_workflow_resolver
 
 if TYPE_CHECKING:
-    from tarav.kernel import TaravObject
+    from tarav.l0.kernel import TaravObject
     from tarav.loading import LoadingProfile
     from tarav.runtime import TaravRuntime
 
@@ -33,6 +32,16 @@ configure_workflow_resolver(lambda ship: get_runtime().workflows.get(ship)())
 
 # Tarav libraries emit diagnostics but leave handler configuration to the host.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
+
+
+def __getattr__(name: str) -> object:
+    """Keep root conveniences without initializing workflows on import."""
+
+    if name == "ARCHIVE":
+        from tarav.archive.records import ARCHIVE
+
+        return ARCHIVE
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @overload

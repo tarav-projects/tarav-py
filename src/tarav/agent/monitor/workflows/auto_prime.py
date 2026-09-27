@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.monitor.auto_prime_registry import (
     AUTO_PRIME_EVENT_ATTEMPT_FAILED,
     AUTO_PRIME_EVENT_ATTEMPT_STARTED,

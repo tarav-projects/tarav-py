@@ -1,5 +1,5 @@
 """Ownership of Models, independently of project associations."""
-from tarav.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
+from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
 
 MODELS_WORKFLOW_SHIP = WorkflowShip('97d49ed8-9a40-49d6-8857-c43d78954384')
 

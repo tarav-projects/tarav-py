@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from tarav._core.project import tarav_home_dir
+from tarav.l0._core.project import tarav_home_dir
 from tarav.hooks import HookInvocation
 
 

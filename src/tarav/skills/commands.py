@@ -6,8 +6,8 @@ import json
 import sys
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.project import (
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.project import (
     TaravProjectHandler,
     add_explicit_project_arguments,
     find_agentos_project_roots_within,
@@ -15,7 +15,7 @@ from tarav._core.project import (
     require_explicit_agentos_project,
     require_explicit_project_selector,
 )
-from tarav._core.project_command_log import record_project_command_from_args
+from tarav.l0._core.project_command_log import record_project_command_from_args
 from tarav.skills.routing import (
     import_selected_skills,
     list_selected_skills,

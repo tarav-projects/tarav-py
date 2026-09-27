@@ -1,4 +1,4 @@
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 import json
 import subprocess

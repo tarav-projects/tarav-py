@@ -4,7 +4,7 @@ import argparse
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.commands import run as commands
 from tarav.agent.profile_check import CheckpointResult, ProfileCheck
 from tarav.agent.run_runtime import AgentRunResult

@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import Ship, TaravEntity, FileRecord, TypeShip
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import Ship, TaravEntity, FileRecord, TypeShip
 from .primitives import POIInstance, canonical, fingerprint
 from .workflow import POI_WORKFLOW_SHIP
 

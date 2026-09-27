@@ -6,8 +6,8 @@ from pydantic import ConfigDict
 
 from tarav.breadcrumbs.model import BreadcrumbId
 from tarav.chatlas.references import ChatlasTurnReference
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import TaravObject, TypeShip
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.breadcrumbs.identity import BREADCRUMBS_WORKFLOW_SHIP
 
 

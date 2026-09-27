@@ -22,8 +22,8 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
-from tarav._core.clock import utc_now_iso
-from tarav._core.errors import CliError
+from tarav.l0._core.clock import utc_now_iso
+from tarav.l0._core.errors import CliError
 from tarav.agent.account_paths import account_provider_root
 from tarav.agent.account_status import AccountIdentity
 from tarav.agent.auth_method import AuthData

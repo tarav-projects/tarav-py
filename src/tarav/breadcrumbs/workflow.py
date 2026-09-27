@@ -1,8 +1,8 @@
 """Breadcrumb Record and annotation-workflow registration."""
 
-from tarav.kernel import TaravClass
-from tarav.kernel import TypeShip
-from tarav.kernel.workflows import TaravWorkflow
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TypeShip
+from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.breadcrumbs.identity import BREADCRUMBS_WORKFLOW_SHIP
 
 from .integrations import BreadcrumbIntegration

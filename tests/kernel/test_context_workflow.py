@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 import json
 from pathlib import Path
@@ -10,7 +10,7 @@ import pytest
 from tarav import get_runtime, set_runtime
 from tarav.context import context
 from tarav.context.storage import StoredDictionaryContext, SubjectContextRoot
-from tarav.kernel import RecordTypeMismatch, TaravObject
+from tarav.l0.kernel import RecordTypeMismatch, TaravObject
 from tarav.context import Context, ContextEntry, ContextExplorer, ContextFolder, ContextList
 from tarav.archive.records import (
     ArchiveEntry,

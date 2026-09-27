@@ -12,8 +12,8 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tarav._core.path_validation import validate_string_for_path
-from tarav._core.project import tarav_home_dir
+from tarav.l0._core.path_validation import validate_string_for_path
+from tarav.l0._core.project import tarav_home_dir
 
 
 def account_registry_root() -> Path:

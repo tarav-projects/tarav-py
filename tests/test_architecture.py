@@ -1,7 +1,7 @@
 # $kw: ^agentos-python-architecture-contract --from Agent.Navigable.Codebase --from Dependency.Profile.Split --note [CT] maintained namespaces are cohesive and their import graph is acyclic outside the runtime composition root --supp ^c20260811-62u
 from __future__ import annotations
 
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 import ast
 from collections import defaultdict
@@ -32,8 +32,7 @@ def test_loading_workflow_configures_kernel_without_reverse_imports():
     graph = _top_level_import_graph()
     assert create_runtime().workflows.get("loading") is LoadingWorkflow
     assert issubclass(TaravProject, LoadingProfile)
-    assert not any(name.startswith("loading") for name in graph["kernel.records"])
-    assert not any(name.startswith("loading") for name in graph["kernel.types"])
+    assert not any(name.startswith("loading") for name in graph["l0.kernel"])
 
 
 def test_poi_workflow_ownership_and_runtime_composition():
@@ -87,10 +86,10 @@ def test_context_package_import_order_and_runtime_boundary():
         code = first_import + '''
 import types
 import tarav
-import tarav.kernel as kernel
+import tarav.l0.kernel as kernel
 from tarav.context import context, explore, ContextFolder
 from tarav.context.workflow import ContextWorkflow
-from tarav.kernel import TaravType, entity
+from tarav.l0.kernel import TaravType, entity
 assert isinstance(tarav.context, types.ModuleType)
 assert tarav.context.context is context
 assert not hasattr(kernel, "ContextFolder")
@@ -125,7 +124,7 @@ def test_archive_package_paths_match_workflow_ownership():
 
 
 def test_type_graph_ownership_is_separate_from_represented_ownership():
-    from tarav.kernel import TaravClass, TypeWorkflow
+    from tarav.l0.kernel import TaravClass, TypeWorkflow
     from tarav.archive.records import ArchiveFolder
 
     assert entity(TaravClass).workflow_ship == entity(TypeWorkflow).workflow_ship
@@ -134,7 +133,7 @@ def test_type_graph_ownership_is_separate_from_represented_ownership():
 
 def test_record_interfaces_belong_to_kernel():
     from pydantic import BaseModel
-    from tarav.kernel import TaravObject, isrecordsubclass, issubrecord
+    from tarav.l0.kernel import TaravObject, isrecordsubclass, issubrecord
     from tarav.skw.document import SkwBlock
 
     assert issubclass(TaravObject.RecordInterface, BaseModel)
@@ -161,7 +160,7 @@ def test_record_archive_placement_index_is_outside_its_entity_record() -> None:
 
 
 def test_archive_and_context_implement_shared_explorer_contracts() -> None:
-    from tarav.kernel import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
+    from tarav.l0.kernel import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
     from tarav.context import ContextEntry, ContextExplorer, ContextFolder, ContextList
     from tarav.archive.records import (
         ArchiveEntry,
@@ -206,6 +205,8 @@ def _top_level_import_graph() -> dict[str, set[str]]:
     for path in PACKAGE_ROOT.rglob("*.py"):
         relative = path.relative_to(PACKAGE_ROOT)
         source = relative.parts[0] if len(relative.parts) > 1 else "<root>"
+        if source == "l0":
+            source = ".".join(relative.parts[:2])
         # Unsorted contains both provisional foundations and composition layers.
         # Check their actual module dependencies, not a collapsed package cycle.
         if source in {"lines", "unsorted", "scoring", "models", "project"}:
@@ -241,6 +242,8 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 if not name.startswith("tarav."):
                     continue
                 target = name.split(".", 2)[1]
+                if target == "l0":
+                    target = ".".join(name.split(".")[:3]).removeprefix("tarav.")
                 if target in {"lines", "unsorted", "scoring", "models", "project"}:
                     target = name.removeprefix("tarav.")
                 if name in {"tarav.context.storage", "tarav.context.workflow"}:
@@ -341,7 +344,7 @@ def test_skw_owns_the_retained_document_kernel() -> None:
 
 
 def test_native_surfaces_do_not_import_skillware() -> None:
-    from tarav.kernel import TaravObject, entity
+    from tarav.l0.kernel import TaravObject, entity
     from tarav.surfaces import SurfacesWorkflow
     from tarav.surfaces.markdown import MarkdownNormalModel
     from tarav.surfaces.python import PythonNormalModel
@@ -371,21 +374,42 @@ def test_subsystem_import_graph_is_acyclic() -> None:
 def test_kernel_is_a_dependency_clean_application_base() -> None:
     imports = _top_level_import_graph()
 
-    assert imports["kernel"] == set()
-    assert "kernel" in imports["lines.records"]
-    assert "kernel" in imports["archive"]
-    assert "kernel" in imports["navigation"]
+    assert imports["l0.kernel"] == set()
+    assert "l0.kernel" in imports["lines.records"]
+    assert "l0.kernel" in imports["archive"]
+    assert "l0.kernel" in imports["navigation"]
     assert "poi" in imports["navigation"]
-    assert "navigation" not in imports["kernel"]
-    assert imports["references"] <= {"kernel"}
+    assert "navigation" not in imports["l0.kernel"]
+    assert imports["references"] <= {"l0.kernel"}
     assert "references" in imports["archive"]
     assert "record_archive" not in imports
     assert not (PACKAGE_ROOT / "record_archive" / "__init__.py").exists()
     assert not (PACKAGE_ROOT / "harness").exists()
 
 
+def test_l0_import_does_not_initialize_composed_domains() -> None:
+    import subprocess
+    import sys
+
+    for imported in ("tarav.l0._core", "tarav.l0.kernel"):
+        subprocess.run(
+            [sys.executable, "-c", f"""
+import sys
+import {imported}
+for forbidden in ('tarav.archive', 'tarav.context', 'tarav.runtime',
+                  'tarav.cli', 'tarav.daemon'):
+    assert forbidden not in sys.modules, forbidden
+from tarav import ARCHIVE
+assert ARCHIVE is not None
+"""],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+
 def test_running_environment_is_explicit_and_shared_with_type_dispatch() -> None:
-    from tarav.kernel import TaravEnvironment
+    from tarav.l0.kernel import TaravEnvironment
     from tarav.runtime import create_runtime
 
     runtime = create_runtime()
@@ -411,22 +435,22 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
         SubjectContextRoot,
     )
     from tarav.context import Context, ContextEntry, ContextExplorer
-    from tarav.kernel.records import TaravObject
+    from tarav.l0.kernel.records import TaravObject
     from tarav.runtime import create_runtime
     from tarav.test_workflow import TestEntity, TestWorkflow
 
     imports = _top_level_import_graph()
-    assert imports["kernel"] == set()
+    assert imports["l0.kernel"] == set()
     assert imports["context.storage"] <= {
         "context",
-        "kernel",
+        "l0.kernel",
         "archive",
-        "_core",
+        "l0._core",
         "runtime",
     }
     assert (PACKAGE_ROOT / "context" / "storage.py").is_file()
     assert not (PACKAGE_ROOT / "context_workflow.py").exists()
-    assert not (PACKAGE_ROOT / "kernel" / "context.py").exists()
+    assert not (PACKAGE_ROOT / "l0" / "kernel" / "context.py").exists()
     assert not (PACKAGE_ROOT / "context_store.py").exists()
     assert (PACKAGE_ROOT / "test_workflow.py").is_file()
 
@@ -456,7 +480,7 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
 def test_ship_identity_is_owned_by_kernel_and_used_by_lines() -> None:
     from tarav.lines.records import LineShipRecord
     from tarav.unsorted.primitives import locate_record_type as record_type
-    from tarav.kernel import Ship, TypeShip, locate_record_type
+    from tarav.l0.kernel import Ship, TypeShip, locate_record_type
 
     assert issubclass(TypeShip, Ship)
     assert isinstance(entity(LineShipRecord).id, TypeShip)
@@ -476,7 +500,7 @@ def test_promoted_tarav_domains_have_normal_package_ownership() -> None:
     assert (PACKAGE_ROOT / "unsorted" / "commands.py").is_file()
     assert not tuple((PACKAGE_ROOT / "diagram").glob("*.py"))
     assert (PACKAGE_ROOT / "bloberia" / "hosted.py").is_file()
-    assert (PACKAGE_ROOT / "_core" / "record_depot.py").is_file()
+    assert (PACKAGE_ROOT / "l0" / "_core" / "record_depot.py").is_file()
     assert not (PACKAGE_ROOT / "tarav2").exists()
     assert not (PACKAGE_ROOT / "indexlab").exists()
     assert not (PACKAGE_ROOT / "mission").exists()

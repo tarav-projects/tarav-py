@@ -5,7 +5,7 @@ import filecmp
 import shutil
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.providers.claude_code.session import read_claude_project_session
 
 

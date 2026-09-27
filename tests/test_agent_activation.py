@@ -10,7 +10,7 @@ from tarav.testing import TaravTestEnvironment
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     prov = tarav_home_dir() / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
@@ -54,7 +54,7 @@ def test_activate_ambiguous_and_missing_raise(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.errors import CliError
+    from tarav.l0._core.errors import CliError
     from tarav.agent.activation import activate
 
     _seed("abcd0001")

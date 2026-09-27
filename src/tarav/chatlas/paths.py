@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav._core.data_root import default_tarav_data_root
+from tarav.l0._core.data_root import default_tarav_data_root
 
 
 CHATLAS_DIRNAME = "chatlas"

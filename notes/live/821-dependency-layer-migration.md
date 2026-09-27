@@ -2,9 +2,9 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Phase: Design. Alignment.Mode: Interactive.
-Status: design complete; ready for a bounded foundation slice. Later layer
-assignments remain proposals to validate against module dependencies.
+Knowledge.Surface: wiki. Phase: Execute. Alignment.Mode: Interactive.
+Status: foundation slice implemented and verified; later layer assignments
+remain proposals to validate against module dependencies.
 
 Introduce explicit dependency levels across Tarav namespaces. A namespace can
 appear at several levels; level N may import its own and lower levels, not
@@ -116,22 +116,22 @@ are composition entry points, not low-level imports.
 
 ## Execution.Plan
 
-- [ ] Recheck shared-worktree changes, especially 820, and checkpoint the product
+- [x] Recheck shared-worktree changes, especially 820, and checkpoint the product
   repository under Execute policy before any product edits. Do not modify its
   semantics as part of this migration.
-- [ ] Inventory absolute, relative, function-local and TYPE_CHECKING imports,
+- [x] Inventory absolute, relative, function-local and TYPE_CHECKING imports,
   parent __init__ effects, Python-path strings, runtime registrations, tests,
   scripts and installed consumers for the selected slice. Produce an exact
   old-to-new path map before moving files.
-- [ ] First bounded slice: introduce l0, move _core and the coherent Kernel
+- [x] First bounded slice: introduce l0, move _core and the coherent Kernel
   implementation there, update all maintained in-repository consumers and
   path assertions. Make tarav/__init__.py import-safe for the foundation while
   preserving deliberate public convenience behavior. Do not rename classes.
-- [ ] Resolve the annotation-only ContextBuilder edge with a minimal local
+- [x] Resolve the annotation-only ContextBuilder edge with a minimal local
   annotation contract or another concrete dependency-neutral arrangement;
   do not import l1 Context back into l0. Verify annotation tooling as well as
   runtime behavior. Do not introduce a general injection framework for this.
-- [ ] Verify and hand off that foundation slice before broader moves. Update
+- [x] Verify and hand off that foundation slice before broader moves. Update
   AGENTS.md and ARCHITECTURE.md to describe the actual transitional state.
 - [ ] Next, split Context contracts from Archive-backed composition and split
   LoadingProfile from the composed loader facade. Preserve one loader engine.
@@ -173,10 +173,32 @@ all domains into the change.
 
 ## Impl.Log
 
-- Design inspected current files and existing architecture tests. No product
-  implementation or tests were run; no migration is claimed complete.
-- Existing dirty product files belong to concurrent loading-profile work and
-  were left untouched. This new live note is intentionally uncommitted.
+- Design inspected current files and existing architecture tests. The
+  pre-execution checkpoint of the existing loading-profile work and this note
+  is `0352775`. No later product commit was created.
 - The initial illustrative tree was refined: keep Kernel together initially,
   retain singular project, and explicitly handle root initialization and
   lazy runtime dependencies. These are agent proposals grounded in inspection.
+- The first physical layer now contains `tarav.l0._core` and
+  `tarav.l0.kernel`. All maintained in-repository Python import consumers were
+  moved to those paths, with no old-path compatibility packages. The root
+  `ARCHIVE` convenience resolves lazily, so a fresh l0 import does not
+  initialize Archive, Context, runtime, CLI, or daemon. Kernel context hooks
+  accept an opaque builder annotation instead of importing Context types.
+- `ARCHITECTURE.md`, `AGENTS.md`, README, and architecture tests describe the
+  transitional state. The maintained external example package uses the new
+  Kernel path; its demo also needed missing Workflow registration declarations
+  corrected before its dynamic-load smoke test could run.
+- Verification: 1,359 pytest tests passed; Ruff and `git diff --check` passed;
+  installed CLI was refreshed and its version/help opened; the external example
+  loaded its Record through the installed environment. Existing class and
+  Workflow identity declarations were moved without value changes. No retained
+  data was rewritten.
+- This completes the bounded l0 foundation slice, not the whole layer roadmap.
+  Context, Loading, Project, Archive, and remaining domains still need their
+  module-level maps and later slices. The current public `tarav.loading` path
+  is left intact while 820's semantic alignment is handled separately; the
+  discussed `tarav.loadings` namespace is not implemented by this slice.
+- Wiki capture added a bounded implementation edition to diagram-workflows.md
+  and the daily note. Both Chatlas-context Breadcrumb audits passed; Wiki-only
+  closure is `2fad1f8`.

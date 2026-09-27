@@ -8,9 +8,9 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.path_validation import validate_string_for_path
-from tarav._core.project import (
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.path_validation import validate_string_for_path
+from tarav.l0._core.project import (
     tarav_home_dir,
     global_config_path,
     load_project_marker,

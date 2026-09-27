@@ -22,7 +22,6 @@ from .identity import (
 
 if TYPE_CHECKING:
     from .workflows import TaravWorkflow
-    from tarav.context import ContextBuilder
     from .types import RecordTypeReference, TypeRegistry
 
 
@@ -77,7 +76,7 @@ class TaravType:
             )
 
     @classmethod
-    def class_context(cls, builder: ContextBuilder) -> None:
+    def class_context(cls, builder: object) -> None:
         """Contribute Type-specific entries to a class Context view."""
 
     @classmethod
@@ -228,7 +227,7 @@ class TaravObject(TaravType):
 
         return {"type": entity(cls).name}
 
-    def obj_context(self, builder: ContextBuilder) -> None:
+    def obj_context(self, builder: object) -> None:
         """Contribute object-specific entries to an instance Context view."""
 
     def __init_subclass__(cls, **kwargs: object) -> None:

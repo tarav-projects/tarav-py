@@ -7,7 +7,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from tarav._core.project import (
+from tarav.l0._core.project import (
     assert_project_base,
     build_not_inside_project_message,
     find_agentos_project_roots_under,

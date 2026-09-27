@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import subprocess
 
-from tarav._core.persistence import atomic_write_text
+from tarav.l0._core.persistence import atomic_write_text
 from tarav.archive.artifact_records import record_registry
 
 

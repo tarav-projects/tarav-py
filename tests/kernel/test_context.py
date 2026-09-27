@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tarav.kernel import FileRecord, TaravClass, TaravObject, TaravType, TaravTypeDeclarationError, TypeShip, entity
+from tarav.l0.kernel import FileRecord, TaravClass, TaravObject, TaravType, TaravTypeDeclarationError, TypeShip, entity
 from tarav.context import Context, ContextFolder, ContextBuilder, ContextExplorer, explore as context
 
 

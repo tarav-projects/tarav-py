@@ -5,7 +5,7 @@ from __future__ import annotations
 from tarav.unsorted.primitives import DiagramError
 from .records import ModelShipRecord
 from .workflow import MODELS_WORKFLOW_SHIP
-from tarav.kernel import TaravType, TaravClass, TypeShip
+from tarav.l0.kernel import TaravType, TaravClass, TypeShip
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 

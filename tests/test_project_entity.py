@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from tarav._core.errors import CliError
-from tarav._core.project import initialize_project_layout
-from tarav.kernel import Ship, entity
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.project import initialize_project_layout
+from tarav.l0.kernel import Ship, entity
 from tarav.project import Project, ProjectWorkflow, TaravProject
 from tarav.runtime import create_runtime
 
@@ -90,7 +90,7 @@ def test_project_context_is_available_without_creating_archive(tmp_path):
 
 @pytest.mark.parametrize("typed", [False, True])
 def test_explicit_project_subtypes_share_identity_without_rewriting(tmp_path, typed):
-    from tarav.kernel import TaravClass, TypeShip
+    from tarav.l0.kernel import TaravClass, TypeShip
 
     class LocalProject(Project):
         @classmethod

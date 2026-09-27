@@ -7,8 +7,8 @@ from urllib.parse import quote
 
 from markdown_it import MarkdownIt
 
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import FileRecord, TypeShip
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import FileRecord, TypeShip
 from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.references.structured import StructuredFileReference
 from .document import Document, read, write

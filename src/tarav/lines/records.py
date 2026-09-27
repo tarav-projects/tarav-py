@@ -22,9 +22,9 @@ from tarav.unsorted.constants import LINE_SHIP_TYPE
 from tarav.unsorted.constants import LINE_SUPPORT_ANNOTATION_TYPE
 from tarav.unsorted.constants import LINE_TYPE_ANNOTATION_TYPE
 from tarav.models.records import ModelEditionRecord
-from tarav.kernel import Ship
-from tarav.kernel import TaravClass
-from tarav.kernel import TypeShip
+from tarav.l0.kernel import Ship
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TypeShip
 from tarav.unsorted.records import TypedAnnotation
 from tarav.unsorted.records import TypedShip
 from tarav.unsorted.records import UserTouchedAnnotation

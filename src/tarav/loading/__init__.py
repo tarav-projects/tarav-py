@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TypeVar, overload
 
-from tarav.kernel import TaravObject
+from tarav.l0.kernel import TaravObject
 
 from .workflow import LoadingWorkflow
 

@@ -1,6 +1,6 @@
 """Line-owned semantic assertions and their adaptation to ranking."""
 
-from tarav.kernel import Ship, TaravClass, TypeShip
+from tarav.l0.kernel import Ship, TaravClass, TypeShip
 from tarav.scoring.assertions import Assertion, ScoringDetails
 from tarav.scoring.model import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE, GROUNDING_POOL_TYPE,

@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 from . import Archive, ArchiveError, RegisteredArtifact, default_archive_root
 

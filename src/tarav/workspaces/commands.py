@@ -14,7 +14,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 from .guide import GuideError, guide_text, guide_token
 from .manifest import ManifestError, read_manifest, render_agents_md

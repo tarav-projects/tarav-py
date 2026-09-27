@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tarav._core.clock import utc_now_iso
-from tarav._core.project import TaravProjectHandler, tarav_home_dir
+from tarav.l0._core.clock import utc_now_iso
+from tarav.l0._core.project import TaravProjectHandler, tarav_home_dir
 
 ACTIVITY_LOG_SCHEMA_VERSION = 2
 ACTIVITY_LOG_DIR = ("activity",)

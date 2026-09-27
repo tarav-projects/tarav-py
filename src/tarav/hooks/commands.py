@@ -8,8 +8,8 @@ import sys
 from collections.abc import Callable
 from typing import Protocol
 
-from tarav._core.errors import CliError
-from tarav._core.operational_logging import event_extra
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.operational_logging import event_extra
 
 from .model import HookError, HookInvocation
 

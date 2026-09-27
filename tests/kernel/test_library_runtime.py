@@ -1,4 +1,4 @@
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 import json
 
@@ -7,7 +7,7 @@ import pytest
 from tarav import load_object
 from tarav.archive import Archive
 from tarav.chatlas.workflow import ChatlasWorkflow
-from tarav.kernel import DirectoryRecord, FileRecord, KERNEL_WORKFLOW_SHIP, RecordTypeMismatch, TARAV, KernelWorkflow
+from tarav.l0.kernel import DirectoryRecord, FileRecord, KERNEL_WORKFLOW_SHIP, RecordTypeMismatch, TARAV, KernelWorkflow
 from tarav.context import explore as context
 from tarav.references import FileReference
 from tarav.runtime import create_runtime
@@ -119,7 +119,7 @@ def test_reference_check_and_hints_are_separate(tmp_path):
 
 
 def test_old_archive_data_requires_explicit_migration(tmp_path):
-    from tarav.kernel import InvalidRecordType
+    from tarav.l0.kernel import InvalidRecordType
 
     archive = Archive.create(tmp_path / "archive")
     entry = archive.records_root / "main.json"

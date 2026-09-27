@@ -21,8 +21,8 @@ import sys
 from pathlib import Path
 from typing import ClassVar
 
-from tarav._core.errors import CliError
-from tarav._core.process import run_process
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.process import run_process
 from tarav.agent.account_status import AccountIdentity
 from tarav.agent.auth_method import AuthData, AuthMethod
 from tarav.agent.providers.claude_code.keychain import (

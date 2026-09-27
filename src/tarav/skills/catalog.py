@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 SKILL_MARKER_FILENAME = "SKILL.md"
 _FRONTMATTER_DELIMITER = "---"

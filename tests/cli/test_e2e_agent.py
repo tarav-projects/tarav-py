@@ -29,7 +29,7 @@ def test_agent_run_executes_configured_provider_command(tmp_path: Path, monkeypa
         observed.update(command=command, cwd=cwd, home=env["HOME"], check=check)
         return subprocess.CompletedProcess(command, 0)
 
-    import tarav._core.process as process_runner
+    import tarav.l0._core.process as process_runner
 
     monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 

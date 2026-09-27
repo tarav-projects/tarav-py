@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from tarav._core.sequences import _unique_paths
+from tarav.l0._core.sequences import _unique_paths
 from tarav.agent.primitives import SessionSource
 from tarav.agent.session_utils import (
     coalesce_timestamp as _coalesce_timestamp,

@@ -5,15 +5,15 @@ import argparse
 import json
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.git_ops import (
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.git_ops import (
     resolve_repo_file as _resolve_repo_file,
     resolve_repo_relative_path as _resolve_repo_relative_path,
     resolve_repo_root as _resolve_repo_root,
     run_git as _run_git,
 )
-from tarav._core.json_input import load_json_input as _load_json_input
-from tarav._core.text_span import (
+from tarav.l0._core.json_input import load_json_input as _load_json_input
+from tarav.l0._core.text_span import (
     build_line_starts as _build_line_starts,
     extract_text_from_span as _extract_text_from_span,
     find_all_fragment_spans as _find_all_fragment_spans,

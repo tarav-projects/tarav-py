@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 
 def validate_span(

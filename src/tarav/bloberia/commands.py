@@ -6,8 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.json_input import load_json_arg
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.json_input import load_json_arg
 
 from .hosted import (
     TaravBloberia,

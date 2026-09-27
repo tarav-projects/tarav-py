@@ -6,8 +6,8 @@ import json
 import os
 from pathlib import Path
 
-from tarav._core.clock import iso_z
-from tarav._core.project import tarav_home_dir
+from tarav.l0._core.clock import iso_z
+from tarav.l0._core.project import tarav_home_dir
 from tarav.hooks import HookInvocation
 
 

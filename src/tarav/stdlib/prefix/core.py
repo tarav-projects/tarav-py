@@ -5,8 +5,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.scan import iter_target_files
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.scan import iter_target_files
 
 
 @dataclass(frozen=True)

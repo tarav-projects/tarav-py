@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tarav.kernel import DirectoryRecord, FileRecord, TypeRegistry
+from tarav.l0.kernel import DirectoryRecord, FileRecord, TypeRegistry
 
 
 def test_directory_and_entry_share_authority_and_source(tmp_path):

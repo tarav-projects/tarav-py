@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import sys
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.chatlas.core import chatlas_raw_sources, chatlas_update
 from tarav.chatlas.delta_scan import chatlas_index_redo, chatlas_index_reset
 from tarav.chatlas.normal_model import (

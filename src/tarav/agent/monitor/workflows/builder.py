@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.monitor.loop import MonitorWorkflow
 from tarav.agent.monitor.models import (
     ACCOUNT_ROTATION_WORKFLOW,

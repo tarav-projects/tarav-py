@@ -1,6 +1,6 @@
 """Legacy record registration and namespace navigation; not a workflow."""
 
-from tarav.kernel.space import FilesystemProvider
+from tarav.l0.kernel.space import FilesystemProvider
 
 from tarav.unsorted.storage import DiagramNamespace
 from tarav.unsorted.registry import default_diagram_annotation_type_registry, default_diagram_ship_type_registry

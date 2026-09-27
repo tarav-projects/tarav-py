@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from tarav.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
+from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
 from tarav.lines.assertions import LineGroundingAssertion
 from tarav.lines.workflow import LinesWorkflow
 from tarav.runtime import create_runtime

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,8 +16,8 @@ import subprocess
 from urllib.parse import urlsplit
 import warnings
 
-from tarav._core.persistence import atomic_write_json, atomic_write_text
-from tarav._core.data_root import default_tarav_data_root
+from tarav.l0._core.persistence import atomic_write_json, atomic_write_text
+from tarav.l0._core.data_root import default_tarav_data_root
 from .artifact_records import ArchiveRecord, ArtifactRecord, TombstoneRecord, record_registry
 
 

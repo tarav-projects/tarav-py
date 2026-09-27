@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.chatlas.index_writer import archive_versions_for
 from tarav.chatlas.session_resolver import resolve_session_index_row
 

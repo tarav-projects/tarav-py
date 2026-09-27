@@ -1,8 +1,8 @@
 """Assertion Scoring Record registration."""
 
-from tarav.kernel import TaravClass
-from tarav.kernel import TypeShip
-from tarav.kernel.workflows import TaravWorkflow
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TypeShip
+from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.scoring.identity import SCORING_WORKFLOW_SHIP
 
 class ScoringWorkflow(TaravWorkflow):

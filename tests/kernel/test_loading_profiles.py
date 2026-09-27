@@ -5,7 +5,7 @@ import json
 import pytest
 
 from tarav import load_object, set_runtime
-from tarav.kernel import (
+from tarav.l0.kernel import (
     DirectoryRecord,
     FileRecord,
     RecordTypeMismatch,

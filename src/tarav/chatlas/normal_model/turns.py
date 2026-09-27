@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 from .model import JsonObject
 from .turn_ref import compute_chat_turn_address

@@ -27,7 +27,7 @@ def _auth_json(uuid: str) -> dict[str, object]:
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     prov = tarav_home_dir() / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
@@ -83,7 +83,7 @@ def test_capture_global_sweeps_provider_homes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     known = _home(tmp_path, "codex-br", UUID)
     orphan = _home(tmp_path, "stray", "ffffffff-0000-0000-0000-000000000000")
@@ -103,7 +103,7 @@ def test_capture_global_dry_run_writes_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     known = _home(tmp_path, "codex-br", UUID)
     _profile(tarav_home_dir(), "codex-main", [known], ["br/file"])
@@ -135,7 +135,7 @@ def test_capture_global_and_home_are_mutually_exclusive(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.errors import CliError
+    from tarav.l0._core.errors import CliError
 
     with pytest.raises(CliError):
         _cmd_agent_accounts_capture(argparse.Namespace(
@@ -146,7 +146,7 @@ def test_capture_single_requires_provider_and_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.errors import CliError
+    from tarav.l0._core.errors import CliError
 
     with pytest.raises(CliError):
         _cmd_agent_accounts_capture(argparse.Namespace(
@@ -170,7 +170,7 @@ def test_activate_sets_pointer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 def test_activate_rejects_missing_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.errors import CliError
+    from tarav.l0._core.errors import CliError
 
     with pytest.raises(CliError):
         _cmd_agent_accounts_activate(argparse.Namespace(

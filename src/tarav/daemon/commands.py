@@ -10,7 +10,7 @@ import sys
 import time
 from collections.abc import Callable
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.hooks import HookRegistry
 
 from .client import daemon_status, request_daemon_stop

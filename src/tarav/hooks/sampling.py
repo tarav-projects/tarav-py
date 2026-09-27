@@ -7,9 +7,9 @@ import os
 from pathlib import Path
 from collections.abc import Mapping
 
-from tarav._core.clock import iso_z
-from tarav._core.errors import CliError
-from tarav._core.project import tarav_home_dir
+from tarav.l0._core.clock import iso_z
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.project import tarav_home_dir
 
 from .model import HookInvocation
 from .registry import HookRegistry

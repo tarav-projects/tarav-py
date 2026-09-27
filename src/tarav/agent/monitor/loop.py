@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from threading import Condition, Event, Thread
 from typing import Protocol
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.monitor.clock import (
     ACCOUNT_ROTATION_PERIODIC_ALARM,
     AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,

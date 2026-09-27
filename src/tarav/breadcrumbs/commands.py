@@ -6,7 +6,7 @@ import argparse
 import json
 from collections.abc import Callable, Sequence
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 from .auditing import audit_annotations
 from .integrations import BreadcrumbIntegration

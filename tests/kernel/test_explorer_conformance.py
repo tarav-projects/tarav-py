@@ -8,7 +8,7 @@ import pytest
 
 from tarav.explorer_testing import ExplorerCase, ExplorerContractTests, check_collection
 from tarav import get_runtime
-from tarav.kernel import ExplorerEntry, ExplorerFolder, TaravClass, TypeShip
+from tarav.l0.kernel import ExplorerEntry, ExplorerFolder, TaravClass, TypeShip
 from tarav.context import ContextBuilder, ContextEntry, ContextExplorer, ContextFolder, ContextList
 from tarav.archive.records import (
     ArchiveExplorer,

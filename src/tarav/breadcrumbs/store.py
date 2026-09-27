@@ -11,9 +11,9 @@ import re
 import secrets
 import shutil
 
-from tarav._core.persistence import atomic_write_json, atomic_write_text
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import (
+from tarav.l0._core.persistence import atomic_write_json, atomic_write_text
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import (
     RecordTypeReference,
     TaravPOIInstance,
     TypeShip,

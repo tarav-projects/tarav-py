@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 from .event_ref import compute_event_address, compute_event_hash
 from .message_ref import compute_chat_message_address

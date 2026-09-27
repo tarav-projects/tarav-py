@@ -3,7 +3,7 @@ from typing import Literal, Self
 import pytest
 from pydantic import BaseModel
 
-from tarav.kernel import (
+from tarav.l0.kernel import (
     TaravClass,
     TaravObject,
     TaravTypeDeclarationError,

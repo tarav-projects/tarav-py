@@ -1,7 +1,7 @@
 """Model Ships and editions; retained identities and schemas are unchanged."""
 from __future__ import annotations
 
-from tarav.kernel import Ship, TaravClass, TypeShip
+from tarav.l0.kernel import Ship, TaravClass, TypeShip
 from tarav.unsorted.constants import MODEL_EDITION_TYPE, MODEL_SHIP_TYPE, JsonObject
 from tarav.unsorted.records import DiagramAnnotation, TypedAnnotation, TypedShip
 from tarav.unsorted.primitives import _edition_id, _edition_payload, _string, _uuid, _validate_editions

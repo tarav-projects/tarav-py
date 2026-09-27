@@ -6,8 +6,8 @@ operations and schema apply; this base deliberately adds no manifest policy.
 
 from pathlib import Path
 
-from tarav.kernel import TaravClass
-from tarav.kernel import DirectoryRecord, TypeShip
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import DirectoryRecord, TypeShip
 from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
 

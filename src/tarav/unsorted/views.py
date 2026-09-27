@@ -19,11 +19,11 @@ from pydantic import (
     model_validator,
 )
 
-from tarav._core.data_root import default_tarav_data_root
-from tarav._core.persistence import atomic_write_json
+from tarav.l0._core.data_root import default_tarav_data_root
+from tarav.l0._core.persistence import atomic_write_json
 from tarav.unsorted.identity import UNSORTED_WORKFLOW_SHIP
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import TaravObject, TypeRegistry, TypeShip
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
 
 from tarav.unsorted.evidence import ChatlasEvidence
 from tarav.unsorted.storage import Diagram

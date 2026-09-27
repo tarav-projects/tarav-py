@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent._cli_common import format_json_output
 from tarav.agent.commands._shared import (
     _AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,

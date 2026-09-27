@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.commands import register_agent_commands
 from tarav.agent.commands.accounts import _cmd_agent_accounts_materialize
 from tarav.agent.commands.run import _cmd_agent_run

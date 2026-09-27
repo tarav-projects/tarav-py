@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 
 import tarav.daemon.commands as daemon_commands
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.daemon import (
     DaemonRuntime,
     daemon_log_path,

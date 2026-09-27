@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 from pathlib import Path
 from uuid import uuid4
@@ -15,7 +15,7 @@ from tarav.lines.records import LineShipRecord
 from tarav.models.records import ModelShipRecord
 from tarav.unsorted.contracts import ShipDraftInterface
 from tarav.unsorted.registry import default_diagram_annotation_type_registry, default_diagram_ship_type_registry
-from tarav.kernel import RecordTypeReference, Ship, TypeShip
+from tarav.l0.kernel import RecordTypeReference, Ship, TypeShip
 
 REF = {
     "session_identity": "a" * 64,

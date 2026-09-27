@@ -7,11 +7,11 @@ from tarav.unsorted.primitives import DiagramModelError
 from pydantic import Field
 from tarav.unsorted.constants import JsonObject
 from pydantic import JsonValue
-from tarav.kernel import TaravAssertion
-from tarav.kernel import TaravClass
-from tarav.kernel import TaravObject
-from tarav.kernel import TaravPOIInstance
-from tarav.kernel import TypeShip
+from tarav.l0.kernel import TaravAssertion
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TaravObject
+from tarav.l0.kernel import TaravPOIInstance
+from tarav.l0.kernel import TypeShip
 from tarav.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.unsorted.constants import VERBATIM_GATE_TYPE
 from tarav.unsorted.primitives import _array

@@ -6,8 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.project import require_agentos_project
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.project import require_agentos_project
 
 from tarav.unsorted.evidence import ChatlasEvidence
 from tarav.unsorted.storage import DiagramConfiguration

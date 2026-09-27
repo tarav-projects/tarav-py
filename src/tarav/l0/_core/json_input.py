@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 
 def load_json_arg(json_value: str | None, file_value: str | None, *, field_name: str) -> object:

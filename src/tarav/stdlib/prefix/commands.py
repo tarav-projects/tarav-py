@@ -5,14 +5,14 @@ import argparse
 import json
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.project import (
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.project import (
     load_project_config,
     require_explicit_agentos_project,
 )
-from tarav._core.project_command_log import record_project_command_from_args
-from tarav._core.scan import DEFAULT_SCAN_EXCLUDES
-from tarav._core.scan import resolve_relative_paths_under_root
+from tarav.l0._core.project_command_log import record_project_command_from_args
+from tarav.l0._core.scan import DEFAULT_SCAN_EXCLUDES
+from tarav.l0._core.scan import resolve_relative_paths_under_root
 
 from .core import (
     DEFAULT_PREFIX_WIDTH,

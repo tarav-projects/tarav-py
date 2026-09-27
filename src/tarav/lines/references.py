@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pydantic import ConfigDict
 from typing import Literal
-from tarav.kernel import Ship
-from tarav.kernel import TaravObject
+from tarav.l0.kernel import Ship
+from tarav.l0.kernel import TaravObject
 from tarav.unsorted.primitives import _uuid
 from pydantic import field_validator
 from typing import TYPE_CHECKING

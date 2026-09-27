@@ -6,9 +6,9 @@ import json
 import tempfile
 from pathlib import Path
 
-from tarav._core.scan import resolve_root_dir, resolve_targets_under_root
+from tarav.l0._core.scan import resolve_root_dir, resolve_targets_under_root
 
-from tarav._core.scan import DEFAULT_SCAN_EXCLUDES
+from tarav.l0._core.scan import DEFAULT_SCAN_EXCLUDES
 
 from .core import (
     BLOCK_SEPARATOR,

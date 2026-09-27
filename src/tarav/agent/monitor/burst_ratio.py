@@ -20,7 +20,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.account_status import BURST_WINDOW_MINS, WEEKLY_WINDOW_MINS
 from tarav.agent.providers.codex.account_status import codex_quota_pool
 from tarav.agent.usage_registry import iter_usage_records_since

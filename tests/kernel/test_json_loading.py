@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tarav.kernel import TaravClass
+from tarav.l0.kernel import TaravClass
 
 import json
 from typing import ClassVar
@@ -8,7 +8,7 @@ from typing import ClassVar
 import pytest
 from pydantic import BaseModel
 
-from tarav.kernel import (
+from tarav.l0.kernel import (
     InvalidRecordJSON,
     RecordTypeMismatch,
     TaravObject,

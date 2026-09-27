@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from tarav.kernel import (
+from tarav.l0.kernel import (
     TaravEnvironment,
     TaravObject,
     TypeRegistry,
@@ -23,7 +23,7 @@ def test_runtime_lazily_loads_an_external_class_from_its_environment(
     package.mkdir()
     (package / "__init__.py").write_text("")
     (package / "records.py").write_text(
-        "from tarav.kernel import TaravClass, TaravEntity, TypeShip\n"
+        "from tarav.l0.kernel import TaravClass, TaravEntity, TypeShip\n"
         "class ExternalNote(TaravEntity):\n"
         "    @classmethod\n"
         "    def class_entity(cls):\n"

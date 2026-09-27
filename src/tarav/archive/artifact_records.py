@@ -1,7 +1,7 @@
 """Artifact-registration Record authorities and serialization contracts."""
 
-from tarav.kernel import TaravClass
-from tarav.kernel import (
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import (
     DirectoryRecord,
     FileRecord,
     TaravObject,

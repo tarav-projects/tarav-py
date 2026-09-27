@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.chatlas.normal_model.jsonl import JsonlCandidateScan, iter_jsonl_objects
 
 

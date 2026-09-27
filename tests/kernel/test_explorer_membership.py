@@ -1,6 +1,6 @@
 import pytest
 
-from tarav.kernel import TaravObject, entity
+from tarav.l0.kernel import TaravObject, entity
 from tarav.context import ContextEntry, ContextExplorer, ContextFolder, ContextObject, ContextType
 from tarav.context import CONTEXT_WORKFLOW_SHIP
 from tarav.archive.records import (

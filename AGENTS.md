@@ -38,9 +38,12 @@
   composition layer; Kernel's context hooks have no runtime Context dependency.
 - Provider-neutral orchestration belongs in `tarav.agent`; concrete adapters
   belong in `tarav.agent.providers.<provider>`.
-- Shared infrastructure enters `tarav._core` only after multiple consumers have
+- Shared infrastructure enters `tarav.l0._core` only after multiple consumers have
   demonstrated the same semantics. Callers retain policy, schema validation,
   locking, and error translation.
+- The first dependency-layer slice places shared utilities and Kernel under
+  `tarav.l0`. The root package remains import-light; `ARCHIVE` resolves lazily.
+  Other domains retain their present paths until their own layer slice.
 - Lower-level modules do not import or shell out to the umbrella CLI.
 - Do not add compatibility aliases or fallback paths unless the user explicitly
   requests a migration design.

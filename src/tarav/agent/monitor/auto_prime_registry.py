@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
-from tarav._core.project import tarav_home_dir
+from tarav.l0._core.project import tarav_home_dir
 
 
 AUTO_PRIME_EVENT_REGISTRY_RELATIVE_PATH = (

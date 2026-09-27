@@ -6,9 +6,9 @@ import hashlib
 import json
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.path_validation import validate_string_for_path
-from tarav._core.project import tarav_home_dir
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.path_validation import validate_string_for_path
+from tarav.l0._core.project import tarav_home_dir
 from tarav.agent import auth_registry
 from tarav.agent.config import (
     AgentConfigSource,

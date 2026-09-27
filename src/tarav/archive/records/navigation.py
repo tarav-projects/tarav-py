@@ -8,8 +8,8 @@ from typing import Literal, Self, TypeVar
 
 from pydantic import BaseModel
 
-from tarav._core.data_root import default_tarav_data_root
-from tarav.kernel import (
+from tarav.l0._core.data_root import default_tarav_data_root
+from tarav.l0.kernel import (
     Explorer,
     ExplorerFolder,
     ExplorerList,
@@ -19,7 +19,7 @@ from tarav.kernel import (
     WorkflowShip,
     entity,
 )
-from tarav.kernel.workflows import TaravWorkflow
+from tarav.l0.kernel.workflows import TaravWorkflow
 
 from . import (
     RECORD_ARCHIVE_WORKFLOW_SHIP,

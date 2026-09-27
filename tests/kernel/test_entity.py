@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from tarav.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravClass, entity
 
 
 import pytest
 from pydantic import ValidationError
 
-from tarav.kernel import (
+from tarav.l0.kernel import (
     DirectoryRecord,
     FileRecord,
     InvalidRecordJSON,

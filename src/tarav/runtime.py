@@ -9,7 +9,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, TypeVar, overload
 import json
 
-from tarav.kernel import (
+from tarav.l0.kernel import (
     DirectoryRecord,
     FileRecord,
     KernelWorkflow,
@@ -30,8 +30,8 @@ from tarav.context import (
 )
 from tarav.context.storage import CONTEXT_RECORD_TYPES, ContextService
 from tarav.context.workflow import ContextWorkflow
-from tarav.kernel.space import FilesystemProvider
-from tarav.kernel.workflows import TaravWorkflow, WorkflowRegistry
+from tarav.l0.kernel.space import FilesystemProvider
+from tarav.l0.kernel.workflows import TaravWorkflow, WorkflowRegistry
 from tarav.loading import LoadingProfile, profile_paths
 from tarav.navigation import Navigation, NavigationService
 from tarav.references.workflow import ReferenceWorkflow, ReferenceService

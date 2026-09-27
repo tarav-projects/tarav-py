@@ -28,7 +28,7 @@ def _auth_json(uuid: str, marker: str = "") -> dict[str, object]:
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     prov = tarav_home_dir() / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
@@ -99,7 +99,7 @@ def test_materialize_all_reconciles_stale_skips_aligned_and_orphan(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
     from tarav.agent.materialization import materialize_all
 
     active_payload = _auth_json(UUID, marker="ACTIVE")

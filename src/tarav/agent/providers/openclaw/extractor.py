@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.providers.extractor_common import (
     DialogTurn,
     _string_or_empty,

@@ -5,7 +5,7 @@ modular monolith under the `tarav` package: the CLI, runtime, daemon, Chatlas,
 Archive, Diagram, SKW, agent/provider support, and Iterante runtimes.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership and dependency direction.
-`tarav.kernel` provides the dependency-clean semantic roles and trusted Record
+`tarav.l0.kernel` provides the dependency-clean semantic roles and trusted Record
 Type dispatch that Tarav applications may specialize without sharing schemas.
 
 ## Install

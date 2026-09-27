@@ -1,8 +1,8 @@
 import pytest
 import json
 
-from tarav._core.project import initialize_project_layout
-from tarav.kernel import entity
+from tarav.l0._core.project import initialize_project_layout
+from tarav.l0.kernel import entity
 from tarav.models import Model, ModelsWorkflow
 from tarav.project import Project
 from tarav.project.models import ProjectModels

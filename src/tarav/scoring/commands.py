@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 from .model import (
     GROUNDING_ASSERTION_TYPE,

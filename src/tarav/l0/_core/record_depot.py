@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping
 from uuid import uuid4
 
-from tarav._core.persistence import atomic_write_json
+from tarav.l0._core.persistence import atomic_write_json
 
 from .record_coordinate import RecordCoordinate, derive as _derive, resolve as _resolve
 from .git_checkpoint import GitCheckpoint

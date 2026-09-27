@@ -1,6 +1,6 @@
 """Typed references. Hints are evidence for consumers, never resolver inputs."""
 
-from tarav.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravClass, entity
 
 import hashlib
 from collections.abc import Mapping
@@ -10,8 +10,8 @@ from typing import Annotated
 
 from pydantic import ConfigDict, Field, JsonValue, model_validator
 
-from tarav.kernel.identity import TypeShip
-from tarav.kernel.records import FileRecord, TaravObject, TaravPOIInstance, _json_object
+from tarav.l0.kernel.identity import TypeShip
+from tarav.l0.kernel.records import FileRecord, TaravObject, TaravPOIInstance, _json_object
 from tarav.references.identity import REFERENCES_WORKFLOW_SHIP
 
 

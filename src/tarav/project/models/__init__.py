@@ -1,6 +1,6 @@
 """Project associations to Models, separate from both domain cores."""
 
-from tarav.kernel import TaravClass, TaravType, TaravWorkflow, TypeShip, WorkflowShip
+from tarav.l0.kernel import TaravClass, TaravType, TaravWorkflow, TypeShip, WorkflowShip
 from tarav.project.base import TaravProject
 from tarav.project.workflow import ProjectWorkflow
 
@@ -57,8 +57,8 @@ class ProjectModels(TaravType):
         return self._resolver().model(ship)
 
     def _named_models(self) -> dict[str, str]:
-        from tarav._core.project import load_project_marker, project_marker_path
-        from tarav.kernel import Ship
+        from tarav.l0._core.project import load_project_marker, project_marker_path
+        from tarav.l0.kernel import Ship
 
         marker = load_project_marker(project_marker_path(self.project.root))
         setting = marker.get("diagram", {})

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent import auth_registry as R
 from tarav.agent.accounts_log import append_account_event
 

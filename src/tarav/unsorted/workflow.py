@@ -1,5 +1,5 @@
 """Explicit provisional ownership, without claiming final domain boundaries."""
-from tarav.kernel import TaravClass, TaravWorkflow, TypeShip
+from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip
 from .identity import UNSORTED_WORKFLOW_SHIP
 
 

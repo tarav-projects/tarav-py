@@ -203,19 +203,22 @@ adapters (`tarav.cli`, `tarav.daemon`)
                     ↓
        domains and integration bundles
                     ↓
-              `tarav.kernel`
+            `tarav.l0.kernel`
                     ↓
-               `tarav._core`
+             `tarav.l0._core`
 ```
 
 This is a dependency direction, not a requirement that every module pass
-through every layer.
+through every layer. `l0` is the first physical layer. Later domain slices
+may introduce `l1` and `l2`; present domain package paths remain in place
+until they are classified and moved. A semantic workflow namespace can span
+levels; levels do not establish Workflow parentage.
 
-- `tarav._core` contains private implementation mechanics with no Tarav
-  semantics, such as infrastructure shared by several domains. It should stay
-  small. Promotion into `_core` follows demonstrated reuse rather than
-  anticipated reuse.
-- `tarav.kernel` contains Tarav's public semantic foundation: Types, Objects,
+- `tarav.l0._core` is the moved private utility package. It currently includes
+  project-specific helpers alongside broadly shared mechanics; those modules
+  have not yet been classified into later layers. New shared utilities enter
+  `_core` only after demonstrated reuse.
+- `tarav.l0.kernel` contains Tarav's public semantic foundation: Types, Objects,
   Entities, Ships, class-owned Record interfaces, Explorer contracts,
   Record-space contracts, and trusted Type and Workflow registries. Kernel
   imports no application domain.
@@ -223,8 +226,8 @@ through every layer.
   Its `explore()` primitive accepts explicit contributors without loading storage;
   its `context()` helper selects the current runtime. `context.storage` composes
   Archive-backed entries, while `context.workflow` declares the workflow.
-  Kernel retains extensible context hooks with annotation-only builder imports,
-  not runtime Context imports or re-exports. The `tarav.context` root attribute
+  Kernel retains extensible context hooks with opaque builder arguments,
+  not Context imports or re-exports. The `tarav.context` root attribute
   is now the package, not a callable helper.
 - Domain packages own their vocabulary, Records, storage, validation, and
   operations. Cross-domain imports remain acyclic.

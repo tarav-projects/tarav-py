@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.primitives import SessionSource
 from tarav.agent.session_utils import (
     coalesce_timestamp as _coalesce_timestamp,

@@ -9,9 +9,9 @@ from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict
 
-from tarav.kernel.identity import TypeShip, WorkflowShip
-from tarav.kernel.explorer import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
-from tarav.kernel.records import TaravClass, TaravObject, TaravType, entity
+from tarav.l0.kernel.identity import TypeShip, WorkflowShip
+from tarav.l0.kernel.explorer import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
+from tarav.l0.kernel.records import TaravClass, TaravObject, TaravType, entity
 
 
 CONTEXT_WORKFLOW_SHIP = WorkflowShip("ae6fb02b-b82f-4f64-82e8-67f28a76d179")

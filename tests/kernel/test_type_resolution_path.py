@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from tarav.kernel import TaravClass
+from tarav.l0.kernel import TaravClass
 
 import pytest
 
-from tarav.kernel import (
+from tarav.l0.kernel import (
     TYPE_RESOLUTION_PATH,
     InvalidRecordType,
     RecordTypeLocation,

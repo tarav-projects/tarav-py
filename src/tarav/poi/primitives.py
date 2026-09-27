@@ -6,8 +6,8 @@ from uuid import UUID, uuid5
 
 from pydantic import model_validator
 
-from tarav.kernel import Ship, TaravClass, TaravEntity, entity
-from tarav.kernel import FileRecord, TypeShip
+from tarav.l0.kernel import Ship, TaravClass, TaravEntity, entity
+from tarav.l0.kernel import FileRecord, TypeShip
 from .workflow import POI_WORKFLOW_SHIP
 
 

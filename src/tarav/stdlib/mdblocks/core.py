@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from tarav._core.scan import iter_target_files
+from tarav.l0._core.scan import iter_target_files
 from tarav.surfaces.markdown import MarkdownNormalModel
 
 

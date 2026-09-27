@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.account_status import (
     AccountLimit,
     AccountStatusError,

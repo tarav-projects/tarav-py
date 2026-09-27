@@ -6,7 +6,7 @@ import argparse
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.commands import register_agent_commands
 from tarav.agent.session_copy import copy_agent_session
 

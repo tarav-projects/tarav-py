@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav._core.record_depot import OpaqueRecordDepot
+from tarav.l0._core.record_depot import OpaqueRecordDepot
 
 # A migrated Chatlas2 line-anchor dossier, verbatim from ~/Documents/chatlas/anchory.
 DOSSIER = {
@@ -113,7 +113,7 @@ def test_no_executable_line_names_a_consumer_schema(tmp_path: Path) -> None:
     in executable code — so that is what this reads.
     """
     import ast
-    import tarav._core.record_depot as core
+    import tarav.l0._core.record_depot as core
 
     tree = ast.parse(Path(core.__file__).read_text("utf-8"))
     for node in ast.walk(tree):  # drop every docstring, keeping real code

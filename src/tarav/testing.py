@@ -173,7 +173,7 @@ def seed_account(
     auth_class: str,
 ) -> None:
     """Declare an account in the new-model settings ``accounts.json``."""
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     provider_root = tarav_home_dir() / "accounts" / provider
     provider_root.mkdir(parents=True, exist_ok=True)

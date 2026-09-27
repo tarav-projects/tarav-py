@@ -1,5 +1,5 @@
 """Ownership of Lines, Blocks, Collections, and their editions."""
-from tarav.kernel import TaravClass, TaravWorkflow, TypeShip
+from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip
 from .identity import LINES_WORKFLOW_SHIP
 
 

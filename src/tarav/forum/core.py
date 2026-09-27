@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from tarav._core.project import (
+from tarav.l0._core.project import (
     tarav_home_dir,
     load_project_marker,
     project_marker_path,

@@ -11,7 +11,7 @@ from typing import Mapping, Sequence
 
 from filelock import FileLock
 
-from tarav._core.persistence import atomic_write_json, atomic_write_text
+from tarav.l0._core.persistence import atomic_write_json, atomic_write_text
 
 from .model import (
     GROUNDING_TASK_TYPE,

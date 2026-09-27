@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent import auth_registry as R
 from tarav.agent.account_status_report import collect_home_targets
 from tarav.agent.accounts_log import append_account_event

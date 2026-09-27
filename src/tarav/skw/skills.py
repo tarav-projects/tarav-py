@@ -4,17 +4,17 @@ import shutil
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from tarav.kernel import TaravClass
-from tarav.kernel import TaravObject, TypeRegistry, TypeShip
-from tarav.kernel.records import entry_file
-from tarav.kernel.workflows import TaravWorkflow
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
+from tarav.l0.kernel.records import entry_file
+from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from .depot import SkwDepot
 from .document import Document, project_document, project_root, read
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
 from .loading import LoadingModel, LoadingRecord, SkillDocument
 from tarav.poi import BlessingStore, BlessingRecord, BlessingAssessmentRecord
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from .pois import CLASSES, DiagramAssessment, collect
 from .presentation import (
     add_output_mode,

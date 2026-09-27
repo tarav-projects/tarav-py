@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from tarav.kernel import TaravClass
+from tarav.l0.kernel import TaravClass
 
 from dataclasses import dataclass
 
-from tarav.kernel import Ship, TaravObject, TypeShip
+from tarav.l0.kernel import Ship, TaravObject, TypeShip
 
 TYPE_SHIP = "a1c4e6b8-2d3f-4051-9273-84a6b5c7d8e9"
 CARGO = "b2d5f7c9-3e40-4162-8384-95b7c6d8e9f0"

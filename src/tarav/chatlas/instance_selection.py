@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
-from tarav._core.errors import CliError
-from tarav._core.project import tarav_home_dir
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.project import tarav_home_dir
 from tarav.agent.config import load_chat_config_documents
 from tarav.agent.primitives import AgentConfig
 from tarav.agent.providers.registry import agent_from_config

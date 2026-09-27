@@ -6,7 +6,7 @@ import re
 import time
 from typing import Sequence
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 
 _LOOKBACK_DURATION_RE = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw]?)$")

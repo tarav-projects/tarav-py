@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.providers.extractor_common import (
     DialogTurn,
     format_turns_output,

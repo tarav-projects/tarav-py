@@ -6,9 +6,9 @@ import subprocess
 
 from pydantic import ConfigDict, Field
 
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import TaravObject, TypeShip
-from tarav.kernel.records import _json_object
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravObject, TypeShip
+from tarav.l0.kernel.records import _json_object
 from . import Reference
 
 

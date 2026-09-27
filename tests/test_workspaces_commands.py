@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.workspaces import guide_token
 from tarav.workspaces.commands import register_workspace_commands
 

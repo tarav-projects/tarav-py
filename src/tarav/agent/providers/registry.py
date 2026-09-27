@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent import auth_registry
 from tarav.agent.account_status import AgentAccountContext
 from tarav.agent.primitives import (

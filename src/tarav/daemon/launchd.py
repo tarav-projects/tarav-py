@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from typing import Any, TypeAlias
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 
 LAUNCH_AGENT_LABEL = "org.tarav.daemon"

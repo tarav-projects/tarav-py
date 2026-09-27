@@ -4,8 +4,8 @@ Checks live in skw/loading.py, skw/skills.py, skw/publication.py and
 skw/document.py. Only annotation omissions and semantic freshness
 questions permit attributed acceptance. Structural failures require repair.
 """
-from tarav.kernel import TaravClass
-from tarav.kernel import TypeShip
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TypeShip
 from tarav.poi import POI, POICollector
 from tarav.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 

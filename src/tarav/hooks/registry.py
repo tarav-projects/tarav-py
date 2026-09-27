@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, TypeAlias
 
-from tarav._core.operational_logging import event_extra
+from tarav.l0._core.operational_logging import event_extra
 
 from .model import HookError, HookInvocation, validate_hook_name
 

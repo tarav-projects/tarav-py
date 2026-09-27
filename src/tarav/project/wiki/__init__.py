@@ -1,6 +1,6 @@
 """The conventional Project Wiki attachment."""
 
-from tarav.kernel import TaravClass, TaravType, TaravWorkflow, TypeShip, WorkflowShip
+from tarav.l0.kernel import TaravClass, TaravType, TaravWorkflow, TypeShip, WorkflowShip
 from tarav.project.base import TaravProject
 from tarav.project.workflow import ProjectWorkflow
 from tarav.wiki import Wiki

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tarav.context import ContextType, CONTEXT_WORKFLOW_SHIP
-from tarav.kernel import TaravClass, TaravObject, TypeRegistry, TypeShip, TaravWorkflow
+from tarav.l0.kernel import TaravClass, TaravObject, TypeRegistry, TypeShip, TaravWorkflow
 
 if TYPE_CHECKING:
     from .storage import ContextService

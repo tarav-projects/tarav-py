@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.surfaces.commands import register_surface_commands
 
 

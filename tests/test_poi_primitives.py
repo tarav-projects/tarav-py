@@ -1,10 +1,10 @@
-from tarav.kernel import TaravClass
+from tarav.l0.kernel import TaravClass
 
 from pathlib import Path
 
 import pytest
 
-from tarav.kernel import TypeShip
+from tarav.l0.kernel import TypeShip
 from tarav.poi import POI, POICollector, BlessingStore
 
 

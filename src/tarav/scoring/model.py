@@ -14,9 +14,9 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, ValidationError
 
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import FileRecord, InvalidRecordJSON, Ship, TaravEntity, TaravObject, TypeShip
-from tarav.kernel.records import _json_object
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import FileRecord, InvalidRecordJSON, Ship, TaravEntity, TaravObject, TypeShip
+from tarav.l0.kernel.records import _json_object
 from tarav.scoring.identity import SCORING_WORKFLOW_SHIP
 from .assertions import AssertionReferenceInterface, ScoringDetails
 

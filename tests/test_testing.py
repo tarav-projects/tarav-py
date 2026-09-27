@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from tarav._core.project import (
+from tarav.l0._core.project import (
     find_agentos_project_root,
     load_global_config,
     load_project_config,

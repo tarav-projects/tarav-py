@@ -1,7 +1,7 @@
 # $kw: --from Project.Discovery.System
 from __future__ import annotations
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 
 def validate_string_for_path(value: str, *, field_name: str = "value") -> str:

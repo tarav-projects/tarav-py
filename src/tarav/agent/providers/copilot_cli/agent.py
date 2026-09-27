@@ -14,7 +14,7 @@ from tarav.agent.run_runtime import (
     AgentCommandConfig,
     COPILOT_HOME_ENV_VAR,
 )
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.account_status import AccountStatus
 from tarav.agent.providers.copilot_cli.session import (
     CopilotSession,

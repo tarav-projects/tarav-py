@@ -8,7 +8,7 @@ import stat
 
 import pytest
 
-from tarav._core import operational_logging
+from tarav.l0._core import operational_logging
 
 
 @pytest.fixture

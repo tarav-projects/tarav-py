@@ -6,8 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 
-from tarav._core.errors import CliError
-from tarav._core.path_validation import validate_string_for_path
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.path_validation import validate_string_for_path
 from tarav.agent.config import profile_path, profiles_root
 
 

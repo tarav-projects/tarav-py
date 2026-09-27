@@ -13,7 +13,7 @@ import tokenize
 
 import json
 from pydantic import ConfigDict, TypeAdapter, field_validator
-from tarav.kernel import TaravObject, TaravClass, TypeShip, entity
+from tarav.l0.kernel import TaravObject, TaravClass, TypeShip, entity
 from tarav.surfaces.workflow import SURFACES_WORKFLOW_SHIP
 
 from tarav.surfaces.model import SourceDiagnostic, SourceSpan

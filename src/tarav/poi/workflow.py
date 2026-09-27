@@ -1,6 +1,6 @@
 """Shared POI ownership; detection and response remain consumer-owned."""
 
-from tarav.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
+from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
 
 POI_WORKFLOW_SHIP = WorkflowShip("a24f9397-a95a-41a8-83e2-6007ac6e3e90")
 

@@ -1,8 +1,8 @@
 """Chatlas Record registration for runtime composition."""
 
-from tarav.kernel import TaravClass
-from tarav.kernel import TypeShip
-from tarav.kernel.workflows import TaravWorkflow
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TypeShip
+from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 
 from .normal_model import CHATLAS_SEMANTIC_RECORD_TYPES, ChatlasNormalModel

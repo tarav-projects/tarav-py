@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tarav._core.errors import CliError
-from tarav._core.process import run_process
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.process import run_process
 
 CLAUDE_CREDENTIALS_SERVICE_SUFFIX = "-credentials"
 DEFAULT_CLAUDE_KEYCHAIN_TIMEOUT_SEC = 5

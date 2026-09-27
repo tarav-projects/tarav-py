@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import pytest
 
-from tarav.kernel import TaravClass, TaravEntity, TypeShip, entity
+from tarav.l0.kernel import TaravClass, TaravEntity, TypeShip, entity
 from tarav.poi import (
     BlessingRecord, BlessingStore, POICheck, POIError, POIFinding, POIInstance,
     POIWorkflow,

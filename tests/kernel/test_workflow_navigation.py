@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 import pytest
 
-from tarav.kernel import (
+from tarav.l0.kernel import (
     FileRecord,
     TaravClass,
     TaravObject,
@@ -16,14 +16,14 @@ from tarav.kernel import (
     WorkflowRegistry,
     WorkflowShip,
 )
-from tarav.kernel.space import FilesystemProvider, RecordProvider
+from tarav.l0.kernel.space import FilesystemProvider, RecordProvider
 from tarav.navigation import NavigationService
 
 
 def test_external_workflow_registers_and_navigates(tmp_path):
     code = tmp_path / "plugin.py"
     code.write_text(
-        """from tarav.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
+        """from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
 class Example(TaravWorkflow):
     @classmethod
     def class_entity(cls):
@@ -76,7 +76,7 @@ def test_provider_failure_is_inspectable_and_does_not_block_other_provider():
 def test_failed_external_registration_does_not_leak_workflows(tmp_path):
     code = tmp_path / "broken.py"
     code.write_text(
-        """from tarav.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
+        """from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
 class Example(TaravWorkflow):
     @classmethod
     def class_entity(cls):

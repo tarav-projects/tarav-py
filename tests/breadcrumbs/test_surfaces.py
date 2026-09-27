@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 from tarav.breadcrumb_workflows.chatlas_context import (
     ChatlasContextBreadcrumbWorkflow,

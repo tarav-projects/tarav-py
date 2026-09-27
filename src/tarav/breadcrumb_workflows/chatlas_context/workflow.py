@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tarav.kernel import entity
+from tarav.l0.kernel import entity
 
 from collections import defaultdict
 from collections.abc import Callable, Mapping
@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.breadcrumbs import BreadcrumbError
 from tarav.breadcrumbs.auditing import (
     BreadcrumbAuditContext,

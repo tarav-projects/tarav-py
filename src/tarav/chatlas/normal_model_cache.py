@@ -12,8 +12,8 @@ from uuid import uuid4
 
 from filelock import FileLock
 
-from tarav._core.errors import CliError
-from tarav._core.persistence import atomic_write_json
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.persistence import atomic_write_json
 from tarav.chatlas.paths import default_chatlas_root
 
 from .normal_model.model import (

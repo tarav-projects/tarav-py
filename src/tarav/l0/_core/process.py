@@ -10,7 +10,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Callable, Literal, Mapping, Sequence
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 ProcessMode = Literal["terminal", "capture", "stream"]
 ProcessStream = Literal["stdout", "stderr"]

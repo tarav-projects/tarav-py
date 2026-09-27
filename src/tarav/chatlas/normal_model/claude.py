@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 from typing import Callable
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 from .event_ref import compute_event_address, compute_event_hash
 from .message_ref import compute_chat_message_address

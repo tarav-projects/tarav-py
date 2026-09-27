@@ -4,7 +4,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 
 def run_git(repo_dir: Path, *git_args: str) -> str:

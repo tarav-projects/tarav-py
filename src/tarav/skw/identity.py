@@ -1,6 +1,6 @@
 """Skillware Workflow identities."""
 
-from tarav.kernel import WorkflowShip
+from tarav.l0.kernel import WorkflowShip
 
 
 SKILLWARE_WORKFLOW_SHIP = WorkflowShip("e9679812-8da1-4a21-b235-8b0bbe89dcdc")

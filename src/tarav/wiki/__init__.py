@@ -4,8 +4,8 @@ from datetime import date
 from pathlib import Path
 import subprocess
 
-from tarav._core.persistence import atomic_write_text
-from tarav.kernel import TaravClass, TaravObject, TypeShip, entity
+from tarav.l0._core.persistence import atomic_write_text
+from tarav.l0.kernel import TaravClass, TaravObject, TypeShip, entity
 from tarav.surfaces.markdown import MarkdownNormalModel
 
 from .workflow import WIKI_WORKFLOW_SHIP, WikiWorkflow

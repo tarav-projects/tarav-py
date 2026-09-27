@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from tarav._core.project import initialize_project_layout
+from tarav.l0._core.project import initialize_project_layout
 from tarav.project import Project
 from tarav.wiki import Wiki
 

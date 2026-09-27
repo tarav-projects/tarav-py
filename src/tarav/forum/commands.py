@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.forum.core import ForumDepot, Post, current_post_source, mark_read, read_cursor
 
 

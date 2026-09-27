@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from tarav._core.record_depot import OpaqueRecordDepot
-from tarav._core.record_depot import TYPE_SHARDS, InvalidRecordDepotInputError
-from tarav._core.record_coordinate import CoordinateError, RecordCoordinate
+from tarav.l0._core.record_depot import OpaqueRecordDepot
+from tarav.l0._core.record_depot import TYPE_SHARDS, InvalidRecordDepotInputError
+from tarav.l0._core.record_coordinate import CoordinateError, RecordCoordinate
 
 
 def _repo(path: Path) -> Path:

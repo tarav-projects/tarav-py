@@ -8,9 +8,9 @@ import os
 from dataclasses import replace
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.path_validation import validate_string_for_path
-from tarav._core.sequences import _unique_paths
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.path_validation import validate_string_for_path
+from tarav.l0._core.sequences import _unique_paths
 from tarav.agent.account_status import AgentAccountContext
 from tarav.agent.primitives import (
     AgentConfig,

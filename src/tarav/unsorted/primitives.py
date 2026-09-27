@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from tarav.kernel import RecordTypeReference
+from tarav.l0.kernel import RecordTypeReference
 from uuid import UUID
 from tarav.unsorted.constants import _SHA256
 from datetime import datetime
-from tarav.kernel import locate_record_type
+from tarav.l0.kernel import locate_record_type
 from datetime import timezone
 from typing import TYPE_CHECKING
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from tarav.unsorted.constants import JsonObject
     from collections.abc import Mapping
-    from tarav.kernel import TaravObject
+    from tarav.l0.kernel import TaravObject
 
 class DiagramError(RuntimeError):
     pass

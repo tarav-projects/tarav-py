@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
-from tarav._core.errors import CliError
-from tarav._core.sequences import _unique_paths
-from tarav._core.scan import DEFAULT_SCAN_EXCLUDES
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.sequences import _unique_paths
+from tarav.l0._core.scan import DEFAULT_SCAN_EXCLUDES
 from tarav.agent.primitives import AgentConfig, SessionDiscoveryCapable, SessionSource
 from tarav.agent.providers.registry import agent_from_config, load_configured_agents
 from tarav.agent.config import (

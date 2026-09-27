@@ -6,8 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import ConfigDict, Field
 
-from tarav.kernel import TaravClass, entity
-from tarav.kernel import DirectoryRecord, TaravObject, TypeShip
+from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import DirectoryRecord, TaravObject, TypeShip
 from tarav.references import FilePositionReference
 from tarav.breadcrumbs.identity import BREADCRUMBS_WORKFLOW_SHIP
 

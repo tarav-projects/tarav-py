@@ -5,8 +5,8 @@ from typing import Literal
 
 from pydantic import Field
 
-from tarav._core.project import project_marker_name, require_agentos_project
-from tarav.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
+from tarav.l0._core.project import project_marker_name, require_agentos_project
+from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
 from tarav.loading import LoadingProfile
 
 from .workflow import PROJECT_WORKFLOW_SHIP
@@ -35,7 +35,7 @@ class TaravProject(TaravEntity, LoadingProfile):
         """Discover the nearest project without modifying its marker."""
         handler = require_agentos_project(path)
         # Explicit class selection reprojects the Type tag in memory only.
-        from tarav.kernel.types import locate_record_type
+        from tarav.l0.kernel.types import locate_record_type
         from copy import deepcopy
 
         record = deepcopy(handler.project_json)

@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 from typing import Iterator, Pattern
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 
 from .model import JsonObject
 

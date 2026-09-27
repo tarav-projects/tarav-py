@@ -1,6 +1,6 @@
 """Workflow identity for configurable Record entry discovery."""
 
-from tarav.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
+from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip, WorkflowShip
 
 LOADING_WORKFLOW_SHIP = WorkflowShip("c075d42a-1a8f-4f7d-ad40-7ec3a7e03648")
 

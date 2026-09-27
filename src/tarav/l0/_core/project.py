@@ -7,9 +7,9 @@ import os
 from pathlib import Path
 from uuid import UUID
 
-from tarav._core.errors import CliError
-from tarav._core.clock import utc_now_iso as _utc_now_iso
-from tarav._core.ids import normalize_or_generate_uuid
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.clock import utc_now_iso as _utc_now_iso
+from tarav.l0._core.ids import normalize_or_generate_uuid
 
 TARAV_DIRNAME = ".tarav"
 PROJECT_MARKER_FILENAME = "project.json"

@@ -27,7 +27,7 @@ def _auth_json(uuid: str, exp: int) -> dict[str, object]:
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from tarav._core.project import tarav_home_dir
+    from tarav.l0._core.project import tarav_home_dir
 
     home_root = tarav_home_dir()
     prov = home_root / "accounts" / "codex"
@@ -168,7 +168,7 @@ def test_rotate_account_requires_provider(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav._core.errors import CliError
+    from tarav.l0._core.errors import CliError
 
     with pytest.raises(CliError):
         _cmd_agent_accounts_rotate(_ns(provider=None, account="br/file"))

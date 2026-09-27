@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import sys
 
-from tarav._core.operational_logging import configure_operational_logging
+from tarav.l0._core.operational_logging import configure_operational_logging
 from tarav.runtime import TaravRuntime, create_runtime
 
 from .runtime import DaemonRuntime, DaemonRuntimeError

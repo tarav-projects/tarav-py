@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav._core.errors import CliError
-from tarav._core.ids import generate_uuid4_hex
-from tarav._core.project import project_agentos_dir, require_agentos_project_root
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.ids import generate_uuid4_hex
+from tarav.l0._core.project import project_agentos_dir, require_agentos_project_root
 
 
 def allocate_project_tmp_folder(

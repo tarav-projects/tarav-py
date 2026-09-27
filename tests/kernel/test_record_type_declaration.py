@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tarav.kernel import (
+from tarav.l0.kernel import (
     DuplicateTypeRegistration,
     TaravClass,
     TaravObject,

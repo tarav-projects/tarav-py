@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass
 
-from tarav.kernel import TaravClass
-from tarav.kernel import TaravObject, TypeShip
-from tarav.kernel.space import Entry, RecordProvider
-from tarav.kernel.workflows import TaravWorkflow
+from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TaravObject, TypeShip
+from tarav.l0.kernel.space import Entry, RecordProvider
+from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.navigation.identity import NAVIGATION_WORKFLOW_SHIP
 from tarav.poi import POI, POIFinding
 

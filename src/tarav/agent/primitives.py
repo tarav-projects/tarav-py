@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from tarav.agent.ping import AgentPingResult
     from tarav.agent.profile_check import ProfileCheck
 
-from tarav._core.errors import CliError
+from tarav.l0._core.errors import CliError
 from tarav.agent.account_status import AccountStatus, AgentAccountContext
 from tarav.agent.profile_scope import validate_account_override
 from tarav.agent.run_runtime import (

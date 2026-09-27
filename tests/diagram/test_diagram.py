@@ -30,7 +30,7 @@ from tarav.unsorted.views import (
     DiagramViewScopeInterface,
     DiagramViewState,
 )
-from tarav.kernel import (
+from tarav.l0.kernel import (
     TaravAssertion,
     TaravPOIInstance,
     TaravObject,

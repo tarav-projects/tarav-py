@@ -1,10 +1,10 @@
-from tarav.kernel import TaravClass
+from tarav.l0.kernel import TaravClass
 
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-from tarav.kernel import (
+from tarav.l0.kernel import (
     InvalidRecordJSON,
     TaravObject,
     TypeRegistry,
