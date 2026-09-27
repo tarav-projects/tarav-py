@@ -15,6 +15,7 @@ from tarav.unsorted.storage import DiagramConfiguration, DiagramNamespace
 from tarav.unsorted.contracts import ShipDraftInterface
 from tarav.kernel import TaravObject, issubrecord
 from tarav.runtime import create_runtime
+from tarav.lines.assertions import LineGroundingAssertion
 from tarav.scoring import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_REFERENCE_TYPE,
@@ -30,7 +31,6 @@ from tarav.scoring import (
     ScoringError,
     ScoringRepository,
     compute_win_rate_scores,
-    create_grounding_task,
     create_pool_enrollment,
     create_result,
     create_run,
@@ -48,7 +48,7 @@ from tarav.scoring.model import (
 )
 from tarav.scoring.tasks import (
     DEFAULT_RANKING_POOL_REGISTRY,
-    IndexLineGroundingAssertionType,
+    create_grounding_task,
     create_line_grounding_enrollments,
     create_line_grounding_task,
 )
@@ -83,7 +83,7 @@ def _code_provenance() -> dict[str, object]:
 
 
 def _pool(name: str) -> dict[str, object]:
-    return IndexLineGroundingAssertionType().create_pool(
+    return LineGroundingAssertion.create_pool(
         name=name,
         pool_type=GROUNDING_POOL_TYPE,
         pool_registry=DEFAULT_RANKING_POOL_REGISTRY,
@@ -192,10 +192,10 @@ def test_pool_is_an_explicit_population_and_classes_split_ownership() -> None:
     assert "pool_class" not in pool
     assert "selector" not in pool
     assert all(item["type"] == POOL_ENROLLMENT_TYPE for item in enrollments)
-    assert GROUNDING_POOL_TYPE in IndexLineGroundingAssertionType.pool_types
+    assert GROUNDING_POOL_TYPE in LineGroundingAssertion.pool_types
 
     with pytest.raises(ScoringError, match="does not support Other.Ranking.Pool"):
-        IndexLineGroundingAssertionType().supports_pool("Other.Ranking.Pool")
+        LineGroundingAssertion.supports_pool("Other.Ranking.Pool")
 
 
 def test_assertions_enroll_in_many_named_pools_and_scores_cross_pools(

@@ -301,9 +301,9 @@ relationships, storage policies, or interpretation of domain payloads.
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
 | `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
-| `lines` | LinesWorkflow owns Line, Block, Model, Collection, edition, and relationship Record types, projections, and rendering. |
+| `lines` | LinesWorkflow owns Line, Block, Model, Collection, edition, and relationship Record types, projections, rendering, and LineGroundingAssertion semantics. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
-| `scoring` | Assertion evaluation evidence, pools, tasks, runs, results, scores, and traces. |
+| `scoring` | Common Assertion entities and evaluation mechanics: pools, tasks, runs, results, derived scores, and traces. Existing scoring Records are entities with explicit Context reference edges. |
 | `poi` | POIWorkflow owns extensible check declarations, identified findings, typed blessings and assessments. Context exposes checks, coordinates, and evidence. Runtime composition supplies an isolated collector and Archive-partition blessing store; detection and response remain consumer-owned. |
 | `skw` | Typed document compilation, context declarations, generation mechanics, and skill-package specialization. |
 | `surfaces` | SurfacesWorkflow owns MarkdownNormalModel and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. Consumers assign domain meaning. |
@@ -325,6 +325,21 @@ Higher-level Unsorted storage and capture compose Lines. These dependencies
 must remain acyclic at module level; collapsing all provisional Unsorted
 modules into one graph node would hide this distinction. Architecture tests
 therefore inspect Lines and Unsorted at module granularity.
+
+Scoring's `assertions` module supplies the common Assertion contract without
+importing consumer workflows. `lines.assertions` specializes it for exact Line
+editions and supplies evidence presentation. `scoring.tasks` is the existing
+ranking composition layer; it imports that specialization, while the scoring
+package's base exports do not import tasks. Import ranking adapters explicitly
+from `tarav.scoring.tasks`. Architecture checks inspect Scoring at module
+granularity too, distinguishing foundations from composition.
+
+Assertions identify typed subjects; their subtypes define evidence and check
+semantics. Scores are separate judgments, not Assertion identity. Scoring
+reference Context entries resolve only through an explicitly supplied
+repository or trusted Assertion registry. Existing grounding references,
+ranking Record formats, and frozen prompt hashes are preserved. The provisional
+mechanical assertion engine under Unsorted is not folded into this model yet.
 
 - The subsystem import graph is acyclic outside runtime composition.
 - Domains normally receive dependencies through composition. Record Archive

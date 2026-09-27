@@ -27,6 +27,7 @@ from .model import (
     content_hash,
     is_pool_record_type,
     reference_target_type,
+    record_relations,
     validate_record,
 )
 
@@ -396,7 +397,7 @@ class ScoringRepository:
         current_records = self.records()
         inbound: dict[str, list[JsonObject]] = {}
         for candidate in current_records:
-            for _, reference in _direct_references(candidate):
+            for _, reference in record_relations(candidate):
                 inbound.setdefault(_reference_key(reference), []).append(candidate)
         while pending:
             current_ref = pending.popleft()
@@ -411,7 +412,7 @@ class ScoringRepository:
                 if current_key not in seen_records:
                     seen_records.add(current_key)
                     records.append(current)
-                for field, reference in _direct_references(current):
+                for field, reference in record_relations(current):
                     edge = {
                         "from_ref": current_ref,
                         "field": field,
@@ -427,7 +428,7 @@ class ScoringRepository:
                 external.append(current_ref)
             for dependent in inbound.get(ref_key, []):
                 dependent_ref = _record_reference(dependent)
-                for field, reference in _direct_references(dependent):
+                for field, reference in record_relations(dependent):
                     if _reference_key(reference) != ref_key:
                         continue
                     edge = {
@@ -577,39 +578,6 @@ def _reference_id(value: object) -> str | None:
         return None
     identity = value.get("id")
     return identity if isinstance(identity, str) else None
-
-
-def _direct_references(
-    record: Mapping[str, object],
-) -> tuple[tuple[str, Mapping[str, object]], ...]:
-    record_type = record.get("type")
-    references: list[tuple[str, Mapping[str, object]]] = []
-    if record_type == POOL_ENROLLMENT_TYPE:
-        references.append(("pool_ref", _reference(record, "pool_ref")))
-        references.append(("assertion_ref", _reference(record, "assertion_ref")))
-    elif record_type == GROUNDING_TASK_TYPE:
-        references.append(("pool_ref", _reference(record, "pool_ref")))
-        candidates = record.get("candidates")
-        if not isinstance(candidates, list):
-            raise ScoringError("candidates must be a list")
-        for index, candidate in enumerate(candidates):
-            if not isinstance(candidate, dict):
-                raise ScoringError("candidate must be an object")
-            references.append(
-                (
-                    f"candidates[{index}].enrollment_ref",
-                    _reference(candidate, "enrollment_ref"),
-                )
-            )
-    elif record_type == RUN_TYPE:
-        references.append(("task_ref", _reference(record, "task_ref")))
-    elif record_type == RESULT_TYPE:
-        references.append(("run_ref", _reference(record, "run_ref")))
-    elif record_type == SCORING_TRACE_TYPE:
-        references.append(("assertion_ref", _reference(record, "assertion_ref")))
-    elif record_type == SCORING_EVENT_TYPE:
-        references.append(("trace_ref", _reference(record, "trace_ref")))
-    return tuple(references)
 
 
 def _record_reference(record: Mapping[str, object]) -> JsonObject:

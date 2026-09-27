@@ -5,16 +5,18 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar, Mapping, Protocol, Sequence
+from typing import ClassVar, Mapping, Sequence
 
 from tarav._core.project import require_agentos_project
 from tarav.unsorted.evidence import ChatlasEvidence
 from tarav.unsorted.storage import DiagramConfiguration
 from tarav.unsorted.primitives import DiagramError
+from tarav.kernel import TaravClass, TaravType, TypeShip, entity
+from tarav.lines.assertions import LineGroundingAssertion
+from .assertions import Assertion
+from .identity import SCORING_WORKFLOW_SHIP
 
 from .model import (
-    DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
-    GROUNDING_ASSERTION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_TYPE,
     GROUNDING_POOL_TYPE,
     GROUNDING_TASK_TYPE,
@@ -28,8 +30,14 @@ from .model import (
 )
 
 
-class AssertionPool(ABC):
+class AssertionPool(TaravType, ABC):
     """Code-level base for concrete retained Assertion Pool Types."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls,
+                          id=TypeShip('b21fbc0b-aad3-45df-aea3-2413e835bdbb'),
+                          name='Tarav.Scoring.AssertionPool', workflow=SCORING_WORKFLOW_SHIP)
 
     record_type: ClassVar[str]
     task_type: ClassVar[str]
@@ -53,16 +61,15 @@ class AssertionPool(ABC):
     ) -> JsonObject: ...
 
 
-class AssertionRankingType(Protocol):
-    assertion_type: str
-    pool_types: tuple[str, ...]
-
-    def supports_pool(self, pool_type: str) -> None: ...
-
-
 @dataclass(frozen=True, slots=True)
 class IndexLineGroundingRankingPool(AssertionPool):
     """Comparative mechanics for one population of grounding Assertions."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls,
+                          id=TypeShip('876ca1c7-e0bb-4437-b83e-15cfe51b0a3f'),
+                          name='Tarav.Scoring.LineGroundingRankingPool')
 
     record_type: ClassVar[str] = GROUNDING_POOL_TYPE
     task_type: ClassVar[str] = GROUNDING_TASK_TYPE
@@ -125,120 +132,23 @@ class IndexLineGroundingRankingPool(AssertionPool):
         )
 
 
-@dataclass(frozen=True, slots=True)
-class IndexLineGroundingAssertionType:
-    """Ranking capabilities owned by Index.Line grounding Assertions."""
-
-    assertion_type: ClassVar[str] = GROUNDING_ASSERTION_TYPE
-    pool_types: ClassVar[tuple[str, ...]] = (GROUNDING_POOL_TYPE,)
-
-    def supports_pool(self, pool_type: str) -> None:
-        if pool_type not in self.pool_types:
-            raise ScoringError(
-                f"Assertion Type {self.assertion_type} does not support {pool_type}"
-            )
-
-    def create_pool(
-        self,
-        *,
-        name: str,
-        pool_type: str,
-        pool_registry: RankingPoolRegistry,
-    ) -> JsonObject:
-        self.supports_pool(pool_type)
-        return pool_registry.resolve(pool_type).create(name=name)
-
-    def reference(
-        self,
-        *,
-        line_ship: str,
-        namespace_id: str,
-        projection: Any,
-    ) -> JsonObject:
-        try:
-            line = projection.line(line_ship)
-        except DiagramError as exc:
-            raise ScoringError(
-                f"Line {line_ship} does not belong to the current Diagram Model"
-            ) from exc
-        edition = line.current_edition
-        if edition is None:
-            raise ScoringError(f"Line has no current edition: {line_ship}")
-        return {
-            "type": GROUNDING_ASSERTION_REFERENCE_TYPE,
-            "subject_ref": {
-                "type": DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
-                "namespace_id": namespace_id,
-                "line_ship": line.ship,
-                "edition_id": edition.annotation.id,
-            },
-        }
-
-    def candidate(
-        self,
-        *,
-        assertion_ref: Mapping[str, object],
-        enrollment: Mapping[str, object],
-        pool_type: str,
-        projection: Any,
-        evidence: ChatlasEvidence,
-    ) -> JsonObject:
-        self.supports_pool(pool_type)
-        subject_ref = assertion_ref.get("subject_ref")
-        if not isinstance(subject_ref, dict):
-            raise ScoringError("grounding Assertion has no subject Reference")
-        line_ship = str(subject_ref.get("line_ship", ""))
-        edition_id = str(subject_ref.get("edition_id", ""))
-        try:
-            line = projection.line(line_ship)
-            block = projection.block(line.block_ship)
-        except DiagramError as exc:
-            raise ScoringError(
-                f"Line {line_ship} does not belong to the current Diagram Model"
-            ) from exc
-        editions = tuple(
-            item for item in line.editions if item.annotation.id == edition_id
-        )
-        if len(editions) != 1:
-            raise ScoringError(f"Line Edition does not resolve: {edition_id}")
-        edition = editions[0]
-        wording = edition.annotation
-        support = wording.render_support(evidence)
-        if not support:
-            raise ScoringError(f"Line has no declared Support.Set: {line_ship}")
-        peer_lines = [
-            peer.current_edition.text
-            for peer in block.lines
-            if peer.ship != line_ship and peer.current_edition is not None
-        ]
-        return {
-            "id": edition.annotation.id,
-            "enrollment_ref": record_reference(enrollment),
-            "presentation": _render_candidate(
-                line_text=edition.text,
-                block_label=block.current_label,
-                peer_lines=peer_lines,
-                support=support,
-            ),
-            "appendix": [],
-        }
-
-
 class AssertionRankingRegistry:
     """Resolve Assertion-owned adaptation into Pool candidate contracts."""
 
-    def __init__(self, assertion_types: Sequence[AssertionRankingType] = ()) -> None:
-        self._types: dict[str, AssertionRankingType] = {}
+    def __init__(self, assertion_types: Sequence[type[Assertion]] = ()) -> None:
+        self._types: dict[str, type[Assertion]] = {}
         for assertion_type in assertion_types:
             self.register(assertion_type)
 
-    def register(self, assertion_type: AssertionRankingType) -> None:
-        type_id = assertion_type.assertion_type
+    def register(self, assertion_type: type[Assertion]) -> None:
+        if not isinstance(assertion_type, type) or not issubclass(assertion_type, Assertion):
+            raise TypeError('Expected an Assertion subclass')
+        type_id = entity(assertion_type).name
         if type_id in self._types:
             raise ScoringError(f"Assertion Ranking Type already registered: {type_id}")
         self._types[type_id] = assertion_type
 
-    def resolve(self, assertion_type: str) -> AssertionRankingType:
+    def resolve(self, assertion_type: str) -> type[Assertion]:
         try:
             return self._types[assertion_type]
         except KeyError as exc:
@@ -248,7 +158,7 @@ class AssertionRankingRegistry:
 
 
 DEFAULT_ASSERTION_RANKING_REGISTRY = AssertionRankingRegistry(
-    (IndexLineGroundingAssertionType(),)
+    (LineGroundingAssertion,)
 )
 
 
@@ -327,8 +237,7 @@ def create_line_grounding_task(
             )
             assertion_class.supports_pool(pool_class.record_type)
             candidates.append(
-                assertion_class.candidate(
-                    assertion_ref=assertion_ref,
+                assertion_class.from_reference(assertion_ref).candidate(
                     enrollment=enrollment,
                     pool_type=pool_class.record_type,
                     projection=projection,
@@ -400,11 +309,11 @@ def line_grounding_assertion_references(
     assertion_class = registry.resolve(GROUNDING_ASSERTION_TYPE)
     assertion_class.supports_pool(pool_type)
     return tuple(
-        assertion_class.reference(
+        assertion_class.from_line(
             line_ship=line_ship,
             namespace_id=model.namespace.id,
             projection=projection,
-        )
+        ).reference()
         for line_ship in line_ships
     )
 
@@ -439,43 +348,11 @@ def _reference_id(value: object) -> str | None:
     return value.get("id") if isinstance(value, dict) else None
 
 
-def _render_candidate(
-    *,
-    line_text: str,
-    block_label: str | None,
-    peer_lines: Sequence[str],
-    support: Sequence[JsonObject],
-) -> str:
-    sections = [
-        f"Block: {block_label or '(unlabeled Block)'}",
-        "",
-        "Line claim:",
-        line_text,
-    ]
-    if peer_lines:
-        sections.extend(("", "Peer Lines establishing Block context:"))
-        sections.extend(f"- {text}" for text in peer_lines)
-    sections.extend(("", "Declared Support.Set:"))
-    for member_index, member in enumerate(support, start=1):
-        sections.append(f"\nSupport member {member_index}:")
-        turns = member.get("turns", [])
-        if not isinstance(turns, list):
-            continue
-        for turn in turns:
-            if not isinstance(turn, dict):
-                continue
-            side = turn.get("side", "unknown")
-            role = "root" if turn.get("root") else "context"
-            sections.extend((f"[{role}; {side}]", str(turn.get("text", ""))))
-    return "\n".join(sections)
-
-
 __all__ = [
     "DEFAULT_ASSERTION_RANKING_REGISTRY",
     "DEFAULT_RANKING_POOL_REGISTRY",
     "AssertionRankingRegistry",
     "AssertionPool",
-    "IndexLineGroundingAssertionType",
     "IndexLineGroundingRankingPool",
     "RankingPoolRegistry",
     "create_grounding_task",

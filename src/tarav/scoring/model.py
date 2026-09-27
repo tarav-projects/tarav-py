@@ -15,9 +15,10 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, ValidationError
 
 from tarav.kernel import TaravClass, entity
-from tarav.kernel import InvalidRecordJSON, TaravObject, TypeShip
+from tarav.kernel import FileRecord, InvalidRecordJSON, Ship, TaravEntity, TaravObject, TypeShip
 from tarav.kernel.records import _json_object
 from tarav.scoring.identity import SCORING_WORKFLOW_SHIP
+from .assertions import AssertionReferenceInterface, ScoringDetails
 
 
 JsonObject = dict[str, Any]
@@ -90,7 +91,7 @@ class RankingSubmissionInterface(TaravObject.RecordInterface):
     repository_root: str
 
 
-class ScoringRecord(TaravObject, Mapping[str, object]):
+class ScoringRecord(TaravEntity, Mapping[str, object]):
     """Common behavior and retained fields for Assertion Scoring Records."""
 
     @classmethod
@@ -102,14 +103,13 @@ class ScoringRecord(TaravObject, Mapping[str, object]):
             workflow=SCORING_WORKFLOW_SHIP,
         )
 
-    class RecordInterface(TaravObject.RecordInterface):
+    class RecordInterface(TaravEntity.RecordInterface):
         type: str
         schema_version: Literal[1]
-        id: str
         created_at: str
 
     def __init__(self, record: Mapping[str, object]) -> None:
-        super().__init__()
+        super().__init__(Ship(record['id']))
         self._record = _json_object(record)
         type(self).validate_record(self._record)
         _validate_record_semantics(self._record)
@@ -128,6 +128,75 @@ class ScoringRecord(TaravObject, Mapping[str, object]):
 
     def __len__(self) -> int:
         return len(self._record)
+
+    def references(self):
+        """Named graph edges, keeping their exact retained reference payloads."""
+        return {name: ScoringReference(reference)
+                for name, reference in record_relations(self._record)}
+
+    def ships(self):
+        targets = tuple(Ship(ref['id']) for _, ref in record_relations(self._record)
+                        if reference_target_type(ref) is not None)
+        return (*super().ships(), *targets)
+
+    def obj_context(self, builder):
+        for name, reference in self.references().items():
+            builder.add(name, opener=lambda reference=reference: reference)
+        builder.add('record', opener=lambda: ScoringDetails.from_record(
+            {'type': entity(ScoringDetails).name, 'value': self.to_record()}))
+
+
+class ScoringReference(FileRecord):
+    """An inspectable graph edge resolved through explicitly supplied mechanics."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls,
+                          id=TypeShip('562bd0d1-2750-4ca9-ac7b-104ea917b950'),
+                          name='Tarav.Scoring.Reference', workflow=SCORING_WORKFLOW_SHIP)
+
+    class RecordInterface(FileRecord.RecordInterface):
+        reference: dict
+
+    def __init__(self, reference):
+        super().__init__()
+        reference = _json_object(reference)
+        target_type = reference_target_type(reference)
+        if target_type is not None:
+            _validate_reference(reference, expected_target=target_type)
+        else:
+            _validate_assertion_reference(reference)
+        self._reference = reference
+
+    @property
+    def reference(self):
+        return _json_object(self._reference)
+
+    def resolve(self, *, repository=None, assertions=None):
+        if reference_target_type(self._reference) is not None:
+            if repository is None:
+                raise TypeError('A scoring repository is required')
+            record = repository.resolve_reference(self._reference)
+            return scoring_record_class(record['type']).from_record(record)
+        if assertions is None:
+            raise TypeError('A trusted Assertion registry is required')
+        cls = assertions.resolve(self._reference['type'].removesuffix('.Reference'))
+        return cls.from_reference(self._reference)
+
+    def _to_record(self):
+        return {'type': entity(type(self)).name, 'reference': self.reference}
+
+    @classmethod
+    def _from_record(cls, data):
+        return cls(data.reference)
+
+    @classmethod
+    def record_example(cls):
+        return cls(_record_reference_example(GROUNDING_POOL_TYPE)).to_record()
+
+    def obj_context(self, builder):
+        builder.add('reference', opener=lambda: ScoringDetails.from_record(
+            {'type': entity(ScoringDetails).name, 'value': self.reference}))
 
 
 class GroundingRankingPoolRecord(ScoringRecord):
@@ -160,7 +229,7 @@ class PoolEnrollmentRecord(ScoringRecord):
     class RecordInterface(ScoringRecord.RecordInterface):
         type: Literal[POOL_ENROLLMENT_TYPE]
         pool_ref: RecordReferenceInterface
-        assertion_ref: GroundingAssertionReferenceInterface
+        assertion_ref: AssertionReferenceInterface
         status: str
 
     @classmethod
@@ -284,7 +353,7 @@ class ScoringTraceRecord(ScoringRecord):
 
     class RecordInterface(ScoringRecord.RecordInterface):
         type: Literal[SCORING_TRACE_TYPE]
-        assertion_ref: GroundingAssertionReferenceInterface
+        assertion_ref: AssertionReferenceInterface
 
     @classmethod
     def record_example(cls) -> dict[str, object]:
@@ -988,15 +1057,37 @@ def is_pool_record_type(record_type: str) -> bool:
 
 
 def _validate_assertion_reference(value: object) -> None:
+    AssertionReferenceInterface.model_validate(value, strict=True)
     reference = _required_mapping(value, field="assertion_ref")
     reference_type = _required_string(reference, "type")
     if not reference_type.endswith(".Assertion.Reference"):
         raise ScoringError("assertion_ref must have an Assertion.Reference Type")
     subject_ref = _required_object(reference, "subject_ref")
+    if reference_type != GROUNDING_ASSERTION_REFERENCE_TYPE:
+        return  # Consumer Assertion types validate their own subject semantics.
     if _required_string(subject_ref, "type") != DIAGRAM_LINE_EDITION_REFERENCE_TYPE:
         raise ScoringError("unsupported grounding Assertion subject Reference")
     for field in ("namespace_id", "line_ship", "edition_id"):
         _uuid(_required_string(subject_ref, field), f"subject_ref.{field}")
+
+
+def record_relations(record):
+    """Declared scoring edges; never infer relationships from UUID-shaped values."""
+    kind = record.get('type')
+    fields = {
+        POOL_ENROLLMENT_TYPE: ('pool_ref', 'assertion_ref'),
+        GROUNDING_TASK_TYPE: ('pool_ref',),
+        RUN_TYPE: ('task_ref',),
+        RESULT_TYPE: ('run_ref',),
+        SCORING_TRACE_TYPE: ('assertion_ref',),
+        SCORING_EVENT_TYPE: ('trace_ref',),
+    }.get(kind, ())
+    refs = [(field, _required_object(record, field)) for field in fields]
+    if kind == GROUNDING_TASK_TYPE:
+        for index, candidate in enumerate(record['candidates']):
+            refs.append((f'candidates[{index}].enrollment_ref',
+                         _required_object(candidate, 'enrollment_ref')))
+    return tuple(refs)
 
 
 def _validate_reference(value: object, *, expected_target: str) -> JsonObject:

@@ -23,6 +23,20 @@ def test_poi_workflow_ownership_and_runtime_composition():
     assert 'runtime' not in _top_level_import_graph()['poi']
 
 
+def test_assertion_foundation_and_line_specialization_are_separate():
+    from tarav.lines.assertions import LineGroundingAssertion
+    from tarav.lines.workflow import LinesWorkflow
+    from tarav.scoring import Assertion, ScoringWorkflow
+
+    assert issubclass(LineGroundingAssertion, Assertion)
+    assert entity(Assertion).workflow is ScoringWorkflow()
+    assert entity(LineGroundingAssertion).workflow is LinesWorkflow()
+    graph = _top_level_import_graph()
+    assert not any(name.startswith('lines') for name in graph['scoring.assertions'])
+    assert 'scoring.tasks' not in graph['scoring']
+    assert 'lines.assertions' in graph['scoring.tasks']
+
+
 def test_wiki_ownership_and_parsing_boundary():
     from tarav.runtime import create_runtime
     from tarav.wiki import Wiki, WikiNote, WikiWorkflow
@@ -169,7 +183,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
         source = relative.parts[0] if len(relative.parts) > 1 else "<root>"
         # Unsorted contains both provisional foundations and composition layers.
         # Check their actual module dependencies, not a collapsed package cycle.
-        if source in {"lines", "unsorted"}:
+        if source in {"lines", "unsorted", "scoring"}:
             source = ".".join(relative.with_suffix("").parts).removesuffix(".__init__")
         # skw.skills is a composition leaf above the generic SKW document kernel.
         if relative.as_posix() in {
@@ -193,7 +207,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 imported = tuple(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported = (node.module,)
-                if node.level and relative.parts[0] in {"lines", "unsorted"}:
+                if node.level and relative.parts[0] in {"lines", "unsorted", "scoring"}:
                     from importlib.util import resolve_name
 
                     package = "tarav." + ".".join(relative.parts[:-1])
@@ -202,7 +216,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 if not name.startswith("tarav."):
                     continue
                 target = name.split(".", 2)[1]
-                if target in {"lines", "unsorted"}:
+                if target in {"lines", "unsorted", "scoring"}:
                     target = name.removeprefix("tarav.")
                 if name in {"tarav.context.storage", "tarav.context.workflow"}:
                     target = "context.storage"
