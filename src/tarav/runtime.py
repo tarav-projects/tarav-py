@@ -229,6 +229,7 @@ def create_runtime(
     from tarav.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.lines.workflow import LinesWorkflow
     from tarav.wiki import Wiki, WikiNote, WikiWorkflow
+    from tarav.models import ModelsWorkflow
     from tarav.poi import (
         POI_RECORD_TYPES, POIWorkflow, POICollector, BlessingStore,
         BlessingRecord, BlessingAssessmentRecord,
@@ -312,6 +313,7 @@ def create_runtime(
         RecordArchiveWorkflow,
         LinesWorkflow,
         WikiWorkflow,
+        ModelsWorkflow,
         POIWorkflow,
         SurfacesWorkflow,
         UnsortedWorkflow,

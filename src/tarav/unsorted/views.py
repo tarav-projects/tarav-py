@@ -30,7 +30,7 @@ from tarav.unsorted.storage import Diagram
 from tarav.lines.block import DiagramBlock
 from tarav.unsorted.primitives import DiagramError
 from tarav.lines.line import DiagramLineShip
-from tarav.lines.model import DiagramModel
+from tarav.models import Model
 from tarav.unsorted.contracts import Finding
 from tarav.unsorted.records import UserTouchedAnnotation
 
@@ -1093,8 +1093,8 @@ def _resolve_scopes(
 
 def _resolve_block(
     diagram: Diagram, block_ship: str
-) -> tuple[DiagramModel, DiagramBlock]:
-    matches: list[tuple[DiagramModel, DiagramBlock]] = []
+) -> tuple[Model, DiagramBlock]:
+    matches: list[tuple[Model, DiagramBlock]] = []
     for model in diagram.models():
         matches.extend(
             (model, block)
@@ -1114,7 +1114,7 @@ def _materialize(
     previous: Mapping[str, Any] | None,
     evidence: ChatlasEvidence | None,
 ) -> JsonObject:
-    scoped: list[tuple[DiagramModel, DiagramBlock]] = []
+    scoped: list[tuple[Model, DiagramBlock]] = []
     for scope in scopes:
         model = diagram.model(scope.model_ship)
         if model.namespace.id != scope.namespace_id:
@@ -1128,7 +1128,7 @@ def _materialize(
             else (projection.block(_string(scope.block_ship, field="block_ship")),)
         )
         scoped.extend((model, block) for block in blocks)
-    unique: dict[tuple[str, str], tuple[DiagramModel, DiagramBlock]] = {}
+    unique: dict[tuple[str, str], tuple[Model, DiagramBlock]] = {}
     for model, block in scoped:
         unique[(model.namespace.id, block.ship)] = (model, block)
 
@@ -1201,7 +1201,7 @@ def _materialize(
 
 def _block_entry(
     diagram: Diagram,
-    model: DiagramModel,
+    model: Model,
     block: DiagramBlock,
     label_index: Mapping[str, list[tuple[str, str]]],
     selected: list[str],
@@ -1331,7 +1331,7 @@ def _line_entry(
 
 def _rank_lines(
     diagram: Diagram,
-    model: DiagramModel,
+    model: Model,
     block: DiagramBlock,
     *,
     evidence: ChatlasEvidence | None,
@@ -1351,7 +1351,7 @@ def _rank_lines(
 
 def _is_reviewed(
     diagram: Diagram,
-    model: DiagramModel,
+    model: Model,
     line: DiagramLineShip,
     *,
     evidence: ChatlasEvidence | None,

@@ -1,9 +1,11 @@
-"""tarav.lines.model: extracted legacy definitions; identities and storage labels preserved."""
+"""Models, independently addressable or associated with projects."""
 
 from __future__ import annotations
 
 from tarav.unsorted.primitives import DiagramError
-from tarav.lines.records import ModelShipRecord
+from .records import ModelShipRecord
+from .workflow import MODELS_WORKFLOW_SHIP
+from tarav.kernel import TaravType, TaravClass, TypeShip
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -14,10 +16,25 @@ if TYPE_CHECKING:
     from tarav.unsorted.records import DiagramShip
 
 @dataclass(frozen=True, slots=True)
-class DiagramModel:
+class Model(TaravType):
     ship: str
     namespace: DiagramNamespace
     current_edition_id: str
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls,
+                          id=TypeShip("be2cb289-3a11-45aa-989e-6a8403ee5e4d"),
+                          name="Tarav.Models.Model", workflow=MODELS_WORKFLOW_SHIP)
+
+    @classmethod
+    def from_project(cls, project, *, diagram):
+        """Resolve an existing association without creating anything."""
+        from tarav._core.project import TaravProjectHandler, require_agentos_project
+
+        handler = (project.require_marker() if isinstance(project, TaravProjectHandler)
+                   else require_agentos_project(project))
+        return diagram.project_model(handler.root)
 
     @property
     def record(self) -> ModelShipRecord:

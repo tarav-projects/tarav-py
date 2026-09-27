@@ -1,11 +1,11 @@
-"""Ownership of Lines, Blocks, Models, Collections, and their editions."""
+"""Ownership of Lines, Blocks, Collections, and their editions."""
 from tarav.kernel import TaravClass, TaravWorkflow, TypeShip
 from .identity import LINES_WORKFLOW_SHIP
 
 
 class LinesWorkflow(TaravWorkflow):
     workflow_name = "lines"
-    constitution = "Organize evidence-linked Lines, Blocks, Models, Collections, and their editions."
+    constitution = "Organize evidence-linked Lines, Blocks, Collections, and their editions."
 
     @classmethod
     def class_entity(cls):

@@ -16,7 +16,7 @@ from tarav.lines.block import DiagramBlock, IssueBlock
 from tarav.lines.collection import DiagramCollection, ImplReqCollection
 from tarav.unsorted.primitives import DiagramError
 from tarav.lines.line import DiagramLineShip
-from tarav.lines.model import DiagramModel
+from tarav.models import Model
 from tarav.unsorted.contracts import Finding
 
 JsonObject = dict[str, Any]
@@ -149,7 +149,7 @@ def block_render_target(
     )
 
 
-def model_render_target(model: DiagramModel) -> DiagramRenderTarget:
+def model_render_target(model: Model) -> DiagramRenderTarget:
     return DiagramRenderTarget("model", model.ship, model.namespace.id, model)
 
 
@@ -439,7 +439,7 @@ def _kernel_model(
     target: DiagramRenderTarget, context: DiagramRenderContext
 ) -> tuple[str, tuple[Finding, ...]]:
     model = target.subject
-    if not isinstance(model, DiagramModel):
+    if not isinstance(model, Model):
         raise DiagramRenderError("Model renderer received another target")
     root = model.namespace.edition(model.current_edition_id)
     data = root.record.get("data")

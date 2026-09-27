@@ -14,8 +14,8 @@ from tarav.lines.records import LineGateAnnotation
 from tarav.lines.records import LineShipRecord
 from tarav.lines.records import LineSupportAnnotation
 from tarav.lines.records import LineTypeAnnotation
-from tarav.lines.records import ModelEditionRecord
-from tarav.lines.records import ModelShipRecord
+from tarav.models.records import ModelEditionRecord
+from tarav.models.records import ModelShipRecord
 from tarav.kernel import TypeRegistry
 from tarav.unsorted.records import TypedAnnotation
 from tarav.unsorted.records import TypedShip

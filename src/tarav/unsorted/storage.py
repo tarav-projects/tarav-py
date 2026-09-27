@@ -19,7 +19,7 @@ from tarav.unsorted.constants import DIAGRAM_CONFIG_TYPE
 from tarav.unsorted.records import DiagramAnnotation
 from tarav.unsorted.primitives import DiagramAnnotationSpecializationError
 from tarav.unsorted.primitives import DiagramError
-from tarav.lines.model import DiagramModel
+from tarav.models import Model
 from tarav.unsorted.primitives import DiagramModelError
 from tarav.lines.projection import DiagramProjectionBuilder
 from tarav.unsorted.records import DiagramShip
@@ -42,8 +42,8 @@ from tarav.lines.records import LineTypeAnnotation
 from typing import Literal
 from tarav.unsorted.constants import MODEL_EDITION_TYPE
 from tarav.unsorted.constants import MODEL_SHIP_TYPE
-from tarav.lines.records import ModelEditionRecord
-from tarav.lines.records import ModelShipRecord
+from tarav.models.records import ModelEditionRecord
+from tarav.models.records import ModelShipRecord
 from tarav.unsorted.constants import NAMESPACE_CLASS
 from pathlib import Path
 from tarav.unsorted.constants import SCHEMA_VERSION
@@ -636,7 +636,7 @@ class DiagramNamespace:
 
     def create_model(
         self, *, model_ship: str | None = None, label: str | None = None
-    ) -> DiagramModel:
+    ) -> Model:
         ship = model_ship or str(uuid4())
         edition_id = str(uuid4())
         draft = ShipDraftInterface.from_record(
@@ -657,9 +657,9 @@ class DiagramNamespace:
             message="diagram(model): create",
             commit=True,
         )
-        return DiagramModel(ship, self, edition_id)
+        return Model(ship, self, edition_id)
 
-    def model(self, model_ship: str) -> DiagramModel:
+    def model(self, model_ship: str) -> Model:
         ship = _uuid(model_ship, field="Model.ship")
         try:
             typed = self.ship(ship).specialize()
@@ -671,10 +671,10 @@ class DiagramNamespace:
             raise DiagramError(
                 f"Diagram Model does not resolve uniquely in Namespace {self.name}: {ship}"
             )
-        return DiagramModel(ship, self, _edition_id(typed.editions[-1]))
+        return Model(ship, self, _edition_id(typed.editions[-1]))
 
-    def models(self) -> tuple[DiagramModel, ...]:
-        result: list[DiagramModel] = []
+    def models(self) -> tuple[Model, ...]:
+        result: list[Model] = []
         for ship in self.ships():
             try:
                 typed = ship.specialize()
@@ -682,7 +682,7 @@ class DiagramNamespace:
                 continue
             if isinstance(typed, ModelShipRecord) and typed.editions:
                 result.append(
-                    DiagramModel(ship.id, self, _edition_id(typed.editions[-1]))
+                    Model(ship.id, self, _edition_id(typed.editions[-1]))
                 )
         return tuple(result)
 
@@ -1034,8 +1034,8 @@ class Diagram:
             raise DiagramError(f"Diagram Ship does not resolve uniquely: {ship_id}")
         return matches[0]
 
-    def model(self, model_ship: str) -> DiagramModel:
-        matches: list[DiagramModel] = []
+    def model(self, model_ship: str) -> Model:
+        matches: list[Model] = []
         for space in self.namespaces:
             if not (space.ships_root / f"{model_ship}.json").is_file():
                 continue
@@ -1047,7 +1047,7 @@ class Diagram:
             raise DiagramError(f"Diagram Model does not resolve uniquely: {model_ship}")
         return matches[0]
 
-    def models(self, *, namespace: str | None = None) -> tuple[DiagramModel, ...]:
+    def models(self, *, namespace: str | None = None) -> tuple[Model, ...]:
         spaces = (self.namespace(namespace),) if namespace else self.namespaces
         return tuple(model for space in spaces for model in space.models())
 
@@ -1157,7 +1157,7 @@ class Diagram:
             assertion_engine=self.assertion_engine(evidence=evidence),
         )
 
-    def ensure_project_model(self, project_root: Path) -> DiagramModel:
+    def ensure_project_model(self, project_root: Path) -> Model:
         marker_path = project_marker_path(project_root.expanduser().resolve())
         marker = load_project_marker(marker_path)
         setting = marker.get("diagram")
@@ -1173,7 +1173,7 @@ class Diagram:
         atomic_write_json(marker_path, marker, ensure_ascii=False)
         return model
 
-    def project_model(self, project_root: Path) -> DiagramModel:
+    def project_model(self, project_root: Path) -> Model:
         marker = load_project_marker(
             project_marker_path(project_root.expanduser().resolve())
         )
@@ -1188,7 +1188,7 @@ class Diagram:
 
     def set_project_main_model(
         self, project_root: Path, model_ship: str
-    ) -> DiagramModel:
+    ) -> Model:
         """Point one Project at an existing Model without implying ownership."""
         model = self.model(model_ship)
         marker_path = project_marker_path(project_root.expanduser().resolve())

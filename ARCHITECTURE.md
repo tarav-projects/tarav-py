@@ -301,7 +301,8 @@ relationships, storage policies, or interpretation of domain payloads.
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
 | `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
-| `lines` | LinesWorkflow owns Line, Block, Model, Collection, edition, and relationship Record types, projections, rendering, and LineGroundingAssertion semantics. |
+| `lines` | LinesWorkflow owns Line, Block, Collection, their editions and relationships, projections, rendering, and LineGroundingAssertion semantics. |
+| `models` | ModelsWorkflow owns the Model handler, ModelShipRecord, and ModelEditionRecord. Project associations do not imply ownership; several projects may share one Model. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `scoring` | Common Assertion entities and evaluation mechanics: pools, tasks, runs, results, derived scores, and traces. Existing scoring Records are entities with explicit Context reference edges. |
 | `poi` | POIWorkflow owns extensible check declarations, identified findings, typed blessings and assessments. Context exposes checks, coordinates, and evidence. Runtime composition supplies an isolated collector and Archive-partition blessing store; detection and response remain consumer-owned. |
@@ -325,6 +326,13 @@ Higher-level Unsorted storage and capture compose Lines. These dependencies
 must remain acyclic at module level; collapsing all provisional Unsorted
 modules into one graph node would hide this distinction. Architecture tests
 therefore inspect Lines and Unsorted at module granularity.
+
+Models is also checked at module granularity. Its retained Record definitions
+depend only on provisional low-level foundations. The public Model handler
+resolves project associations through an explicitly supplied Diagram adapter;
+it does not import legacy storage composition. `tarav.models.Model` replaces
+the old `tarav.lines.model.DiagramModel` Python path; retained TypeShips,
+Record labels, Model UUIDs, and `diagram.main_model` associations are unchanged.
 
 Scoring's `assertions` module supplies the common Assertion contract without
 importing consumer workflows. `lines.assertions` specializes it for exact Line

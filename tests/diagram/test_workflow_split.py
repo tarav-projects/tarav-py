@@ -29,7 +29,7 @@ def test_ownership_split_does_not_redirect_retired_identity():
 
 
 @pytest.mark.parametrize("first", [
-    "tarav.lines.records", "tarav.lines.model", "tarav.lines.rendering",
+    "tarav.lines.records", "tarav.models", "tarav.lines.rendering",
     "tarav.unsorted.storage", "tarav.unsorted.capture", "tarav.unsorted.views",
 ])
 def test_extracted_modules_import_independently(first):
