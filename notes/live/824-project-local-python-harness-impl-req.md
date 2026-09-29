@@ -2,9 +2,8 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Phase: Design. Alignment.Mode: Interactive.
-Status: ready for a bounded first implementation; details below are proposals,
-not a claim of separately approved interfaces. No product implementation here.
+Knowledge.Surface: wiki. Phase: Execute. Alignment.Mode: Interactive.
+Status: complete; disposable-Project verification and capture passed.
 
 Give a filesystem Project a local Python harness: `.tarav/env`, managed using
 uv, containing Tarav and an editable project package. That package defines a
@@ -128,15 +127,15 @@ partial setup remains inspectable and can be retried explicitly.
 
 ## Execution.Plan
 
-- [ ] Cold-read current instructions and checkpoint product per Execute policy.
-- [ ] Recheck project initialization, runtime binding and existing extension
+- [x] Cold-read current instructions and checkpoint product per Execute policy.
+- [x] Recheck project initialization, runtime binding and existing extension
   package examples; settle minimal launcher/config convention, not a plugin system.
-- [ ] Implement inspect/scaffold library mechanics with explicit names/source.
-- [ ] Add explicit uv sync targeting `.tarav/env`; preserve lock and source.
-- [ ] Add generated concrete Project class and trusted bootstrap entrypoint.
-- [ ] Wire explicit launch adapters; preserve generic loading and python run.
-- [ ] Test temporary projects and update architecture/usage guidance.
-- [ ] Capture actual results; do not provision this workspace automatically.
+- [x] Implement inspect/scaffold library mechanics with explicit names/source.
+- [x] Add explicit uv sync targeting `.tarav/env`; preserve lock and source.
+- [x] Add generated concrete Project class and trusted bootstrap entrypoint.
+- [x] Wire explicit launch adapters; preserve generic loading and python run.
+- [x] Test temporary projects and update architecture/usage guidance.
+- [x] Capture actual results; do not provision this workspace automatically.
 
 ## Acceptance and verification
 
@@ -157,6 +156,40 @@ partial setup remains inspectable and can be retried explicitly.
   suite in execution; record commands/results. No product tests run in Design.
 
 ## Impl.Log
+
+- Execute checkpoint: `8bbf491` (clean product repository).
+- Implementation choices: launcher metadata lives in `[tool.tarav.harness]`
+  in `.tarav/pyproject.toml`; trusted package `__main__` bootstraps its explicit
+  Type, then runs code/file with `project` and `runtime` globals. Scaffold
+  accepts a local Tarav checkout or wheel; no implicit public Tarav source.
+- Existing markers require explicit adoption; specialized Types and edited
+  package source are preserved. Sync targets `.tarav/env` explicitly and run
+  uses that interpreter in a subprocess. No workspace provisioning is implied.
+- Implemented `tarav.l2.project.harness.ProjectHarness` and the trusted
+  bootstrap/launcher in `tarav.l3.project.harness`. CLI registration lives
+  in l3 and is injected into the existing Project command family. The l3
+  Project initializer remains thin; existing layer and cycle checks pass
+  without exceptions. Updated README, architecture and Project guidance.
+- Verification: focused Project, CLI, Environment and architecture tests:
+  73 passed. Full `uv run pytest -q`: 1,379 passed. Following Product
+  Breadcrumb submission, all six harness tests passed again. The real uv
+  test verifies editable behavior and failed-sync preservation in a disposable
+  Project. `uv run ruff check src tests tooling` and `git diff --check` passed.
+- Reinstalled the editable tool with `uv tool install --reinstall --editable .`;
+  installed CLI help confirms inspect/scaffold/sync/run. This workspace's
+  marker and harness were not provisioned.
+- Product Breadcrumbs in `src/tarav/l2/project/harness.py`:
+  d06d769f0a631a2b4912f8edbcf3a42aacdc491b6f0c596f513f941b493ebfd2 and
+  d6ba8cb735d3af7f6f1877c97fa39b76945f91ef13cab93971e91dbcfe147568.
+  Both resolve against design User Turn d99b85664b7ab1df; audit returned
+  status ok with no findings.
+- Execute capture: projects.md and daily/2026-09-29.md, grounded in current
+  session 1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74,
+  User Turn d9c6dfb2b080d9f3. New topical Breadcrumb:
+  8a2e200a8fed357e223b7f119293f83ac0a399bdb21fcb29253e48ed5fdb32eb;
+  daily: fb42468b73baa4fff3e8d3e5d3f43b1d1bf5467ae74ace32d128be0264646722.
+  Both Wiki audits returned status ok with no findings. Scoped Wiki commit:
+  a816272c83a56cf58ad0ef2969675aaffd7a9b24. No unresolved capture gaps.
 
 - Inspected Project discovery, initialization, external Type bindings, current
   Python runner and runtime composition. Kept bootstrap separate from loading.

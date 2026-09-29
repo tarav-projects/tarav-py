@@ -312,6 +312,18 @@ relationships, storage policies, or interpretation of domain payloads.
 
 ## Domain ownership
 
+Project's optional Python harness spans `tarav.l2.project.harness` (inspection,
+scaffolding, uv sync) and `tarav.l3.project` (trusted runtime bootstrap and child
+launch). Its `.tarav/pyproject.toml` owns package launch configuration and an
+explicit local Tarav dependency source. Source and lock are retained; env is
+ignored. The generated package declares its own Project TypeShip, while the
+marker retains its separate project-instance identity. Adoption of an existing
+base/untyped marker is explicit; specialized markers and edited source are not
+overwritten. Package execution binds the trusted class before dynamic loading.
+Sync targets `.tarav/env`; run never installs or selects a fallback interpreter.
+The Project command family receives its higher-layer registrar through runtime
+composition. Generic discovery/loading and `tarav python run` remain separate.
+
 `tarav.l1.chatlas.sessions` exposes indexed conversations through an
 `ExplorerFolder`: entries construct a portable `ChatSession` without capture or
 normalization. Native-ID keys require unambiguous provider/instance scope;

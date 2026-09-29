@@ -55,6 +55,11 @@
 
 ## Project model
 
+- Explicit Project-local harness mechanics live in `tarav.l2.project.harness`;
+  runtime bootstrap and command launch live in `tarav.l3.project`. Discovery
+  never provisions. `tarav project harness` explicitly scaffolds/syncs/runs
+  `.tarav/env`; `tarav python run` continues to use the caller's interpreter.
+
 - `.tarav/project.json` is the canonical project marker. It stores portable
   project identity and metadata, not machine-local paths.
 - A bare `--project` selects the current directory where a command supports it.

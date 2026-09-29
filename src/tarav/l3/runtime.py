@@ -145,6 +145,7 @@ class TaravRuntime:
         from tarav.l1.stdlib.mdblocks.commands import register_mdblocks_commands
         from tarav.l1.stdlib.prefix.commands import register_prefix_commands
         from tarav.l1.project.commands import register_project_commands
+        from tarav.l3.project.commands import register_harness_commands
         from tarav.l1.python_env import register_python_commands
         from tarav.l1.reading_club.commands import register_reading_club_commands
         from tarav.l2.scoring.commands import register_scoring_commands
@@ -175,6 +176,7 @@ class TaravRuntime:
         register_project_commands(
             subparsers,
             skills_registrar=register_skills_commands,
+            harness_registrar=register_harness_commands,
         )
         register_reading_club_commands(subparsers)
         register_system_commands(subparsers)

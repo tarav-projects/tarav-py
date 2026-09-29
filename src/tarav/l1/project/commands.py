@@ -126,6 +126,7 @@ def register_project_commands(
     subparsers: argparse._SubParsersAction,
     *,
     skills_registrar: CommandRegistrar,
+    harness_registrar: CommandRegistrar | None = None,
 ) -> None:
     project_parser = subparsers.add_parser(
         "project",
@@ -237,3 +238,5 @@ def register_project_commands(
     resolve_parser.set_defaults(handler=_cmd_project_resolve)
 
     skills_registrar(project_subparsers)
+    if harness_registrar is not None:
+        harness_registrar(project_subparsers)

@@ -40,6 +40,39 @@ contract, not a global CLI default.
 Project metadata is portable project data. Machine-local locations and caches
 belong in their owning registries or state roots, not in `project.json`.
 
+### Optional Project-local Python harness
+
+Explicitly scaffold a package and install it with Tarav into `.tarav/env`:
+
+```sh
+tarav project harness scaffold --project /path/to/project \
+  --package my_project --tarav-source /path/to/tarav-py
+tarav project harness sync --project /path/to/project
+tarav project harness inspect --project /path/to/project
+tarav project harness run --project /path/to/project \
+  --code 'print(type(project).__name__, project.id)'
+tarav project harness run --project /path/to/project --file /path/to/script.py -- --flag value
+```
+
+The Project directory must already exist. `--tarav-source` explicitly selects
+a local Tarav checkout or wheel. An existing base/untyped marker requires
+`--adopt`; its identity and other metadata are preserved. Specialized markers
+are not overwritten. Rerunning scaffold preserves edited package source and
+the generated class Ship. Sync retains `.tarav/uv.lock`; `.tarav/.gitignore`
+ignores env while preserving existing rules.
+
+The package under `.tarav/src/` owns a concrete `MyProject(TaravProject)` and
+its trusted `__main__` launcher. `.tarav/pyproject.toml` holds package launch
+configuration, separate from the marker. Code and files run in a child process
+with `project` and `runtime` available; arguments follow `--`, and the child's
+exit status is returned. An absent environment requires explicit sync. The
+ordinary `tarav python run` still uses whichever interpreter is running Tarav.
+
+The same filesystem operations are available through
+`tarav.l2.project.harness.ProjectHarness`; runtime bootstrap and subprocess
+launch are in `tarav.l3.project.harness`. Normal Project discovery neither installs
+packages nor imports the Project's specialization.
+
 ## Main systems
 
 - `tarav agent` — provider-neutral agent and account operations.

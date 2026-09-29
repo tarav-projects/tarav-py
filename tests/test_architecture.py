@@ -14,6 +14,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 def test_project_ownership_and_consumer_direction():
     from tarav.l1.project import ProjectWorkflow
     from tarav.l2.project import Project
+    from tarav.l2.project.harness import ProjectHarness
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
@@ -23,6 +24,7 @@ def test_project_ownership_and_consumer_direction():
     assert not ({"wiki", "models", "runtime", "cli"} & graph["project.base"])
     assert not any(name.startswith("project") for name in graph["wiki"])
     assert not any(name.startswith("project") for name in graph["models.model"])
+    assert entity(ProjectHarness).workflow is ProjectWorkflow()
 
 
 def test_loading_workflow_configures_kernel_without_reverse_imports():
