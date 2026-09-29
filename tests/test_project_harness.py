@@ -13,7 +13,14 @@ import pytest
 from tarav.l0._core.project import initialize_project_layout
 from tarav.l0.kernel import entity
 from tarav.l1.project import TaravProject
+from tarav.l1.project.workflow import ProjectWorkflow
+from tarav.l1.python_env import RunnerConfigurator
 from tarav.l2.project.harness import ProjectHarness, ProjectHarnessError
+from tarav.l2.project.runner import (
+    ProjectLaunchConfiguration,
+    ProjectRunnerConfigurator,
+    ProjectRunnerError,
+)
 from tarav.l3.cli.cli import main
 from tarav.l3.project.harness import run
 
@@ -126,6 +133,97 @@ def test_adoption_is_explicit_and_preserves_marker_and_ignore_data(tmp_path):
     with pytest.raises(ProjectHarnessError, match="specialized"):
         _scaffold(specialized, adopt=True)
     assert _snapshot(specialized) == before
+
+
+def test_declared_product_package_configures_run_and_sync_without_type_dispatch(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "declared product"
+    root.mkdir()
+    initialize_project_layout(root)
+    marker_path = root / ".tarav/project.json"
+    marker = json.loads(marker_path.read_text())
+    marker["type"] = {
+        "uuid": "3c1313ee-f151-4573-8c91-040a6c69b19e",
+        "label": "Product.Project.UnknownToBootstrap",
+    }
+    marker["harness"] = {
+        "manifest": "product-py/pyproject.toml",
+        "environment": "product-py/.venv",
+    }
+    marker_path.write_text(json.dumps(marker))
+    manifest = root / "product-py/pyproject.toml"
+    manifest.parent.mkdir()
+    manifest.write_text('[project]\nname = "product"\nversion = "0.1.0"\n')
+
+    launch = ProjectLaunchConfiguration.from_path(root)
+    harness = ProjectHarness.from_path(path=root)
+    _fake_environment(harness)
+    assert launch.declared is True
+    assert launch.manifest == manifest
+    assert issubclass(ProjectRunnerConfigurator, RunnerConfigurator)
+    assert entity(ProjectRunnerConfigurator).workflow is ProjectWorkflow()
+    assert ProjectRunnerConfigurator(launch).configure().interpreter == launch.interpreter
+    assert harness.inspect()["harness"] == {
+        "manifest": "product-py/pyproject.toml",
+        "environment": "product-py/.venv",
+        "declared": True,
+    }
+
+    calls = []
+
+    def execute(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 7)
+
+    monkeypatch.setattr(subprocess, "run", execute)
+    assert (
+        main(
+            [
+                "run",
+                "--project",
+                str(root),
+                "--src",
+                "print('configured')",
+                "--",
+                "literal argument",
+            ]
+        )
+        == 7
+    )
+    assert calls[-1] == (
+        [
+            str(launch.interpreter),
+            "-c",
+            "print('configured')",
+            "literal argument",
+        ],
+        {"cwd": root.resolve(), "check": False},
+    )
+
+    monkeypatch.setattr("tarav.l2.project.harness.shutil.which", lambda name: "/fixture/uv")
+    harness.sync()
+    command, options = calls[-1]
+    assert command[1:4] == ["sync", "--project", str(manifest.parent)]
+    assert options["env"]["UV_PROJECT_ENVIRONMENT"] == str(launch.environment)
+
+
+@pytest.mark.parametrize("field", ["manifest", "environment"])
+def test_declared_harness_paths_must_remain_inside_project(tmp_path, field):
+    root = tmp_path / "project"
+    root.mkdir()
+    initialize_project_layout(root)
+    marker_path = root / ".tarav/project.json"
+    marker = json.loads(marker_path.read_text())
+    marker["harness"] = {
+        "manifest": "product/pyproject.toml",
+        "environment": "product/.venv",
+    }
+    marker["harness"][field] = "../outside"
+    marker_path.write_text(json.dumps(marker))
+
+    with pytest.raises(ProjectRunnerError, match="outside"):
+        ProjectLaunchConfiguration.from_path(root)
 
 
 def test_setup_rejects_invalid_inputs_and_conflicting_owned_files(tmp_path):
@@ -345,3 +443,52 @@ def test_real_uv_harness_loads_project_and_runs_editable_specialization(
     assert "UnknownRecordType" in capfd.readouterr().err
     assert harness.marker.read_bytes() == unknown_record
     assert (sys.prefix, sys.executable) == host
+
+    declared_root = tmp_path / "declared product package"
+    declared_root.mkdir()
+    initialize_project_layout(declared_root)
+    declared_marker = declared_root / ".tarav/project.json"
+    payload = json.loads(declared_marker.read_text())
+    payload["type"] = {
+        "uuid": "3c1313ee-f151-4573-8c91-040a6c69b19e",
+        "label": "Product.Project.UnknownToBootstrap",
+    }
+    payload["harness"] = {
+        "manifest": "product-py/pyproject.toml",
+        "environment": "product-py/.venv",
+    }
+    declared_marker.write_text(json.dumps(payload))
+    package_root = declared_root / "product-py"
+    package_root.mkdir()
+    package_root.joinpath("pyproject.toml").write_text(
+        """[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "declared-product"
+version = "0.1.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/declared_product"]
+"""
+    )
+    source = package_root / "src/declared_product"
+    source.mkdir(parents=True)
+    source.joinpath("__init__.py").write_text("greeting = 'declared package'\n")
+    declared = ProjectHarness.from_path(path=declared_root)
+    declared.sync()
+    capfd.readouterr()
+    assert (
+        main(
+            [
+                "run",
+                "--project",
+                str(declared_root),
+                "--src",
+                "import declared_product; print(declared_product.greeting)",
+            ]
+        )
+        == 0
+    )
+    assert capfd.readouterr().out.strip() == "declared package"

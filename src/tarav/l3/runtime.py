@@ -147,6 +147,7 @@ class TaravRuntime:
         from tarav.l1.project.commands import register_project_commands
         from tarav.l3.project.commands import register_harness_commands
         from tarav.l1.python_env import register_python_commands
+        from tarav.l3.run import register_run_command
         from tarav.l1.reading_club.commands import register_reading_club_commands
         from tarav.l2.scoring.commands import register_scoring_commands
         from tarav.l1.stdlib.refs import register_refs_commands
@@ -181,6 +182,7 @@ class TaravRuntime:
         register_reading_club_commands(subparsers)
         register_system_commands(subparsers)
         register_python_commands(subparsers)
+        register_run_command(subparsers)
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
         _register_stdlib_commands(
@@ -245,12 +247,14 @@ def create_runtime(
     from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.l2.lines.workflow import LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
+    from tarav.l1.python_env import PYTHON_RECORD_TYPES, PythonWorkflow
     from tarav.l1.programs import ProgramsWorkflow, TaravProgram
     from tarav.l2.project.programs import ProjectProgram
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.l2.models import ModelsWorkflow
     from tarav.l1.project import ProjectWorkflow, TaravProject
     from tarav.l2.project import Project
+    from tarav.l2.project.runner import PROJECT_RUNNER_RECORD_TYPES
     from tarav.l2.project.models import ProjectModelsWorkflow
     from tarav.l2.project.wiki import ProjectWikiWorkflow
     from tarav.l1.poi import (
@@ -303,6 +307,8 @@ def create_runtime(
                 WikiNote,
                 Project,
                 TaravProject,
+                *PYTHON_RECORD_TYPES,
+                *PROJECT_RUNNER_RECORD_TYPES,
                 TaravProgram,
                 ProjectProgram,
                 *POI_RECORD_TYPES,
@@ -333,6 +339,7 @@ def create_runtime(
         KernelWorkflow,
         TypeWorkflow,
         LoadingWorkflow,
+        PythonWorkflow,
         ProgramsWorkflow,
         ContextWorkflow,
         ChatlasWorkflow,

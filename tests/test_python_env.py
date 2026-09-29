@@ -7,13 +7,35 @@ from pathlib import Path
 
 import pytest
 
+from tarav.l0.kernel import entity
 from tarav.l3.cli.cli import main
-from tarav.l1.python_env import environment_root, interpreter
+from tarav.l1.python_env import (
+    CurrentRunnerConfigurator,
+    PythonWorkflow,
+    RunnerConfiguration,
+    RunnerConfigurator,
+    environment_root,
+    interpreter,
+)
+from tarav.l3.runtime import create_runtime
 
 
 def test_the_reported_interpreter_is_the_one_running_tarav() -> None:
     assert interpreter() == Path(sys.executable)
     assert environment_root() == Path(sys.prefix)
+
+
+def test_python_workflow_owns_one_abstract_configurator_contract() -> None:
+    with pytest.raises(TypeError):
+        RunnerConfigurator()
+    configuration = CurrentRunnerConfigurator().configure()
+    assert isinstance(configuration, RunnerConfiguration)
+    assert configuration.interpreter == Path(sys.executable).absolute()
+    assert entity(RunnerConfiguration).workflow is PythonWorkflow()
+    assert entity(CurrentRunnerConfigurator).workflow is PythonWorkflow()
+    runtime = create_runtime()
+    assert runtime.workflows.get("python") is PythonWorkflow
+    assert runtime.records.resolve_type(entity(RunnerConfiguration).name) is RunnerConfiguration
 
 
 def test_path_prints_the_interpreter_for_shell_substitution(
@@ -61,6 +83,13 @@ def test_run_src_executes_source_without_a_file(
     )
 
     assert capfd.readouterr().out.strip() != ""
+
+
+def test_general_run_uses_current_configuration_by_default(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["run", "--src", "import sys; print(sys.executable)"]) == 0
+    assert capfd.readouterr().out.strip() == sys.executable
 
 
 def test_run_src_receives_its_own_arguments(

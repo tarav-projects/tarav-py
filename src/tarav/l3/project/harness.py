@@ -6,14 +6,15 @@ import argparse
 import json
 from pathlib import Path
 import runpy
-import subprocess
 import sys
 from collections.abc import Sequence
 
 from tarav.l0._core.errors import CliError
 from tarav.l0.kernel import TaravEnvironment, entity
 from tarav.l1.project import TaravProject
+from tarav.l1.python_env import run_python
 from tarav.l2.project.harness import ProjectHarness, ProjectHarnessError
+from tarav.l2.project.runner import ProjectRunnerConfigurator, ProjectRunnerError
 from tarav.l3.runtime import create_runtime, set_runtime
 
 
@@ -43,7 +44,10 @@ def run(
         raise ProjectHarnessError("Choose code or file, not both")
     harness = ProjectHarness.from_path(path=path)
     config = harness.configuration()
-    harness.require_environment()
+    try:
+        configuration = ProjectRunnerConfigurator(harness.launch).configure()
+    except ProjectRunnerError as exc:
+        raise ProjectHarnessError(str(exc)) from exc
     command = [
         str(harness.interpreter),
         "-I",
@@ -57,12 +61,7 @@ def run(
     elif file is not None:
         command.extend(["--file", str(Path(file).expanduser().resolve())])
     command.extend(["--", *arguments])
-    try:
-        return subprocess.run(command, cwd=harness.root, check=False).returncode
-    except OSError as exc:
-        raise ProjectHarnessError(
-            f"Cannot launch Project environment: {harness.interpreter}: {exc}"
-        ) from exc
+    return run_python(command[1:], configuration=configuration)
 
 
 def main(*, project_type: type[TaravProject], argv: Sequence[str] | None = None) -> int:

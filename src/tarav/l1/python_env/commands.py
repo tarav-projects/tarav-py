@@ -7,6 +7,7 @@ import json
 import platform
 
 from .core import environment_root, interpreter, run_file, run_source
+from .runner import CurrentRunnerConfigurator
 
 
 def _cmd_path(args: argparse.Namespace) -> int:
@@ -30,9 +31,12 @@ def _cmd_path(args: argparse.Namespace) -> int:
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
+    configuration = CurrentRunnerConfigurator().configure()
     if args.src is not None:
-        return run_source(args.src, args.arguments)
-    return run_file(args.file, args.arguments)
+        return run_source(
+            args.src, configuration=configuration, arguments=args.arguments
+        )
+    return run_file(args.file, configuration=configuration, arguments=args.arguments)
 
 
 def register_python_commands(subparsers: argparse._SubParsersAction) -> None:

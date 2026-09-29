@@ -12,12 +12,10 @@ import sys
 import tomllib
 from uuid import UUID, uuid4
 
-from tarav.l0._core.errors import CliError
 from tarav.l0._core.persistence import atomic_write_json
 from tarav.l0._core.project import (
     initialize_project_layout,
     load_project_marker,
-    require_agentos_project,
 )
 from tarav.l0.kernel import (
     TaravClass,
@@ -28,9 +26,10 @@ from tarav.l0.kernel import (
 from tarav.l0.kernel.types import RecordTypeReference
 from tarav.l1.project import TaravProject
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
+from tarav.l2.project.runner import ProjectLaunchConfiguration, ProjectRunnerError
 
 
-class ProjectHarnessError(CliError):
+class ProjectHarnessError(ProjectRunnerError):
     """Explicit Project harness setup or launch cannot proceed."""
 
 
@@ -59,18 +58,30 @@ class ProjectHarness(TaravObject):
     class RecordInterface(TaravObject.RecordInterface):
         root: str
 
-    def __init__(self, root: Path | str) -> None:
+    def __init__(
+        self,
+        root: Path | str,
+        *,
+        launch: ProjectLaunchConfiguration | None = None,
+    ) -> None:
         super().__init__()
         self.root = Path(root).expanduser().resolve()
         self.directory = self.root / ".tarav"
         self.marker = self.directory / "project.json"
-        self.manifest = self.directory / "pyproject.toml"
+        self.launch = launch or ProjectLaunchConfiguration(
+            root=self.root,
+            manifest=self.directory / "pyproject.toml",
+            environment=self.directory / "env",
+            declared=False,
+        )
+        self.manifest = self.launch.manifest
         # tarav.breadcrumb d06d769f0a631a2b4912f8edbcf3a42aacdc491b6f0c596f513f941b493ebfd2
-        self.env = self.directory / "env"
+        self.env = self.launch.environment
 
     @classmethod
     def from_path(cls, *, path: Path | str = ".") -> ProjectHarness:
-        return cls(require_agentos_project(path).root)
+        launch = ProjectLaunchConfiguration.from_path(path)
+        return cls(launch.root, launch=launch)
 
     @classmethod
     def _from_record(
@@ -83,7 +94,7 @@ class ProjectHarness(TaravObject):
 
     @property
     def interpreter(self) -> Path:
-        return self.env / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        return self.launch.interpreter
 
     def configuration(self) -> dict[str, str]:
         try:
@@ -105,6 +116,16 @@ class ProjectHarness(TaravObject):
 
     def inspect(self) -> dict[str, object]:
         marker = load_project_marker(self.marker)
+        scaffold = (
+            self.configuration()
+            if not self.launch.declared and self.manifest.exists()
+            else None
+        )
+        launch = {
+            "manifest": str(self.manifest.relative_to(self.root)),
+            "environment": str(self.env.relative_to(self.root)),
+            "declared": self.launch.declared,
+        }
         return {
             "root": str(self.root),
             "project_id": marker["project_id"],
@@ -113,7 +134,8 @@ class ProjectHarness(TaravObject):
             "environment": str(self.env),
             "interpreter": str(self.interpreter),
             "environment_present": self.env.exists(),
-            "harness": self.configuration() if self.manifest.exists() else None,
+            "harness": scaffold or launch,
+            "launch": launch,
         }
 
     @classmethod
@@ -256,22 +278,30 @@ class ProjectHarness(TaravObject):
         return harness
 
     def _check_local_paths(self) -> None:
-        if self.directory.resolve() != self.directory or self.env.resolve() != self.env:
-            raise ProjectHarnessError(
-                "Harness directory/environment must not redirect outside their Project paths"
-            )
+        for name, path in (("manifest", self.manifest), ("environment", self.env)):
+            try:
+                path.resolve().relative_to(self.root)
+            except ValueError as exc:
+                raise ProjectHarnessError(
+                    f"Harness {name} must not redirect outside the Project root"
+                ) from exc
 
     def require_environment(self) -> None:
         self._check_local_paths()
-        if not (self.env / "pyvenv.cfg").is_file() or not self.interpreter.is_file():
-            raise ProjectHarnessError(
-                f"Project environment is absent or incomplete; explicitly sync it: {self.env}"
-            )
+        try:
+            self.launch.require_environment()
+        except ProjectRunnerError as exc:
+            raise ProjectHarnessError(str(exc)) from exc
 
     def sync(self, *, python: Path | str | None = None) -> None:
         """Lock and install this harness into exactly .tarav/env using uv."""
-        self.configuration()
         self._check_local_paths()
+        if not self.manifest.is_file():
+            raise ProjectHarnessError(
+                f"Project harness manifest is absent: {self.manifest}"
+            )
+        if not self.launch.declared:
+            self.configuration()
         uv = shutil.which("uv")
         if uv is None:
             raise ProjectHarnessError("uv is required to sync the Project harness")
@@ -292,7 +322,7 @@ class ProjectHarness(TaravObject):
                     uv,
                     "sync",
                     "--project",
-                    str(self.directory),
+                    str(self.manifest.parent),
                     "--no-dev",
                     "--no-python-downloads",
                     "--python",

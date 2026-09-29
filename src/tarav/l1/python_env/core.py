@@ -7,6 +7,14 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from tarav.l0._core.errors import CliError
+
+from .runner import RunnerConfiguration
+
+
+class PythonRunError(CliError):
+    """A configured Python process could not be launched."""
+
 
 def interpreter() -> Path:
     """Return the interpreter running Tarav.
@@ -27,22 +35,51 @@ def environment_root() -> Path:
     return Path(sys.prefix)
 
 
-def run_source(source: str, arguments: Sequence[str] = ()) -> int:
-    """Run ``source`` with the Tarav interpreter and return its exit code."""
+def run_source(
+    source: str,
+    *,
+    configuration: RunnerConfiguration,
+    arguments: Sequence[str] = (),
+) -> int:
+    """Run inline source with the supplied configuration."""
 
-    return _execute(["-c", source, *arguments])
+    return run_python(["-c", source, *arguments], configuration=configuration)
 
 
-def run_file(path: str | Path, arguments: Sequence[str] = ()) -> int:
-    """Run the script at ``path`` with the Tarav interpreter.
+def run_file(
+    path: str | Path,
+    *,
+    configuration: RunnerConfiguration,
+    arguments: Sequence[str] = (),
+) -> int:
+    """Run the script at ``path`` with the supplied configuration.
 
     The interpreter's own ``-`` convention is preserved: a path of ``-`` reads
     the script from standard input, which keeps heredocs usable for source too
     long to quote on one command line.
     """
 
-    return _execute([str(path), *arguments])
+    selected = str(path)
+    if selected != "-":
+        selected = str(Path(selected).expanduser().resolve())
+    return run_python([selected, *arguments], configuration=configuration)
 
 
-def _execute(arguments: Sequence[str]) -> int:
-    return subprocess.run([str(interpreter()), *arguments], check=False).returncode
+def run_python(
+    arguments: Sequence[str], *, configuration: RunnerConfiguration
+) -> int:
+    """Run one explicit Python argument vector with a resolved configuration."""
+    # tarav.breadcrumb f342326ee3e6fed178a6d6ed8cf66adf548b7a87b8ed42d841bf4efa853edfad
+
+    if not isinstance(configuration, RunnerConfiguration):
+        raise TypeError("configuration must be a RunnerConfiguration")
+    try:
+        return subprocess.run(
+            [str(configuration.interpreter), *arguments],
+            cwd=configuration.cwd,
+            check=False,
+        ).returncode
+    except OSError as exc:
+        raise PythonRunError(
+            f"Cannot launch Python interpreter: {configuration.interpreter}: {exc}"
+        ) from exc

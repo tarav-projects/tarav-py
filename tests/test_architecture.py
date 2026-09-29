@@ -582,10 +582,12 @@ def test_ship_identity_is_owned_by_kernel_and_used_by_lines() -> None:
     assert record_type is locate_record_type
 
 
-def test_python_env_reports_the_environment_without_provisioning_one() -> None:
+def test_python_workflow_is_foundational_and_project_specializes_it() -> None:
     imports = _top_level_import_graph()
 
-    assert imports["python_env"] == set()
+    assert imports["python_env"] == {"l0._core", "l0.kernel"}
+    assert "project.runner" not in imports["python_env"]
+    assert "python_env" in imports["project.runner"]
     assert (PACKAGE_ROOT / "l1" / "python_env" / "commands.py").is_file()
 
 

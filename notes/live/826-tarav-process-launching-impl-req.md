@@ -9,7 +9,7 @@
 
 - Knowledge.Surface: wiki
 - Alignment.Mode: Interactive
-- Status: ready; implementation pending.
+- Status: complete.
 - Outcome: make configured Python execution a typed Python Workflow contract,
   expose it through `tarav run`, and let Project supply one
   `RunnerConfigurator` subtype that selects the Project environment.
@@ -105,7 +105,7 @@ Project implements the contract through an independently owned subtype:
 
 ```python
 class ProjectRunnerConfigurator(RunnerConfigurator):
-    def __init__(self, project: TaravProject) -> None:
+    def __init__(self, launch: ProjectLaunchConfiguration) -> None:
         ...
 
     def configure(self) -> RunnerConfiguration:
@@ -122,9 +122,17 @@ The runner consumes the resolved value rather than knowing the workflow that
 produced it:
 
 ```python
-configuration = ProjectRunnerConfigurator(project).configure()
+launch = ProjectLaunchConfiguration.from_path(project_path)
+configuration = ProjectRunnerConfigurator(launch).configure()
 run_file("task.py", configuration=configuration, arguments=())
 ```
+
+`ProjectLaunchConfiguration.from_path()` discovers the marker and projects only
+the common launch fields. It does not call `TaravProject.load_project()` or ask
+the Type registry to resolve the marker's concrete Project class. This keeps the
+bootstrap boundary usable when that class exists only in the selected Project
+environment.
+<!-- tarav.breadcrumb f92c76b7c422ef9c1668c99d27e885c1eb7f223587ac45b45ba4126cefe53a01 -->
 
 Keep configuration selection and execution separate. `run_file()` and
 `run_source()` must not call Project discovery or choose a configurator.
@@ -242,6 +250,8 @@ runner itself does not create `runtime` or `project` globals.
 - `RunnerConfigurator` cannot be instantiated without `configure()`;
   `CurrentRunnerConfigurator` and `ProjectRunnerConfigurator` satisfy the same
   behavioral contract and declare their correct workflow ownership.
+- Project configuration succeeds when the marker declares a concrete Type that
+  is absent from the bootstrap registry; no concrete Project dispatch occurs.
 - Current configuration reports the interpreter running Tarav. Project
   configuration selects the declared environment interpreter or the generated
   default when no harness declaration exists.
@@ -291,7 +301,25 @@ requested.
   construction requirements from the Project marker and generic runner.
 - Retained explicit bootstrap responsibility in the normal Tarav runtime and
   its Project Workflow, without adding cross-environment Type dispatch.
-- Implementation remains pending. Submitted Design Breadcrumbs
+- Checkpointed the ready request in `8766dcb` before product edits, as required
+  by the Execute workflow.
+- Implemented Python Workflow ownership, the abstract configurator contract,
+  current and Project configuration, the shared configured subprocess engine,
+  declared Project manifest/environment paths, and the general `tarav run`
+  adapter. Project bootstrap uses `ProjectLaunchConfiguration`, not a loaded
+  concrete `TaravProject`.
+- Verification passed: 1,386 tests, repository-wide Ruff, editable CLI
+  reinstall, command help, and a direct `tarav run` smoke check. The maintained
+  real-uv harness test exercises both generated and declared product
+  environments, including import of the declared package.
+- Product Surface Breadcrumbs `8930a4c61accc47d`, `f342326ee3e6fed1`, and
+  `107c07cf7367ba3a` ground the configurator contract, caller-controlled runner,
+  and bootstrap-safe Project projection. The clarification in this request is
+  grounded by `f92c76b7c422ef9c`; all Product Surface audits returned no
+  findings.
+- Wiki capture updated the daily note and `projects.md`, with six new audited
+  Breadcrumbs, and closed as commit `cb574e61fe6188a996f8390c4161ade108b9236f`.
+- Submitted Design Breadcrumbs
   `1dfb0ef9cc1dbd45`, `19e82d971b0bba8e`, `6000934c2349057a`,
   `0bd238f6fb2aed68`, `1cf5554045456734`, `aafa86b8cf2afab5`,
   `62f59d33819ba3fe`, and `a46af47c1e299f53`; the `chatlas-context` audit

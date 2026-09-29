@@ -151,6 +151,15 @@ entries and `DirectoryRecord` guard apply. An explicit file bypasses entry
 search. Selection remains in the Kernel engine; the Loading workflow and
 runtime supply configuration without reversing Kernel dependencies.
 
+The Python Workflow owns explicit process execution. `RunnerConfigurator` is
+the abstract selection contract, `CurrentRunnerConfigurator` selects the
+interpreter running Tarav, and `RunnerConfiguration` is the resolved value
+consumed by the shared file/source runner. The Project Workflow specializes
+that contract with `ProjectRunnerConfigurator`; its bootstrap input is a
+`ProjectLaunchConfiguration` read from common marker fields without concrete
+Project Type dispatch. Environment selection is explicit and never participates
+in Record loading or automatic imports.
+
 `tarav.l3.runtime.get_runtime()` returns the lazy process-wide current runtime;
 `tarav.l3.runtime.set_runtime(runtime)` selects a separately composed runtime. Library
 conveniences use it directly; Record Archive reaches its trusted Type registry
@@ -317,15 +326,21 @@ relationships, storage policies, or interpretation of domain payloads.
 
 Project's optional Python harness spans `tarav.l2.project.harness` (inspection,
 scaffolding, uv sync) and `tarav.l3.project` (trusted runtime bootstrap and child
-launch). Its `.tarav/pyproject.toml` owns package launch configuration and an
-explicit local Tarav dependency source. Source and lock are retained; env is
-ignored. The generated package declares its own Project TypeShip, while the
-marker retains its separate project-instance identity. Adoption of an existing
-base/untyped marker is explicit; specialized markers and edited source are not
-overwritten. Package execution binds the trusted class before dynamic loading.
-Sync targets `.tarav/env`; run never installs or selects a fallback interpreter.
-The Project command family receives its higher-layer registrar through runtime
-composition. Generic discovery/loading and `tarav python run` remain separate.
+launch). Without a marker declaration, `.tarav/pyproject.toml` and `.tarav/env`
+remain the generated defaults. A marker may instead declare a product manifest
+and environment using Project-relative paths; inspection and runner
+configuration read these common fields without importing the product package or
+dispatching the marker's concrete Type. Sync targets exactly the selected
+environment. Paths cannot escape the Project root, and run never installs or
+selects a fallback interpreter.
+
+The generated package keeps its code-owned Project TypeShip and package
+bootstrap metadata in `.tarav/pyproject.toml`, while the marker retains its
+separate project-instance identity. Adoption of an existing base/untyped marker
+is explicit; specialized markers and edited source are not overwritten.
+Package execution binds the trusted class before dynamic loading. The generic
+`tarav run` command executes caller-supplied Python with current or explicit
+Project configuration and does not inject a runtime or Project object.
 
 `tarav.l1.chatlas.sessions` exposes indexed conversations through an
 `ExplorerFolder`: entries construct a portable `ChatSession` without capture or
