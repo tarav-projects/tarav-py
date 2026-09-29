@@ -7,16 +7,16 @@
 ## Impl.Abstract
 
 - Knowledge.Surface: wiki
-- Phase: Design, with impact assessment; Alignment.Mode: Interactive.
-- Status: needs-alignment on the proposed first-slice boundary and retained-data migration scope.
+- Scope: typed SKW blocks and SkillLink; Batchy routing is follow-up work.
+- Status: complete.
 - Outcome: extensible typed SKW blocks with current output retained in source,
   demonstrated by a code-produced SkillLink in the built-in skill specialization.
 - Non-goals: implementing Batchy routing tables, a mechanical agent router,
   restoring Attic systems, automatic agent generation, or deployment.
 
-The invocation used `--implact`, interpreted as `--impact`. This note is a
-design handoff, not execution authorization. The bounded first slice below is
-an agent proposal; the supporting user decisions are distinguished below.
+This implementation request applies the recent typed-block discussion to SKW.
+The implementation plan below proposes a bounded first slice; supporting user
+decisions and implementation proposals are distinguished in the narrative.
 <!-- tarav.breadcrumb ab5c2350050e6246a66eb2076d7836fc79bd7658c6d38df9bd9d98def7b2e0ab -->
 
 ## Design narrative and decisions
@@ -109,8 +109,8 @@ Do not duplicate targets in independent block and loading declarations.
 
 ## Execution.Plan
 
-1. Re-read instructions, this note, current code and worktree. Obtain alignment
-   on the boundary below. At Execute, follow the product checkpoint policy;
+1. Re-read instructions, this note, current code and worktree. Follow the
+   applicable implementation checkpoint policy and the scope below;
    preserve concurrent Project harness work rather than editing it incidentally.
 2. Inventory in-scope records, generation annotations and locks. Define the
    minimal typed record schema and explicit migration, including literal lines
@@ -148,19 +148,50 @@ Do not duplicate targets in independent block and loading declarations.
   test_skillware_navigation, test_skw_loading, test_skw_skills, test_skw_poi,
   and test_architecture; then broader tests proportionate to changed boundaries.
 
-## Alignment before execution
+## Implementation scope and remaining details
 
-Confirm the proposed first slice (typed core + SkillLink, Batchy deferred) and
-the maintained source migration scope (suggested: tarav-md/skills plus fixtures,
+The first slice is typed core + SkillLink, with Batchy deferred. The proposed
+maintained source migration scope is tarav-md/skills plus fixtures,
 excluding deployed depots and Attic). Output shape and inline composition are
 implementation proposals to make concrete before changes, not fixed user mandates.
 
 ## Impl.Log
 
-- Design only. Read current implementations and existing loading tests; no
-  product tests run and no product code changed.
-- Existing Project harness changes and uncommitted Hugentics skill edits are
-  unrelated and must be preserved.
-- Seven design Breadcrumbs submitted in this note; note and daily capture
-  audits passed with no findings. Wiki daily entry links this handoff; existing
-  topical notes already retain the decisions. Wiki-only closure completed.
+- Execute checkpoint: `2db73e8` (the existing Project-harness work and this
+  request were checkpointed before SKW edits).
+- Implemented typed `LiteralBlock` and `AgentGenerationBlock` records beneath
+  `SkwBlock`; Document resolves every block through the trusted Type registry,
+  rejects non-block Types, and keeps `output` as the retained source
+  representation. Added explicit `Document.produce()` and CLI `produce`; it
+  validates and writes producer output, while compilation only assembles
+  retained output.
+- Added skill-owned `SkillLink` with one target declaration, deterministic
+  escaped relative Markdown output, stale-output checks, and loading analysis
+  that counts its target as referenced context. Added one code-produced link to
+  the Hugentics skill. Migrated 36 maintained `tarav-md/skills` source records
+  (15 literal and 97 generation blocks) without changing compiled Markdown;
+  Batchy and deployed/Attic surfaces remain out of scope.
+- Updated SKW architecture/development guidance and fixtures. Existing
+  generation annotations, locks, context observations, and stale findings were
+  preserved; the migration did not invent baselines or silently rebase output.
+- Verification: focused SKW/architecture suite passed 88 tests, the final
+  full suite passed 1,381 tests, and `uv run ruff check src tests tooling` plus
+  `git diff --check` passed. Reinstalled the editable CLI; `tarav skw document
+  produce --help` is available. Maintained package builds reproduced all
+  Markdown with no text drift; pre-existing stale generation/context and
+  unannotated-link findings remain surfaced by checks.
+- Product Breadcrumbs: `src/tarav/l1/skw/document.py` IDs
+  `218840d2e598e238395a44e5e66211f2064dfad13f5f4936839bec2bc3942d13`,
+  `e1dbc0ae21389449d35926a5dcf9fe717168db8afacbe4ff94f80ae4009325ce`, and
+  `432b274a6a49d11a9a31d381a8bad064b544a44d210397fdec9450d6d9bdea97`; the
+  `SkillLink` source ID is
+  `b7587610e2af5af9ea51dfbddae8571e0b452713dbb757dac8bf38698f7299f3`.
+  Both audits returned `ok` with no findings.
+- Wiki capture updated `notes/wiki/skillware.md` and
+  `notes/wiki/daily/2026-09-29.md`; Breadcrumb IDs are
+  `97dcd940ff0d11c69605334367cb3df25172c3196951cbabcdc3c8f6c2eda593` and
+  `d5828faeeb944d0ad620eba2f995c7ebd470d12b449997cd6436d9cfce366abf`.
+  Both Wiki audits returned `ok`; scoped Wiki commit is
+  `3d8ea13742787b6715b88c5f81c5dd3118c88aaf`.
+- The current workspace was not provisioned or deployed. Product and live-note
+  changes remain uncommitted by policy.

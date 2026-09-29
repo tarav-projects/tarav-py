@@ -1,10 +1,13 @@
-from tarav.l0.kernel import entity
+from tarav.l0.kernel import TaravClass, TaravObject, TypeRegistry, TypeShip, entity
 
 import json
 
 import pytest
 
-from tarav.l1.skw.document import Document, DocumentRecord, SkwBlock
+from tarav.l1.skw.document import (
+    AgentGenerationBlock, Document, DocumentRecord, LiteralBlock, SkwBlock,
+)
+from tarav.l1.skw.identity import SKILLWARE_WORKFLOW_SHIP
 
 
 def source(tmp_path):
@@ -13,8 +16,8 @@ def source(tmp_path):
     (tmp_path / "input.py").write_text("print(1)")
     data = {"type": entity(DocumentRecord).name, "schema_version": 1,
             "output": "explanation.md", "blocks": [
-                {"kind": "literal", "id": "title", "lines": ["# Explanation", ""]},
-                {"kind": "generation", "id": "explain", "prompt": ["Explain ${code}"],
+                {"type": "Tarav.Skillware.LiteralBlock", "id": "title", "output": ["# Explanation", ""]},
+                {"type": "Tarav.Skillware.AgentGenerationBlock", "id": "explain", "prompt": ["Explain ${code}"],
                  "arguments": {"code": {"type": "text", "file": "input.py"}}, "output": None}]}
     path.write_text(json.dumps(data))
     return path, data
@@ -54,7 +57,7 @@ def test_changed_inputs_cannot_be_recorded_and_paths_cannot_escape(tmp_path):
 def test_block_dependency_tracks_upstream_recipe_even_with_same_output(tmp_path):
     path, data = source(tmp_path)
     data["blocks"][1]["output"] = ["Explanation"]
-    data["blocks"].append({"id": "review", "kind": "generation", "prompt": ["Review ${text}"],
+    data["blocks"].append({"id": "review", "type": "Tarav.Skillware.AgentGenerationBlock", "prompt": ["Review ${text}"],
                            "arguments": {"text": {"type": "text", "block": "explain"}},
                            "output": ["Review"]})
     path.write_text(json.dumps(data))
@@ -83,7 +86,42 @@ def test_document_blocks_use_the_common_json_contract(tmp_path):
 
     assert isinstance(block, SkwBlock)
     assert block.to_record() == data["blocks"][1]
-    assert SkwBlock.from_record(block.to_record()).to_record() == block.to_record()
+    assert type(block).from_record(block.to_record()).to_record() == block.to_record()
+
+
+def test_registered_external_block_dispatch_and_rejection(tmp_path):
+    class ExternalBlock(SkwBlock):
+        @classmethod
+        def class_entity(cls):
+            return TaravClass(target=cls, id=TypeShip('59789693-768c-494b-b9fa-e447b4dfced7'),
+                              name='Test.ExternalBlock', workflow=SKILLWARE_WORKFLOW_SHIP)
+
+    class Unrelated(TaravObject):
+        @classmethod
+        def class_entity(cls):
+            return TaravClass(target=cls, id=TypeShip('2204a9b6-b39b-48b7-8179-9478da6b57ae'),
+                              name='Test.Unrelated', workflow=SKILLWARE_WORKFLOW_SHIP)
+
+    path, data = source(tmp_path)
+    registry = TypeRegistry(TaravObject, (LiteralBlock, AgentGenerationBlock,
+                                          ExternalBlock, Unrelated))
+    data['blocks'] = [{'id': 'external', 'type': entity(ExternalBlock).name,
+                       'output': ['External content.']}]
+    path.write_text(json.dumps(data))
+    doc = Document(path, registry=registry)
+    assert isinstance(doc.blocks['external'], ExternalBlock)
+    assert registry.from_record(doc.blocks['external'].to_record()).to_record() == data['blocks'][0]
+    assert doc.compile()['written']
+    assert (tmp_path / 'explanation.md').read_text() == 'External content.\n'
+
+    data['blocks'][0]['type'] = 'Test.UnknownBlock'
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='not registered'):
+        Document(path, registry=registry)
+    data['blocks'][0]['type'] = entity(Unrelated).name
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='not a SkwBlock'):
+        Document(path, registry=registry)
 
 
 def test_product_drift_missing_annotation_and_read_only_lint(tmp_path):
@@ -182,14 +220,14 @@ def test_block_context_fingerprints_selected_whole_block(tmp_path):
     path, data = source(tmp_path)
     other = path.parent / "other.skw.json"
     target = {"type": entity(DocumentRecord).name, "blocks": [
-        {"id": "selected", "kind": "generation", "prompt": ["Explain"], "output": ["Old"]},
-        {"id": "unrelated", "kind": "literal", "lines": ["One"]}]}
+        {"id": "selected", "type": "Tarav.Skillware.AgentGenerationBlock", "prompt": ["Explain"], "output": ["Old"]},
+        {"id": "unrelated", "type": "Tarav.Skillware.LiteralBlock", "output": ["One"]}]}
     other.write_text(json.dumps(target))
     data["blocks"][1]["context"] = [{"kind": "reference", "roles": ["dependency"], "reference": {"type": "Tarav.Reference.StructuredFile", "locator": {"path": "other.skw.json", "pointer": "/blocks/0"}}}]
     data["blocks"][1]["output"] = ["Retained"]
     path.write_text(json.dumps(data))
     Document(path).observe_context("explain")
-    target["blocks"][1]["lines"] = ["Two"]
+    target["blocks"][1]["output"] = ["Two"]
     other.write_text(json.dumps(target))
     assert "stale-context" not in {f["kind"] for f in Document(path).lint()}
     target["blocks"][0]["prompt"] = ["Changed instructions"]

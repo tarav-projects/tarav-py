@@ -12,6 +12,7 @@ from tarav.l0.kernel import FileRecord, TypeShip
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.references.structured import StructuredFileReference
 from .document import Document, read, write
+from .skills import SkillLink
 from .generation import _hash
 
 
@@ -89,14 +90,17 @@ class LoadingModel:
                 if not re.fullmatch(r'/blocks/(0|[1-9][0-9]*)', pointer):
                     raise ValueError('Select one complete source block')
                 block = result.target
-                key = (document.source, block['id'])
+                typed = document.blocks[block['id']]
+                if typed.to_record() != block:
+                    raise ValueError('Block reference disagrees with loaded Type')
+                key = (document.source, typed.id)
                 if key in self.by_block:
                     raise ValueError('Source block bound more than once')
-                self.bindings[identity] = (document, block)
+                self.bindings[identity] = (document, typed)
                 self.by_block[key] = identity
                 # Conformance signal only. Parsed links never become edges.
-                content = block.get('lines', block.get('output'))
-                if content is not None:
+                content = typed.get('output')
+                if content is not None and not isinstance(typed, SkillLink):
                     for token in MarkdownIt().parse('\n'.join(content)):
                         for child in token.children or []:
                             if child.type == 'link_open':
@@ -108,6 +112,9 @@ class LoadingModel:
             for block in document.blocks:
                 if (document.source, block) not in self.by_block:
                     self.report('undeclared-block', str(document.source), detail=block)
+        for identity, (_, block) in self.bindings.items():
+            if isinstance(block, SkillLink) and block['target'] not in self.bindings:
+                self.report('invalid-context-target', identity, target=block['target'])
         self.parents = {}
         for identity, node in self.nodes.items():
             if 'parents' in node:
@@ -183,6 +190,9 @@ class LoadingModel:
                 return
             inline.add(node)
             declaration = self.nodes[node]
+            _, block = self.bindings[node]
+            if isinstance(block, SkillLink) and block['target'] in self.bindings:
+                linked.add(block['target'])
             linked.update(e['target'] for e in declaration.get('links', [])
                           if e['target'] in self.bindings)
             for edge in declaration.get('includes', []):
@@ -230,10 +240,7 @@ class LoadingModel:
         if identity in active:
             raise ValueError(f'Inclusion cycle: {identity}')
         document, block = self.bindings[identity]
-        content = block['lines'] if block['kind'] == 'literal' else block.get('output')
-        if content is None:
-            raise ValueError(f'Missing output: {identity}')
-        text = '\n'.join(content)
+        text = '\n'.join(block.output_lines())
         declaration = self.nodes[identity]
         for kind in ('links', 'includes'):
             for edge in declaration.get(kind, []):
@@ -255,16 +262,31 @@ class LoadingModel:
             raise ValueError(f'Undeclared slot in {identity}')
         # Anchors are a generated primitive only where a declared link needs one.
         linked = any(e['target'] == identity for n in self.nodes.values()
-                     for e in n.get('links', []))
+                     for e in n.get('links', [])) or any(
+                         isinstance(other, SkillLink) and other['target'] == identity
+                         for _, other in self.bindings.values())
         if linked and block['id'] != next(iter(document.blocks)) and not active:
             text = f'<a id="skw-{identity}"></a>\n' + text
         return text
 
+    def link_output(self, block: SkillLink, output: Path) -> str:
+        target = block['target']
+        if target not in self.bindings:
+            raise ValueError(f'Unknown SkillLink target: {target}')
+        target_document, target_block = self.bindings[target]
+        path = quote(os.path.relpath(target_document.target, output.parent), safe='/')
+        if target_block.id != next(iter(target_document.blocks)):
+            path += '#skw-' + target
+        label = block['label'].replace('\\', '\\\\').replace('[', '\\[').replace(']', '\\]')
+        return f'[{label}]({path})'
+
     def document_text(self, document):
         parts = []
         for identity, block in document.blocks.items():
+            if block.inline_only():
+                continue
             content = self.render_block(self.by_block[(document.source, identity)], document.target)
-            original = block['lines'] if block['kind'] == 'literal' else block.get('output')
+            original = block.get('output')
             if original or content:
                 parts.append(content)
         return '\n'.join(parts) + ('\n' if parts else '')

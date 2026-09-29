@@ -14,7 +14,7 @@ def test_skw_bless_inspect_score_and_paged_reporting(tmp_path, capsys):
     p = loading_package(root)
     source = root / '.skw/src/main.json'
     data = json.loads(source.read_text())
-    data['blocks'][0]['lines'].append('[Existing](SKILL.md)')
+    data['blocks'][0]['output'].append('[Existing](SKILL.md)')
     source.write_text(json.dumps(data))
     p.build()
     collector = p.evaluate()
@@ -40,7 +40,7 @@ def test_skw_bless_inspect_score_and_paged_reporting(tmp_path, capsys):
                  '--actor-file', str(actor), '--rationale-file', str(why),
                  '--assertion', 'acceptance-justified', '--score', '0.8', '--json']) == 0
     capsys.readouterr()
-    data['blocks'][0]['lines'].append('Changed surface.')
+    data['blocks'][0]['output'].append('Changed surface.')
     source.write_text(json.dumps(data))
     assert p.blessings.standing(p.evaluate().get(finding.identity))['status'] == 'stale'
 
@@ -52,7 +52,7 @@ def test_skw_poi_commands_default_to_rendered(tmp_path, capsys):
     p = loading_package(root)
     source = root / '.skw/src/main.json'
     data = json.loads(source.read_text())
-    data['blocks'][0]['lines'].append('[Existing](SKILL.md)')
+    data['blocks'][0]['output'].append('[Existing](SKILL.md)')
     source.write_text(json.dumps(data))
     p.build()
     finding = next(f for f in p.evaluate().findings if f.poi_class.blessable)

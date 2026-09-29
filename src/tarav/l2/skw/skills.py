@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
 from tarav.l0.kernel.records import entry_file
 from tarav.l0.kernel.workflows import TaravWorkflow
@@ -13,6 +13,7 @@ from tarav.l1.skw.depot import SkwDepot
 from tarav.l1.skw.document import Document, project_document, project_root, read
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
 from tarav.l1.skw.loading import LoadingModel, LoadingRecord, SkillDocument
+from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
 from tarav.l1.poi import BlessingStore, BlessingRecord, BlessingAssessmentRecord
 from tarav.l0._core.errors import CliError
 from .pois import CLASSES, DiagramAssessment, collect
@@ -119,7 +120,7 @@ class SkwSkill(SkwDepot):
                       'path': str(self.path(p))} for p in self.data['sources']]
         else:
             document = self._navigation_document(source)
-            items = [{'block': b['id'], 'kind': b['kind']}
+            items = [{'block': b.id, 'type': entity(type(b)).name}
                      for b in document.blocks.values()]
         end = offset + limit
         return {'total': len(items), 'items': items[offset:end],
@@ -261,6 +262,7 @@ SKILLS_RECORD_TYPES = (
     ModelPublicationRecord,
     PublicationLockRecord,
     LoadingRecord,
+    *SKILL_COMPONENT_TYPES,
     BlessingRecord,
     BlessingAssessmentRecord,
     *CLASSES.values(),
@@ -295,7 +297,7 @@ def load_skill(root, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:
 
 
 def skill_document(source, *, project=None, registry: TypeRegistry[TaravObject]):
-    document = project_document(source, project=project)
+    document = project_document(source, project=project, registry=registry)
     depot = document.root / '.skw'
     try:
         entry_file(depot)

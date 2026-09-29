@@ -243,8 +243,11 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   runtime-backed load facade. `tarav.l1.project` owns the minimal Project Type;
   `tarav.l2.project` adds Models and Wiki integrations. Archive uses the
   kernel-owned current Record registry; retained Context owns its service lookup.
-- `tarav.l1.skw` owns document and loading mechanics;
-  `tarav.l2.skw` owns skill-package publication and Diagram-dependent checks.
+- `tarav.l1.skw` owns typed document blocks, retained output, and declared
+  loading/slot mechanics. Trusted Type dispatch selects each nested block;
+  code producers write source output explicitly while compilation only assembles
+  retained output. `tarav.l2.skw` owns deployable skill-package operations,
+  publication, and Diagram-dependent checks.
 - Integration bundles compose independent domains without making either one
   depend on the other.
 - `tarav.l3.runtime.create_runtime()` currently assembles the installed

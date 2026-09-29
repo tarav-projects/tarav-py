@@ -1,13 +1,15 @@
 """Typed generation source and deterministic whole-document compilation."""
+from __future__ import annotations
+
 import json
 import hashlib
 from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import BaseModel
 
-from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravClass, TypeRegistry, current_records, entity
 from tarav.l0.kernel import FileRecord, TaravObject, TypeShip
 from tarav.l0.kernel.records import _json_object
 from tarav.l0.kernel.workflows import TaravWorkflow
@@ -58,9 +60,6 @@ class LockRecord(FileRecord):
         )
 
 
-SKILLWARE_RECORD_TYPES = (DocumentRecord, GenerationRecord, LockRecord)
-
-
 class SkillwareWorkflow(TaravWorkflow):
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -94,6 +93,7 @@ def lines(value):
     return value
 
 
+# tarav.breadcrumb 218840d2e598e238395a44e5e66211f2064dfad13f5f4936839bec2bc3942d13
 class SkwBlock(TaravObject, Mapping[str, object]):
     """One actionable block retained inline in a Skillware document."""
 
@@ -108,8 +108,7 @@ class SkwBlock(TaravObject, Mapping[str, object]):
 
     class RecordInterface(TaravObject.RecordInterface):
         id: str
-        kind: Literal["literal", "generation"]
-
+        output: list[str] | None
 
     def __init__(self, record: Mapping[str, object]) -> None:
         super().__init__()
@@ -117,15 +116,8 @@ class SkwBlock(TaravObject, Mapping[str, object]):
         type(self).validate_record(self._record)
         if not isinstance(self._record.get("id"), str) or not self._record["id"]:
             raise ValueError("Blocks require non-empty IDs")
-        kind = self._record.get("kind")
-        if kind == "literal":
-            lines(self._record.get("lines"))
-        elif kind == "generation":
-            self.definition()
-            if self._record.get("output") is not None:
-                lines(self._record["output"])
-        else:
-            raise ValueError("Unknown block kind")
+        if self._record.get("output") is not None:
+            lines(self._record["output"])
 
     @classmethod
     def _from_record(cls, record_data: BaseModel) -> Self:
@@ -146,13 +138,50 @@ class SkwBlock(TaravObject, Mapping[str, object]):
     def id(self) -> str:
         return self._record["id"]  # type: ignore[return-value]
 
-    @property
-    def kind(self) -> str:
-        return self._record["kind"]  # type: ignore[return-value]
+    def output_lines(self) -> list[str]:
+        output = self._record.get("output") if self._record is not None else None
+        if output is None:
+            raise ValueError(f"Missing output: {self.id}")
+        return lines(output)
+
+    def produce(self, document: Document) -> list[str]:
+        raise ValueError(f"{entity(type(self)).name} has no code producer")
+
+    def output_findings(self, document: Document, lock_entry: dict) -> list[dict]:
+        return []
+
+    def inline_only(self) -> bool:
+        return False
+
+
+class LiteralBlock(SkwBlock):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('311e903d-705a-43dd-9c0b-6300c2f17a79'),
+                          name='Tarav.Skillware.LiteralBlock', workflow=SKILLWARE_WORKFLOW_SHIP)
+
+    class RecordInterface(SkwBlock.RecordInterface):
+        output: list[str]
+
+    @classmethod
+    def record_example(cls) -> dict[str, object]:
+        return {"type": entity(cls).name, "id": "example", "output": ["Example."]}
+
+
+class AgentGenerationBlock(SkwBlock):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('ed3a77cd-f4b6-45b6-bbee-39d1dcf7698c'),
+                          name='Tarav.Skillware.AgentGenerationBlock', workflow=SKILLWARE_WORKFLOW_SHIP)
+
+    class RecordInterface(SkwBlock.RecordInterface):
+        prompt: list[str]
+
+    def __init__(self, record: Mapping[str, object]) -> None:
+        super().__init__(record)
+        self.definition()
 
     def definition(self) -> Block:
-        if self.kind != "generation":
-            raise ValueError("Literal blocks do not define generations")
         arguments = self._record.get("arguments", {})
         if not isinstance(arguments, Mapping):
             raise ValueError("Block arguments must be an object")
@@ -173,18 +202,57 @@ class SkwBlock(TaravObject, Mapping[str, object]):
     @classmethod
     def record_example(cls) -> dict[str, object]:
         return {
+            "type": entity(cls).name,
             "id": "example",
-            "kind": "generation",
             "prompt": ["Write an example."],
             "arguments": {},
             "output": None,
         }
 
+    def output_findings(self, document: Document, lock_entry: dict) -> list[dict]:
+        findings = []
+        try:
+            fingerprint = document.inputs(self.id)[1]
+        except (KeyError, ValueError, TypeError, OSError) as exc:
+            return [{"kind": "invalid-input", "block": self.id, "detail": str(exc)}]
+        baseline = lock_entry.get("blocks", {}).get(self.id)
+        if baseline is not None:
+            if baseline["input_hash"] != fingerprint:
+                findings.append({"kind": "stale-generation", "block": self.id})
+            if baseline["output_hash"] != _hash(self.get("output")):
+                findings.append({"kind": "output-changed", "block": self.id})
+            try:
+                annotation = read(document.annotation_path(baseline["generation"]))
+                if (annotation.get("source") != document.key or annotation.get("block") != self.id
+                        or annotation.get("status") != "Recorded"
+                        or annotation.get("input_hash") != baseline["input_hash"]
+                        or annotation.get("output_hash") != baseline["output_hash"]):
+                    raise ValueError("Annotation disagrees with lock")
+            except (OSError, ValueError) as exc:
+                findings.append({"kind": "invalid-annotation", "block": self.id, "detail": str(exc)})
+        return findings
+
+
+SKILLWARE_RECORD_TYPES = (
+    DocumentRecord, GenerationRecord, LockRecord, LiteralBlock, AgentGenerationBlock,
+)
+
+
+def _block_registry(registry: TypeRegistry[TaravObject] | None) -> TypeRegistry:
+    if registry is not None:
+        return registry
+    try:
+        return current_records()
+    except RuntimeError as exc:
+        if str(exc) != "Current Record registry has not been configured":
+            raise
+        return TypeRegistry(SkwBlock, (LiteralBlock, AgentGenerationBlock))
+
 
 class Document:
     """Load a fresh source for each operation. Storage is explicitly single-writer."""
 
-    def __init__(self, source, *, root=None, roles=None):
+    def __init__(self, source, *, root=None, roles=None, registry=None):
         self.roles = roles if roles is not None else ContextRoles()
         self.references = ReferenceService()
         self.references.records.register(ChatlasTurnReference)
@@ -202,9 +270,13 @@ class Document:
         self.target = self.path(self.data["output"])
         if self.target == self.source or self.target.is_relative_to(self.root / ".skw"):
             raise ValueError("Output must be a product outside .skw")
+        # tarav.breadcrumb e1dbc0ae21389449d35926a5dcf9fe717168db8afacbe4ff94f80ae4009325ce
+        self.registry = _block_registry(registry)
         self.blocks: dict[str, SkwBlock] = {}
         for index, b in enumerate(self.data["blocks"]):
-            block = SkwBlock.from_record(b)
+            block = self.registry.from_record(b)
+            if not isinstance(block, SkwBlock):
+                raise ValueError(f"Document block is not a SkwBlock: {type(block).__name__}")
             if block._record is None:
                 raise RuntimeError("Loaded Skillware block has no retained Record")
             self.data["blocks"][index] = block._record
@@ -222,6 +294,8 @@ class Document:
         return path
 
     def definition(self, block: SkwBlock):
+        if not isinstance(block, AgentGenerationBlock):
+            raise ValueError(f"Block does not define agent generation: {block.id}")
         return block.definition()
 
     def inputs(self, identity, active=()):
@@ -236,14 +310,9 @@ class Document:
                 values[name] = self.path(spec["file"]).read_text(encoding="utf-8")
             elif "block" in spec:
                 other = self.blocks[spec["block"]]
-                if other["kind"] == "generation":
+                if isinstance(other, AgentGenerationBlock):
                     dependencies[name] = self.inputs(other["id"], (*active, identity))[1]
-                    output = other.get("output")
-                else:
-                    output = other["lines"]
-                if output is None:
-                    raise ValueError("Dependency output missing")
-                values[name] = "\n".join(output)
+                values[name] = "\n".join(other.output_lines())
             else:
                 values[name] = spec["value"]
         state = {"recipe": {k: v for k, v in block.items() if k != "output"},
@@ -383,6 +452,8 @@ class Document:
 
     def prepare(self, identity, *, chat=None):
         block = self.blocks[identity]
+        if not isinstance(block, AgentGenerationBlock):
+            raise ValueError(f"Block does not define agent generation: {identity}")
         context = self._resolved_context(identity)
         values, fingerprint = self.inputs(identity)
         generation = Generation((self.definition(block),))
@@ -401,6 +472,8 @@ class Document:
         if annotation["source"] != self.key or annotation["status"] != "Prepared":
             raise ValueError("Expected prepared generation for this source")
         block = annotation["block"]
+        if not isinstance(self.blocks[block], AgentGenerationBlock):
+            raise ValueError(f"Block does not define agent generation: {block}")
         context_hash = self._context_hash(self._resolved_context(block))
         if annotation.get("context_hash") != context_hash:
             raise ValueError("Context changed since preparation")
@@ -421,12 +494,23 @@ class Document:
 
     def text(self):
         result = []
-        for b in self.data["blocks"]:
-            value = b["lines"] if b["kind"] == "literal" else b.get("output")
-            if value is None:
-                raise ValueError(f"Missing output: {b['id']}")
-            result.extend(value)
+        for block in self.blocks.values():
+            if not block.inline_only():
+                result.extend(block.output_lines())
         return "\n".join(result) + ("\n" if result else "")
+
+    # tarav.breadcrumb 432b274a6a49d11a9a31d381a8bad064b544a44d210397fdec9450d6d9bdea97
+    def produce(self, identity):
+        block = self.blocks[identity]
+        output = lines(block.produce(self))
+        original = block.to_record()
+        updated = {**original, "output": output}
+        type(block).validate_record(updated)
+        index = next(i for i, value in enumerate(self.data["blocks"])
+                     if value["id"] == identity)
+        self.data["blocks"][index] = updated
+        write(self.source, self.data)
+        return {"block": identity, "output": output}
 
     def lint(self):
         findings = []
@@ -445,30 +529,9 @@ class Document:
                         report("context-unobserved", identity)
                     elif observed != context_hash:
                         report("stale-context", identity)
-            if block["kind"] != "generation":
-                continue
             if block.get("output") is None:
                 report("missing-output", identity)
-            try:
-                fingerprint = self.inputs(identity)[1]
-            except (KeyError, ValueError, TypeError, OSError) as exc:
-                report("invalid-input", identity, str(exc))
-                continue
-            baseline = entry.get("blocks", {}).get(identity)
-            if baseline is not None:
-                if baseline["input_hash"] != fingerprint:
-                    report("stale-generation", identity)
-                if baseline["output_hash"] != _hash(block.get("output")):
-                    report("output-changed", identity)
-                try:
-                    annotation = read(self.annotation_path(baseline["generation"]))
-                    if (annotation.get("source") != self.key or annotation.get("block") != identity
-                            or annotation.get("status") != "Recorded"
-                            or annotation.get("input_hash") != baseline["input_hash"]
-                            or annotation.get("output_hash") != baseline["output_hash"]):
-                        raise ValueError("Annotation disagrees with lock")
-                except (OSError, ValueError) as exc:
-                    report("invalid-annotation", identity, str(exc))
+            findings.extend(block.output_findings(self, entry))
         if entry.get("source_hash") != _hash(self.data):
             report("source-uncompiled")
         try:
@@ -510,7 +573,7 @@ def project_root(project=None):
                      else f"No .skw project found above {start}; supply --project")
 
 
-def project_document(source, *, project=None):
+def project_document(source, *, project=None, registry=None):
     root = project_root(project)
     relative = Path(source)
     if relative.is_absolute():
@@ -519,17 +582,17 @@ def project_document(source, *, project=None):
     path = (base / relative).resolve()
     if not path.is_relative_to(base):
         raise ValueError("--source escapes .skw/src")
-    return Document(path, root=root)
+    return Document(path, root=root, registry=registry)
 
 
 def register_commands(subparsers, *, document_factory=project_document):
     parser = subparsers.add_parser("document", help="Operate typed .skw.json document sources.")
     commands = parser.add_subparsers(dest="document_command", required=True)
-    for name in ("lint", "compile", "prepare", "record", "context", "observe-context"):
+    for name in ("lint", "compile", "prepare", "record", "produce", "context", "observe-context"):
         command = commands.add_parser(name)
         command.add_argument("--source", required=True, help="Source path relative to .skw/src.")
         command.add_argument("--project", help="Directory containing .skw; default: discover upward from cwd.")
-        if name in ("prepare", "context", "observe-context"):
+        if name in ("prepare", "produce", "context", "observe-context"):
             command.add_argument("--block", required=True)
         if name == "prepare":
             command.add_argument("--chat")
@@ -554,6 +617,8 @@ def _command(args):
             result = document.prepare(args.block, chat=args.chat)
         elif args.document_command == "record":
             result = document.record(args.generation)
+        elif args.document_command == "produce":
+            result = document.produce(args.block)
         elif args.document_command == "context":
             mode = next((m for m in ("head", "tail", "cat") if getattr(args, m) is not None), None)
             if mode:

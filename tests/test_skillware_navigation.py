@@ -12,7 +12,7 @@ def document(tmp_path):
     target = tmp_path / "context.txt"
     target.write_text("first\n" + "x" * 8000 + "\nlast\n")
     source.write_text(json.dumps({"type": "Tarav.Skillware.Document", "schema_version": 1,
-        "output": "demo.md", "blocks": [{"id": "body", "kind": "generation", "prompt": [],
+        "output": "demo.md", "blocks": [{"id": "body", "type": "Tarav.Skillware.AgentGenerationBlock", "prompt": [],
         "output": ["Retained"], "context": [
             {"kind": "reference", "roles": ["dependency"], "reference": {"type": "Tarav.Reference.StructuredFile",
                 "locator": {"path": "../../context.txt"}}},

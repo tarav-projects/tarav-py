@@ -14,7 +14,7 @@ def package(tmp_path):
     (root / '.skw/src').mkdir(parents=True)
     source = {'type': 'Tarav.Skillware.Document', 'schema_version': 1,
               'output': 'SKILL.md', 'blocks': [
-                  {'id': 'main', 'kind': 'literal', 'lines': ['# Skill']}]}
+                  {'id': 'main', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['# Skill']}]}
     (root / '.skw/src/main.skw.json').write_text(json.dumps(source))
     manifest = {'type': entity(SkwSkill).name, 'schema_version': 1,
                 'entrypoint': 'SKILL.md', 'sources': ['.skw/src/main.skw.json'],
@@ -64,7 +64,7 @@ def test_consumer_edges_require_consumer_declaration(tmp_path):
     (other / 'SKILL.md').write_text('# Other')
     source = p.root / '.skw/src/main.skw.json'
     data = json.loads(source.read_text())
-    data['blocks'][0]['lines'] = ['[Other](../other/SKILL.md)']
+    data['blocks'][0]['output'] = ['[Other](../other/SKILL.md)']
     source.write_text(json.dumps(data))
     p.data['dependencies'] = [{'kind': 'skill', 'path': '../other',
                                'purposes': ['developer']}]
@@ -190,11 +190,11 @@ def test_navigation_is_selective_and_does_not_resolve_context(tmp_path, capsys):
     data = json.loads(source.read_text())
     data['blocks'][0]['context'] = [{'kind': 'reference', 'reference': {
         'type': 'Unknown.Reference', 'locator': {'path': 'missing'}}}]
-    data['blocks'].append({'id': 'second', 'kind': 'literal', 'lines': ['Other']})
+    data['blocks'].append({'id': 'second', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['Other']})
     source.write_text(json.dumps(data))
     assert skill.ls()['items'][0]['source'] == 'main.skw.json'
     page = skill.ls(source='main.skw.json', limit=1)
-    assert page == {'total': 2, 'items': [{'block': 'main', 'kind': 'literal'}], 'next_offset': 1}
+    assert page == {'total': 2, 'items': [{'block': 'main', 'type': 'Tarav.Skillware.LiteralBlock'}], 'next_offset': 1}
     assert skill.ls(source='main.skw.json', offset=1)['items'][0]['block'] == 'second'
     assert skill.read_block(source='main.skw.json', block='main')['block']['context']
     with pytest.raises(ValueError):
@@ -212,7 +212,7 @@ def test_navigation_is_selective_and_does_not_resolve_context(tmp_path, capsys):
     assert main(['skw', 'skills', 'read', '--project', str(skill.root),
                  '--source', 'main.skw.json', '--block', 'main']) == 0
     rendered = capsys.readouterr().out
-    assert rendered.startswith('main  literal\n')
+    assert rendered.startswith('main  Tarav.Skillware.LiteralBlock\n')
     assert rendered.endswith('# Skill\n')
     assert main(['skw', 'skills', 'read', '--project', str(skill.root),
                  '--source', 'main.skw.json', '--block', 'main', '--json']) == 0

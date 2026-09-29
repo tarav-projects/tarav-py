@@ -7,17 +7,18 @@ import pytest
 from tarav.l3.runtime import create_runtime
 from tarav.l2.skw.skills import SkwSkill
 from tarav.l1.skw.loading import LoadingRecord
+from tarav.l1.skw.skills import SkillLink
 
 
 def package(tmp_path):
     source = tmp_path / '.skw/src/main.json'
     source.parent.mkdir(parents=True)
     blocks = [
-        {'id': 'entry', 'kind': 'literal', 'lines': ['# Test']},
-        {'id': 'vocabulary', 'kind': 'literal', 'lines': ['Vocabulary.']},
-        {'id': 'bypass', 'kind': 'literal', 'lines': ['Other path.']},
-        {'id': 'use', 'kind': 'literal', 'lines': ['Use vocabulary.']},
-        {'id': 'orphan', 'kind': 'literal', 'lines': ['Unreachable.']}]
+        {'id': 'entry', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['# Test']},
+        {'id': 'vocabulary', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['Vocabulary.']},
+        {'id': 'bypass', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['Other path.']},
+        {'id': 'use', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['Use vocabulary.']},
+        {'id': 'orphan', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['Unreachable.']}]
     source.write_text(json.dumps({'type': 'Tarav.Skillware.Document', 'schema_version': 1,
                                   'output': 'SKILL.md', 'blocks': blocks}))
     nodes = [{'id': b['id'], 'reference': {'type': 'Tarav.Reference.StructuredFile',
@@ -70,7 +71,7 @@ def test_links_are_generated_but_do_not_imply_loaded_content(tmp_path):
     p = package(tmp_path)
     graph = p.loading()
     graph.nodes['entry']['links'] = [{'target': 'vocabulary', 'slot': 'vocab', 'label': 'Read'}]
-    graph.bindings['entry'][1]['lines'].append('{{skw:vocab}}')
+    graph.bindings['entry'][1]['output'].append('{{skw:vocab}}')
     graph.nodes['use']['requires'][0]['delivery'] = 'referenced'
     assert not any(f['kind'] == 'missing-context' for f in graph.analyze()['findings'])
     text = graph.document_text(next(iter(graph.documents.values())))
@@ -83,11 +84,11 @@ def test_links_are_generated_but_do_not_imply_loaded_content(tmp_path):
 def test_inclusions_generate_content_and_supply_context(tmp_path):
     graph = package(tmp_path).loading()
     graph.nodes['entry']['includes'] = [{'target': 'vocabulary', 'slot': 'vocab'}]
-    graph.bindings['entry'][1]['lines'].append('{{skw:vocab}}')
+    graph.bindings['entry'][1]['output'].append('{{skw:vocab}}')
     assert not any(f['kind'] == 'missing-context' for f in graph.analyze()['findings'])
     assert graph.render_block('entry', tmp_path / 'SKILL.md') == '# Test\nVocabulary.'
     graph.nodes['vocabulary']['includes'] = [{'target': 'entry', 'slot': 'cycle'}]
-    graph.bindings['vocabulary'][1]['lines'].append('{{skw:cycle}}')
+    graph.bindings['vocabulary'][1]['output'].append('{{skw:cycle}}')
     assert any(f['kind'] == 'inclusion-cycle' for f in graph.analyze()['findings'])
     with pytest.raises(ValueError, match='cycle'):
         graph.render_block('entry', tmp_path / 'SKILL.md')
@@ -96,7 +97,7 @@ def test_inclusions_generate_content_and_supply_context(tmp_path):
 def test_markdown_never_discovers_edges(tmp_path):
     p = package(tmp_path)
     graph = p.loading()
-    graph.bindings['entry'][1]['lines'].append('[Vocabulary](SKILL.md#vocabulary)')
+    graph.bindings['entry'][1]['output'].append('[Vocabulary](SKILL.md#vocabulary)')
     graph.nodes['use']['requires'][0]['delivery'] = 'referenced'
     assert sum(f['kind'] == 'missing-context' for f in graph.analyze()['findings']) == 2
 
@@ -122,7 +123,7 @@ def test_slot_error_is_not_repaired(tmp_path):
 def test_inclusion_is_a_loading_path_for_an_otherwise_unattached_block(tmp_path):
     graph = package(tmp_path).loading()
     graph.nodes['entry']['includes'] = [{'target': 'orphan', 'slot': 'extra'}]
-    graph.bindings['entry'][1]['lines'].append('{{skw:extra}}')
+    graph.bindings['entry'][1]['output'].append('{{skw:extra}}')
     assert not any(f['kind'] == 'unreachable-block' and f['block'] == 'orphan'
                    for f in graph.analyze()['findings'])
     assert graph.inspect('orphan')['paths'][0]['path'] == ['entry', 'orphan']
@@ -137,7 +138,7 @@ def test_cli_compile_uses_declared_primitives(tmp_path, capsys):
     path.write_text(json.dumps(data))
     source = tmp_path / '.skw/src/main.json'
     data = json.loads(source.read_text())
-    data['blocks'][0]['lines'].append('{{skw:read}}')
+    data['blocks'][0]['output'].append('{{skw:read}}')
     source.write_text(json.dumps(data))
     main(['skw', 'document', 'compile', '--project', str(tmp_path), '--source', 'main.json'])
     assert '[Read](SKILL.md#skw-vocabulary)' in (tmp_path / 'SKILL.md').read_text()
@@ -149,7 +150,7 @@ def test_output_link_check_does_not_create_edges(tmp_path):
     p = package(tmp_path)
     path = tmp_path / '.skw/src/main.json'
     data = json.loads(path.read_text())
-    data['blocks'][0]['lines'].append('[Other](other.md)')
+    data['blocks'][0]['output'].append('[Other](other.md)')
     path.write_text(json.dumps(data))
     model = p.loading()
     assert any(f['kind'] == 'unannotated-output-link' for f in model.findings)
@@ -181,6 +182,50 @@ def test_empty_block_does_not_add_a_newline(tmp_path):
     p = package(tmp_path)
     source = tmp_path / '.skw/src/main.json'
     data = json.loads(source.read_text())
-    data['blocks'][0]['lines'] = []
+    data['blocks'][0]['output'] = []
     source.write_text(json.dumps(data))
     assert p.documents()[0].text().startswith('Vocabulary.')
+
+
+def test_typed_skill_link_retains_output_and_uses_one_target(tmp_path):
+    p = package(tmp_path)
+    source = tmp_path / '.skw/src/main.json'
+    data = json.loads(source.read_text())
+    data['blocks'][0]['output'] = ['Read {{skw:link}} now.']
+    data['blocks'].append({'id': 'link', 'type': entity(SkillLink).name,
+                           'target': 'vocabulary', 'label': 'A [link]', 'output': None})
+    source.write_text(json.dumps(data))
+    declaration = tmp_path / '.skw/loading.json'
+    loading = json.loads(declaration.read_text())
+    loading['blocks'][0]['includes'] = [{'target': 'link', 'slot': 'link'}]
+    loading['blocks'].append({'id': 'link', 'reference': {
+        'type': 'Tarav.Reference.StructuredFile',
+        'locator': {'path': 'src/main.json', 'pointer': '/blocks/5'}},
+        'parents': []})
+    declaration.write_text(json.dumps(loading))
+
+    document = p.documents()[0]
+    assert 'missing-output' in {f['kind'] for f in document.lint()}
+    before = source.read_bytes()
+    assert document.produce('link')['output'] == [r'[A \[link\]](SKILL.md#skw-vocabulary)']
+    assert source.read_bytes() != before
+    document = p.documents()[0]
+    assert isinstance(document.blocks['link'], SkillLink)
+    assert document.blocks['link'].to_record()['output'] == [r'[A \[link\]](SKILL.md#skw-vocabulary)']
+    assert not any(f['kind'] == 'stale-produced-output' for f in document.lint())
+    assert 'vocabulary' in p.loading().analyze()['states']['entry'][0]['referenced']
+    assert 'Read [A \\[link\\]](SKILL.md#skw-vocabulary) now.' in document.text()
+    assert document.compile()['written']
+
+    data = json.loads(source.read_text())
+    data['blocks'][-1]['target'] = 'bypass'
+    source.write_text(json.dumps(data))
+    document = p.documents()[0]
+    assert 'stale-produced-output' in {f['kind'] for f in document.lint()}
+    assert '[A \\[link\\]](SKILL.md#skw-vocabulary)' in document.text()
+    data['blocks'][-1]['target'] = 'absent'
+    source.write_text(json.dumps(data))
+    before = source.read_bytes()
+    with pytest.raises(ValueError, match='Unknown SkillLink target'):
+        p.documents()[0].produce('link')
+    assert source.read_bytes() == before

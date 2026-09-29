@@ -69,8 +69,9 @@
 
 ## Native surfaces and SKW
 
-- Skill packages with a `loading` declaration use `tarav.l1.skw.skills` for
-  compilation. The installed `skw document` CLI receives this specialization
+- Skill packages with a `loading` declaration use `tarav.l1.skw.loading` for
+  declared slot composition and `tarav.l1.skw.skills` for typed components.
+  The installed `skw document` CLI receives this specialization
   through runtime composition. Plain `Document` is the generic engine, not a
   substitute for compiling skill primitives. Loading graphs are declared data;
   never infer parent attachments or context satisfaction from Markdown links.
@@ -80,7 +81,9 @@
   resolution for dependency checks separate from context presentation.
 
 - JSON document sources under `.skw/src/` own all literal and generated text
-  for their product. Edit generation outputs in source, record them explicitly,
+  for their product. Each block has a trusted concrete Type and retained
+  `output`; code production writes that field explicitly. Edit agent-generation
+  outputs in source, record them explicitly,
   and lint/compile through `tarav skw document`. Compilation must not refresh
   generation baselines or suppress stale-generation findings.
 
@@ -95,7 +98,8 @@
 - Project-aware discovery supplies a file plus its surface context. Domain
   adapters assign domain interpretation from that context.
 - `tarav.l1.skw.document` owns typed JSON document sources under `.skw/src/`.
-  `tarav.l1.skw.skills` specializes those documents for deployable packages.
+  `tarav.l1.skw.skills` owns skill-specific component Types;
+  `tarav.l2.skw.skills` owns deployable package operations and checks.
   The retired Skillware annotation compiler and `.skw.md` machinery has no
   live compatibility path.
 

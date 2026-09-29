@@ -22,7 +22,7 @@ def test_chatlas_exact_turn_and_grounding_role(tmp_path, monkeypatch):
     path = tmp_path / '.skw/src/demo.skw.json'
     path.parent.mkdir(parents=True)
     data = {'type': 'Tarav.Skillware.Document', 'schema_version': 1, 'output': 'demo.md',
-            'blocks': [{'id': 'body', 'kind': 'generation', 'prompt': [], 'output': ['Text'],
+            'blocks': [{'id': 'body', 'type': 'Tarav.Skillware.AgentGenerationBlock', 'prompt': [], 'output': ['Text'],
                         'context': [{'kind': 'reference', 'roles': ['maintenance', 'user-grounding'],
                                      'reference': reference}]}]}
     path.write_text(json.dumps(data))
@@ -43,7 +43,7 @@ def test_roles_control_tracking_and_unknown_roles_are_findings(tmp_path):
     target = tmp_path / 'input.txt'
     target.write_text('old')
     data = {'type': 'Tarav.Skillware.Document', 'schema_version': 1, 'output': 'out.md',
-        'blocks': [{'id': 'body', 'kind': 'generation', 'prompt': [], 'output': ['output'],
+        'blocks': [{'id': 'body', 'type': 'Tarav.Skillware.AgentGenerationBlock', 'prompt': [], 'output': ['output'],
                     'context': [{'kind': 'reference', 'roles': ['maintenance'], 'reference': {
                         'type': 'Tarav.Reference.StructuredFile', 'locator': {'path': '../../input.txt'}}}]}]}
     source.write_text(json.dumps(data))

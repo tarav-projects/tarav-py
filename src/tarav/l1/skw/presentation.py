@@ -89,6 +89,8 @@ def render_document_result(command: str, result: Any) -> str:
             f"block: {result['block']}",
             f"output hash: {result['output_hash']}",
         ))
+    if command == "produce":
+        return f"Produced {result['block']}:\n" + "\n".join(result['output'])
     if command == "observe-context":
         return "\n".join((
             f"Context observed: {result['block']}",
@@ -126,7 +128,7 @@ def render_skill_listing(result: dict[str, Any]) -> str:
         if "source" in item:
             rows.append(f"{item['source']}  {item['path']}")
         else:
-            rows.append(f"{item['block']}  {item['kind']}")
+            rows.append(f"{item['block']}  {item['type']}")
     if not rows:
         rows.append("No items.")
     shown = len(result["items"])
@@ -138,18 +140,21 @@ def render_skill_listing(result: dict[str, Any]) -> str:
 
 def render_skill_block(result: dict[str, Any]) -> str:
     block = result["block"]
+    record_type = block.get('type', '<unknown>')
+    if isinstance(record_type, dict):
+        record_type = record_type.get('label', record_type.get('uuid', '<unknown>'))
     rows = [
-        f"{block['id']}  {block['kind']}",
+        f"{block['id']}  {record_type}",
         f"source: {result['source']}",
         f"output: {result['output']}",
     ]
     context = block.get("context") or []
     if context:
         rows.append(f"context: {len(context)} entries")
-    content = block.get("lines") if block.get("kind") == "literal" else block.get("output")
+    content = block.get("output")
     if isinstance(content, list):
         rows.extend(("", "\n".join(str(line) for line in content)))
-    elif content is None and block.get("kind") != "literal":
+    elif content is None:
         rows.append("output status: not recorded")
     return "\n".join(rows)
 
