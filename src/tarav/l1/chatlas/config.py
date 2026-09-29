@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from tarav.l0._core.errors import CliError
-from tarav.agent.config import load_chat_config_documents
+from tarav.l1.agent.config import load_chat_config_documents
 
 from tarav.l1.chatlas._duration import parse_duration_seconds
 

@@ -71,7 +71,7 @@ def test_block_dependency_tracks_upstream_recipe_even_with_same_output(tmp_path)
 
 
 def test_runtime_loads_document_as_registered_record(tmp_path):
-    from tarav.runtime import create_runtime
+    from tarav.l3.runtime import create_runtime
 
     path, _ = source(tmp_path)
     assert isinstance(create_runtime().load_object(path), DocumentRecord)
@@ -107,7 +107,7 @@ def test_cli_dispatches_full_document_workflow(tmp_path):
 
     path, data = source(tmp_path)
     def run(*args):
-        result = subprocess.run([sys.executable, "-c", "from tarav.cli import main; raise SystemExit(main())", "skw", "document", *args, "--json"],
+        result = subprocess.run([sys.executable, "-c", "from tarav.l3.cli import main; raise SystemExit(main())", "skw", "document", *args, "--json"],
                                 capture_output=True, text=True)
         assert result.returncode == 0, result.stdout + result.stderr
         return json.loads(result.stdout)
@@ -120,7 +120,7 @@ def test_cli_dispatches_full_document_workflow(tmp_path):
 
 
 def test_cli_document_operations_default_to_rendered(tmp_path, capsys):
-    from tarav.cli.cli import main
+    from tarav.l3.cli.cli import main
 
     path, data = source(tmp_path)
     base = ['--source', 'explanation.skw.json', '--project', str(tmp_path)]

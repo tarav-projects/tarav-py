@@ -7,16 +7,16 @@ from uuid import uuid4
 import pytest
 
 from tarav.l0._core.project import initialize_project_layout
-from tarav.cli.cli import main
-from tarav.unsorted.constants import BLOCK_SHIP_TYPE, DESIGN_BLOCK_OBJECT_TYPE, DESIGN_LINE_PRINCIPLE_TYPE, LINE_SHIP_TYPE
-from tarav.unsorted.capture import CaptureManifest
-from tarav.unsorted.evidence import ChatlasEvidence
-from tarav.unsorted.storage import DiagramConfiguration, DiagramNamespace
-from tarav.unsorted.contracts import ShipDraftInterface
+from tarav.l3.cli.cli import main
+from tarav.l2.unsorted.constants import BLOCK_SHIP_TYPE, DESIGN_BLOCK_OBJECT_TYPE, DESIGN_LINE_PRINCIPLE_TYPE, LINE_SHIP_TYPE
+from tarav.l2.unsorted.capture import CaptureManifest
+from tarav.l2.unsorted.evidence import ChatlasEvidence
+from tarav.l2.unsorted.storage import DiagramConfiguration, DiagramNamespace
+from tarav.l2.unsorted.contracts import ShipDraftInterface
 from tarav.l0.kernel import TaravObject, issubrecord
-from tarav.runtime import create_runtime
-from tarav.lines.assertions import LineGroundingAssertion
-from tarav.scoring import (
+from tarav.l3.runtime import create_runtime
+from tarav.l2.lines.assertions import LineGroundingAssertion
+from tarav.l2.scoring import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_REFERENCE_TYPE,
     GROUNDING_POOL_TYPE,
@@ -40,19 +40,19 @@ from tarav.scoring import (
     render_run,
     render_task,
 )
-from tarav.scoring.model import (
+from tarav.l2.scoring.model import (
     CodeProvenanceInterface,
     GroundingAssertionReferenceInterface,
     RankingCandidateInterface,
     RecordReferenceInterface,
 )
-from tarav.scoring.tasks import (
+from tarav.l2.scoring.tasks import (
     DEFAULT_RANKING_POOL_REGISTRY,
     create_grounding_task,
     create_line_grounding_enrollments,
     create_line_grounding_task,
 )
-from tarav.scoring.runner import execute_run, prepare_agent_run, prepare_unknown_run
+from tarav.l2.scoring.runner import execute_run, prepare_agent_run, prepare_unknown_run
 
 
 def _assertion_ref(candidate_id: str) -> dict[str, object]:
@@ -512,7 +512,7 @@ def test_cli_submit_score_and_debug_surfaces(tmp_path: Path, capsys) -> None:
 
 
 def test_runtime_exposes_scoring_and_retires_tournament() -> None:
-    from tarav.cli.cli import build_parser
+    from tarav.l3.cli.cli import build_parser
 
     command_action = next(
         action
@@ -526,7 +526,7 @@ def test_runtime_exposes_scoring_and_retires_tournament() -> None:
 def test_agent_runner_retains_resolved_provenance_and_submitted_result(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from tarav.agent.run_runtime import AgentRunResult
+    from tarav.l1.agent.run_runtime import AgentRunResult
 
     repository = ScoringRepository.initialize(tmp_path / "scoring")
     pool, enrollments, task, _, _ = _task()
@@ -554,7 +554,7 @@ def test_agent_runner_retains_resolved_provenance_and_submitted_result(
             )
             return AgentRunResult(exit_code=0, stdout="submitted", stderr="")
 
-    monkeypatch.setattr("tarav.scoring.runner.resolve_agent", lambda **_: FakeAgent())
+    monkeypatch.setattr("tarav.l2.scoring.runner.resolve_agent", lambda **_: FakeAgent())
     run, _ = prepare_agent_run(
         repository=repository,
         task=task,
@@ -792,7 +792,7 @@ def test_grounding_task_resolves_diagram_line_editions_and_support(
     )
     assert "enrollment:" in capsys.readouterr().out
     monkeypatch.setattr(
-        "tarav.scoring.tasks.ChatlasEvidence",
+        "tarav.l2.scoring.tasks.ChatlasEvidence",
         lambda chatlas_root=None: ChatlasEvidence(model_loader=lambda _: normal_model),
     )
     assert (

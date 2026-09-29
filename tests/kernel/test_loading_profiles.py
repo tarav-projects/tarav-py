@@ -4,7 +4,8 @@ import json
 
 import pytest
 
-from tarav import load_object, set_runtime
+from tarav.l3.loading import load as load_object
+from tarav.l3.runtime import set_runtime
 from tarav.l0.kernel import (
     DirectoryRecord,
     FileRecord,
@@ -14,9 +15,10 @@ from tarav.l0.kernel import (
     TypeShip,
     entity,
 )
-from tarav.l1.loading import LoadingProfile, load
-from tarav.l1.project import Project
-from tarav.runtime import create_runtime, get_runtime
+from tarav.l1.loading import LoadingProfile
+from tarav.l3.loading import load
+from tarav.l2.project import Project
+from tarav.l3.runtime import create_runtime, get_runtime
 
 
 class LocalDocument(FileRecord, LoadingProfile):
@@ -76,6 +78,53 @@ def test_profile_order_and_explicit_file_keep_dispatch_exact(tmp_path, runtime):
     assert type(load(second, profile=LocalDocument)) is LocalDocument
     assert type(runtime.records.load(second)) is LocalDocument
     assert first.read_text() == json.dumps({"type": entity(FileRecord).name})
+
+
+def test_project_discovery_dispatches_record_type_without_rewriting(tmp_path, runtime):
+    from tarav.l1.project import TaravProject
+
+    marker = tmp_path / ".tarav" / "project.json"
+    write_record(marker, LocalProject, **{
+        "class": "agentos.project",
+        "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
+    })
+    nested = tmp_path / "src" / "nested"
+    nested.mkdir(parents=True)
+    before = marker.read_bytes()
+    project = TaravProject.load_project(path=nested)
+    assert type(project) is LocalProject
+    assert project.root == tmp_path
+    assert project.source == marker
+    assert type(Project.load_project(path=tmp_path)) is LocalProject
+    assert marker.read_bytes() == before
+
+
+def test_project_discovery_rejects_other_record_families(tmp_path, runtime):
+    from tarav.l1.project import TaravProject
+
+    marker = tmp_path / ".tarav" / "project.json"
+    write_record(marker, FileRecord, **{
+        "class": "agentos.project",
+        "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
+    })
+    with pytest.raises(TypeError, match="subtype"):
+        TaravProject.load_project(path=tmp_path)
+
+
+def test_project_discovery_does_not_migrate_untyped_markers(tmp_path, runtime):
+    from tarav.l1.project import TaravProject
+    from tarav.l0.kernel import InvalidRecordType
+
+    marker = tmp_path / ".tarav" / "project.json"
+    marker.parent.mkdir()
+    marker.write_text(json.dumps({
+        "class": "agentos.project",
+        "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
+    }))
+    before = marker.read_bytes()
+    with pytest.raises(InvalidRecordType):
+        TaravProject.load_project(path=tmp_path)
+    assert marker.read_bytes() == before
 
 
 def test_selected_bad_entry_fails_without_fallback(tmp_path, runtime):

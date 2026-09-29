@@ -8,7 +8,9 @@ from typing import Literal
 
 import pytest
 
-from tarav import ARCHIVE, get_runtime, set_runtime
+from tarav.l1.archive.records import ARCHIVE
+from tarav.l3.runtime import get_runtime
+from tarav.l3.runtime import set_runtime
 from tarav.l0.kernel import (
     Ship,
     TaravClass,
@@ -24,11 +26,11 @@ from tarav.l1.archive.records import (
     ArchiveRoot,
     ArchiveList,
 )
-from tarav.runtime import create_runtime
-from tarav.test_workflow import TestItem as WorkspaceItem
-from tarav.test_workflow import TestEntity as WorkspaceEntity
-from tarav.test_workflow import TestWorkflow as WorkspaceWorkflow
-from tarav.test_workflow import TEST_WORKFLOW_SHIP
+from tarav.l3.runtime import create_runtime
+from tarav.l2.test_workflow import TestItem as WorkspaceItem
+from tarav.l2.test_workflow import TestEntity as WorkspaceEntity
+from tarav.l2.test_workflow import TestWorkflow as WorkspaceWorkflow
+from tarav.l2.test_workflow import TEST_WORKFLOW_SHIP
 
 
 class ExternalWorkspaceItem(WorkspaceItem):

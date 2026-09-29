@@ -9,7 +9,7 @@ import pytest
 from tarav.l0._core.errors import CliError
 from tarav.l1.chatlas import normal_model_cache as cache
 from tarav.l1.chatlas.normal_model import ChatlasNormalModel
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 
 def _row(source: Path) -> dict[str, object]:

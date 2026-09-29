@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.hooks import HookError, HookInvocation, HookRegistry
+from tarav.l1.hooks import HookError, HookInvocation, HookRegistry
 
 from tarav.l1.chatlas.core import chatlas_update
 from tarav.l1.chatlas.providers import supported_chatlas_provider_families

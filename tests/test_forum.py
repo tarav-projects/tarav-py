@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from tarav.forum import core
-from tarav.forum.core import ForumDepot, forum_banner_line, read_cursor
+from tarav.l1.forum import core
+from tarav.l1.forum.core import ForumDepot, forum_banner_line, read_cursor
 
 
 def _set_now(monkeypatch, value: str) -> None:

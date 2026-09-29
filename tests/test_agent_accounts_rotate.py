@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.commands.accounts import _cmd_agent_accounts_rotate
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_rotate
+from tarav.l0.testing import TaravTestEnvironment
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
 
@@ -69,8 +69,8 @@ def test_rotate_captures_first_then_flips_active(
     _profile(home_root, "codex-main", [fresh_home])
 
     # active points at an older artifact that is NOT in any home
-    from tarav.agent import auth_registry as R
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.auth_method import AuthData
     stale = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))
     R.set_active("codex", "br", "file", stale)
 
@@ -87,8 +87,8 @@ def test_rotate_dry_run_writes_nothing(
     fresh_home = _home(tmp_path, "codex-br", exp=2_000_000_000)
     _profile(home_root, "codex-main", [fresh_home])
 
-    from tarav.agent import auth_registry as R
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.auth_method import AuthData
     stale = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))
     R.set_active("codex", "br", "file", stale)
 
@@ -104,7 +104,7 @@ def test_rotate_no_capture_skips_home_read(
     fresh_home = _home(tmp_path, "codex-br", exp=2_000_000_000)
     _profile(home_root, "codex-main", [fresh_home])
 
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     assert _cmd_agent_accounts_rotate(_ns(no_capture=True)) == 0
     # no capture happened → empty pool → nothing written
@@ -113,9 +113,9 @@ def test_rotate_no_capture_skips_home_read(
 
 def _seed_fresher_capture() -> tuple[str, dict[str, object]]:
     """Seed a fresher captured ref (not present in any home) + return its ref/payload."""
-    from tarav.agent import auth_registry as R
-    from tarav.agent.account_status import AccountIdentity
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.account_status import AccountIdentity
+    from tarav.l1.agent.auth_method import AuthData
 
     payload = _auth_json(UUID, exp=2_000_000_000)
     ref = R.store_artifact("codex", AuthData(payload=payload))
@@ -131,8 +131,8 @@ def test_rotate_materialize_writes_new_active_into_stale_home(
     home = _home(tmp_path, "codex-br", exp=1_000_000_000)  # holds the OLD ref
     _profile(home_root, "codex-main", [home])
 
-    from tarav.agent import auth_registry as R
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.auth_method import AuthData
 
     fresher_ref, fresher_payload = _seed_fresher_capture()
     old_ref = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))
@@ -151,8 +151,8 @@ def test_rotate_materialize_dry_run_writes_neither_pointer_nor_home(
     home = _home(tmp_path, "codex-br", exp=1_000_000_000)
     _profile(home_root, "codex-main", [home])
 
-    from tarav.agent import auth_registry as R
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.auth_method import AuthData
 
     _seed_fresher_capture()
     old_ref = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))

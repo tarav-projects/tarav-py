@@ -8,7 +8,7 @@ import logging
 import pytest
 
 from tarav.l0._core.errors import CliError
-from tarav.hooks import (
+from tarav.l1.hooks import (
     HookError,
     HookInvocation,
     HookRegistry,
@@ -100,7 +100,7 @@ def test_callback_failure_is_logged_without_context_and_dispatch_continues(
         callback_id="tests.after",
     )
 
-    logger = logging.getLogger("tarav.hooks.registry")
+    logger = logging.getLogger("tarav.l1.hooks.registry")
     logger.addHandler(caplog.handler)
     try:
         with caplog.at_level(logging.ERROR, logger=logger.name):

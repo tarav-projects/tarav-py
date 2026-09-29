@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.workspaces.guide import (
+from tarav.l1.workspaces.guide import (
     GuideError,
     guide_text,
     guide_token,
@@ -46,6 +46,6 @@ def test_a_guide_without_a_well_formed_token_fails_loudly(body: str) -> None:
 
 
 def test_the_shipped_guide_is_a_package_resource() -> None:
-    from tarav.workspaces import guide as module
+    from tarav.l1.workspaces import guide as module
 
     assert (Path(module.__file__).parent / "GUIDE.md").is_file()

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 
 
-from tarav.agent.monitor.loop import MonitorLoop, _workflow_alarm_names, _workflows_for_snapshot
-from tarav.agent.monitor.models import (
+from tarav.l1.agent.monitor.loop import MonitorLoop, _workflow_alarm_names, _workflows_for_snapshot
+from tarav.l1.agent.monitor.models import (
     MonitorAccountRow,
     MonitorColumnVariant,
     MonitorFrame,
@@ -13,14 +13,14 @@ from tarav.agent.monitor.models import (
     MonitorTextRow,
     MonitorUsageTimeRow,
 )
-from tarav.agent.monitor.clock import (
+from tarav.l1.agent.monitor.clock import (
     ACCOUNT_ROTATION_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_MATERIALIZE_ALARM,
     MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
     MonitorClockSnapshot,
 )
-from tarav.agent.monitor.render import format_monitor_frame, monitor_result_payload
+from tarav.l1.agent.monitor.render import format_monitor_frame, monitor_result_payload
 
 
 

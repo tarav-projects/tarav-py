@@ -3,8 +3,8 @@
 
 import pytest
 
-from tarav.iterante.locking import LOG_SUFFIX, verify
-from tarav.iterante.state import (
+from tarav.l1.iterante.locking import LOG_SUFFIX, verify
+from tarav.l1.iterante.state import (
     PREFIX_LEN,
     SNAPSHOT_FILE,
     create_run,

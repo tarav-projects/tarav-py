@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from tarav.runtime import create_runtime
-from tarav.l1.skw.skills import SkwSkill
+from tarav.l3.runtime import create_runtime
+from tarav.l2.skw.skills import SkwSkill
 from tarav.l1.skw.loading import LoadingRecord
 
 
@@ -49,7 +49,7 @@ def test_static_paths_default_parent_and_coverage(tmp_path):
 
 
 def test_cli_context_defaults_to_rendered_and_preserves_json(tmp_path, capsys):
-    from tarav.cli.cli import main
+    from tarav.l3.cli.cli import main
 
     p = package(tmp_path)
     command = ['skw', 'skills', 'context', '--project', str(p.root),
@@ -129,7 +129,7 @@ def test_inclusion_is_a_loading_path_for_an_otherwise_unattached_block(tmp_path)
 
 
 def test_cli_compile_uses_declared_primitives(tmp_path, capsys):
-    from tarav.cli.cli import main
+    from tarav.l3.cli.cli import main
     p = package(tmp_path)
     path = tmp_path / '.skw/loading.json'
     data = json.loads(path.read_text())

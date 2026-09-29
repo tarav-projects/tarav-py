@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
-from tarav.agent.primitives import AgentConfig, SessionSource
-from tarav.agent.session_refs import (
+from tarav.l1.agent.primitives import AgentConfig, SessionSource
+from tarav.l1.agent.session_refs import (
     BackingArtifact,
     ProviderSessionRef,
     backing_artifacts_from_sources,

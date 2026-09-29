@@ -25,29 +25,30 @@
 
 ## Architecture
 
-- `tarav.runtime.create_runtime()` is the composition root. CLI and daemon
-  adapters may import it; domain foundations must not.
-- `tarav.get_runtime()` exposes the lazy process-wide current runtime. Record
-  Archive uses it at Record write/load boundaries; custom runtimes must be
-  selected with `tarav.set_runtime()` before such operations.
+- `tarav.l3.runtime.create_runtime()` currently assembles the installed
+  workflows. Its location and responsibilities do not define the architecture;
+  lower layers must not import it.
+- `tarav.l3.runtime.get_runtime()` exposes the lazy process-wide current runtime. Kernel's
+  current Record-registry accessor lets Record Archive load and validate without
+  importing that runtime. Select custom runtimes with `tarav.l3.runtime.set_runtime()`.
 - Keep subsystem imports acyclic outside runtime composition.
 - Record Archive lives in `tarav.l1.archive.records`, matching its Archive parent.
   Artifact-registration Record types live in `tarav.l1.archive.artifact_records`.
 - Import standalone Context types and `explore()` from `tarav.l1.context`.
-  Runtime-backed `context()` and retained storage live in `tarav.l2.context`;
-  neither is imported by l1 Context or its Workflow declaration. Kernel's
+  Retained storage lives in `tarav.l2.context` and runtime-backed `context()`
+  in `tarav.l3.context`; neither is imported by l1 Context or its Workflow declaration. Kernel's
   context hooks have no runtime Context dependency.
-- Provider-neutral orchestration belongs in `tarav.agent`; concrete adapters
-  belong in `tarav.agent.providers.<provider>`.
+- Provider-neutral orchestration belongs in `tarav.l1.agent`; concrete adapters
+  belong in `tarav.l1.agent.providers.<provider>`.
 - Shared infrastructure enters `tarav.l0._core` only after multiple consumers have
   demonstrated the same semantics. Callers retain policy, schema validation,
   locking, and error translation.
-- Shared utilities and Kernel live under `tarav.l0`; Context, Loading, Project,
-  Archive, References, Surfaces, POI, Breadcrumbs, Wiki, SKW, and Chatlas live
-  under `tarav.l1`. Archive-backed Context storage and its
-  runtime convenience live under `tarav.l2`. The root package remains
-  import-light; `ARCHIVE` resolves lazily. Remaining runtime-backed operations
-  in l1 domains are transitional composition edges to classify in later slices.
+- Shared utilities and Kernel live under `tarav.l0`. Independent workflow
+  mechanics live under `tarav.l1`; cross-workflow features and integrations
+  live under `tarav.l2`; the installed runtime and process adapters live under
+  `tarav.l3`. A workflow may have modules in several layers, as Context and SKW
+  do. The root package contains metadata only; use explicit layered imports.
+  Lower layers do not import higher layers.
 - Lower-level modules do not import or shell out to the umbrella CLI.
 - Do not add compatibility aliases or fallback paths unless the user explicitly
   requests a migration design.
@@ -165,3 +166,8 @@
   docs.
 - For Markdown block extraction, prefer `tarav stdlib mdblocks blocks`, `links`,
   and `find` over ad-hoc parsers.
+
+Runtime provider wiring lives in `tarav.l3.runtime`, not the package root.
+Import that assembly module before using current-registry or Workflow-instance
+resolution, or explicitly configure the lower-level hooks in a custom host.
+Importing `tarav` alone initializes no services or layered modules.

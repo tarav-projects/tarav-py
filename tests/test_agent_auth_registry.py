@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.account_status import AccountIdentity
-from tarav.agent.auth_method import AuthData
-from tarav.agent.auth_registry import (
+from tarav.l1.agent.account_status import AccountIdentity
+from tarav.l1.agent.auth_method import AuthData
+from tarav.l1.agent.auth_registry import (
     UNKNOWN_ACCOUNT,
     active_ref,
     append_capture,
@@ -19,7 +19,7 @@ from tarav.agent.auth_registry import (
     set_active,
     store_artifact,
 )
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -137,7 +137,7 @@ def test_unknown_bucket_is_not_a_runnable_account(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.auth_registry import account_exists
+    from tarav.l1.agent.auth_registry import account_exists
 
     assert account_exists("claude-code", UNKNOWN_ACCOUNT) is False
 
@@ -156,7 +156,7 @@ def test_append_capture_records_every_auth_data(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.auth_registry import captures_path
+    from tarav.l1.agent.auth_registry import captures_path
 
     ref = AccountIdentity(provider_account_id="u", email="e@example.com")
     append_capture(

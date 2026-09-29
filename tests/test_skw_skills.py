@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 from tarav.l1.skw.depot import SkwDepot
-from tarav.l1.skw.skills import SkwSkill
+from tarav.l2.skw.skills import SkwSkill
 
 
 def package(tmp_path):
@@ -35,7 +35,7 @@ def test_build_deploy_excludes_developer_surface(tmp_path):
 
 
 def test_build_and_deploy_cli_default_to_rendered(tmp_path, capsys):
-    from tarav.cli.cli import main
+    from tarav.l3.cli.cli import main
 
     p = package(tmp_path)
     base = ['--project', str(p.root)]
@@ -139,7 +139,7 @@ def test_runtime_load_rejects_unknown_depot_type(tmp_path):
 
 
 def test_document_dispatch_uses_directory_entry_priority_and_concrete_type(tmp_path):
-    from tarav.l1.skw.skills import skill_document
+    from tarav.l2.skw.skills import skill_document
 
     skill = package(tmp_path)
     runtime = create_runtime()
@@ -183,7 +183,7 @@ def test_depot_root_is_canonical_for_a_relative_path_with_parent_segments(tmp_pa
 
 
 def test_navigation_is_selective_and_does_not_resolve_context(tmp_path, capsys):
-    from tarav.cli.cli import main
+    from tarav.l3.cli.cli import main
 
     skill = package(tmp_path)
     source = skill.root / skill.data['sources'][0]
@@ -222,7 +222,7 @@ def test_navigation_is_selective_and_does_not_resolve_context(tmp_path, capsys):
 
 
 def test_cli_explains_legacy_ancestor_depot(tmp_path, monkeypatch, capsys):
-    from tarav.cli.cli import main
+    from tarav.l3.cli.cli import main
 
     (tmp_path / '.skw').mkdir()
     (tmp_path / '.skw/skw.json').write_text('{"depots": ["skills/pkg"]}')

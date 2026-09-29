@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 
 
 @pytest.fixture(autouse=True)
@@ -66,8 +66,8 @@ def _scenario(home_root: Path, homes_dir: Path) -> tuple[Path, Path, Path]:
     _profile(home_root, "claude-foreign", [foreign], ["om/browser"])
 
     # active artifact == the aligned home's live secret → aligned aligns, drifted drifts
-    from tarav.agent import auth_registry as R
-    from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     auth = ClaudeAuthMethod().read_auth_data(aligned)
     artifact_id = R.store_artifact("claude-code", auth)
@@ -81,7 +81,7 @@ def test_collect_non_aligned_homes_keeps_only_drift(
     home_root = _env(monkeypatch, tmp_path)
     aligned, drifted, foreign = _scenario(home_root, tmp_path / "homes")
 
-    from tarav.agent.monitor.account_rotation import collect_non_aligned_homes
+    from tarav.l1.agent.monitor.account_rotation import collect_non_aligned_homes
 
     entries = collect_non_aligned_homes()
     homes = {e["home"]: e for e in entries}
@@ -100,7 +100,7 @@ def test_non_aligned_block_rows_render_label_and_home(
     home_root = _env(monkeypatch, tmp_path)
     _aligned, drifted, _foreign = _scenario(home_root, tmp_path / "homes")
 
-    from tarav.agent.monitor.account_rotation import (
+    from tarav.l1.agent.monitor.account_rotation import (
         collect_non_aligned_homes,
         non_aligned_block_rows,
     )
@@ -115,9 +115,9 @@ def test_non_aligned_block_rows_render_label_and_home(
 def _render_frame() -> object:
     # manual-only: an auto-materialize tick reconciles the drift it would report,
     # so the drift block is only observable in the mode that leaves homes alone
-    from tarav.agent.monitor.clock import MONITOR_STARTUP_ALARM, MonitorClockSnapshot
-    from tarav.agent.monitor.models import MonitorFrame, MonitorState
-    from tarav.agent.monitor.workflows import AccountRotationWorkflow
+    from tarav.l1.agent.monitor.clock import MONITOR_STARTUP_ALARM, MonitorClockSnapshot
+    from tarav.l1.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.l1.agent.monitor.workflows import AccountRotationWorkflow
 
     wf = AccountRotationWorkflow(auto_materialize=False)
     state = MonitorState()
@@ -149,8 +149,8 @@ def test_workflow_omits_non_aligned_block_when_all_aligned(
     aligned = _claude_home(tmp_path / "homes", "om", uuid=UUID, token="LIVE")
     _settings(home_root, account="om", uuid=UUID)
     _profile(home_root, "claude-om", [aligned], ["om/browser"])
-    from tarav.agent import auth_registry as R
-    from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     artifact_id = R.store_artifact("claude-code", ClaudeAuthMethod().read_auth_data(aligned))
     R.set_active("claude-code", "om", "browser", artifact_id)

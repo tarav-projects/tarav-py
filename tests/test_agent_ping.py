@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.ping import AgentPingError, AgentPingResult
-from tarav.agent.primitives import AgentPingConfig, RunnableMixin
-from tarav.agent.run_runtime import AgentRunResult
+from tarav.l1.agent.ping import AgentPingError, AgentPingResult
+from tarav.l1.agent.primitives import AgentPingConfig, RunnableMixin
+from tarav.l1.agent.run_runtime import AgentRunResult
 
 
 class _PingStub(RunnableMixin):

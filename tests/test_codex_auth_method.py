@@ -4,8 +4,8 @@ import base64
 import json
 from pathlib import Path
 
-from tarav.agent.auth_method import AuthData
-from tarav.agent.providers.codex.auth_method import CodexAuthMethod
+from tarav.l1.agent.auth_method import AuthData
+from tarav.l1.agent.providers.codex.auth_method import CodexAuthMethod
 
 
 def _jwt(payload: dict[str, object]) -> str:

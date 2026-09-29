@@ -5,14 +5,14 @@ from uuid import uuid4
 import pytest
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
-from tarav.lines.assertions import LineGroundingAssertion
-from tarav.lines.workflow import LinesWorkflow
-from tarav.runtime import create_runtime
-from tarav.scoring import (
+from tarav.l2.lines.assertions import LineGroundingAssertion
+from tarav.l2.lines.workflow import LinesWorkflow
+from tarav.l3.runtime import create_runtime
+from tarav.l2.scoring import (
     Assertion, GROUNDING_POOL_TYPE, ScoringError, ScoringRepository, ScoringWorkflow,
     create_pool_enrollment, create_scoring_trace,
 )
-from tarav.scoring.tasks import DEFAULT_ASSERTION_RANKING_REGISTRY, DEFAULT_RANKING_POOL_REGISTRY
+from tarav.l2.scoring.tasks import DEFAULT_ASSERTION_RANKING_REGISTRY, DEFAULT_RANKING_POOL_REGISTRY
 
 
 class ExtractionAssertion(Assertion):
@@ -56,7 +56,7 @@ def test_custom_assertion_can_use_common_trace_without_line_subject(tmp_path):
     assert hinted.to_record()['subject_ref']['hints'] == {'note': 'opaque'}
     trace = runtime.records.from_record(create_scoring_trace(assertion.reference()))
     assert isinstance(trace, TaravEntity)
-    from tarav.scoring.tasks import AssertionRankingRegistry
+    from tarav.l2.scoring.tasks import AssertionRankingRegistry
     registry = AssertionRankingRegistry((ExtractionAssertion,))
     edge = runtime.context(trace).open('assertion_ref')
     assert edge.resolve(assertions=registry).id == assertion.id
@@ -105,11 +105,11 @@ def test_grounding_never_resolves_a_different_namespace_or_edition():
         assertion.resolve_subject(projection=projection)
 
 
-@pytest.mark.parametrize('module', ['tarav.lines.assertions', 'tarav.scoring',
-                                   'tarav.scoring.tasks'])
+@pytest.mark.parametrize('module', ['tarav.l2.lines.assertions', 'tarav.l2.scoring',
+                                   'tarav.l2.scoring.tasks'])
 def test_assertion_import_orders(module):
     import subprocess
     import sys
     subprocess.run([sys.executable, '-c',
-                    f'import {module}; from tarav.runtime import create_runtime; create_runtime()'],
+                    f'import {module}; from tarav.l3.runtime import create_runtime; create_runtime()'],
                    check=True, capture_output=True, text=True)

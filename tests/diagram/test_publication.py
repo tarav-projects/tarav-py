@@ -3,11 +3,11 @@ from tarav.l0.kernel import entity
 import json
 
 import pytest
-from tarav.unsorted.primitives import DiagramError
+from tarav.l2.unsorted.primitives import DiagramError
 
-from tarav.l1.skw.publication import ModelPublication, ModelPublicationRecord
-from tarav.runtime import create_runtime
-from tarav.l1.skw.skills import SkwSkill
+from tarav.l2.skw.publication import ModelPublication, ModelPublicationRecord
+from tarav.l3.runtime import create_runtime
+from tarav.l2.skw.skills import SkwSkill
 from test_rendering import _diagram_with_line
 
 

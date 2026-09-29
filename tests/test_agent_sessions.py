@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tarav.agent.primitives import AgentConfig
-from tarav.agent.sessions import (
+from tarav.l1.agent.primitives import AgentConfig
+from tarav.l1.agent.sessions import (
     _discover_direct_provider_sessions,
     _provider_agent_context_from_agent,
 )
-from tarav.agent.providers.claude_code.agent import ClaudeAgent
+from tarav.l1.agent.providers.claude_code.agent import ClaudeAgent
 
 
 def test_linked_claude_projects_target_is_skipped(tmp_path: Path) -> None:

@@ -64,7 +64,7 @@ def test_cli_lists_then_reads_selected_entry(tmp_path):
     import sys
 
     doc, _ = document(tmp_path)
-    command = [sys.executable, "-c", "from tarav.cli import main; raise SystemExit(main())",
+    command = [sys.executable, "-c", "from tarav.l3.cli import main; raise SystemExit(main())",
                "skw", "document", "context", "--project", str(tmp_path), "--source", "demo.skw.json", "--block", "body"]
     listing = subprocess.run(command, capture_output=True, text=True, check=True)
     explicit = subprocess.run(command + ["--rendered"], capture_output=True, text=True, check=True)

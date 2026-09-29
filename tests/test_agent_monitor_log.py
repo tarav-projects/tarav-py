@@ -3,18 +3,18 @@ from __future__ import annotations
 import datetime
 from pathlib import Path
 
-from tarav.agent.monitor.workflows import AutoPrimeZeroLimitsWorkflow
-from tarav.agent.monitor.workflows.state import (
+from tarav.l1.agent.monitor.workflows import AutoPrimeZeroLimitsWorkflow
+from tarav.l1.agent.monitor.workflows.state import (
     AutoPrimeTargetState,
     LimitsTargetState,
 )
-from tarav.agent.monitor_log import (
+from tarav.l1.agent.monitor_log import (
     MONITOR_LOG_CLASS,
     MONITOR_LOG_SCHEMA_VERSION,
     append_monitor_log_event,
     monitor_log_dir,
 )
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 
 from _helpers import read_jsonl_file
 
@@ -127,8 +127,8 @@ def test_auto_prime_failed_and_retry_blocked_are_logged(monkeypatch, tmp_path):
 
 
 def test_workflow_error_is_logged_through_monitor_loop(monkeypatch, tmp_path):
-    from tarav.agent.monitor.loop import MonitorLoop
-    from tarav.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.l1.agent.monitor.loop import MonitorLoop
+    from tarav.l1.agent.monitor.models import MonitorFrame, MonitorState
 
     _set_fake_agentos_home(monkeypatch, tmp_path)
 
@@ -161,12 +161,12 @@ def test_workflow_error_is_logged_through_monitor_loop(monkeypatch, tmp_path):
 
 
 def _limits_workflow(refresh_interval_sec=60.0):
-    from tarav.agent.monitor.models import (
+    from tarav.l1.agent.monitor.models import (
         LIMITS_TRACKING_WORKFLOW,
         MonitorTarget,
         MonitorWorkflowConfig,
     )
-    from tarav.agent.monitor.workflows import LimitsTrackingWorkflow
+    from tarav.l1.agent.monitor.workflows import LimitsTrackingWorkflow
 
     config = MonitorWorkflowConfig(
         name=LIMITS_TRACKING_WORKFLOW,

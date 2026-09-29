@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.commands.accounts import _cmd_agent_accounts_materialize
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_materialize
+from tarav.l0.testing import TaravTestEnvironment
 
 
 def _jwt(payload: dict[str, object]) -> str:
@@ -53,9 +53,9 @@ def _args(**kw: object) -> argparse.Namespace:
 def test_codex_materialize_writes_auth_json_and_aligns(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
     _settings()
-    from tarav.agent import auth_registry as R
-    from tarav.agent.auth_method import AuthData
-    from tarav.agent.providers.codex.auth_method import CodexAuthMethod
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.auth_method import AuthData
+    from tarav.l1.agent.providers.codex.auth_method import CodexAuthMethod
 
     active = AuthData(payload=_auth_json(UUID, token="ACTIVE"))
     active_id = R.store_artifact("codex", active)
@@ -72,9 +72,9 @@ def test_codex_materialize_writes_auth_json_and_aligns(monkeypatch: pytest.Monke
 def test_codex_materialize_captures_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
     _settings()
-    from tarav.agent import auth_registry as R
-    from tarav.agent.auth_method import AuthData
-    from tarav.agent.providers.codex.auth_method import CodexAuthMethod
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.auth_method import AuthData
+    from tarav.l1.agent.providers.codex.auth_method import CodexAuthMethod
 
     active_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, token="ACTIVE")))
     R.set_active("codex", "jp", "file", active_id)
@@ -93,8 +93,8 @@ def test_codex_materialize_captures_first(monkeypatch: pytest.MonkeyPatch, tmp_p
 def test_codex_materialize_check_is_read_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
     _settings()
-    from tarav.agent import auth_registry as R
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.auth_method import AuthData
 
     active_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, token="ACTIVE")))
     R.set_active("codex", "jp", "file", active_id)

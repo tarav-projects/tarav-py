@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.monitor.burst_ratio import (
+from tarav.l1.agent.monitor.burst_ratio import (
     BurstRatioMeasurement,
     burst_ratios_from_observations,
     measure_burst_ratios,
 )
-from tarav.agent.monitor.burst_ratio import _Observation
-from tarav.agent.usage_registry import append_usage_record
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.monitor.burst_ratio import _Observation
+from tarav.l1.agent.usage_registry import append_usage_record
+from tarav.l0.testing import TaravTestEnvironment
 
 
 NOW = datetime.datetime(2026, 9, 5, 12, 0, tzinfo=datetime.UTC)

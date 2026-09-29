@@ -9,6 +9,8 @@ from typing import Literal, Self, TypeVar
 from pydantic import BaseModel
 
 from tarav.l0._core.data_root import default_tarav_data_root
+from tarav.l0.kernel.current import current_records
+from tarav.l0.kernel.records import resolve_workflow
 from tarav.l0.kernel import (
     Explorer,
     ExplorerFolder,
@@ -106,13 +108,11 @@ class ArchiveRoot(ExplorerFolder, ArchiveObject):
     ) -> ArchivePartition:
         """Address a registered Workflow's Ship partition without creating it."""
 
-        from tarav.runtime import get_runtime
-
         workflow_type = workflow
         if not isinstance(workflow_type, type) or not issubclass(workflow_type, TaravWorkflow):
             raise TypeError("Archive partition requires a TaravWorkflow")
         ship = workflow_type().id
-        registered = get_runtime().workflows.get(ship)
+        registered = type(resolve_workflow(ship))
         if registered is not workflow_type:
             raise TypeError("Workflow Ship resolves to a different Workflow class")
         return ArchivePartition(self.root, ship)
@@ -186,9 +186,7 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
     def owning_workflow(self) -> type[TaravWorkflow]:
         """Return the Workflow Entity associated with this partition."""
 
-        from tarav.runtime import get_runtime
-
-        return get_runtime().workflows.get(self.workflow_ship)
+        return type(resolve_workflow(self.workflow_ship))
 
     @property
     def workflow(self) -> TaravWorkflow:
@@ -278,10 +276,8 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
             archive_type, ArchiveEntity
         ):
             raise TypeError("Archive Type must extend ArchiveEntity")
-        from tarav.runtime import get_runtime
-
         if (
-            get_runtime().records.resolve({"type": entity(archive_type).name})
+            current_records().resolve({"type": entity(archive_type).name})
             is not archive_type
         ):
             raise ValueError("Archive must have its exact registered Type")
@@ -388,9 +384,7 @@ class ArchiveExplorer(Explorer[ArchiveLocation], ArchiveType):
 
 
 def _open_directory(directory: Path) -> TaravObject:
-    from tarav.runtime import get_runtime
-
-    return get_runtime().load_object(directory)
+    return current_records().load(directory)
 
 
 ARCHIVE = ArchiveRoot()

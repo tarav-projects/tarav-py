@@ -2,8 +2,8 @@
 
 import re
 
-from tarav.iterante import redact as redact_mod
-from tarav.iterante.redact import Sensor, redact
+from tarav.l1.iterante import redact as redact_mod
+from tarav.l1.iterante.redact import Sensor, redact
 
 
 class TestSeedSensors:

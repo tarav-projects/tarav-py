@@ -1,6 +1,6 @@
 """Tests for the iterante.calls library surface (call builders)."""
 
-from tarav import iterante
+from tarav.l1 import iterante
 
 
 def test_calls_reachable_after_import_iterante():

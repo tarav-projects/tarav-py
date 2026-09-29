@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -9,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from tarav.l0._core.data_root import default_tarav_data_root
 from tarav.l0._core.persistence import atomic_write_json
+from tarav.l0.kernel.current import current_records
 from tarav.l1.context import (
     CONTEXT_WORKFLOW_SHIP,
     Context,
@@ -116,14 +118,12 @@ def _populate_stored_folder(
 ) -> None:
     if folder.source is None:
         raise ValueError("Stored Context folder has no Archive location")
-    from tarav.runtime import get_runtime
-
-    archive = get_runtime().load_object(
+    archive = current_records().load(
         folder.source.parent, expected_type=archive_type
     )
     if archive.id != folder.archive:
         raise ValueError("Context folder Archive Ship does not match its Record")
-    get_runtime().contexts._populate(folder.subject, archive, builder)
+    current_context_service()._populate(folder.subject, archive, builder)
 
 
 def _subject_ship(subject: ContextSubject) -> Ship | None:
@@ -436,9 +436,21 @@ class ContextService:
     def _records(self) -> TypeRegistry[TaravObject]:
         if self.records is not None:
             return self.records
-        from tarav.runtime import get_runtime
+        return current_records()
 
-        return get_runtime().records
+
+_context_service_provider: Callable[[], ContextService] | None = None
+
+
+def configure_current_context_service(provider: Callable[[], ContextService]) -> None:
+    global _context_service_provider
+    _context_service_provider = provider
+
+
+def current_context_service() -> ContextService:
+    if _context_service_provider is None:
+        raise RuntimeError("Current Context service has not been configured")
+    return _context_service_provider()
 
 
 CONTEXT_RECORD_TYPES = (

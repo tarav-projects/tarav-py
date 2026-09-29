@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from tarav.cli.cli import build_parser, main
+from tarav.l3.cli.cli import build_parser, main
 from tarav.l1.chatlas.rendering import (
     INLINED_CAPTURE_MARKDOWN_RENDERER,
     TURN_LEDGER_RENDERER,

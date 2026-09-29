@@ -1,7 +1,7 @@
 import pytest
 
 from tarav.l0.kernel import TaravObject, TaravWorkflow, entity
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 
 def test_workflow_containment_returns_objects_and_terminates_at_root(tmp_path):

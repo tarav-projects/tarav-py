@@ -13,8 +13,8 @@ from tarav.l0._core.project import (
     load_project_config,
     load_project_marker,
 )
-from tarav.agent.config import load_agent_configs
-from tarav.testing import TaravTestEnvironment, write_raw_json
+from tarav.l1.agent.config import load_agent_configs
+from tarav.l0.testing import TaravTestEnvironment, write_raw_json
 
 
 def test_environment_builds_loader_valid_agentos_state(
@@ -79,7 +79,7 @@ def test_agentos_testing_import_does_not_import_pytest() -> None:
         [
             sys.executable,
             "-c",
-            "import sys; import tarav.testing; assert 'pytest' not in sys.modules",
+            "import sys; import tarav.l0.testing; assert 'pytest' not in sys.modules",
         ],
         check=False,
         capture_output=True,

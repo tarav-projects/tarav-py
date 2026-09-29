@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.auth_method import AuthData
-from tarav.agent.commands.accounts import _cmd_agent_accounts_materialize
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.auth_method import AuthData
+from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_materialize
+from tarav.l0.testing import TaravTestEnvironment
 
 
 @pytest.fixture(autouse=True)
@@ -52,8 +52,8 @@ def _home_with(home: Path, *, token: str, uuid: str) -> None:
 
 def test_materialize_writes_active_and_aligns(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     active = _active_artifact()
     active_id = R.store_artifact("claude-code", active)
@@ -70,8 +70,8 @@ def test_materialize_writes_active_and_aligns(monkeypatch: pytest.MonkeyPatch, t
 
 def test_materialize_captures_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     active_id = R.store_artifact("claude-code", _active_artifact())
     R.set_active("claude-code", "om", "browser", active_id)
@@ -90,8 +90,8 @@ def test_materialize_captures_first(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
 def test_materialize_check_is_read_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     active_id = R.store_artifact("claude-code", _active_artifact())
     R.set_active("claude-code", "om", "browser", active_id)

@@ -1,6 +1,6 @@
 """Tests for the controlled error surface (Mechanism 1)."""
 
-from tarav.iterante.errors import ERROR_LOG_NAME, FATAL_MESSAGE, record_fatal
+from tarav.l1.iterante.errors import ERROR_LOG_NAME, FATAL_MESSAGE, record_fatal
 
 LEAKY = "No mission-snapshot.py in /secret/.tarav/missions/demo/runs/abc123"
 

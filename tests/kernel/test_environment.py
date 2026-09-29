@@ -13,7 +13,7 @@ from tarav.l0.kernel import (
     TypeRegistrationError,
     UnknownRecordType,
 )
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 
 def test_runtime_lazily_loads_an_external_class_from_its_environment(

@@ -10,7 +10,7 @@ import argparse
 import json
 from pathlib import Path
 
-from tarav.runtime import get_runtime
+from tarav.l3.runtime import get_runtime
 
 
 def migrate(

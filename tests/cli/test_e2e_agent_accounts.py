@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from tarav.cli.cli import main
-from tarav.agent.monitor.config import load_monitor_workflow_configs
-from tarav.testing import TaravTestEnvironment, seed_codex_account
+from tarav.l3.cli.cli import main
+from tarav.l1.agent.monitor.config import load_monitor_workflow_configs
+from tarav.l0.testing import TaravTestEnvironment, seed_codex_account
 from _helpers import write_text_file
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
@@ -64,7 +64,7 @@ def test_agent_accounts_capture_activate_status_lifecycle(
     )
     capsys.readouterr()
 
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     capture = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
     assert capture["account"] == "br"

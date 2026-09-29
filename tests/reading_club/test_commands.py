@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tarav.cli.cli import main
-from tarav.reading_club import ReadingClub, ReadingClubError
+from tarav.l3.cli.cli import main
+from tarav.l1.reading_club import ReadingClub, ReadingClubError
 
 
 def _project(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tarav.cli.cli import main
+from tarav.l3.cli.cli import main
 from _helpers import captured_json
 
 

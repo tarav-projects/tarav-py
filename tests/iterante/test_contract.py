@@ -2,7 +2,7 @@
 
 import pytest
 
-from tarav.iterante.contract import ContractError, validate
+from tarav.l1.iterante.contract import ContractError, validate
 
 
 class TestNoPayload:

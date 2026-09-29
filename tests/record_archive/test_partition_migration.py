@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.runtime import get_runtime
+from tarav.l3.runtime import get_runtime
 
 
 MIGRATION_SCRIPT = (

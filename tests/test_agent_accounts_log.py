@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.auth_method import AuthData
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.auth_method import AuthData
+from tarav.l0.testing import TaravTestEnvironment
 
 ACC = "3b74c6d3-b4a8-45ea-9d5b-852bdbd92899"
 
@@ -41,8 +41,8 @@ def _codex_payload(exp: int) -> dict[str, object]:
 
 
 def _seed_capture(payload: dict[str, object]) -> str:
-    from tarav.agent import auth_registry as R
-    from tarav.agent.account_status import AccountIdentity
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.account_status import AccountIdentity
 
     ref = R.store_artifact("codex", AuthData(payload=payload))
     R.append_capture("codex", account="br", method="file", auth_class="auth-json",
@@ -65,7 +65,7 @@ def _profile(home_root: Path, homes: list[Path]) -> None:
 
 
 def _events() -> list[dict[str, object]]:
-    from tarav.agent.accounts_log import accounts_log_dir
+    from tarav.l1.agent.accounts_log import accounts_log_dir
 
     log_dir = accounts_log_dir()
     if not log_dir.exists():
@@ -82,7 +82,7 @@ def test_append_account_event_writes_dated_line(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.accounts_log import accounts_log_dir, append_account_event
+    from tarav.l1.agent.accounts_log import accounts_log_dir, append_account_event
 
     path = append_account_event(
         event="rotate", provider="codex", account="jp", method="file",
@@ -108,7 +108,7 @@ def test_append_account_event_best_effort_on_bad_payload(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.accounts_log import append_account_event
+    from tarav.l1.agent.accounts_log import append_account_event
 
     result = append_account_event(
         event="rotate", provider="codex", account="jp", method="file",
@@ -130,8 +130,8 @@ def test_rotate_emits_on_real_change(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.rotation import rotate
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.rotation import rotate
 
     stale = _seed_capture(_codex_payload(exp=1_000_000_000))
     fresher = _seed_capture(_codex_payload(exp=2_000_000_000))
@@ -149,8 +149,8 @@ def test_rotate_dry_run_emits_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.rotation import rotate
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.rotation import rotate
 
     stale = _seed_capture(_codex_payload(exp=1_000_000_000))
     _seed_capture(_codex_payload(exp=2_000_000_000))
@@ -168,7 +168,7 @@ def test_capture_emits_on_new_capture_only(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from tarav.agent.capture import capture_home
+    from tarav.l1.agent.capture import capture_home
 
     home = _codex_home(tmp_path, _codex_payload(exp=1_000_000_000))
     _profile(home_root, [home])
@@ -184,7 +184,7 @@ def test_capture_dry_run_emits_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from tarav.agent.capture import capture_home
+    from tarav.l1.agent.capture import capture_home
 
     home = _codex_home(tmp_path, _codex_payload(exp=1_000_000_000))
     _profile(home_root, [home])
@@ -200,7 +200,7 @@ def test_activate_emits(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.activation import activate
+    from tarav.l1.agent.activation import activate
 
     ref = _seed_capture(_codex_payload(exp=1_000_000_000))
 
@@ -218,8 +218,8 @@ def test_materialize_emits_on_write_only(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.materialization import materialize_account
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.materialization import materialize_account
 
     active = _seed_capture(_codex_payload(exp=2_000_000_000))
     R.set_active("codex", "br", "file", active)
@@ -238,8 +238,8 @@ def test_materialize_check_emits_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.materialization import materialize_account
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.materialization import materialize_account
 
     active = _seed_capture(_codex_payload(exp=2_000_000_000))
     R.set_active("codex", "br", "file", active)
@@ -256,7 +256,7 @@ def test_read_recent_events_filters_limits_and_orders_newest_first(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.accounts_log import append_account_event, read_recent_events
+    from tarav.l1.agent.accounts_log import append_account_event, read_recent_events
 
     for i in range(3):
         append_account_event(event="rotate", provider="codex", account="br", method="file",
@@ -277,7 +277,7 @@ def test_read_recent_events_spans_day_files_and_empty_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.accounts_log import accounts_log_dir, read_recent_events
+    from tarav.l1.agent.accounts_log import accounts_log_dir, read_recent_events
 
     assert read_recent_events(event="rotate") == []  # no log dir yet
 

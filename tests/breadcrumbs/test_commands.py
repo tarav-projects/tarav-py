@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from tarav.cli.cli import main
+from tarav.l3.cli.cli import main
 
 
 IDENTITY = "12345678" + "0" * 56
@@ -100,7 +100,7 @@ def test_show_and_resolve_commands_report_one_breadcrumb(tmp_path, capsys):
 
 def test_submit_command_runs_chatlas_context_workflow(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(
-        "tarav.breadcrumb_workflows.chatlas_context.workflow.provide_normal_model_reader",
+        "tarav.l2.breadcrumb_workflows.chatlas_context.workflow.provide_normal_model_reader",
         lambda **_kwargs: _Reader(),
     )
     root = tmp_path / "breadcrumbs"
@@ -148,11 +148,11 @@ def test_audit_command_checks_position_attachment_and_user_turn(
     tmp_path, capsys, monkeypatch
 ):
     monkeypatch.setattr(
-        "tarav.breadcrumb_workflows.chatlas_context.workflow.provide_normal_model_reader",
+        "tarav.l2.breadcrumb_workflows.chatlas_context.workflow.provide_normal_model_reader",
         lambda **_kwargs: _Reader(),
     )
     monkeypatch.setattr(
-        "tarav.breadcrumb_workflows.chatlas_context.workflow.compute_normal_model",
+        "tarav.l2.breadcrumb_workflows.chatlas_context.workflow.compute_normal_model",
         lambda **_kwargs: {"turns": list(_Reader().iter_turns())},
     )
     root = tmp_path / "breadcrumbs"

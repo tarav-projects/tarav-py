@@ -5,14 +5,14 @@ import json
 import stat
 from pathlib import Path
 
-from tarav.hooks import (
+from tarav.l1.hooks import (
     HookInvocation,
     HookRegistry,
     append_hook_context_sample,
     hook_context_sample_log_path,
     register_hook_sampling_callbacks,
 )
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 
 
 def test_prompt_submission_sampling_preserves_opaque_context(

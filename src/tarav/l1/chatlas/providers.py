@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from tarav.agent.config import canonical_chat_provider_specs
-from tarav.agent.providers import ProviderFamily
+from tarav.l1.agent.config import canonical_chat_provider_specs
+from tarav.l1.agent.providers import ProviderFamily
 
 
 def supported_chatlas_provider_families() -> tuple[ProviderFamily, ...]:

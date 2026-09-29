@@ -3,7 +3,7 @@ import pytest
 from tarav.l0.kernel import TaravClass, TaravObject, TypeWorkflow, entity
 from tarav.l1.context import explore as context
 from tarav.l1.archive.records import ArchiveFolder
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 
 def test_type_workflow_ownership_and_registration():

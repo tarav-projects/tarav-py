@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from tarav.agent.session_refs import BackingArtifact
+from tarav.l1.agent.session_refs import BackingArtifact
 
 from . import _raw
 

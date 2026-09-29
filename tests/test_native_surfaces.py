@@ -7,7 +7,7 @@ from tarav.l1.surfaces.python import PythonNormalModel
 
 def test_models_own_parsing_and_round_trip_without_reparsing(tmp_path, monkeypatch):
     from tarav.l0.kernel import TaravObject, entity
-    from tarav.runtime import create_runtime
+    from tarav.l3.runtime import create_runtime
     from tarav.l1.surfaces import SurfacesWorkflow
 
     runtime = create_runtime()

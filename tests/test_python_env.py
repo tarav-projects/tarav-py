@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.cli.cli import main
-from tarav.python_env import environment_root, interpreter
+from tarav.l3.cli.cli import main
+from tarav.l1.python_env import environment_root, interpreter
 
 
 def test_the_reported_interpreter_is_the_one_running_tarav() -> None:
@@ -79,7 +79,7 @@ def test_run_file_reads_the_script_from_standard_input(tmp_path: Path) -> None:
         [
             sys.executable,
             "-c",
-            "import sys; from tarav.cli.cli import main; raise SystemExit(main(sys.argv[1:]))",
+            "import sys; from tarav.l3.cli.cli import main; raise SystemExit(main(sys.argv[1:]))",
             "python",
             "run",
             "--file",

@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 
-from tarav.agent.session_refs import BackingArtifact
+from tarav.l1.agent.session_refs import BackingArtifact
 
 from tarav.l1.chatlas.index_metadata import index_metadata
 

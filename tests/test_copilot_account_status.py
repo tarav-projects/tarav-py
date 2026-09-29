@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-import tarav.agent.providers.copilot_cli.account_status as copilot_account_status
-from tarav.agent.account_status import AgentAccountContext, fresh_usage_record_metadata
-from tarav.testing import seed_copilot_account
-from tarav.agent.providers.copilot_cli.agent import CopilotAgent
-from tarav.testing import TaravTestEnvironment
+import tarav.l1.agent.providers.copilot_cli.account_status as copilot_account_status
+from tarav.l1.agent.account_status import AgentAccountContext, fresh_usage_record_metadata
+from tarav.l0.testing import seed_copilot_account
+from tarav.l1.agent.providers.copilot_cli.agent import CopilotAgent
+from tarav.l0.testing import TaravTestEnvironment
 
 from _helpers import read_json_file
 
@@ -53,7 +53,7 @@ def test_failed_status_does_not_stamp_freshness_trail(
 ) -> None:
     environment = TaravTestEnvironment.create(tmp_path)
     home = _register(environment, monkeypatch, tmp_path)
-    from tarav.agent.account_status import AccountStatusError
+    from tarav.l1.agent.account_status import AccountStatusError
 
     _stub_usage(
         monkeypatch,

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from tarav.l0._core.errors import CliError
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 from tarav.l1.chatlas.instance_selection import selected_provider_instances
 
 

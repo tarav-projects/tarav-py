@@ -7,8 +7,8 @@ import argparse
 import pytest
 
 from tarav.l0._core.errors import CliError
-from tarav.agent.commands import register_agent_commands
-from tarav.agent.session_copy import copy_agent_session
+from tarav.l1.agent.commands import register_agent_commands
+from tarav.l1.agent.session_copy import copy_agent_session
 
 
 def test_claude_session_copy_check_reports_plan_without_mutating(tmp_path: Path) -> None:

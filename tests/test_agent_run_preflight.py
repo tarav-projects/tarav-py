@@ -5,9 +5,9 @@ import argparse
 import pytest
 
 from tarav.l0._core.errors import CliError
-from tarav.agent.commands import run as commands
-from tarav.agent.profile_check import CheckpointResult, ProfileCheck
-from tarav.agent.run_runtime import AgentRunResult
+from tarav.l1.agent.commands import run as commands
+from tarav.l1.agent.profile_check import CheckpointResult, ProfileCheck
+from tarav.l1.agent.run_runtime import AgentRunResult
 
 
 class _FakeAgent:

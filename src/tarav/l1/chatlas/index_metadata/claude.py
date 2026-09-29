@@ -118,10 +118,10 @@ def _claude_record_timestamps(obj: dict[str, object]) -> list[float]:
 def _claude_created_timestamp(path: Path) -> float | None:
     try:
         if path.suffix == ".jsonl":
-            from tarav.agent.providers.claude_code.extractor import (
+            from tarav.l1.agent.providers.claude_code.extractor import (
                 extract_dialog_from_claude_code_session,
             )
-            from tarav.agent.session_utils import created_timestamp_from_turns
+            from tarav.l1.agent.session_utils import created_timestamp_from_turns
 
             return created_timestamp_from_turns(
                 extract_dialog_from_claude_code_session(path, raw=False)

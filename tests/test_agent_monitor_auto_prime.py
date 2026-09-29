@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.monitor.auto_prime_registry import (
+from tarav.l1.agent.monitor.auto_prime_registry import (
     AUTO_PRIME_EVENT_ATTEMPT_STARTED,
     AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
     AUTO_PRIME_EVENT_ELIGIBLE,
@@ -15,7 +15,7 @@ from tarav.agent.monitor.auto_prime_registry import (
     AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE,
     auto_prime_event_registry_path,
 )
-from tarav.agent.monitor.models import (
+from tarav.l1.agent.monitor.models import (
     AUTO_PRIME_PING_SUCCEEDED_STATUS,
     AUTO_PRIME_VERIFICATION_EFFECTIVE,
     AUTO_PRIME_VERIFICATION_INEFFECTIVE,
@@ -26,20 +26,20 @@ from tarav.agent.monitor.models import (
     MonitorTarget,
     MonitorWorkflowConfig,
 )
-import tarav.agent.monitor.workflows.auto_prime as auto_prime
-from tarav.agent.monitor.workflows import (
+import tarav.l1.agent.monitor.workflows.auto_prime as auto_prime
+from tarav.l1.agent.monitor.workflows import (
     AutoPrimeZeroLimitsWorkflow,
 )
-from tarav.agent.account_status import AgentAccountContext
-from tarav.agent.ping import AgentPingResult
-from tarav.agent.primitives import AgentPingConfig, RunnableMixin
-from tarav.agent.run_runtime import AgentRunResult
-import tarav.agent.providers.claude_code.keychain as claude_keychain
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.account_status import AgentAccountContext
+from tarav.l1.agent.ping import AgentPingResult
+from tarav.l1.agent.primitives import AgentPingConfig, RunnableMixin
+from tarav.l1.agent.run_runtime import AgentRunResult
+import tarav.l1.agent.providers.claude_code.keychain as claude_keychain
+from tarav.l0.testing import TaravTestEnvironment
 
-from tarav.testing import codex_auth_json, seed_claude_account, seed_codex_account, write_claude_home
+from tarav.l0.testing import codex_auth_json, seed_claude_account, seed_codex_account, write_claude_home
 from _helpers import write_text_file
-from tarav.agent.monitor.workflows.state import (
+from tarav.l1.agent.monitor.workflows.state import (
     AutoPrimeTargetState,
     LimitsTargetState,
     LimitsWorkflowState,

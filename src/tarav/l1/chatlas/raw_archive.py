@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.persistence import atomic_write_json
-from tarav.agent.primitives import SessionSource
+from tarav.l1.agent.primitives import SessionSource
 from tarav.l1.chatlas._cache_io import write_text_if_changed
 
 if TYPE_CHECKING:

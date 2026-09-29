@@ -5,7 +5,7 @@ from tarav.l0.kernel import entity
 from tarav.l1.chatlas.normal_model import ChatlasNormalModel
 from tarav.l1.chatlas.normal_model.records import CHATLAS_SEMANTIC_RECORD_TYPES
 from tarav.l0.kernel import TaravObject
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 
 def test_chatlas_semantic_records_are_registered_tarav_objects() -> None:

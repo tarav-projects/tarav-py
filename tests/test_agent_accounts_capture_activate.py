@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.commands.accounts import _cmd_agent_accounts_activate, _cmd_agent_accounts_capture
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_activate, _cmd_agent_accounts_capture
+from tarav.l0.testing import TaravTestEnvironment
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
 
@@ -52,7 +52,7 @@ def test_capture_files_by_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert _cmd_agent_accounts_capture(argparse.Namespace(
         provider="codex", home=str(home), global_sweep=False, json=False, _agentos_argv=[])) == 0
 
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
     rec = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
     assert rec["account"] == "br" and rec["method"] == "file"
     assert R.read_artifact("codex", rec["artifact_id"]) is not None
@@ -65,7 +65,7 @@ def test_capture_orphan_to_unknown_account(monkeypatch: pytest.MonkeyPatch, tmp_
     _cmd_agent_accounts_capture(argparse.Namespace(
         provider="codex", home=str(home), global_sweep=False, json=False, _agentos_argv=[]))
 
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
     rec = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
     assert rec["account"] == R.UNKNOWN_ACCOUNT  # Unknown.Account bucket
     assert rec["method"] == "auth-json"  # orphan method axis is the auth_class
@@ -93,7 +93,7 @@ def test_capture_global_sweeps_provider_homes(
         provider="codex", home=None, global_sweep=True, json=False, _agentos_argv=[]))
     assert rc == 0
 
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
     accounts = {json.loads(line)["account"]
                 for line in R.captures_path("codex").read_text().splitlines()}
     assert accounts == {"br", R.UNKNOWN_ACCOUNT}
@@ -112,7 +112,7 @@ def test_capture_global_dry_run_writes_nothing(
         provider="codex", home=None, global_sweep=True, dry_run=True, json=False, _agentos_argv=[]))
     assert rc == 0
 
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
     assert not R.captures_path("codex").exists()
     assert "dry-run" in capsys.readouterr().out
 
@@ -127,7 +127,7 @@ def test_capture_single_dry_run_writes_nothing(
         provider="codex", home=str(home), global_sweep=False, dry_run=True, json=False, _agentos_argv=[]))
     assert rc == 0
 
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
     assert not R.captures_path("codex").exists()
 
 
@@ -155,9 +155,9 @@ def test_capture_single_requires_provider_and_home(
 
 def test_activate_sets_pointer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.account_status import AccountIdentity
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.account_status import AccountIdentity
+    from tarav.l1.agent.auth_method import AuthData
 
     artifact_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID)))
     R.append_capture("codex", account="br", method="file", auth_class="auth-json",

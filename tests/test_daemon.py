@@ -9,9 +9,9 @@ from uuid import uuid4
 
 import pytest
 
-import tarav.daemon.commands as daemon_commands
+import tarav.l3.daemon.commands as daemon_commands
 from tarav.l0._core.errors import CliError
-from tarav.daemon import (
+from tarav.l3.daemon import (
     DaemonRuntime,
     daemon_log_path,
     daemon_status,
@@ -19,9 +19,9 @@ from tarav.daemon import (
     request_daemon_stop,
     submit_hook_invocation,
 )
-from tarav.daemon.log import report_hook_delivery_failure
-from tarav.hooks import HookInvocation, HookRegistry, register_hook_commands
-from tarav.testing import TaravTestEnvironment
+from tarav.l3.daemon.log import report_hook_delivery_failure
+from tarav.l1.hooks import HookInvocation, HookRegistry, register_hook_commands
+from tarav.l0.testing import TaravTestEnvironment
 
 
 def _wait_for(predicate, *, timeout: float = 2.0) -> None:

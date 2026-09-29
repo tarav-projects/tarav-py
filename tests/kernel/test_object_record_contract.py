@@ -10,7 +10,7 @@ from tarav.l0.kernel import (
     TypeShip,
     entity,
 )
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 
 class RuntimeProjection(TaravObject):

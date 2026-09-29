@@ -5,9 +5,10 @@ from __future__ import annotations
 import runpy
 from pathlib import Path
 
-from tarav import get_runtime, set_runtime
+from tarav.l3.runtime import get_runtime
+from tarav.l3.runtime import set_runtime
 from tarav.l1.archive.records import ArchiveRoot
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 run_example = runpy.run_path(
     str(Path(__file__).resolve().parents[1] / "dev" / "test_workflow_example.py")

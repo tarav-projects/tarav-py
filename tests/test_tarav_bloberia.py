@@ -8,8 +8,8 @@ import subprocess
 
 import pytest
 
-from tarav.cli.cli import main
-from tarav.bloberia import (
+from tarav.l3.cli.cli import main
+from tarav.l1.bloberia import (
     InvalidTaravBloberiaInputError,
     TaravBloberia,
 )
@@ -65,7 +65,7 @@ def test_write_preserves_arbitrary_json_without_adding_fields(
     record = {
         "relationship": "implemented_by",
         "block": "Agent.Hint",
-        "code_class": "tarav.bloberia.hosted.TaravBloberia",
+        "code_class": "tarav.l1.bloberia.hosted.TaravBloberia",
         "details": {"confidence": "tentative"},
     }
 
@@ -101,13 +101,13 @@ def test_search_matches_all_json_content_without_a_consumer_schema(
     first = {
         "relationship": "implemented_by",
         "block": "Agent.Hint",
-        "code_class": "tarav.bloberia.hosted.TaravBloberia",
+        "code_class": "tarav.l1.bloberia.hosted.TaravBloberia",
     }
     bloberia.write(first)
     bloberia.write({"migration_origin": {"anchor": "c20260813-2u"}})
 
     assert bloberia.search("CODE_CLASS") == (first,)
-    assert bloberia.search("tarav.bloberia.hosted") == (first,)
+    assert bloberia.search("tarav.l1.bloberia.hosted") == (first,)
     assert len(bloberia.search("anchor")) == 1
     with pytest.raises(InvalidTaravBloberiaInputError, match="non-empty"):
         bloberia.search("  ")

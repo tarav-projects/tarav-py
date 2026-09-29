@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.hooks import HookError, HookInvocation, HookRegistry
+from tarav.l1.hooks import HookError, HookInvocation, HookRegistry
 
 import tarav.l1.chatlas.hook_consumers as hook_consumers
 

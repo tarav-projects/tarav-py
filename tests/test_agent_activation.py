@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -22,7 +22,7 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 def _seed(ref: str, ts: str = "2026-06-01T00:00:00Z") -> None:
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     path = R.captures_path("codex")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,10 +36,10 @@ def test_activate_sets_active_for_unique_prefix(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.account_status import AccountIdentity
-    from tarav.agent.activation import activate
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.account_status import AccountIdentity
+    from tarav.l1.agent.activation import activate
+    from tarav.l1.agent.auth_method import AuthData
 
     ref = R.store_artifact("codex", AuthData(payload={"tokens": {"account_id": "acc"}}))
     R.append_capture("codex", account="br", method="file", auth_class="auth-json",
@@ -55,7 +55,7 @@ def test_activate_ambiguous_and_missing_raise(
 ) -> None:
     _env(monkeypatch, tmp_path)
     from tarav.l0._core.errors import CliError
-    from tarav.agent.activation import activate
+    from tarav.l1.agent.activation import activate
 
     _seed("abcd0001")
     _seed("abcd0002")

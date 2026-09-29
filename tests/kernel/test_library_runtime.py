@@ -4,13 +4,13 @@ import json
 
 import pytest
 
-from tarav import load_object
+from tarav.l3.loading import load as load_object
 from tarav.l1.archive import Archive
 from tarav.l1.chatlas.workflow import ChatlasWorkflow
 from tarav.l0.kernel import DirectoryRecord, FileRecord, KERNEL_WORKFLOW_SHIP, RecordTypeMismatch, TARAV, KernelWorkflow
 from tarav.l1.context import explore as context
 from tarav.l1.references import FileReference
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 
 def test_runtime_discovers_workflow_entities_by_name_and_ship():

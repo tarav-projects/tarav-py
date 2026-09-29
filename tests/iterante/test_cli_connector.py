@@ -1,6 +1,6 @@
 """The CLI must be a pure connector — no runtime logic, only `main`."""
 
-from tarav.iterante import cli
+from tarav.l1.iterante import cli
 
 
 def test_cli_holds_no_runtime_logic():

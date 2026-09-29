@@ -2,7 +2,7 @@
 
 import pytest
 
-from tarav.iterante2.locking import LockViolation, record, verify
+from tarav.l1.iterante2.locking import LockViolation, record, verify
 
 
 def test_record_then_verify_is_clean(tmp_path):

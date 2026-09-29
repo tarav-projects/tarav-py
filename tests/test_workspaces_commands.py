@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 
 from tarav.l0._core.errors import CliError
-from tarav.workspaces import guide_token
-from tarav.workspaces.commands import register_workspace_commands
+from tarav.l1.workspaces import guide_token
+from tarav.l1.workspaces.commands import register_workspace_commands
 
 
 def _parser() -> argparse.ArgumentParser:

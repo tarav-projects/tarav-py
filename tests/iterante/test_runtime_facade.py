@@ -3,7 +3,7 @@ to drive any iterante workflow via `import iterante` alone, never the CLI."""
 
 import pytest
 
-from tarav.iterante import runtime
+from tarav.l1.iterante import runtime
 
 
 @pytest.fixture
@@ -11,7 +11,7 @@ def project_dir(tmp_path):
     missions = tmp_path / ".tarav" / "missions" / "demo"
     missions.mkdir(parents=True)
     (missions / "mission.py").write_text("""
-from tarav import iterante
+from tarav.l1 import iterante
 
 def setup(ctx):
     ctx.state["step_count"] = 0

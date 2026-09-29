@@ -4,16 +4,16 @@ from pathlib import Path
 
 import pytest
 
-import tarav.agent.providers.claude_code.keychain as claude_keychain
-from tarav.agent.providers.claude_code.usage_hooks import (
+import tarav.l1.agent.providers.claude_code.keychain as claude_keychain
+from tarav.l1.agent.providers.claude_code.usage_hooks import (
     CLAUDE_STATUSLINE_CONTEXT_HOOK,
     CLAUDE_STATUSLINE_HOOK_USAGE_SOURCE,
     register_claude_usage_hook_callbacks,
     report_claude_usage_from_hook,
 )
-from tarav.hooks import HookError, HookInvocation, HookRegistry
-from tarav.runtime import create_runtime
-from tarav.testing import (
+from tarav.l1.hooks import HookError, HookInvocation, HookRegistry
+from tarav.l3.runtime import create_runtime
+from tarav.l0.testing import (
     TaravTestEnvironment,
     seed_claude_account,
     write_claude_home,
@@ -182,7 +182,7 @@ def test_claude_statusline_context_writes_unchanged_heartbeat_after_interval(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    import tarav.agent.providers.claude_code.usage_hooks as usage_hooks
+    import tarav.l1.agent.providers.claude_code.usage_hooks as usage_hooks
 
     environment, home, registry = _registry(monkeypatch, tmp_path)
     _dispatch(registry, _context(home))

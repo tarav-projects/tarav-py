@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from tarav.l1.archive.records import ArchiveFolder, ArchiveList
-from tarav.test_workflow import TestItem as WorkspaceItem
+from tarav.l2.test_workflow import TestItem as WorkspaceItem
 
 MIGRATION_SCRIPT = (
     Path(__file__).resolve().parents[2]

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
 
@@ -47,8 +47,8 @@ def _home(tmp_path: Path, name: str, payload: dict[str, object]) -> Path:
 
 
 def _set_active(payload: dict[str, object]) -> str:
-    from tarav.agent import auth_registry as R
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.auth_method import AuthData
 
     ref = R.store_artifact("codex", AuthData(payload=payload))
     R.set_active("codex", "br", "file", ref)
@@ -59,7 +59,7 @@ def test_materialize_account_writes_stale_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.materialization import materialize_account
+    from tarav.l1.agent.materialization import materialize_account
 
     active_payload = _auth_json(UUID, marker="ACTIVE")
     active_ref = _set_active(active_payload)
@@ -76,7 +76,7 @@ def test_materialize_account_aligned_home_is_not_rewritten(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.materialization import materialize_account
+    from tarav.l1.agent.materialization import materialize_account
 
     active_payload = _auth_json(UUID, marker="ACTIVE")
     _set_active(active_payload)
@@ -100,7 +100,7 @@ def test_materialize_all_reconciles_stale_skips_aligned_and_orphan(
 ) -> None:
     _env(monkeypatch, tmp_path)
     from tarav.l0._core.project import tarav_home_dir
-    from tarav.agent.materialization import materialize_all
+    from tarav.l1.agent.materialization import materialize_all
 
     active_payload = _auth_json(UUID, marker="ACTIVE")
     _set_active(active_payload)

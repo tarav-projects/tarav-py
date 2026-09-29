@@ -7,7 +7,7 @@ from tarav.l1.poi import (
     BlessingRecord, BlessingStore, POICheck, POIError, POIFinding, POIInstance,
     POIWorkflow,
 )
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 
 class ExampleCheck(POICheck):

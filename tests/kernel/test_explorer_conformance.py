@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.explorer_testing import ExplorerCase, ExplorerContractTests, check_collection
-from tarav import get_runtime
+from tarav.l0.explorer_testing import ExplorerCase, ExplorerContractTests, check_collection
+from tarav.l3.runtime import get_runtime
 from tarav.l0.kernel import ExplorerEntry, ExplorerFolder, TaravClass, TypeShip
 from tarav.l1.context import ContextBuilder, ContextEntry, ContextExplorer, ContextFolder, ContextList
 from tarav.l1.archive.records import (
@@ -16,7 +16,7 @@ from tarav.l1.archive.records import (
     ArchiveList,
     ArchiveRoot,
 )
-from tarav.test_workflow import TestItem as WorkspaceItem
+from tarav.l2.test_workflow import TestItem as WorkspaceItem
 
 
 def _archive_folder(root: Path) -> ExplorerCase:
@@ -166,7 +166,7 @@ class TestContextList(ContextContractTests):
 
 
 def test_empty_collections_obey_the_same_contract(tmp_path: Path) -> None:
-    from tarav.explorer_testing import check_collection
+    from tarav.l0.explorer_testing import check_collection
 
     check_collection(ArchiveRoot(tmp_path / "missing"), ())
     check_collection(ArchiveFolder.create(tmp_path / "named", constitution="Empty"), ())

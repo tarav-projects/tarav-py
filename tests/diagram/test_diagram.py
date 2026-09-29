@@ -7,22 +7,22 @@ from uuid import uuid4
 
 import pytest
 
-from tarav.cli.cli import main
-from tarav.unsorted import commands as diagram_commands
-from tarav.unsorted.constants import BLOCK_SHIP_TYPE, BLOCK_TYPE_ANNOTATION_TYPE, DESIGN_BLOCK_OBJECT_TYPE, DESIGN_LINE_EXAMPLE_TYPE, DESIGN_LINE_PRINCIPLE_TYPE, DIAGRAM_ATTIC, IMPL_REQ_BLOCK_OBJECT_TYPE, ISSUE_BLOCK_OBJECT_TYPE, ISSUE_LINE_RESOLVE_TYPE, LINE_EDITION_TYPE, LINE_GATE_ANNOTATION_TYPE, LINE_SHIP_TYPE, LINE_TYPE_ANNOTATION_TYPE, MODEL_EDITION_TYPE, MODEL_SHIP_TYPE, USER_TOUCHED_CHATLAS_INDEX
-from tarav.unsorted.contracts import AnnotationDraftInterface, ChatlasTurnReferenceInterface, ShipDraftInterface, SupportMemberInterface, VerbatimGate
-from tarav.unsorted.assessment import AssertionEngine, AssertionEvaluation
-from tarav.lines.records import BlockEditionRecord, BlockTypeAnnotation, LineEditionRecord, LineGateAnnotation, LineTypeAnnotation
-from tarav.unsorted.capture import CaptureManifest, CaptureReceipt
-from tarav.unsorted.evidence import ChatlasEvidence
-from tarav.unsorted.storage import Diagram, DiagramConfiguration, DiagramNamespace
-from tarav.unsorted.primitives import DiagramAnnotationSpecializationError, DiagramError, DiagramModelError
-from tarav.lines.references import DiagramBlockLocationInterface, DiagramLocationInterface, DiagramArgumentReferenceInterface, DiagramHostReferenceInterface
-from tarav.lines.block import DesignBlock, ImplReqBlock, IssueBlock
-from tarav.lines.line import DesignLinePrinciple, DesignPrincipleLineShip, IssueLineResolve, IssueResolveLineShip
-from tarav.unsorted.standalone import default_diagram_record_type_registry
-from tarav.unsorted.drafts import DiagramDraft
-from tarav.unsorted.views import (
+from tarav.l3.cli.cli import main
+from tarav.l2.unsorted import commands as diagram_commands
+from tarav.l2.unsorted.constants import BLOCK_SHIP_TYPE, BLOCK_TYPE_ANNOTATION_TYPE, DESIGN_BLOCK_OBJECT_TYPE, DESIGN_LINE_EXAMPLE_TYPE, DESIGN_LINE_PRINCIPLE_TYPE, DIAGRAM_ATTIC, IMPL_REQ_BLOCK_OBJECT_TYPE, ISSUE_BLOCK_OBJECT_TYPE, ISSUE_LINE_RESOLVE_TYPE, LINE_EDITION_TYPE, LINE_GATE_ANNOTATION_TYPE, LINE_SHIP_TYPE, LINE_TYPE_ANNOTATION_TYPE, MODEL_EDITION_TYPE, MODEL_SHIP_TYPE, USER_TOUCHED_CHATLAS_INDEX
+from tarav.l2.unsorted.contracts import AnnotationDraftInterface, ChatlasTurnReferenceInterface, ShipDraftInterface, SupportMemberInterface, VerbatimGate
+from tarav.l2.unsorted.assessment import AssertionEngine, AssertionEvaluation
+from tarav.l2.lines.records import BlockEditionRecord, BlockTypeAnnotation, LineEditionRecord, LineGateAnnotation, LineTypeAnnotation
+from tarav.l2.unsorted.capture import CaptureManifest, CaptureReceipt
+from tarav.l2.unsorted.evidence import ChatlasEvidence
+from tarav.l2.unsorted.storage import Diagram, DiagramConfiguration, DiagramNamespace
+from tarav.l2.unsorted.primitives import DiagramAnnotationSpecializationError, DiagramError, DiagramModelError
+from tarav.l2.lines.references import DiagramBlockLocationInterface, DiagramLocationInterface, DiagramArgumentReferenceInterface, DiagramHostReferenceInterface
+from tarav.l2.lines.block import DesignBlock, ImplReqBlock, IssueBlock
+from tarav.l2.lines.line import DesignLinePrinciple, DesignPrincipleLineShip, IssueLineResolve, IssueResolveLineShip
+from tarav.l2.unsorted.standalone import default_diagram_record_type_registry
+from tarav.l2.unsorted.drafts import DiagramDraft
+from tarav.l2.unsorted.views import (
     DiagramViewAbout,
     DiagramViewConfiguration,
     DiagramViewManifest,
@@ -207,8 +207,8 @@ def test_only_type_is_universal_and_specialization_is_explicit(tmp_path: Path) -
 
 
 def test_diagram_types_participate_in_harness_without_schema_changes() -> None:
-    from tarav.unsorted.contracts import DiagramObjectAssertion, Finding
-    from tarav.unsorted.records import TypedAnnotation, TypedShip
+    from tarav.l2.unsorted.contracts import DiagramObjectAssertion, Finding
+    from tarav.l2.unsorted.records import TypedAnnotation, TypedShip
 
     assert issubclass(TypedShip, TaravObject)
     assert issubclass(TypedAnnotation, TaravObject)

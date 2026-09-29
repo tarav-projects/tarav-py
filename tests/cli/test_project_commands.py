@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.testing import write_project_marker
-from tarav.cli.cli import main
+from tarav.l0.testing import write_project_marker
+from tarav.l3.cli.cli import main
 from _helpers import captured_json, write_text_file
 
 

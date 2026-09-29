@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.providers.registry import resolve_agent_config
-from tarav.agent.run_runtime import (
+from tarav.l1.agent.providers.registry import resolve_agent_config
+from tarav.l1.agent.run_runtime import (
     AgentCommandConfig,
     build_agent_command_argv,
     provider_model_flag,
     provider_prompt_flag,
 )
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 
 
 def _argv(provider: str) -> tuple[str, ...]:

@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from tarav.workspaces.manifest import (
+from tarav.l1.workspaces.manifest import (
     ManifestError,
     Status,
     read_manifest,
     render_agents_md,
 )
-from tarav.workspaces.root import WORKSPACES_ENV_VAR, resolve_workspaces_root
+from tarav.l1.workspaces.root import WORKSPACES_ENV_VAR, resolve_workspaces_root
 
 FULL = """# 20260809-my-run
 

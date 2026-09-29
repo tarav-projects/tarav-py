@@ -6,19 +6,19 @@ from typing import Any
 import pytest
 
 from tarav.l0._core.errors import CliError
-from tarav.agent.account_status import (
+from tarav.l1.agent.account_status import (
     AccountLimit,
     AccountStatusError,
     AgentAccountContext,
 )
-from tarav.agent.usage_registry import append_usage_record
-from tarav.agent.providers.claude_code.account_status import (
+from tarav.l1.agent.usage_registry import append_usage_record
+from tarav.l1.agent.providers.claude_code.account_status import (
     claude_statusline_usage_record_limits,
 )
-from tarav.agent.providers.codex.account_status import codex_usage_record_limits
-from tarav.agent.providers.codex.agent import CodexAgent
-from tarav.testing import TaravTestEnvironment
-from tarav.testing import codex_auth_json, seed_codex_account
+from tarav.l1.agent.providers.codex.account_status import codex_usage_record_limits
+from tarav.l1.agent.providers.codex.agent import CodexAgent
+from tarav.l0.testing import TaravTestEnvironment
+from tarav.l0.testing import codex_auth_json, seed_codex_account
 from _helpers import (
     read_jsonl_file,
     write_text_file,
@@ -94,7 +94,7 @@ def test_agent_usage_records_fresh_codex_app_server_limits(
     codex_home, agent = _seeded_codex_agent(tmp_path)
 
     monkeypatch.setattr(
-        "tarav.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
+        "tarav.l1.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
         lambda agent: _codex_usage_payload(burst_percent=11, weekly_percent=22),
     )
 
@@ -132,7 +132,7 @@ def test_agent_usage_falls_back_to_cached_codex_limits(
         payload=_codex_usage_payload(burst_percent=12, weekly_percent=34),
     )
     monkeypatch.setattr(
-        "tarav.agent.providers.codex.account_status._account_usage_app_server",
+        "tarav.l1.agent.providers.codex.account_status._account_usage_app_server",
         _failed_app_server_result,
     )
 
@@ -168,7 +168,7 @@ def test_agent_usage_classifies_codex_primary_weekly_by_duration(
     codex_home, agent = _seeded_codex_agent(tmp_path)
 
     monkeypatch.setattr(
-        "tarav.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
+        "tarav.l1.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
         lambda agent: _codex_weekly_primary_usage_payload(weekly_percent=5),
     )
 
@@ -202,7 +202,7 @@ def test_agent_usage_without_cached_codex_limits_stays_error(
     environment.apply_environment(monkeypatch.setenv)
     _codex_home, agent = _seeded_codex_agent(tmp_path)
     monkeypatch.setattr(
-        "tarav.agent.providers.codex.account_status._account_usage_app_server",
+        "tarav.l1.agent.providers.codex.account_status._account_usage_app_server",
         _failed_app_server_result,
     )
 

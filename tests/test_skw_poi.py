@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from tarav.cli.cli import main
+from tarav.l3.cli.cli import main
 from test_skw_skills import package
 
 

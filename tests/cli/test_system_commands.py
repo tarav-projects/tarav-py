@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tarav.testing import TaravTestEnvironment
-from tarav.cli.cli import main
+from tarav.l0.testing import TaravTestEnvironment
+from tarav.l3.cli.cli import main
 from _helpers import captured_json
 
 

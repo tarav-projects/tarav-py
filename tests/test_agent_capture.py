@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
 
@@ -58,7 +58,7 @@ def test_capture_home_returns_result_for_known_home(
     _env(monkeypatch, tmp_path)
     home = _home(tmp_path, "codex-br", UUID)
 
-    from tarav.agent.capture import capture_home
+    from tarav.l1.agent.capture import capture_home
 
     result = capture_home("codex", home)
     assert result is not None
@@ -77,8 +77,8 @@ def test_capture_home_files_orphan_to_unknown(
     _env(monkeypatch, tmp_path)
     home = _home(tmp_path, "stray", "ffffffff-0000-0000-0000-000000000000")
 
-    from tarav.agent.auth_registry import UNKNOWN_ACCOUNT
-    from tarav.agent.capture import capture_home
+    from tarav.l1.agent.auth_registry import UNKNOWN_ACCOUNT
+    from tarav.l1.agent.capture import capture_home
 
     result = capture_home("codex", home)
     assert result is not None
@@ -92,7 +92,7 @@ def test_capture_home_returns_none_for_empty_home(
     empty = tmp_path / "empty"
     empty.mkdir()
 
-    from tarav.agent.capture import capture_home
+    from tarav.l1.agent.capture import capture_home
 
     assert capture_home("codex", empty) is None
 
@@ -105,8 +105,8 @@ def test_capture_all_homes_sweeps_profile_homes(
     orphan = _home(tmp_path, "stray", "ffffffff-0000-0000-0000-000000000000")
     _profile(home_root, "codex-main", [known, orphan], ["br/file"])
 
-    from tarav.agent.auth_registry import UNKNOWN_ACCOUNT
-    from tarav.agent.capture import capture_all_homes
+    from tarav.l1.agent.auth_registry import UNKNOWN_ACCOUNT
+    from tarav.l1.agent.capture import capture_all_homes
 
     results = capture_all_homes("codex")
     by_account = {r.account: r for r in results}
@@ -124,8 +124,8 @@ def test_capture_home_dry_run_writes_nothing(
     _env(monkeypatch, tmp_path)
     home = _home(tmp_path, "codex-br", UUID)
 
-    from tarav.agent import auth_registry as R
-    from tarav.agent.capture import capture_home
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.capture import capture_home
 
     result = capture_home("codex", home, dry_run=True)
     assert result is not None
@@ -134,7 +134,7 @@ def test_capture_home_dry_run_writes_nothing(
     assert not R.captures_path("codex").exists()
     assert R.read_artifact("codex", result.artifact_id) is None
     # the reported artifact_id still equals the real content id
-    from tarav.agent.providers.codex.auth_method import CodexAuthMethod
+    from tarav.l1.agent.providers.codex.auth_method import CodexAuthMethod
     assert result.artifact_id == CodexAuthMethod().read_auth_data(home).content_id()
 
 
@@ -146,8 +146,8 @@ def test_capture_all_homes_dry_run_writes_nothing(
     orphan = _home(tmp_path, "stray", "ffffffff-0000-0000-0000-000000000000")
     _profile(home_root, "codex-main", [known, orphan], ["br/file"])
 
-    from tarav.agent import auth_registry as R
-    from tarav.agent.capture import capture_all_homes
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.capture import capture_all_homes
 
     results = capture_all_homes("codex", dry_run=True)
     assert {r.account for r in results} == {"br", R.UNKNOWN_ACCOUNT}
@@ -158,7 +158,7 @@ def test_capture_all_homes_dry_run_writes_nothing(
 def test_providers_with_auth_methods_lists_only_implemented(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from tarav.agent.auth_method_registry import providers_with_auth_methods
+    from tarav.l1.agent.auth_method_registry import providers_with_auth_methods
 
     assert set(providers_with_auth_methods()) == {"codex", "claude-code"}
 
@@ -171,7 +171,7 @@ def test_capture_all_homes_skips_missing_home(
     missing = tmp_path / "does-not-exist"
     _profile(home_root, "codex-main", [known, missing], ["br/file"])
 
-    from tarav.agent.capture import capture_all_homes
+    from tarav.l1.agent.capture import capture_all_homes
 
     results = capture_all_homes("codex")
     assert len(results) == 1 and results[0].account == "br"

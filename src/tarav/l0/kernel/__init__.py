@@ -1,6 +1,7 @@
 """Tarav's dependency-clean semantic and composition foundation."""
 
 from .environment import EnvironmentTypeError, TaravEnvironment
+from .current import configure_current_records, current_records
 from .explorer import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
 from .identity import (
     KERNEL_WORKFLOW_SHIP,
@@ -50,6 +51,8 @@ from .workflows import (
 )
 
 __all__ = [
+    "configure_current_records",
+    "current_records",
     "DIRECTORY_ENTRY_PATH",
     "DirectoryRecord",
     "FileRecord",

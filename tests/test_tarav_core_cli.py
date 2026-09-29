@@ -9,7 +9,7 @@ import subprocess
 
 import pytest
 
-from tarav.cli.cli import build_parser, main
+from tarav.l3.cli.cli import build_parser, main
 
 
 def _git(repo: Path, *args: str) -> str:

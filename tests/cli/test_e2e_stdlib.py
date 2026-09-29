@@ -6,8 +6,8 @@ from uuid import UUID
 
 import pytest
 
-from tarav.testing import TaravTestEnvironment, write_project_marker
-from tarav.cli.cli import build_parser, main
+from tarav.l0.testing import TaravTestEnvironment, write_project_marker
+from tarav.l3.cli.cli import build_parser, main
 from _helpers import captured_json, read_jsonl_file, write_text_file
 
 

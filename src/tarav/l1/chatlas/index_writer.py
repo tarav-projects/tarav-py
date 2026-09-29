@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
-from tarav.agent.session_refs import BackingArtifact
-from tarav.agent.sessions import _format_stats_timestamp
+from tarav.l1.agent.session_refs import BackingArtifact
+from tarav.l1.agent.sessions import _format_stats_timestamp
 from tarav.l1.chatlas._cache_io import write_text_if_changed
 from tarav.l1.chatlas.index_store import (
     iter_session_index_rows,

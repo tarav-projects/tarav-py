@@ -31,6 +31,22 @@ class TaravProject(TaravEntity, LoadingProfile):
         marker_class: Literal["agentos.project"] = Field(alias="class")
 
     @classmethod
+    def load_project(cls, *, path: Path | str = "."):
+        """Discover a marker and load its declared, trusted Project Type.
+
+        Unlike from_path(), this never replaces the Record's Type. The caller
+        class constrains the resulting family, not the dispatch decision.
+        Untyped markers require explicit migration before using this route.
+        """
+        from tarav.l0.kernel.current import current_records
+
+        marker = require_agentos_project(path).marker_path
+        project = current_records().load(marker)
+        if not isinstance(project, cls):
+            raise TypeError(f"Project marker must declare a subtype of {cls.__name__}")
+        return project
+
+    @classmethod
     def from_path(cls, path: Path | str = "."):
         """Discover the nearest project without modifying its marker."""
         handler = require_agentos_project(path)

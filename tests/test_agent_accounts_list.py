@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.commands.accounts import _cmd_agent_accounts_list
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_list
+from tarav.l0.testing import TaravTestEnvironment
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -25,7 +25,7 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 def _seed(ref: str, ts: str) -> None:
     """Append a raw capture record with a chosen ref_id + ts."""
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
     path = R.captures_path("codex")
     path.parent.mkdir(parents=True, exist_ok=True)
     rec = {"ts": ts, "account": "br", "method": "file", "class": "auth-json",
@@ -38,7 +38,7 @@ def test_pool_for_distinct_refs_recency_ordered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     _seed("aaaa", "2026-06-01T00:00:00Z")
     _seed("bbbb", "2026-06-03T00:00:00Z")
@@ -54,7 +54,7 @@ def test_list_marks_active_and_orders_by_recency(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     _seed("aaaa1111", "2026-06-01T00:00:00Z")
     _seed("bbbb2222", "2026-06-03T00:00:00Z")
@@ -74,7 +74,7 @@ def test_resolve_ref_prefix_unique_ambiguous_and_none(
 ) -> None:
     _env(monkeypatch, tmp_path)
     from tarav.l0._core.errors import CliError
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     _seed("abcd0001", "2026-06-01T00:00:00Z")
     _seed("abcd0002", "2026-06-02T00:00:00Z")
@@ -96,10 +96,10 @@ def test_activate_accepts_unique_prefix(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.account_status import AccountIdentity
-    from tarav.agent.auth_method import AuthData
-    from tarav.agent.commands.accounts import _cmd_agent_accounts_activate
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.account_status import AccountIdentity
+    from tarav.l1.agent.auth_method import AuthData
+    from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_activate
 
     # store a real artifact so auth_data_for_ref resolves, and seed its capture
     auth = AuthData(payload={"tokens": {"account_id": "acc"}})

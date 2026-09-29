@@ -12,6 +12,7 @@ from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from tarav.l0._core.persistence import atomic_write_json
+from tarav.l0.kernel.current import current_records
 from tarav.l0.kernel import (
     DirectoryRecord,
     ExplorerEntry,
@@ -175,9 +176,7 @@ class ArchiveEntry(ExplorerEntry, ArchiveObject):
             return result
         if self.artifact is None:
             return self
-        from tarav.runtime import get_runtime
-
-        return get_runtime().load_object(self.artifact_location())
+        return current_records().load(self.artifact_location())
 
     def obj_context(self, builder: ContextBuilder) -> None:
         if self._opener is not None or self.artifact is not None:
@@ -225,9 +224,7 @@ class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
 
     @classmethod
     def from_path(cls, root: Path) -> Self:
-        from tarav.runtime import get_runtime
-
-        return get_runtime().load_object(root, expected_type=cls)
+        return current_records().load(root, expected_type=cls)
 
     @classmethod
     def create(
@@ -262,12 +259,10 @@ class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
         return parent / name
 
     def _store(self, obj: TaravObject) -> str:
-        from tarav.runtime import get_runtime
-
         if isinstance(obj, ArchiveEntity):
             raise TypeError("Create nested Archives in place with put_archive()")
         record = obj.to_record()
-        if get_runtime().records.resolve(record) is not type(obj):
+        if current_records().resolve(record) is not type(obj):
             raise ValueError("Stored object must have its exact registered Type")
         key = uuid4().hex
         artifact = f"artifacts/{key}.json"
@@ -289,10 +284,8 @@ class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
             archive_type, ArchiveEntity
         ):
             raise TypeError("Nested Archive Type must extend ArchiveEntity")
-        from tarav.runtime import get_runtime
-
         if (
-            get_runtime().records.resolve({"type": entity(archive_type).name})
+            current_records().resolve({"type": entity(archive_type).name})
             is not archive_type
         ):
             raise ValueError("Nested Archive must have its exact registered Type")
@@ -309,14 +302,12 @@ class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
         return self._write_entry(key, artifact)
 
     def _entry(self, placement: str | int, path: str) -> ArchiveEntry:
-        from tarav.runtime import get_runtime
-
         relative = _relative_path(path, "records", json_file=True)
         root = self.root.resolve()
         target = (root / relative).resolve()
         if not target.is_relative_to(root / "records"):
             raise ValueError("Archive entry Record escapes its records directory")
-        entry = get_runtime().load_object(target, expected_type=ArchiveEntry)
+        entry = current_records().load(target, expected_type=ArchiveEntry)
         if entry.archive != self.id or entry.artifact is None:
             raise ValueError("Archive entry does not belong to its containing Archive")
         entry.placement = placement

@@ -17,7 +17,7 @@ from tarav.l0.kernel import (
     WorkflowShip,
 )
 from tarav.l0.kernel.space import FilesystemProvider, RecordProvider
-from tarav.navigation import NavigationService
+from tarav.l1.navigation import NavigationService
 
 
 def test_external_workflow_registers_and_navigates(tmp_path):

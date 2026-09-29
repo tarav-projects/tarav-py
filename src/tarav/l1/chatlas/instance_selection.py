@@ -8,9 +8,9 @@ from urllib.parse import unquote
 
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.project import tarav_home_dir
-from tarav.agent.config import load_chat_config_documents
-from tarav.agent.primitives import AgentConfig
-from tarav.agent.providers.registry import agent_from_config
+from tarav.l1.agent.config import load_chat_config_documents
+from tarav.l1.agent.primitives import AgentConfig
+from tarav.l1.agent.providers.registry import agent_from_config
 from tarav.l1.chatlas.provider_home_adapter import ChatlasProviderInstance
 from tarav.l1.chatlas.path_hygiene import is_relative_to, path_has_symlink_component
 from tarav.l1.chatlas.providers import supported_chatlas_provider_families

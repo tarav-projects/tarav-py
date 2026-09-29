@@ -6,13 +6,13 @@ from pathlib import Path
 import pytest
 
 from tarav.l0._core.errors import CliError
-from tarav.agent.commands import register_agent_commands
-from tarav.agent.commands.accounts import _cmd_agent_accounts_materialize
-from tarav.agent.commands.run import _cmd_agent_run
-from tarav.agent.account_status import AgentAccountContext
-from tarav.agent.config import load_agent_configs, profile_path, write_agent_profile
-from tarav.agent.primitives import AgentConfig
-from tarav.agent.run_runtime import (
+from tarav.l1.agent.commands import register_agent_commands
+from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_materialize
+from tarav.l1.agent.commands.run import _cmd_agent_run
+from tarav.l1.agent.account_status import AgentAccountContext
+from tarav.l1.agent.config import load_agent_configs, profile_path, write_agent_profile
+from tarav.l1.agent.primitives import AgentConfig
+from tarav.l1.agent.run_runtime import (
     CLAUDE_CONFIG_DIR_ENV_VAR,
     CODEX_HOME_ENV_VAR,
     COPILOT_HOME_ENV_VAR,
@@ -20,14 +20,14 @@ from tarav.agent.run_runtime import (
     AgentCommandConfig,
     AgentRunConfig,
 )
-from tarav.agent.providers.registry import resolve_account_runtime_agent, resolve_agent_config
-from tarav.agent.providers.claude_code.agent import ClaudeAgent
-from tarav.agent.providers.codex.agent import CodexAgent
-from tarav.agent.providers.copilot_cli.agent import CopilotAgent
-from tarav.agent.providers.pi.agent import PiAgent
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.providers.registry import resolve_account_runtime_agent, resolve_agent_config
+from tarav.l1.agent.providers.claude_code.agent import ClaudeAgent
+from tarav.l1.agent.providers.codex.agent import CodexAgent
+from tarav.l1.agent.providers.copilot_cli.agent import CopilotAgent
+from tarav.l1.agent.providers.pi.agent import PiAgent
+from tarav.l0.testing import TaravTestEnvironment
 
-from tarav.testing import codex_auth_json, seed_claude_account, seed_codex_account
+from tarav.l0.testing import codex_auth_json, seed_claude_account, seed_codex_account
 from _helpers import (
     read_json_file,
     read_jsonl_file,
@@ -601,8 +601,8 @@ def test_provider_validate_profile_is_invoked(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from tarav.agent.config import validate_provider_profile
-    import tarav.agent.providers.claude_code.agent as claude_agent_module
+    from tarav.l1.agent.config import validate_provider_profile
+    import tarav.l1.agent.providers.claude_code.agent as claude_agent_module
 
     calls: list[dict[str, object]] = []
 
@@ -633,8 +633,8 @@ def test_provider_validate_profile_is_invoked(
 
 
 def test_profile_account_scope_enforced_on_direct_agent_run_call() -> None:
-    from tarav.agent.providers.claude_code.agent import ClaudeAgent
-    from tarav.agent.account_status import AgentAccountContext
+    from tarav.l1.agent.providers.claude_code.agent import ClaudeAgent
+    from tarav.l1.agent.account_status import AgentAccountContext
 
     agent = ClaudeAgent.from_config(
         AgentConfig(
@@ -653,7 +653,7 @@ def test_profile_account_scope_enforced_on_direct_agent_run_call() -> None:
 
 
 def test_session_only_provider_has_no_run_or_account_status_capability() -> None:
-    from tarav.agent.providers.gemini_cli.agent import GeminiAgent
+    from tarav.l1.agent.providers.gemini_cli.agent import GeminiAgent
 
     agent = GeminiAgent.from_config(
         AgentConfig(
@@ -670,13 +670,13 @@ def test_session_only_provider_has_no_run_or_account_status_capability() -> None
 @pytest.mark.parametrize(
     ("provider", "agent_import", "expect_run", "expect_account_status"),
     [
-        ("claude-code", "tarav.agent.providers.claude_code.agent:ClaudeAgent", True, True),
-        ("codex", "tarav.agent.providers.codex.agent:CodexAgent", True, True),
-        ("copilot-cli", "tarav.agent.providers.copilot_cli.agent:CopilotAgent", True, True),
-        ("pi", "tarav.agent.providers.pi.agent:PiAgent", True, False),
-        ("gemini-cli", "tarav.agent.providers.gemini_cli.agent:GeminiAgent", False, False),
-        ("opencode", "tarav.agent.providers.opencode.agent:OpencodeAgent", False, False),
-        ("openclaw", "tarav.agent.providers.openclaw.agent:OpenclawAgent", False, False),
+        ("claude-code", "tarav.l1.agent.providers.claude_code.agent:ClaudeAgent", True, True),
+        ("codex", "tarav.l1.agent.providers.codex.agent:CodexAgent", True, True),
+        ("copilot-cli", "tarav.l1.agent.providers.copilot_cli.agent:CopilotAgent", True, True),
+        ("pi", "tarav.l1.agent.providers.pi.agent:PiAgent", True, False),
+        ("gemini-cli", "tarav.l1.agent.providers.gemini_cli.agent:GeminiAgent", False, False),
+        ("opencode", "tarav.l1.agent.providers.opencode.agent:OpencodeAgent", False, False),
+        ("openclaw", "tarav.l1.agent.providers.openclaw.agent:OpenclawAgent", False, False),
     ],
 )
 def test_capability_protocols_match_provider_capability_matrix(
@@ -687,7 +687,7 @@ def test_capability_protocols_match_provider_capability_matrix(
 ) -> None:
     import importlib
 
-    from tarav.agent.primitives import (
+    from tarav.l1.agent.primitives import (
         AccountStatusCapable,
         AgentAdapter,
         RunCapable,

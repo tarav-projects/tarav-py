@@ -9,9 +9,9 @@ from shutil import rmtree
 import time
 from typing import Any, Callable
 
-from tarav.agent.primitives import AgentConfig, SessionSource
-from tarav.agent.providers.registry import agent_from_config
-from tarav.agent.sessions import _format_stats_timestamp
+from tarav.l1.agent.primitives import AgentConfig, SessionSource
+from tarav.l1.agent.providers.registry import agent_from_config
+from tarav.l1.agent.sessions import _format_stats_timestamp
 from tarav.l1.chatlas._cache_io import write_text_if_changed
 from tarav.l1.chatlas.config import cold_session_cutoff_seconds_for_provider
 from tarav.l1.chatlas.paths import (

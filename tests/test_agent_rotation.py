@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.auth_method import AuthData
-from tarav.testing import TaravTestEnvironment
+from tarav.l1.agent.auth_method import AuthData
+from tarav.l0.testing import TaravTestEnvironment
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -24,8 +24,8 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 def _seed_artifact(account: str, method: str, payload: dict[str, object]) -> str:
     """Store an artifact and record a capture for codex br/<method>, return its id."""
-    from tarav.agent import auth_registry as R
-    from tarav.agent.account_status import AccountIdentity
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.account_status import AccountIdentity
 
     auth = AuthData(payload=payload)
     artifact_id = R.store_artifact("codex", auth)
@@ -38,7 +38,7 @@ def test_captures_for_returns_account_method_records(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     a = _seed_artifact("br", "file", {"v": 1})
     _seed_artifact("br", "file", {"v": 2})
@@ -53,7 +53,7 @@ def test_rotation_rank_default_is_capture_time(
 ) -> None:
     # the ABC default ranks by capture time; both real providers override it, so
     # exercise the default through a minimal stub.
-    from tarav.agent.auth_method import AuthData, AuthMethod
+    from tarav.l1.agent.auth_method import AuthData, AuthMethod
 
     class _Stub(AuthMethod):
         name = "stub"
@@ -79,8 +79,8 @@ def test_rotate_activates_head_by_rank(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.rotation import rotate
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.rotation import rotate
 
     old = _seed_artifact("br", "file", _codex_payload(exp=1_000_000_000))
     new = _seed_artifact("br", "file", _codex_payload(exp=2_000_000_000))  # higher exp → head
@@ -100,8 +100,8 @@ def test_rotate_tie_break_prefers_later_capture(
 ) -> None:
     # equal rank (same exp) → the later-captured artifact wins (capture sequence).
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.rotation import rotate
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.rotation import rotate
 
     first = _seed_artifact("br", "file", {**_codex_payload(exp=1_500_000_000), "n": 1})
     last = _seed_artifact("br", "file", {**_codex_payload(exp=1_500_000_000), "n": 2})
@@ -114,8 +114,8 @@ def test_rotate_dry_run_writes_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.rotation import rotate
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.rotation import rotate
 
     old = _seed_artifact("br", "file", _codex_payload(exp=1_000_000_000))
     new = _seed_artifact("br", "file", _codex_payload(exp=2_000_000_000))
@@ -130,7 +130,7 @@ def test_rotate_skips_empty_pool(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.rotation import rotate
+    from tarav.l1.agent.rotation import rotate
 
     result = rotate("codex", "br", "file")
     assert result.skipped is True and result.changed is False
@@ -150,8 +150,8 @@ def test_codex_rotation_rank_prefers_later_token_exp_over_capture_order(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.rotation import rotate
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.rotation import rotate
 
     fresher = _seed_artifact("br", "file", _codex_payload(exp=2_000_000_000))  # captured FIRST
     staler = _seed_artifact("br", "file", _codex_payload(exp=1_000_000_000))   # captured LAST
@@ -166,9 +166,9 @@ def test_drift_against_active_directions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
-    from tarav.agent.rotation import drift_against_active
-    from tarav.agent.providers.codex.auth_method import CodexAuthMethod
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.rotation import drift_against_active
+    from tarav.l1.agent.providers.codex.auth_method import CodexAuthMethod
 
     active = _seed_artifact("br", "file", _codex_payload(exp=1_500_000_000))
     R.set_active("codex", "br", "file", active)
@@ -187,8 +187,8 @@ def test_drift_against_active_none_when_no_active(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.rotation import drift_against_active
-    from tarav.agent.providers.codex.auth_method import CodexAuthMethod
+    from tarav.l1.agent.rotation import drift_against_active
+    from tarav.l1.agent.providers.codex.auth_method import CodexAuthMethod
 
     home = AuthData(payload=_codex_payload(exp=2_000_000_000))
     # nothing activated for br/file → no basis to compare against
@@ -196,8 +196,8 @@ def test_drift_against_active_none_when_no_active(
 
 
 def _claude_seed(account: str, expires_at: int) -> str:
-    from tarav.agent import auth_registry as R
-    from tarav.agent.account_status import AccountIdentity
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.account_status import AccountIdentity
 
     payload = {"claudeAiOauth": {"accessToken": "t", "expiresAt": expires_at},
                "oauthAccount": {"accountUuid": "u"}}
@@ -221,8 +221,8 @@ def test_claude_rotation_rank_prefers_later_expiresat(
                             "auth_methods": {"browser": {"class": "ambient-browser-login"}}}},
     }))
 
-    from tarav.agent import auth_registry as R
-    from tarav.agent.rotation import rotate
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.rotation import rotate
 
     fresher = _claude_seed("om", 1782476057402)  # captured FIRST, later expiry
     staler = _claude_seed("om", 1000000000000)   # captured LAST, earlier expiry

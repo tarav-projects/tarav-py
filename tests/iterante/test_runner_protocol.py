@@ -2,7 +2,7 @@
 
 import json
 
-from tarav.iterante._runner import FRAME_SENTINEL, error_line, frame_line, parse_error
+from tarav.l1.iterante._runner import FRAME_SENTINEL, error_line, frame_line, parse_error
 
 
 def test_error_line_roundtrips_through_parse_error():

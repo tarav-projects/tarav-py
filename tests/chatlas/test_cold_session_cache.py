@@ -8,8 +8,8 @@ import time
 
 import pytest
 
-from tarav.testing import TaravTestEnvironment
-from tarav.cli.cli import main
+from tarav.l0.testing import TaravTestEnvironment
+from tarav.l3.cli.cli import main
 from ._helpers import captured_json, read_json_file, write_chatlas_codex_source, write_text_file
 
 

@@ -107,7 +107,7 @@ The registries keep mechanics separate from semantics:
   resolves to a registered Workflow.
 
 `tarav.l1.context.explore()` exposes standalone navigation and accepts explicit
-contributors. `tarav.l2.context.context()` adds the current runtime's retained
+contributors. `tarav.l3.context.context()` adds the current runtime's retained
 entries. Both invoke `class_context()` for a Type and `obj_context()` for an
 Object, then return a
 `ContextExplorer`: a stateful explorer with history across nested folders and
@@ -136,14 +136,14 @@ Plain unidentified Objects can still contribute runtime entries without
 Archive backing. Opening a Context never creates retained data; the Test
 Workflow explicitly seeds synthetic Archives for end-to-end tests.
 
-`tarav.load_object(path, expected_type=...)` is the primary dynamic loading
+`tarav.l3.loading.load(path, expected_type=...)` is the primary dynamic loading
 interface. The composed runtime locates the Record, resolves its registered
 Type, checks that any `expected_type` is the exact resolved class before
 construction, and invokes that class's `from_record()` boundary. The expected
 Type never selects a different implementation. Callers use Python inheritance
 on the loaded object when they need parent behavior.
 
-`tarav.l1.loading.load(path=..., profile=...)` is a caller-selected discovery
+`tarav.l3.loading.load(path=..., profile=...)` is a caller-selected discovery
 facade over that same loading engine. A `LoadingProfile` class supplies an
 ordered set of relative entry paths for a directory; it does not select the
 Record Type or constrain its family. Without a profile, the existing default
@@ -151,11 +151,11 @@ entries and `DirectoryRecord` guard apply. An explicit file bypasses entry
 search. Selection remains in the Kernel engine; the Loading workflow and
 runtime supply configuration without reversing Kernel dependencies.
 
-`tarav.get_runtime()` returns the lazy process-wide current runtime;
-`tarav.set_runtime(runtime)` selects a separately composed runtime. Library
-conveniences and Record Archive operations use this current runtime, so callers
-do not pass a Type registry through Archive APIs. Archive still validates on
-write and dynamically loads through the current registry on read.
+`tarav.l3.runtime.get_runtime()` returns the lazy process-wide current runtime;
+`tarav.l3.runtime.set_runtime(runtime)` selects a separately composed runtime. Library
+conveniences use it directly; Record Archive reaches its trusted Type registry
+through Kernel's configured accessor. Callers do not pass that registry through
+Archive APIs. Archive validates on write and dynamically loads on read.
 
 Each typed Record Archive keeps its identity and constitution in `main.json`.
 Its placement index lives separately in `entries.json`: names or Vector
@@ -169,7 +169,7 @@ Index reads use the current `entries.json`; mutations take one lock per Archive,
 read that index again inside the lock, write the new artifact and Entry Record,
 then atomically replace the index. Readers need no lock. An interrupted write
 may leave unindexed files, which remain available for a later integrity audit.
-The global `tarav.ARCHIVE` is a read-only `ArchiveRoot` folder at the Tarav
+The global `tarav.l1.archive.records.ARCHIVE` is a read-only `ArchiveRoot` folder at the Tarav
 Archive data directory. `ArchiveExplorer` holds navigation state and history;
 folders and lists hold no cursor. An `ArchiveEntry` opens a retained object or
 another Archive folder, list, or path-only grouping. A Workflow Ship partition
@@ -198,11 +198,13 @@ path and presence. Existing repositories are not rewritten by this policy.
 The general import direction is:
 
 ```text
-adapters (`tarav.cli`, `tarav.daemon`)
+adapters (`tarav.l3.cli`, `tarav.l3.daemon`)
                     ↓
-              `tarav.runtime`
+            `tarav.l3.runtime`
                     ↓
-       domains and integration bundles
+    `tarav.l2` cross-workflow integrations
+                    ↓
+      `tarav.l1` workflow mechanics
                     ↓
             `tarav.l0.kernel`
                     ↓
@@ -210,11 +212,11 @@ adapters (`tarav.cli`, `tarav.daemon`)
 ```
 
 This is a dependency direction, not a requirement that every module pass
-through every layer. `l0` contains the foundation; `l1` contains Context,
-Loading, Project, Archive, References, Surfaces, POI, Breadcrumbs, Wiki, SKW,
-and Chatlas. Other domain paths remain in place until their own classification.
-A semantic workflow namespace can span
-levels; levels do not establish Workflow parentage.
+through every layer. `l0` contains the foundation; `l1` contains independent
+workflow mechanics; `l2` contains integrations and features that depend on other
+workflows; `l3` contains the installed runtime and process adapters. Context and
+SKW already span levels. A semantic workflow namespace can span levels; levels
+do not establish Workflow parentage. Lower layers do not import higher layers.
 
 - `tarav.l0._core` is the moved private utility package. It currently includes
   project-specific helpers alongside broadly shared mechanics; those modules
@@ -227,9 +229,9 @@ levels; levels do not establish Workflow parentage.
 - `tarav.l1.context` owns Context types, standalone navigation, class-bases
   presentation, and the Context Workflow declaration. `explore()` accepts
   explicit contributors without loading Archive or runtime.
-- `tarav.l2.context` owns Archive-backed Context Types, `ContextService`, and
-  the runtime-aware `context()` convenience. Runtime composition constructs
-  its service directly; the l1 Workflow has no service factory. Kernel retains
+- `tarav.l2.context` owns Archive-backed Context Types and `ContextService`;
+  `tarav.l3.context` owns the runtime-aware `context()` convenience. Runtime
+  assembly constructs its service directly; the l1 Workflow has no service factory. Kernel retains
   extensible context hooks with opaque builder arguments, not Context imports.
 - Domain packages own their vocabulary, Records, storage, validation, and
   operations. Cross-domain imports remain acyclic.
@@ -237,14 +239,17 @@ levels; levels do not establish Workflow parentage.
   Archive workflow. Artifact-registration Record definitions live separately in
   `tarav.l1.archive.artifact_records`; Archive's parent implementation does not
   import its Record Archive child.
-- `tarav.l1.loading` owns profile discovery and the runtime-backed load facade;
-  `tarav.l1.project` owns minimal and featured Projects. Runtime-backed loading
-  and Archive operations remain explicit transitional composition edges.
+- `tarav.l1.loading` owns profile discovery and `tarav.l3.loading` owns the
+  runtime-backed load facade. `tarav.l1.project` owns the minimal Project Type;
+  `tarav.l2.project` adds Models and Wiki integrations. Archive uses the
+  kernel-owned current Record registry; retained Context owns its service lookup.
+- `tarav.l1.skw` owns document and loading mechanics;
+  `tarav.l2.skw` owns skill-package publication and Diagram-dependent checks.
 - Integration bundles compose independent domains without making either one
   depend on the other.
-- `tarav.runtime.create_runtime()` is the composition root. It selects and
-  connects Workflow classes, runtime services, Record Types, providers, hooks,
-  and integrations.
+- `tarav.l3.runtime.create_runtime()` currently assembles the installed
+  Workflow classes, services, Record Types, providers, hooks, and integrations.
+  This is a library assembly facility, not a foundational Workflow contract.
 - CLI and daemon packages translate external interaction into library calls.
   Lower layers neither import nor shell out to the umbrella CLI.
 
@@ -297,7 +302,7 @@ The Kernel establishes only the common contracts needed for interoperability:
   selects one; `open()` returns its value without moving; `cd()` moves an
   explorer into a navigable value. Back/forward track visits, independently of
   parent traversal. Storage and relationships remain workflow-owned. External
-  implementations subclass `tarav.explorer_testing.ExplorerContractTests`
+  implementations subclass `tarav.l0.explorer_testing.ExplorerContractTests`
   and supply its abstract fixture and expected-value methods. Pytest runs the
   inherited tests without a registry or custom runner. Archive and Context use
   the same suite; checks cover current location and both history stacks.
@@ -307,12 +312,20 @@ relationships, storage policies, or interpretation of domain payloads.
 
 ## Domain ownership
 
+`tarav.l1.programs` declares `ProgramsWorkflow` and the minimal
+`TaravProgram(TaravEntity)` family. `tarav.l2.project.programs.ProjectProgram`
+provides a distinct project-oriented subtype without adding fields or behavior.
+Both are currently owned by ProgramsWorkflow and registered for ordinary Record
+loading. This bootstrap deliberately leaves Project attachment, runs, lifecycle,
+checks and derivation undefined; package placement does not imply an attachment
+schema or an additional Workflow identity.
+
 | Package | Architectural responsibility |
 | --- | --- |
 | `agent` | Provider-neutral agent, account, session, and monitoring behavior; concrete providers live below `agent.providers`. |
 | `archive` | Artifact identity, retained Archive Records, and Archive-specific location history. |
 | `archive.records` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
-| `l1.context`, `l2.context` | The same Context Workflow spans standalone navigation and Archive-backed runtime integration. |
+| `l1.context`, `l2.context`, `l3.context` | The same Context Workflow spans standalone navigation, Archive-backed retention, and runtime selection. |
 | `references` | Shared typed locator, check, hints, and resolution mechanics. |
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
@@ -364,7 +377,7 @@ therefore inspect Lines and Unsorted at module granularity.
 Models and Project are also checked at module granularity. Model's retained
 Record definitions depend only on provisional low-level foundations. Project
 associations belong to project.models; the public Model handler does not import
-Project or legacy storage composition. `tarav.models.Model` replaces
+Project or legacy storage composition. `tarav.l2.models.Model` replaces
 the old `tarav.lines.model.DiagramModel` Python path; retained TypeShips,
 Record labels, Model UUIDs, and `diagram.main_model` associations are unchanged.
 
@@ -373,7 +386,7 @@ importing consumer workflows. `lines.assertions` specializes it for exact Line
 editions and supplies evidence presentation. `scoring.tasks` is the existing
 ranking composition layer; it imports that specialization, while the scoring
 package's base exports do not import tasks. Import ranking adapters explicitly
-from `tarav.scoring.tasks`. Architecture checks inspect Scoring at module
+from `tarav.l2.scoring.tasks`. Architecture checks inspect Scoring at module
 granularity too, distinguishing foundations from composition.
 
 Assertions identify typed subjects; their subtypes define evidence and check
@@ -385,8 +398,8 @@ mechanical assertion engine under Unsorted is not folded into this model yet.
 
 - The subsystem import graph is acyclic outside runtime composition.
 - Domains normally receive dependencies through composition. Record Archive
-  uses the process-wide current runtime at its Record write/load boundaries;
-  this is the explicit shared-loader exception.
+  uses Kernel's selected Record registry at its write/load boundaries without
+  importing the assembled runtime.
 - References is lower than Archive and other specialized Reference producers.
 - Breadcrumbs and Chatlas remain independent. Their contextual annotation
   behavior lives in `breadcrumb_workflows.chatlas_context`.
@@ -407,6 +420,15 @@ the default solution is a runtime adapter or independent integration package.
 
 ## Sources of truth
 
+`TaravProject.load_project(path=...)` combines upward Project discovery with
+trusted Record dispatch through the configured current registry. The marker's
+declared Type selects the concrete class; the calling Project class checks the
+resulting family without substituting its own Type. Untyped markers require
+explicit migration. This is separate from `from_path()`, which retains explicit
+caller-class construction, and from generic loading, which does not discover
+enclosing Projects. Import the runtime assembly or configure the registry hook
+before using `load_project()`. Discovery does not execute project-local code.
+
 - This file owns the system shape and durable dependency rules.
 - `AGENTS.md` owns development constraints for this repository.
 - Public classes and `RecordInterface`s own exact library behavior and schemas.
@@ -420,3 +442,8 @@ The architecture document should change when those boundaries change. It
 should not duplicate class APIs, command references, migration procedures, or
 complete subsystem designs that are clearer beside their owning code or in the
 Project Wiki.
+
+Runtime provider wiring lives in `tarav.l3.runtime`, not the package root.
+Import that assembly module before using current-registry or Workflow-instance
+resolution, or explicitly configure the lower-level hooks in a custom host.
+Importing `tarav` alone initializes no services or layered modules.

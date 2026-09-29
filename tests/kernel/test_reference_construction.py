@@ -7,7 +7,7 @@ from tarav.l1.references import FileReference
 from tarav.l1.references.git import GitFileReference
 from tarav.l1.archive import Archive
 from tarav.l1.archive.references import ArchiveReference, reference_record
-from tarav.runtime import create_runtime
+from tarav.l3.runtime import create_runtime
 
 
 def test_file_hints_are_observed_once_and_loading_does_not_refresh(tmp_path):

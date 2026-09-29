@@ -1,6 +1,6 @@
 """Tests for call frame rendering."""
 
-from tarav.iterante2.render import render_frame
+from tarav.l1.iterante2.render import render_frame
 
 
 class TestRenderFrame:

@@ -37,7 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from tarav.bloberia.core import BloberiaDepot  # noqa: E402
+from tarav.l1.bloberia.core import BloberiaDepot  # noqa: E402
 from tarav.index_model.identity import index_line_anchor_triplet_hash  # noqa: E402
 
 DEPOT = Path.home() / "Documents" / "bloberia" / "tarav-index"

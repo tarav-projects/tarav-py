@@ -7,14 +7,14 @@ from uuid import uuid4
 
 import pytest
 
-from tarav.unsorted.constants import LINE_SHIP_TYPE, MODEL_SHIP_TYPE
-from tarav.unsorted.capture import CaptureManifest
-from tarav.unsorted.primitives import DiagramModelError, DiagramShipSpecializationError
-from tarav.unsorted.storage import DiagramNamespace
-from tarav.lines.records import LineShipRecord
-from tarav.models.records import ModelShipRecord
-from tarav.unsorted.contracts import ShipDraftInterface
-from tarav.unsorted.registry import default_diagram_annotation_type_registry, default_diagram_ship_type_registry
+from tarav.l2.unsorted.constants import LINE_SHIP_TYPE, MODEL_SHIP_TYPE
+from tarav.l2.unsorted.capture import CaptureManifest
+from tarav.l2.unsorted.primitives import DiagramModelError, DiagramShipSpecializationError
+from tarav.l2.unsorted.storage import DiagramNamespace
+from tarav.l2.lines.records import LineShipRecord
+from tarav.l2.models.records import ModelShipRecord
+from tarav.l2.unsorted.contracts import ShipDraftInterface
+from tarav.l2.unsorted.registry import default_diagram_annotation_type_registry, default_diagram_ship_type_registry
 from tarav.l0.kernel import RecordTypeReference, Ship, TypeShip
 
 REF = {

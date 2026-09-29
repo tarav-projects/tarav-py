@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.testing import TaravTestEnvironment
+from tarav.l0.testing import TaravTestEnvironment
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -19,7 +19,7 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 def _seed_orphan(uuid: str | None, ref: str, ts: str, auth_class: str = "auth-json") -> None:
     """Append a raw `_unknown` capture record with a chosen identity/ref/ts."""
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     auth_ref = {"provider_account_id": uuid} if uuid is not None else {}
     rec = {"ts": ts, "account": R.UNKNOWN_ACCOUNT, "method": auth_class, "class": auth_class,
@@ -34,7 +34,7 @@ def test_orphan_groups_by_identity_distinct_refs_recency(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     _seed_orphan("uuid-a", "aref1", "2026-06-01T00:00:00Z")
     _seed_orphan("uuid-a", "aref2", "2026-06-03T00:00:00Z")  # same identity, newer ref
@@ -54,7 +54,7 @@ def test_orphan_groups_anchorless_falls_into_null_identity(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent import auth_registry as R
+    from tarav.l1.agent import auth_registry as R
 
     _seed_orphan(None, "cref1", "2026-06-01T00:00:00Z")
 
@@ -66,9 +66,9 @@ def test_orphan_groups_anchorless_falls_into_null_identity(
 
 def _store_orphan(uuid: str, token: str) -> str:
     """Store a real orphan artifact (secret in payload) + capture it; return ref."""
-    from tarav.agent import auth_registry as R
-    from tarav.agent.account_status import AccountIdentity
-    from tarav.agent.auth_method import AuthData
+    from tarav.l1.agent import auth_registry as R
+    from tarav.l1.agent.account_status import AccountIdentity
+    from tarav.l1.agent.auth_method import AuthData
 
     payload = {"tokens": {"access_token": token, "account_id": uuid}}
     ref = R.store_artifact("codex", AuthData(payload=payload))
@@ -88,7 +88,7 @@ def test_orphans_text_lists_identity_without_secret(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.commands.accounts import _cmd_agent_accounts_orphans
+    from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_orphans
 
     ref = _store_orphan("uuid-a", "SUPERSECRET")
 
@@ -102,7 +102,7 @@ def test_orphans_json_dumps_full_auth_data(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.commands.accounts import _cmd_agent_accounts_orphans
+    from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_orphans
 
     _store_orphan("uuid-a", "SUPERSECRET")
 
@@ -118,7 +118,7 @@ def test_orphans_empty_reports_cleanly(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from tarav.agent.commands.accounts import _cmd_agent_accounts_orphans
+    from tarav.l1.agent.commands.accounts import _cmd_agent_accounts_orphans
 
     assert _cmd_agent_accounts_orphans(_ns(json=True)) == 0
     assert json.loads(capsys.readouterr().out)["orphans"] == []

@@ -6,7 +6,7 @@ from tarav.l1.context import CONTEXT_WORKFLOW_SHIP
 from tarav.l1.archive.records import (
     ArchiveEntry, ArchiveExplorer, ArchiveFolder, ArchiveObject, ArchiveRoot, ArchiveType,
 )
-from tarav.explorer_testing import navigation_state
+from tarav.l0.explorer_testing import navigation_state
 
 
 def test_family_membership_and_ownership():

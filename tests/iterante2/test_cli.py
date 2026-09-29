@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from tarav.iterante2.state import SNAPSHOT_FILE
+from tarav.l1.iterante2.state import SNAPSHOT_FILE
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def project_dir(tmp_path):
     missions = tmp_path / ".tarav" / "missions" / "demo"
     missions.mkdir(parents=True)
     (missions / "mission.py").write_text("""
-from tarav import iterante2
+from tarav.l1 import iterante2
 
 def setup(ctx):
     ctx.state["step_count"] = 0
@@ -114,7 +114,7 @@ class TestInitRequestSubmit:
         missions = tmp_path / ".tarav" / "missions" / "args-demo"
         missions.mkdir(parents=True)
         (missions / "mission.py").write_text("""
-from tarav import iterante2
+from tarav.l1 import iterante2
 
 def setup(ctx):
     ctx.state["project"] = ctx.env.args["project"]
@@ -203,7 +203,7 @@ class TestOutputSensors:
         missions = tmp_path / ".tarav" / "missions" / "printer"
         missions.mkdir(parents=True)
         (missions / "mission.py").write_text("""
-from tarav import iterante2
+from tarav.l1 import iterante2
 
 def step(ctx):
     print("mission says: /etc/secret/data.txt")
@@ -223,7 +223,7 @@ class TestBypass:
         missions = tmp_path / ".tarav" / "missions" / "printer"
         missions.mkdir(parents=True)
         (missions / "mission.py").write_text("""
-from tarav import iterante2
+from tarav.l1 import iterante2
 
 def step(ctx):
     print("mission says: /etc/secret/data.txt")

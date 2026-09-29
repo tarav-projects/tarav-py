@@ -10,7 +10,7 @@ extraction. `index_metadata` runs the per-provider normalizers and merges; retur
 
 from __future__ import annotations
 
-from tarav.agent.session_refs import BackingArtifact
+from tarav.l1.agent.session_refs import BackingArtifact
 
 from . import _raw
 from .claude import CLAUDE_NORMALIZERS

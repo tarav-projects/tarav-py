@@ -5,8 +5,9 @@ import pytest
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.project import initialize_project_layout
 from tarav.l0.kernel import Ship, entity
-from tarav.l1.project import Project, ProjectWorkflow, TaravProject
-from tarav.runtime import create_runtime
+from tarav.l1.project import ProjectWorkflow, TaravProject
+from tarav.l2.project import Project
+from tarav.l3.runtime import create_runtime
 
 
 def test_discovery_preserves_marker_and_selects_nearest_project(tmp_path):
@@ -71,8 +72,9 @@ def test_missing_and_invalid_markers_do_not_create_or_repair(tmp_path):
 
 
 def test_project_context_is_available_without_creating_archive(tmp_path):
-    from tarav.l2.context import context
-    from tarav import get_runtime, set_runtime
+    from tarav.l3.context import context
+    from tarav.l3.runtime import get_runtime
+    from tarav.l3.runtime import set_runtime
 
     initialize_project_layout(tmp_path)
     project = Project.from_path(tmp_path)
@@ -129,17 +131,18 @@ def test_minimal_import_does_not_load_integrations():
 
     subprocess.run([sys.executable, "-c", '''
 import sys
-from tarav.l1.project import TaravProject, Project
-assert "tarav.l1.project.models" not in sys.modules
-assert "tarav.l1.project.wiki" not in sys.modules
-assert "tarav.models" not in sys.modules
+from tarav.l1.project import TaravProject
+from tarav.l2.project import Project
+assert "tarav.l2.project.models" not in sys.modules
+assert "tarav.l2.project.wiki" not in sys.modules
+assert "tarav.l2.models" not in sys.modules
 assert "tarav.l1.wiki" not in sys.modules
 '''], check=True)
 
 
 def test_integrations_have_explicit_child_workflow_ownership(tmp_path):
-    from tarav.l1.project.models import ProjectModels, ProjectModelsWorkflow
-    from tarav.l1.project.wiki import ProjectWiki, ProjectWikiWorkflow
+    from tarav.l2.project.models import ProjectModels, ProjectModelsWorkflow
+    from tarav.l2.project.wiki import ProjectWiki, ProjectWikiWorkflow
 
     initialize_project_layout(tmp_path)
     project = TaravProject.from_path(tmp_path)

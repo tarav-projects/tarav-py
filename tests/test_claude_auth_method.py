@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from tarav.agent.auth_method import AuthData
-from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+from tarav.l1.agent.auth_method import AuthData
+from tarav.l1.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
 
 @pytest.fixture(autouse=True)
