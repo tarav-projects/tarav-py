@@ -638,6 +638,7 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
             "references.py",
             "normal_model_cache.py",
             "workflow.py",
+            "sessions.py",
         }:
             # commands.py is the composition point: it builds the one `tarav chatlas`
             # group and hands its subparsers to the layer. Everything else in
@@ -646,6 +647,7 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
             # normal_model_cache.py is the Chatlas-owned logistical decorator around
             # canonical Normal Model directories.
             # workflow.py is the runtime registration boundary for Chatlas Records.
+            # sessions.py consumes the Model reader for explicit Session navigation.
             assert not any(
                 m.startswith("tarav.l1.chatlas.normal_model") for m in modules
             ), path

@@ -4,7 +4,7 @@
 
 Knowledge.Surface: wiki. Phase: Execute. Alignment.Mode: Interactive.
 Status: Context split implemented and verified.
-Parent roadmap: [821](821-dependency-layer-migration.md).
+Parent roadmap: [821](821-dependency-layer-migration-impl-req.md).
 
 Separate standalone Context navigation in l1 from Archive-backed Context and
 runtime-facing convenience operations in l2. Demonstrate one workflow spanning

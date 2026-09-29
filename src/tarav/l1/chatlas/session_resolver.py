@@ -7,6 +7,17 @@ from tarav.l0._core.errors import CliError
 from tarav.l1.chatlas.index_store import load_chatlas_session_index_rows
 
 
+class ChatlasSessionNotFound(CliError, KeyError):
+    """No indexed session matches an exact selector."""
+
+    def __str__(self) -> str:
+        return CliError.__str__(self)
+
+
+class ChatlasSessionAmbiguous(CliError):
+    """An exact selector still identifies more than one indexed session."""
+
+
 def resolve_session_index_row(
     *,
     identity_hash: str | None = None,
@@ -37,8 +48,12 @@ def resolve_session_index_row(
     if len(matches) == 1:
         return matches[0]
     if not matches:
-        raise CliError("no indexed Chatlas session matched the exact reference")
-    raise CliError("multiple indexed Chatlas sessions matched the exact reference")
+        raise ChatlasSessionNotFound(
+            "no indexed Chatlas session matched the exact reference"
+        )
+    raise ChatlasSessionAmbiguous(
+        "multiple indexed Chatlas sessions matched the exact reference"
+    )
 
 
 def _matches(
@@ -59,4 +74,8 @@ def _matches(
     )
 
 
-__all__ = ["resolve_session_index_row"]
+__all__ = [
+    "ChatlasSessionNotFound",
+    "ChatlasSessionAmbiguous",
+    "resolve_session_index_row",
+]

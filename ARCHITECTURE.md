@@ -312,6 +312,13 @@ relationships, storage policies, or interpretation of domain payloads.
 
 ## Domain ownership
 
+`tarav.l1.chatlas.sessions` exposes indexed conversations through an
+`ExplorerFolder`: entries construct a portable `ChatSession` without capture or
+normalization. Native-ID keys require unambiguous provider/instance scope;
+an explicit identity-hash view handles collisions. `ChatSession.model()` delegates
+to the existing Normal Model reader and cache. The depot root is runtime
+configuration, not retained Session identity or part of its portable Record.
+
 `tarav.l1.programs` declares `ProgramsWorkflow` and the minimal
 `TaravProgram(TaravEntity)` family. `tarav.l2.project.programs.ProjectProgram`
 provides a distinct project-oriented subtype without adding fields or behavior.

@@ -2,9 +2,8 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Phase: Design. Alignment.Mode: Interactive.
-Status: ready for bounded execution with the proposals below; no product code
-implemented in this pass.
+Knowledge.Surface: wiki. Phase: Execute. Alignment.Mode: Interactive.
+Status: complete; Session selection, loading, Model delegation and Wiki capture verified.
 
 Introduce ChatSession as a navigable Tarav object representing a conversation,
 distinct from its retained Normal Model. Deliver session selection and
@@ -90,17 +89,17 @@ be ExplorerFolders; their collection views provide navigation mechanics.
 
 ## Execution.Plan
 
-- [ ] Cold-read current instructions and source; checkpoint existing product
+- [x] Cold-read current instructions and source; checkpoint existing product
   work according to Execute policy before edits. Preserve concurrent changes.
-- [ ] Inspect ExplorerFolder/Entry contracts and index row schema; settle an
+- [x] Inspect ExplorerFolder/Entry contracts and index row schema; settle an
   unambiguous, round-trippable collection key convention as described above.
-- [ ] Implement ChatSession's class entity, portable Record and runtime root
+- [x] Implement ChatSession's class entity, portable Record and runtime root
   binding. Register it in the existing runtime's trusted Record Types.
-- [ ] Implement the thin indexed session view and entry opener, delegating
+- [x] Implement the thin indexed session view and entry opener, delegating
   exact lookup rather than adding a second index or resolution algorithm.
-- [ ] Delegate model() to the existing reader; preserve all existing Model,
+- [x] Delegate model() to the existing reader; preserve all existing Model,
   Turn, Message, Event and evidence-reference representations.
-- [ ] Add fixtures and tests below; update architecture and capture the result.
+- [x] Add fixtures and tests below; update architecture and capture the result.
 
 ## Acceptance and verification
 
@@ -120,6 +119,32 @@ be ExplorerFolders; their collection views provide navigation mechanics.
   handoff. No new global dependency-enforcement machinery.
 
 ## Impl.Log
+
+- Execute checkpoint: 0e933c6, preserving existing product changes before edits.
+- Collection keys default to native session IDs. Colliding listings reject
+  explicitly; provider/instance scope or `key_by="identity_hash"` supplies a
+  round-trippable view. `get_by_identity()` remains an explicit exact selector.
+- Implemented `src/tarav/l1/chatlas/sessions.py`: ChatSession, its indexed
+  Entry/Folder view, and existing reader delegation. Session registration stays
+  in ChatlasWorkflow. No retained schema migration or provider-home edits.
+- Existing resolver errors now have named subclasses: missing sessions remain
+  CliErrors and also satisfy Folder KeyError semantics; ambiguity is explicit.
+- Four broad disposable-depot tests cover Explorer conformance, selection
+  collisions, portable Record dispatch, selector validation, custom-root
+  isolation, real normalization, cache reuse/refresh, and availability errors.
+- The focused suite exposed a pre-existing Program Record-example omission:
+  registered Program Entities lacked the required example ID. Added a valid
+  inherited example without changing Program mechanics or adding new tests.
+- Verification: 323 focused tests passed; full pytest passed (1,373 tests).
+  Ruff and `git diff --check` passed. After annotation/error-rendering cleanup,
+  the Session and general Record-boundary tests passed again (9 tests).
+  Live Session selection and Model delegation also matched the exact identity.
+- Completion capture: `tarav-md/notes/wiki/chatlas-normal-model.md` and
+  `daily/2026-09-29.md`, grounded in current User Turn `225bcb6c086db2a9`.
+  Breadcrumbs `ef7ede98c40e3abe1826256f8ec8da9ab5cd6fec7217950f8a8e0386d5a0699d`
+  and `b6c33c63e989c7b62ef09400602e9f429b7eee4f18e473e78380304f6b8be5f9`;
+  both audits passed without findings. Wiki-only closure commit:
+  `5a9178971b0c42fc2d2d414580126a959a5909ec`. No unresolved capture gaps.
 
 - Inspected existing identity, resolver, reader, Normal Model and registration
   boundaries. No product edits or tests executed in Design.
