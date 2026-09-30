@@ -50,10 +50,12 @@ headings or prose. These declarations are claims, not proof of their truth.
 
 Targets require only `TaravEntity`, including entities from other workflows.
 Do not introduce a `SemanticEntity` base. Blocks are themselves TaravEntities:
-stable UUID identities, with separate free-text labels. Prefer base types and
-semantic subtypes to a general object with mode strings, so the Type Graph
-exposes the distinctions. Reading-path mechanics neither collect nor render
-the entities' content.
+stable UUID identities, with separate free-text labels. A block reference may
+use its Ship for exact identity or a label for scoped, weaker selection;
+ambiguous labels must not resolve silently. Prefer base types and semantic
+subtypes to a general object with mode strings, so the Type Graph exposes the
+distinctions. Reading-path mechanics neither collect nor render the entities'
+content.
 <!-- tarav.breadcrumb 95f65c1404ad6489ffddfe0b3c9da18891ebb36e8b43dfe49fd1149fc842b253 -->
 
 Structural checks judge whether declarations supply the required entities in
@@ -255,9 +257,13 @@ refresh baselines merely to hide migration effects. Where immutable historical
 references cannot be rewritten, retain an explicit migration mapping consumed
 by the appropriate historical resolver, not a permissive live-record fallback.
 
-Preserve retained `output` and compiled text byte-for-byte for identity-only
-migration. Resolve SkillLink's existing link-text `label` explicitly (for
-example, a separate caption field); do not change rendered text accidentally.
+Preserve the content of retained block outputs, including agent-generated
+prose, and the intended reading/navigation meaning through identity migration.
+Exact bytes of `output` and compiled text need not remain unchanged: stable
+Ships may change generated anchors and link targets. Update those surfaces and
+their affected baselines explicitly without rewriting unrelated content.
+Resolve SkillLink's existing link-text `label` explicitly (for example, a
+separate caption field); do not change the visible link text accidentally.
 Translate legacy reading edges into equivalent typed block declarations only
 where meaning is known. Report unknown/ambiguous cases; no runtime auto-repair
 or speculative claims that text provides new entities. Dry-run the inventory
