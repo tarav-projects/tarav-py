@@ -193,9 +193,10 @@ def register_audit_command(
     workflow: BreadcrumbAnnotationWorkflow,
     request_factory: RequestFactory,
     help_text: str,
+    surface_required: bool = True,
 ) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(workflow.name, help=help_text)
-    parser.add_argument("--surface", required=True)
+    parser.add_argument("--surface", required=surface_required)
     parser.add_argument("--language", choices=("markdown", "python"))
     _add_common(parser)
     parser.set_defaults(
@@ -210,6 +211,9 @@ def register_breadcrumb_commands(
     subparsers: argparse._SubParsersAction,
     *,
     integrations: Sequence[BreadcrumbIntegration],
+    command_registrars: Sequence[
+        Callable[[argparse._SubParsersAction], None]
+    ] = (),
 ) -> None:
     parser = subparsers.add_parser(
         "breadcrumbs",
@@ -265,6 +269,9 @@ def register_breadcrumb_commands(
     show.add_argument("--label", required=True)
     _add_common(show)
     show.set_defaults(handler=_cmd_show)
+
+    for registrar in command_registrars:
+        registrar(commands)
 
 
 __all__ = [

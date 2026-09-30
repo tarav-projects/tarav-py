@@ -252,6 +252,10 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   runtime-backed load facade. `tarav.l1.project` owns the minimal Project Type;
   `tarav.l2.project` adds Models and Wiki integrations. Archive uses the
   kernel-owned current Record registry; retained Context owns its service lookup.
+- `tarav.l1.git` owns bounded repository mutation and preserves unrelated index
+  state through isolated commit indexes. Immutable Git surface References stay
+  in `tarav.l1.references.git`. `tarav.l2.git.breadcrumbs` composes Git and
+  Breadcrumb evidence; `tarav.l3.git` exposes process adapters.
 - `tarav.l1.skw` owns typed document blocks, retained output, and declared
   loading/slot mechanics. Trusted Type dispatch selects each nested block;
   code producers write source output explicitly while compilation only assembles
@@ -367,6 +371,7 @@ schema or an additional Workflow identity.
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
 | `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
+| `l1.git`, `l2.git`, `l3.git` | The Git Workflow spans repository mechanics, commit-message Breadcrumb integration, and installed CLI composition. |
 | `lines` | LinesWorkflow owns Line, Block, Collection, their editions and relationships, projections, rendering, and LineGroundingAssertion semantics. |
 | `models` | ModelsWorkflow owns the Model handler, ModelShipRecord, and ModelEditionRecord. Project associations do not imply ownership; several projects may share one Model. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
@@ -440,6 +445,10 @@ mechanical assertion engine under Unsorted is not folded into this model yet.
 - References is lower than Archive and other specialized Reference producers.
 - Breadcrumbs and Chatlas remain independent. Their contextual annotation
   behavior lives in `breadcrumb_workflows.chatlas_context`.
+- Commit evidence registers Breadcrumb identity and typed attachments before
+  Git mutation, then appends the exact commit-message position as an observation.
+  The commit retains a versioned evidence envelope so registration can recover
+  without the temporary manifest.
 - Native surface parsers expose syntax and source positions without knowing SKW
   or annotation policy.
 - Chatlas capture and Session Index remain usable without importing the Normal

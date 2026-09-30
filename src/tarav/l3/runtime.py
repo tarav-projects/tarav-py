@@ -148,6 +148,10 @@ class TaravRuntime:
         from tarav.l3.project.commands import register_harness_commands
         from tarav.l1.python_env import register_python_commands
         from tarav.l3.run import register_run_command
+        from tarav.l3.git.commands import (
+            register_breadcrumb_git_commands,
+            register_commands as register_git_commands,
+        )
         from tarav.l1.reading_club.commands import register_reading_club_commands
         from tarav.l2.scoring.commands import register_scoring_commands
         from tarav.l1.stdlib.refs import register_refs_commands
@@ -171,7 +175,9 @@ class TaravRuntime:
         register_breadcrumb_commands(
             subparsers,
             integrations=self.breadcrumb_integrations,
+            command_registrars=(register_breadcrumb_git_commands,),
         )
+        register_git_commands(subparsers)
         register_diagram_commands(subparsers)
         register_bloberia_commands(subparsers)
         register_project_commands(
@@ -238,7 +244,9 @@ def create_runtime(
     from tarav.l1.archive.artifact_records import ARCHIVE_RECORD_TYPES
     from tarav.l1.archive.references import ArchiveReference
     from tarav.l1.archive.workflow import ArchiveWorkflow
-    from tarav.l2.breadcrumb_workflows.chatlas_context import CHATLAS_CONTEXT
+    from tarav.l2.breadcrumb_workflows.chatlas_context import (
+        chatlas_context_integration,
+    )
     from tarav.l1.breadcrumbs.workflow import (
         BREADCRUMB_RECORD_TYPES,
         BreadcrumbWorkflow,
@@ -247,6 +255,8 @@ def create_runtime(
     from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.l2.lines.workflow import LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
+    from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
+    from tarav.l2.git.breadcrumbs import GIT_BREADCRUMB_RECORD_TYPES, audit_commit
     from tarav.l1.python_env import PYTHON_RECORD_TYPES, PythonWorkflow
     from tarav.l1.programs import ProgramsWorkflow, TaravProgram
     from tarav.l2.project.programs import ProjectProgram
@@ -277,7 +287,7 @@ def create_runtime(
     from tarav.l2.test_workflow import TestEntity, TestItem, TestWorkflow
 
     composed_breadcrumb_integrations = (
-        CHATLAS_CONTEXT,
+        chatlas_context_integration(commit_auditor=audit_commit),
         *breadcrumb_integrations,
     )
     registered_types = tuple(
@@ -294,6 +304,8 @@ def create_runtime(
                 *CHATLAS_RECORD_TYPES,
                 *REFERENCE_RECORD_TYPES,
                 *BREADCRUMB_RECORD_TYPES,
+                *GIT_RECORD_TYPES,
+                *GIT_BREADCRUMB_RECORD_TYPES,
                 *(
                     record_type
                     for integration in composed_breadcrumb_integrations
@@ -345,6 +357,7 @@ def create_runtime(
         ChatlasWorkflow,
         ReferenceWorkflow,
         BreadcrumbWorkflow,
+        GitWorkflow,
         ArchiveWorkflow,
         RecordArchiveWorkflow,
         LinesWorkflow,

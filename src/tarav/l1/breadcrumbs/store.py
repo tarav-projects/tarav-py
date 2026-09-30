@@ -20,6 +20,10 @@ from tarav.l0.kernel import (
     locate_record_type,
 )
 from tarav.l1.references import FilePositionReference, FilePositionTarget
+from tarav.l1.references.git import (
+    GitCommitMessagePositionReference,
+    GitCommitMessagePositionTarget,
+)
 
 from .model import Breadcrumb, LocatorObservation
 
@@ -50,7 +54,7 @@ class BreadcrumbFinding(TaravPOIInstance):
 class BreadcrumbResolution:
     breadcrumb: Breadcrumb
     status: str
-    position: FilePositionTarget | None = None
+    position: FilePositionTarget | GitCommitMessagePositionTarget | None = None
     findings: tuple[BreadcrumbFinding, ...] = ()
 
     @property
@@ -61,15 +65,7 @@ class BreadcrumbResolution:
         return {
             "status": self.status,
             "breadcrumb": self.breadcrumb.to_record(),
-            "position": (
-                {
-                    "file": str(self.position.path),
-                    "line": self.position.line,
-                    "text": self.position.text,
-                }
-                if self.position is not None
-                else None
-            ),
+            "position": _position_json(self.position),
             "findings": [
                 {"class": "Tarav.POI.Instance", "code": item.code, "message": item.message}
                 for item in self.findings
@@ -121,6 +117,14 @@ class BreadcrumbStore:
                 raise
             return self.load(selected)
 
+    def ensure(self, breadcrumb_id: str) -> Breadcrumb:
+        """Return one retained identity, creating it only when absent."""
+
+        selected = _validated_id(breadcrumb_id)
+        if (self.records_root / selected / "main.json").is_file():
+            return self.load(selected)
+        return self.create(selected)
+
     def load(self, label: str) -> Breadcrumb:
         breadcrumb_id = parse_breadcrumb_label(label)
         source = self.records_root / breadcrumb_id / "main.json"
@@ -141,6 +145,10 @@ class BreadcrumbStore:
             raise BreadcrumbError("Locator observation belongs to another Breadcrumb")
         path = breadcrumb.directory / "locator-observations.jsonl"
         prior = path.read_text(encoding="utf-8") if path.exists() else ""
+        identity = _observation_identity(observation.to_record())
+        for retained in self.observations(label):
+            if _observation_identity(retained) == identity:
+                return
         serialized = json.dumps(observation.to_record(), sort_keys=True, ensure_ascii=False)
         atomic_write_text(path, prior + serialized + "\n")
 
@@ -171,6 +179,31 @@ class BreadcrumbStore:
         self.append_observation(str(breadcrumb.to_record()["id"]), record)
         return record
 
+    def observe_commit_position(
+        self,
+        label: str,
+        *,
+        repository: str | Path,
+        commit: str,
+        line: int,
+    ) -> dict[str, object]:
+        breadcrumb = self.load(label)
+        breadcrumb_id = str(breadcrumb.to_record()["id"])
+        reference = GitCommitMessagePositionReference(
+            repository=repository,
+            commit=commit,
+            line=line,
+        ).to_record()
+        reference["check"] = {"contains": breadcrumb_label(breadcrumb_id)}
+        record = {
+            "type": entity(LocatorObservation).name,
+            "breadcrumb_id": breadcrumb_id,
+            "observed_at": _now(),
+            "locator": reference,
+        }
+        self.append_observation(breadcrumb_id, record)
+        return record
+
     def observations(self, label: str) -> tuple[dict[str, object], ...]:
         breadcrumb = self.load(label)
         path = breadcrumb.directory / "locator-observations.jsonl"
@@ -191,6 +224,16 @@ class BreadcrumbStore:
     def attach(self, label: str, record: Mapping[str, object]) -> Path:
         breadcrumb = self.load(label)
         payload = _typed_record(record)
+        serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        for existing in sorted((breadcrumb.directory / "attachments").glob("*.json")):
+            try:
+                retained = _typed_record(
+                    json.loads(existing.read_text(encoding="utf-8"))
+                )
+            except (OSError, json.JSONDecodeError, ValueError, TypeError):
+                continue
+            if json.dumps(retained, sort_keys=True, ensure_ascii=False) == serialized:
+                return existing
         attachment = breadcrumb.directory / "attachments" / f"{secrets.token_hex(16)}.json"
         atomic_write_json(attachment, payload, ensure_ascii=False)
         return attachment
@@ -217,17 +260,38 @@ class BreadcrumbStore:
     def resolve(self, label: str) -> BreadcrumbResolution:
         breadcrumb = self.load(label)
         core_label = breadcrumb_label(str(breadcrumb.to_record()["id"]))
-        positions: dict[tuple[Path, int], FilePositionTarget] = {}
+        positions: dict[
+            tuple[object, ...], FilePositionTarget | GitCommitMessagePositionTarget
+        ] = {}
         for observation in reversed(self.observations(label)):
             locator = observation["locator"]
             assert isinstance(locator, dict)
             checked = dict(locator)
             checked["check"] = {"contains": core_label}
-            reference = FilePositionReference.from_record(checked)
+            location = locate_record_type(checked)
+            if location is None:
+                continue
+            reference_type = RecordTypeReference.parse(location.value)
+            if FilePositionReference.matches(reference_type):
+                reference = FilePositionReference.from_record(checked)
+            elif GitCommitMessagePositionReference.matches(reference_type):
+                reference = GitCommitMessagePositionReference.from_record(checked)
+            else:
+                continue
             reference.source = breadcrumb.source
             result = reference.resolve()
             if result.ok and isinstance(result.target, FilePositionTarget):
                 positions[(result.target.path.resolve(), result.target.line)] = result.target
+            elif result.ok and isinstance(
+                result.target, GitCommitMessagePositionTarget
+            ):
+                positions[
+                    (
+                        result.target.repository.resolve(),
+                        result.target.commit,
+                        result.target.line,
+                    )
+                ] = result.target
         if len(positions) == 1:
             return BreadcrumbResolution(breadcrumb, "resolved", next(iter(positions.values())))
         if not positions:
@@ -265,6 +329,31 @@ def _typed_record(value: Mapping[str, object]) -> dict[str, object]:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _observation_identity(record: Mapping[str, object]) -> str:
+    payload = dict(record)
+    payload.pop("observed_at", None)
+    return json.dumps(payload, sort_keys=True, ensure_ascii=False)
+
+
+def _position_json(
+    position: FilePositionTarget | GitCommitMessagePositionTarget | None,
+) -> dict[str, object] | None:
+    if isinstance(position, FilePositionTarget):
+        return {
+            "file": str(position.path),
+            "line": position.line,
+            "text": position.text,
+        }
+    if isinstance(position, GitCommitMessagePositionTarget):
+        return {
+            "repository": str(position.repository),
+            "commit": position.commit,
+            "line": position.line,
+            "text": position.text,
+        }
+    return None
 
 
 __all__ = [

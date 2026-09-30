@@ -1,6 +1,10 @@
 """Chatlas Context Breadcrumb workflow public surface."""
 
-from .integration import CHATLAS_CONTEXT, ChatlasContextCommands
+from .integration import (
+    CHATLAS_CONTEXT,
+    ChatlasContextCommands,
+    chatlas_context_integration,
+)
 from .model import ChatlasContextAttachment
 from .workflow import (
     ChatlasContextBreadcrumbWorkflow,
@@ -14,6 +18,7 @@ __all__ = [
     "ChatlasContextAttachment",
     "ChatlasContextBreadcrumbWorkflow",
     "ChatlasContextCommands",
+    "chatlas_context_integration",
     "ChatlasContextMarker",
     "ChatlasContextRequest",
     "SessionDeclaration",

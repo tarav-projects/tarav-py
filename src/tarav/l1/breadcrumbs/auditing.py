@@ -11,6 +11,7 @@ from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TaravPOIInstance, TypeShip
 from tarav.l1.surfaces.markdown import MarkdownNormalModel
 from tarav.l1.surfaces.python import PythonNormalModel
+from tarav.l1.references.git import GitCommitMessagePositionTarget
 
 from .store import BreadcrumbError, BreadcrumbResolution, BreadcrumbStore
 from .surfaces import BreadcrumbSurface, infer_surface_language
@@ -71,9 +72,18 @@ class AuditedBreadcrumb:
         status = "missing"
         if self.resolution is not None:
             status = self.resolution.status
-            if self.resolution.position is not None:
+            if hasattr(self.resolution.position, "path"):
                 position = {
                     "file": str(self.resolution.position.path),
+                    "line": self.resolution.position.line,
+                    "text": self.resolution.position.text,
+                }
+            elif isinstance(
+                self.resolution.position, GitCommitMessagePositionTarget
+            ):
+                position = {
+                    "repository": str(self.resolution.position.repository),
+                    "commit": self.resolution.position.commit,
                     "line": self.resolution.position.line,
                     "text": self.resolution.position.text,
                 }
@@ -251,6 +261,14 @@ def _surface_labels(
     return tuple(labels), findings
 
 
+def surface_labels(
+    surface: BreadcrumbSurface,
+) -> tuple[tuple[SurfaceBreadcrumbLabel, ...], list[BreadcrumbAuditFinding]]:
+    """Parse exact Breadcrumb labels from an already loaded surface."""
+
+    return _surface_labels(surface)
+
+
 __all__ = [
     "AuditedBreadcrumb",
     "BreadcrumbAuditContext",
@@ -258,4 +276,5 @@ __all__ = [
     "BreadcrumbAuditResult",
     "SurfaceBreadcrumbLabel",
     "audit_annotations",
+    "surface_labels",
 ]

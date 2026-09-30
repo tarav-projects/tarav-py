@@ -9,6 +9,7 @@ from pydantic import ConfigDict, Field
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import DirectoryRecord, TaravObject, TypeShip
 from tarav.l1.references import FilePositionReference
+from tarav.l1.references.git import GitCommitMessagePositionReference
 from tarav.l1.breadcrumbs.identity import BREADCRUMBS_WORKFLOW_SHIP
 
 
@@ -61,7 +62,10 @@ class LocatorObservation(TaravObject):
         type: Literal["Tarav.Breadcrumb.LocatorObservation"]
         breadcrumb_id: BreadcrumbId
         observed_at: str
-        locator: FilePositionReference.RecordInterface
+        locator: (
+            FilePositionReference.RecordInterface
+            | GitCommitMessagePositionReference.RecordInterface
+        )
         hints: LocatorHints | None = None
 
     @classmethod

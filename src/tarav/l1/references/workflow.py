@@ -7,7 +7,7 @@ from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.references.identity import REFERENCES_WORKFLOW_SHIP
 from . import FilePositionReference, FileReference, Reference, ReferenceResult
-from .git import GitFileReference
+from .git import GitCommitMessagePositionReference, GitFileReference
 from .structured import StructuredFileReference
 
 
@@ -15,6 +15,7 @@ REFERENCE_RECORD_TYPES = (
     Reference,
     FileReference,
     FilePositionReference,
+    GitCommitMessagePositionReference,
     GitFileReference,
     StructuredFileReference,
 )

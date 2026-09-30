@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from tarav.l1.breadcrumbs.integrations import (
@@ -17,6 +18,9 @@ if TYPE_CHECKING:
 
 
 class ChatlasContextCommands(BreadcrumbCommandAdapter):
+    def __init__(self, commit_auditor: Callable[..., object] | None = None) -> None:
+        self.commit_auditor = commit_auditor
+
     def register_submit(
         self,
         subparsers: argparse._SubParsersAction,
@@ -33,13 +37,28 @@ class ChatlasContextCommands(BreadcrumbCommandAdapter):
     ) -> None:
         from .commands import register_chatlas_context_audit
 
-        register_chatlas_context_audit(subparsers, workflow)
+        register_chatlas_context_audit(
+            subparsers,
+            workflow,
+            commit_auditor=self.commit_auditor,
+        )
 
 
-CHATLAS_CONTEXT = BreadcrumbIntegration(
-    ChatlasContextBreadcrumbWorkflow(),
-    ChatlasContextCommands(),
-)
+def chatlas_context_integration(
+    *,
+    commit_auditor: Callable[..., object] | None = None,
+) -> BreadcrumbIntegration:
+    return BreadcrumbIntegration(
+        ChatlasContextBreadcrumbWorkflow(),
+        ChatlasContextCommands(commit_auditor),
+    )
 
 
-__all__ = ["CHATLAS_CONTEXT", "ChatlasContextCommands"]
+CHATLAS_CONTEXT = chatlas_context_integration()
+
+
+__all__ = [
+    "CHATLAS_CONTEXT",
+    "ChatlasContextCommands",
+    "chatlas_context_integration",
+]

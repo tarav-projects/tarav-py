@@ -6,7 +6,7 @@ c6489f81 = claude-code:7f975c3c-3c91-4175-9071-0d132b06c356 @c6489f818b92448026b
 
 ## Impl.Abstract
 
-- **Status:** Ready for implementation — revised by the follow-up discussion.
+- **Status:** Implemented.
 - **Knowledge.Surface:** wiki.
 - **Alignment.Mode:** Interactive.
 - **Requested result:** a best-effort workflow in which the agent that did the
@@ -263,8 +263,9 @@ with these boundaries. Implement only the Git mechanics needed by this slice.
 - **Supporting discussion:** journal dialog
   `~/Documents/tarav/journal/notes/wiki/dialogs/commit-evidence-breadcrumbs.md`
   (commit `e2d393d`), session `c6489f81`.
-- **Capture status:** original journal capture retained; this follow-up updates
-  the implementation request directly. No additional Wiki capture performed.
+- **Capture status:** original journal capture retained. Implementation closure
+  updated `best-effort-mechanics.md` and the 2026-09-29 daily Note from session
+  `1f561f5d`; all newly submitted Breadcrumbs resolve and audit cleanly.
 
 ## Execution.Plan
 
@@ -323,6 +324,30 @@ Focused tests per slice, Ruff, `tests/test_architecture.py`, full suite,
 `uv tool install --reinstall --editable .`, CLI smoke.
 
 ## Impl.Log
+
+- 2026-09-29 — Implemented the Git Workflow, immutable commit-message
+  reference, generalized Breadcrumb observations, manifest preparation,
+  scoped commit operation, recovery registration, and commit audit. The Git
+  operation uses an isolated temporary index so unrelated staging survives.
+  Breadcrumbs and typed Chatlas attachments are retained before Git mutation;
+  the exact commit observation is appended afterward.
+
+- 2026-09-29 — Added the public CLI routes from this request and covered their
+  combined commit → recover → audit path. Added runtime registration and
+  architecture boundaries. Focused Git evidence, Breadcrumb, reference,
+  architecture, Record-contract, and Ruff checks pass; the complete test
+  result is recorded after final validation below.
+
+- 2026-09-29 — Final validation: Ruff passed, 1,396 tests passed, the editable
+  tool installation succeeded, and installed CLI help exposed manifest commit,
+  existing-commit registration, and commit audit. The focused CLI test also
+  executes the complete marker-only commit → recover → audit path.
+
+- 2026-09-29 — Added the shared Hugentics commit-evidence module and linked it
+  from modifying Capture, Wiki capture, Design Dialogue, and implementation
+  routes. Rebuilt the generated skill products through SKW. The package check
+  now reports 15 existing unrelated POIs and no unreachable or stale output
+  introduced by this slice; those findings were left unblessed.
 
 - 2026-09-29 — User clarified that Breadcrumb identity and evidence may be
   registered before the Git commit. The commit hash is a later locator

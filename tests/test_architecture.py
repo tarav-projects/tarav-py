@@ -38,6 +38,23 @@ def test_loading_workflow_configures_kernel_without_reverse_imports():
     assert not any(name.startswith("loading") for name in graph["l0.kernel"])
 
 
+def test_git_workflow_spans_mechanics_integration_and_process_adapters():
+    from tarav.l1.git import GitRepository, GitWorkflow
+    from tarav.l1.references.git import GitCommitMessagePositionReference
+    from tarav.l2.git.breadcrumbs import CommitManifest
+    from tarav.l3.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("git") is GitWorkflow
+    assert entity(GitRepository).workflow is GitWorkflow()
+    assert entity(CommitManifest).workflow is GitWorkflow()
+    assert (
+        runtime.records.resolve_ship(entity(GitCommitMessagePositionReference).id)
+        is GitCommitMessagePositionReference
+    )
+    assert runtime.records.resolve_ship(entity(CommitManifest).id) is CommitManifest
+
+
 def test_poi_workflow_ownership_and_runtime_composition():
     from tarav.l1.poi import POI_RECORD_TYPES, POIWorkflow
     from tarav.l3.runtime import create_runtime

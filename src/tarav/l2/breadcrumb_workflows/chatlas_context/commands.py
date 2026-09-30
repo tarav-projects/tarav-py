@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
+import json
 from pathlib import Path
 
+from tarav.l0._core.errors import CliError
 from tarav.l1.breadcrumbs.commands import (
     register_audit_command,
     register_submission_command,
 )
+from tarav.l1.breadcrumbs import BreadcrumbError, BreadcrumbStore
 from tarav.l1.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow
 
 from .workflow import ChatlasContextRequest
@@ -56,6 +60,8 @@ def register_chatlas_context_submission(
 def register_chatlas_context_audit(
     subparsers: argparse._SubParsersAction,
     workflow: BreadcrumbAnnotationWorkflow,
+    *,
+    commit_auditor: Callable[..., object] | None = None,
 ) -> None:
     if workflow.name != "chatlas-context":
         raise ValueError(
@@ -66,8 +72,52 @@ def register_chatlas_context_audit(
         workflow=workflow,
         request_factory=_audit_request,
         help_text="Audit Breadcrumb positions and retained Chatlas User-Turn context.",
+        surface_required=False,
     )
     parser.add_argument("--chatlas-root")
+    if commit_auditor is not None:
+        parser.add_argument("--commit")
+        parser.add_argument("--repo")
+        file_handler = parser.get_default("handler")
+        parser.set_defaults(
+            handler=_audit_dispatch,
+            breadcrumb_file_audit_handler=file_handler,
+            breadcrumb_commit_auditor=commit_auditor,
+        )
+    else:
+        parser.set_defaults(commit=None, repo=None)
+
+
+def _audit_dispatch(args: argparse.Namespace) -> int:
+    if args.commit is None:
+        if args.surface is None or args.repo is not None:
+            raise CliError("File audit requires --surface and does not accept --repo")
+        return int(args.breadcrumb_file_audit_handler(args))
+    if args.surface is not None or args.repo is None:
+        raise CliError("Commit audit requires --commit and --repo without --surface")
+    try:
+        result = args.breadcrumb_commit_auditor(
+            args.repo,
+            args.commit,
+            store=BreadcrumbStore(args.breadcrumbs_root),
+            workflow=args.breadcrumb_annotation_workflow,
+            request=_audit_request(args),
+        )
+    except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    payload = result.to_json()
+    payload["command"] = "tarav breadcrumbs audit chatlas-context"
+    payload["repository"] = str(Path(args.repo).expanduser().resolve())
+    payload["commit"] = args.commit
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(f"status: {payload['status']}")
+        print(f"commit: {args.commit}")
+        print(f"breadcrumbs: {len(result.context.breadcrumbs)}")
+        for finding in result.findings:
+            print(f"poi: {finding.code}: {finding.message}")
+    return 0 if result.ok else 1
 
 
 __all__ = [
