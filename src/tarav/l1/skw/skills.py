@@ -22,17 +22,19 @@ class SkillLink(SkwBlock):
 
     class RecordInterface(SkwBlock.RecordInterface):
         target: str
-        label: str
+        caption: str
 
     @classmethod
     def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "id": "example", "target": "introduction",
-                "label": "Read more", "output": ["[Read more](SKILL.md)"]}
+        return {"type": entity(cls).name,
+                "id": "d9c4a653-d76a-4f44-b823-af7df64783b0", "label": "example",
+                "target": "introduction", "caption": "Read more",
+                "output": ["[Read more](SKILL.md)"]}
 
     def __init__(self, record):
         super().__init__(record)
-        if not self['target'] or not self['label']:
-            raise ValueError('SkillLink requires a target and label')
+        if not self['target'] or not self['caption']:
+            raise ValueError('SkillLink requires a target and caption')
 
     def inline_only(self) -> bool:
         return True
@@ -49,10 +51,10 @@ class SkillLink(SkwBlock):
         try:
             expected = self.produce(document)
         except (KeyError, ValueError, TypeError, OSError) as exc:
-            return [{'kind': 'invalid-produced-output', 'block': self.id,
+            return [{'kind': 'invalid-produced-output', 'block': self.label,
                      'detail': str(exc)}]
         if self.get('output') != expected:
-            return [{'kind': 'stale-produced-output', 'block': self.id}]
+            return [{'kind': 'stale-produced-output', 'block': self.label}]
         return []
 
 

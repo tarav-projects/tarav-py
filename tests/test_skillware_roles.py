@@ -1,6 +1,7 @@
 from tarav.l0.kernel import entity
 
 import json
+from skw_records import identify_blocks
 
 from tarav.l1.chatlas.references import ChatlasTurnReference
 from tarav.l1.skw.document import Document
@@ -25,7 +26,7 @@ def test_chatlas_exact_turn_and_grounding_role(tmp_path, monkeypatch):
             'blocks': [{'id': 'body', 'type': 'Tarav.Skillware.AgentGenerationBlock', 'prompt': [], 'output': ['Text'],
                         'context': [{'kind': 'reference', 'roles': ['maintenance', 'user-grounding'],
                                      'reference': reference}]}]}
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(identify_blocks(data, scope="roles-turn")))
     doc = Document(path)
     assert doc.context('body')[0]['turn_hash'] == 'b' * 64
     assert 'Exact user wording' in doc.read_context('body', 0)['text']
@@ -46,7 +47,7 @@ def test_roles_control_tracking_and_unknown_roles_are_findings(tmp_path):
         'blocks': [{'id': 'body', 'type': 'Tarav.Skillware.AgentGenerationBlock', 'prompt': [], 'output': ['output'],
                     'context': [{'kind': 'reference', 'roles': ['maintenance'], 'reference': {
                         'type': 'Tarav.Reference.StructuredFile', 'locator': {'path': '../../input.txt'}}}]}]}
-    source.write_text(json.dumps(data))
+    source.write_text(json.dumps(identify_blocks(data, scope="roles-file")))
     doc = Document(source)
     doc.observe_context('body')
     doc.compile()

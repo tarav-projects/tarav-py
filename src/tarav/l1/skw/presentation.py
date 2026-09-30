@@ -144,7 +144,8 @@ def render_skill_block(result: dict[str, Any]) -> str:
     if isinstance(record_type, dict):
         record_type = record_type.get('label', record_type.get('uuid', '<unknown>'))
     rows = [
-        f"{block['id']}  {record_type}",
+        f"{block['label']}  {record_type}",
+        f"id: {block['id']}",
         f"source: {result['source']}",
         f"output: {result['output']}",
     ]
@@ -162,7 +163,7 @@ def render_skill_block(result: dict[str, Any]) -> str:
 def render_loading_context(result: dict[str, Any]) -> str:
     parents = result.get("parents") or []
     paths = result.get("paths") or []
-    findings = result.get("findings") or []
+    diagnostics = result.get("diagnostics") or []
     rows = [
         f"block: {result['block']}",
         f"parents: {', '.join(parents) if parents else 'none'}",
@@ -177,15 +178,15 @@ def render_loading_context(result: dict[str, Any]) -> str:
             rows.append(f"    inlined: {', '.join(inlined)}")
         if referenced:
             rows.append(f"    referenced: {', '.join(referenced)}")
-    rows.append(f"POIs: {len(findings)}")
-    for finding in findings:
+    rows.append(f"diagnostics: {len(diagnostics)}")
+    for diagnostic in diagnostics:
         details = [
             f"{key}={value}"
-            for key, value in finding.items()
-            if key != "kind"
+            for key, value in diagnostic.items()
+            if key != "code"
         ]
         suffix = f"  {'  '.join(details)}" if details else ""
-        rows.append(f"  {finding.get('kind', 'unknown')}{suffix}")
+        rows.append(f"  {diagnostic.get('code', 'unknown')}{suffix}")
     return "\n".join(rows)
 
 

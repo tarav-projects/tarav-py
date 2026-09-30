@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready for implementation. Knowledge.Surface: wiki.
+Status: implemented and verified. Knowledge.Surface: wiki.
 Product: `tarav-py`. Alignment.Mode: Interactive.
 
 Implement the discussed chain as one coherent feature: typed declarations on
@@ -327,3 +327,43 @@ Capture verification: 11 new Breadcrumbs in this request and one in the Wiki
 daily handoff. Both surface audits returned `ok`, with no findings. Exact
 User Turns resolved; local placement was inspected. Existing topical notes
 were left unchanged. No unresolved capture gaps were found.
+
+### 2026-09-30 — Execute
+
+Added `POIProvider`, independently runnable Checks, CheckProvider, CheckResult,
+and a small runner. SKW blocks now carry UUID Ships and labels; source blocks
+own typed reading declarations. Loading analysis returns route state,
+availability, requirement observations, diagnostics, and completeness. Three
+SKW reading Checks turn that data into contextual POIs, and the skill/CLI
+check paths consume those results. A two-route regression verifies the missing
+inline dependency, witness path, passive inspection, explicit emission, and
+POI-owned raising.
+<!-- tarav.breadcrumb b6f70bdb2661fc1dbbf81d64fa2336b87cbfbeefef33ac8dcd482c7a77da7bd1 -->
+
+Dry-run inventory found 101 blocks in `tarav-hugentics` and 13 in `tarav-pkg`.
+Both source/product locks and the hugentics loading baseline were clean before
+migration. A per-document mapping records every old label and new Ship. Legacy
+loading edges moved to source declarations; historical generation annotations
+were left untouched. Rebuilt products and active lock baselines; 14 context
+baselines changed solely because their referenced Record identities changed.
+Generation standing remains clean. Current `tarav-pkg` check is clean; current
+`tarav-hugentics` check retains three undeclared authored links and one
+attachment cycle. These are structural POIs, not migration or lock drift.
+<!-- tarav.breadcrumb 2a20db701cc5bd5e2961be39ba92b7e95dbd2cb76072a3cf0cdea2fc115798d4 -->
+
+Verification: focused architecture/SKW/Checks/POI suite 105 passed. Full
+`tarav-py` suite initially reached 1402 passed, one failure in newly registered
+reading Type examples; the examples were fixed and the full suite passed
+1403/1403. Ruff and Git diff whitespace checks passed. Product and Wiki
+Breadcrumb audits returned no findings after refreshing ten older position
+observations displaced by note edits. Source JSON has no inline annotation
+syntax, so its migration is evidenced by the explicit mapping, script, and
+this log rather than comments in JSON.
+
+The reinstalled editable `tarav` CLI checked both maintained depots:
+`tarav-pkg` reported zero POIs; `tarav-hugentics` reported four structural
+POIs (three undeclared authored links, one attachment cycle). They remain
+visible for separate authored-graph review; no output content or semantic
+claim was changed to silence them. Two pre-existing Markdown Breadcrumb groups
+needed new position observations after their lines moved; their IDs and
+Chatlas attachments were preserved, and their final audits passed.

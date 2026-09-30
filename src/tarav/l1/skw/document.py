@@ -10,7 +10,7 @@ from typing import Self
 from pydantic import BaseModel
 
 from tarav.l0.kernel import TaravClass, TypeRegistry, current_records, entity
-from tarav.l0.kernel import FileRecord, TaravObject, TypeShip
+from tarav.l0.kernel import FileRecord, Ship, TaravEntity, TaravObject, TypeShip
 from tarav.l0.kernel.records import _json_object
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.skw.identity import SKILLWARE_WORKFLOW_SHIP
@@ -94,7 +94,7 @@ def lines(value):
 
 
 # tarav.breadcrumb 218840d2e598e238395a44e5e66211f2064dfad13f5f4936839bec2bc3942d13
-class SkwBlock(TaravObject, Mapping[str, object]):
+class SkwBlock(TaravEntity, Mapping[str, object]):
     """One actionable block retained inline in a Skillware document."""
 
     @classmethod
@@ -106,16 +106,18 @@ class SkwBlock(TaravObject, Mapping[str, object]):
             workflow=SKILLWARE_WORKFLOW_SHIP,
         )
 
-    class RecordInterface(TaravObject.RecordInterface):
-        id: str
+    class RecordInterface(TaravEntity.RecordInterface):
+        label: str
         output: list[str] | None
+        reading: list[dict] | None = None
 
     def __init__(self, record: Mapping[str, object]) -> None:
-        super().__init__()
+        identity = record.get("id")
+        super().__init__(identity if isinstance(identity, Ship) else Ship(identity))
         self._record = _json_object(record)
         type(self).validate_record(self._record)
-        if not isinstance(self._record.get("id"), str) or not self._record["id"]:
-            raise ValueError("Blocks require non-empty IDs")
+        if not isinstance(self._record.get("label"), str) or not self._record["label"]:
+            raise ValueError("Blocks require non-empty labels")
         if self._record.get("output") is not None:
             lines(self._record["output"])
 
@@ -135,14 +137,20 @@ class SkwBlock(TaravObject, Mapping[str, object]):
         return len(self._record)
 
     @property
-    def id(self) -> str:
-        return self._record["id"]  # type: ignore[return-value]
+    def label(self) -> str:
+        return self._record["label"]  # type: ignore[return-value]
 
     def output_lines(self) -> list[str]:
         output = self._record.get("output") if self._record is not None else None
         if output is None:
-            raise ValueError(f"Missing output: {self.id}")
+            raise ValueError(f"Missing output: {self.label}")
         return lines(output)
+
+    def reading_declarations(self):
+        from .reading import declaration_from_record
+
+        return tuple(declaration_from_record(value)
+                     for value in self._record.get("reading", []) or ())
 
     def produce(self, document: Document) -> list[str]:
         raise ValueError(f"{entity(type(self)).name} has no code producer")
@@ -165,7 +173,8 @@ class LiteralBlock(SkwBlock):
 
     @classmethod
     def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "id": "example", "output": ["Example."]}
+        return {"type": entity(cls).name, "id": "6df624aa-d8bb-46fb-a095-d91e2150b9a4",
+                "label": "example", "output": ["Example."]}
 
 
 class AgentGenerationBlock(SkwBlock):
@@ -194,7 +203,7 @@ class AgentGenerationBlock(SkwBlock):
                 raise ValueError("Block argument type must be a string")
             declared.append(Argument(name, argument_type))
         return Block(
-            self.id,
+            self.label,
             "\n".join(lines(self._record.get("prompt"))),
             tuple(declared),
         )
@@ -203,7 +212,8 @@ class AgentGenerationBlock(SkwBlock):
     def record_example(cls) -> dict[str, object]:
         return {
             "type": entity(cls).name,
-            "id": "example",
+            "id": "052474e0-9065-49dd-b153-582e495a6379",
+            "label": "example",
             "prompt": ["Write an example."],
             "arguments": {},
             "output": None,
@@ -212,24 +222,24 @@ class AgentGenerationBlock(SkwBlock):
     def output_findings(self, document: Document, lock_entry: dict) -> list[dict]:
         findings = []
         try:
-            fingerprint = document.inputs(self.id)[1]
+            fingerprint = document.inputs(self.label)[1]
         except (KeyError, ValueError, TypeError, OSError) as exc:
-            return [{"kind": "invalid-input", "block": self.id, "detail": str(exc)}]
-        baseline = lock_entry.get("blocks", {}).get(self.id)
+            return [{"kind": "invalid-input", "block": self.label, "detail": str(exc)}]
+        baseline = lock_entry.get("blocks", {}).get(self.label)
         if baseline is not None:
             if baseline["input_hash"] != fingerprint:
-                findings.append({"kind": "stale-generation", "block": self.id})
+                findings.append({"kind": "stale-generation", "block": self.label})
             if baseline["output_hash"] != _hash(self.get("output")):
-                findings.append({"kind": "output-changed", "block": self.id})
+                findings.append({"kind": "output-changed", "block": self.label})
             try:
                 annotation = read(document.annotation_path(baseline["generation"]))
-                if (annotation.get("source") != document.key or annotation.get("block") != self.id
+                if (annotation.get("source") != document.key or annotation.get("block") != self.label
                         or annotation.get("status") != "Recorded"
                         or annotation.get("input_hash") != baseline["input_hash"]
                         or annotation.get("output_hash") != baseline["output_hash"]):
                     raise ValueError("Annotation disagrees with lock")
             except (OSError, ValueError) as exc:
-                findings.append({"kind": "invalid-annotation", "block": self.id, "detail": str(exc)})
+                findings.append({"kind": "invalid-annotation", "block": self.label, "detail": str(exc)})
         return findings
 
 
@@ -273,6 +283,7 @@ class Document:
         # tarav.breadcrumb e1dbc0ae21389449d35926a5dcf9fe717168db8afacbe4ff94f80ae4009325ce
         self.registry = _block_registry(registry)
         self.blocks: dict[str, SkwBlock] = {}
+        self.blocks_by_ship: dict[Ship, SkwBlock] = {}
         for index, b in enumerate(self.data["blocks"]):
             block = self.registry.from_record(b)
             if not isinstance(block, SkwBlock):
@@ -280,10 +291,25 @@ class Document:
             if block._record is None:
                 raise RuntimeError("Loaded Skillware block has no retained Record")
             self.data["blocks"][index] = block._record
-            if block.id in self.blocks:
-                raise ValueError("Blocks require unique IDs")
-            self.blocks[block.id] = block
+            if block.label in self.blocks or block.id in self.blocks_by_ship:
+                raise ValueError("Blocks require unique labels and Ships in one document")
+            self.blocks[block.label] = block
+            self.blocks_by_ship[block.id] = block
         self.lock_path = self.root / ".skw" / "lock.json"
+
+    def block(self, selector: str | Ship) -> SkwBlock:
+        """Resolve a local label or an exact Ship; ambiguous scopes stay explicit."""
+        if isinstance(selector, Ship):
+            return self.blocks_by_ship[selector]
+        try:
+            ship = Ship(selector)
+        except ValueError:
+            ship = None
+        if ship in self.blocks_by_ship:
+            return self.blocks_by_ship[ship]
+        if selector in self.blocks:
+            return self.blocks[selector]
+        raise KeyError(selector)
 
     def path(self, value):
         if not isinstance(value, str) or Path(value).is_absolute():
@@ -295,13 +321,13 @@ class Document:
 
     def definition(self, block: SkwBlock):
         if not isinstance(block, AgentGenerationBlock):
-            raise ValueError(f"Block does not define agent generation: {block.id}")
+            raise ValueError(f"Block does not define agent generation: {block.label}")
         return block.definition()
 
     def inputs(self, identity, active=()):
         if identity in active:
             raise ValueError("Cyclic block dependency")
-        block = self.blocks[identity]
+        block = self.block(identity)
         values, dependencies = {}, {}
         for name, spec in block.get("arguments", {}).items():
             if len(set(spec) & {"value", "file", "block"}) != 1:
@@ -309,13 +335,26 @@ class Document:
             if "file" in spec:
                 values[name] = self.path(spec["file"]).read_text(encoding="utf-8")
             elif "block" in spec:
-                other = self.blocks[spec["block"]]
+                other = self.block(spec["block"])
                 if isinstance(other, AgentGenerationBlock):
-                    dependencies[name] = self.inputs(other["id"], (*active, identity))[1]
+                    dependencies[name] = self.inputs(other.label, (*active, identity))[1]
                 values[name] = "\n".join(other.output_lines())
             else:
                 values[name] = spec["value"]
-        state = {"recipe": {k: v for k, v in block.items() if k != "output"},
+        recipe = {k: v for k, v in block.items() if k != "output"}
+        migration_path = self.root / ".skw" / "block-identity-migration.json"
+        if migration_path.is_file():
+            migration = read(migration_path)
+            old = migration.get("documents", {}).get(self.key, {}).get(block.label)
+            if old is not None:
+                if recipe["id"] != old["ship"]:
+                    raise ValueError("Block identity disagrees with explicit migration")
+                # Historical generation evidence fingerprints the authored
+                # recipe, not its later identity and reading-path annotations.
+                recipe["id"] = old["label"]
+                recipe.pop("label", None)
+                recipe.pop("reading", None)
+        state = {"recipe": recipe,
                  "values": values, "dependencies": dependencies}
         # Reuse the independent typed template validator, not Index mechanics.
         Generation((self.definition(block),)).prepare(identity, values)
@@ -323,7 +362,7 @@ class Document:
 
     def _resolved_context(self, identity, selected=None):
         """Resolve ordered maintainer context without recursive expansion or repair."""
-        entries = self.blocks[identity].get("context", [])
+        entries = self.block(identity).get("context", [])
         if not isinstance(entries, list):
             raise ValueError("Context must be an ordered array")
         resolved = []
@@ -363,7 +402,7 @@ class Document:
 
     def context(self, identity):
         """List navigation coordinates only. Target content/checks are not evaluated."""
-        entries = self.blocks[identity].get("context", [])
+        entries = self.block(identity).get("context", [])
         if not isinstance(entries, list):
             raise ValueError("Context must be an ordered array")
         listing = []
@@ -407,7 +446,7 @@ class Document:
 
     def read_context(self, identity, index, *, mode="cat", line_limit=20, char_limit=4000):
         """Read exactly one entry, without expanding any references inside it."""
-        entries = self.blocks[identity].get("context", [])
+        entries = self.block(identity).get("context", [])
         if type(index) is not int or not 0 <= index < len(entries):
             raise ValueError("Context index out of range")
         if mode not in {"cat", "head", "tail"}:
@@ -451,7 +490,7 @@ class Document:
         return self.root / ".skw" / "generations" / (identity + ".json")
 
     def prepare(self, identity, *, chat=None):
-        block = self.blocks[identity]
+        block = self.block(identity)
         if not isinstance(block, AgentGenerationBlock):
             raise ValueError(f"Block does not define agent generation: {identity}")
         context = self._resolved_context(identity)
@@ -472,14 +511,14 @@ class Document:
         if annotation["source"] != self.key or annotation["status"] != "Prepared":
             raise ValueError("Expected prepared generation for this source")
         block = annotation["block"]
-        if not isinstance(self.blocks[block], AgentGenerationBlock):
+        if not isinstance(self.block(block), AgentGenerationBlock):
             raise ValueError(f"Block does not define agent generation: {block}")
         context_hash = self._context_hash(self._resolved_context(block))
         if annotation.get("context_hash") != context_hash:
             raise ValueError("Context changed since preparation")
         if self.inputs(block)[1] != annotation["input_hash"]:
             raise ValueError("Inputs changed since preparation")
-        output = self.blocks[block].get("output")
+        output = self.block(block).get("output")
         if output is None:
             raise ValueError("Fill source output before recording")
         lock = self.lock()
@@ -501,13 +540,13 @@ class Document:
 
     # tarav.breadcrumb 432b274a6a49d11a9a31d381a8bad064b544a44d210397fdec9450d6d9bdea97
     def produce(self, identity):
-        block = self.blocks[identity]
+        block = self.block(identity)
         output = lines(block.produce(self))
         original = block.to_record()
         updated = {**original, "output": output}
         type(block).validate_record(updated)
         index = next(i for i, value in enumerate(self.data["blocks"])
-                     if value["id"] == identity)
+                     if value["id"] == str(block.id))
         self.data["blocks"][index] = updated
         write(self.source, self.data)
         return {"block": identity, "output": output}

@@ -8,11 +8,13 @@ from urllib.parse import quote
 from markdown_it import MarkdownIt
 
 from tarav.l0.kernel import TaravClass, entity
-from tarav.l0.kernel import FileRecord, TypeShip
+from tarav.l0.kernel import FileRecord, Ship, TypeShip
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.references.structured import StructuredFileReference
 from .document import Document, read, write
 from .skills import SkillLink
+from .reading import (BlockEntry, ConsultationLink, ExpectedLink, FileEntry,
+                      IncludesBlock, InlinesEntity, ProvidesEntity, ReadingDependency)
 from .generation import _hash
 
 
@@ -55,6 +57,7 @@ class SkillDocument(Document):
         return result
 
 
+# tarav.breadcrumb f4d2fd588176b0f1faadd7a1173874ad992004685b107fa4d1fb52f55c4e97a5
 class LoadingModel:
     def __init__(self, package, documents):
         self.package = package
@@ -67,7 +70,8 @@ class LoadingModel:
         self.nodes = {}
         self.bindings = {}
         self.by_block = {}
-        self.findings = []
+        self.by_ship = {}
+        self.diagnostics = []
         for node in self.data['blocks']:
             identity = node['id']
             if (not isinstance(identity, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', identity)
@@ -90,14 +94,17 @@ class LoadingModel:
                 if not re.fullmatch(r'/blocks/(0|[1-9][0-9]*)', pointer):
                     raise ValueError('Select one complete source block')
                 block = result.target
-                typed = document.blocks[block['id']]
+                typed = document.blocks_by_ship[Ship(block['id'])]
                 if typed.to_record() != block:
                     raise ValueError('Block reference disagrees with loaded Type')
-                key = (document.source, typed.id)
+                key = (document.source, typed.label)
                 if key in self.by_block:
                     raise ValueError('Source block bound more than once')
                 self.bindings[identity] = (document, typed)
                 self.by_block[key] = identity
+                if typed.id in self.by_ship:
+                    raise ValueError('Block Ship bound more than once')
+                self.by_ship[typed.id] = identity
                 # Conformance signal only. Parsed links never become edges.
                 content = typed.get('output')
                 if content is not None and not isinstance(typed, SkillLink):
@@ -112,7 +119,41 @@ class LoadingModel:
             for block in document.blocks:
                 if (document.source, block) not in self.by_block:
                     self.report('undeclared-block', str(document.source), detail=block)
+        self.reading = {}
+        self.links = {}
+        self.includes = {}
+        self.requirements = {}
+        self.provides = {}
+        self.inlines = {}
+        self.expected = {}
         for identity, (_, block) in self.bindings.items():
+            self.reading[identity] = block.reading_declarations()
+            self.links[identity], self.includes[identity] = [], []
+            self.requirements[identity] = []
+            self.provides[identity], self.inlines[identity] = set(), set()
+            self.expected[identity] = []
+            for declaration in self.reading[identity]:
+                try:
+                    target = self.resolve_target(declaration.target)
+                    if isinstance(declaration, ReadingDependency):
+                        self.requirements[identity].append((declaration, target))
+                    elif isinstance(declaration, ProvidesEntity):
+                        self.provides[identity].add(target)
+                    elif isinstance(declaration, InlinesEntity):
+                        self.inlines[identity].add(target)
+                    elif isinstance(declaration, IncludesBlock):
+                        destination = self.resolve_entry(declaration.destination())
+                        self.includes[identity].append((declaration, destination, target))
+                    elif isinstance(declaration, (ExpectedLink, ConsultationLink)):
+                        destination = (self.resolve_entry(declaration.destination())
+                                       if isinstance(declaration, ExpectedLink) else
+                                       self.resolve_entry_record(declaration.entry))
+                        self.links[identity].append((declaration, destination, target))
+                        if isinstance(declaration, ExpectedLink):
+                            self.expected[identity].append(destination)
+                except (ValueError, KeyError, TypeError) as exc:
+                    self.report('invalid-context-target', identity,
+                                target=declaration.target, detail=str(exc))
             if isinstance(block, SkillLink) and block['target'] not in self.bindings:
                 self.report('invalid-context-target', identity, target=block['target'])
         self.parents = {}
@@ -122,7 +163,7 @@ class LoadingModel:
             elif identity in self.bindings:
                 document, block = self.bindings[identity]
                 ordered = list(document.blocks)
-                index = ordered.index(block['id'])
+                index = ordered.index(block.label)
                 previous = self.by_block.get((document.source, ordered[index - 1])) if index else None
                 parents = [previous] if previous else []
             else:
@@ -133,45 +174,76 @@ class LoadingModel:
             for parent in parents:
                 if parent not in self.bindings:
                     self.report('invalid-parent', identity, target=parent)
+            if any(kind in node for kind in ('links', 'includes', 'requires')):
+                raise ValueError('Reading declarations belong to source blocks')
             slots = set()
-            for kind in ('links', 'includes', 'requires'):
-                for edge in node.get(kind, []):
-                    if edge['target'] not in self.bindings:
-                        self.report('invalid-context-target', identity, target=edge['target'])
-                    if kind == 'requires':
-                        if edge.get('delivery', 'either') not in ('referenced', 'inlined', 'either'):
-                            raise ValueError('Unknown required delivery form')
-                    else:
-                        slot = edge['slot']
-                        if (not isinstance(slot, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', slot)
-                                or slot in slots):
-                            raise ValueError('Link/include slots must be unique simple IDs')
-                        slots.add(slot)
-                        if kind == 'links' and not isinstance(edge['label'], str):
-                            raise ValueError('Links require a label')
+            for declaration, _, _ in (*self.links.get(identity, ()),
+                                      *self.includes.get(identity, ())):
+                slot = declaration._record.get('slot')
+                if slot is None:
+                    continue
+                if (not isinstance(slot, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', slot)
+                        or slot in slots):
+                    raise ValueError('Reading slots require unique simple IDs')
+                slots.add(slot)
         roots = [identity for identity, (d, b) in self.bindings.items()
                  if d.target == package.path(package.data['entrypoint'])
-                 and b['id'] == next(iter(d.blocks))]
+                 and b.label == next(iter(d.blocks))]
         self.root = self.data.get('root', roots[0] if len(roots) == 1 else None)
         if self.root not in self.bindings:
             self.report('invalid-loading-root', str(self.root))
         elif self.parents[self.root]:
             self.report('root-has-parent', self.root)
 
-    def report(self, kind, block, **extra):
-        self.findings.append({'kind': kind, 'block': block, **extra})
+    def resolve_target(self, value):
+        """Resolve a Ship exactly, or an unambiguous package-local block label."""
+        try:
+            return Ship(value)
+        except ValueError:
+            matches = [block.id for _, block in self.bindings.values()
+                       if block.label == value]
+            if len(matches) != 1:
+                raise ValueError(f'Label {value!r} has {len(matches)} matching blocks')
+            return matches[0]
 
-    def analyze(self, *, limit=10000):
-        findings = list(self.findings)
+    def resolve_entry_record(self, value):
+        from .reading import entry_from_record
+        return self.resolve_entry(entry_from_record(value)) if value is not None else None
+
+    def resolve_entry(self, entry):
+        if isinstance(entry, BlockEntry):
+            node = entry._record['node']
+            if node not in self.bindings:
+                raise ValueError(f'Unknown block entry: {node}')
+            return node
+        if isinstance(entry, FileEntry):
+            source = self.package.path(entry._record['source'])
+            matches = [node for node, (document, block) in self.bindings.items()
+                       if document.target == source
+                       and block.label == next(iter(document.blocks))]
+            if len(matches) != 1:
+                raise ValueError(f'File entry has {len(matches)} roots: {source}')
+            return matches[0]
+        raise TypeError('Unsupported reading entry')
+
+    def report(self, kind, block, **extra):
+        self.diagnostics.append({'code': kind, 'block': block, **extra})
+
+    def analyze(self, *, limit=10000, entry=None):
+        diagnostics = list(self.diagnostics)
         children = defaultdict(list)
         for child, parents in self.parents.items():
             for parent in parents:
                 children[parent].append(child)
+        for source, destinations in self.expected.items():
+            children[source].extend(destinations)
+        for source, destinations in children.items():
+            children[source] = list(dict.fromkeys(destinations))
         # Check cycles even in components disconnected from the entry root.
         done = set()
         def cycle(node, active):
             if node in active:
-                findings.append({'kind': 'attachment-cycle', 'block': node})
+                diagnostics.append({'code': 'attachment-cycle', 'block': node})
                 return
             if node in done:
                 return
@@ -181,31 +253,33 @@ class LoadingModel:
         for node in self.nodes:
             cycle(node, ())
         states = defaultdict(list)
-        outcomes = defaultdict(list)
+        observations = []
         def supply(node, inline, linked, active, checks, visits):
             if node in active:
-                findings.append({'kind': 'inclusion-cycle', 'block': node})
+                diagnostics.append({'code': 'inclusion-cycle', 'block': node})
                 return
             if node not in self.bindings:
                 return
-            inline.add(node)
-            declaration = self.nodes[node]
             _, block = self.bindings[node]
-            if isinstance(block, SkillLink) and block['target'] in self.bindings:
-                linked.add(block['target'])
-            linked.update(e['target'] for e in declaration.get('links', [])
-                          if e['target'] in self.bindings)
-            for edge in declaration.get('includes', []):
-                supply(edge['target'], inline, linked, (*active, node), checks, visits)
-            for requirement in declaration.get('requires', []):
-                target = requirement['target']
-                delivery = requirement.get('delivery', 'either')
-                satisfied = ((delivery in ('inlined', 'either') and target in inline)
-                             or (delivery in ('referenced', 'either') and target in linked))
-                checks.append((node, target, delivery, satisfied))
+            incoming_inline = sorted(map(str, inline))
+            incoming_linked = sorted(map(str, linked))
+            for requirement, target in self.requirements[node]:
+                satisfied = requirement.satisfied(target, inline, linked)
+                checks.append((node, str(target), requirement.delivery, satisfied,
+                               incoming_inline, incoming_linked))
+            inline.add(block.id)
+            inline.update(self.provides[node])
+            inline.update(self.inlines[node])
+            linked.update(target for _, _, target in self.links[node])
+            for _, destination, _ in self.includes[node]:
+                supply(destination, inline, linked, (*active, node), checks, visits)
             suffix = [*active[1:], node] if active else []
-            visits.append((node, suffix, sorted(inline), sorted(linked)))
-        stack = [(self.root, (), set(), set())] if self.root in self.bindings else []
+            visits.append((node, suffix, incoming_inline, incoming_linked,
+                           sorted(map(str, inline)), sorted(map(str, linked))))
+        start = self.root if entry is None else entry
+        if entry is not None and start not in self.bindings:
+            raise ValueError(f'Unknown reading entry: {start}')
+        stack = [(start, (), set(), set())] if start in self.bindings else []
         count = 0
         while stack and count < limit:
             node, path, inline, linked = stack.pop()
@@ -215,58 +289,77 @@ class LoadingModel:
             path = (*path, node)
             inline, linked, checks, visits = set(inline), set(linked), [], []
             supply(node, inline, linked, (), checks, visits)
-            for visited, suffix, present, reachable in visits:
-                states[visited].append({'path': [*path, *suffix], 'inlined': present,
-                                        'referenced': reachable})
-            for owner, target, delivery, satisfied in checks:
-                outcomes[(owner, target, delivery)].append(satisfied)
-                if not satisfied:
-                    findings.append({'kind': 'missing-context', 'block': owner,
-                                     'target': target, 'delivery': delivery, 'path': list(path)})
+            for visited, suffix, incoming_inline, incoming_linked, present, reachable in visits:
+                states[visited].append({'path': [*path, *suffix],
+                                        'incoming_inlined': incoming_inline,
+                                        'incoming_referenced': incoming_linked,
+                                        'inlined': present, 'referenced': reachable})
+            for owner, target, delivery, satisfied, present, reachable in checks:
+                observations.append({'block': owner, 'target': target, 'delivery': delivery,
+                                     'satisfied': satisfied, 'path': list(path),
+                                     'inlined': present, 'referenced': reachable})
             stack.extend((child, path, inline, linked) for child in children[node])
         if stack:
-            findings.append({'kind': 'loading-analysis-incomplete', 'limit': limit})
+            diagnostics.append({'code': 'loading-analysis-incomplete', 'limit': limit})
         else:
             for node in self.nodes:
                 if node not in states:
-                    findings.append({'kind': 'unreachable-block', 'block': node})
-        for (node, target, delivery), values in outcomes.items():
-            if any(values) and not all(values):
-                findings.append({'kind': 'path-dependent-context', 'block': node,
-                                 'target': target, 'delivery': delivery})
-        return {'root': self.root, 'states': dict(states), 'findings': findings}
+                    diagnostics.append({'code': 'unreachable-block', 'block': node})
+        availability = {}
+        for node, paths in states.items():
+            def sets(key):
+                values = [set(state[key]) for state in paths]
+                return {'intersection': sorted(set.intersection(*values)),
+                        'union': sorted(set.union(*values))}
+            availability[node] = {'inlined': sets('incoming_inlined'),
+                                  'referenced': sets('incoming_referenced')}
+        incomplete = any(f['code'] in {'invalid-block-reference', 'invalid-parent',
+                                      'invalid-context-target', 'invalid-loading-root',
+                                      'attachment-cycle', 'inclusion-cycle',
+                                      'loading-analysis-incomplete'} for f in diagnostics)
+        return {'root': start, 'states': dict(states), 'availability': availability,
+                'requirements': observations,
+                'complete': not incomplete, 'diagnostics': diagnostics}
 
     def render_block(self, identity, output, active=()):
         if identity in active:
             raise ValueError(f'Inclusion cycle: {identity}')
         document, block = self.bindings[identity]
         text = '\n'.join(block.output_lines())
-        declaration = self.nodes[identity]
-        for kind in ('links', 'includes'):
-            for edge in declaration.get(kind, []):
-                token = '{{skw:' + edge['slot'] + '}}'
+        for kind, declarations in (('links', self.links[identity]),
+                                   ('includes', self.includes[identity])):
+            for declaration, destination, _ in declarations:
+                slot = declaration._record.get('slot')
+                if slot is None:
+                    continue
+                token = '{{skw:' + slot + '}}'
                 if text.count(token) != 1:
                     raise ValueError(f'Expected exactly one slot {token} in {identity}')
                 if kind == 'includes':
-                    value = self.render_block(edge['target'], output, (*active, identity))
+                    value = self.render_block(destination, output, (*active, identity))
                 else:
-                    target_document, target_block = self.bindings[edge['target']]
+                    if destination is None:
+                        raise ValueError(f'Link slot {slot} has no reading destination')
+                    target_document, target_block = self.bindings[destination]
                     path = quote(os.path.relpath(target_document.target, output.parent), safe='/')
-                    first = target_block['id'] == next(iter(target_document.blocks))
+                    first = target_block.label == next(iter(target_document.blocks))
                     if not first:
-                        path += '#skw-' + edge['target']
-                    label = edge['label'].replace('\\', '\\\\').replace('[', '\\[').replace(']', '\\]')
+                        path += '#skw-' + str(target_block.id)
+                    caption = declaration._record.get('caption')
+                    if not isinstance(caption, str):
+                        raise ValueError(f'Link slot {slot} requires a caption')
+                    label = caption.replace('\\', '\\\\').replace('[', '\\[').replace(']', '\\]')
                     value = f'[{label}]({path})'
                 text = text.replace(token, value)
         if '{{skw:' in text:
             raise ValueError(f'Undeclared slot in {identity}')
         # Anchors are a generated primitive only where a declared link needs one.
-        linked = any(e['target'] == identity for n in self.nodes.values()
-                     for e in n.get('links', [])) or any(
+        linked = any(destination == identity for values in self.links.values()
+                     for _, destination, _ in values) or any(
                          isinstance(other, SkillLink) and other['target'] == identity
                          for _, other in self.bindings.values())
-        if linked and block['id'] != next(iter(document.blocks)) and not active:
-            text = f'<a id="skw-{identity}"></a>\n' + text
+        if linked and block.label != next(iter(document.blocks)) and not active:
+            text = f'<a id="skw-{block.id}"></a>\n' + text
         return text
 
     def link_output(self, block: SkillLink, output: Path) -> str:
@@ -275,9 +368,9 @@ class LoadingModel:
             raise ValueError(f'Unknown SkillLink target: {target}')
         target_document, target_block = self.bindings[target]
         path = quote(os.path.relpath(target_document.target, output.parent), safe='/')
-        if target_block.id != next(iter(target_document.blocks)):
-            path += '#skw-' + target
-        label = block['label'].replace('\\', '\\\\').replace('[', '\\[').replace(']', '\\]')
+        if target_block.label != next(iter(target_document.blocks)):
+            path += '#skw-' + str(target_block.id)
+        label = block['caption'].replace('\\', '\\\\').replace('[', '\\[').replace(']', '\\]')
         return f'[{label}]({path})'
 
     def document_text(self, document):
@@ -299,5 +392,6 @@ class LoadingModel:
         return {'block': block, 'declaration': self.nodes[block],
                 'parents': self.parents[block], 'path_count': len(states),
                 'paths': states[:limit],
-                'findings': [f for f in analysis['findings']
-                             if f.get('block') == block or f['kind'] == 'loading-analysis-incomplete']}
+                'diagnostics': [f for f in analysis['diagnostics']
+                                if f.get('block') == block
+                                or f['code'] == 'loading-analysis-incomplete']}

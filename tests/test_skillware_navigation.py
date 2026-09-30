@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from skw_records import identify_blocks
 
 from tarav.l1.skw.document import Document
 
@@ -11,13 +12,14 @@ def document(tmp_path):
     source.parent.mkdir(parents=True)
     target = tmp_path / "context.txt"
     target.write_text("first\n" + "x" * 8000 + "\nlast\n")
-    source.write_text(json.dumps({"type": "Tarav.Skillware.Document", "schema_version": 1,
+    data = {"type": "Tarav.Skillware.Document", "schema_version": 1,
         "output": "demo.md", "blocks": [{"id": "body", "type": "Tarav.Skillware.AgentGenerationBlock", "prompt": [],
         "output": ["Retained"], "context": [
             {"kind": "reference", "roles": ["dependency"], "reference": {"type": "Tarav.Reference.StructuredFile",
                 "locator": {"path": "../../context.txt"}}},
             {"kind": "reference", "roles": ["dependency"], "reference": {"type": "Tarav.Reference.StructuredFile",
-                "locator": {"path": "missing.txt"}}}]}]}))
+                "locator": {"path": "missing.txt"}}}]}]}
+    source.write_text(json.dumps(identify_blocks(data, scope="navigation")))
     return Document(source), target
 
 

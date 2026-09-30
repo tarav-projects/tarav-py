@@ -603,8 +603,8 @@ CLASSES = {
 }
 
 
-def collect(package, findings):
-    collector = POICollector()
+def surface_state(package):
+    """Current declared source and product bytes for POI evidence editions."""
     # Include declared source/lock bytes so an acceptance cannot float across
     # later source edits, even when the checker emits the same compact operands.
     from .publication import digest
@@ -620,6 +620,13 @@ def collect(package, findings):
             state[str(path)] = digest(path.read_bytes().hex())
         except OSError:
             state[str(path)] = None
+    return state
+
+
+def collect(package, findings):
+    collector = POICollector()
+    state = surface_state(package)
+    from .publication import digest
     for raw in findings:
         kind = raw.get('kind')
         if kind is not None and kind not in CLASSES:

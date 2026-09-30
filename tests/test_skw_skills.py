@@ -3,6 +3,7 @@ from tarav.l0.kernel import TaravClass, entity
 import json
 
 import pytest
+from skw_records import identify_blocks
 
 from tarav.l3.runtime import create_runtime
 from tarav.l1.skw.depot import SkwDepot
@@ -15,6 +16,7 @@ def package(tmp_path):
     source = {'type': 'Tarav.Skillware.Document', 'schema_version': 1,
               'output': 'SKILL.md', 'blocks': [
                   {'id': 'main', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['# Skill']}]}
+    identify_blocks(source, scope="skill-main")
     (root / '.skw/src/main.skw.json').write_text(json.dumps(source))
     manifest = {'type': entity(SkwSkill).name, 'schema_version': 1,
                 'entrypoint': 'SKILL.md', 'sources': ['.skw/src/main.skw.json'],
@@ -191,12 +193,16 @@ def test_navigation_is_selective_and_does_not_resolve_context(tmp_path, capsys):
     data['blocks'][0]['context'] = [{'kind': 'reference', 'reference': {
         'type': 'Unknown.Reference', 'locator': {'path': 'missing'}}}]
     data['blocks'].append({'id': 'second', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['Other']})
+    identify_blocks(data, scope="skill-main")
     source.write_text(json.dumps(data))
     assert skill.ls()['items'][0]['source'] == 'main.skw.json'
     page = skill.ls(source='main.skw.json', limit=1)
-    assert page == {'total': 2, 'items': [{'block': 'main', 'type': 'Tarav.Skillware.LiteralBlock'}], 'next_offset': 1}
+    assert page['total'] == 2 and page['next_offset'] == 1
+    assert page['items'] == [{'block': 'main', 'id': data['blocks'][0]['id'],
+                              'type': 'Tarav.Skillware.LiteralBlock'}]
     assert skill.ls(source='main.skw.json', offset=1)['items'][0]['block'] == 'second'
     assert skill.read_block(source='main.skw.json', block='main')['block']['context']
+    assert skill.read_block(source='main.skw.json', block=data['blocks'][0]['id'])['block']['label'] == 'main'
     with pytest.raises(ValueError):
         skill.read_block(source='../main.json', block='main')
     assert main(['skw', 'skills', 'ls', '--project', str(skill.root), '--limit', '1']) == 0

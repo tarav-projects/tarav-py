@@ -1,5 +1,9 @@
 # AGENTS.md
 
+<!-- tarav.sessions
+1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
+-->
+
 ## Read first
 
 - Load the `tarav-pkg` skill and read its `CONSTITUTION.md`. Any surface claiming
@@ -71,6 +75,10 @@
 
 - Skill packages with a `loading` declaration use `tarav.l1.skw.loading` for
   declared slot composition and `tarav.l1.skw.skills` for typed components.
+  SKW blocks are Entities with UUID Ships and separate local labels. Typed
+  reading declarations belong to source blocks; the loading Record binds
+  blocks and routes, while l2 reading Checks interpret path analysis into POIs.
+  <!-- tarav.breadcrumb 9ec8816777a876da7cc365666a9b4796b3c702774e5e9936a9c4f266212d0ddb -->
   The installed `skw document` CLI receives this specialization
   through runtime composition. Plain `Document` is the generic engine, not a
   substitute for compiling skill primitives. Loading graphs are declared data;

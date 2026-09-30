@@ -377,7 +377,8 @@ schema or an additional Workflow identity.
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `scoring` | Common Assertion entities and evaluation mechanics: pools, tasks, runs, results, derived scores, and traces. Existing scoring Records are entities with explicit Context reference edges. |
 | `poi` | POIWorkflow owns extensible check declarations, identified findings, typed blessings and assessments. Context exposes checks, coordinates, and evidence. Runtime composition supplies an isolated collector and Archive-partition blessing store; detection and response remain consumer-owned. |
-| `skw` | Typed document compilation, context declarations, generation mechanics, and skill-package specialization. |
+| `checks` | Independently runnable bound Checks, optional subject providers, and result snapshots that expose POIs without emitting them. |
+| `skw` | Typed document compilation, generation mechanics, and skill-package specialization. Blocks are Entities with Ships and separate labels; source blocks own typed reading declarations. Loading analysis exposes route facts, while SKW Checks turn those facts into POIs. |
 | `surfaces` | SurfacesWorkflow owns MarkdownNormalModel and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. Consumers assign domain meaning. |
 | `wiki` | Folder-based Markdown Wiki and WikiNote objects, parsing through surfaces, and Wiki-scoped Git closure. No Project dependency. |
 | `project` | ProjectWorkflow owns minimal TaravProject and featured Project. Existing project_id is the Ship identity; discovered location stays outside the portable marker. |
@@ -386,6 +387,7 @@ schema or an additional Workflow identity.
 | `hooks`, `daemon` | Hook validation and dispatch, plus daemon-owned delivery adapters. |
 | `stdlib` | Small reusable library and CLI primitives. |
 | `iterante`, `iterante2` | Independently maintained mission runtimes; shared behavior is promoted only after convergence. |
+<!-- tarav.breadcrumb 5390bce98b91f130684fb3322d8ee0022a5e60bd1d5390e7e05c8c53b6718e01 -->
 
 Other cohesive command domains follow the same rule: they own their behavior
 and use Kernel contracts without moving their semantics into Kernel.

@@ -3,6 +3,7 @@ from tarav.l0.kernel import TaravClass, TaravObject, TypeRegistry, TypeShip, ent
 import json
 
 import pytest
+from skw_records import identify_blocks
 
 from tarav.l1.skw.document import (
     AgentGenerationBlock, Document, DocumentRecord, LiteralBlock, SkwBlock,
@@ -19,6 +20,7 @@ def source(tmp_path):
                 {"type": "Tarav.Skillware.LiteralBlock", "id": "title", "output": ["# Explanation", ""]},
                 {"type": "Tarav.Skillware.AgentGenerationBlock", "id": "explain", "prompt": ["Explain ${code}"],
                  "arguments": {"code": {"type": "text", "file": "input.py"}}, "output": None}]}
+    identify_blocks(data, scope="explanation")
     path.write_text(json.dumps(data))
     return path, data
 
@@ -60,6 +62,7 @@ def test_block_dependency_tracks_upstream_recipe_even_with_same_output(tmp_path)
     data["blocks"].append({"id": "review", "type": "Tarav.Skillware.AgentGenerationBlock", "prompt": ["Review ${text}"],
                            "arguments": {"text": {"type": "text", "block": "explain"}},
                            "output": ["Review"]})
+    identify_blocks(data, scope="explanation")
     path.write_text(json.dumps(data))
     for name in ("explain", "review"):
         prepared = Document(path).prepare(name)
@@ -107,6 +110,7 @@ def test_registered_external_block_dispatch_and_rejection(tmp_path):
                                           ExternalBlock, Unrelated))
     data['blocks'] = [{'id': 'external', 'type': entity(ExternalBlock).name,
                        'output': ['External content.']}]
+    identify_blocks(data, scope="explanation")
     path.write_text(json.dumps(data))
     doc = Document(path, registry=registry)
     assert isinstance(doc.blocks['external'], ExternalBlock)
@@ -222,6 +226,7 @@ def test_block_context_fingerprints_selected_whole_block(tmp_path):
     target = {"type": entity(DocumentRecord).name, "blocks": [
         {"id": "selected", "type": "Tarav.Skillware.AgentGenerationBlock", "prompt": ["Explain"], "output": ["Old"]},
         {"id": "unrelated", "type": "Tarav.Skillware.LiteralBlock", "output": ["One"]}]}
+    identify_blocks(target, scope="other-context")
     other.write_text(json.dumps(target))
     data["blocks"][1]["context"] = [{"kind": "reference", "roles": ["dependency"], "reference": {"type": "Tarav.Reference.StructuredFile", "locator": {"path": "other.skw.json", "pointer": "/blocks/0"}}}]
     data["blocks"][1]["output"] = ["Retained"]

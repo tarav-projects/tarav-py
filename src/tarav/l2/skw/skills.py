@@ -15,8 +15,10 @@ from .publication import ModelPublication, ModelPublicationRecord, PublicationLo
 from tarav.l1.skw.loading import LoadingModel, LoadingRecord, SkillDocument
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
 from tarav.l1.poi import BlessingStore, BlessingRecord, BlessingAssessmentRecord
+from tarav.l1.checks import CheckProvider, run_checks
 from tarav.l0._core.errors import CliError
 from .pois import CLASSES, DiagramAssessment, collect
+from .reading_checks import READING_CHECK_TYPES, reading_checks
 from tarav.l1.skw.presentation import (
     add_output_mode,
     emit,
@@ -29,7 +31,7 @@ from tarav.l1.skw.presentation import (
 )
 
 
-class SkwSkill(SkwDepot):
+class SkwSkill(SkwDepot, CheckProvider):
     """A deployable Skill retained in one typed `.skw` depot.
 
     The entry record owns deployment selection; source context stays developer-only.
@@ -120,7 +122,7 @@ class SkwSkill(SkwDepot):
                       'path': str(self.path(p))} for p in self.data['sources']]
         else:
             document = self._navigation_document(source)
-            items = [{'block': b.id, 'type': entity(type(b)).name}
+            items = [{'block': b.label, 'id': str(b.id), 'type': entity(type(b)).name}
                      for b in document.blocks.values()]
         end = offset + limit
         return {'total': len(items), 'items': items[offset:end],
@@ -129,10 +131,12 @@ class SkwSkill(SkwDepot):
     def read_block(self, *, source, block):
         """Read one retained block; references remain unexpanded."""
         document = self._navigation_document(source)
-        if block not in document.blocks:
-            raise ValueError(f'Unknown block: {block}')
+        try:
+            selected = document.block(block)
+        except (KeyError, ValueError) as exc:
+            raise ValueError(f'Unknown block: {block}') from exc
         return {'source': str(document.source), 'output': str(document.target),
-                'block': document.blocks[block].to_record()}
+                'block': selected.to_record()}
 
     def loading(self):
         if 'loading' not in self.data:
@@ -143,8 +147,19 @@ class SkwSkill(SkwDepot):
     def blessings(self):
         return BlessingStore(self.root / '.skw/blessings')
 
+    # tarav.breadcrumb 2ceb31c9cf7073c74811cdb0fa857cc9cf09d51c80b4c776c5785c49bd3e1691
+    @property
+    def checks(self):
+        return reading_checks(self.loading()) if 'loading' in self.data else ()
+
     def evaluate(self):
-        return collect(self, self.check())
+        findings = self._check_without_reading()
+        collector = collect(self, findings)
+        if not any(finding['kind'] == 'invalid-loading-model' for finding in findings):
+            for result in run_checks(self.checks):
+                for poi in result.pois():
+                    collector.emit(poi)
+        return collector
 
     def report(self, **selection):
         return self.evaluate().report(store=self.blessings, **selection)
@@ -154,6 +169,15 @@ class SkwSkill(SkwDepot):
                 for p in self.data.get('publications', [])]
 
     def check(self):
+        findings = self._check_without_reading()
+        if self._record is not None and 'loading' in self._record and not any(
+            finding['kind'] == 'invalid-loading-model' for finding in findings
+        ):
+            for result in run_checks(self.checks):
+                findings.extend(poi.evidence['finding'] for poi in result.pois())
+        return findings
+
+    def _check_without_reading(self):
         findings = []
         def report(kind, path, detail=""):
             findings.append({"kind": kind, "path": str(path), "detail": detail})
@@ -161,7 +185,7 @@ class SkwSkill(SkwDepot):
         try:
             documents = {d.source: d for d in self.documents()}
             if 'loading' in self.data:
-                findings.extend(self.loading().analyze()['findings'])
+                self.loading()
         except (OSError, ValueError, KeyError, TypeError) as exc:
             report('invalid-loading-model', self.root, str(exc))
             return findings
@@ -266,6 +290,7 @@ SKILLS_RECORD_TYPES = (
     BlessingRecord,
     BlessingAssessmentRecord,
     *CLASSES.values(),
+    *READING_CHECK_TYPES,
     DiagramAssessment,
 )
 
@@ -404,7 +429,7 @@ def _command(args):
     result = (package.deploy(args.destination) if args.skills_action == "deploy"
               else getattr(package, args.skills_action)())
     findings = result.get("findings", []) if isinstance(result, dict) else result
-    report = collect(package, findings).report(
+    report = package.evaluate().report(
         store=package.blessings, offset=args.offset, limit=args.limit,
         class_name=args.class_name, blessing=args.blessing_status)
     if isinstance(result, dict):

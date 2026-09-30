@@ -271,6 +271,7 @@ def create_runtime(
         POI_RECORD_TYPES, POIWorkflow, POICollector, BlessingStore,
         BlessingRecord, BlessingAssessmentRecord,
     )
+    from tarav.l1.checks import ChecksWorkflow
     from tarav.l1.poi.workflow import POI_WORKFLOW_SHIP
     from tarav.l1.surfaces import SurfacesWorkflow
     from tarav.l1.surfaces.markdown import MarkdownNormalModel
@@ -283,6 +284,7 @@ def create_runtime(
     from tarav.l2.lines.assertions import LineGroundingAssertion
     from tarav.l2.scoring.workflow import ScoringWorkflow
     from tarav.l1.skw.document import SKILLWARE_RECORD_TYPES, SkillwareWorkflow
+    from tarav.l1.skw.reading import READING_DECLARATION_TYPES, READING_ENTRY_TYPES
     from tarav.l2.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
     from tarav.l2.test_workflow import TestEntity, TestItem, TestWorkflow
 
@@ -332,6 +334,8 @@ def create_runtime(
                 ScoringReference,
                 LineGroundingAssertion,
                 *SKILLWARE_RECORD_TYPES,
+                *READING_DECLARATION_TYPES,
+                *READING_ENTRY_TYPES,
                 *SKILLS_RECORD_TYPES,
                 *record_types,
             )
@@ -367,6 +371,7 @@ def create_runtime(
         ProjectModelsWorkflow,
         ProjectWikiWorkflow,
         POIWorkflow,
+        ChecksWorkflow,
         SurfacesWorkflow,
         UnsortedWorkflow,
         ScoringWorkflow,
