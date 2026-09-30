@@ -153,8 +153,6 @@ class GitRepository(GitObject):
             if not changed and not allow_empty:
                 raise GitError("Selected paths contain no changes")
             arguments = [
-                "-c",
-                "commit.gpgsign=false",
                 "commit",
                 "--cleanup=verbatim",
                 "--file",

@@ -296,9 +296,19 @@ def audit_commit(
         message,
     )
     labels, findings = surface_labels(document)
+    evidence_by_id: dict[str, list[object]] = {}
     try:
         _validate_message(message, provisional=False)
-        _parse_envelope(message)
+        entries = _parse_envelope(message)
+        if Counter(_breadcrumb_lines(message).keys()) != Counter(
+            str(entry["id"]) for entry in entries
+        ):
+            raise CommitEvidenceError(
+                "Commit message labels and recoverable evidence mapping disagree"
+            )
+        evidence_by_id = {
+            str(entry["id"]): entry["attachments"] for entry in entries
+        }
     except CommitEvidenceError as exc:
         findings.append(BreadcrumbAuditFinding("commit-evidence-invalid", str(exc)))
 
@@ -310,6 +320,18 @@ def audit_commit(
         try:
             observations = store.observations(label.breadcrumb_id)
             attachments = store.attachments(label.breadcrumb_id)
+            expected = evidence_by_id.get(label.breadcrumb_id)
+            if expected is not None:
+                _check_attachment_conflicts(store, label.breadcrumb_id, expected)
+                if any(item not in attachments for item in expected):
+                    findings.append(
+                        BreadcrumbAuditFinding(
+                            "commit-evidence-registration-incomplete",
+                            "Commit evidence contains attachments not retained in the store.",
+                            label.breadcrumb_id,
+                            label.line,
+                        )
+                    )
             resolution = _resolve_commit_label(
                 store,
                 label.breadcrumb_id,

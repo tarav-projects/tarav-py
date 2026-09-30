@@ -123,6 +123,57 @@ def test_commit_message_reference_keeps_the_exact_commit(tmp_path):
     assert loaded.resolve().target.commit == first
 
 
+def test_repository_respects_configured_signing_failure(tmp_path):
+    repository = _repository(tmp_path / "repository")
+    original = _git(repository, "rev-parse", "HEAD")
+    _git(repository, "config", "commit.gpgsign", "true")
+    _git(repository, "config", "gpg.program", str(tmp_path / "missing-signer"))
+    (repository / "selected.txt").write_text("changed\n", encoding="utf-8")
+
+    with pytest.raises(GitError):
+        GitRepository(repository).commit(["selected.txt"], "Signed change")
+
+    assert _git(repository, "rev-parse", "HEAD") == original
+
+
+@pytest.mark.parametrize("corruption", ["missing", "different", "extra"])
+def test_commit_audit_rejects_unrecoverable_evidence(tmp_path, monkeypatch, corruption):
+    repository = _repository(tmp_path / "repository")
+    store = BreadcrumbStore(tmp_path / "breadcrumbs")
+    prepared = prepare_message(
+        _manifest(repository), store=store,
+        workflow=ChatlasContextBreadcrumbWorkflow(), request=_request(),
+    )
+    lines = prepared.message.splitlines()
+    envelope_line = lines.index("<!-- tarav.commit-evidence") + 1
+    envelope = json.loads(lines[envelope_line])
+    if corruption == "missing":
+        envelope["breadcrumbs"] = []
+    elif corruption == "extra":
+        extra = dict(envelope["breadcrumbs"][0], id="f" * 64)
+        envelope["breadcrumbs"].append(extra)
+    else:
+        attachment = envelope["breadcrumbs"][0]["attachments"][0]
+        # A different retained claim must not be accepted just because the
+        # existing store's attachment is independently valid.
+        attachment["unexpected"] = "different claim"
+    lines[envelope_line] = json.dumps(envelope)
+    commit = GitRepository(repository).commit([], "\n".join(lines), allow_empty=True)
+    breadcrumb_id = prepared.breadcrumb_ids[0]
+    line = lines.index(f"<!-- tarav.breadcrumb {breadcrumb_id} -->") + 1
+    store.observe_commit_position(
+        breadcrumb_id, repository=repository, commit=commit, line=line,
+    )
+    monkeypatch.setattr(ChatlasContextBreadcrumbWorkflow, "audit", lambda *args: ())
+
+    result = audit_commit(
+        repository, commit, store=store,
+        workflow=ChatlasContextBreadcrumbWorkflow(), request=ChatlasContextRequest(),
+    )
+
+    assert not result.ok
+
+
 def test_manifest_flow_registers_before_commit_and_observes_after(tmp_path):
     repository = _repository(tmp_path / "repository")
     store = BreadcrumbStore(tmp_path / "breadcrumbs")
