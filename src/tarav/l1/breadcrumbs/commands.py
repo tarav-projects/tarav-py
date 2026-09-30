@@ -72,6 +72,7 @@ def _cmd_audit(args: argparse.Namespace) -> int:
             workflow=workflow,
             request=request_factory(args),
             language=args.language,
+            refresh_positions=args.refresh_positions,
         )
     except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
         raise CliError(str(exc)) from exc
@@ -83,6 +84,11 @@ def _cmd_audit(args: argparse.Namespace) -> int:
         f"surface: {result.context.surface.path}",
         f"breadcrumbs: {len(result.context.breadcrumbs)}",
     ]
+    lines.extend(
+        f"info: {update['code']}: {update['breadcrumb_id']} "
+        f"at {update['file']}:{update['line']}"
+        for update in result.updates
+    )
     lines.extend(
         f"poi: {finding.code}: {finding.message}" for finding in result.findings
     )
@@ -198,6 +204,11 @@ def register_audit_command(
     parser = subparsers.add_parser(workflow.name, help=help_text)
     parser.add_argument("--surface", required=surface_required)
     parser.add_argument("--language", choices=("markdown", "python"))
+    parser.add_argument(
+        "--refresh-positions",
+        action="store_true",
+        help="Append repaired file-position observations for uniquely located stale Breadcrumbs; leave the surface unchanged.",
+    )
     _add_common(parser)
     parser.set_defaults(
         handler=_cmd_audit,

@@ -271,6 +271,15 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
 
 ## Kernel contracts
 
+`tarav.l1.lines.Line` is a storage-independent entity with text and one
+interpretive entity scope. Its Record retains the scope Ship; explicit binding
+resolves that edge without changing it. `LineScope` is a read-only Context
+specialization. `explore(subject, type=LineScope)` and the runtime context
+entry points select it explicitly; unsupported context types fail. With no
+selector, existing general ContextExplorer behavior remains unchanged.
+Object `.context(type=...)` uses a host-configured Kernel hook, avoiding upward
+Kernel imports. Specialized Context factories own subject compatibility.
+
 Archive and Context expose workflow membership through `ArchiveType` /
 `ArchiveObject` and `ContextType` / `ContextObject`. Explorers are workflow
 Types without requiring the Object Record contract. Their roots may be owned

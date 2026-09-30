@@ -24,7 +24,6 @@ from tarav.l0.kernel import (
 )
 from tarav.l1.context import (
     ContextEntry,
-    ContextExplorer,
     ContextSubject,
     explore as open_context,
 )
@@ -35,7 +34,7 @@ from tarav.l2.context.storage import (
 )
 from tarav.l1.context.workflow import ContextWorkflow
 from tarav.l0.kernel.space import FilesystemProvider
-from tarav.l0.kernel.records import configure_workflow_resolver
+from tarav.l0.kernel.records import configure_workflow_resolver, configure_context_resolver
 from tarav.l0.kernel.current import configure_current_records
 from tarav.l0.kernel.workflows import TaravWorkflow, WorkflowRegistry
 from tarav.l1.loading import LoadingProfile, profile_paths
@@ -116,10 +115,10 @@ class TaravRuntime:
             path, expected_type=expected_type, entry_paths=profile_paths(profile)
         )
 
-    def context(self, subject: ContextSubject | ContextEntry) -> ContextExplorer:
+    def context(self, subject: ContextSubject | ContextEntry, *, type=None):
         """Compose runtime and retained entries into one read-only view."""
 
-        return open_context(subject, contributors=(self.contexts.contribute,))
+        return open_context(subject, contributors=(self.contexts.contribute,), type=type)
 
     def register_commands(
         self,
@@ -253,7 +252,7 @@ def create_runtime(
     )
     from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
-    from tarav.l2.lines.workflow import LinesWorkflow
+    from tarav.l1.lines import Line, LineScope, LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
     from tarav.l2.git.breadcrumbs import GIT_BREADCRUMB_RECORD_TYPES, audit_commit
@@ -299,6 +298,8 @@ def create_runtime(
                 DirectoryRecord,
                 *CONTEXT_RECORD_TYPES,
                 TaravClass,
+                Line,
+                LineScope,
                 TaravEnvironment,
                 TaravSystem,
                 TestEntity,
@@ -456,6 +457,8 @@ def set_runtime(runtime: TaravRuntime | None) -> None:
 configure_workflow_resolver(lambda ship: get_runtime().workflows.get(ship)())
 configure_current_records(lambda: get_runtime().records)
 configure_current_context_service(lambda: get_runtime().contexts)
+
+configure_context_resolver(lambda subject, **kwargs: get_runtime().context(subject, **kwargs))
 
 
 __all__ = [

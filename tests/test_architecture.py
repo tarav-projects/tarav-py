@@ -69,7 +69,7 @@ def test_poi_workflow_ownership_and_runtime_composition():
 
 def test_assertion_foundation_and_line_specialization_are_separate():
     from tarav.l2.lines.assertions import LineGroundingAssertion
-    from tarav.l2.lines.workflow import LinesWorkflow
+    from tarav.l1.lines.workflow import LinesWorkflow
     from tarav.l2.scoring import Assertion, ScoringWorkflow
 
     assert issubclass(LineGroundingAssertion, Assertion)

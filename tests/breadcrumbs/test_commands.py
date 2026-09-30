@@ -100,6 +100,10 @@ def test_show_and_resolve_commands_report_one_breadcrumb(tmp_path, capsys):
 
 def test_submit_command_runs_chatlas_context_workflow(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(
+        "tarav.l2.breadcrumb_workflows.chatlas_context.workflow.compute_normal_model",
+        lambda **_kwargs: {"turns": list(_Reader().iter_turns())},
+    )
+    monkeypatch.setattr(
         "tarav.l2.breadcrumb_workflows.chatlas_context.workflow.provide_normal_model_reader",
         lambda **_kwargs: _Reader(),
     )
@@ -132,6 +136,25 @@ def test_submit_command_runs_chatlas_context_workflow(tmp_path, capsys, monkeypa
     payload = json.loads(capsys.readouterr().out)
     assert payload["workflow"] == "chatlas-context"
     assert len(payload["breadcrumbs"]) == 1
+
+    surface.write_text("\n" + surface.read_text(), encoding="utf-8")
+    original_surface = surface.read_bytes()
+    command = [
+        "breadcrumbs", "audit", "chatlas-context", "--surface", str(surface),
+        "--breadcrumbs-root", str(root),
+    ]
+    assert main([*command, "--json"]) == 1
+    assert json.loads(capsys.readouterr().out)["updates"] == []
+    assert main([*command, "--refresh-positions", "--json"]) == 0
+    refreshed = json.loads(capsys.readouterr().out)
+    assert refreshed["updates"][0]["code"] == "breadcrumb-position-updated"
+    assert surface.read_bytes() == original_surface
+    assert main([*command, "--refresh-positions", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["updates"] == []
+
+    surface.write_text("\n" + surface.read_text(), encoding="utf-8")
+    assert main([*command, "--refresh-positions"]) == 0
+    assert "info: breadcrumb-position-updated:" in capsys.readouterr().out
     assert "tarav.breadcrumb" in surface.read_text()
 
 

@@ -1,8 +1,9 @@
-"""Read-only inspection of retained Breadcrumbs on one Product.Surface."""
+"""Inspect Breadcrumbs, optionally recording refreshed file positions."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -109,6 +110,7 @@ class BreadcrumbAuditResult:
     context: BreadcrumbAuditContext
     workflow: str
     findings: tuple[BreadcrumbAuditFinding, ...] = ()
+    updates: tuple[Mapping[str, object], ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -122,6 +124,7 @@ class BreadcrumbAuditResult:
             "language": self.context.surface.language,
             "breadcrumbs": [item.to_json() for item in self.context.breadcrumbs],
             "findings": [item.to_json() for item in self.findings],
+            "updates": [dict(item) for item in self.updates],
         }
 
 
@@ -132,7 +135,14 @@ def audit_annotations(
     workflow: BreadcrumbAnnotationWorkflow,
     request: object,
     language: str | None = None,
+    refresh_positions: bool = False,
 ) -> BreadcrumbAuditResult:
+    """Audit without mutation by default.
+
+    Opt-in refresh appends uniquely observed, stale locations to the store;
+    it never edits the surface, identity or attachments. Updates are informational,
+    not findings. Ambiguous positions and failed writes remain warnings.
+    """
     path = Path(surface).expanduser().resolve()
     if not path.is_file():
         raise BreadcrumbError(f"Surface is not a file: {path}")
@@ -142,6 +152,8 @@ def audit_annotations(
         path.read_text(encoding="utf-8"),
     )
     labels, findings = _surface_labels(document)
+    counts = Counter(label.breadcrumb_id for label in labels)
+    updates: list[Mapping[str, object]] = []
     audited: list[AuditedBreadcrumb] = []
     for label in labels:
         resolution: BreadcrumbResolution | None = None
@@ -149,6 +161,20 @@ def audit_annotations(
         attachments: tuple[Mapping[str, object], ...] = ()
         try:
             resolution = store.resolve(label.breadcrumb_id)
+            if refresh_positions and counts[label.breadcrumb_id] == 1 and (
+                resolution.status == "unresolvable"
+            ):
+                try:
+                    store.observe_position(label.breadcrumb_id, file=str(path), line=label.line)
+                except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
+                    findings.append(BreadcrumbAuditFinding(
+                        "breadcrumb-position-refresh-failed", str(exc),
+                        label.breadcrumb_id, label.line))
+                else:
+                    updates.append({"code": "breadcrumb-position-updated",
+                                    "breadcrumb_id": label.breadcrumb_id,
+                                    "file": str(path), "line": label.line})
+                    resolution = store.resolve(label.breadcrumb_id)
             observations = store.observations(label.breadcrumb_id)
             attachments = store.attachments(label.breadcrumb_id)
         except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
@@ -203,7 +229,7 @@ def audit_annotations(
         )
     context = BreadcrumbAuditContext(document, tuple(audited))
     findings.extend(workflow.audit(context, request))
-    return BreadcrumbAuditResult(context, workflow.name, tuple(findings))
+    return BreadcrumbAuditResult(context, workflow.name, tuple(findings), tuple(updates))
 
 
 def _surface_labels(
