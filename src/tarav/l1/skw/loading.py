@@ -13,8 +13,8 @@ from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.references.structured import StructuredFileReference
 from .document import Document, read, write
 from .skills import SkillLink
-from .reading import (BlockEntry, ConsultationLink, ExpectedLink, FileEntry,
-                      IncludesBlock, InlinesEntity, ProvidesEntity, ReadingDependency)
+from .reading import (BlockEntry, Contains, ExpectedLink, FileEntry,
+                      IncludesBlock, ReadingLink, ReadingDependency)
 from .generation import _hash
 
 
@@ -123,34 +123,30 @@ class LoadingModel:
         self.links = {}
         self.includes = {}
         self.requirements = {}
-        self.provides = {}
-        self.inlines = {}
-        self.expected = {}
+        self.contains = {}
         for identity, (_, block) in self.bindings.items():
             self.reading[identity] = block.reading_declarations()
             self.links[identity], self.includes[identity] = [], []
             self.requirements[identity] = []
-            self.provides[identity], self.inlines[identity] = set(), set()
-            self.expected[identity] = []
+            self.contains[identity] = []
             for declaration in self.reading[identity]:
                 try:
                     target = self.resolve_target(declaration.target)
                     if isinstance(declaration, ReadingDependency):
                         self.requirements[identity].append((declaration, target))
-                    elif isinstance(declaration, ProvidesEntity):
-                        self.provides[identity].add(target)
-                    elif isinstance(declaration, InlinesEntity):
-                        self.inlines[identity].add(target)
-                    elif isinstance(declaration, IncludesBlock):
-                        destination = self.resolve_entry(declaration.destination())
-                        self.includes[identity].append((declaration, destination, target))
-                    elif isinstance(declaration, (ExpectedLink, ConsultationLink)):
+                    elif isinstance(declaration, Contains):
+                        destination = self.by_ship.get(target)
+                        if isinstance(declaration, IncludesBlock):
+                            rendered = self.resolve_entry(declaration.destination())
+                            if rendered != destination:
+                                raise ValueError('Included entry must identify its contained target')
+                            self.includes[identity].append((declaration, destination, target))
+                        self.contains[identity].append((target, destination))
+                    elif isinstance(declaration, ReadingLink):
                         destination = (self.resolve_entry(declaration.destination())
                                        if isinstance(declaration, ExpectedLink) else
                                        self.resolve_entry_record(declaration.entry))
                         self.links[identity].append((declaration, destination, target))
-                        if isinstance(declaration, ExpectedLink):
-                            self.expected[identity].append(destination)
                 except (ValueError, KeyError, TypeError) as exc:
                     self.report('invalid-context-target', identity,
                                 target=declaration.target, detail=str(exc))
@@ -229,14 +225,20 @@ class LoadingModel:
     def report(self, kind, block, **extra):
         self.diagnostics.append({'code': kind, 'block': block, **extra})
 
+    # tarav.breadcrumb b51cf1b5125ad0509724463bcb6a572c5c547f04e6c0ccbac83a1f07ce59a4c4
+    # tarav.breadcrumb b12c36d82f34814d160e8c847240232341457362536894b8c6d27702938ffe09
     def analyze(self, *, limit=10000, entry=None):
+        """Accumulate content on declared routes; links only supply references.
+
+        The retained ``inlined`` result field denotes available content,
+        including recursive Contains claims. It does not imply rendering.
+        """
         diagnostics = list(self.diagnostics)
         children = defaultdict(list)
         for child, parents in self.parents.items():
             for parent in parents:
                 children[parent].append(child)
-        for source, destinations in self.expected.items():
-            children[source].extend(destinations)
+        # Links expose references. Only declared route parents advance reading.
         for source, destinations in children.items():
             children[source] = list(dict.fromkeys(destinations))
         # Check cycles even in components disconnected from the entry root.
@@ -263,17 +265,18 @@ class LoadingModel:
             _, block = self.bindings[node]
             incoming_inline = sorted(map(str, inline))
             incoming_linked = sorted(map(str, linked))
+            suffix = [*active[1:], node] if active else []
             for requirement, target in self.requirements[node]:
                 satisfied = requirement.satisfied(target, inline, linked)
                 checks.append((node, str(target), requirement.delivery, satisfied,
-                               incoming_inline, incoming_linked))
+                               incoming_inline, incoming_linked, suffix))
             inline.add(block.id)
-            inline.update(self.provides[node])
-            inline.update(self.inlines[node])
             linked.update(target for _, _, target in self.links[node])
-            for _, destination, _ in self.includes[node]:
-                supply(destination, inline, linked, (*active, node), checks, visits)
-            suffix = [*active[1:], node] if active else []
+            for target, destination in self.contains[node]:
+                if destination is None:
+                    inline.add(target)
+                else:
+                    supply(destination, inline, linked, (*active, node), checks, visits)
             visits.append((node, suffix, incoming_inline, incoming_linked,
                            sorted(map(str, inline)), sorted(map(str, linked))))
         start = self.root if entry is None else entry
@@ -294,9 +297,9 @@ class LoadingModel:
                                         'incoming_inlined': incoming_inline,
                                         'incoming_referenced': incoming_linked,
                                         'inlined': present, 'referenced': reachable})
-            for owner, target, delivery, satisfied, present, reachable in checks:
+            for owner, target, delivery, satisfied, present, reachable, suffix in checks:
                 observations.append({'block': owner, 'target': target, 'delivery': delivery,
-                                     'satisfied': satisfied, 'path': list(path),
+                                     'satisfied': satisfied, 'path': [*path, *suffix],
                                      'inlined': present, 'referenced': reachable})
             stack.extend((child, path, inline, linked) for child in children[node])
         if stack:

@@ -67,23 +67,14 @@ class FileEntry(ReadingEntry):
         return {"type": entity(cls).name, "source": "SKILL.md"}
 
 
-class ProvidesEntity(ReadingDeclaration):
-    """Claim that the block's content provides an entity to its reader."""
+# tarav.breadcrumb 7a8dc39912a8499d231b58a1b0532d3eb8ad195d19c6b5b0c9012e5f16ce897a
+class Contains(ReadingDeclaration):
+    """Claim content is co-loaded; expand annotations of contained SKW blocks."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("e92ee1f7-57ca-4fe4-b9ce-d4ba121540f4"),
-                          name="Tarav.SKW.Reading.ProvidesEntity",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
-
-
-class InlinesEntity(ReadingDeclaration):
-    """Claim that the block embeds an entity's content."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("59d4745a-45e0-4451-9d3e-1f66fc68386a"),
-                          name="Tarav.SKW.Reading.InlinesEntity",
+        return TaravClass(target=cls, id=TypeShip("8ff9e46a-9673-4494-b169-0ff1c55d62c5"),
+                          name="Tarav.SKW.Reading.Contains",
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
@@ -110,7 +101,7 @@ class ReadingLink(ReadingDeclaration):
 
 
 class ExpectedLink(ReadingLink):
-    """A link the declared route expects the reader to follow."""
+    """An expected reading action, not proof its target has been loaded."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -134,8 +125,12 @@ class ConsultationLink(ReadingLink):
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
-class IncludesBlock(ReadingLink):
-    """Inline the destination block at the declared rendering slot."""
+class IncludesBlock(Contains):
+    """Containment with optional rendering-slot composition, not a link."""
+
+    class RecordInterface(Contains.RecordInterface):
+        entry: dict | None = None
+        slot: str | None = None
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -144,9 +139,10 @@ class IncludesBlock(ReadingLink):
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def destination(self):
-        if self.entry is None:
+        entry = self._record.get("entry") if self._record else None
+        if entry is None:
             raise ValueError("IncludesBlock requires a reading entry")
-        return entry_from_record(self.entry)
+        return entry_from_record(entry)
 
 
 class ReadingDependency(ReadingDeclaration):
@@ -167,6 +163,8 @@ class ReadingDependency(ReadingDeclaration):
 
 
 class InlineDependency(ReadingDependency):
+    """Require content (including containment), rather than a reference alone."""
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("00a46453-d716-4b3d-ab1f-84ad7f4c7cee"),
@@ -212,7 +210,7 @@ class EitherDependency(ReadingDependency):
 
 
 READING_DECLARATION_TYPES = (
-    ProvidesEntity, InlinesEntity, ReadingLink, ExpectedLink, ConsultationLink, IncludesBlock,
+    Contains, ReadingLink, ExpectedLink, ConsultationLink, IncludesBlock,
     ReadingDependency, InlineDependency, ReferenceDependency, EitherDependency,
 )
 READING_ENTRY_TYPES = (ReadingEntry, BlockEntry, FileEntry)

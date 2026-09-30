@@ -9,8 +9,9 @@ from tarav.l3.runtime import create_runtime
 from tarav.l2.skw.skills import SkwSkill
 from tarav.l1.skw.loading import LoadingRecord
 from tarav.l1.skw.skills import SkillLink
-from tarav.l1.skw.reading import (BlockEntry, ConsultationLink, IncludesBlock,
-                                  InlineDependency, ReferenceDependency)
+from tarav.l1.skw.reading import (BlockEntry, ConsultationLink, Contains, ExpectedLink,
+                                  IncludesBlock, ReadingLink, InlineDependency,
+                                  ReferenceDependency)
 from tarav.l2.skw.reading_checks import reading_checks
 from tarav.l1.checks import run_checks
 from tarav.l1.poi import POICollector, POIError
@@ -79,6 +80,99 @@ def test_static_paths_default_parent_and_coverage(tmp_path):
     assert {'kind': 'unreachable-block', 'block': 'orphan'} in findings
     assert p.loading().inspect('use', limit=1)['path_count'] == 2
     assert len(p.loading().inspect('use', limit=1)['paths']) == 1
+
+
+def isolated_graph(p):
+    """Remove reading routes so tests distinguish containment from traversal."""
+    path = p.root / '.skw/loading.json'
+    data = json.loads(path.read_text())
+    for node in data['blocks']:
+        node['parents'] = []
+    path.write_text(json.dumps(data))
+    return p.loading()
+
+
+@pytest.mark.parametrize('first,second,loaded,referenced', [
+    (Contains, Contains, {'entry', 'orphan', 'vocabulary'}, set()),
+    (Contains, ReadingLink, {'entry', 'orphan'}, {'vocabulary'}),
+    (ReadingLink, Contains, {'entry'}, {'orphan'}),
+    (ReadingLink, ReadingLink, {'entry'}, {'orphan'}),
+])
+def test_containment_expands_but_links_are_first_order(
+    tmp_path, first, second, loaded, referenced
+):
+    p = package(tmp_path)
+    declare(p, 'entry', 'orphan', first)
+    declare(p, 'orphan', 'vocabulary', second)
+    graph = isolated_graph(p)
+    analysis = graph.analyze()
+    state = analysis['states']['entry'][0]
+    def ships(labels):
+        return {str(graph.bindings[label][1].id) for label in labels}
+    assert set(state['inlined']) == ships(loaded)
+    assert set(state['referenced']) == ships(referenced)
+    assert set(analysis['states']) == loaded
+    assert analysis['complete']
+    # A content claim does not alter rendered output.
+    assert graph.render_block('entry', tmp_path / 'SKILL.md') == '# Test'
+
+
+# tarav.breadcrumb 511ba9d27b26cf1c09d6c65fd1e9d2ef0d0a9e00aef888ba198f33e01979614d
+def test_path_accumulates_contained_content_before_checking_later_block(tmp_path):
+    p = package(tmp_path)
+    graph = declare(p, 'entry', 'vocabulary', Contains)
+    observations = [o for o in graph.analyze()['requirements'] if o['block'] == 'use']
+    assert observations and all(o['satisfied'] for o in observations)
+    assert any(o['path'] == ['entry', 'bypass', 'use'] for o in observations)
+    assert not graph.analyze(entry='use')['requirements'][0]['satisfied']
+
+
+def test_expected_link_exposes_reference_without_following_target(tmp_path):
+    p = package(tmp_path)
+    declare(p, 'entry', 'orphan', Contains)
+    declare(p, 'orphan', 'vocabulary', ExpectedLink, slot='read', caption='Read')
+    graph = isolated_graph(p)
+    analysis = graph.analyze()
+    assert str(graph.bindings['vocabulary'][1].id) in analysis['states']['entry'][0]['referenced']
+    assert 'vocabulary' not in analysis['states']
+    # The same boundary applies when the link-bearing block is the entry.
+    assert set(graph.analyze(entry='orphan')['states']) == {'orphan'}
+
+
+def test_containment_cycles_and_requirement_occurrence_paths(tmp_path):
+    p = package(tmp_path)
+    declare(p, 'entry', 'orphan', Contains)
+    declare(p, 'orphan', 'use', Contains)
+    graph = isolated_graph(p)
+    missing = next(f for f in reading_findings(graph) if f['kind'] == 'missing-context')
+    assert missing['path'] == ['entry', 'orphan', 'use']
+    declare(p, 'use', 'entry', Contains)
+    analysis = p.loading().analyze()
+    assert not analysis['complete']
+    assert any(d['code'] == 'inclusion-cycle' for d in analysis['diagnostics'])
+
+
+def test_contains_external_entity_without_expanding_it(tmp_path):
+    p = package(tmp_path)
+    path = p.root / '.skw/src/main.json'
+    data = json.loads(path.read_text())
+    target = 'd4d979b7-fb70-4953-8a0d-4fce5fe376c2'
+    data['blocks'][0]['reading'] = [{'type': entity(Contains).name, 'target': target}]
+    path.write_text(json.dumps(data))
+    graph = isolated_graph(p)
+    analysis = graph.analyze()
+    assert target in analysis['states']['entry'][0]['inlined']
+    assert set(analysis['states']) == {'entry'}
+
+
+def test_composition_entry_must_match_contained_entity(tmp_path):
+    p = package(tmp_path)
+    declare(p, 'entry', 'orphan', IncludesBlock, slot='extra')
+    path = p.root / '.skw/src/main.json'
+    data = json.loads(path.read_text())
+    data['blocks'][0]['reading'][0]['entry']['node'] = 'vocabulary'
+    path.write_text(json.dumps(data))
+    assert any(d['code'] == 'invalid-context-target' for d in p.loading().diagnostics)
 
 
 # tarav.breadcrumb cd62bcd562ff3b404fa6f4a339987dfd2330a48ba753b1e78cb71ac6915d5bb8
