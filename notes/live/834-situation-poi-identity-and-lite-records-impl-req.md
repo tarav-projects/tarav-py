@@ -218,3 +218,11 @@ Focused integration validation passed 162 tests. The complete suite passed
 surface and do not reach 834 behavior. Ruff, `git diff --check`, CLI help, and
 Product.Surface Breadcrumb audits passed. Start checkpoint:
 `b9b61be0c559170e2814c6a796a528e866166176`.
+
+Product completion commit:
+`f93e785bc92f687d9876446c36d960dd033dae67`; its five commit-evidence
+Breadcrumbs resolved with no POIs. Wiki implementation capture landed in
+`tarav-md` as `bd5cc7af428e929682549e7b0d98b490555d7fca`; both Wiki surfaces and
+all three commit-evidence Breadcrumbs resolved with no POIs. Unrelated dirty
+work in both repositories remained outside the scoped commits.
+<!-- tarav.breadcrumb eb9e8eb9360e2151b525b00449a147addc580e3d7b37b1d843b2687c86c2a795 -->
