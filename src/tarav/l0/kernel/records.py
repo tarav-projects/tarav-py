@@ -40,6 +40,13 @@ class RecordTypeMismatch(TypeError):
 JsonFile = TextIO | BinaryIO
 
 _workflow_resolver: Callable[[WorkflowShip], TaravWorkflow] | None = None
+_context_resolver: Callable | None = None
+
+
+def configure_context_resolver(resolver: Callable) -> None:
+    """Supply context composition without an upward Kernel import."""
+    global _context_resolver
+    _context_resolver = resolver
 
 
 def configure_workflow_resolver(resolver: Callable[[WorkflowShip], TaravWorkflow]) -> None:
@@ -226,6 +233,12 @@ class TaravObject(TaravType):
         """Return a minimal storage-independent representation for this Type."""
 
         return {"type": entity(cls).name}
+
+    def context(self, *, type=None):
+        """Request a read-only context view from the configured host."""
+        if _context_resolver is None:
+            raise RuntimeError("Context resolution has not been configured")
+        return _context_resolver(self, type=type)
 
     def obj_context(self, builder: object) -> None:
         """Contribute object-specific entries to an instance Context view."""

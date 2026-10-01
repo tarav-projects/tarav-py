@@ -36,6 +36,18 @@ def test_build_deploy_excludes_developer_surface(tmp_path):
         p.deploy(output)
 
 
+def test_automatic_model_publication_is_disconnected(tmp_path):
+    from tarav.l2.models.errors import ToImplementError
+
+    p = package(tmp_path)
+    p.data['publications'] = ['missing-model-publication.json']
+    findings = p.build()
+    assert any(f['kind'] == 'model-publication-disconnected' for f in findings)
+    assert (p.root / 'SKILL.md').read_text() == '# Skill\n'
+    with pytest.raises(ToImplementError):
+        p.publications()
+
+
 def test_build_and_deploy_cli_default_to_rendered(tmp_path, capsys):
     from tarav.l3.cli.cli import main
 
@@ -72,7 +84,7 @@ def test_consumer_edges_require_consumer_declaration(tmp_path):
                                'purposes': ['developer']}]
     assert any(f['kind'] == 'undeclared-consumer-link' for f in p.build())
     p.data['dependencies'][0]['purposes'].append('consumer')
-    assert p.check() == []
+    assert {f['kind'] for f in p.check()} == {'unannotated-output-link'}
 
 
 def test_reject_escape_and_build_surface_deployment(tmp_path):

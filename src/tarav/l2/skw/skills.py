@@ -139,8 +139,7 @@ class SkwSkill(SkwDepot, CheckProvider):
                 'block': selected.to_record()}
 
     def loading(self):
-        if 'loading' not in self.data:
-            raise ValueError('Package has no declared loading model')
+        # tarav.breadcrumb 59cbf4641ecead3861c7589cc4925175b947f7cbb3c2df4adbb1eabef3901e5e
         return LoadingModel(self, self.documents())
 
     @property
@@ -150,7 +149,7 @@ class SkwSkill(SkwDepot, CheckProvider):
     # tarav.breadcrumb 2ceb31c9cf7073c74811cdb0fa857cc9cf09d51c80b4c776c5785c49bd3e1691
     @property
     def checks(self):
-        return reading_checks(self.loading()) if 'loading' in self.data else ()
+        return reading_checks(self.loading())
 
     def evaluate(self):
         findings = self._check_without_reading()
@@ -170,7 +169,7 @@ class SkwSkill(SkwDepot, CheckProvider):
 
     def check(self):
         findings = self._check_without_reading()
-        if self._record is not None and 'loading' in self._record and not any(
+        if self._record is not None and not any(
             finding['kind'] == 'invalid-loading-model' for finding in findings
         ):
             for result in run_checks(self.checks):
@@ -184,22 +183,13 @@ class SkwSkill(SkwDepot, CheckProvider):
         outputs = set()
         try:
             documents = {d.source: d for d in self.documents()}
-            if 'loading' in self.data:
-                self.loading()
+            self.loading()
         except (OSError, ValueError, KeyError, TypeError) as exc:
             report('invalid-loading-model', self.root, str(exc))
             return findings
         for source in self.data.get('publications', []):
-            try:
-                publication = ModelPublication(self.path(source), root=self.root)
-                if publication.target in outputs:
-                    report('duplicate-output', publication.target)
-                outputs.add(publication.target)
-                if publication.target not in {self.path(p) for p in self.data['files']}:
-                    report('output-not-deployed', publication.target)
-                findings.extend({**f, 'path': source} for f in publication.check())
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                report('invalid-publication', source, str(exc))
+            report('model-publication-disconnected', source,
+                   'Models publication is disconnected pending redesign.')
         for source in self.data["sources"]:
             try:
                 document = documents[self.path(source)]
@@ -245,8 +235,8 @@ class SkwSkill(SkwDepot, CheckProvider):
 
     def build(self):
         documents = self.documents()
-        publications = self.publications()
-        products = [*publications, *documents]
+        # Model publications are not automatically executed during package builds.
+        products = documents
         if len({d.target for d in products}) != len(products):
             raise ValueError("Duplicate outputs cannot be compiled")
         for document in documents:

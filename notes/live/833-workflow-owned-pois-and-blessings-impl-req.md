@@ -77,6 +77,20 @@ type named Finding merely because the name matches.
 
 ### Blessings implementation proposal
 
+BlessablePOI must be an operative contract, not only a marker. The minimal
+proposed contract supplies a stable concern/occurrence identity, an identity
+for the evidence state being blessed, and a serializable snapshot sufficient
+to retain and assess that blessing. Concrete types supply these through
+methods/properties; do not require one instance-field layout. A runtime-only
+CheckPOI does not already supply them. Implement and test the contract on a
+composed concrete type before declaring the extraction complete.
+
+For this pass, preserve existing physical blessing store locations and
+identities. Code and semantic workflow ownership can change independently
+of physical storage. Do not automatically relocate retained data to a new
+Archive partition. If current resolution couples these, expose the conflict
+and resolve a bounded migration explicitly rather than silently moving data.
+
 Introduce an independently owned BlessingsWorkflow, ordinarily under
 tarav.l1.blessings, with BlessablePOI inheriting the neutral POI base.
 Move existing blessing Records, store operations and assessment-specific
@@ -98,6 +112,29 @@ resolve its exact scope before mutation. Keep existing output compatibility
 where practical, but do not retain a parallel public finding ontology merely
 to avoid adapting in-repository consumers.
 
+### Notification emission and existing return contracts
+
+NotificationPOI is the lightweight notification mechanism, analogous to
+warnings.warn(): a producer emits a typed notification and continues its
+ordinary operation. Delivery belongs to shared POI mechanics, not to an
+Archive-specific output protocol. Creating a notification without delivering
+it is insufficient.
+<!-- tarav.breadcrumb a0cdd483a5acbd138ae4ac17764c97666338f44999d1fbdff65715b86e9151c0 -->
+
+For Archive's existing skipped-remote warning, emit an Archive-owned
+NotificationPOI through the shared emission path and continue returning the
+artifact. Do not wrap or replace that return value, require a new result
+object, or invent a Check merely to announce the event. Preserve the useful
+notice rather than silently dropping it when no caller installed a collector.
+
+Implementation proposal: reuse the shared emission mechanism if available;
+otherwise add the smallest common path that makes a notice visible by default
+and allows explicit collection by a caller. Keep construction distinct from
+emission, avoid duplicate delivery, and do not add a logging or persistence
+framework. Choose its exact API against the landed POI implementation.
+Skills may retain its structured status results and expose typed POIs there;
+it need not adopt Archive's return shape or a new checking engine.
+
 ## Impl.Req.Wiki
 
 Product project: tarav-py.
@@ -113,11 +150,15 @@ request, not a fixed API specification for this follow-up.
    affected consumers and existing blessing policies. Record the resulting
    bounded file scope and test baseline.
 2. Extract Blessings ownership and introduce composable BlessablePOI.
-   Adapt currently blessable types without granting new blessing permissions.
+   Implement its identity/state/snapshot contract and exercise a composed
+   concrete type with BlessingStore. Preserve storage locations and existing
+   blessing permissions.
 3. Migrate References and Navigation's remaining older POI reporting.
 4. Migrate Skills routing/status attention outputs and remaining SKW
    generation/document POIs without redesigning their engines.
-5. Migrate the existing Archive warning path, preserving nonblocking capture.
+5. Reuse or minimally complete shared POI notification emission, then migrate
+   the existing Archive warning path without changing its artifact return.
+   Preserve nonblocking capture and observable default delivery.
    Record native Kernel/Surface integration boundaries separately.
 6. Verify each slice, attach supported product Breadcrumbs, update this log,
    and close scoped evidence commits plus selective Wiki capture.
@@ -130,6 +171,10 @@ request, not a fixed API specification for this follow-up.
 - A concrete class can inherit both, instantiate successfully, expose its
   Check context, and participate in existing blessing mechanics.
 - Non-blessable POIs remain usable without blessing fields or a Check.
+- Blessable composition works end to end: the same concern/state resolves its
+  existing blessing; changed evidence becomes stale; retained snapshot data
+  does not depend on keeping the original runtime Check alive.
+- Existing blessing stores remain at their current paths and retain identities.
 - Existing blessable/non-blessable choices, assessment/stale-state handling,
   and visibility are preserved. Blessing does not hide a POI.
 - No new mandatory CheckProvider, checks engine, or record persistence contract.
@@ -137,6 +182,9 @@ request, not a fixed API specification for this follow-up.
   coordinates and context are not lost in the type migration.
 - Archive registration still succeeds when reporting skipped remote locators.
   Notifications alone do not imply failure.
+- Archive still returns its artifact. The typed notification is observable
+  without custom caller setup and collectable explicitly; no duplicate warning
+  or notification is emitted for the same reporting action.
 - Lower layers do not import higher layers. Native parser diagnostics and
   Chatlas query matches are not incorrectly replaced with POIs.
 - Run affected reference, navigation, skills routing, SKW generation/document,
@@ -149,3 +197,9 @@ Design only. No product code changed. Survey inspected the named sources;
 shared worktree changes and 832 execution remain outside this documentation
 pass. Exact constructors, exported occurrence names and retained-format impact
 must be reconciled against 832 rather than guessed now.
+
+2026-10-01 clarification: notification delivery is shared POI infrastructure,
+not a reason to redesign Archive's return contract. Expanded the implementation
+proposal with the minimal BlessablePOI contract and an explicit no-relocation
+storage policy. These are design amendments; no product code changed.
+<!-- tarav.breadcrumb 9ae73348c0294cad3fe3e22c656abfd2584930a512275bf433e01ca207c8f040 -->
