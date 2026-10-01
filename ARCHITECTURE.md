@@ -1,5 +1,9 @@
 # Tarav Python Architecture
 
+<!-- tarav.sessions
+6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
+-->
+
 `tarav-py` is Tarav's maintained Python distribution. It is one modular
 monolith: the Python library is the primary interface, and the CLI and daemon
 adapt that library for particular operating environments.
@@ -320,6 +324,11 @@ The Kernel establishes only the common contracts needed for interoperability:
   retained data. Schema changes use explicit migrations.
 - Ships are identity primitives. Their containing Type and relationships assign
   meaning; Kernel does not infer roles by scanning UUID-shaped values.
+- `LiteRecord` snapshots small dictionary-shaped coordinates with deterministic
+  JSON-compatible encoding. It accepts only explicitly supported native values
+  and trusted exact-type serializers; it is not a TaravObject Record or a
+  general persistence engine.
+<!-- tarav.breadcrumb 8f350694aed09c2c604f1e905cc7a164af169548d4cc9d4861210ed25729723d -->
 - `FileRecord` and `DirectoryRecord` classify retained shape without imposing
   one application storage model.
 - `ExplorerEntry`, `ExplorerFolder`, `ExplorerList`, and `Explorer` give
@@ -385,8 +394,8 @@ schema or an additional Workflow identity.
 | `models` | ModelsWorkflow owns the Model handler, ModelShipRecord, and ModelEditionRecord. Project associations do not imply ownership; several projects may share one Model. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `scoring` | Common Assertion entities and evaluation mechanics: pools, tasks, runs, results, derived scores, and traces. Existing scoring Records are entities with explicit Context reference edges. |
-| `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Producing workflows own their concrete POI types. |
-| `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. Blessability is declared only through subtype composition; blessing never suppresses a POI. |
+| `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. |
+| `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. Blessability is declared only through subtype composition; blessings match situation identity directly and never suppress a POI. |
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. Execution completion and a POI's failure signal are separate. |
 <!-- tarav.breadcrumb 28df20317b527872af6eb271a0ede8e2a1c30d0b8fc98201f63e8cb564ec6183 -->
 | `skw` | Typed document compilation, generation mechanics, and skill-package specialization. Blocks are Entities with Ships and separate labels; source blocks own typed reading declarations. Loading analysis exposes route facts, while SKW Checks turn those facts into POIs. |

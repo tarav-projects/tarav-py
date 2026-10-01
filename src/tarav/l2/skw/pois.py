@@ -25,7 +25,7 @@ class SkwPOI(CheckPOI):
         )
 
     @classmethod
-    def finding(cls, check, subject, *, evidence=None):
+    def finding(cls, check, subject, *, situation, evidence=None):
         evidence = evidence or {}
         raw = evidence.get("finding", {})
         code = raw.get("kind", entity(cls).name.rsplit(".", 1)[-1])
@@ -34,6 +34,7 @@ class SkwPOI(CheckPOI):
             check,
             code,
             str(message),
+            situation=situation,
             details=evidence,
             subject=subject,
             evidence=evidence,
@@ -682,10 +683,15 @@ def _analysis_pois(check):
                 evidence['resolved_context'] = digest(document._resolved_context(raw['block']))
                 evidence['resolved_inputs'] = document.inputs(raw['block'])[1]
             except (OSError, ValueError, KeyError, TypeError, StopIteration) as exc:
-                # Missing assessment material cannot authorize a stale blessing.
+                # Missing assessment material cannot authorize this situation.
                 cls = ContextUnresolvable
                 evidence['resolution_error'] = str(exc)
-        yield cls.finding(check, subject, evidence=evidence)
+        yield cls.finding(
+            check,
+            subject,
+            situation={"subject": subject, "surface_state": state},
+            evidence=evidence,
+        )
 
 
 def collect(package, findings):

@@ -43,7 +43,15 @@ class ReadingGraphCheck(Check):
                     "check": {"type": entity(type(self)).name},
                     "loading": str(self.graph.source),
                     "surface_state": surface_state(self.graph.package)}
-        return cls.finding(self, subject, evidence=evidence)
+        return cls.finding(
+            self,
+            subject,
+            situation={
+                "subject": subject,
+                "surface_state": evidence["surface_state"],
+            },
+            evidence=evidence,
+        )
 
     def _result(self, analysis, findings):
         return CheckResult(self, status="completed" if analysis["complete"] else "incomplete",

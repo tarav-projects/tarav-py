@@ -206,8 +206,11 @@ def render_poi_report(result: dict[str, Any], *, operation: str) -> str:
         ))
     for item in result.get("items") or []:
         standing = (item.get("blessing") or {}).get("status", "unblessed")
+        address = item["id"][:12]
+        if "index" in item:
+            address += f":{item['index']}"
         rows.append(
-            f"  {_short_poi_type(item['type'])}  {item['id'][:12]}  {standing}"
+            f"  {_short_poi_type(item['type'])}  {address}  {standing}"
         )
         subject = _details(item.get("subject") or {})
         if subject:
@@ -240,10 +243,14 @@ def render_poi(result: dict[str, Any]) -> str:
     rows = [
         f"POI: {_short_poi_type(result['type'])}",
         f"id: {result['id']}",
-        f"state: {result['state']}",
         f"blessable: {'yes' if 'blessing' in result else 'no'}",
         f"blessing: {blessing.get('status', 'unblessed')}",
     ]
+    if "index" in result:
+        rows.append(f"emission index: {result['index']}")
+    situation = _details(result.get("situation") or {})
+    if situation:
+        rows.append(f"situation: {situation}")
     subject = _details(result.get("subject") or {})
     if subject:
         rows.append(f"subject: {subject}")

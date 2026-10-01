@@ -63,6 +63,7 @@ class Output:
     invocation: str
 
 
+# tarav.breadcrumb 761a547484e330286e3bc9e3cbab88e035e8700c14e8a03f0837c2c137bae58e
 class GenerationPOI(IdentifiedPOI):
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -80,7 +81,8 @@ class GenerationPOI(IdentifiedPOI):
         super().__init__(
             kind,
             detail,
-            subject={"invocation": invocation, "kind": kind},
+            situation={"invocation": invocation, "kind": kind},
+            subject={"invocation": invocation},
             evidence={"detail": detail},
         )
 

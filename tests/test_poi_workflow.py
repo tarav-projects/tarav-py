@@ -48,12 +48,17 @@ class ReviewedBlessing(BlessingRecord):
         ]
 
 
-def poi(*, evidence=None):
+def poi(*, evidence=None, situation=None):
     check = ExampleCheck()
     return ExampleBlessablePOI(
         check,
         "example",
         "Example concern",
+        situation=(
+            {"path": "sample.md", "line": 12}
+            if situation is None
+            else situation
+        ),
         subject={"path": "sample.md", "line": 12},
         evidence=evidence or {"text": "x"},
     )
@@ -67,10 +72,16 @@ def test_blessable_check_poi_composes_by_type_and_context():
     assert occurrence.context().open("evidence").to_record()["value"] == {"text": "x"}
     changed = poi(evidence={"text": "y"})
     assert changed.identity == occurrence.identity
-    assert changed.state != occurrence.state
+    assert changed.evidence != occurrence.evidence
 
 
-@pytest.mark.parametrize("field,value", [("id", "bad"), ("state", "bad")])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("id", "bad"),
+        ("situation", {"$tarav.lite": {"type": "unknown", "value": "bad"}}),
+    ],
+)
 def test_invalid_blessing_snapshot_is_rejected(field, value):
     record = deepcopy(BlessingRecord.record_example())
     record["poi"][field] = value
@@ -90,7 +101,7 @@ def test_runtime_collector_and_blessing_storage_partition(tmp_path):
     assert runtime.workflows.get("blessings") is BlessingsWorkflow
 
 
-def test_typed_blessing_policy_roundtrip_context_and_staleness(tmp_path):
+def test_typed_blessing_policy_roundtrip_context_and_identity(tmp_path):
     runtime = create_runtime(
         archive_root=tmp_path,
         record_types=(ExampleCheck, ExampleBlessablePOI, ReviewedBlessing),
@@ -121,7 +132,8 @@ def test_typed_blessing_policy_roundtrip_context_and_staleness(tmp_path):
     assert store.load(assessment["id"]).to_record() == assessment
     assert loaded.id in store.load(assessment["id"]).ships()
     assert store.standing(occurrence)["assessment_findings"] == []
-    assert store.standing(poi(evidence={"text": "changed"}))["status"] == "stale"
+    assert store.standing(poi(evidence={"text": "changed"}))["status"] == "blessed"
+    assert store.standing(poi(situation={"path": "other.md"}))["status"] == "unblessed"
     assert runtime.blessings.record_types["Example.ReviewedBlessing"] is ReviewedBlessing
 
 

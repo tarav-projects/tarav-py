@@ -68,6 +68,7 @@ class CheckPOI(IdentifiedPOI):
                           name="Tarav.Checks.POI", workflow=CHECKS_WORKFLOW_SHIP)
 
     def __init__(self, check: Check, code: str, message: str, *,
+                 situation,
                  details: dict | None = None, failure: bool = True,
                  subject: dict | None = None, evidence: dict | None = None) -> None:
         if not isinstance(check, Check):
@@ -78,6 +79,7 @@ class CheckPOI(IdentifiedPOI):
             raise TypeError("CheckPOI failure must be a boolean")
         self.failure = failure
         super().__init__(code, message,
+                         situation=situation,
                          subject=deepcopy(subject if subject is not None else self.details),
                          evidence=deepcopy(evidence if evidence is not None else self.details))
 

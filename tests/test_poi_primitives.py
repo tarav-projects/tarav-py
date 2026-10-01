@@ -17,8 +17,14 @@ class AppReview(IdentifiedPOI, BlessablePOI):
         )
 
     @classmethod
-    def finding(cls, subject, *, evidence=None):
-        return cls("app-review", "Review application", subject=subject, evidence=evidence)
+    def finding(cls, subject, *, evidence=None, situation=None):
+        return cls(
+            "app-review",
+            "Review application",
+            situation=subject if situation is None else situation,
+            subject=subject,
+            evidence=evidence,
+        )
 
 
 class AppError(IdentifiedPOI):
@@ -32,18 +38,28 @@ class AppError(IdentifiedPOI):
 
     @classmethod
     def finding(cls, subject, *, evidence=None):
-        return cls("app-error", "Application error", subject=subject, evidence=evidence)
+        return cls(
+            "app-error",
+            "Application error",
+            situation=subject,
+            subject=subject,
+            evidence=evidence,
+        )
 
 
 ACTOR = {"type": "Example.Agent", "locator": {"session": "test-session"}}
 
 
-def test_lookup_prefixes_and_conflicting_states():
+def test_lookup_prefixes_and_repeated_emission_indexes():
     collector = POICollector()
     first = collector.emit(AppReview.finding({"index": 0}))
-    collector.emit(AppReview.finding({"index": 0}))
-    assert collector.get(first.identity) is first
-    assert collector.get(first.identity[:12]) is first
+    second = collector.emit(AppReview.finding({"index": 0}))
+    with pytest.raises(ValueError, match="multiple emissions"):
+        collector.get(first.identity)
+    assert collector.get(first.identity[:12], index=0) is first
+    assert collector.get(first.identity, index=1) is second
+    with pytest.raises(ValueError, match="does not exist"):
+        collector.get(first.identity, index=2)
     for invalid in ("", None):
         with pytest.raises(ValueError, match="nonempty"):
             collector.get(invalid)
@@ -51,13 +67,10 @@ def test_lookup_prefixes_and_conflicting_states():
         collector.get("not-an-id")
     for i in range(1, 17):
         collector.emit(AppReview.finding({"index": i}))
-    prefixes = [finding.identity[0] for finding in collector.pois[1:]]
+    prefixes = [finding.identity[0] for finding in collector.pois[2:]]
     prefix = next(value for value in prefixes if prefixes.count(value) > 1)
     with pytest.raises(ValueError, match="Ambiguous"):
         collector.get(prefix)
-    collector.emit(AppReview.finding({"index": 0}, evidence={"changed": True}))
-    with pytest.raises(ValueError, match="conflicting current states"):
-        collector.get(first.identity[:12])
 
 
 def test_app_subclass_snapshot_and_source():
@@ -65,12 +78,12 @@ def test_app_subclass_snapshot_and_source():
     first = AppReview.finding({"file": "a"}, evidence=data)
     data["value"] = 2
     second = AppReview.finding({"file": "a"}, evidence=data)
-    assert first.identity == second.identity and first.state != second.state
+    assert first.identity == second.identity
     assert first.evidence["value"] == 1
     assert Path(first.as_dict()["help"]["source_path"]) == Path(__file__).resolve()
 
 
-def test_blessing_remains_visible_and_becomes_stale(tmp_path):
+def test_blessing_remains_visible_and_matches_situation(tmp_path):
     store = BlessingStore(tmp_path / ".tarav/acceptances")
     collector = POICollector()
     occurrence = collector.emit(
@@ -84,8 +97,12 @@ def test_blessing_remains_visible_and_becomes_stale(tmp_path):
     report = collector.report(store=store)
     assert report["total"] == 1 and report["by_blessing"] == {"blessed": 1}
     assert report["items"][0]["blessing"]["assessment"] == "unassessed"
-    changed = AppReview.finding({"file": "a"}, evidence={"value": 2})
-    assert store.standing(changed)["status"] == "stale"
+    changed_evidence = AppReview.finding({"file": "a"}, evidence={"value": 2})
+    assert store.standing(changed_evidence)["status"] == "blessed"
+    changed_situation = AppReview.finding(
+        {"file": "a", "revision": 2}, evidence={"value": 2}
+    )
+    assert store.standing(changed_situation)["status"] == "unblessed"
     store.assess(
         record["id"],
         actor=ACTOR,

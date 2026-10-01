@@ -1,6 +1,7 @@
 """Neutral POI values, identified occurrences, collection, and notification delivery."""
 
 from collections import Counter
+from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
@@ -8,7 +9,14 @@ import hashlib
 import json
 import warnings
 
-from tarav.l0.kernel import FileRecord, TaravClass, TaravObject, TypeShip, entity
+from tarav.l0.kernel import (
+    FileRecord,
+    LiteRecord,
+    TaravClass,
+    TaravObject,
+    TypeShip,
+    entity,
+)
 
 from .workflow import POI_WORKFLOW_SHIP
 
@@ -44,7 +52,7 @@ class POI(TaravObject):
 
 
 class IdentifiedPOI(POI):
-    """A workflow-owned POI occurrence with stable concern and evidence identities."""
+    """A workflow-owned POI with identity defined by its Type and situation."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -60,6 +68,7 @@ class IdentifiedPOI(POI):
         code: str,
         message: str,
         *,
+        situation: Mapping[str, object] | LiteRecord,
         subject: dict | None = None,
         evidence: dict | None = None,
     ) -> None:
@@ -72,9 +81,13 @@ class IdentifiedPOI(POI):
         self.message = message
         self._subject = canonical(subject or {})
         self._evidence = canonical(evidence or {})
+        self._situation = LiteRecord(situation)
         self.class_id = str(entity(type(self)).id)
-        self.identity = fingerprint([self.class_id, self.subject])
-        self.state = fingerprint([self.identity, self.evidence])
+        self.identity = fingerprint([self.class_id, self.situation])
+
+    @property
+    def situation(self) -> dict[str, object]:
+        return self._situation.to_json_value()
 
     @property
     def subject(self) -> dict:
@@ -93,9 +106,9 @@ class IdentifiedPOI(POI):
             "type": entity(type(self)).name,
             "class_id": self.class_id,
             "id": self.identity,
-            "state": self.state,
             "code": self.code,
             "message": self.message,
+            "situation": self.situation,
             "subject": self.subject,
             "help": deepcopy(type(self).help()),
         }
@@ -104,6 +117,7 @@ class IdentifiedPOI(POI):
         return result
 
     def obj_context(self, builder) -> None:
+        builder.add("situation", opener=lambda: _details(self.situation))
         builder.add("coordinate", opener=lambda: _details(self.coordinate))
         builder.add("evidence", opener=lambda: _details(self.evidence))
 
@@ -178,9 +192,12 @@ class POICollector:
         self.pois.append(poi)
         return poi
 
-    def get(self, identity: str) -> IdentifiedPOI:
+    # tarav.breadcrumb 5eb40a749da9400fa0e6bc5526e6fb65f0e3004d7cf6193ba742b4ff9a4bac8f
+    def get(self, identity: str, *, index: int | None = None) -> IdentifiedPOI:
         if not isinstance(identity, str) or not identity:
             raise ValueError("Expected a nonempty POI ID or prefix")
+        if index is not None and (type(index) is not int or index < 0):
+            raise ValueError("POI emission index must be a nonnegative integer")
         matches = [
             poi
             for poi in self.pois
@@ -190,9 +207,13 @@ class POICollector:
             raise ValueError("POI does not exist in this evaluation")
         if len({poi.identity for poi in matches}) != 1:
             raise ValueError("Ambiguous POI ID prefix; use a longer prefix")
-        if len({poi.state for poi in matches}) != 1:
-            raise ValueError("POI identity has conflicting current states")
-        return matches[0]
+        if index is None:
+            if len(matches) != 1:
+                raise ValueError("POI identity has multiple emissions; provide index")
+            return matches[0]
+        if index >= len(matches):
+            raise ValueError("POI emission index does not exist")
+        return matches[index]
 
     def report(
         self,
@@ -206,37 +227,50 @@ class POICollector:
     ):
         if offset < 0 or limit < 1:
             raise ValueError("Expected nonnegative offset and positive limit")
-        if blessing not in (None, "unblessed", "blessed", "stale"):
+        if blessing not in (None, "unblessed", "blessed"):
             raise ValueError("Unknown blessing filter")
         snapshot = store.snapshot() if store else None
+        identity_counts = Counter(
+            poi.identity for poi in self.pois if isinstance(poi, IdentifiedPOI)
+        )
+        next_index: Counter[str] = Counter()
         rows = []
-        for poi in sorted(
-            self.pois,
-            key=lambda value: (
-                getattr(value, "identity", ""),
-                getattr(value, "state", ""),
-                entity(type(value)).name,
-            ),
-        ):
+        for poi in self.pois:
+            emission_index = None
+            if isinstance(poi, IdentifiedPOI):
+                emission_index = next_index[poi.identity]
+                next_index[poi.identity] += 1
             standing = (
                 store.standing(poi, snapshot=snapshot)
                 if store is not None and store.accepts(poi)
                 else None
             )
-            rows.append((poi, standing))
+            rows.append((poi, standing, emission_index))
+        rows.sort(
+            key=lambda row: (
+                getattr(row[0], "identity", ""),
+                entity(type(row[0])).name,
+                row[2] if row[2] is not None else -1,
+            )
+        )
         selected = [
-            (poi, standing)
-            for poi, standing in rows
+            (poi, standing, emission_index)
+            for poi, standing, emission_index in rows
             if (class_name is None or entity(type(poi)).name == class_name)
             and (blessing is None or standing is not None and standing["status"] == blessing)
         ]
         page = []
-        for poi, standing in selected[offset : offset + limit]:
+        for poi, standing, emission_index in selected[offset : offset + limit]:
             row = (
                 poi.as_dict(detail=detail)
                 if isinstance(poi, IdentifiedPOI)
                 else poi.as_dict()
             )
+            if (
+                isinstance(poi, IdentifiedPOI)
+                and identity_counts[poi.identity] > 1
+            ):
+                row["index"] = emission_index
             if standing is not None:
                 row["blessing"] = standing
             page.append(row)
@@ -246,14 +280,18 @@ class POICollector:
             "offset": offset,
             "shown": len(page),
             "next_offset": offset + limit if offset + limit < len(selected) else None,
-            "by_class": dict(Counter(entity(type(poi)).name for poi, _ in rows)),
+            "by_class": dict(Counter(entity(type(poi)).name for poi, _, _ in rows)),
             "by_blessing": dict(
-                Counter(standing["status"] for _, standing in rows if standing is not None)
+                Counter(
+                    standing["status"]
+                    for _, standing, _ in rows
+                    if standing is not None
+                )
             ),
             "by_assessment_finding": dict(
                 Counter(
                     finding["kind"]
-                    for _, standing in rows
+                    for _, standing, _ in rows
                     for finding in (standing or {}).get("assessment_findings", [])
                 )
             ),

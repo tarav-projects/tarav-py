@@ -26,6 +26,7 @@ class ExampleCheck(Check):
         self.runs.append(self.subject)
         return CheckResult(self, status="completed",
                            pois=(ExamplePOI(self, "example", "Example POI",
+                                            situation={"subject": self.subject},
                                             subject={"subject": self.subject}),))
 
 
@@ -81,8 +82,10 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
     plain = POI()
     notice = NotificationPOI("position-updated", "Position recorded.")
     failure = CheckPOI(check, "position-stale", "Position needs attention.",
+                       situation={"code": "position-stale", "line": 3},
                        details={"line": 3})
     positive = CheckPOI(check, "position-current", "Position is current.",
+                        situation={"code": "position-current"},
                         failure=False)
     result = CheckResult(check, status="completed",
                          pois=(plain, notice, failure, positive))
@@ -99,7 +102,7 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
     assert [entry.name for entry in notice.context().ls()] == ["class", "details"]
     assert notice.context().open("details").to_record()["value"] == {}
     assert [entry.name for entry in failure.context().ls()] == [
-        "class", "coordinate", "evidence", "check", "details",
+        "class", "situation", "coordinate", "evidence", "check", "details",
     ]
     assert failure.context().open("check") is check
     assert failure.context().open("details").to_record()["value"] == {"line": 3}

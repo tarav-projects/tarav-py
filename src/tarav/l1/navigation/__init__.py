@@ -98,6 +98,7 @@ class NavigationService:
                     ProviderError(
                         "provider-error",
                         str(exc),
+                        situation={"path": path, "operation": operation},
                         subject={"path": path, "operation": operation},
                         evidence={"error": type(exc).__name__, "message": str(exc)},
                     ),

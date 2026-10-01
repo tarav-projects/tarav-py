@@ -346,10 +346,11 @@ def register_commands(subparsers, *, registry: TypeRegistry[TaravObject]):
             command.add_argument('--limit', type=int, default=20)
             command.add_argument('--class-name')
             command.add_argument(
-                '--blessing-status', choices=['unblessed', 'blessed', 'stale']
+                '--blessing-status', choices=['unblessed', 'blessed']
             )
         if action in ('poi', 'bless'):
             command.add_argument('--id', required=True, help='Full finding ID or unique prefix')
+            command.add_argument('--index', type=int, help='Emission index when an ID repeats')
         if action in ('bless', 'assess-blessing'):
             command.add_argument('--actor-file', required=True, help='JSON typed actor reference')
             command.add_argument('--rationale-file', required=True, help='Authored rationale text')
@@ -404,19 +405,26 @@ def _command(args):
                    'rationale': Path(args.rationale_file).read_text(),
                    'support': read(Path(args.support_file)) if args.support_file else []}
         if args.skills_action == 'bless':
-            result = package.blessings.bless(package.evaluate().get(args.id), **options)
+            result = package.blessings.bless(
+                package.evaluate().get(args.id, index=args.index), **options
+            )
         else:
             result = package.blessings.assess(args.blessing_id, assertion=args.assertion,
                                              score=args.score, **options)
         emit(args, result, render_blessing_record)
         return 0
     if args.skills_action == 'poi':
-        finding = package.evaluate().get(args.id)
+        finding = package.evaluate().get(args.id, index=args.index)
         result = finding.as_dict(detail=True)
-        result['blessing'] = package.blessings.standing(finding)
-        result['blessing_records'] = [r for r in package.blessings.snapshot()['records']
-                                     if r['id'] in result['blessing']['records']
-                                     or r.get('blessing') in result['blessing']['records']]
+        if args.index is not None:
+            result['index'] = args.index
+        if package.blessings.accepts(finding):
+            result['blessing'] = package.blessings.standing(finding)
+            result['blessing_records'] = [
+                record for record in package.blessings.snapshot()['records']
+                if record['id'] in result['blessing']['records']
+                or record.get('blessing') in result['blessing']['records']
+            ]
         emit(args, result, render_poi)
         return 0
     result = (package.deploy(args.destination) if args.skills_action == "deploy"

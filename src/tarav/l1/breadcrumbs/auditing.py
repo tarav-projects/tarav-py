@@ -112,13 +112,22 @@ class BreadcrumbAuditCheck(Check):
     def _run(self) -> CheckResult:
         concerns = (*self.concerns, *self.annotation_workflow.audit(
             self.audit_context, self.request))
+
+        def poi(item):
+            details = {'surface': str(self.audit_context.surface.path),
+                       **({'breadcrumb_id': item.breadcrumb_id}
+                          if item.breadcrumb_id else {}),
+                       **({'line': item.line} if item.line is not None else {})}
+            return CheckPOI(
+                self,
+                item.code,
+                item.message,
+                situation={'code': item.code, **details},
+                details=details,
+            )
+
         return CheckResult(self, status='completed', pois=(
-            CheckPOI(self, item.code, item.message,
-                     details={'surface': str(self.audit_context.surface.path),
-                              **({'breadcrumb_id': item.breadcrumb_id}
-                                 if item.breadcrumb_id else {}),
-                              **({'line': item.line} if item.line is not None else {})})
-            for item in concerns
+            poi(item) for item in concerns
         ))
 
     # tarav.breadcrumb 596b1161c0983854154effc76ffa82d48ca21c56785d6915423fe9d12ff196cf

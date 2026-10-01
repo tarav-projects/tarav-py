@@ -43,7 +43,9 @@ def test_skw_bless_inspect_score_and_paged_reporting(tmp_path, capsys):
     capsys.readouterr()
     data['blocks'][0]['output'].append('Changed surface.')
     source.write_text(json.dumps(data))
-    assert p.blessings.standing(p.evaluate().get(finding.identity))['status'] == 'stale'
+    changed = next(f for f in p.evaluate().pois if isinstance(f, BlessablePOI))
+    assert changed.identity != finding.identity
+    assert p.blessings.standing(changed)['status'] == 'unblessed'
 
 
 def test_skw_poi_commands_default_to_rendered(tmp_path, capsys):

@@ -9,7 +9,7 @@
 
 Knowledge.Surface: wiki
 
-Status: ready for implementation. Product implementation has not started here.
+Status: implemented and verified.
 Alignment.Mode: Interactive.
 
 Replace the identified POI's separate occurrence/state fingerprints with one
@@ -190,3 +190,31 @@ two Wiki surfaces. All three surface audits returned `status: ok` and no POIs
 (6, 29, and 8 total existing/new Breadcrumbs respectively). Scoped whitespace
 checks passed. No product tests were run because this pass changes design
 documentation only. Unrelated worktree changes remain outside this request.
+
+2026-10-01 — Execute added the approved two-level collector address: stable
+situation identity plus a zero-based, evaluation-local emission index. Product
+execution was explicitly requested after the design inspection.
+<!-- tarav.breadcrumb b20357468251338bd191f5344c21a12cbd573578742fc3340acc7fdb6b73e9fc -->
+
+Implemented `LiteRecord` in Kernel with deterministic JSON-compatible encoding,
+native dates, Ships and Tarav Type references, reserved-tag escaping, cycle and
+nonfinite-number rejection, detached snapshots, retained-value validation, and
+trusted exact-type serializer extensions. This remains a value contract rather
+than a TaravObject persistence system.
+
+`IdentifiedPOI` now requires an explicit situation and hashes only its concrete
+Type Ship plus that situation. The state fingerprint was removed. Collectors
+retain every emission, require an index for repeated identities, and expose
+those indexes in reports. Checks and all active producers now declare their
+situations, including concern kind for generation and source revisions for SKW.
+
+Blessing schema 3 retains and validates situations. Blessings match POI identity
+directly; stale standing and filters were removed. The SKW CLI accepts only
+`unblessed` and `blessed`, supports `--index` for repeated POIs, and keeps
+non-blessable POIs inspectable without invoking Blessings.
+
+Focused integration validation passed 162 tests. The complete suite passed
+1,342 tests; its 88 failures stop at the concurrently disconnected Models
+surface and do not reach 834 behavior. Ruff, `git diff --check`, CLI help, and
+Product.Surface Breadcrumb audits passed. Start checkpoint:
+`b9b61be0c559170e2814c6a796a528e866166176`.

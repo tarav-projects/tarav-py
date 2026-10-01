@@ -6,7 +6,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from tarav.l0.kernel import FileRecord, Ship, TaravClass, TaravEntity, TypeShip, entity
+from tarav.l0.kernel import (
+    FileRecord,
+    LiteRecord,
+    Ship,
+    TaravClass,
+    TaravEntity,
+    TypeShip,
+    entity,
+)
 from tarav.l1.poi import fingerprint
 
 from .capability import BlessablePOI
@@ -76,16 +84,16 @@ class BlessingRecord(TaravEntity, FileRecord):
         poi = {
             "type": "Example.BlessablePOI",
             "class_id": "7d28d632-2ec5-4c5a-997f-224ad508ce9d",
-            "id": fingerprint(["7d28d632-2ec5-4c5a-997f-224ad508ce9d", {}]),
             "code": "example",
             "message": "Synthetic POI",
+            "situation": {"example": "situation"},
             "subject": {},
             "evidence": {},
         }
-        poi["state"] = fingerprint([poi["id"], poi["evidence"]])
+        poi["id"] = fingerprint([poi["class_id"], poi["situation"]])
         return {
             "type": entity(cls).name,
-            "schema_version": 2,
+            "schema_version": 3,
             "id": "b3c3a696-e88c-497f-b87d-cdc9a557d882",
             "created_at": "2026-09-26T00:00:00+00:00",
             "actor": {"type": "Example.Actor", "locator": {"name": "example"}},
@@ -167,7 +175,7 @@ def reference(value):
 def _validate(record, *, blessing):
     if not isinstance(record, dict):
         raise ValueError("Expected a blessing Record object")
-    if record.get("schema_version") != 2:
+    if record.get("schema_version") != 3:
         raise ValueError("Unsupported blessing record schema")
     UUID(record["id"])
     datetime.fromisoformat(record["created_at"])
@@ -180,13 +188,12 @@ def _validate(record, *, blessing):
         reference(item)
     if blessing:
         poi = record["poi"]
-        required = {"type", "class_id", "id", "state", "subject", "evidence"}
+        required = {"type", "class_id", "id", "situation", "subject", "evidence"}
         if not isinstance(poi, dict) or not required <= poi.keys():
             raise ValueError("Blessing must retain a BlessablePOI snapshot")
-        if poi["id"] != fingerprint([poi["class_id"], poi["subject"]]):
-            raise ValueError("POI identity disagrees with retained subject")
-        if poi["state"] != fingerprint([poi["id"], poi["evidence"]]):
-            raise ValueError("POI state disagrees with retained evidence")
+        situation = LiteRecord.from_json_value(poi["situation"])
+        if poi["id"] != fingerprint([poi["class_id"], situation.to_json_value()]):
+            raise ValueError("POI identity disagrees with retained situation")
         TypeShip(poi["class_id"])
     else:
         UUID(record["blessing"])
@@ -297,7 +304,7 @@ class BlessingStore:
             raise ValueError("This POI type does not permit blessing")
         record = {
             "type": entity(record_type).name,
-            "schema_version": 2,
+            "schema_version": 3,
             "id": str(uuid4()),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "actor": actor,
@@ -329,7 +336,7 @@ class BlessingStore:
         return self._append(
             {
                 "type": entity(record_type).name,
-                "schema_version": 2,
+                "schema_version": 3,
                 "id": str(uuid4()),
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "blessing": blessing,
@@ -341,6 +348,7 @@ class BlessingStore:
             }
         )
 
+    # tarav.breadcrumb 1be8737940ef28408a7723ab4a82c57058f2dd976c2b7ff644ec7cf108c6a741
     def standing(self, poi, *, snapshot=None):
         if not self.accepts(poi):
             raise TypeError("Expected BlessablePOI")
@@ -351,18 +359,15 @@ class BlessingStore:
             if self._is(record, BlessingRecord)
             and record["poi"]["id"] == poi.identity
         ]
-        current = [
-            record for record in accepted if record["poi"]["state"] == poi.state
-        ]
-        status = "blessed" if current else "stale" if accepted else "unblessed"
+        status = "blessed" if accepted else "unblessed"
         scores = [
             record
             for record in records
             if self._is(record, BlessingAssessmentRecord)
-            and record["blessing"] in {blessing["id"] for blessing in current}
+            and record["blessing"] in {blessing["id"] for blessing in accepted}
         ]
         assessment_findings = []
-        for record in current:
+        for record in accepted:
             assessments = [
                 score for score in scores if score["blessing"] == record["id"]
             ]
@@ -371,7 +376,6 @@ class BlessingStore:
         return {
             "status": status,
             "records": [record["id"] for record in accepted],
-            "current": [record["id"] for record in current],
             "assessment_findings": assessment_findings,
             "assessment": (
                 "unassessed"

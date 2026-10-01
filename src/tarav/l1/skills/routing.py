@@ -79,6 +79,7 @@ class SkillsStatusPOI(IdentifiedPOI):
             if entry.actual_resolved_target is not None else None,
         }
         return cls(category, f"Skill depot entry is {category}: {entry.name}",
+                   situation=subject,
                    subject=subject, evidence=evidence)
 
 

@@ -10,6 +10,7 @@ from .identity import (
     TypeShip,
     WorkflowShip,
 )
+from .lite_records import LiteRecord, LiteRecordSerializer
 from .records import (
     DIRECTORY_ENTRY_PATH,
     DirectoryRecord,
@@ -66,6 +67,8 @@ __all__ = [
     "InvalidRecordJSON",
     "InvalidRecordType",
     "KERNEL_WORKFLOW_SHIP",
+    "LiteRecord",
+    "LiteRecordSerializer",
     "KernelWorkflow",
     "TypeWorkflow",
     "TYPE_RESOLUTION_PATH",

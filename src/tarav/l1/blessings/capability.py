@@ -10,7 +10,7 @@ from .workflow import BLESSINGS_WORKFLOW_SHIP
 
 # tarav.breadcrumb 55f9796bac28bfd6786d615eea8b77fad9bd2686d8af652ee50392e01d5cddad
 class BlessablePOI(POI):
-    """A POI whose identified evidence edition can receive an attributed blessing."""
+    """A POI whose identified situation can receive an attributed blessing."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
