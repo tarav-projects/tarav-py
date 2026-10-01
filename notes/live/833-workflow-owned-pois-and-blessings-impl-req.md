@@ -226,11 +226,13 @@ passes; remaining failures are outside 833: the already disconnected Models
 surface and sandbox-blocked Unix sockets, uv cache/environment creation, and
 Git writes. Ruff and diff checks pass for the scoped implementation.
 
-Product completion commit: `91a345837ad7280fa55fe3766ef00f6defddfd7f`;
-its commit audit has no POIs. Wiki updates were drafted in `poi-system.md` and
-the 2026-10-01 daily note after checkpoint `1129a9d21cc74cc47dbef1935898799240fa4276`,
-but Breadcrumb submission and Wiki closure remain pending because this runtime
-cannot write the canonical Breadcrumb store under `~/Documents/tarav`.
+Product completion commits: `91a345837ad7280fa55fe3766ef00f6defddfd7f` and
+`bbce710cc184abd7f610dda1f2f4ef760363fb31`; both commit audits have no POIs.
+Wiki capture updated `poi-system.md` and the 2026-10-01 daily note. All six new
+Wiki Breadcrumbs resolve without POIs. Wiki checkpoint
+`1129a9d21cc74cc47dbef1935898799240fa4276` and completion commit
+`cbe8c74c83ff66d5e2b87e1cddae68a71c421a83` close that bounded scope; the
+completion commit audit also has no POIs.
 The editable uv reinstall was attempted and blocked by uv's restricted-system
 configuration panic; the installed `tarav 0.1.0` command and editable project
 environment both resolve the new Blessings module.
