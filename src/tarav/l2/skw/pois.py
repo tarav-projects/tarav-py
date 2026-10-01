@@ -7,7 +7,7 @@ questions permit attributed acceptance. Structural failures require repair.
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TypeShip
 from tarav.l1.blessings import BlessablePOI
-from tarav.l1.checks import Check, CheckPOI, CheckResult
+from tarav.l1.checks import Check, CheckPOI, CheckResult, SituationCheck
 from tarav.l1.poi import POICollector
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
@@ -601,6 +601,132 @@ class DiagramAssessment(SkwPOI):
         )
 
 
+def _freshness_result(check, *, poi_type, kind, message, baseline_key, current_key):
+    subject = check.situation["subject"]
+    if not isinstance(subject, dict):
+        raise TypeError("Freshness Situation subject must be an object")
+    baseline = check.situation[baseline_key]
+    current = check.situation[current_key]
+    if baseline == current:
+        return CheckResult(check, status="completed")
+    finding = {"kind": kind, **{
+        key: subject[key] for key in ("path", "block") if key in subject
+    }}
+    evidence = {
+        "finding": finding,
+        "baseline": baseline,
+        "current": current,
+    }
+    poi = check.finding(
+        poi_type,
+        code=kind,
+        message=message,
+        subject=subject,
+        details=evidence,
+        evidence=evidence,
+    )
+    return CheckResult(check, status="completed", pois=(poi,))
+
+
+# tarav.breadcrumb 9374fbc4f10a36ba669026abe718b0960fad540c45bd1d08d5760beedd90f0c4
+class GenerationFreshnessCheck(SituationCheck):
+    """Compare retained and current generation inputs from one bound snapshot."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("2378413d-f295-4034-8ce0-f92049f09f6b"),
+            name="Tarav.SKW.Check.GenerationFreshness",
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+    def _run(self):
+        return _freshness_result(
+            self,
+            poi_type=StaleGeneration,
+            kind="stale-generation",
+            message="Generation inputs differ from the recorded baseline.",
+            baseline_key="baseline_inputs",
+            current_key="current_inputs",
+        )
+
+
+class ContextFreshnessCheck(SituationCheck):
+    """Compare retained and current tracked context from one bound snapshot."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("101a3e88-45c7-45de-b9ea-b28351099c93"),
+            name="Tarav.SKW.Check.ContextFreshness",
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+    def _run(self):
+        return _freshness_result(
+            self,
+            poi_type=StaleContext,
+            kind="stale-context",
+            message="Tracked context differs from the recorded baseline.",
+            baseline_key="baseline_context",
+            current_key="current_context",
+        )
+
+
+def freshness_checks(package, *, skip_unresolved=False):
+    """Resolve external inputs once and return independently runnable checks."""
+
+    checks = []
+    for document in package.documents():
+        entry = document.lock()["documents"].get(document.key, {})
+        for block, baseline in entry.get("blocks", {}).items():
+            if not isinstance(baseline, dict) or "input_hash" not in baseline:
+                continue
+            try:
+                current = document.inputs(block)[1]
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                if skip_unresolved:
+                    continue
+                raise ValueError(
+                    f"Cannot build generation freshness Situation: {document.key}:{block}"
+                ) from exc
+            subject = {
+                "project": str(package.root),
+                "path": document.key,
+                "block": block,
+            }
+            checks.append(GenerationFreshnessCheck(situation={
+                "subject": subject,
+                "baseline_inputs": baseline["input_hash"],
+                "current_inputs": current,
+            }))
+        for block, baseline in entry.get("contexts", {}).items():
+            try:
+                current = document._context_hash(document._resolved_context(block))
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                if skip_unresolved:
+                    continue
+                raise ValueError(
+                    f"Cannot build context freshness Situation: {document.key}:{block}"
+                ) from exc
+            subject = {
+                "project": str(package.root),
+                "path": document.key,
+                "block": block,
+            }
+            checks.append(ContextFreshnessCheck(situation={
+                "subject": subject,
+                "baseline_context": baseline,
+                "current_context": current,
+            }))
+    return tuple(checks)
+
+
+FRESHNESS_KINDS = frozenset({"stale-context", "stale-generation"})
+
+
 CLASSES = {
     'unannotated-output-link': UnannotatedOutputLink,
     'missing-context': MissingContext,
@@ -667,25 +793,16 @@ def surface_state(package):
 def _analysis_pois(check):
     package = check.package
     state = surface_state(package)
-    from .publication import digest
     for raw in check.findings:
         kind = raw.get('kind')
+        if kind in FRESHNESS_KINDS:
+            raise ValueError("Freshness findings must be produced by SituationChecks")
         if kind is not None and kind not in CLASSES:
             raise ValueError(f'Unregistered SKW POI kind: {kind}')
         cls = CLASSES[kind] if kind is not None else DiagramAssessment
         subject = {'project': str(package.root),
                    **{k: raw[k] for k in ('block', 'path', 'target', 'delivery', 'code') if k in raw}}
         evidence = {'finding': raw, 'surface_state': state}
-        if kind in ('stale-context', 'stale-generation'):
-            try:
-                document = next(d for d in package.documents()
-                                if d.source == package.path(raw['path']))
-                evidence['resolved_context'] = digest(document._resolved_context(raw['block']))
-                evidence['resolved_inputs'] = document.inputs(raw['block'])[1]
-            except (OSError, ValueError, KeyError, TypeError, StopIteration) as exc:
-                # Missing assessment material cannot authorize this situation.
-                cls = ContextUnresolvable
-                evidence['resolution_error'] = str(exc)
         yield cls.finding(
             check,
             subject,

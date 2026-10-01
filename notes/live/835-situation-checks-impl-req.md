@@ -2,13 +2,14 @@
 
 <!-- tarav.sessions
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
+1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
 -->
 
 ## Impl.Abstract
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready for implementation; no product implementation in this Design pass.
+Status: implemented.
 
 Introduce SituationCheck as an optional specialization of Check. It evaluates
 only a supplied Situation snapshot and constructs CheckPOIs using that same
@@ -73,10 +74,20 @@ The following are agent implementation proposals for the accepted model:
   clock or runtime query should be needed during SituationCheck evaluation.
   Code-defined algorithms are allowed; mutable external inputs are not.
 
-Use the whole situation for POI identity in this first slice. Different POI
-types already distinguish different concerns. Do not introduce subset projection
-or a second state fingerprint. Repeated same-situation emissions retain 834's
-collector indexing semantics.
+A Situation defines the scope of acceptance: changing any of its fields may
+produce a new identity and require another blessing. Extra fields are valid
+when conservative resurfacing is intentional; Situation descriptions need not
+be minimal. Choose granularity deliberately and use the whole situation without
+subset projection or a second state fingerprint. Repeated same-situation
+emissions retain 834's collector indexing semantics.
+<!-- tarav.breadcrumb 87386b4de7ea5b024c566150dfee68fd5cbc2765761e952df432379c1ac700db -->
+
+Generation freshness and context freshness are independently assessable
+concerns, so implement them as separate bound checks. The generation Situation
+contains its baseline and current generation-input fingerprints; the context
+Situation contains its baseline and current tracked-context fingerprints.
+Each also carries the subject coordinate needed to distinguish its occurrence.
+<!-- tarav.breadcrumb 83c87cc71208c5ff2b4ab22199558cc748b587fbf1f70e2708e4a30b0d5bcee1 -->
 
 ### Illustrative public usage
 
@@ -124,11 +135,10 @@ remains unchanged by blessing. The incomplete POI situation is the problem.
 
 ### Bounded SKW integration
 
-Agent plan: start with generation-input freshness; cover context freshness in
-the same snapshot boundary where the existing integration couples them. Build
-the baseline/current fingerprints and subject coordinate before evaluation.
-Include relevant revision inputs explicitly, not by automatically hashing all
-evidence. No dependency resolution after the check has begun.
+Agent plan: build separate generation-input and context-freshness checks. Build
+each concern's baseline/current fingerprints and subject coordinate before
+evaluation. Include relevant revision inputs explicitly, not by automatically
+hashing all evidence. No dependency resolution after a check has begun.
 
 Current blocks obtain environment and lock information through Document; they
 are not autonomous file-resolving objects. Do not invent ambient runtime access
@@ -162,7 +172,7 @@ needed by another implementation session.
    POI helper and mismatch rejection. Keep inherited validation usable.
 3. Implement the SKW snapshot builder and freshness check; route active package
    evaluation through it. Preserve ordinary provider and direct-use paths.
-4. Add an integration regression using a real external dependency: baseline v1,
+4. Add an integration contract test using a real external dependency: baseline v1,
    current v2, bless the v2 POI, change only dependency to v3, build a new check.
    The v3 POI must have a different identity and be unblessed.
 5. Update relevant architecture/API docs, capture supported product Breadcrumbs,
@@ -182,9 +192,8 @@ needed by another implementation session.
 - Direct construction and `run_checks(provider.checks)` both work. Ordinary
   Checks, notifications, blessing matching and collector indexes still work.
 - Native-type encoding and specialized validation do not bypass one another.
-- Run Checks, LiteRecord, POI/Blessings, SKW generation/POI/CLI and architecture
-  tests, then Ruff. Broader failures from disconnected Models must be reported
-  separately rather than fixed under this request.
+- Run the maintained foundational contract suite and Ruff. Workflow-specific
+  validation can be invoked directly while implementing its surface.
 
 ## Impl.Log
 
@@ -192,3 +201,13 @@ needed by another implementation session.
 No product code or blessing data changed. Start checkpoints: Python `742e142`,
 Wiki `f38a124`. Wiki capture and exact-turn Breadcrumbs accompany this request.
 Implementation proposals above remain distinguishable from User decisions.
+
+2026-10-01 — Implemented `Situation`, `SituationCheck`, and separate SKW
+generation/context freshness checks. Active SKW evaluation consumes those bound
+checks without reconstructing their identities. The retained contract test
+proves that evaluation uses the captured snapshot and that independently
+changed generation/context inputs resurface independently. The default
+foundational suite passes 150 tests in 12.71 seconds; focused Ruff checks pass.
+Product Breadcrumb submission completed for the new surfaces. Audit resolves
+the new Breadcrumbs and reports stale position observations for older labels
+whose source lines moved; those retained audit POIs remain explicit.

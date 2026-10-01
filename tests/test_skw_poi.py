@@ -1,90 +1,112 @@
 import json
-from pathlib import Path
 
-from tarav.l3.cli.cli import main
-from tarav.l1.blessings import BlessablePOI
-from test_skw_skills import package
+from skw_records import identify_blocks
+
+from tarav.l0.kernel import entity
+from tarav.l1.checks import run_checks
+from tarav.l1.skw.document import Document, DocumentRecord
+from tarav.l2.skw.pois import (
+    ContextFreshnessCheck,
+    GenerationFreshnessCheck,
+    StaleContext,
+    StaleGeneration,
+)
+from tarav.l2.skw.skills import SkwSkill
+from tarav.l3.runtime import create_runtime
 
 
-def test_skw_bless_inspect_score_and_paged_reporting(tmp_path, capsys):
-    p = package(tmp_path)
-    # This fixture has no loading model. Use the real loading fixture so
-    # annotation omissions are emitted by its actual conformance check.
-    from test_skw_loading import package as loading_package
-    root = tmp_path / 'loading'
-    p = loading_package(root)
-    source = root / '.skw/src/main.json'
-    data = json.loads(source.read_text())
-    data['blocks'][0]['output'].append('[Existing](SKILL.md)')
+def _document_source(root):
+    path = root / ".skw/src/explanation.skw.json"
+    path.parent.mkdir(parents=True)
+    (root / "input.py").write_text("print(1)")
+    data = {
+        "type": entity(DocumentRecord).name,
+        "schema_version": 1,
+        "output": "explanation.md",
+        "blocks": [
+            {
+                "type": "Tarav.Skillware.LiteralBlock",
+                "id": "title",
+                "output": ["# Explanation", ""],
+            },
+            {
+                "type": "Tarav.Skillware.AgentGenerationBlock",
+                "id": "explain",
+                "prompt": ["Explain ${code}"],
+                "arguments": {"code": {"type": "text", "file": "input.py"}},
+                "output": None,
+            },
+        ],
+    }
+    identify_blocks(data, scope="explanation")
+    path.write_text(json.dumps(data))
+    return path, data
+
+
+# tarav.breadcrumb 6b9be7810af01872f85ffccc2c271b21ce3fab37b6ebd82f0fada50386a36f7f
+def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
+    tmp_path, monkeypatch
+):
+    source, data = _document_source(tmp_path)
+    context_path = tmp_path / "context.txt"
+    context_path.write_text("context one")
+    data["blocks"][1]["context"] = [{
+        "kind": "reference",
+        "roles": ["dependency"],
+        "reference": {
+            "type": "Tarav.Reference.StructuredFile",
+            "locator": {"path": "../../context.txt"},
+        },
+    }]
     source.write_text(json.dumps(data))
-    p.build()
-    collector = p.evaluate()
-    finding = next(f for f in collector.pois if isinstance(f, BlessablePOI))
-    assert Path(type(finding).help()['source_path']).name == 'pois.py'
-    actor = tmp_path / 'actor.json'
-    actor.write_text(json.dumps({'type': 'Example.Agent', 'locator': {'session': 'fixture'}}))
-    why = tmp_path / 'rationale.txt'
-    why.write_text('The fixture deliberately retains a link outside the declared graph.')
-    args = ['--project', str(root)]
-    assert main(['skw', 'skills', 'bless', *args, '--id', finding.identity,
-                 '--actor-file', str(actor), '--rationale-file', str(why), '--json']) == 0
-    accepted = json.loads(capsys.readouterr().out)
-    assert (root / '.skw/blessings' / (accepted['id'] + '.json')).exists()
-    assert main(['skw', 'skills', 'check', *args, '--limit', '1', '--json']) == 1
-    report = json.loads(capsys.readouterr().out)
-    assert report['shown'] == 1 and report['by_blessing']['blessed'] == 1
-    assert report['by_assessment_finding']['blessing-unassessed'] == 1
-    assert main(['skw', 'skills', 'poi', *args, '--id', finding.identity, '--json']) == 0
-    detail = json.loads(capsys.readouterr().out)
-    assert detail['blessing']['status'] == 'blessed' and detail['evidence']
-    assert main(['skw', 'skills', 'assess-blessing', *args, '--blessing-id', accepted['id'],
-                 '--actor-file', str(actor), '--rationale-file', str(why),
-                 '--assertion', 'acceptance-justified', '--score', '0.8', '--json']) == 0
-    capsys.readouterr()
-    data['blocks'][0]['output'].append('Changed surface.')
+
+    prepared = Document(source).prepare("explain")
+    data["blocks"][1]["output"] = ["Prints one."]
     source.write_text(json.dumps(data))
-    changed = next(f for f in p.evaluate().pois if isinstance(f, BlessablePOI))
-    assert changed.identity != finding.identity
-    assert p.blessings.standing(changed)['status'] == 'unblessed'
+    document = Document(source)
+    document.record(prepared["id"])
+    assert document.compile()["findings"] == []
 
+    (tmp_path / ".skw/main.json").write_text(json.dumps({
+        "type": entity(SkwSkill).name,
+        "schema_version": 1,
+        "entrypoint": "explanation.md",
+        "sources": [".skw/src/explanation.skw.json"],
+        "files": ["explanation.md"],
+        "dependencies": [],
+    }))
+    skill = create_runtime().load_object(tmp_path / ".skw")
+    (tmp_path / "input.py").write_text("print(2)")
 
-def test_skw_poi_commands_default_to_rendered(tmp_path, capsys):
-    from test_skw_loading import package as loading_package
+    checks = tuple(check for check in skill.checks if isinstance(
+        check, (GenerationFreshnessCheck, ContextFreshnessCheck)
+    ))
+    assert {type(check) for check in checks} == {
+        GenerationFreshnessCheck,
+        ContextFreshnessCheck,
+    }
 
-    root = tmp_path / 'loading'
-    p = loading_package(root)
-    source = root / '.skw/src/main.json'
-    data = json.loads(source.read_text())
-    data['blocks'][0]['output'].append('[Existing](SKILL.md)')
-    source.write_text(json.dumps(data))
-    p.build()
-    finding = next(f for f in p.evaluate().pois if isinstance(f, BlessablePOI))
-    actor = tmp_path / 'actor.json'
-    actor.write_text(json.dumps({'type': 'Example.Agent', 'locator': {'session': 'fixture'}}))
-    why = tmp_path / 'rationale.txt'
-    why.write_text('This fixture deliberately retains the link.')
-    args = ['--project', str(root)]
+    def unexpected_read(*args, **kwargs):
+        raise AssertionError("SituationCheck evaluation read external state")
 
-    assert main(['skw', 'skills', 'check', *args, '--limit', '1']) == 1
-    check_output = capsys.readouterr().out
-    assert check_output.startswith('check: ')
-    assert 'POIs' in check_output
-    assert main(['skw', 'skills', 'check', *args, '--limit', '1', '--rendered']) == 1
-    assert capsys.readouterr().out == check_output
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Document, "inputs", unexpected_read)
+        isolated.setattr(Document, "_resolved_context", unexpected_read)
+        pois = tuple(poi for result in run_checks(checks) for poi in result.pois())
+    generation = next(poi for poi in pois if isinstance(poi, StaleGeneration))
+    assert not any(isinstance(poi, StaleContext) for poi in pois)
 
-    assert main(['skw', 'skills', 'check', *args]) == 1
-    assert finding.identity[:12] in capsys.readouterr().out
-    assert main(['skw', 'skills', 'poi', *args, '--id', finding.identity[:12]]) == 0
-    assert capsys.readouterr().out.startswith('POI: UnannotatedOutputLink\n')
-
-    assert main(['skw', 'skills', 'bless', *args, '--id', finding.identity[:12],
-                 '--actor-file', str(actor), '--rationale-file', str(why)]) == 0
-    blessed = capsys.readouterr().out
-    assert blessed.startswith('Blessing recorded: ')
-    blessing_id = next((root / '.skw/blessings').glob('*.json')).stem
-
-    assert main(['skw', 'skills', 'assess-blessing', *args,
-                 '--blessing-id', blessing_id, '--actor-file', str(actor),
-                 '--rationale-file', str(why), '--assertion', 'acceptance-justified',
-                 '--score', '0.8']) == 0
-    assert capsys.readouterr().out.startswith('Blessing assessment recorded: ')
+    skill.blessings.bless(
+        generation,
+        actor={"type": "Example.Agent", "locator": {"session": "fixture"}},
+        rationale="The output remains valid for input revision two.",
+    )
+    (tmp_path / "input.py").write_text("print(3)")
+    context_path.write_text("context two")
+    changed = skill.evaluate().pois
+    changed_generation = next(
+        poi for poi in changed if isinstance(poi, StaleGeneration)
+    )
+    assert changed_generation.identity != generation.identity
+    assert skill.blessings.standing(changed_generation)["status"] == "unblessed"
+    assert any(isinstance(poi, StaleContext) for poi in changed)

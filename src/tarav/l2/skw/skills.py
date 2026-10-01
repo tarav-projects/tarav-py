@@ -17,7 +17,16 @@ from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
 from tarav.l1.blessings import BlessingAssessmentRecord, BlessingRecord, BlessingStore
 from tarav.l1.checks import CheckProvider, run_checks
 from tarav.l0._core.errors import CliError
-from .pois import CLASSES, DiagramAssessment, SkwAnalysisCheck, collect
+from .pois import (
+    CLASSES,
+    FRESHNESS_KINDS,
+    ContextFreshnessCheck,
+    DiagramAssessment,
+    GenerationFreshnessCheck,
+    SkwAnalysisCheck,
+    collect,
+    freshness_checks,
+)
 from .reading_checks import READING_CHECK_TYPES, reading_checks
 from tarav.l1.skw.presentation import (
     add_output_mode,
@@ -147,15 +156,26 @@ class SkwSkill(SkwDepot, CheckProvider):
         return BlessingStore(self.root / '.skw/blessings')
 
     # tarav.breadcrumb 2ceb31c9cf7073c74811cdb0fa857cc9cf09d51c80b4c776c5785c49bd3e1691
+    # tarav.breadcrumb a751a7e31ab0fa605fefa90ae5d354f9c70250be88ab4a7024eefb094f29d08e
     @property
     def checks(self):
-        return reading_checks(self.loading())
+        return self._checks()
+
+    def _checks(self, *, skip_unresolved_freshness=False):
+        return (
+            *freshness_checks(self, skip_unresolved=skip_unresolved_freshness),
+            *reading_checks(self.loading()),
+        )
 
     def evaluate(self):
-        findings = self._check_without_reading()
+        raw_findings = self._check_without_reading()
+        findings = [finding for finding in raw_findings
+                    if finding.get('kind') not in FRESHNESS_KINDS]
         collector = collect(self, findings)
-        if not any(finding['kind'] == 'invalid-loading-model' for finding in findings):
-            for result in run_checks(self.checks):
+        if not any(finding['kind'] == 'invalid-loading-model' for finding in raw_findings):
+            # Raw document analysis already retains explicit resolution failures;
+            # other successfully captured Situations remain independently runnable.
+            for result in run_checks(self._checks(skip_unresolved_freshness=True)):
                 for poi in result.pois():
                     collector.emit(poi)
         return collector
@@ -168,11 +188,13 @@ class SkwSkill(SkwDepot, CheckProvider):
                 for p in self.data.get('publications', [])]
 
     def check(self):
-        findings = self._check_without_reading()
+        raw_findings = self._check_without_reading()
+        findings = [finding for finding in raw_findings
+                    if finding.get('kind') not in FRESHNESS_KINDS]
         if self._record is not None and not any(
-            finding['kind'] == 'invalid-loading-model' for finding in findings
+            finding['kind'] == 'invalid-loading-model' for finding in raw_findings
         ):
-            for result in run_checks(self.checks):
+            for result in run_checks(self._checks(skip_unresolved_freshness=True)):
                 findings.extend(poi.evidence['finding'] for poi in result.pois())
         return findings
 
@@ -282,6 +304,8 @@ SKILLS_RECORD_TYPES = (
     *CLASSES.values(),
     *READING_CHECK_TYPES,
     SkwAnalysisCheck,
+    GenerationFreshnessCheck,
+    ContextFreshnessCheck,
     DiagramAssessment,
 )
 

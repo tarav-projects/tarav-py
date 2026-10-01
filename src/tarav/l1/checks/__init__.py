@@ -1,10 +1,19 @@
 """Independently runnable, bound checks and their execution snapshots."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from typing import Literal
 
-from tarav.l0.kernel import TaravClass, TaravObject, TaravType, TaravWorkflow, TypeShip, WorkflowShip, entity
+from tarav.l0.kernel import (
+    LiteRecord,
+    TaravClass,
+    TaravObject,
+    TaravType,
+    TaravWorkflow,
+    TypeShip,
+    WorkflowShip,
+    entity,
+)
 from tarav.l1.poi import IdentifiedPOI, POI, POIDetails, POIProvider, POIError
 
 CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
@@ -58,6 +67,10 @@ class Check(TaravObject):
         raise NotImplementedError
 
 
+class Situation(LiteRecord):
+    """The detached input and acceptance scope of a SituationCheck."""
+
+
 # tarav.breadcrumb 0fbb6aeabe9a6b2dfb9a5f0b09d35e49a271b44f1cce37d88557bf09e452092f
 class CheckPOI(IdentifiedPOI):
     """A POI explained by the bound Check object that produced it."""
@@ -99,6 +112,78 @@ class CheckPOI(IdentifiedPOI):
         raise POIError(self)
 
 
+# tarav.breadcrumb 17b06b58dc7c456e499067ef1304e2930c95b04b89c82e74b3a378d48ca7789a
+class SituationCheck(Check):
+    """A Check whose evaluation and POI identity share one input snapshot."""
+
+    SituationType: type[Situation] = Situation
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("08ff8640-a0da-45af-902b-e1e9b42d704c"),
+            name="Tarav.Checks.SituationCheck",
+            workflow=CHECKS_WORKFLOW_SHIP,
+        )
+
+    def __init__(self, *, situation: Mapping[str, object] | LiteRecord) -> None:
+        super().__init__()
+        situation_type = type(self).SituationType
+        if not isinstance(situation_type, type) or not issubclass(situation_type, Situation):
+            raise TypeError("SituationType must extend Situation")
+        self._situation = situation_type(situation)
+
+    @property
+    def situation(self) -> Situation:
+        return self._situation
+
+    def obj_context(self, builder) -> None:
+        builder.add(
+            "situation",
+            opener=lambda: POIDetails.from_record({
+                "type": entity(POIDetails).name,
+                "value": self._situation.to_json_value(),
+            }),
+        )
+
+    def finding(
+        self,
+        poi_type: type[CheckPOI],
+        *,
+        code: str,
+        message: str,
+        details: dict | None = None,
+        failure: bool = True,
+        subject: dict | None = None,
+        evidence: dict | None = None,
+    ) -> CheckPOI:
+        """Construct a bound POI using exactly this Check's Situation."""
+
+        if not isinstance(poi_type, type) or not issubclass(poi_type, CheckPOI):
+            raise TypeError("SituationCheck findings require a CheckPOI Type")
+        return poi_type(
+            self,
+            code,
+            message,
+            situation=self._situation,
+            details=details,
+            failure=failure,
+            subject=subject,
+            evidence=evidence,
+        )
+
+    def run(self) -> "CheckResult":
+        result = super().run()
+        for poi in result.pois():
+            if not isinstance(poi, CheckPOI):
+                continue
+            poi_situation = LiteRecord.from_json_value(poi.situation)
+            if poi_situation.canonical != self._situation.canonical:
+                raise ValueError("SituationCheck POI uses a different situation")
+        return result
+
+
 class CheckResult(TaravObject, POIProvider):
     """One execution snapshot; inspecting POIs never reruns its Check."""
 
@@ -132,4 +217,13 @@ def run_checks(checks: Iterable[Check]) -> tuple[CheckResult, ...]:
     return tuple(check.run() for check in checks)
 
 
-__all__ = ["ChecksWorkflow", "Check", "CheckPOI", "CheckProvider", "CheckResult", "run_checks"]
+__all__ = [
+    "ChecksWorkflow",
+    "Check",
+    "CheckPOI",
+    "CheckProvider",
+    "CheckResult",
+    "Situation",
+    "SituationCheck",
+    "run_checks",
+]

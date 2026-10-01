@@ -1,6 +1,14 @@
 from tarav.l0.kernel import TaravClass, TypeShip
 import pytest
-from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, run_checks
+from tarav.l1.checks import (
+    Check,
+    CheckPOI,
+    CheckProvider,
+    CheckResult,
+    Situation,
+    SituationCheck,
+    run_checks,
+)
 from tarav.l1.poi import POI, NotificationPOI, POICollector, POIError
 
 
@@ -45,6 +53,54 @@ class ExampleProvider(CheckProvider):
         return tuple(ExampleCheck(subject, self.runs) for subject in self.subjects)
 
 
+class DifferenceSituation(Situation):
+    def __init__(self, value):
+        super().__init__(value)
+        if set(self) != {"before", "after"}:
+            raise ValueError("DifferenceSituation requires before and after")
+
+
+class DifferenceCheck(SituationCheck):
+    SituationType = DifferenceSituation
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(
+            target=cls,
+            id=TypeShip("c8439168-3b52-4cb2-a39e-290b4be59a89"),
+            name="Test.Checks.DifferenceCheck",
+        )
+
+    def _run(self):
+        pois = ()
+        if self.situation["before"] != self.situation["after"]:
+            pois = (self.finding(
+                ExamplePOI,
+                code="changed",
+                message="The values differ.",
+            ),)
+        return CheckResult(self, status="completed", pois=pois)
+
+
+class MismatchedSituationCheck(SituationCheck):
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(
+            target=cls,
+            id=TypeShip("9b4088d5-0b7d-471d-af44-ff375d7bd9d7"),
+            name="Test.Checks.MismatchedSituationCheck",
+        )
+
+    def _run(self):
+        poi = ExamplePOI(
+            self,
+            "changed",
+            "Wrong situation.",
+            situation={"different": True},
+        )
+        return CheckResult(self, status="completed", pois=(poi,))
+
+
 # tarav.breadcrumb deba349a12b1413c1a834413f6ac1640a9cbeffe4e9972aa2940b6bf96548484
 def test_check_results_are_snapshots_and_poi_emission_is_explicit():
     runs = []
@@ -71,6 +127,27 @@ def test_provider_and_explicit_pool_use_the_same_runner():
     results = run_checks((*provider.checks, ExampleCheck("cross-subject", runs)))
     assert runs == ["one", "two", "cross-subject"]
     assert [result.pois()[0].subject["subject"] for result in results] == runs
+
+
+# tarav.breadcrumb f80da43bcc2b842c5857008fb9145baf66db8ca4efdd591b34e9a69f8e7f0ad0
+def test_situation_checks_snapshot_validate_and_bind_poi_identity():
+    source = {"before": 1, "after": 2}
+    check = DifferenceCheck(situation=source)
+    source["after"] = 1
+
+    poi = check.run().pois()[0]
+    assert check.situation.to_json_value() == {"before": 1, "after": 2}
+    assert check.context().open("situation").to_record()["value"] == {
+        "before": 1,
+        "after": 2,
+    }
+    assert poi.situation == check.situation.to_json_value()
+    assert DifferenceCheck(situation=Situation(source)).run().pois() == ()
+
+    with pytest.raises(ValueError, match="requires before and after"):
+        DifferenceCheck(situation={"before": 1})
+    with pytest.raises(ValueError, match="different situation"):
+        MismatchedSituationCheck(situation={"value": 1}).run()
 
 
 # tarav.breadcrumb e73444ba05e865201671436a374aa312fd999aa1cf64d4b89f76f2f60138980b
