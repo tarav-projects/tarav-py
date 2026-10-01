@@ -2,6 +2,7 @@
 
 <!-- tarav.sessions
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
+1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
 -->
 
 ## Impl.Abstract
@@ -79,6 +80,15 @@ Snapshot the canonical situation at POI construction (agent proposal). Later
 mutation of caller-owned dictionaries must not change an existing identity.
 Retain an inspectable situation representation; hashing must not hide what the
 caller declared. No separate mutable-state fingerprint is introduced.
+
+Collector addressing has two levels. The stable POI identity selects a
+situation; a zero-based emission index selects one observation of that situation
+inside the current collector evaluation. The index is assigned in emission
+order, is not part of POI identity or blessing matching, and is exposed when
+several observations share an identity. Identity-prefix resolution happens
+before index selection. A lookup without an index succeeds only for one
+observation and otherwise requires the caller to select the index explicitly.
+<!-- tarav.breadcrumb f15d65be0d76e00ce37feef816d9f13e5b3f44059b725f8fbca5a2497dd79d8a -->
 
 ### Minimal integration, not another identity framework
 

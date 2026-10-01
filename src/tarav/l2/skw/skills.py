@@ -345,7 +345,9 @@ def register_commands(subparsers, *, registry: TypeRegistry[TaravObject]):
             command.add_argument('--offset', type=int, default=0)
             command.add_argument('--limit', type=int, default=20)
             command.add_argument('--class-name')
-            command.add_argument('--blessing-status', choices=['unblessed', 'blessed', 'stale', 'disallowed'])
+            command.add_argument(
+                '--blessing-status', choices=['unblessed', 'blessed', 'stale']
+            )
         if action in ('poi', 'bless'):
             command.add_argument('--id', required=True, help='Full finding ID or unique prefix')
         if action in ('bless', 'assess-blessing'):

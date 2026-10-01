@@ -77,8 +77,12 @@ class GenerationPOI(IdentifiedPOI):
         self.kind = kind
         self.invocation = invocation
         self.detail = detail
-        super().__init__(kind, detail, subject={"invocation": invocation},
-                         evidence={"detail": detail})
+        super().__init__(
+            kind,
+            detail,
+            subject={"invocation": invocation, "kind": kind},
+            evidence={"detail": detail},
+        )
 
 
 class Generation:
