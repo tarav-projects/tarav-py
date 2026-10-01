@@ -226,6 +226,15 @@ passes; remaining failures are outside 833: the already disconnected Models
 surface and sandbox-blocked Unix sockets, uv cache/environment creation, and
 Git writes. Ruff and diff checks pass for the scoped implementation.
 
+Product completion commit: `91a345837ad7280fa55fe3766ef00f6defddfd7f`;
+its commit audit has no POIs. Wiki updates were drafted in `poi-system.md` and
+the 2026-10-01 daily note after checkpoint `1129a9d21cc74cc47dbef1935898799240fa4276`,
+but Breadcrumb submission and Wiki closure remain pending because this runtime
+cannot write the canonical Breadcrumb store under `~/Documents/tarav`.
+The editable uv reinstall was attempted and blocked by uv's restricted-system
+configuration panic; the installed `tarav 0.1.0` command and editable project
+environment both resolve the new Blessings module.
+
 2026-10-01 clarification: notification delivery is shared POI infrastructure,
 not a reason to redesign Archive's return contract. Expanded the implementation
 proposal with the minimal BlessablePOI contract and an explicit no-relocation
