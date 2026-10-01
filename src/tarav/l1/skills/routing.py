@@ -28,6 +28,9 @@ from tarav.l1.skills.catalog import (
     discover_imported_skills,
     parse_skill_frontmatter,
 )
+from tarav.l0.kernel import TaravClass, TypeShip
+from tarav.l1.poi import IdentifiedPOI, NotificationPOI
+from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
 DEFAULT_SKILLS_DEPOTS = (
     ".agents/skills",
@@ -39,6 +42,44 @@ SKILLS_SOURCE_KIND_PROJECT = "project"
 SKILLS_SOURCE_KIND_PACKAGE = "package"
 DEFAULT_PROJECT_SKILLS_DIRNAME = "skills"
 SKILLS_GLOBAL_DEPOTS_DIR = ("skills", "depots")
+
+
+class SkillsSelectionNotification(NotificationPOI):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("12f11d2f-84eb-4ba0-8374-d06b0e0514a8"),
+            name="Tarav.Skills.POI.SelectionNotification",
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+
+class SkillsStatusPOI(IdentifiedPOI):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("108f5c93-314f-4f30-b336-fdfc8d9ecb8c"),
+            name="Tarav.Skills.POI.Status",
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+    @classmethod
+    def from_entry(cls, category: str, depot_root: Path, entry: "SkillsStatusEntry"):
+        subject = {"category": category, "depot": str(depot_root),
+                   "name": entry.name, "path": str(entry.path)}
+        evidence = {
+            "source": entry.source,
+            "expected_source_path": str(entry.expected_source_path)
+            if entry.expected_source_path is not None else None,
+            "actual_entry_kind": entry.actual_entry_kind,
+            "actual_link_target": entry.actual_link_target,
+            "actual_resolved_target": str(entry.actual_resolved_target)
+            if entry.actual_resolved_target is not None else None,
+        }
+        return cls(category, f"Skill depot entry is {category}: {entry.name}",
+                   subject=subject, evidence=evidence)
 
 
 @dataclass(frozen=True)
@@ -73,6 +114,17 @@ class SkillsSelection:
     depot_roots: tuple[Path, ...]
     sources: list[SkillsImport]
     warnings: tuple[str, ...] = ()
+
+    @property
+    def pois(self):
+        return tuple(
+            SkillsSelectionNotification(
+                "skills-selection-warning",
+                warning,
+                details={"caller_root": str(self.caller_root)},
+            )
+            for warning in self.warnings
+        )
 
 
 @dataclass(frozen=True)
@@ -125,12 +177,25 @@ class SkillsDepotStatusResult:
     conflicts: list[SkillsStatusEntry]
     extra: list[SkillsStatusEntry]
 
+    @property
+    def pois(self):
+        return tuple(
+            SkillsStatusPOI.from_entry(category, self.depot_root, entry)
+            for category in ("missing", "broken", "unsynced", "conflicts", "extra")
+            for entry in getattr(self, category)
+        )
+
 
 @dataclass(frozen=True)
 class SkillsStatusResult:
     selection: SkillsSelection
     skills: list[SelectedSkillRecord]
     depot_statuses: tuple[SkillsDepotStatusResult, ...]
+
+    @property
+    def pois(self):
+        return (*self.selection.pois,
+                *(poi for status in self.depot_statuses for poi in status.pois))
 
 
 def _registry_source_field_label(source_name: str) -> str:

@@ -90,7 +90,7 @@ def test_runtime_browses_archive_and_loads_reference_without_cli(tmp_path):
     )
     assert archive.record(doi).doi == doi
     outcome = runtime.load_object(file).resolve()
-    assert outcome.findings
+    assert outcome.pois
     assert "retired" in outcome.message
     assert payload.read_text() == "data"
     assert (runtime.source_root / "l1" / "references" / "__init__.py").is_file()

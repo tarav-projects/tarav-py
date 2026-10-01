@@ -1,14 +1,23 @@
-from .primitives import POI, NotificationPOI, POICheck, POIInstance, POIFinding, POICollector, POIDetails, POIError
-from .blessings import BlessingRecord, BlessingAssessmentRecord, BlessingStore
+from .primitives import (
+    IdentifiedPOI,
+    NotificationPOI,
+    POI,
+    POICollector,
+    POIDetails,
+    POIError,
+    POINotificationWarning,
+    collect_notifications,
+    emit_notification,
+    fingerprint,
+)
 from .workflow import POIWorkflow
 from .providers import POIProvider
 
-POI_RECORD_TYPES = (POI, NotificationPOI, POICheck, POIInstance, POIFinding, POIDetails,
-                    BlessingRecord, BlessingAssessmentRecord)
+POI_RECORD_TYPES = (POI, IdentifiedPOI, NotificationPOI, POIDetails)
 
 __all__ = [
-    "POI", "NotificationPOI", "POIFinding", "POICollector", "BlessingRecord",
-    "BlessingAssessmentRecord", "BlessingStore",
-    "POICheck", "POIInstance", "POIDetails", "POIError", "POIWorkflow", "POIProvider",
+    "POI", "IdentifiedPOI", "NotificationPOI", "POICollector", "POIDetails",
+    "POIError", "POINotificationWarning", "collect_notifications", "emit_notification",
+    "fingerprint", "POIWorkflow", "POIProvider",
     "POI_RECORD_TYPES",
 ]

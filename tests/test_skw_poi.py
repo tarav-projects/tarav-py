@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from tarav.l3.cli.cli import main
+from tarav.l1.blessings import BlessablePOI
 from test_skw_skills import package
 
 
@@ -18,8 +19,8 @@ def test_skw_bless_inspect_score_and_paged_reporting(tmp_path, capsys):
     source.write_text(json.dumps(data))
     p.build()
     collector = p.evaluate()
-    finding = next(f for f in collector.findings if f.poi_class.blessable)
-    assert Path(finding.poi_class.help()['source_path']).name == 'pois.py'
+    finding = next(f for f in collector.pois if isinstance(f, BlessablePOI))
+    assert Path(type(finding).help()['source_path']).name == 'pois.py'
     actor = tmp_path / 'actor.json'
     actor.write_text(json.dumps({'type': 'Example.Agent', 'locator': {'session': 'fixture'}}))
     why = tmp_path / 'rationale.txt'
@@ -55,7 +56,7 @@ def test_skw_poi_commands_default_to_rendered(tmp_path, capsys):
     data['blocks'][0]['output'].append('[Existing](SKILL.md)')
     source.write_text(json.dumps(data))
     p.build()
-    finding = next(f for f in p.evaluate().findings if f.poi_class.blessable)
+    finding = next(f for f in p.evaluate().pois if isinstance(f, BlessablePOI))
     actor = tmp_path / 'actor.json'
     actor.write_text(json.dumps({'type': 'Example.Agent', 'locator': {'session': 'fixture'}}))
     why = tmp_path / 'rationale.txt'

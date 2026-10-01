@@ -112,6 +112,13 @@ def test_skills_import_and_status_materialize_default_depots(
         depot["missing"] == [] and depot["broken"] == [] and depot["conflicts"] == []
         for depot in status["depots"]
     )
+    assert status["pois"] == []
+
+    (agents_depot / "base-alpha-skill").unlink()
+    assert main(_skills(["skills", "status", "--json"])) == 0
+    status = captured_json(capsys)
+    assert [poi["code"] for poi in status["pois"]] == ["missing", "missing"]
+    assert {poi["type"] for poi in status["pois"]} == {"Tarav.Skills.POI.Status"}
 
 
 def test_skills_project_source_and_config_errors(

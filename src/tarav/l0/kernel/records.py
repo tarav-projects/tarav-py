@@ -529,18 +529,6 @@ class TaravAssertion(TaravType):
         )
 
 
-class TaravPOIInstance(TaravType):
-    """Semantic role for a Tarav point-of-interest instance."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip("248c63e0-2159-44ea-a4f5-a23c4e52294b"),
-            name="Tarav.POI.Instance",
-        )
-
-
 def _json_object(value: object) -> dict[str, object]:
     if not isinstance(value, Mapping):
         raise InvalidRecordJSON("Tarav JSON root must be an object")

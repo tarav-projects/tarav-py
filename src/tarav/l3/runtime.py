@@ -56,7 +56,8 @@ if TYPE_CHECKING:
 
     from tarav.l1.breadcrumbs.integrations import BreadcrumbIntegration
     from tarav.l2.scoring.workflow import ScoringWorkflow
-    from tarav.l1.poi import POICollector, BlessingStore
+    from tarav.l1.blessings import BlessingStore
+    from tarav.l1.poi import POICollector
 
 
 HookRegistrar = Callable[[HookRegistry], None]
@@ -240,6 +241,7 @@ def create_runtime(
     and `providers` ({name, workflow, root}). Paths are relative to that file.
     `filesystem` providers browse plain local Record collections.
     """
+    from tarav.l1.archive import ArchiveNotificationPOI
     from tarav.l1.archive.artifact_records import ARCHIVE_RECORD_TYPES
     from tarav.l1.archive.references import ArchiveReference
     from tarav.l1.archive.workflow import ArchiveWorkflow
@@ -266,9 +268,14 @@ def create_runtime(
     from tarav.l2.project.runner import PROJECT_RUNNER_RECORD_TYPES
     from tarav.l2.project.models import ProjectModelsWorkflow
     from tarav.l2.project.wiki import ProjectWikiWorkflow
-    from tarav.l1.poi import (
-        POI_RECORD_TYPES, POIWorkflow, POICollector, BlessingStore,
-        BlessingRecord, BlessingAssessmentRecord,
+    from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow
+    from tarav.l1.blessings import (
+        BLESSING_RECORD_TYPES,
+        BlessablePOI,
+        BlessingAssessmentRecord,
+        BlessingRecord,
+        BlessingStore,
+        BlessingsWorkflow,
     )
     from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow
     from tarav.l1.breadcrumbs.auditing import BreadcrumbAuditCheck
@@ -284,9 +291,11 @@ def create_runtime(
     from tarav.l2.lines.assertions import LineGroundingAssertion
     from tarav.l2.scoring.workflow import ScoringWorkflow
     from tarav.l1.skw.document import SKILLWARE_RECORD_TYPES, SkillwareWorkflow
+    from tarav.l1.skw.generation import GenerationPOI
     from tarav.l1.skw.reading import READING_DECLARATION_TYPES, READING_ENTRY_TYPES
     from tarav.l2.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
     from tarav.l2.test_workflow import TestEntity, TestItem, TestWorkflow
+    from tarav.l1.skills.routing import SkillsSelectionNotification, SkillsStatusPOI
 
     composed_breadcrumb_integrations = (
         chatlas_context_integration(commit_auditor=audit_commit),
@@ -316,6 +325,7 @@ def create_runtime(
                     for record_type in integration.workflow.record_types
                 ),
                 *ARCHIVE_RECORD_TYPES,
+                ArchiveNotificationPOI,
                 *RECORD_ARCHIVE_TYPES,
                 ArchiveReference,
                 *DIAGRAM_RECORD_TYPES,
@@ -328,6 +338,8 @@ def create_runtime(
                 TaravProgram,
                 ProjectProgram,
                 *POI_RECORD_TYPES,
+                *BLESSING_RECORD_TYPES,
+                BlessablePOI,
                 Check,
                 CheckPOI,
                 CheckResult,
@@ -340,6 +352,9 @@ def create_runtime(
                 ScoringReference,
                 LineGroundingAssertion,
                 *SKILLWARE_RECORD_TYPES,
+                GenerationPOI,
+                SkillsSelectionNotification,
+                SkillsStatusPOI,
                 *READING_DECLARATION_TYPES,
                 *READING_ENTRY_TYPES,
                 *SKILLS_RECORD_TYPES,
@@ -377,6 +392,7 @@ def create_runtime(
         ProjectModelsWorkflow,
         ProjectWikiWorkflow,
         POIWorkflow,
+        BlessingsWorkflow,
         ChecksWorkflow,
         SurfacesWorkflow,
         UnsortedWorkflow,

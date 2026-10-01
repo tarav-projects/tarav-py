@@ -15,10 +15,10 @@ from tarav.l0._core.persistence import atomic_write_json, atomic_write_text
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import (
     RecordTypeReference,
-    TaravPOIInstance,
     TypeShip,
     locate_record_type,
 )
+from tarav.l1.poi import POI
 from tarav.l1.references import FilePositionReference, FilePositionTarget
 from tarav.l1.references.git import (
     GitCommitMessagePositionReference,
@@ -26,6 +26,7 @@ from tarav.l1.references.git import (
 )
 
 from .model import Breadcrumb, LocatorObservation
+from .identity import BREADCRUMBS_WORKFLOW_SHIP
 
 
 _BREADCRUMB_ID = re.compile(r"[0-9a-f]{64}")
@@ -37,17 +38,22 @@ class BreadcrumbError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
-class BreadcrumbFinding(TaravPOIInstance):
+class BreadcrumbFinding(POI):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
             target=cls,
             id=TypeShip('23e961ba-5383-4fc0-a386-b646b8b10240'),
             name='Tarav.Breadcrumbs.Finding',
+            workflow=BREADCRUMBS_WORKFLOW_SHIP,
         )
 
     code: str
     message: str
+
+    def as_dict(self):
+        return {"type": entity(type(self)).name, "code": self.code,
+                "message": self.message}
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +73,7 @@ class BreadcrumbResolution:
             "breadcrumb": self.breadcrumb.to_record(),
             "position": _position_json(self.position),
             "findings": [
-                {"class": "Tarav.POI.Instance", "code": item.code, "message": item.message}
+                item.as_dict()
                 for item in self.findings
             ],
         }

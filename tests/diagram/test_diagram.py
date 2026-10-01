@@ -32,9 +32,9 @@ from tarav.l2.unsorted.views import (
 )
 from tarav.l0.kernel import (
     TaravAssertion,
-    TaravPOIInstance,
     TaravObject,
 )
+from tarav.l1.poi import POI
 
 
 def test_diagram_record_interfaces_share_the_tarav_root() -> None:
@@ -213,7 +213,7 @@ def test_diagram_types_participate_in_harness_without_schema_changes() -> None:
     assert issubclass(TypedShip, TaravObject)
     assert issubclass(TypedAnnotation, TaravObject)
     assert issubclass(DiagramObjectAssertion, TaravAssertion)
-    assert issubclass(Finding, TaravPOIInstance)
+    assert issubclass(Finding, POI)
 
 
 def test_models_are_typed_ships_and_project_their_editions(

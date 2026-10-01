@@ -11,23 +11,31 @@ from typing import Annotated
 from pydantic import ConfigDict, Field, JsonValue, model_validator
 
 from tarav.l0.kernel.identity import TypeShip
-from tarav.l0.kernel.records import FileRecord, TaravObject, TaravPOIInstance, _json_object
+from tarav.l0.kernel.records import FileRecord, TaravObject, _json_object
+from tarav.l1.poi import POI
 from tarav.l1.references.identity import REFERENCES_WORKFLOW_SHIP
 
 
-@dataclass(frozen=True)
-class ReferenceFinding(TaravPOIInstance):
+# tarav.breadcrumb 3c3e9e1c1b19de808006014b3cf685ebb28509c8865341fa023223530d94ba77
+class ReferenceFinding(POI):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
             target=cls,
             id=TypeShip('cd189772-73f1-4ddb-9fdd-610bc12a7fd3'),
             name='Tarav.References.Finding',
+            workflow=REFERENCES_WORKFLOW_SHIP,
         )
 
-    code: str
-    message: str
-    hints: object
+    def __init__(self, code: str, message: str, hints: object):
+        super().__init__()
+        self.code = code
+        self.message = message
+        self.hints = hints
+
+    def as_dict(self):
+        return {"type": entity(type(self)).name, "code": self.code,
+                "message": self.message, "hints": self.hints}
 
 
 @dataclass(frozen=True)
@@ -42,7 +50,7 @@ class ReferenceResult:
         return self.status == "resolved"
 
     @property
-    def findings(self) -> tuple[ReferenceFinding, ...]:
+    def pois(self) -> tuple[ReferenceFinding, ...]:
         return (
             ()
             if self.ok

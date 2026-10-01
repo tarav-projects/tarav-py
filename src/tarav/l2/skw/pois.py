@@ -4,14 +4,16 @@ Checks live in skw/loading.py, skw/skills.py, skw/publication.py and
 skw/document.py. Only annotation omissions and semantic freshness
 questions permit attributed acceptance. Structural failures require repair.
 """
-from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TypeShip
-from tarav.l1.poi import POICheck, POICollector
+from tarav.l1.blessings import BlessablePOI
+from tarav.l1.checks import Check, CheckPOI, CheckResult
+from tarav.l1.poi import POICollector
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
 
-class SkwPOI(POICheck):
-    """Ownership base for SKW checks represented as POI Record Types."""
+class SkwPOI(CheckPOI):
+    """A workflow-owned SKW POI explained by the bound analysis Check."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -22,8 +24,44 @@ class SkwPOI(POICheck):
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
+    @classmethod
+    def finding(cls, check, subject, *, evidence=None):
+        evidence = evidence or {}
+        raw = evidence.get("finding", {})
+        code = raw.get("kind", entity(cls).name.rsplit(".", 1)[-1])
+        message = raw.get("detail") or raw.get("message") or code
+        return cls(
+            check,
+            code,
+            str(message),
+            details=evidence,
+            subject=subject,
+            evidence=evidence,
+        )
 
-class UnannotatedOutputLink(SkwPOI):
+
+class SkwAnalysisCheck(Check):
+    """Adapt existing SKW analysis output to bound workflow-owned POIs."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("fdfb213f-fb73-4fb6-882a-4782a66eb656"),
+            name="Tarav.SKW.Check.Analysis",
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+    def __init__(self, package, findings):
+        super().__init__()
+        self.package = package
+        self.findings = tuple(findings)
+
+    def _run(self):
+        return CheckResult(self, status="completed", pois=_analysis_pois(self))
+
+
+class UnannotatedOutputLink(SkwPOI, BlessablePOI):
     """An authored Markdown link has no SKW link primitive declaration.
 
     LoadingModel binds source blocks, then parses their authored output solely
@@ -38,8 +76,8 @@ class UnannotatedOutputLink(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000001'),
             name='Tarav.SKW.POI.UnannotatedOutputLink',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = True
 
 
 class MissingContext(SkwPOI):
@@ -55,8 +93,8 @@ class MissingContext(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000002'),
             name='Tarav.SKW.POI.MissingContext',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class PathDependentContext(SkwPOI):
@@ -68,8 +106,8 @@ class PathDependentContext(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000003'),
             name='Tarav.SKW.POI.PathDependentContext',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class UnreachableBlock(SkwPOI):
@@ -81,8 +119,8 @@ class UnreachableBlock(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000004'),
             name='Tarav.SKW.POI.UnreachableBlock',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class AttachmentCycle(SkwPOI):
@@ -94,8 +132,8 @@ class AttachmentCycle(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000005'),
             name='Tarav.SKW.POI.AttachmentCycle',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InclusionCycle(SkwPOI):
@@ -107,8 +145,8 @@ class InclusionCycle(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000006'),
             name='Tarav.SKW.POI.InclusionCycle',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InvalidBlockReference(SkwPOI):
@@ -120,8 +158,8 @@ class InvalidBlockReference(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000007'),
             name='Tarav.SKW.POI.InvalidBlockReference',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class UndeclaredBlock(SkwPOI):
@@ -133,8 +171,8 @@ class UndeclaredBlock(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000008'),
             name='Tarav.SKW.POI.UndeclaredBlock',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InvalidParent(SkwPOI):
@@ -146,8 +184,8 @@ class InvalidParent(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000009'),
             name='Tarav.SKW.POI.InvalidParent',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InvalidContextTarget(SkwPOI):
@@ -159,8 +197,8 @@ class InvalidContextTarget(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000010'),
             name='Tarav.SKW.POI.InvalidContextTarget',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InvalidLoadingRoot(SkwPOI):
@@ -172,8 +210,8 @@ class InvalidLoadingRoot(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000011'),
             name='Tarav.SKW.POI.InvalidLoadingRoot',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class RootHasParent(SkwPOI):
@@ -185,8 +223,8 @@ class RootHasParent(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000012'),
             name='Tarav.SKW.POI.RootHasParent',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class LoadingAnalysisIncomplete(SkwPOI):
@@ -198,8 +236,8 @@ class LoadingAnalysisIncomplete(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000013'),
             name='Tarav.SKW.POI.LoadingAnalysisIncomplete',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class LoadingDeclarationStale(SkwPOI):
@@ -211,8 +249,8 @@ class LoadingDeclarationStale(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000014'),
             name='Tarav.SKW.POI.LoadingDeclarationStale',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class LoadingRenderError(SkwPOI):
@@ -224,8 +262,8 @@ class LoadingRenderError(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000015'),
             name='Tarav.SKW.POI.LoadingRenderError',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InvalidLoadingModel(SkwPOI):
@@ -237,8 +275,8 @@ class InvalidLoadingModel(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000016'),
             name='Tarav.SKW.POI.InvalidLoadingModel',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InvalidPublication(SkwPOI):
@@ -250,8 +288,8 @@ class InvalidPublication(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000017'),
             name='Tarav.SKW.POI.InvalidPublication',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class DuplicateOutput(SkwPOI):
@@ -263,8 +301,8 @@ class DuplicateOutput(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000018'),
             name='Tarav.SKW.POI.DuplicateOutput',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class OutputNotDeployed(SkwPOI):
@@ -276,8 +314,8 @@ class OutputNotDeployed(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000019'),
             name='Tarav.SKW.POI.OutputNotDeployed',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InvalidSource(SkwPOI):
@@ -289,8 +327,8 @@ class InvalidSource(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000020'),
             name='Tarav.SKW.POI.InvalidSource',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class MissingConsumerFile(SkwPOI):
@@ -302,8 +340,8 @@ class MissingConsumerFile(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000021'),
             name='Tarav.SKW.POI.MissingConsumerFile',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class UnbundledLink(SkwPOI):
@@ -315,8 +353,8 @@ class UnbundledLink(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000022'),
             name='Tarav.SKW.POI.UnbundledLink',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class UndeclaredConsumerLink(SkwPOI):
@@ -328,8 +366,8 @@ class UndeclaredConsumerLink(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000023'),
             name='Tarav.SKW.POI.UndeclaredConsumerLink',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class MissingLinkTarget(SkwPOI):
@@ -341,8 +379,8 @@ class MissingLinkTarget(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000024'),
             name='Tarav.SKW.POI.MissingLinkTarget',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class MissingDependency(SkwPOI):
@@ -354,8 +392,8 @@ class MissingDependency(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000025'),
             name='Tarav.SKW.POI.MissingDependency',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class PublicationUnresolvable(SkwPOI):
@@ -367,8 +405,8 @@ class PublicationUnresolvable(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000026'),
             name='Tarav.SKW.POI.PublicationUnresolvable',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class PublicationStale(SkwPOI):
@@ -380,8 +418,8 @@ class PublicationStale(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000027'),
             name='Tarav.SKW.POI.PublicationStale',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class PublicationDrift(SkwPOI):
@@ -393,8 +431,8 @@ class PublicationDrift(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000028'),
             name='Tarav.SKW.POI.PublicationDrift',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class ContextUnresolvable(SkwPOI):
@@ -406,8 +444,8 @@ class ContextUnresolvable(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000029'),
             name='Tarav.SKW.POI.ContextUnresolvable',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class ContextUnobserved(SkwPOI):
@@ -419,11 +457,11 @@ class ContextUnobserved(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000030'),
             name='Tarav.SKW.POI.ContextUnobserved',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
-class StaleContext(SkwPOI):
+class StaleContext(SkwPOI, BlessablePOI):
     """Document.lint found changed maintenance context since explicit observation.
 
     An agent may accept the unchanged product after reviewing the new context.
@@ -436,8 +474,8 @@ class StaleContext(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000031'),
             name='Tarav.SKW.POI.StaleContext',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = True
 
 
 class MissingOutput(SkwPOI):
@@ -449,8 +487,8 @@ class MissingOutput(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000032'),
             name='Tarav.SKW.POI.MissingOutput',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InvalidInput(SkwPOI):
@@ -462,11 +500,12 @@ class InvalidInput(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000033'),
             name='Tarav.SKW.POI.InvalidInput',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
-class StaleGeneration(SkwPOI):
+# tarav.breadcrumb 76d1a306cd3cd7ae489248cd3809e96b6bad28beb76e10c3d94c7bebae7a6444
+class StaleGeneration(SkwPOI, BlessablePOI):
     """Document.lint found changed generation inputs against recorded provenance.
 
     Bless only after assessing that existing output is acceptable for the
@@ -479,8 +518,8 @@ class StaleGeneration(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000034'),
             name='Tarav.SKW.POI.StaleGeneration',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = True
 
 
 class OutputChanged(SkwPOI):
@@ -492,8 +531,8 @@ class OutputChanged(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000035'),
             name='Tarav.SKW.POI.OutputChanged',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class InvalidAnnotation(SkwPOI):
@@ -505,8 +544,8 @@ class InvalidAnnotation(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000036'),
             name='Tarav.SKW.POI.InvalidAnnotation',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class SourceUncompiled(SkwPOI):
@@ -518,8 +557,8 @@ class SourceUncompiled(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000037'),
             name='Tarav.SKW.POI.SourceUncompiled',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class ProductUnavailable(SkwPOI):
@@ -531,8 +570,8 @@ class ProductUnavailable(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000038'),
             name='Tarav.SKW.POI.ProductUnavailable',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class ProductDrift(SkwPOI):
@@ -544,8 +583,8 @@ class ProductDrift(SkwPOI):
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000039'),
             name='Tarav.SKW.POI.ProductDrift',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
-    blessable = False
 
 
 class DiagramAssessment(SkwPOI):
@@ -557,6 +596,7 @@ class DiagramAssessment(SkwPOI):
             target=cls,
             id=TypeShip('7e309479-ccae-4780-b2f1-bd3af54f9f42'),
             name='Tarav.SKW.POI.DiagramAssessment',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
 
@@ -623,11 +663,11 @@ def surface_state(package):
     return state
 
 
-def collect(package, findings):
-    collector = POICollector()
+def _analysis_pois(check):
+    package = check.package
     state = surface_state(package)
     from .publication import digest
-    for raw in findings:
+    for raw in check.findings:
         kind = raw.get('kind')
         if kind is not None and kind not in CLASSES:
             raise ValueError(f'Unregistered SKW POI kind: {kind}')
@@ -645,5 +685,11 @@ def collect(package, findings):
                 # Missing assessment material cannot authorize a stale blessing.
                 cls = ContextUnresolvable
                 evidence['resolution_error'] = str(exc)
-        collector.emit(cls.finding(subject, evidence=evidence))
+        yield cls.finding(check, subject, evidence=evidence)
+
+
+def collect(package, findings):
+    collector = POICollector()
+    for poi in SkwAnalysisCheck(package, findings).run().pois():
+        collector.emit(poi)
     return collector

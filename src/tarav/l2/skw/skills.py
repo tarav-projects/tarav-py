@@ -14,10 +14,10 @@ from tarav.l1.skw.document import Document, project_document, project_root, read
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
 from tarav.l1.skw.loading import LoadingModel, LoadingRecord, SkillDocument
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
-from tarav.l1.poi import BlessingStore, BlessingRecord, BlessingAssessmentRecord
+from tarav.l1.blessings import BlessingAssessmentRecord, BlessingRecord, BlessingStore
 from tarav.l1.checks import CheckProvider, run_checks
 from tarav.l0._core.errors import CliError
-from .pois import CLASSES, DiagramAssessment, collect
+from .pois import CLASSES, DiagramAssessment, SkwAnalysisCheck, collect
 from .reading_checks import READING_CHECK_TYPES, reading_checks
 from tarav.l1.skw.presentation import (
     add_output_mode,
@@ -281,6 +281,7 @@ SKILLS_RECORD_TYPES = (
     BlessingAssessmentRecord,
     *CLASSES.values(),
     *READING_CHECK_TYPES,
+    SkwAnalysisCheck,
     DiagramAssessment,
 )
 

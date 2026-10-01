@@ -34,7 +34,7 @@ def package(tmp_path):
         {'id': 'use', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['Use vocabulary.']},
         {'id': 'orphan', 'type': 'Tarav.Skillware.LiteralBlock', 'output': ['Unreachable.']}]
     identify_blocks({'blocks': blocks}, scope='loading-main')
-    blocks[3]['reading'] = [{'type': entity(InlineDependency).name,
+    blocks[3]['reading_deps'] = [{'type': entity(InlineDependency).name,
                              'target': blocks[1]['id']}]
     source.write_text(json.dumps({'type': 'Tarav.Skillware.Document', 'schema_version': 1,
                                   'output': 'SKILL.md', 'blocks': blocks}))
@@ -63,7 +63,8 @@ def declare(p, owner, target, declaration, *, slot=None, caption=None, output=No
         record.update(slot=slot, entry={'type': entity(BlockEntry).name, 'node': target})
     if caption is not None:
         record['caption'] = caption
-    block.setdefault('reading', []).append(record)
+    field = 'contains' if issubclass(declaration, Contains) else 'links'
+    block.setdefault(field, []).append(record)
     if output is not None:
         block['output'].append(output)
     source.write_text(json.dumps(data))
@@ -80,6 +81,45 @@ def test_static_paths_default_parent_and_coverage(tmp_path):
     assert {'kind': 'unreachable-block', 'block': 'orphan'} in findings
     assert p.loading().inspect('use', limit=1)['path_count'] == 2
     assert len(p.loading().inspect('use', limit=1)['paths']) == 1
+
+
+def test_position_paths_need_no_loading_registry(tmp_path):
+    # tarav.breadcrumb 1120b5787702c5016b707d3b1b1df558282cd82e8379d41390cb761ac70c6ca8
+    p = package(tmp_path)
+    path = tmp_path / '.skw/main.json'
+    data = json.loads(path.read_text())
+    del data['loading']
+    path.write_text(json.dumps(data))
+    (tmp_path / '.skw/loading.json').unlink()
+    p = create_runtime().load_object(tmp_path / '.skw')
+    graph = p.loading()
+    analysis = graph.analyze()
+    assert all(row['satisfied'] for row in analysis['requirements'])
+    assert len(analysis['states']) == 5
+    assert not (tmp_path / '.skw/loading.json').exists()
+    use = str(graph.documents[next(iter(graph.documents))].blocks['use'].id)
+    assert not graph.analyze(entry=use)['requirements'][0]['satisfied']
+
+
+def test_declaration_fields_reject_wrong_semantics(tmp_path):
+    p = package(tmp_path)
+    path = tmp_path / '.skw/src/main.json'
+    data = json.loads(path.read_text())
+    data['blocks'][0]['contains'] = [{
+        'type': entity(ReferenceDependency).name, 'target': data['blocks'][1]['id']}]
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='contains requires Contains'):
+        p.loading()
+
+
+def test_old_reading_field_requires_explicit_migration(tmp_path):
+    p = package(tmp_path)
+    path = tmp_path / '.skw/src/main.json'
+    data = json.loads(path.read_text())
+    data['blocks'][0]['reading'] = []
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='Migrate reading'):
+        p.documents()
 
 
 def isolated_graph(p):
@@ -157,7 +197,7 @@ def test_contains_external_entity_without_expanding_it(tmp_path):
     path = p.root / '.skw/src/main.json'
     data = json.loads(path.read_text())
     target = 'd4d979b7-fb70-4953-8a0d-4fce5fe376c2'
-    data['blocks'][0]['reading'] = [{'type': entity(Contains).name, 'target': target}]
+    data['blocks'][0]['contains'] = [{'type': entity(Contains).name, 'target': target}]
     path.write_text(json.dumps(data))
     graph = isolated_graph(p)
     analysis = graph.analyze()
@@ -170,7 +210,7 @@ def test_composition_entry_must_match_contained_entity(tmp_path):
     declare(p, 'entry', 'orphan', IncludesBlock, slot='extra')
     path = p.root / '.skw/src/main.json'
     data = json.loads(path.read_text())
-    data['blocks'][0]['reading'][0]['entry']['node'] = 'vocabulary'
+    data['blocks'][0]['contains'][0]['entry']['node'] = 'vocabulary'
     path.write_text(json.dumps(data))
     assert any(d['code'] == 'invalid-context-target' for d in p.loading().diagnostics)
 
@@ -186,10 +226,14 @@ def test_two_routes_supply_one_inline_dependency_and_explicit_poi_action(tmp_pat
 
     collector = POICollector()
     results = run_checks(p.checks)
-    missing = next(poi for result in results for poi in result.pois()
-                   if poi.poi_class.__name__ == 'MissingContext')
+    missing = next(
+        poi
+        for result in results
+        for poi in result.pois()
+        if type(poi).__name__ == "MissingContext"
+    )
     assert missing.evidence['finding']['path'][-2:] == ['bypass', 'use']
-    assert collector.findings == []
+    assert collector.pois == []
     collector.emit(missing)
     assert collector.get(missing.identity) is missing
     with pytest.raises(POIError):
@@ -225,7 +269,7 @@ def test_links_are_generated_but_do_not_imply_loaded_content(tmp_path):
                     slot='vocab', caption='Read', output='{{skw:vocab}}')
     source = p.root / '.skw/src/main.json'
     data = json.loads(source.read_text())
-    data['blocks'][3]['reading'][0]['type'] = entity(ReferenceDependency).name
+    data['blocks'][3]['reading_deps'][0]['type'] = entity(ReferenceDependency).name
     source.write_text(json.dumps(data))
     graph = p.loading()
     assert not any(f['kind'] == 'missing-context' for f in reading_findings(graph))
@@ -233,7 +277,7 @@ def test_links_are_generated_but_do_not_imply_loaded_content(tmp_path):
     anchor = data['blocks'][1]['id']
     assert f'[Read](SKILL.md#skw-{anchor})' in text
     assert f'<a id="skw-{anchor}"></a>' in text
-    data['blocks'][3]['reading'][0]['type'] = entity(InlineDependency).name
+    data['blocks'][3]['reading_deps'][0]['type'] = entity(InlineDependency).name
     source.write_text(json.dumps(data))
     graph = p.loading()
     assert any(f['kind'] == 'missing-context' for f in reading_findings(graph))
@@ -257,7 +301,7 @@ def test_markdown_never_discovers_edges(tmp_path):
     source = p.root / '.skw/src/main.json'
     data = json.loads(source.read_text())
     data['blocks'][0]['output'].append('[Vocabulary](SKILL.md#vocabulary)')
-    data['blocks'][3]['reading'][0]['type'] = entity(ReferenceDependency).name
+    data['blocks'][3]['reading_deps'][0]['type'] = entity(ReferenceDependency).name
     source.write_text(json.dumps(data))
     graph = p.loading()
     assert sum(f['kind'] == 'missing-context' for f in reading_findings(graph)) == 2
@@ -317,7 +361,7 @@ def test_changed_declaration_invalidates_compilation(tmp_path):
     path = tmp_path / '.skw/src/main.json'
     data = json.loads(path.read_text())
     from tarav.l1.skw.reading import EitherDependency
-    data['blocks'][3]['reading'][0]['type'] = entity(EitherDependency).name
+    data['blocks'][3]['reading_deps'][0]['type'] = entity(EitherDependency).name
     path.write_text(json.dumps(data))
     assert any(f['kind'] == 'source-uncompiled' for f in p.check())
 
@@ -352,10 +396,10 @@ def test_typed_skill_link_retains_output_and_uses_one_target(tmp_path):
     identify_blocks(data, scope='loading-main')
     vocabulary_id = data['blocks'][1]['id']
     link_id = data['blocks'][-1]['id']
-    data['blocks'][0].setdefault('reading', []).append({
+    data['blocks'][0].setdefault('contains', []).append({
         'type': entity(IncludesBlock).name, 'target': link_id,
         'entry': {'type': entity(BlockEntry).name, 'node': 'link'}, 'slot': 'link'})
-    data['blocks'][-1]['reading'] = [{
+    data['blocks'][-1]['links'] = [{
         'type': entity(ConsultationLink).name, 'target': vocabulary_id,
         'entry': {'type': entity(BlockEntry).name, 'node': 'vocabulary'}}]
     source.write_text(json.dumps(data))

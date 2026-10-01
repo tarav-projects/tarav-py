@@ -13,7 +13,7 @@ from tarav.l1 import archive as archive_module
 from tarav.l1.archive import (
     AmbiguousArtifactError,
     Archive,
-    ArchiveWarning,
+    ArchiveNotificationPOI,
     ArtifactNotFoundError,
     BranchNotFoundError,
     DuplicateArtifactLocatorError,
@@ -21,6 +21,7 @@ from tarav.l1.archive import (
     RepositoryLocatorUnavailableError,
     derive_git_artifact_id,
 )
+from tarav.l1.poi import POINotificationWarning, collect_notifications
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -252,10 +253,11 @@ def test_repository_registration_captures_admitted_remotes_and_skips_weird_ones(
     _git(source, "remote", "add", "private", suspicious)
     archive = Archive.create(tmp_path / "tarav-archive")
 
-    with pytest.warns(ArchiveWarning) as caught:
+    with pytest.warns(POINotificationWarning) as caught:
         repository = archive.register_repository(source, name="tarav.chatlas")
 
     warning = str(caught[0].message)
+    assert isinstance(caught[0].message.poi, ArchiveNotificationPOI)
     assert "skipped 1" in warning
     assert "secret-token" not in warning
     assert suspicious not in warning
@@ -283,6 +285,13 @@ def test_repository_registration_captures_admitted_remotes_and_skips_weird_ones(
             "value": "git@example.test:owner/chatlas.git",
         },
     ]
+
+    second = _source_repository(tmp_path / "chatlas-collected")
+    _git(second, "remote", "add", "private", suspicious)
+    with collect_notifications() as collector:
+        archive.register_repository(second, name="tarav.chatlas.collected")
+    assert len(collector.pois) == 1
+    assert isinstance(collector.pois[0], ArchiveNotificationPOI)
 
 
 def test_repository_branch_is_explicit_and_defaults_to_main(tmp_path: Path) -> None:

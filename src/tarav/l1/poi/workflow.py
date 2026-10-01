@@ -7,7 +7,7 @@ POI_WORKFLOW_SHIP = WorkflowShip("a24f9397-a95a-41a8-83e2-6007ac6e3e90")
 
 class POIWorkflow(TaravWorkflow):
     workflow_name = "poi"
-    constitution = "Expose findings and attributed blessings without prescribing responses."
+    constitution = "Expose typed points of interest without prescribing responses."
 
     @classmethod
     def class_entity(cls):

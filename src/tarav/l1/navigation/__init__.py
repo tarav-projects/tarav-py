@@ -7,10 +7,10 @@ from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.l0.kernel.space import Entry, RecordProvider
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.navigation.identity import NAVIGATION_WORKFLOW_SHIP
-from tarav.l1.poi import POICheck, POIFinding
+from tarav.l1.poi import IdentifiedPOI
 
 
-class ProviderError(POICheck):
+class ProviderError(IdentifiedPOI):
     """A provider operation could not produce a valid navigation result."""
 
     @classmethod
@@ -26,11 +26,11 @@ class ProviderError(POICheck):
 @dataclass(frozen=True)
 class NavigationResult:
     value: object = None
-    findings: tuple[POIFinding, ...] = ()
+    pois: tuple[ProviderError, ...] = ()
 
     @property
     def ok(self) -> bool:
-        return not self.findings
+        return not self.pois
 
 
 class Navigation(TaravWorkflow):
@@ -94,9 +94,11 @@ class NavigationService:
             return NavigationResult(value)
         except Exception as exc:
             return NavigationResult(
-                findings=(
-                    ProviderError.finding(
-                        {"path": path, "operation": operation},
+                pois=(
+                    ProviderError(
+                        "provider-error",
+                        str(exc),
+                        subject={"path": path, "operation": operation},
                         evidence={"error": type(exc).__name__, "message": str(exc)},
                     ),
                 )

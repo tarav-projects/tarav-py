@@ -241,7 +241,7 @@ def render_poi(result: dict[str, Any]) -> str:
         f"POI: {_short_poi_type(result['type'])}",
         f"id: {result['id']}",
         f"state: {result['state']}",
-        f"blessable: {'yes' if result.get('blessable') else 'no'}",
+        f"blessable: {'yes' if 'blessing' in result else 'no'}",
         f"blessing: {blessing.get('status', 'unblessed')}",
     ]
     subject = _details(result.get("subject") or {})
@@ -257,10 +257,10 @@ def render_poi(result: dict[str, Any]) -> str:
 
 
 def render_blessing_record(result: dict[str, Any]) -> str:
-    if result["type"] == "Tarav.POI.Blessing":
+    if result["type"] == "Tarav.Blessings.Record":
         return "\n".join((
             f"Blessing recorded: {result['id']}",
-            f"finding: {result['finding']['id']}",
+            f"POI: {result['poi']['id']}",
             f"created: {result['created_at']}",
             f"support: {len(result.get('support') or [])} records",
         ))

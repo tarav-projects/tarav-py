@@ -10,7 +10,7 @@ from pydantic import JsonValue
 from tarav.l0.kernel import TaravAssertion
 from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TaravObject
-from tarav.l0.kernel import TaravPOIInstance
+from tarav.l1.poi import POI
 from tarav.l0.kernel import TypeShip
 from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.l2.unsorted.constants import VERBATIM_GATE_TYPE
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from tarav.l2.unsorted.records import TypedAnnotation
 
 @dataclass(frozen=True, slots=True)
-class Finding(TaravPOIInstance):
+class Finding(POI):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -47,11 +47,14 @@ class Finding(TaravPOIInstance):
 
     def to_dict(self) -> JsonObject:
         return {
-            "class": "Tarav.POI.Instance",
+            "type": "Tarav.Diagram.Finding",
             "code": self.code,
             "path": self.path,
             "message": self.message,
         }
+
+    def as_dict(self) -> JsonObject:
+        return self.to_dict()
 
 
 class ChatlasTurnReferenceInterface(TaravObject.RecordInterface):

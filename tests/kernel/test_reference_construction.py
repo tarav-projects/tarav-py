@@ -96,4 +96,4 @@ def test_git_reference_keeps_edition_after_head_changes(tmp_path):
 def test_unknown_reference_is_reported_without_importing_code():
     result = create_runtime().references.resolve({"type": "unknown.module.Class"})
     assert not result.ok
-    assert result.findings
+    assert result.pois

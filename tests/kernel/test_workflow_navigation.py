@@ -69,7 +69,7 @@ def test_provider_failure_is_inspectable_and_does_not_block_other_provider():
     nav.mount("broken", Broken())
     result = nav.list("/broken")
     assert not result.ok
-    assert result.findings[0].evidence["message"] == "offline"
+    assert result.pois[0].evidence["message"] == "offline"
     assert nav.list().ok
 
 
@@ -112,7 +112,7 @@ def test_invalid_provider_response_is_a_poi():
     nav.mount("invalid", Invalid())
     result = nav.load("/invalid/record")
     assert not result.ok
-    assert result.findings[0].evidence["error"] == "TypeError"
+    assert result.pois[0].evidence["error"] == "TypeError"
 
 
 def test_registry_resolves_workflow_entities_by_name_and_ship():

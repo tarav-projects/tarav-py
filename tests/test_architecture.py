@@ -241,19 +241,17 @@ def test_archive_and_context_implement_shared_explorer_contracts() -> None:
     assert issubclass(ArchiveExplorer, Explorer)
 
 
-def test_generation_mechanics_have_no_tarav_domain_dependencies() -> None:
-    import sys
-
+def test_generation_mechanics_depend_only_on_its_workflow_foundations() -> None:
     tree = ast.parse((PACKAGE_ROOT / "l1" / "skw" / "generation.py").read_text())
+    dependencies = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            assert all(
-                alias.name.split(".")[0] in sys.stdlib_module_names
-                for alias in node.names
-            )
-        elif isinstance(node, ast.ImportFrom):
-            assert node.level == 0
-            assert node.module.split(".")[0] in sys.stdlib_module_names
+            dependencies.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            dependencies.add(node.module)
+
+    tarav_dependencies = {name for name in dependencies if name.startswith("tarav.")}
+    assert tarav_dependencies == {"tarav.l0.kernel", "tarav.l1.poi", "tarav.l1.skw.identity"}
 
 
 def _top_level_import_graph() -> dict[str, set[str]]:
@@ -457,7 +455,7 @@ def test_kernel_is_a_dependency_clean_application_base() -> None:
     assert "l0.kernel" in imports["navigation"]
     assert "poi" in imports["navigation"]
     assert "navigation" not in imports["l0.kernel"]
-    assert imports["references"] <= {"l0.kernel"}
+    assert imports["references"] <= {"l0.kernel", "poi"}
     assert "references" in imports["archive"]
     assert "record_archive" not in imports
     assert not (PACKAGE_ROOT / "record_archive" / "__init__.py").exists()

@@ -15,6 +15,10 @@ from string import Template
 from typing import Mapping
 from uuid import uuid4
 
+from tarav.l0.kernel import TaravClass, TypeShip
+from tarav.l1.poi import IdentifiedPOI
+from tarav.l1.skw.identity import SKILLWARE_WORKFLOW_SHIP
+
 
 def _hash(value: object) -> str:
     raw = json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False)
@@ -59,11 +63,22 @@ class Output:
     invocation: str
 
 
-@dataclass(frozen=True)
-class Finding:
-    kind: str
-    invocation: str
-    detail: str
+class GenerationPOI(IdentifiedPOI):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("07610436-2388-4bfc-8be8-d8b83b8cb6b6"),
+            name="Tarav.Skillware.Generation.POI",
+            workflow=SKILLWARE_WORKFLOW_SHIP,
+        )
+
+    def __init__(self, kind: str, invocation: str, detail: str):
+        self.kind = kind
+        self.invocation = invocation
+        self.detail = detail
+        super().__init__(kind, detail, subject={"invocation": invocation},
+                         evidence={"detail": detail})
 
 
 class Generation:
@@ -135,12 +150,12 @@ class Generation:
         record["output"] = output
         record["output_path"] = str(target) if target is not None else None
 
-    def check(self) -> tuple[Finding, ...]:
-        findings: list[Finding] = []
+    def check(self) -> tuple[GenerationPOI, ...]:
+        findings: list[GenerationPOI] = []
         stale: set[str] = set()
         for identity, record in self.invocations.items():
             def report(kind: str, detail: str) -> None:
-                findings.append(Finding(kind, identity, detail))
+                findings.append(GenerationPOI(kind, identity, detail))
                 stale.add(identity)
 
             block = self.blocks.get(record["block"])
@@ -175,8 +190,8 @@ class Generation:
             if not affected:
                 break
             for identity in sorted(affected):
-                findings.append(Finding("dependency-needs-review", identity,
-                                        "An upstream invocation has findings"))
+                findings.append(GenerationPOI("dependency-needs-review", identity,
+                                              "An upstream invocation has POIs"))
             stale.update(affected)
         return tuple(findings)
 

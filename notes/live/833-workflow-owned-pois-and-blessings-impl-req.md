@@ -2,13 +2,14 @@
 
 <!-- tarav.sessions
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
+1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
 -->
 
 ## Impl.Abstract
 
 Knowledge.Surface: wiki.
 Alignment.Mode: Interactive.
-Status: ready for implementation after reconciling with 832.
+Status: implemented.
 
 Migrate existing active POI-like reporting into workflow-owned types that
 subtype the neutral POI base. Establish a separate Blessings workflow with
@@ -17,9 +18,8 @@ preserving existing detection and operation semantics.
 <!-- tarav.breadcrumb f4178f9253ffd731e3cae5f4c0397dc53af7974910859e84ea702a5d4e6e5a67 -->
 
 Dependency: [832](832-neutral-pois-checks-and-breadcrumb-audits-impl-req.md)
-is being implemented separately. Re-read its landed code before choosing
-imports or changing shared contracts; do not concurrently reimplement its
-POI foundation or Breadcrumb migration.
+landed first. This implementation extends its POI foundation and leaves its
+Breadcrumb migration intact.
 <!-- tarav.breadcrumb e11158fe65b434b1a29f74675836a5a68f9429bbe1486b6b6b4fa27b39ba23de -->
 
 Non-goals: replacing every engine with Checks; requiring CheckProvider;
@@ -40,6 +40,11 @@ Ordinary POIs must not acquire required blessing fields or semantics.
 Concrete types retain their own workflow ownership even when inheriting
 capabilities from Checks and Blessings.
 <!-- tarav.breadcrumb c292279b14b06d76bf0031057508c0074441528293259a812bdd2a2185abd72d -->
+
+Blessability is expressed only by inheriting `BlessablePOI`. The refactor does
+not retain an occurrence-level boolean, an older generic occurrence type, or
+compatibility behavior for that discarded ontology.
+<!-- tarav.breadcrumb 2ce2c79238e586d22fb4f3f97d5296e6bb23c7143296b524df45182035b1a843 -->
 
 ### Composition
 
@@ -193,10 +198,33 @@ request, not a fixed API specification for this follow-up.
 
 ## Impl.Log
 
-Design only. No product code changed. Survey inspected the named sources;
-shared worktree changes and 832 execution remain outside this documentation
-pass. Exact constructors, exported occurrence names and retained-format impact
-must be reconciled against 832 rather than guessed now.
+Implemented the workflow-owned POI model. `POI` is neutral;
+`IdentifiedPOI` supplies concern and evidence-state identity; concrete
+References, Navigation, Skills, SKW, Breadcrumbs, Archive, and provisional
+Diagram outputs now belong to their producing workflows. The old kernel POI
+marker and parallel POI occurrence/check classes were removed.
+
+Extracted `tarav.l1.blessings` with independently owned `BlessablePOI`,
+Blessing Records, assessments, and store mechanics. Concrete blessable SKW
+types use multiple inheritance with `CheckPOI`; no runtime blessability flag
+remains. The physical Archive partition is unchanged. The retained schema is
+the new Blessings schema and no old Record compatibility path or retained-data
+rewrite was added.
+
+Added shared typed notification delivery. Archive emits a workflow-owned
+notification while returning the artifact unchanged; default delivery warns
+once and an explicit collector captures it without duplicate delivery. Skills
+selection/status and SKW generation expose typed workflow-owned POIs.
+
+Validation covered focused POI, Checks, Blessings, References, Navigation,
+Skills, SKW, Archive, runtime-contract, Breadcrumb, and architecture suites.
+Product Breadcrumbs were attached to the core workflow-owned, blessable, and
+notification surfaces.
+
+Final focused validation: 149 passed. The full repository run reached 1,304
+passes; remaining failures are outside 833: the already disconnected Models
+surface and sandbox-blocked Unix sockets, uv cache/environment creation, and
+Git writes. Ruff and diff checks pass for the scoped implementation.
 
 2026-10-01 clarification: notification delivery is shared POI infrastructure,
 not a reason to redesign Archive's return contract. Expanded the implementation

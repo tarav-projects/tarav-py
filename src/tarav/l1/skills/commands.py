@@ -202,8 +202,8 @@ def _add_project_argument(parser: argparse.ArgumentParser) -> None:
 
 
 def _emit_selection_warnings(selection) -> None:
-    for warning in selection.warnings:
-        print(f"warning: {warning}", file=sys.stderr)
+    for poi in selection.pois:
+        print(f"warning: {poi.message}", file=sys.stderr)
 
 
 def _record_skills_project_command(args: argparse.Namespace) -> TaravProjectHandler:
@@ -334,6 +334,8 @@ def _cmd_skills_status(args: argparse.Namespace) -> int:
                         }
                         for depot_status in status.depot_statuses
                     ],
+                    "pois": [poi.as_dict(detail=True) if hasattr(poi, "identity")
+                              else poi.as_dict() for poi in status.pois],
                 }
             )
         )

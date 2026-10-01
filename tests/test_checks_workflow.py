@@ -1,10 +1,10 @@
 from tarav.l0.kernel import TaravClass, TypeShip
 import pytest
 from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, run_checks
-from tarav.l1.poi import POI, NotificationPOI, POICheck, POICollector, POIError
+from tarav.l1.poi import POI, NotificationPOI, POICollector, POIError
 
 
-class ExamplePOI(POICheck):
+class ExamplePOI(CheckPOI):
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls, id=TypeShip("e68c86e9-d41a-4330-b391-dcfad5b886fa"),
@@ -25,7 +25,8 @@ class ExampleCheck(Check):
     def _run(self):
         self.runs.append(self.subject)
         return CheckResult(self, status="completed",
-                           pois=(ExamplePOI.finding({"subject": self.subject}),))
+                           pois=(ExamplePOI(self, "example", "Example POI",
+                                            subject={"subject": self.subject}),))
 
 
 class ExampleProvider(CheckProvider):
@@ -52,9 +53,9 @@ def test_check_results_are_snapshots_and_poi_emission_is_explicit():
     assert result.status == "completed" and runs == ["one"]
     assert result.pois() is first and runs == ["one"]
     collector = POICollector()
-    assert collector.findings == []
+    assert collector.pois == []
     collector.emit(first[0])
-    assert collector.findings == [first[0]]
+    assert collector.pois == [first[0]]
     try:
         first[0].error()
     except POIError as exc:
@@ -98,7 +99,7 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
     assert [entry.name for entry in notice.context().ls()] == ["class", "details"]
     assert notice.context().open("details").to_record()["value"] == {}
     assert [entry.name for entry in failure.context().ls()] == [
-        "class", "check", "details",
+        "class", "coordinate", "evidence", "check", "details",
     ]
     assert failure.context().open("check") is check
     assert failure.context().open("details").to_record()["value"] == {"line": 3}

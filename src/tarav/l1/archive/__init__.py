@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from tarav.l0.kernel import entity
+from tarav.l0.kernel import TaravClass, TypeShip, entity
+from tarav.l1.poi import NotificationPOI, emit_notification
+from .identity import ARCHIVE_WORKFLOW_SHIP
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -14,7 +16,6 @@ import secrets
 import socket
 import subprocess
 from urllib.parse import urlsplit
-import warnings
 
 from tarav.l0._core.persistence import atomic_write_json, atomic_write_text
 from tarav.l0._core.data_root import default_tarav_data_root
@@ -52,8 +53,17 @@ class ArchiveError(RuntimeError):
     """Base error for Archive operations."""
 
 
-class ArchiveWarning(UserWarning):
-    """A non-blocking Archive admission or retention warning."""
+class ArchiveNotificationPOI(NotificationPOI):
+    """A non-blocking Archive operation worth making visible."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("c34d3e3c-d013-4b28-9e59-a8d33dd3355e"),
+            name="Tarav.Archive.POI.Notification",
+            workflow=ARCHIVE_WORKFLOW_SHIP,
+        )
 
 
 class ArtifactNotFoundError(ArchiveError):
@@ -287,11 +297,13 @@ class Archive:
             recorded_at=recorded_at,
         )
         if skipped_count:
-            warnings.warn(
-                f"skipped {skipped_count} suspicious or unsupported Git remote "
-                "locator(s)",
-                ArchiveWarning,
-                stacklevel=2,
+            # tarav.breadcrumb 73bbbd2f1a9c94a38a20356a3dd57f3c52701fa317c80ea4f6c6e2451b02fd37
+            emit_notification(
+                ArchiveNotificationPOI(
+                    "skipped-git-remote-locators",
+                    f"skipped {skipped_count} suspicious or unsupported Git remote locator(s)",
+                    details={"count": skipped_count, "repository": str(source_root)},
+                )
             )
         return repository
 
@@ -1307,7 +1319,7 @@ __all__ = [
     "AmbiguousArtifactError",
     "Archive",
     "ArchiveError",
-    "ArchiveWarning",
+    "ArchiveNotificationPOI",
     "ArtifactDossier",
     "ArtifactNotFoundError",
     "BranchNotFoundError",
