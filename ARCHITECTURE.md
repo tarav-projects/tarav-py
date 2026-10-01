@@ -385,8 +385,9 @@ schema or an additional Workflow identity.
 | `models` | ModelsWorkflow owns the Model handler, ModelShipRecord, and ModelEditionRecord. Project associations do not imply ownership; several projects may share one Model. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `scoring` | Common Assertion entities and evaluation mechanics: pools, tasks, runs, results, derived scores, and traces. Existing scoring Records are entities with explicit Context reference edges. |
-| `poi` | POIWorkflow owns extensible check declarations, identified findings, typed blessings and assessments. Context exposes checks, coordinates, and evidence. Runtime composition supplies an isolated collector and Archive-partition blessing store; detection and response remain consumer-owned. |
-| `checks` | Independently runnable bound Checks, optional subject providers, and result snapshots that expose POIs without emitting them. |
+| `poi` | POIWorkflow owns the neutral POI base and notifications. Its existing check declarations, identified findings, blessings and assessments remain intact until their consumers migrate. Runtime composition supplies a collector and Archive-partition blessing store; detection and response remain consumer-owned. |
+| `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. Execution completion and a POI's failure signal are separate. |
+<!-- tarav.breadcrumb 28df20317b527872af6eb271a0ede8e2a1c30d0b8fc98201f63e8cb564ec6183 -->
 | `skw` | Typed document compilation, generation mechanics, and skill-package specialization. Blocks are Entities with Ships and separate labels; source blocks own typed reading declarations. Loading analysis exposes route facts, while SKW Checks turn those facts into POIs. |
 | `surfaces` | SurfacesWorkflow owns MarkdownNormalModel and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. Consumers assign domain meaning. |
 | `wiki` | Folder-based Markdown Wiki and WikiNote objects, parsing through surfaces, and Wiki-scoped Git closure. No Project dependency. |

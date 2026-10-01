@@ -17,7 +17,7 @@ from tarav.l0.kernel.records import _json_object
 from tarav.l1.breadcrumbs import (
     AuditedBreadcrumb,
     BreadcrumbAuditContext,
-    BreadcrumbAuditFinding,
+    BreadcrumbAuditConcern,
     BreadcrumbAuditResult,
     BreadcrumbError,
     BreadcrumbFinding,
@@ -310,7 +310,7 @@ def audit_commit(
             str(entry["id"]): entry["attachments"] for entry in entries
         }
     except CommitEvidenceError as exc:
-        findings.append(BreadcrumbAuditFinding("commit-evidence-invalid", str(exc)))
+        findings.append(BreadcrumbAuditConcern("commit-evidence-invalid", str(exc)))
 
     audited: list[AuditedBreadcrumb] = []
     for label in labels:
@@ -325,7 +325,7 @@ def audit_commit(
                 _check_attachment_conflicts(store, label.breadcrumb_id, expected)
                 if any(item not in attachments for item in expected):
                     findings.append(
-                        BreadcrumbAuditFinding(
+                        BreadcrumbAuditConcern(
                             "commit-evidence-registration-incomplete",
                             "Commit evidence contains attachments not retained in the store.",
                             label.breadcrumb_id,
@@ -341,7 +341,7 @@ def audit_commit(
             )
         except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
             findings.append(
-                BreadcrumbAuditFinding(
+                BreadcrumbAuditConcern(
                     "breadcrumb-record-unavailable",
                     str(exc),
                     label.breadcrumb_id,
@@ -351,7 +351,7 @@ def audit_commit(
         else:
             for finding in resolution.findings:
                 findings.append(
-                    BreadcrumbAuditFinding(
+                    BreadcrumbAuditConcern(
                         finding.code,
                         finding.message,
                         label.breadcrumb_id,
@@ -365,7 +365,7 @@ def audit_commit(
                 or position.line != label.line
             ):
                 findings.append(
-                    BreadcrumbAuditFinding(
+                    BreadcrumbAuditConcern(
                         "breadcrumb-position-disagrees",
                         "Resolved Breadcrumb position disagrees with this commit message.",
                         label.breadcrumb_id,
@@ -374,7 +374,7 @@ def audit_commit(
                 )
             if not attachments:
                 findings.append(
-                    BreadcrumbAuditFinding(
+                    BreadcrumbAuditConcern(
                         "breadcrumb-attachment-missing",
                         "Breadcrumb has no retained workflow attachment.",
                         label.breadcrumb_id,
@@ -392,8 +392,7 @@ def audit_commit(
             )
         )
     context = BreadcrumbAuditContext(document, tuple(audited))
-    findings.extend(workflow.audit(context, request))
-    return BreadcrumbAuditResult(context, workflow.name, tuple(findings))
+    return BreadcrumbAuditResult.from_concerns(context, workflow, request, tuple(findings))
 
 
 def _validate_annotations(surface, annotations) -> None:

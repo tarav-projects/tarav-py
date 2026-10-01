@@ -2,19 +2,20 @@
 
 <!-- tarav.sessions
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
+1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
 -->
 
 ## Impl.Abstract
 
 Knowledge.Surface: wiki.
 Alignment.Mode: Interactive.
-Status: ready for implementation.
+Status: implemented.
 
 Integrate Breadcrumb audit warnings and refresh notifications into the shared
 Checks/POI contracts, co-developing those WIP foundations. Keep the base POI
 almost empty. NotificationPOI belongs to the POI workflow; CheckPOI belongs
-to Checks. This request covers the necessary existing-consumer adaptation,
-not a general redesign of every diagnostic subsystem.
+to Checks. This request covers Breadcrumb audits and minimal shared-consumer
+adaptation. The User deferred migration of SKW's finding model to another run.
 <!-- tarav.breadcrumb 6fbf723b71c1035940b4a8c8acce1b2bb5d7c0002fddf864141d6bbd4d16d06d -->
 <!-- tarav.breadcrumb 33bf30bbef04eb67ae5e2dd98a6957b1588fc429eb8286a2a905bc2f8473f08d -->
 <!-- tarav.breadcrumb e92387dd92b3e8612133bff440107b94b8638676fc544a5eb7ed89bbd8273010 -->
@@ -31,11 +32,12 @@ convention does not prohibit positive or informational POIs.
 <!-- tarav.breadcrumb c0ec70fe97110d9ff0ed02c475d942e1851f994f7e2633506017bdc9109922d8 -->
 <!-- tarav.breadcrumb c5193360cd63707b7c21f7a803807036aef5a62aed7861b83a58ba7cc16d2836 -->
 
-CheckPOI couples an occurrence to the Check class explaining it. Checks may
+CheckPOI couples an occurrence to its bound Check object. Checks may
 be instantiated directly by the audit: the optional provider interface is
 for exposing checks from objects, not a prerequisite for running them.
 NotificationPOI reports an operation worth making visible, such as appending
 a Breadcrumb position observation, without fabricating a Check.
+<!-- tarav.breadcrumb ba42b5bd22dd88d2238b5a196d3b8f2f2d2ae627f97f75ec43b51c5b39532845 -->
 <!-- tarav.breadcrumb b10de143a269f2e7931cd6d6410799c0977a92b419f657308642d33549ad8827 -->
 <!-- tarav.breadcrumb f5ba63037754ac8df27df5d7f3663580d0bb2db67f4685bffc167c7f37e10c39 -->
 
@@ -74,10 +76,11 @@ user requirements. Reinspect before execution because this worktree is shared.
   using POICheck declarations from pois.py. Adapt affected imports, constructors,
   registration and tests without expanding reading-path semantics.
 
-The execution proposal is a neutral POI occurrence base, with CheckPOI carrying
-the existing check-specific occurrence semantics where appropriate. Resolve
-the existing POI declaration-name collision explicitly across maintained
-callers; do not add misleading aliases or silently reinterpret old Records.
+The execution proposal is a neutral POI occurrence base and a bound CheckPOI.
+Existing POICheck/POIInstance declarations stay operational until SKW's separate
+migration. Resolve the POI declaration-name collision through explicit imports;
+do not add aliases or silently reinterpret old Records.
+<!-- tarav.breadcrumb 97c7272a55d020325c35bf98d9c8b6caf4a3fb8ce99ab4702005c898060da049 -->
 Preserve existing Type Ships and concern/state identities where semantics
 remain unchanged. Inspect retained Record impact before changing schemas;
 if a retained migration is necessary, document and implement an explicit,
@@ -108,11 +111,12 @@ implementation requirements.
 2. Introduce the almost-empty neutral base and POI-owned NotificationPOI;
    move Check-coupled occurrence semantics into Checks-owned CheckPOI.
    Keep dependencies acyclic; inspect ARCHITECTURE.md before moving ownership.
-3. Adapt shared result/collector contracts and affected SKW consumers.
+3. Adapt shared result/collector contracts. Keep SKW's current findings
+   operational with only the necessary declaration import change.
    Do not infer failure solely from POI presence. Preserve explicit emission
    and exception behavior rather than automatically raising during construction.
-4. Implement a small number of bound Breadcrumb Checks, grouped by semantics
-   and shared inputs. Replace duplicate finding representations with POIs.
+4. Implement a bound Breadcrumb Check. Replace audit-result finding
+   representations with POIs; transient concerns may feed the Check.
    Keep mutation in audit orchestration, separate from Check execution.
 5. Adapt file/commit audit output, runtime registrations, and focused tests.
    Retain surface/occurrence/context links and inspectable Check documentation.
@@ -133,7 +137,8 @@ implementation requirements.
 - Mixed notification/failure output preserves both; exit status reflects failure.
 - Commit audits and Chatlas attachment checks retain existing behavior.
 - Existing POI identity/state, record round trips, collector and blessing tests,
-  SKW reading checks, Breadcrumb tests and architecture tests pass after
+  SKW reading checks (without migrating their finding model), Breadcrumb tests
+  and architecture tests pass after
   deliberate contract updates. Run Ruff and git diff --check.
 - Reinstall the editable CLI after changing installed command behavior.
 
@@ -145,3 +150,41 @@ Design pass. Notification fields and exact outcome representation are bounded
 implementation choices: choose the minimum needed, not a new general schema.
 The latest user clarification arrived after the initial Chatlas refresh;
 an additional exact-session refresh captured that new evidence.
+
+2026-09-30 execution: User clarified that CheckPOI couples to a bound Check
+object and deferred the SKW finding migration. The neutral POI base,
+NotificationPOI, and CheckPOI are implemented. File and commit audits now
+expose mixed POIs; refresh remains opt-in and append-only. Old POICheck and
+POIInstance identities, records, and blessing mechanics remain intact. A
+bounded search of current Archive roots found no retained Records with the
+former Tarav.POI declaration label or Tarav.POIInstance label. Focused POI,
+Checks, SKW, Breadcrumb, and architecture tests pass (66). The full suite has
+88 failures from an unrelated, currently disconnected Models worktree, with
+1,341 tests passing. Ruff passes. Product capture and evidence closure remain.
+
+Product capture completed on the POI base, CheckPOI, Breadcrumb audit Check,
+ARCHITECTURE.md, and this request. New Breadcrumbs are
+`68dda606d6ef2ed5711488bb952bbcacf278c1c2b6c1252738e0665c6885b48e`,
+`0fbb6aeabe9a6b2dfb9a5f0b09d35e49a271b44f1cce37d88557bf09e452092f`,
+`43e2d650575b47a3589da47e2f062ae65d74c9238883b59137993caa52c4f0fd`,
+`28df20317b527872af6eb271a0ede8e2a1c30d0b8fc98201f63e8cb564ec6183`,
+`ba42b5bd22dd88d2238b5a196d3b8f2f2d2ae627f97f75ec43b51c5b39532845`,
+and `97c7272a55d020325c35bf98d9c8b6caf4a3fb8ce99ab4702005c898060da049`.
+All audits resolved after the explicit position-refresh path appended updated
+observations for older labels displaced by documentation edits. Wiki capture
+updated the POI topical note and 2026-09-30 daily narrative; both audits pass.
+
+A final regression review found that POI diagnostic fields named `context`
+shadowed `TaravObject.context()`. They now use `details` or `audit_context` and
+publish those values through `obj_context`; `CheckPOI` also publishes its bound
+Check there. Regression tests exercise the normal context explorer. The new
+Breadcrumbs are `462d77217023b71b5716e1fe68c4e3111cebca14f5df880365651773e88b2e59`,
+`98efb14446fdafc5cbb4a98e2d0d162e31638150e69ea0198d0c4c6c3e0f7cd9`,
+`596b1161c0983854154effc76ffa82d48ca21c56785d6915423fe9d12ff196cf`,
+`e73444ba05e865201671436a374aa312fd999aa1cf64d4b89f76f2f60138980b`,
+and `7d1653f323416c4b29b1ac815541cc406ae9051d39be08c3c8c8229fa63bfea1`.
+All resolve cleanly. Wiki follow-up Breadcrumbs are
+`ce67a9ca6579a653135e5c1873ca487a4bf48d575d50020541f07e4bb2c33137`
+and `ccd1a91e24c36316b7f2574224d3906043d74bc3606b06c72459c9756bcce272`.
+The final expanded focused suite passes 95 tests; Ruff and both repository diff
+checks pass.

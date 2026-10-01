@@ -3,7 +3,7 @@
 from .auditing import (
     AuditedBreadcrumb,
     BreadcrumbAuditContext,
-    BreadcrumbAuditFinding,
+    BreadcrumbAuditConcern,
     BreadcrumbAuditResult,
     SurfaceBreadcrumbLabel,
     audit_annotations,
@@ -38,7 +38,7 @@ __all__ = [
     "BreadcrumbAnnotationWorkflow",
     "BreadcrumbAnnotationWorkflowRegistry",
     "BreadcrumbAuditContext",
-    "BreadcrumbAuditFinding",
+    "BreadcrumbAuditConcern",
     "BreadcrumbAuditResult",
     "BreadcrumbCommandAdapter",
     "BreadcrumbError",

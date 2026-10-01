@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from tarav.l0.kernel import TaravObject
 
 if TYPE_CHECKING:
-    from .auditing import BreadcrumbAuditContext, BreadcrumbAuditFinding
+    from .auditing import BreadcrumbAuditContext, BreadcrumbAuditConcern
     from .surfaces import BreadcrumbSurface
 
 
@@ -53,7 +53,7 @@ class BreadcrumbAnnotationWorkflow(ABC):
         self,
         context: BreadcrumbAuditContext,
         request: object,
-    ) -> tuple[BreadcrumbAuditFinding, ...]: ...
+    ) -> tuple[BreadcrumbAuditConcern, ...]: ...
 
 
 class BreadcrumbAnnotationWorkflowRegistry:

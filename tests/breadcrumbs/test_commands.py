@@ -144,13 +144,14 @@ def test_submit_command_runs_chatlas_context_workflow(tmp_path, capsys, monkeypa
         "--breadcrumbs-root", str(root),
     ]
     assert main([*command, "--json"]) == 1
-    assert json.loads(capsys.readouterr().out)["updates"] == []
+    assert all(item["type"] != "Tarav.POI.Notification" for item in
+               json.loads(capsys.readouterr().out)["pois"])
     assert main([*command, "--refresh-positions", "--json"]) == 0
     refreshed = json.loads(capsys.readouterr().out)
-    assert refreshed["updates"][0]["code"] == "breadcrumb-position-updated"
+    assert any(item["code"] == "breadcrumb-position-updated" for item in refreshed["pois"])
     assert surface.read_bytes() == original_surface
     assert main([*command, "--refresh-positions", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["updates"] == []
+    assert json.loads(capsys.readouterr().out)["pois"] == []
 
     surface.write_text("\n" + surface.read_text(), encoding="utf-8")
     assert main([*command, "--refresh-positions"]) == 0
@@ -222,7 +223,7 @@ def test_audit_command_checks_position_attachment_and_user_turn(
     )
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "ok"
-    assert payload["findings"] == []
+    assert payload["pois"] == []
     assert len(payload["breadcrumbs"]) == 1
 
 
@@ -252,7 +253,7 @@ def test_audit_command_reports_unsubmitted_marker(tmp_path, capsys):
     )
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "pois"
-    assert [item["code"] for item in payload["findings"]] == [
+    assert [item["code"] for item in payload["pois"]] == [
         "chatlas-context-marker-unsubmitted"
     ]
     assert surface.read_bytes() == original_surface

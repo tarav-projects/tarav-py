@@ -270,7 +270,8 @@ def create_runtime(
         POI_RECORD_TYPES, POIWorkflow, POICollector, BlessingStore,
         BlessingRecord, BlessingAssessmentRecord,
     )
-    from tarav.l1.checks import ChecksWorkflow
+    from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow
+    from tarav.l1.breadcrumbs.auditing import BreadcrumbAuditCheck
     from tarav.l1.poi.workflow import POI_WORKFLOW_SHIP
     from tarav.l1.surfaces import SurfacesWorkflow
     from tarav.l1.surfaces.markdown import MarkdownNormalModel
@@ -327,6 +328,10 @@ def create_runtime(
                 TaravProgram,
                 ProjectProgram,
                 *POI_RECORD_TYPES,
+                Check,
+                CheckPOI,
+                CheckResult,
+                BreadcrumbAuditCheck,
                 MarkdownNormalModel,
                 PythonNormalModel,
                 *SCORING_RECORD_TYPES,

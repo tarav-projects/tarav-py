@@ -7,10 +7,10 @@ from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.l0.kernel.space import Entry, RecordProvider
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.navigation.identity import NAVIGATION_WORKFLOW_SHIP
-from tarav.l1.poi import POI, POIFinding
+from tarav.l1.poi import POICheck, POIFinding
 
 
-class ProviderError(POI):
+class ProviderError(POICheck):
     """A provider operation could not produce a valid navigation result."""
 
     @classmethod

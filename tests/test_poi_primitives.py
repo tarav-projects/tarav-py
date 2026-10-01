@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 
 from tarav.l0.kernel import TypeShip
-from tarav.l1.poi import POI, POICollector, BlessingStore
+from tarav.l1.poi import POICheck, POICollector, BlessingStore
 
 
-class AppReview(POI):
+class AppReview(POICheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -19,7 +19,7 @@ class AppReview(POI):
     blessable = True
 
 
-class AppError(POI):
+class AppError(POICheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

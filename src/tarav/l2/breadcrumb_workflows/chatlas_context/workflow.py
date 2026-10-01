@@ -15,7 +15,7 @@ from tarav.l0._core.errors import CliError
 from tarav.l1.breadcrumbs import BreadcrumbError
 from tarav.l1.breadcrumbs.auditing import (
     BreadcrumbAuditContext,
-    BreadcrumbAuditFinding,
+    BreadcrumbAuditConcern,
 )
 from tarav.l1.breadcrumbs.surfaces import BreadcrumbSurface
 from tarav.l1.breadcrumbs.workflows import (
@@ -127,11 +127,11 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
         self,
         context: BreadcrumbAuditContext,
         request: object,
-    ) -> tuple[BreadcrumbAuditFinding, ...]:
+    ) -> tuple[BreadcrumbAuditConcern, ...]:
         if not isinstance(request, ChatlasContextRequest):
             raise TypeError("chatlas-context requires a ChatlasContextRequest")
         findings = [
-            BreadcrumbAuditFinding(
+            BreadcrumbAuditConcern(
                 "chatlas-context-marker-unsubmitted",
                 "Active tarav.context marker was not submitted as a Breadcrumb.",
                 line=marker.position.line,
@@ -139,7 +139,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             for marker in _markers(context.surface.text, context.surface.language)
         ]
         findings.extend(
-            BreadcrumbAuditFinding(
+            BreadcrumbAuditConcern(
                 "chatlas-context-marker-malformed",
                 "Surface comment contains a malformed tarav.context marker.",
                 line=line,
@@ -160,7 +160,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             if not attachments:
                 if breadcrumb.attachments:
                     findings.append(
-                        BreadcrumbAuditFinding(
+                        BreadcrumbAuditConcern(
                             "chatlas-context-attachment-missing",
                             "Breadcrumb has no Chatlas-context attachment.",
                             breadcrumb.breadcrumb_id,
@@ -170,7 +170,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                 continue
             if len(attachments) > 1:
                 findings.append(
-                    BreadcrumbAuditFinding(
+                    BreadcrumbAuditConcern(
                         "chatlas-context-attachment-multiple",
                         "Breadcrumb has multiple Chatlas-context attachments.",
                         breadcrumb.breadcrumb_id,
@@ -208,7 +208,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                 standing = resolution.get("standing")
                 if standing != "MATCHED":
                     findings.append(
-                        BreadcrumbAuditFinding(
+                        BreadcrumbAuditConcern(
                             "chatlas-context-turn-unavailable",
                             f"Retained Chatlas Turn is {standing}.",
                             breadcrumb.breadcrumb_id,
@@ -219,7 +219,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                 turn = resolution.get("turn")
                 if not isinstance(turn, dict) or turn.get("side") != "user":
                     findings.append(
-                        BreadcrumbAuditFinding(
+                        BreadcrumbAuditConcern(
                             "chatlas-context-turn-not-user",
                             "Chatlas-context attachment does not resolve to a User Turn.",
                             breadcrumb.breadcrumb_id,
@@ -228,7 +228,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                     )
             except (CliError, OSError, TypeError, ValueError) as exc:
                 findings.append(
-                    BreadcrumbAuditFinding(
+                    BreadcrumbAuditConcern(
                         "chatlas-context-attachment-invalid",
                         str(exc),
                         breadcrumb.breadcrumb_id,

@@ -57,6 +57,9 @@ def test_git_workflow_spans_mechanics_integration_and_process_adapters():
 
 def test_poi_workflow_ownership_and_runtime_composition():
     from tarav.l1.poi import POI_RECORD_TYPES, POIWorkflow
+    from tarav.l1.checks import Check, CheckPOI, ChecksWorkflow
+    from tarav.l1.breadcrumbs.auditing import BreadcrumbAuditCheck
+    from tarav.l1.breadcrumbs.workflow import BreadcrumbWorkflow
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
@@ -64,6 +67,10 @@ def test_poi_workflow_ownership_and_runtime_composition():
     for record_type in POI_RECORD_TYPES:
         assert entity(record_type).workflow is POIWorkflow()
         assert runtime.records.resolve_ship(entity(record_type).id) is record_type
+    assert entity(Check).workflow is ChecksWorkflow()
+    assert entity(CheckPOI).workflow is ChecksWorkflow()
+    assert entity(BreadcrumbAuditCheck).workflow is BreadcrumbWorkflow()
+    assert runtime.records.resolve_ship(entity(CheckPOI).id) is CheckPOI
     assert 'runtime' not in _top_level_import_graph()['poi']
 
 

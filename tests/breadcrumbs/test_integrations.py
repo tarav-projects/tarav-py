@@ -4,7 +4,7 @@ import argparse
 
 from tarav.l1.breadcrumbs import (
     BreadcrumbAnnotationWorkflow,
-    BreadcrumbAuditFinding,
+    BreadcrumbAuditConcern,
     BreadcrumbCommandAdapter,
     BreadcrumbIntegration,
 )
@@ -22,7 +22,7 @@ class _Workflow(BreadcrumbAnnotationWorkflow):
         return ()
 
     def audit(self, context, request):
-        return (BreadcrumbAuditFinding("example", "example integration audit"),)
+        return (BreadcrumbAuditConcern("example", "example integration audit"),)
 
 
 class _Commands(BreadcrumbCommandAdapter):

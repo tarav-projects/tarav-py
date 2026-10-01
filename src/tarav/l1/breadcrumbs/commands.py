@@ -85,9 +85,9 @@ def _cmd_audit(args: argparse.Namespace) -> int:
         f"breadcrumbs: {len(result.context.breadcrumbs)}",
     ]
     lines.extend(
-        f"info: {update['code']}: {update['breadcrumb_id']} "
-        f"at {update['file']}:{update['line']}"
-        for update in result.updates
+        f"info: {poi.code}: {poi.details['breadcrumb_id']} "
+        f"at {poi.details['file']}:{poi.details['line']}"
+        for poi in result.notifications
     )
     lines.extend(
         f"poi: {finding.code}: {finding.message}" for finding in result.findings

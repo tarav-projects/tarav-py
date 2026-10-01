@@ -6,7 +6,7 @@ from uuid import UUID, uuid5
 
 from pydantic import model_validator
 
-from tarav.l0.kernel import Ship, TaravClass, TaravEntity, entity
+from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TaravObject, entity
 from tarav.l0.kernel import FileRecord, TypeShip
 from .workflow import POI_WORKFLOW_SHIP
 
@@ -37,23 +37,49 @@ class POICheck(FileRecord):
         return POIFinding(cls, subject, evidence if evidence is not None else {})
 
 
-class POI(POICheck):
-    """Subclass beside an application's checks. Emission does not raise.
-
-    Declare a unique ``TaravClass`` through ``class_entity()``, as for any
-    Tarav Type.
-    blessable is explicit policy; a workflow still owns its response.
-    Increment check_version when the evaluation contract changes.
-    """
+# tarav.breadcrumb 68dda606d6ef2ed5711488bb952bbcacf278c1c2b6c1252738e0665c6885b48e
+class POI(TaravObject):
+    """A point of interest. Specialized workflows define its meaning."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
             target=cls,
-            id=TypeShip('c8b62a96-070b-488a-b560-c0231f249b16'),
+            id=TypeShip('67634f40-7209-43ee-9bbb-7590b2fe5e59'),
             name='Tarav.POI',
             workflow=POI_WORKFLOW_SHIP,
         )
+
+    def as_dict(self) -> dict[str, object]:
+        return {'type': entity(type(self)).name}
+
+
+class NotificationPOI(POI):
+    """An operation or event worth showing without implying failure."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('d4ac1ae7-63c3-42c9-8b78-6026cd072a69'),
+            name='Tarav.POI.Notification',
+            workflow=POI_WORKFLOW_SHIP,
+        )
+
+    def __init__(self, code: str, message: str, *, details: dict | None = None):
+        super().__init__()
+        self.code = code
+        self.message = message
+        self.details = dict(details or {})
+
+    def as_dict(self) -> dict[str, object]:
+        return {'type': entity(type(self)).name, 'code': self.code,
+                'message': self.message, 'details': dict(self.details)}
+
+    # tarav.breadcrumb 462d77217023b71b5716e1fe68c4e3111cebca14f5df880365651773e88b2e59
+    def obj_context(self, builder):
+        builder.add('details', opener=lambda: POIDetails.from_record(
+            {'type': entity(POIDetails).name, 'value': self.details}))
 
 
 class POIDetails(FileRecord):
@@ -69,10 +95,12 @@ class POIDetails(FileRecord):
 class POIError(Exception):
     def __init__(self, poi):
         self.poi = poi
-        super().__init__(f'{poi.check.name}: {poi.identity}')
+        check = poi.check
+        name = check.name if isinstance(check, TaravClass) else entity(type(check)).name
+        super().__init__(f'{name}: {getattr(poi, "identity", getattr(poi, "code", "POI"))}')
 
 
-class POIInstance(TaravEntity, FileRecord):
+class POIInstance(TaravEntity, POI, FileRecord):
     """An identified concern at a coordinate, with a retained check/evidence state.
 
     Repeated observations of the same concern share a Ship. State fingerprints
@@ -224,8 +252,8 @@ class POICollector:
         self.findings = []
 
     def emit(self, finding):
-        if not isinstance(finding, POIInstance):
-            raise TypeError('Expected POIInstance')
+        if not isinstance(finding, POI):
+            raise TypeError('Expected POI')
         self.findings.append(finding)
         return finding
 
@@ -233,7 +261,7 @@ class POICollector:
         """Select a full identity or a unique nonempty identity prefix."""
         if not isinstance(identity, str) or not identity:
             raise ValueError('Expected a nonempty finding ID or prefix')
-        matches = [f for f in self.findings
+        matches = [f for f in self.findings if isinstance(f, POIInstance)
                    if f.identity.startswith(identity) or str(f.id).startswith(identity)]
         if not matches:
             raise ValueError('Finding does not exist in this evaluation')
@@ -251,25 +279,32 @@ class POICollector:
             raise ValueError('Unknown blessing filter')
         snapshot = store.snapshot() if store else None
         rows = []
-        for finding in sorted(self.findings, key=lambda f: (f.identity, f.state)):
-            standing = (store.standing(finding, snapshot=snapshot) if store
-                        else {'status': 'unblessed', 'records': []})
+        for finding in sorted(self.findings, key=lambda f: (
+            getattr(f, 'identity', ''), getattr(f, 'state', ''), entity(type(f)).name)):
+            standing = ((store.standing(finding, snapshot=snapshot) if store
+                         else {'status': 'unblessed', 'records': []})
+                        if isinstance(finding, POIInstance) else None)
             rows.append((finding, standing))
         selected = [(f, s) for f, s in rows
-                    if (class_name is None or f.check.name == class_name)
-                    and (blessing is None or s['status'] == blessing)]
+                    if (class_name is None or (
+                        f.check.name if isinstance(f, POIInstance)
+                        else entity(type(f)).name) == class_name)
+                    and (blessing is None or (s is not None and s['status'] == blessing))]
         page = []
         for finding, standing in selected[offset:offset + limit]:
-            row = finding.as_dict(detail=detail)
-            row['blessing'] = standing
+            row = (finding.as_dict(detail=detail) if isinstance(finding, POIInstance)
+                   else finding.as_dict())
+            if standing is not None:
+                row['blessing'] = standing
             page.append(row)
         return {'total': len(rows), 'matching': len(selected), 'offset': offset,
                 'shown': len(page), 'next_offset': offset + limit
                 if offset + limit < len(selected) else None,
-                'by_class': dict(Counter(f.check.name for f, _ in rows)),
-                'by_blessing': dict(Counter(s['status'] for _, s in rows)),
+                'by_class': dict(Counter(f.check.name if isinstance(f, POIInstance)
+                                         else entity(type(f)).name for f, _ in rows)),
+                'by_blessing': dict(Counter(s['status'] for _, s in rows if s is not None)),
                 'by_assessment_finding': dict(Counter(
                     f['kind'] for _, standing in rows
-                    for f in standing.get('assessment_findings', []))),
+                    for f in (standing or {}).get('assessment_findings', []))),
                 'store_findings': snapshot['findings'] if snapshot else [],
                 'items': page}

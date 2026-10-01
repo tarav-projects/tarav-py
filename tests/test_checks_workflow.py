@@ -1,9 +1,10 @@
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.checks import Check, CheckProvider, CheckResult, run_checks
-from tarav.l1.poi import POI, POICollector, POIError
+import pytest
+from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, run_checks
+from tarav.l1.poi import POI, NotificationPOI, POICheck, POICollector, POIError
 
 
-class ExamplePOI(POI):
+class ExamplePOI(POICheck):
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls, id=TypeShip("e68c86e9-d41a-4330-b391-dcfad5b886fa"),
@@ -68,3 +69,38 @@ def test_provider_and_explicit_pool_use_the_same_runner():
     results = run_checks((*provider.checks, ExampleCheck("cross-subject", runs)))
     assert runs == ["one", "two", "cross-subject"]
     assert [result.pois()[0].subject["subject"] for result in results] == runs
+
+
+# tarav.breadcrumb e73444ba05e865201671436a374aa312fd999aa1cf64d4b89f76f2f60138980b
+def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
+    from tarav.l3.runtime import get_runtime
+
+    get_runtime()
+    check = ExampleCheck("one", [])
+    plain = POI()
+    notice = NotificationPOI("position-updated", "Position recorded.")
+    failure = CheckPOI(check, "position-stale", "Position needs attention.",
+                       details={"line": 3})
+    positive = CheckPOI(check, "position-current", "Position is current.",
+                        failure=False)
+    result = CheckResult(check, status="completed",
+                         pois=(plain, notice, failure, positive))
+    assert result.status == "completed"
+    assert result.pois()[2].check is check
+    assert failure.as_dict()["details"] == {"line": 3}
+    collector = POICollector()
+    for poi in result.pois():
+        collector.emit(poi)
+    report = collector.report()
+    assert report["total"] == 4
+    assert report["by_blessing"] == {}
+    assert all("blessing" not in item for item in report["items"])
+    assert [entry.name for entry in notice.context().ls()] == ["class", "details"]
+    assert notice.context().open("details").to_record()["value"] == {}
+    assert [entry.name for entry in failure.context().ls()] == [
+        "class", "check", "details",
+    ]
+    assert failure.context().open("check") is check
+    assert failure.context().open("details").to_record()["value"] == {"line": 3}
+    with pytest.raises(ValueError, match="another Check"):
+        CheckResult(ExampleCheck("two", []), status="completed", pois=(failure,))

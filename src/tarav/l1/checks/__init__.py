@@ -4,8 +4,8 @@ from collections.abc import Iterable
 from copy import deepcopy
 from typing import Literal
 
-from tarav.l0.kernel import TaravClass, TaravObject, TaravType, TaravWorkflow, TypeShip, WorkflowShip
-from tarav.l1.poi import POIInstance, POIProvider
+from tarav.l0.kernel import TaravClass, TaravObject, TaravType, TaravWorkflow, TypeShip, WorkflowShip, entity
+from tarav.l1.poi import POI, POIDetails, POIProvider, POIError
 
 CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
 
@@ -58,6 +58,43 @@ class Check(TaravObject):
         raise NotImplementedError
 
 
+# tarav.breadcrumb 0fbb6aeabe9a6b2dfb9a5f0b09d35e49a271b44f1cce37d88557bf09e452092f
+class CheckPOI(POI):
+    """A POI explained by the bound Check object that produced it."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("20ad2c76-009f-4aae-a564-70b7925664ef"),
+                          name="Tarav.Checks.POI", workflow=CHECKS_WORKFLOW_SHIP)
+
+    def __init__(self, check: Check, code: str, message: str, *,
+                 details: dict | None = None, failure: bool = True) -> None:
+        super().__init__()
+        if not isinstance(check, Check):
+            raise TypeError("CheckPOI requires a bound Check object")
+        self.check = check
+        self.code = code
+        self.message = message
+        self.details = deepcopy(details or {})
+        if not isinstance(failure, bool):
+            raise TypeError("CheckPOI failure must be a boolean")
+        self.failure = failure
+
+    def as_dict(self) -> dict[str, object]:
+        return {"type": entity(type(self)).name, "check": entity(type(self.check)).to_record(),
+                "code": self.code, "message": self.message,
+                "details": deepcopy(self.details), "failure": self.failure}
+
+    # tarav.breadcrumb 98efb14446fdafc5cbb4a98e2d0d162e31638150e69ea0198d0c4c6c3e0f7cd9
+    def obj_context(self, builder) -> None:
+        builder.add("check", opener=lambda: self.check)
+        builder.add("details", opener=lambda: POIDetails.from_record(
+            {"type": entity(POIDetails).name, "value": deepcopy(self.details)}))
+
+    def error(self) -> None:
+        raise POIError(self)
+
+
 class CheckResult(TaravObject, POIProvider):
     """One execution snapshot; inspecting POIs never reruns its Check."""
 
@@ -67,7 +104,7 @@ class CheckResult(TaravObject, POIProvider):
                           name="Tarav.Checks.Result", workflow=CHECKS_WORKFLOW_SHIP)
 
     def __init__(self, check: Check, *, status: Literal["completed", "incomplete", "failed"],
-                 pois: Iterable[POIInstance] = (), data: object = None,
+                 pois: Iterable[POI] = (), data: object = None,
                  reason: str | None = None) -> None:
         super().__init__()
         if status not in ("completed", "incomplete", "failed"):
@@ -77,10 +114,12 @@ class CheckResult(TaravObject, POIProvider):
         self.data = deepcopy(data)
         self.reason = reason
         self._pois = tuple(pois)
-        if any(not isinstance(poi, POIInstance) for poi in self._pois):
-            raise TypeError("CheckResult POIs must be POIInstances")
+        if any(not isinstance(poi, POI) for poi in self._pois):
+            raise TypeError("CheckResult POIs must be POIs")
+        if any(isinstance(poi, CheckPOI) and poi.check is not check for poi in self._pois):
+            raise ValueError("CheckResult contains a POI from another Check")
 
-    def pois(self) -> tuple[POIInstance, ...]:
+    def pois(self) -> tuple[POI, ...]:
         return self._pois
 
 
@@ -89,4 +128,4 @@ def run_checks(checks: Iterable[Check]) -> tuple[CheckResult, ...]:
     return tuple(check.run() for check in checks)
 
 
-__all__ = ["ChecksWorkflow", "Check", "CheckProvider", "CheckResult", "run_checks"]
+__all__ = ["ChecksWorkflow", "Check", "CheckPOI", "CheckProvider", "CheckResult", "run_checks"]

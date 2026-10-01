@@ -6,11 +6,11 @@ questions permit attributed acceptance. Structural failures require repair.
 """
 from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TypeShip
-from tarav.l1.poi import POI, POICollector
+from tarav.l1.poi import POICheck, POICollector
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
 
-class SkwPOI(POI):
+class SkwPOI(POICheck):
     """Ownership base for SKW checks represented as POI Record Types."""
 
     @classmethod
