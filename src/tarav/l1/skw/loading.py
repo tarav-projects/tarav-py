@@ -61,8 +61,20 @@ class SkillDocument(Document):
 class LoadingModel:
     def __init__(self, package, documents):
         self.package = package
-        self.source = package.path(package.data['loading'])
-        self.data = read(self.source)
+        # tarav.breadcrumb 1f2a5d756e2d5656f99872c4ef20e28c188475e20fd9454ac3ef0f4753e314a0
+        self.source = package.path(package.data.get('loading', '.skw/main.json'))
+        if 'loading' in package.data:
+            self.data = read(self.source)
+        else:
+            # Derived bindings are ephemeral, not a registry written to disk.
+            self.data = {'type': entity(LoadingRecord).name, 'schema_version': 1,
+                         'blocks': [
+                             {'id': str(block.id), 'reference': {
+                                 'type': entity(StructuredFileReference).name,
+                                 'locator': {'path': os.path.relpath(document.source, self.source.parent),
+                                             'pointer': f'/blocks/{index}'}}}
+                             for document in documents
+                             for index, block in enumerate(document.blocks.values())]}
         if (self.data.get('type') != entity(LoadingRecord).name
                 or self.data.get('schema_version') != 1):
             raise ValueError('Expected skill loading schema 1')
@@ -125,7 +137,9 @@ class LoadingModel:
         self.requirements = {}
         self.contains = {}
         for identity, (_, block) in self.bindings.items():
-            self.reading[identity] = block.reading_declarations()
+            self.reading[identity] = tuple(
+                declaration for field in ('contains', 'reading_deps', 'links')
+                for declaration in block.declarations(field=field))
             self.links[identity], self.includes[identity] = [], []
             self.requirements[identity] = []
             self.contains[identity] = []

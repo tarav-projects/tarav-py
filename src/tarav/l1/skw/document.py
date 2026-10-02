@@ -107,11 +107,16 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
         )
 
     class RecordInterface(TaravEntity.RecordInterface):
+        # tarav.breadcrumb f97b4770460974baea9e26b39bb338ce65e311306be53c2e44260f0ed3fde250
         label: str
         output: list[str] | None
-        reading: list[dict] | None = None
+        contains: list[dict] | None = None
+        reading_deps: list[dict] | None = None
+        links: list[dict] | None = None
 
     def __init__(self, record: Mapping[str, object]) -> None:
+        if "reading" in record:
+            raise ValueError("Migrate reading to contains, reading_deps and links")
         identity = record.get("id")
         super().__init__(identity if isinstance(identity, Ship) else Ship(identity))
         self._record = _json_object(record)
@@ -146,11 +151,16 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
             raise ValueError(f"Missing output: {self.label}")
         return lines(output)
 
-    def reading_declarations(self):
-        from .reading import declaration_from_record
+    def declarations(self, *, field):
+        from .reading import Contains, ReadingDependency, ReadingLink, declaration_from_record
 
-        return tuple(declaration_from_record(value)
-                     for value in self._record.get("reading", []) or ())
+        expected = {"contains": Contains, "reading_deps": ReadingDependency,
+                    "links": ReadingLink}[field]
+        values = tuple(declaration_from_record(value)
+                       for value in self._record.get(field, []) or ())
+        if any(not isinstance(value, expected) for value in values):
+            raise ValueError(f"{field} requires {expected.__name__} declarations")
+        return values
 
     def produce(self, document: Document) -> list[str]:
         raise ValueError(f"{entity(type(self)).name} has no code producer")
@@ -354,6 +364,8 @@ class Document:
                 recipe["id"] = old["label"]
                 recipe.pop("label", None)
                 recipe.pop("reading", None)
+                for field in ("contains", "reading_deps", "links"):
+                    recipe.pop(field, None)
         state = {"recipe": recipe,
                  "values": values, "dependencies": dependencies}
         # Reuse the independent typed template validator, not Index mechanics.
