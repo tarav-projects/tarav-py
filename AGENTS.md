@@ -73,6 +73,13 @@
 
 ## Native surfaces and SKW
 
+- `tarav.l1.skw.code` is the common developer-side source workflow. It owns
+  neutral documents, blocks, annotations, reading declarations, and compilation
+  contracts. Compiled products are ordinary reader-facing surfaces; readers do
+  not interpret SKW Records. `skw.skills` specializes this workflow for skill
+  package layout, components, loading analysis, deployment, and checks.
+  <!-- tarav.breadcrumb 2d3d132a3afb327f527fb79ac581c93e13fc762438dff57a3948de0fc14da6f7 -->
+
 - Skill packages with a `loading` declaration use `tarav.l1.skw.loading` for
   declared slot composition and `tarav.l1.skw.skills` for typed components.
   SKW blocks are Entities with UUID Ships and separate local labels. Typed
@@ -107,7 +114,7 @@
   attachment policy or Index domain policy.
 - Project-aware discovery supplies a file plus its surface context. Domain
   adapters assign domain interpretation from that context.
-- `tarav.l1.skw.document` owns typed JSON document sources under `.skw/src/`.
+- `tarav.l1.skw.code` owns typed JSON document sources under `.skw/src/`.
   `tarav.l1.skw.skills` owns skill-specific component Types;
   `tarav.l2.skw.skills` owns deployable package operations and checks.
   The retired Skillware annotation compiler and `.skw.md` machinery has no

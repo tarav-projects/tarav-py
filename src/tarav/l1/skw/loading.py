@@ -13,8 +13,9 @@ from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.references.structured import StructuredFileReference
 from .document import Document, read, write
 from .skills import SkillLink
-from .reading import (BlockEntry, Contains, ExpectedLink, FileEntry,
-                      IncludesBlock, ReadingLink, ReadingDependency)
+# tarav.breadcrumb 1b91190ba3c46ec2a8d828da9b596086e9b950234134ca26c90d95eb0dca37fb
+from .code import (BlockEntry, Contains, ExpectedLink, FileEntry,
+                   IncludesBlock, ReadingLink, ReadingDependency)
 from .generation import _hash
 
 
@@ -218,7 +219,7 @@ class LoadingModel:
             return matches[0]
 
     def resolve_entry_record(self, value):
-        from .reading import entry_from_record
+        from .code import entry_from_record
         return self.resolve_entry(entry_from_record(value)) if value is not None else None
 
     def resolve_entry(self, entry):

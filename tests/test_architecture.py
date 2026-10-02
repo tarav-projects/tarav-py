@@ -184,6 +184,26 @@ def test_type_graph_ownership_is_separate_from_represented_ownership():
     assert entity(ArchiveFolder).workflow_ship != entity(TaravClass).workflow_ship
 
 
+# tarav.breadcrumb bd4584d1e7974ead6d170e3f1fb7b07e02be84eddbde0850ba86c9ff21c4e2d6
+def test_skw_code_owns_common_source_and_skills_specializes_it():
+    from tarav.l1.skw.annotations import GenerationAnnotation
+    from tarav.l1.skw.code import CodeWorkflow, Contains, DocumentRecord, SkwBlock
+    from tarav.l1.skw.document import SkillwareWorkflow
+    from tarav.l1.skw.skills import SkillLink
+    from tarav.l2.skw.skills import SkillsWorkflow
+    from tarav.l3.runtime import create_runtime
+
+    assert CodeWorkflow().workflow is SkillwareWorkflow()
+    assert SkillsWorkflow().workflow is CodeWorkflow()
+    for common_type in (DocumentRecord, SkwBlock, GenerationAnnotation, Contains):
+        assert entity(common_type).workflow_ship == CodeWorkflow().id
+    assert entity(SkillLink).workflow_ship == SkillsWorkflow().id
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("skw.code") is CodeWorkflow
+    assert Contains.__module__ == "tarav.l1.skw.code.reading"
+
+
 def test_record_interfaces_belong_to_kernel():
     from pydantic import BaseModel
     from tarav.l0.kernel import TaravObject, isrecordsubclass, issubrecord

@@ -260,12 +260,14 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   state through isolated commit indexes. Immutable Git surface References stay
   in `tarav.l1.references.git`. `tarav.l2.git.breadcrumbs` composes Git and
   Breadcrumb evidence; `tarav.l3.git` exposes process adapters.
-- `tarav.l1.skw` owns neutral typed document blocks, typed block-local objects,
-  workflow-owned block annotations, retained content, and declared loading/slot
-  mechanics. Trusted Type dispatch selects blocks and nested semantic objects;
-  code producers write source content explicitly while compilation only
-  assembles retained content. `tarav.l2.skw` owns deployable skill-package operations,
-  publication, and Diagram-dependent checks.
+- `tarav.l1.skw.code` owns neutral typed document blocks, typed block-local
+  objects, workflow-owned block annotations, retained content, common reading
+  declarations, and compilation. The compiled product is an ordinary surface;
+  the reader does not interpret SKW source Records. `skw.skills` is a child
+  workflow owning skill components, package loading conventions, deployment,
+  and their checks. Trusted Type dispatch preserves the common source model
+  without making skill conventions universal.
+  <!-- tarav.breadcrumb fd80d020457e9d3c90d4877cdc695a47a63cc284efa834ae686d95eba2e67ff7 -->
 - Integration bundles compose independent domains without making either one
   depend on the other.
 - `tarav.l3.runtime.create_runtime()` currently assembles the installed
@@ -400,7 +402,7 @@ schema or an additional Workflow identity.
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. SituationChecks evaluate a detached Situation and use that same snapshot as the POI acceptance scope. Execution completion and a POI's failure signal are separate. |
 <!-- tarav.breadcrumb b750afdefcc38c23df01af9ca67d4f9d81f2795c8e12860d22ddc28782038a74 -->
 <!-- tarav.breadcrumb 28df20317b527872af6eb271a0ede8e2a1c30d0b8fc98201f63e8cb564ec6183 -->
-| `skw` | Typed document compilation, generation mechanics, and skill-package specialization. Blocks are Entities with Ships and separate labels; source blocks own typed reading declarations. Loading analysis exposes route facts, while SKW Checks turn those facts into POIs. |
+| `skw`, `skw.code`, `skw.skills` | Skillware umbrella, common source/compilation workflow, and deployable-skill specialization. Blocks are Entities with Ships and separate labels; source blocks own typed reading declarations. Skill loading analysis exposes route facts, while skill-owned Checks turn those facts into POIs. |
 | `surfaces` | SurfacesWorkflow owns MarkdownNormalModel and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. Consumers assign domain meaning. |
 | `wiki` | Folder-based Markdown Wiki and WikiNote objects, parsing through surfaces, and Wiki-scoped Git closure. No Project dependency. |
 | `project` | ProjectWorkflow owns minimal TaravProject and featured Project. Existing project_id is the Ship identity; discovered location stays outside the portable marker. |

@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.poi import IdentifiedPOI
-from tarav.l1.skw.identity import SKILLWARE_WORKFLOW_SHIP
+from tarav.l1.skw.identity import SKW_CODE_WORKFLOW_SHIP
 
 
 def _hash(value: object) -> str:
@@ -63,6 +63,7 @@ class Output:
     invocation: str
 
 
+# tarav.breadcrumb 4b43d55059fb05aa7715826b8ba7ff6dd20358261d63637de0766aef86c39765
 # tarav.breadcrumb 761a547484e330286e3bc9e3cbab88e035e8700c14e8a03f0837c2c137bae58e
 class GenerationPOI(IdentifiedPOI):
     @classmethod
@@ -71,7 +72,7 @@ class GenerationPOI(IdentifiedPOI):
             target=cls,
             id=TypeShip("07610436-2388-4bfc-8be8-d8b83b8cb6b6"),
             name="Tarav.Skillware.Generation.POI",
-            workflow=SKILLWARE_WORKFLOW_SHIP,
+            workflow=SKW_CODE_WORKFLOW_SHIP,
         )
 
     def __init__(self, kind: str, invocation: str, detail: str):

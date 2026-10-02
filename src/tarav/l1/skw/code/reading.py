@@ -2,17 +2,18 @@
 
 from tarav.l0.kernel import Ship, TaravClass, TaravObject, TypeRegistry, TypeShip, entity
 
-from .annotations import BlockAnnotation
-from .identity import SKW_SKILLS_WORKFLOW_SHIP
+from ..annotations import BlockAnnotation
+from ..identity import SKW_CODE_WORKFLOW_SHIP
 
 
+# tarav.breadcrumb effa713807d1ea29a6b5be34a2603c55ef4c72643a9b9f129d7c2e6a35520365
 # tarav.breadcrumb c97cc9fa0b5eb251d2f2dc91036f5294d75e5c3cc8bb06e5f62b6db045c290c1
 class ReadingDeclaration(BlockAnnotation):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("c45b568f-7057-4a38-a75d-d6fbb61013d2"),
                           name="Tarav.SKW.Reading.Declaration",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     class RecordInterface(BlockAnnotation.RecordInterface):
         target: str
@@ -35,7 +36,7 @@ class ReadingEntry(TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("ead86f2b-1dc6-4fc0-a990-e0a7f1fca690"),
-                          name="Tarav.SKW.Reading.Entry", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name="Tarav.SKW.Reading.Entry", workflow=SKW_CODE_WORKFLOW_SHIP)
 
 
 class BlockEntry(ReadingEntry):
@@ -43,7 +44,7 @@ class BlockEntry(ReadingEntry):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("e9df2037-05cf-41c8-93a8-c232661c03e5"),
                           name="Tarav.SKW.Reading.BlockEntry",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     class RecordInterface(ReadingEntry.RecordInterface):
         node: str
@@ -58,7 +59,7 @@ class FileEntry(ReadingEntry):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("06bb35ac-0eb7-44fa-92fb-e7af869591bc"),
                           name="Tarav.SKW.Reading.FileEntry",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     class RecordInterface(ReadingEntry.RecordInterface):
         source: str
@@ -91,7 +92,7 @@ class Contains(BlockAnnotation):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("8ff9e46a-9673-4494-b169-0ff1c55d62c5"),
                           name="Tarav.SKW.Reading.Contains",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
 
 class ReadingLink(ReadingDeclaration):
@@ -101,7 +102,7 @@ class ReadingLink(ReadingDeclaration):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("3a125e14-e7ad-49b4-9b8f-757753b92b8c"),
                           name="Tarav.SKW.Reading.Link",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     class RecordInterface(ReadingDeclaration.RecordInterface):
         entry: dict | None = None
@@ -123,7 +124,7 @@ class ExpectedLink(ReadingLink):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("d0f065db-b468-4843-b602-a135a2c2d9b5"),
                           name="Tarav.SKW.Reading.ExpectedLink",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     def destination(self):
         if self.entry is None:
@@ -138,7 +139,7 @@ class ConsultationLink(ReadingLink):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("82206514-59e7-4922-91d3-b260f626b75e"),
                           name="Tarav.SKW.Reading.ConsultationLink",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
 
 class IncludesBlock(Contains):
@@ -152,7 +153,7 @@ class IncludesBlock(Contains):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("ca3bf83d-299a-4087-87f3-f8b9110e73e3"),
                           name="Tarav.SKW.Reading.IncludesBlock",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     def destination(self):
         entry = self._record.get("entry") if self._record else None
@@ -168,7 +169,7 @@ class ReadingDependency(ReadingDeclaration):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("8ae49c46-71b7-443d-a4fb-6855c1eea214"),
                           name="Tarav.SKW.Reading.Dependency",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     def satisfied(self, target: Ship, inline: set[Ship], referenced: set[Ship]) -> bool:
         raise NotImplementedError
@@ -185,7 +186,7 @@ class InlineDependency(ReadingDependency):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("00a46453-d716-4b3d-ab1f-84ad7f4c7cee"),
                           name="Tarav.SKW.Reading.InlineDependency",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     def satisfied(self, target: Ship, inline: set[Ship], referenced: set[Ship]) -> bool:
         return target in inline
@@ -200,7 +201,7 @@ class ReferenceDependency(ReadingDependency):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("e6e08473-bf32-41cc-9e27-1eb0d8fd961b"),
                           name="Tarav.SKW.Reading.ReferenceDependency",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     def satisfied(self, target: Ship, inline: set[Ship], referenced: set[Ship]) -> bool:
         return target in referenced
@@ -215,7 +216,7 @@ class EitherDependency(ReadingDependency):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("8217652c-3fa4-4fa7-ac1a-9b3d88b4b297"),
                           name="Tarav.SKW.Reading.EitherDependency",
-                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
 
     def satisfied(self, target: Ship, inline: set[Ship], referenced: set[Ship]) -> bool:
         return target in inline or target in referenced

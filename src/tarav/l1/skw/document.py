@@ -14,7 +14,7 @@ from tarav.l0.kernel import TaravClass, TypeRegistry, current_records, entity
 from tarav.l0.kernel import FileRecord, Ship, TaravEntity, TaravObject, TypeShip
 from tarav.l0.kernel.records import _json_object
 from tarav.l0.kernel.workflows import TaravWorkflow
-from tarav.l1.skw.identity import SKILLWARE_WORKFLOW_SHIP
+from tarav.l1.skw.identity import SKILLWARE_WORKFLOW_SHIP, SKW_CODE_WORKFLOW_SHIP
 from .annotations import (
     BLOCK_OBJECT_TYPES,
     BlockAnnotation,
@@ -40,7 +40,7 @@ class DocumentRecord(FileRecord):
             target=cls,
             id=TypeShip('5ba54fe5-40d0-451f-9d32-74d868ec2011'),
             name='Tarav.Skillware.Document',
-            workflow=SKILLWARE_WORKFLOW_SHIP,
+            workflow=SKW_CODE_WORKFLOW_SHIP,
         )
 
 
@@ -51,7 +51,7 @@ class GenerationRecord(FileRecord):
             target=cls,
             id=TypeShip('bf3b76ac-9766-45f5-a086-870b54cf8b66'),
             name='Tarav.Skillware.Generation',
-            workflow=SKILLWARE_WORKFLOW_SHIP,
+            workflow=SKW_CODE_WORKFLOW_SHIP,
         )
 
 
@@ -62,7 +62,7 @@ class LockRecord(FileRecord):
             target=cls,
             id=TypeShip('f133b686-7de8-4a0a-9d4a-e61962a980bf'),
             name='Tarav.Skillware.Lock',
-            workflow=SKILLWARE_WORKFLOW_SHIP,
+            workflow=SKW_CODE_WORKFLOW_SHIP,
         )
 
 
@@ -80,7 +80,7 @@ class SkillwareWorkflow(TaravWorkflow):
     def _workflow_id(cls):
         return SKILLWARE_WORKFLOW_SHIP
     workflow_name = "skillware"
-    constitution = "Build and check structured Skillware documents."
+    constitution = "Contain the workflows used to develop and deploy Skillware surfaces."
 
 
 def read(path):
@@ -99,7 +99,8 @@ def lines(value):
     return value
 
 
-# tarav.context 1f561f5d:19bbdfd778ba3641
+# tarav.breadcrumb 80deda12604755e5284184938385c79467c74e3295e141f969bea02ffb3b932d
+# tarav.breadcrumb 6ddf1dc4e25c0a99c0edd0a8c2afeaccbedb6bb7af60c915724db61986e77628
 class SkwBlock(TaravEntity, Mapping[str, object]):
     """One actionable block retained inline in a Skillware document."""
 
@@ -109,7 +110,7 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
             target=cls,
             id=TypeShip('6dad5fc0-fcee-4285-b7ac-9dd89802410c'),
             name='Tarav.Skillware.Block',
-            workflow=SKILLWARE_WORKFLOW_SHIP,
+            workflow=SKW_CODE_WORKFLOW_SHIP,
         )
 
     class RecordInterface(TaravEntity.RecordInterface):
@@ -253,17 +254,17 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
         return False
 
 
-SKILLWARE_RECORD_TYPES = (
+SKW_CODE_RECORD_TYPES = (
     DocumentRecord, GenerationRecord, LockRecord, SkwBlock, *BLOCK_OBJECT_TYPES,
 )
 
 
 def _skw_registry() -> TypeRegistry[TaravObject]:
     from tarav.l1.references.workflow import REFERENCE_RECORD_TYPES
-    from .reading import READING_DECLARATION_TYPES, READING_ENTRY_TYPES
+    from .code import READING_DECLARATION_TYPES, READING_ENTRY_TYPES
 
     return TypeRegistry(TaravObject, (
-        *SKILLWARE_RECORD_TYPES,
+        *SKW_CODE_RECORD_TYPES,
         *REFERENCE_RECORD_TYPES,
         *READING_DECLARATION_TYPES,
         *READING_ENTRY_TYPES,

@@ -290,9 +290,14 @@ def create_runtime(
     from tarav.l2.scoring import Assertion, ScoringDetails, ScoringReference
     from tarav.l2.lines.assertions import LineGroundingAssertion
     from tarav.l2.scoring.workflow import ScoringWorkflow
-    from tarav.l1.skw.document import SKILLWARE_RECORD_TYPES, SkillwareWorkflow
+    from tarav.l1.skw.code import (
+        CodeWorkflow,
+        READING_DECLARATION_TYPES,
+        READING_ENTRY_TYPES,
+        SKW_CODE_RECORD_TYPES,
+    )
+    from tarav.l1.skw.document import SkillwareWorkflow
     from tarav.l1.skw.generation import GenerationPOI
-    from tarav.l1.skw.reading import READING_DECLARATION_TYPES, READING_ENTRY_TYPES
     from tarav.l2.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
     from tarav.l2.test_workflow import TestEntity, TestItem, TestWorkflow
     from tarav.l1.skills.routing import SkillsSelectionNotification, SkillsStatusPOI
@@ -351,7 +356,7 @@ def create_runtime(
                 ScoringDetails,
                 ScoringReference,
                 LineGroundingAssertion,
-                *SKILLWARE_RECORD_TYPES,
+                *SKW_CODE_RECORD_TYPES,
                 GenerationPOI,
                 SkillsSelectionNotification,
                 SkillsStatusPOI,
@@ -398,6 +403,8 @@ def create_runtime(
         UnsortedWorkflow,
         ScoringWorkflow,
         SkillwareWorkflow,
+        # tarav.breadcrumb eae69a7746f4a20cd6a37196b1384f6e615b348574b6791f791ca6baa9ce96ab
+        CodeWorkflow,
         SkillsWorkflow,
         Navigation,
         TestWorkflow,

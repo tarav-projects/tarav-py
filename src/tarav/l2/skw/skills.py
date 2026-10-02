@@ -9,6 +9,7 @@ from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
 from tarav.l0.kernel.records import entry_file
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
+from tarav.l1.skw.code import CodeWorkflow
 from tarav.l1.skw.depot import SkwDepot
 from tarav.l1.skw.document import Document, project_document, project_root, read
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
@@ -334,6 +335,11 @@ class SkillsWorkflow(TaravWorkflow):
         return SKW_SKILLS_WORKFLOW_SHIP
     workflow_name = "skw.skills"
     constitution = "Compile and inspect deployable SKW skills and their loading context."
+
+    # tarav.breadcrumb c03940fca432ca394b3ae2cc2ed6699cffdaa96186efaa11a94790027b056e6c
+    @property
+    def workflow(self):
+        return CodeWorkflow()
 
 
 def load_skill(root, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:

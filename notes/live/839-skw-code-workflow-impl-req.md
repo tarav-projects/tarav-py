@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: accepted for execution.
+Status: implemented and verified.
 
 Introduce `skw.code` as the base workflow for developing instruction surfaces
 as typed, inspectable source. It owns the common SKW source and reading
@@ -105,4 +105,16 @@ work.
 
 ## Impl.Log
 
-- Pending execution.
+- Added `CodeWorkflow` with an established Workflow Ship and registered it
+  between `SkillwareWorkflow` and `SkillsWorkflow`.
+- Added the public `tarav.l1.skw.code` namespace. Generic reading declarations
+  now live under `skw.code.reading`; the former parallel module was removed.
+- Reassigned common document, block, annotation, generation, and reading Types
+  to `CodeWorkflow` without changing their Type Ships or Record schemas.
+- Kept `SkwSkill`, `SkillLink`, package loading, reading analysis, deployment,
+  and skill Checks owned by `SkillsWorkflow`.
+- Updated architecture guidance and added a runtime ownership/hierarchy test.
+- Verification: focused architecture/runtime/SKW tests passed (47); the full
+  configured suite passed (152); Ruff and `git diff --check` passed.
+- Product and Wiki Breadcrumb audits resolve with no outstanding POIs. Position
+  refreshes emitted only informational notifications for shifted older labels.

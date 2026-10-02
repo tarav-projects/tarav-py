@@ -10,13 +10,14 @@ from pydantic import Field
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip, entity
 from tarav.l1.references import Reference, ReferenceResult
 
-from .identity import SKILLWARE_WORKFLOW_SHIP
+from .identity import SKW_CODE_WORKFLOW_SHIP
 
 if TYPE_CHECKING:
     from .document import SkwBlock
 
 
-# tarav.context 1f561f5d:b797b3be7d0a82e5
+# tarav.breadcrumb 36e63e0918480b3fc017de48822356d3f4950cfd2af394c5aca20f3e0d156ad0
+# tarav.breadcrumb 050e6956d3f26ba471c5a1b911983e9d6557428b5a96b7ac916beb90e19f85b9
 class BlockAnnotation(TaravObject):
     """A typed workflow contribution attached to one SKW block."""
 
@@ -26,11 +27,11 @@ class BlockAnnotation(TaravObject):
             target=cls,
             id=TypeShip("113faaf4-cc03-44e0-ab98-dbf1fdd2070e"),
             name="Tarav.Skillware.BlockAnnotation",
-            workflow=SKILLWARE_WORKFLOW_SHIP,
+            workflow=SKW_CODE_WORKFLOW_SHIP,
         )
 
 
-# tarav.context 1f561f5d:60d4d034d5e0e584
+# tarav.breadcrumb 8dbf062ea70375059968b0138f0b6cc678b292c9f1760b2483084b6e0148967f
 class GenerationAnnotation(BlockAnnotation):
     """Instructions and typed context declared for agent generation."""
 
@@ -40,7 +41,7 @@ class GenerationAnnotation(BlockAnnotation):
             target=cls,
             id=TypeShip("d6528a54-3a85-49ab-bc01-1c6d46f31260"),
             name="Tarav.Skillware.GenerationAnnotation",
-            workflow=SKILLWARE_WORKFLOW_SHIP,
+            workflow=SKW_CODE_WORKFLOW_SHIP,
         )
 
     class RecordInterface(BlockAnnotation.RecordInterface):
@@ -72,8 +73,8 @@ class GenerationAnnotation(BlockAnnotation):
         )
 
 
-# tarav.context 1f561f5d:b974c6c7f7064562
-# tarav.context 1f561f5d:0b1b0473a31afaa7
+# tarav.breadcrumb 19de67db6f4f6dc380b323a5801982087474feaf3f747b69f1a8b89273ae1c87
+# tarav.breadcrumb aa683304362a81877b7e28537e9ad7839f48e9b72c58604c85237fce9ac72fd1
 class ObjectIndexReference(Reference):
     """Resolve one local identifier through its containing SKW block."""
 
@@ -83,7 +84,7 @@ class ObjectIndexReference(Reference):
             target=cls,
             id=TypeShip("d2df6d68-0836-409a-b4ab-9bfac761888b"),
             name="Tarav.Skillware.ObjectIndexReference",
-            workflow=SKILLWARE_WORKFLOW_SHIP,
+            workflow=SKW_CODE_WORKFLOW_SHIP,
         )
 
     class RecordInterface(TaravObject.RecordInterface):
