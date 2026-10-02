@@ -1,10 +1,15 @@
 # 837 — Project operational harness for agent-written scripts
 
+<!-- tarav.sessions
+1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
+6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
+-->
+
 ## Impl.Abstract
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: needs alignment on the first concrete operation; design artifact saved.
+Status: implemented.
 
 Design a first application of the project Python package as an operational
 interface for agents. Agents may generate scripts on the fly that compose
@@ -12,10 +17,9 @@ project-owned operations. Those operations implement project conventions and
 surface Checks/POIs during work. The objective is precise, inspectable mechanics
 without prescribing every reasoning step or every possible script.
 
-This invocation requests the implementation request only. No product code,
-environment provisioning, agent execution, or user-data mutation is authorized
-by this Design pass. No new pipeline engine, sandbox, mandatory ProgramRun
-lifecycle, or universal I/O wrapper is selected.
+The original Design invocation authorized only this request. The later Execute
+invocation authorized the g70203 pilot. No new pipeline engine, sandbox,
+mandatory ProgramRun lifecycle, or universal I/O wrapper was introduced.
 
 ## Design narrative
 
@@ -99,17 +103,22 @@ Programs can later represent reusable undertaking definitions and particular
 runs, but ordinary harness composition does not require settling that ontology
 first. This request focuses on the recent operational-library discussion.
 
-### First slice proposed for alignment
+### First slice selected for execution
 
-Choose one real project and one bounded task with a meaningful existing
-read/transform/write convention. The conversation used extracting decisions
-into a Wiki as an assistant illustration, not a User-selected pilot. Do not
-silently implement that illustration as the product requirement.
+The first pilot is the g70203 application-version checklist report workflow.
+It already has typed Version and Transcript inputs, a durable report path, a
+report contract, and mechanical report checks. This makes it a useful test of
+the operational-library model without inventing a synthetic task. The User
+delegated the concrete choice for execution. The implementation belongs to
+`g70203-py`; Tarav supplies the existing Check and POI primitives.
+<!-- tarav.breadcrumb 8ae0da6513d7fd2fd0e54b575800b6cd0397e4c009ce18e68a0b425a63f57bf3 -->
 
-Once selected, implement a small project-local API with a composable read and
-write/registration path, one normal result path, and a visible POI path. Let an
-agent compose it using a short ad-hoc Python script. Keep domain policy in the
-project package; promote common mechanics only when reuse justifies them.
+Implement a small project-local API that opens a typed Version and its
+Transcript projections, gives the caller the stable report path, writes an
+agent-authored report atomically, and returns a Tarav CheckResult whose POIs
+adapt the existing g70203 report findings. A short example script is the
+learning path. Keep report policy in g70203 and promote no new generic Tarav
+operation hierarchy in this slice.
 
 The first slice should answer whether the existing Tarav tools are enough.
 Avoid inventing a generic Operation/Step/Process class hierarchy or workflow
@@ -117,20 +126,19 @@ DSL before the pilot exposes a concrete need.
 
 ## Impl.Req.Wiki
 
-Product owner: tarav-py for general library work; pilot project ownership must
-be selected before project-local implementation.
+Product owner: `g70203-py` for the pilot; `tarav-py` owns the shared Check and
+POI primitives used without modification.
 Wiki owner/root: `tarav-md/notes/wiki`.
 Relevant context: `tarav-harness.md`, `programs.md`, `checks-workflow.md`,
 `caller-declared-identity-inputs.md`.
-Capture status: pending. Daily destination when grounded capture can run:
-`daily/2026-10-02.md`. Topical additions should describe this general pattern
-under `tarav-harness.md`, without claiming a new Program lifecycle was chosen.
+Capture status: completed in `tarav-harness.md` and `daily/2026-10-02.md`,
+without claiming a new Program lifecycle.
 
 ## Execution.Plan
 
-1. Align on the pilot project, task and operations that must use its harness.
-   This is the outstanding implementation choice, not a demand to design a
-   universal interface in advance.
+1. Use g70203 checklist reports as the selected pilot. The designated operation
+   owns typed input loading, report placement, atomic writing and report-check
+   adaptation; the agent owns the report's semantic content and composition.
 2. Inspect that project's instructions, package, existing operations and data
    formats. Compare the desired model with the current one; explicitly identify
    what to retain, reshape or replace, including runtime/environment interfaces.
@@ -143,6 +151,26 @@ under `tarav-harness.md`, without claiming a new Program lifecycle was chosen.
    code. Record friction and API gaps before generalizing any new primitives.
 6. Add focused checks for the pilot's actual contract, capture User-grounded
    product Breadcrumbs, and update the request with results.
+
+### Implemented slice
+
+`g70203.operations.open_checklist_report()` opens a runtime workspace from an
+explicit typed `Depot` and version label. The workspace exposes the typed
+Version, Transcript, verbatim form, normal value projection, current report,
+and exact durable path. `write(markdown)` performs an atomic replacement and
+returns a Tarav `CheckResult`; its bound `ChecklistReportPOI`s adapt g70203's
+existing structure, timestamp, and source-double-check findings.
+
+The composition belongs above g70203's dependency levels because it combines
+the l3 Processing model with the top-level linter adapter. An initial placement
+inside `l3/processing` failed the project's downward-import architecture check;
+moving the operation to `g70203.operations` preserved the level boundary and
+made its role as composition code explicit.
+
+The agent learning path is a concise `AGENTS.md` section plus
+`examples/checklist_report.py`. No hidden runtime setup or fixed-script-only
+path was added. One broad workflow test exercises typed reads, a problematic
+write that returns a timestamp POI, and a clean revision that returns no POIs.
 
 ### Acceptance and evaluation
 
@@ -175,3 +203,18 @@ Current permissions allow workspace edits but not the retained Chatlas/Breadcrum
 stores. Exact-turn resolution, Breadcrumb submission, Wiki capture and the scoped
 evidence-commit bracket remain pending. No hashes or grounding labels were
 fabricated, and no alternative store was created to bypass that boundary.
+
+2026-10-02 — Execution resumed with access to the retained Chatlas and
+Breadcrumb stores. Exact User turns now ground the library-interface criteria:
+code carries precise formats and checks, results must return POIs, and the
+learning path should connect agent instructions, examples, and relevant code.
+<!-- tarav.breadcrumb c053836b76317d1e568db87520636de13de2b3462ad0651a5a07eaa34b854c22 -->
+<!-- tarav.breadcrumb 953db4a041b98548b0ba3637cdb71314ef8e0105d8cb37e46274677a524c8a6f -->
+<!-- tarav.breadcrumb 3f749d1fdcb55d8128bdc48752eda6ab8f727545de88ea4d1695c9cd97210c53 -->
+<!-- tarav.breadcrumb f5682c3a2bc630350b52594aa24f9ba27ec62c69fb803160649922c9bc63d0f8 -->
+
+2026-10-02 — Implemented the pilot in `g70203-py`. Product commit
+`107f684a45d0967fcd66f54de219b0b1a5056449`; Wiki capture commit
+`7f8ed2a65a63b129c1f120bfcbce4054e1d7e0b9`. Validation: the complete g70203
+suite passes, 113 tests in 2.69 seconds; the runnable example's CLI surface was
+also exercised. The pilot found no need for new generic Tarav primitives.
