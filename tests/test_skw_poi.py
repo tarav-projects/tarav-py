@@ -5,6 +5,9 @@ from skw_records import identify_blocks
 from tarav.l0.kernel import entity
 from tarav.l1.checks import run_checks
 from tarav.l1.skw.document import Document, DocumentRecord
+from tarav.l1.skw.annotations import GenerationAnnotation, ObjectIndexReference
+from tarav.l1.skw.document import SkwBlock
+from tarav.l1.references.structured import StructuredFileReference
 from tarav.l2.skw.pois import (
     ContextFreshnessCheck,
     GenerationFreshnessCheck,
@@ -25,16 +28,34 @@ def _document_source(root):
         "output": "explanation.md",
         "blocks": [
             {
-                "type": "Tarav.Skillware.LiteralBlock",
+                "type": entity(SkwBlock).name,
                 "id": "title",
-                "output": ["# Explanation", ""],
+                "content": ["# Explanation", ""],
             },
             {
-                "type": "Tarav.Skillware.AgentGenerationBlock",
+                "type": entity(SkwBlock).name,
                 "id": "explain",
-                "prompt": ["Explain ${code}"],
-                "arguments": {"code": {"type": "text", "file": "input.py"}},
-                "output": None,
+                "objects_index": {
+                    "policy": {
+                        "type": entity(StructuredFileReference).name,
+                        "locator": {"path": "../../context.txt"},
+                    }
+                },
+                "annotations": [{
+                    "type": entity(GenerationAnnotation).name,
+                    "instructions": ["Explain the current program."],
+                    "context": [
+                        {
+                            "type": entity(StructuredFileReference).name,
+                            "locator": {"path": "../../input.py"},
+                        },
+                        {
+                            "type": entity(ObjectIndexReference).name,
+                            "index": "policy",
+                        },
+                    ],
+                }],
+                "content": None,
             },
         ],
     }
@@ -50,18 +71,10 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
     source, data = _document_source(tmp_path)
     context_path = tmp_path / "context.txt"
     context_path.write_text("context one")
-    data["blocks"][1]["context"] = [{
-        "kind": "reference",
-        "roles": ["dependency"],
-        "reference": {
-            "type": "Tarav.Reference.StructuredFile",
-            "locator": {"path": "../../context.txt"},
-        },
-    }]
     source.write_text(json.dumps(data))
 
     prepared = Document(source).prepare("explain")
-    data["blocks"][1]["output"] = ["Prints one."]
+    data["blocks"][1]["content"] = ["Prints one."]
     source.write_text(json.dumps(data))
     document = Document(source)
     document.record(prepared["id"])
@@ -76,7 +89,10 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
         "dependencies": [],
     }))
     skill = create_runtime().load_object(tmp_path / ".skw")
-    (tmp_path / "input.py").write_text("print(2)")
+    data["blocks"][1]["annotations"][0]["instructions"] = [
+        "Explain the revised program."
+    ]
+    source.write_text(json.dumps(data))
 
     checks = tuple(check for check in skill.checks if isinstance(
         check, (GenerationFreshnessCheck, ContextFreshnessCheck)
@@ -90,7 +106,7 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
         raise AssertionError("SituationCheck evaluation read external state")
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(Document, "inputs", unexpected_read)
+        isolated.setattr(Document, "generation_fingerprint", unexpected_read)
         isolated.setattr(Document, "_resolved_context", unexpected_read)
         pois = tuple(poi for result in run_checks(checks) for poi in result.pois())
     generation = next(poi for poi in pois if isinstance(poi, StaleGeneration))
@@ -101,7 +117,10 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
         actor={"type": "Example.Agent", "locator": {"session": "fixture"}},
         rationale="The output remains valid for input revision two.",
     )
-    (tmp_path / "input.py").write_text("print(3)")
+    data["blocks"][1]["annotations"][0]["instructions"] = [
+        "Explain the final program."
+    ]
+    source.write_text(json.dumps(data))
     context_path.write_text("context two")
     changed = skill.evaluate().pois
     changed_generation = next(

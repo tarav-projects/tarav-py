@@ -29,7 +29,7 @@ class SkillLink(SkwBlock):
         return {"type": entity(cls).name,
                 "id": "d9c4a653-d76a-4f44-b823-af7df64783b0", "label": "example",
                 "target": "introduction", "caption": "Read more",
-                "output": ["[Read more](SKILL.md)"]}
+                "content": ["[Read more](SKILL.md)"]}
 
     def __init__(self, record):
         super().__init__(record)
@@ -46,14 +46,14 @@ class SkillLink(SkwBlock):
         return [loading.link_output(self, document.target)]
 
     def output_findings(self, document, lock_entry: dict) -> list[dict]:
-        if self.get('output') is None:
+        if self.get('content') is None:
             return []
         try:
             expected = self.produce(document)
         except (KeyError, ValueError, TypeError, OSError) as exc:
             return [{'kind': 'invalid-produced-output', 'block': self.label,
                      'detail': str(exc)}]
-        if self.get('output') != expected:
+        if self.get('content') != expected:
             return [{'kind': 'stale-produced-output', 'block': self.label}]
         return []
 

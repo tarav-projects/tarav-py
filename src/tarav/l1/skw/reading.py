@@ -2,18 +2,19 @@
 
 from tarav.l0.kernel import Ship, TaravClass, TaravObject, TypeRegistry, TypeShip, entity
 
+from .annotations import BlockAnnotation
 from .identity import SKW_SKILLS_WORKFLOW_SHIP
 
 
 # tarav.breadcrumb c97cc9fa0b5eb251d2f2dc91036f5294d75e5c3cc8bb06e5f62b6db045c290c1
-class ReadingDeclaration(TaravObject):
+class ReadingDeclaration(BlockAnnotation):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("c45b568f-7057-4a38-a75d-d6fbb61013d2"),
                           name="Tarav.SKW.Reading.Declaration",
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
-    class RecordInterface(TaravObject.RecordInterface):
+    class RecordInterface(BlockAnnotation.RecordInterface):
         target: str
 
     @classmethod
@@ -68,8 +69,23 @@ class FileEntry(ReadingEntry):
 
 
 # tarav.breadcrumb 7a8dc39912a8499d231b58a1b0532d3eb8ad195d19c6b5b0c9012e5f16ce897a
-class Contains(ReadingDeclaration):
+class Contains(BlockAnnotation):
+    # tarav.breadcrumb 2d50f5b52886ca9a118de057c82531820bc2821854395253e767b0922c81bd13
     """Claim content is co-loaded; expand annotations of contained SKW blocks."""
+
+    class RecordInterface(BlockAnnotation.RecordInterface):
+        target: str
+
+    @property
+    def target(self) -> str:
+        if self._record is None:
+            raise RuntimeError("Content declaration has no Record")
+        return str(self._record["target"])
+
+    @classmethod
+    def record_example(cls):
+        return {"type": entity(cls).name,
+                "target": "27ad5113-56b1-4994-a6ea-013eddd422aa"}
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -215,12 +231,12 @@ READING_DECLARATION_TYPES = (
 )
 READING_ENTRY_TYPES = (ReadingEntry, BlockEntry, FileEntry)
 
-_DECLARATIONS = TypeRegistry(ReadingDeclaration,
+_DECLARATIONS = TypeRegistry(TaravObject,
                              (ReadingDeclaration, *READING_DECLARATION_TYPES))
 _ENTRIES = TypeRegistry(ReadingEntry, READING_ENTRY_TYPES)
 
 
-def declaration_from_record(record: dict) -> ReadingDeclaration:
+def declaration_from_record(record: dict) -> TaravObject:
     return _DECLARATIONS.from_record(record)
 
 

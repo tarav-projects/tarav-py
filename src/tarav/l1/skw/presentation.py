@@ -80,7 +80,7 @@ def render_document_result(command: str, result: Any) -> str:
         ]
         if result.get("chat"):
             rows.append(f"chat: {result['chat']}")
-        rows.extend(("", "Prompt:", result["prompt"]))
+        rows.extend(("", "Instructions:", "\n".join(result["instructions"])))
         return "\n".join(rows)
     if command == "record":
         return "\n".join((
@@ -90,7 +90,7 @@ def render_document_result(command: str, result: Any) -> str:
             f"output hash: {result['output_hash']}",
         ))
     if command == "produce":
-        return f"Produced {result['block']}:\n" + "\n".join(result['output'])
+        return f"Produced {result['block']}:\n" + "\n".join(result['content'])
     if command == "observe-context":
         return "\n".join((
             f"Context observed: {result['block']}",
@@ -105,17 +105,14 @@ def render_document_context(entries: list[dict[str, Any]]) -> str:
     rows = []
     for entry in entries:
         index = entry.get("index", "?")
-        kind = entry.get("kind") or "unknown"
+        kind = entry.get("type") or "unknown"
         status = entry.get("status") or "unknown"
         target = entry.get("path")
-        if target is None and kind == "prompt":
-            target = f"{entry.get('line_count', 0)} inline lines"
         row = f"[{index}] {kind}  {status}"
         if target:
             row += f"  {target}"
-        roles = entry.get("roles") or []
-        if roles:
-            row += f"  roles: {', '.join(roles)}"
+        if entry.get("object_index"):
+            row += f"  index: {entry['object_index']}"
         rows.append(row)
         if entry.get("finding"):
             rows.append(f"    {entry['finding']}")
@@ -149,14 +146,14 @@ def render_skill_block(result: dict[str, Any]) -> str:
         f"source: {result['source']}",
         f"output: {result['output']}",
     ]
-    context = block.get("context") or []
-    if context:
-        rows.append(f"context: {len(context)} entries")
-    content = block.get("output")
+    annotations = block.get("annotations") or []
+    if annotations:
+        rows.append(f"annotations: {len(annotations)}")
+    content = block.get("content")
     if isinstance(content, list):
         rows.extend(("", "\n".join(str(line) for line in content)))
     elif content is None:
-        rows.append("output status: not recorded")
+        rows.append("content status: not recorded")
     return "\n".join(rows)
 
 

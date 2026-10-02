@@ -260,10 +260,11 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   state through isolated commit indexes. Immutable Git surface References stay
   in `tarav.l1.references.git`. `tarav.l2.git.breadcrumbs` composes Git and
   Breadcrumb evidence; `tarav.l3.git` exposes process adapters.
-- `tarav.l1.skw` owns typed document blocks, retained output, and declared
-  loading/slot mechanics. Trusted Type dispatch selects each nested block;
-  code producers write source output explicitly while compilation only assembles
-  retained output. `tarav.l2.skw` owns deployable skill-package operations,
+- `tarav.l1.skw` owns neutral typed document blocks, typed block-local objects,
+  workflow-owned block annotations, retained content, and declared loading/slot
+  mechanics. Trusted Type dispatch selects blocks and nested semantic objects;
+  code producers write source content explicitly while compilation only
+  assembles retained content. `tarav.l2.skw` owns deployable skill-package operations,
   publication, and Diagram-dependent checks.
 - Integration bundles compose independent domains without making either one
   depend on the other.

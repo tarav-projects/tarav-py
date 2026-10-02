@@ -187,15 +187,16 @@ def test_type_graph_ownership_is_separate_from_represented_ownership():
 def test_record_interfaces_belong_to_kernel():
     from pydantic import BaseModel
     from tarav.l0.kernel import TaravObject, isrecordsubclass, issubrecord
-    from tarav.l1.skw.document import AgentGenerationBlock, LiteralBlock, SkwBlock
+    from tarav.l1.skw.annotations import BlockAnnotation, GenerationAnnotation
+    from tarav.l1.skw.document import SkwBlock
     from tarav.l1.skw.skills import SkillLink
 
     assert issubclass(TaravObject.RecordInterface, BaseModel)
     assert issubrecord(SkwBlock, TaravObject)
     assert isrecordsubclass(SkwBlock, TaravObject)
     assert SkwBlock.preserves_parent_record_interface()
-    assert all(isrecordsubclass(block, SkwBlock)
-               for block in (LiteralBlock, AgentGenerationBlock, SkillLink))
+    assert isrecordsubclass(SkillLink, SkwBlock)
+    assert isrecordsubclass(GenerationAnnotation, BlockAnnotation)
 
 
 def test_record_archive_placement_index_is_outside_its_entity_record() -> None:

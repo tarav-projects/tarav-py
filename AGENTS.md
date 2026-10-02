@@ -88,10 +88,12 @@
   for head/tail/cat reads or use exposed absolute paths. Keep payload
   resolution for dependency checks separate from context presentation.
 
-- JSON document sources under `.skw/src/` own all literal and generated text
-  for their product. Each block has a trusted concrete Type and retained
-  `output`; code production writes that field explicitly. Edit agent-generation
-  outputs in source, record them explicitly,
+- JSON document sources under `.skw/src/` own all retained text for their
+  product. `SkwBlock` is the neutral concrete block Type: it carries `content`,
+  a typed local `objects_index`, and typed workflow-owned `annotations`.
+  Generation is a `GenerationAnnotation`; reading declarations are annotation
+  subtypes. Code production writes `content` explicitly. Edit agent-generated
+  content in source, record it explicitly,
   and lint/compile through `tarav skw document`. Compilation must not refresh
   generation baselines or suppress stale-generation findings.
 

@@ -35,8 +35,8 @@ class SkillDocument(Document):
     def text(self):
         return self.loading.document_text(self)
 
-    def lint(self):
-        findings = super().lint()
+    def lint(self, *, freshness=True):
+        findings = super().lint(freshness=freshness)
         if (self.lock()['documents'].get(self.key, {}).get('loading_hash')
                 != _hash(self.loading.data)):
             findings.append({'kind': 'loading-declaration-stale', 'path': self.key})
@@ -118,7 +118,7 @@ class LoadingModel:
                     raise ValueError('Block Ship bound more than once')
                 self.by_ship[typed.id] = identity
                 # Conformance signal only. Parsed links never become edges.
-                content = typed.get('output')
+                content = typed.get('content')
                 if content is not None and not isinstance(typed, SkillLink):
                     for token in MarkdownIt().parse('\n'.join(content)):
                         for child in token.children or []:
@@ -138,8 +138,9 @@ class LoadingModel:
         self.contains = {}
         for identity, (_, block) in self.bindings.items():
             self.reading[identity] = tuple(
-                declaration for field in ('contains', 'reading_deps', 'links')
-                for declaration in block.declarations(field=field))
+                declaration for declaration in block.annotations()
+                if isinstance(declaration, (Contains, ReadingDependency, ReadingLink))
+            )
             self.links[identity], self.includes[identity] = [], []
             self.requirements[identity] = []
             self.contains[identity] = []
@@ -342,7 +343,7 @@ class LoadingModel:
         if identity in active:
             raise ValueError(f'Inclusion cycle: {identity}')
         document, block = self.bindings[identity]
-        text = '\n'.join(block.output_lines())
+        text = '\n'.join(block.content_lines())
         for kind, declarations in (('links', self.links[identity]),
                                    ('includes', self.includes[identity])):
             for declaration, destination, _ in declarations:

@@ -222,7 +222,7 @@ class SkwSkill(SkwDepot, CheckProvider):
                 outputs.add(document.target)
                 if document.target not in {self.path(p) for p in self.data["files"]}:
                     report("output-not-deployed", document.target)
-                for finding in document.lint():
+                for finding in document.lint(freshness=False):
                     findings.append({**finding, "path": source})
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 report("invalid-source", source, str(exc))

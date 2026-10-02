@@ -685,7 +685,7 @@ def freshness_checks(package, *, skip_unresolved=False):
             if not isinstance(baseline, dict) or "input_hash" not in baseline:
                 continue
             try:
-                current = document.inputs(block)[1]
+                current = document.generation_fingerprint(block)
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 if skip_unresolved:
                     continue
