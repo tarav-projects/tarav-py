@@ -1,10 +1,15 @@
 # 838 — SKW reference resolution checks
 
+<!-- tarav.sessions
+1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
+6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
+-->
+
 ## Impl.Abstract
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready for implementation; exact conversational Breadcrumb capture pending.
+Status: implemented and verified.
 
 Add explicit SKW Checks that surface broken declared references as CheckPOIs.
 Reference resolvability is independently assessable: it must not disappear when
@@ -13,7 +18,7 @@ This request changes checking/reporting, not generation or retained content.
 
 Non-goals: automatic repair, mandatory successful validation before mutation,
 new check engines, broad arbitrary-object crawling, uv/environment changes,
-or changes to blessing policy. This pass creates a request, not product code.
+or changes to blessing policy.
 
 ## Design narrative
 
@@ -25,87 +30,14 @@ reference. The subsequent clarification was explicit: a broken reference
 should produce the POI; successful resolution needs no success POI. The user
 then requested this implementation request through Tarav Hugentics Design.
 
-Visible voice excerpts, retained here for a self-contained handoff:
+Canonical Chatlas resolution is now available. The exact User Turn requesting a
+Check for resolvable connections is `e05664dd5124b417`; the clarification that
+only a broken reference should produce the POI is `5fe2c051bf36a8b8`.
+<!-- tarav.breadcrumb b34495abc2556d70740f2ac067d95d7f98869ea481bf3950b0176c7eb6d05017 -->
+<!-- tarav.breadcrumb cd7f5eb55298770befa556d7ad13d4d965b6f4b73112bb7b9e8167aab446a67f -->
 
-> deve esister un check per valutare que tutti la connessione sono ... resolvable
-
-> deve lanciare un POI ... un broken riferimento
-
-> Utiliza el tarah agentic implementation design for making an implementation request
-
-These are conversation excerpts, not verified Chatlas Turn attachments. The
-current session locator is `codex:01a0d86c-9538-7be1-af96-014cd4203d61`.
-Do not fabricate Turn hashes or Breadcrumb identities to fill this gap.
-
-### Deferred User-Turn lookup — user-authorized fallback
-
-The user explicitly requested retaining enough evidence here to locate the
-supporting User Turns later, without registering Breadcrumbs in this pass.
-The following are verbatim `input` payloads visible in realtime delegations,
-not normalized Chatlas records. Preserve transcription errors when searching;
-the retained provider message may wrap these payloads in XML and include a
-repeated `transcript_delta`. Resolve the actual user message, not an assistant
-paraphrase or a later repeated transcript excerpt.
-
-Lookup scope: the Codex session identified above; neutral identity recorded
-earlier in this session:
-`6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b`.
-Recording date: 2026-10-02 (not an asserted source-turn timestamp).
-Sequence: read-only 836 review → uv discussion → unresolved-reference concern
-→ Check/POI clarification → request 838 → archive permissions → this fallback.
-
-1. Requested reference-resolution Check:
-
-   > Okay, no, questo deve essere ehm... risolto eh... con un check... se- de-debe esister un check per valutare que tutti la connessione sono, eh... diciamo... resolvable, eh... debe la- rais lanciare un poi
-
-2. Clarified the failure condition, after incomplete “caso de” turns:
-
-   > No no, in caso che- que... deve lanciare un POI in caso de que sia... diciamo... un probl- eh... un broken riferimento
-
-3. Requested a design handoff, not implementation:
-
-   > Mm-hmm. Okay, uh... tu puoi fare una... implementation request, uh... di questo... diciamo... risol
-
-4. Selected the skill route:
-
-   > , Utiliza el tarah agentic implementation design for making an implementation request
-
-5. Authorized this temporary evidence representation after the permissions
-   discussion:
-
-   > Okay... Questo... Ok, va bene. Ehm... tsk... Registra en la implementation request ehm... non utilizzando il breadcrumbs ma sufficiente eh... diciamo... evidenze per trovare el user turn... dopo
-
-Recovery: query this exact session through Chatlas, locate these phrases in
-the indicated order, inspect adjacent turns, and attach the resolved user
-turns beside the corresponding design passages. No exact timestamps, turn
-hashes, or Breadcrumb IDs have been established for these messages yet.
-This fallback preserves findability; it does not claim completed capture.
-
-#### Emergency evidence map
-
-The numbered inputs above are local lookup labels, not Tarav Breadcrumb IDs.
-Their relationship to this request is explicit:
-
-| Content in this request | Supporting user interaction |
-| --- | --- |
-| A Check evaluates reference resolvability and surfaces a POI | Input 1 |
-| A broken reference is the condition for the requested POI | Input 2, clarifying input 1 |
-| Produce an implementation request through Hugentics Design | Inputs 3–4 |
-| Preserve evidence locally while canonical Breadcrumb registration is unavailable | Input 5 and the clarification quoted below |
-
-The user further clarified the non-optional requirement to locate the relevant
-interaction, allowing a purpose-built emergency note when Breadcrumbs are
-unavailable. Verbatim realtime input, following input 5 and the discussion of
-timestamps:
-
-> Dico, lo che noi non possiamo eh... diciamo eh... lasciare fuori è che noi dobbiamo documentare dove è l’usuario ha fatto, diciamo, eh... de l’interagione rilevante per il contenuto che noi stiamo sviluppando, questo deve essere chiaro, si el breadcrumb non è available... tu lo puoi fare come una nota fatta apposta per questo emergenza, diciamo
-
-Coverage boundaries: the baseline-independent integration, proposed enumeration
-scope, snapshot reuse, and detailed test matrix below are agent-proposed
-implementation consequences, not separately approved user interface decisions.
-Current-code observations cite source paths rather than treating user intent
-as proof of implementation behavior. Preserve these distinctions when replacing
-this emergency evidence map with canonical attachments.
+The User subsequently trusted execution of this request.
+<!-- tarav.breadcrumb d4696d4f30a42cecc0a4bed21f543cde3ddb995663d84e046957f46d5649ef11 -->
 
 ### Current implementation observations
 
@@ -124,10 +56,10 @@ blocks with typed annotations and a local objects index.
 - A `ContextUnresolvable` POI already exists; inspect its contract before
   adding another overlapping type.
 
-These observations establish a missing reporting path to investigate; this
-Design pass has not independently reproduced the end-to-end defect. The prior
-review ran the configured suite successfully (150 tests), which does not
-establish coverage of missing-reference cases.
+Execution reproduced both missing paths. A missing external generation-context
+file emits no reference POI. A missing local object-index target aborts document
+construction and is reduced to `invalid-loading-model`, before an independent
+reference Check can exist.
 
 ### Proposed bounded contract
 
@@ -137,12 +69,12 @@ Reuse CheckResult and CheckPOI mechanics. Consumers emit resulting POIs through
 the existing collector; do not add a parallel finding model or confuse POI
 emission with raising a Python exception.
 
-Enumerate declared reference occurrences using the actual typed SKW contracts:
-generation-context references, local ObjectIndexReference targets, and existing
-typed loading/reading targets. Reuse existing checks where they already cover
-a category. Document exact coverage; do not interpret arbitrary strings or
-Markdown links as new typed graph edges, nor recursively crawl arbitrary
-referenced content.
+Enumerate generation-context reference occurrences using the actual typed SKW
+contracts: direct typed References, local ObjectIndexReference targets, and an
+indexed object that is itself a Reference. Existing loading and reading targets
+remain owned by `InvalidBlockReference` and `InvalidContextTarget`; do not
+duplicate them. Do not interpret arbitrary strings or Markdown links as typed
+graph edges, nor recursively crawl arbitrary referenced content.
 
 For each supported occurrence, successful resolution produces no failure POI.
 A resolution failure produces a POI identifying the owning document/block,
@@ -158,6 +90,18 @@ If a prerequisite cannot resolve, dependent freshness is not verified; never
 report it as fresh merely because its Check was skipped. Keep independently
 resolvable generation/context freshness checks working. Do not introduce a
 new universal status framework solely for this integration.
+
+Document loading types context declarations but does not resolve their targets.
+In particular, `SkwBlock.bind_registry()` must stop resolving local
+ObjectIndexReferences through `GenerationAnnotation.context_objects()`.
+Reference resolution belongs to the new Check and to operations that consume
+the context.
+
+Check enumeration must remain available when a target is broken. Constructing
+`SkwSkill.checks` must not eagerly resolve freshness or loading inputs in a way
+that prevents callers from obtaining the reference Checks. Package evaluation
+always runs these Checks, even when dependent freshness or reading Checks are
+unavailable.
 
 Prefer one resolution observation per evaluation that can feed both the
 resolution result and dependent freshness snapshots. If SituationCheck is
@@ -181,11 +125,8 @@ Relevant existing context:
 - `tarav-md/notes/wiki/poi-system.md`: POI semantics and identity.
 - `tarav-md/notes/wiki/reader-context-path.md`: declared reading relationships.
 
-Capture status: pending. Canonical Chatlas refresh/Breadcrumb retention was
-blocked earlier in this session by permissions outside the writable workspace.
-Do not redirect canonical evidence into an unofficial depot. Complete exact
-Turn grounding, the bounded Wiki daily capture, and evidence-backed closure
-when that route is writable. No new Wiki capture or commit is claimed here.
+Capture status: canonical User Turns resolved and attached. The bounded Wiki
+capture records the final reference-checking contract and implementation.
 
 ## Execution.Plan
 
@@ -212,12 +153,21 @@ freshness baseline presence. Successful resolution produces no failure POI.
 
 ## Impl.Log
 
-- User explicitly authorized deferred Breadcrumb registration with verbatim
-  voice inputs and session/sequence locators retained in this request. Added
-  the lookup section above; no canonical evidence-store writes attempted.
-
-- 2026-10-02: Created this Design handoff from the user's clarification during
-  review of 836. Inspected package check composition and freshness construction.
-- No implementation changes or new execution tests performed in this pass.
-- Exact Turn/Breadcrumb capture, Wiki daily integration, and evidence commit
-  remain pending due to the session's canonical evidence-store permission gap.
+- 2026-10-02: Resolved the exact User Turns retained by the emergency evidence
+  map and replaced the fallback quotations with canonical Breadcrumb markers.
+- Added one independently runnable `GenerationContextResolutionCheck` for each
+  typed generation-context Reference declaration. It follows direct References,
+  local object-index targets, and indexed References through the existing SKW
+  resolver and emits the existing `ContextUnresolvable` POI on failure.
+- Changed generation annotation binding to type context declarations without
+  following them. A missing local index or external file therefore remains
+  available to the Check instead of collapsing package loading into
+  `invalid-loading-model`.
+- Composed reference checks before dependent freshness and reading checks.
+  Freshness construction skips an unresolved prerequisite while independent
+  reference checks and unrelated Checks remain runnable.
+- Added one end-to-end SKW POI test covering a valid direct Reference, a broken
+  indexed Reference, repair, and a missing local index. Both failure cases are
+  reported as `ContextUnresolvable` rather than `InvalidLoadingModel`.
+- Verification: `uv run pytest -q tests/test_skw_poi.py` (2 passed) and
+  `uv run pytest -q` (151 passed in 24.13 seconds). `git diff --check` passed.

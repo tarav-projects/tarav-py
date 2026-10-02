@@ -9,8 +9,11 @@ from tarav.l1.skw.annotations import GenerationAnnotation, ObjectIndexReference
 from tarav.l1.skw.document import SkwBlock
 from tarav.l1.references.structured import StructuredFileReference
 from tarav.l2.skw.pois import (
+    ContextUnresolvable,
     ContextFreshnessCheck,
+    GenerationContextResolutionCheck,
     GenerationFreshnessCheck,
+    InvalidLoadingModel,
     StaleContext,
     StaleGeneration,
 )
@@ -62,6 +65,50 @@ def _document_source(root):
     identify_blocks(data, scope="explanation")
     path.write_text(json.dumps(data))
     return path, data
+
+
+def _skill(root):
+    (root / ".skw/main.json").write_text(json.dumps({
+        "type": entity(SkwSkill).name,
+        "schema_version": 1,
+        "entrypoint": "explanation.md",
+        "sources": [".skw/src/explanation.skw.json"],
+        "files": ["explanation.md"],
+        "dependencies": [],
+    }))
+    if not (root / "explanation.md").exists():
+        (root / "explanation.md").write_text("# Explanation\n")
+    return create_runtime().load_object(root / ".skw")
+
+
+def test_generation_context_resolution_is_independent_and_repairable(tmp_path):
+    source, data = _document_source(tmp_path)
+    data["blocks"][1]["content"] = ["The program prints one."]
+    source.write_text(json.dumps(data))
+    assert Document(source).compile()["written"]
+    skill = _skill(tmp_path)
+
+    checks = tuple(
+        check for check in skill.checks
+        if isinstance(check, GenerationContextResolutionCheck)
+    )
+    assert len(checks) == 2
+    pois = tuple(poi for result in run_checks(checks) for poi in result.pois())
+    assert len(pois) == 1
+    assert isinstance(pois[0], ContextUnresolvable)
+    assert pois[0].subject["context_index"] == 1
+    assert not any(isinstance(poi, InvalidLoadingModel) for poi in skill.evaluate().pois)
+
+    (tmp_path / "context.txt").write_text("available")
+    assert not any(
+        isinstance(poi, ContextUnresolvable) for poi in skill.evaluate().pois
+    )
+
+    data["blocks"][1]["annotations"][0]["context"][1]["index"] = "absent"
+    source.write_text(json.dumps(data))
+    emitted = skill.evaluate().pois
+    assert any(isinstance(poi, ContextUnresolvable) for poi in emitted)
+    assert not any(isinstance(poi, InvalidLoadingModel) for poi in emitted)
 
 
 # tarav.breadcrumb 6b9be7810af01872f85ffccc2c271b21ce3fab37b6ebd82f0fada50386a36f7f

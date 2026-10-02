@@ -62,18 +62,14 @@ class GenerationAnnotation(BlockAnnotation):
         return tuple(self._record.get("instructions", ()))
 
     def context_objects(self, block: SkwBlock) -> tuple[TaravObject, ...]:
+        """Type context declarations without resolving their targets."""
+
         if self._record is None:
             raise RuntimeError("Generation annotation has no Record")
-        resolved = []
-        for record in self._record.get("context", ()):
-            value = block.load_object(record)
-            if isinstance(value, ObjectIndexReference):
-                result = value.resolve(block=block)
-                if not result.ok or not isinstance(result.target, TaravObject):
-                    raise ValueError(result.message or "Indexed object is unavailable")
-                value = result.target
-            resolved.append(value)
-        return tuple(resolved)
+        return tuple(
+            block.load_object(record)
+            for record in self._record.get("context", ())
+        )
 
 
 # tarav.context 1f561f5d:b974c6c7f7064562

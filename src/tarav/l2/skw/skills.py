@@ -22,10 +22,12 @@ from .pois import (
     FRESHNESS_KINDS,
     ContextFreshnessCheck,
     DiagramAssessment,
+    GenerationContextResolutionCheck,
     GenerationFreshnessCheck,
     SkwAnalysisCheck,
     collect,
     freshness_checks,
+    generation_context_resolution_checks,
 )
 from .reading_checks import READING_CHECK_TYPES, reading_checks
 from tarav.l1.skw.presentation import (
@@ -161,9 +163,15 @@ class SkwSkill(SkwDepot, CheckProvider):
     def checks(self):
         return self._checks()
 
-    def _checks(self, *, skip_unresolved_freshness=False):
+    def _checks(self, *, skip_unresolved_freshness=True):
+        documents = self.documents()
         return (
-            *freshness_checks(self, skip_unresolved=skip_unresolved_freshness),
+            *generation_context_resolution_checks(self, documents=documents),
+            *freshness_checks(
+                self,
+                skip_unresolved=skip_unresolved_freshness,
+                documents=documents,
+            ),
             *reading_checks(self.loading()),
         )
 
@@ -306,6 +314,7 @@ SKILLS_RECORD_TYPES = (
     SkwAnalysisCheck,
     GenerationFreshnessCheck,
     ContextFreshnessCheck,
+    GenerationContextResolutionCheck,
     DiagramAssessment,
 )
 

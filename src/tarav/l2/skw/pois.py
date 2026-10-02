@@ -4,11 +4,15 @@ Checks live in skw/loading.py, skw/skills.py, skw/publication.py and
 skw/document.py. Only annotation omissions and semantic freshness
 questions permit attributed acceptance. Structural failures require repair.
 """
+from copy import deepcopy
+
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TypeShip
 from tarav.l1.blessings import BlessablePOI
 from tarav.l1.checks import Check, CheckPOI, CheckResult, SituationCheck
 from tarav.l1.poi import POICollector
+from tarav.l1.references import Reference
+from tarav.l1.skw.annotations import GenerationAnnotation
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
 
@@ -449,6 +453,90 @@ class ContextUnresolvable(SkwPOI):
         )
 
 
+# tarav.breadcrumb 815517b13112101af47d38a935d2224f1a3b870950ba20bb5e375a605704cfa3
+class GenerationContextResolutionCheck(Check):
+    """Resolve one declared generation-context entry when explicitly run."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("555f8dcd-b836-4b24-88fc-70440a576074"),
+            name="Tarav.SKW.Check.GenerationContextResolution",
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+    def __init__(self, package, document, block, index, declaration):
+        super().__init__()
+        self.package = package
+        self.document = document
+        self.block = block
+        self.index = index
+        self.declaration = deepcopy(declaration)
+        self.subject = {
+            "project": str(package.root),
+            "path": document.key,
+            "block": block.label,
+            "context_index": index,
+        }
+
+    def _run(self):
+        try:
+            self.document._resolved_context(self.block.label, selected=self.index)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            finding = {
+                "kind": "context-unresolvable",
+                "path": self.document.key,
+                "block": self.block.label,
+                "context_index": self.index,
+                "detail": str(exc),
+            }
+            evidence = {
+                "finding": finding,
+                "declaration": deepcopy(self.declaration),
+            }
+            poi = ContextUnresolvable.finding(
+                self,
+                self.subject,
+                situation={
+                    "subject": self.subject,
+                    "declaration": deepcopy(self.declaration),
+                },
+                evidence=evidence,
+            )
+            return CheckResult(self, status="completed", pois=(poi,))
+        return CheckResult(
+            self,
+            status="completed",
+            data={**self.subject, "status": "resolved"},
+        )
+
+
+def generation_context_resolution_checks(package, *, documents=None):
+    """One independently runnable Check per typed context declaration."""
+
+    selected = package.documents() if documents is None else documents
+    checks = []
+    for document in selected:
+        for block in document.blocks.values():
+            annotation = block.annotation(GenerationAnnotation)
+            if annotation is None or annotation._record is None:
+                continue
+            declarations = annotation._record.get("context", ())
+            objects = annotation.context_objects(block)
+            for index, (declaration, value) in enumerate(
+                zip(declarations, objects, strict=True)
+            ):
+                if not isinstance(value, Reference):
+                    continue
+                checks.append(
+                    GenerationContextResolutionCheck(
+                        package, document, block, index, declaration
+                    )
+                )
+    return tuple(checks)
+
+
 class ContextUnobserved(SkwPOI):
     """context-unobserved: inspect the retained evidence and owning check before acting."""
 
@@ -675,11 +763,12 @@ class ContextFreshnessCheck(SituationCheck):
         )
 
 
-def freshness_checks(package, *, skip_unresolved=False):
+def freshness_checks(package, *, skip_unresolved=False, documents=None):
     """Resolve external inputs once and return independently runnable checks."""
 
     checks = []
-    for document in package.documents():
+    selected = package.documents() if documents is None else documents
+    for document in selected:
         entry = document.lock()["documents"].get(document.key, {})
         for block, baseline in entry.get("blocks", {}).items():
             if not isinstance(baseline, dict) or "input_hash" not in baseline:
