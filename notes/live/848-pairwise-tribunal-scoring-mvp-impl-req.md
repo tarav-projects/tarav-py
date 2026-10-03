@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: implementation verified; Wiki capture pending. Phase: Execute.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: implemented and captured. Phase: Execute.
 
 Provide Tarav's first reusable comparative scorer: typed ranking cases enter a named tribunal, agents compare two cases at a time using only their supplied presentations, and the scoring workflow retains judgments and derives per-Assertion relative support with an inspectable measure of sampling. This is a minimum usable workflow for arbitrary compatible Assertion types, not a Line-only ranking adapter.
 
@@ -49,3 +49,4 @@ Acceptance: an Assertion can enter a new compatible tribunal without ranker-spec
 - 2026-10-03 Execute: scoped start checkpoint `9c65788d7b24bc930fbaddf1bb8d2e5d858c2505`. The generic path now uses typed `Tribunal` admission and `PairwiseRankingCase`, retained case/pair/judgment Records in the existing scoring repository, frozen prompts, A/B/tie/abstain judgments, and a derived per-Assertion relative score with separate sampling metadata. A scoring Check emits unassessed, sparse, and weak-support POIs; the legacy Line ranking path remains intact.
 - Focused library/fixture trial: two tribunals with different questions and case payloads use the same pairwise code; one-case populations remain unscored; abstentions do not invent a score; retained Records reopen from the scoring repository. `uv run pytest -q tests/scoring tests/test_architecture.py tests/test_poi_workflow.py` passed 61 tests, `uv run ruff check src tests` and `git diff --check` passed. Product Breadcrumbs on model, repository, tribunal code, test, README, runtime, and architecture were submitted and audited. Shifted position observations were refreshed; final file audits were clean.
 - Architecture contract/tests and default runtime registration are now in place. Concurrent request 851 landed independently while this request was in progress; its files remain outside this request's scoped diff except for the additional scoring lines. Wiki capture follows product completion.
+- Product completion commit `bd5be1099ec8bcc8d115e4676842314f0af06980`; commit-message Breadcrumb audit clean. Wiki daily and `assertions-scoring.md` capture committed as `130e44ed652544dbc112cda952917648882cd72f`, with file and commit audits clean. No retained scoring data outside tests was migrated or rewritten.
