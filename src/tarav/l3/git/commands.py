@@ -9,6 +9,7 @@ from pathlib import Path
 from tarav.l0._core.errors import CliError
 from tarav.l1.breadcrumbs import BreadcrumbError, BreadcrumbStore
 from tarav.l1.git import GitError
+from tarav.l1.usage import describe_file
 from tarav.l2.breadcrumb_workflows.chatlas_context import (
     ChatlasContextBreadcrumbWorkflow,
     ChatlasContextRequest,
@@ -79,7 +80,11 @@ def register_commands(subparsers: argparse._SubParsersAction) -> None:
     commit.add_argument("--breadcrumbs-root")
     commit.add_argument("--chatlas-root")
     commit.add_argument("--json", action="store_true")
-    commit.set_defaults(handler=_cmd_commit)
+    # tarav.breadcrumb 9d973eb5b27555e0e72c43dde98eb9b43fb05668dec701dac6a9f54d4f162f22
+    commit.set_defaults(
+        handler=_cmd_commit,
+        usage_descriptor=lambda args: {"manifest": describe_file(args.manifest)},
+    )
 
 
 def register_breadcrumb_git_commands(

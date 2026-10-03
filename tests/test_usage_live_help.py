@@ -56,10 +56,12 @@ def test_command_model_is_stable_and_raises_missing_help_poi() -> None:
     assert isinstance(command, Command)
     assert command.help_subject == "probe"
     assert command.to_record()["path"] == ["probe"]
-    assert [poi.code for poi in command.checks[0].run().pois()] == ["cli.missing-help"]
+    assert [poi.code for poi in command.checks[0].run().pois()] == [
+        "cli.missing-help", "cli.missing-usage-descriptor",
+    ]
 
 
-def test_cli_help_shows_complete_recent_use(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_cli_help_shows_the_command_described_use(tmp_path: Path, monkeypatch, capsys) -> None:
     runtime = create_runtime(archive_root=tmp_path)
     monkeypatch.setattr(cli_adapter, "create_runtime", lambda: runtime)
     value = "example-subject-value"
@@ -68,7 +70,7 @@ def test_cli_help_shows_complete_recent_use(tmp_path: Path, monkeypatch, capsys)
     capsys.readouterr()
     rows = runtime.usage.query(workflow=CliWorkflow, subject="usage query")
     assert len(rows) == 1
-    assert rows[0]["payload"]["argv"] == ["usage", "query", "--subject", value]
+    assert rows[0]["payload"]["use"] == {"subject": value}
     assert runtime.usage.record(
         workflow=LiveHelpWorkflow, subject="usage query", payload={"exit_code": 9},
     )
@@ -81,7 +83,7 @@ def test_cli_help_shows_complete_recent_use(tmp_path: Path, monkeypatch, capsys)
     assert "source:" in help_text
     assert "recent uses (1 of 1)" in help_text
     assert "exit 9" not in help_text
-    assert f"tarav usage query --subject {value}" in help_text
+    assert f"subject: {value}" in help_text
 
 
 def test_usage_write_failure_preserves_cli_outcome(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -92,12 +94,16 @@ def test_usage_write_failure_preserves_cli_outcome(tmp_path: Path, monkeypatch, 
     assert capsys.readouterr().out.strip() == "[]"
 
 
-def test_python_remainder_is_kept_in_usage_trace(tmp_path: Path, monkeypatch, capsys) -> None:
+# tarav.breadcrumb a956247074a219aaa7d81d6fe5c7cf42e31154490244e7cf9ae6c302673773b6
+def test_run_describes_code_without_storing_it(tmp_path: Path, monkeypatch, capsys) -> None:
     runtime = create_runtime(archive_root=tmp_path)
     monkeypatch.setattr(cli_adapter, "create_runtime", lambda: runtime)
-    code = "print('python-source-value')"
+    code = "print('python-source-value: " + "x" * 200 + "')"
     assert cli_adapter.main(["run", "--", "-c", code]) == 0
     capsys.readouterr()
     rows = runtime.usage.query(workflow=CliWorkflow, subject="run")
     assert len(rows) == 1
-    assert rows[0]["payload"]["argv"] == ["run", "--", "-c", code]
+    use = rows[0]["payload"]["use"]
+    assert use["mode"] == "code"
+    assert use["code"]["chars"] == len(code)
+    assert code not in str(rows)

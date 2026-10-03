@@ -54,4 +54,16 @@ def register_usage_commands(
         print(json.dumps(rows, indent=2))
         return 0
 
-    query.set_defaults(handler=run)
+    # tarav.breadcrumb f9d50eaccb67efc0d04bc1cde8c35e5e6a804bc17aa931746e87301b86d7c917
+    query.set_defaults(
+        handler=run,
+        usage_descriptor=lambda args: {
+            key: value
+            for key, value in (
+                ("workflow", args.workflow), ("project", args.project),
+                ("subject", args.subject), ("since", args.since),
+                ("jmespath", args.jmespath), ("limit", args.limit),
+            )
+            if value is not None
+        },
+    )

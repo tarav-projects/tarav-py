@@ -62,6 +62,10 @@ class Command(TaravEntity, CheckProvider, LiveHelpProvider):
         self.path = path
         self.parser = parser
         self.handler = parser.get_default("handler")
+        # tarav.breadcrumb 82aaddbb87253228672ab53ea85d0f081d8c5f17ad5ccedefd507eff630406fa
+        # A command owner may declare `set_defaults(usage_descriptor=fn)`, where
+        # fn(args) returns a small mapping describing that call for later readers.
+        self.usage_descriptor = parser.get_default("usage_descriptor")
         self.description = parser.description or help_text or ""
 
     @classmethod
@@ -124,6 +128,12 @@ class CommandMetadataCheck(Check):
         if self.command.handler is not None and self.command.source_location is None:
             problems.append(CheckPOI(
                 self, "cli.missing-source", "Command handler source is unavailable",
+                situation={"command": self.command.help_subject},
+            ))
+        if self.command.handler is not None and self.command.usage_descriptor is None:
+            problems.append(CheckPOI(
+                self, "cli.missing-usage-descriptor",
+                "Command does not describe its calls for the Usage Registry",
                 situation={"command": self.command.help_subject},
             ))
         return CheckResult(self, status="completed", pois=problems)

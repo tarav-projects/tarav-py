@@ -15,6 +15,18 @@ from tarav.l1.cli import Command, CliWorkflow, commands_from_parser
 from tarav.l1.live_help import LiveHelpArgumentParser, render_live_help
 
 
+# tarav.breadcrumb 8cfb049f976bf5d0c8301867ec935b6d5f92fe49ede680ad62dfb5361cf93985
+def _describe_use(command: Command, args: argparse.Namespace | None) -> object:
+    """Ask the command to describe its own call; impose no representation."""
+    describe = command.usage_descriptor
+    if describe is None or args is None:
+        return None
+    try:
+        return dict(describe(args))
+    except Exception:
+        return None
+
+
 # tarav.breadcrumb d5c2c85ac9548726cf6c417c56b639efeda056143548f190e445113aafbb9cd1
 def build_parser(
     *,
@@ -49,6 +61,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     started = perf_counter()
     command: Command | None = None
     exit_code: int | None = None
+    args: argparse.Namespace | None = None
     try:
         argv_list = list(argv) if argv is not None else sys.argv[1:]
         args = parser.parse_args(argv_list)
@@ -73,9 +86,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "exit_code": exit_code,
                     "duration_ms": round((perf_counter() - started) * 1000),
                     "cwd": str(Path.cwd()),
-                    # Complete arguments: traces stay in the local Tarav data
-                    # root, and the registering workflow decides what to keep.
-                    "argv": list(argv_list),
+                    "use": _describe_use(command, args),
                 },
             )
 

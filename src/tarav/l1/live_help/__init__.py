@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
 import shlex
@@ -112,9 +113,12 @@ def render_live_help(
         stamp = str(use.get("recorded_at", ""))[:16].replace("T", " ")
         lines.append(f"  {stamp}  exit {outcome}")
         if isinstance(payload, dict):
-            argv = payload.get("argv")
-            if isinstance(argv, list) and argv:
-                lines.append("                    tarav " + shlex.join(str(value) for value in argv))
+            # tarav.breadcrumb fb608dd92ba41875a2f55c310ff6a0f64a71a9fc510d9508f72346e5933211f4
+            use = payload.get("use")
+            if isinstance(use, dict):
+                for key, value in use.items():
+                    shown = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+                    lines.append(f"                    {key}: {shown}")
             cwd = payload.get("cwd")
             if cwd:
                 lines.append(f"                    cwd {cwd}")

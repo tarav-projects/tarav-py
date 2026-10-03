@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -200,6 +201,27 @@ class UsageRegistry:
         return tuple(rows[:limit]) if limit is not None else tuple(rows)
 
 
+# tarav.breadcrumb 49d903a04560c26555691aa1371dedd6f28f61ccb04a0d5c845c9bfd2bd89e87
+def describe_text(text: str, *, edge: int = 20) -> dict[str, object]:
+    """Optional helper: stand for a long text by its size, edges, and hash."""
+    return {
+        "chars": len(text),
+        "head": text[:edge],
+        "tail": text[-edge:] if len(text) > edge else "",
+        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+    }
+
+
+def describe_file(path: str | Path) -> dict[str, object]:
+    """Optional helper: stand for a file by its path and content hash."""
+    target = Path(path).expanduser()
+    try:
+        digest: str | None = hashlib.sha256(target.read_bytes()).hexdigest()
+    except OSError:
+        digest = None
+    return {"path": str(target), "sha256": digest}
+
+
 def record_usage(
     workflow: type[TaravWorkflow] | TaravWorkflow | WorkflowShip,
     subject: str,
@@ -210,4 +232,7 @@ def record_usage(
     return UsageRegistry().record(workflow=workflow, subject=subject, payload=payload, project=project)
 
 
-__all__ = ["UsageRegistry", "UsageRegistryWorkflow", "record_usage", "DEFAULT_WINDOW_DAYS"]
+__all__ = [
+    "UsageRegistry", "UsageRegistryWorkflow", "record_usage", "describe_text",
+    "describe_file", "DEFAULT_WINDOW_DAYS",
+]
