@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 import os
 from pathlib import Path, PurePosixPath
 import subprocess
@@ -18,6 +19,13 @@ from .workflow import GIT_WORKFLOW_SHIP
 
 class GitError(ValueError):
     """A requested Git operation could not be completed."""
+
+
+@dataclass(frozen=True)
+class GitWorktree:
+    path: Path
+    commit: str
+    branch: str | None
 
 
 class GitObject(TaravObject):
@@ -96,6 +104,47 @@ class GitRepository(GitObject):
             exact,
         )
         return tuple(output.splitlines()[1:])
+
+    # tarav.breadcrumb b564516ed6ef50cde4a78994d64ef119985a150dfa5fa294382bea1ad588cc49
+    def worktrees(self) -> tuple[GitWorktree, ...]:
+        """Ask Git for its registered worktrees, including missing paths."""
+        raw = git_bytes(self.root, "worktree", "list", "--porcelain", "-z")
+        result = []
+        for item in raw.split(b"\0\0"):
+            fields = dict(
+                line.split(b" ", 1) if b" " in line else (line, b"")
+                for line in item.strip(b"\0").split(b"\0") if line
+            )
+            if b"worktree" not in fields:
+                continue
+            result.append(GitWorktree(
+                path=Path(fields[b"worktree"].decode()).resolve(),
+                commit=fields[b"HEAD"].decode(),
+                branch=(fields[b"branch"].decode().removeprefix("refs/heads/")
+                        if b"branch" in fields else None),
+            ))
+        return tuple(result)
+
+    def add_worktree(self, path: Path | str, *, commit: str, branch: str) -> GitWorktree:
+        """Create one branch-backed worktree from an exact base commit."""
+        base = self.exact_commit(commit)
+        _run_git(self.root, "check-ref-format", "--branch", branch)
+        target = Path(path).expanduser().resolve()
+        _run_git(self.root, "worktree", "add", "-b", branch, str(target), base)
+        return next(item for item in self.worktrees() if item.path == target)
+
+    def attach_worktree(self, path: Path | str, *, branch: str) -> GitWorktree:
+        """Reattach an existing branch after its prior worktree was removed."""
+        target = Path(path).expanduser().resolve()
+        _run_git(self.root, "worktree", "add", str(target), branch)
+        return next(item for item in self.worktrees() if item.path == target)
+
+    def remove_worktree(self, path: Path | str) -> None:
+        """Remove through Git; dirty worktrees are refused by Git."""
+        _run_git(self.root, "worktree", "remove", str(Path(path).expanduser().resolve()))
+
+    def prune_worktrees(self) -> None:
+        _run_git(self.root, "worktree", "prune")
 
     def commit(
         self,
@@ -234,6 +283,7 @@ __all__ = [
     "GitError",
     "GitObject",
     "GitRepository",
+    "GitWorktree",
     "git_bytes",
     "git_text",
 ]

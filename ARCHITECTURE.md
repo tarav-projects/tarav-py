@@ -429,7 +429,9 @@ schema or an additional Workflow identity.
 | `wiki` | Folder-based Markdown Wiki and WikiNote objects, parsing through surfaces, and Wiki-scoped Git closure. No Project dependency. |
 | `project` | ProjectWorkflow owns minimal TaravProject and featured Project. Existing project_id is the Ship identity; discovered location stays outside the portable marker. |
 | `project.models`, `project.wiki` | Specialized child workflows own Project associations. Project lazily delegates models() and wiki(); the minimal base imports neither integration. |
-| `skills`, `workspaces` | User-facing skill and workspace operations. |
+| `workspaces` | Identified manifest-backed working folders under the Tarav data root. Exact worktree commits and retained file seeds define reproducible setup; a separate setup Record retains observed hashes and allocated branches. Workspace checks report POIs. The l1 workflow calls l1 Git for every worktree operation; l2 Project offers an optional view over the independent depot. |
+<!-- tarav.breadcrumb 28d74cb87df8e2cd06518e6e21e63155236c88bedc83944c038fb1e1405943c1 -->
+| `skills` | User-facing skill operations. |
 | `hooks`, `daemon` | Hook validation and dispatch, plus daemon-owned delivery adapters. |
 | `stdlib` | Small reusable library and CLI primitives. |
 | `iterante`, `iterante2` | Independently maintained mission runtimes; shared behavior is promoted only after convergence. |

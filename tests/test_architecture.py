@@ -75,6 +75,23 @@ def test_git_workflow_spans_mechanics_integration_and_process_adapters():
     assert runtime.records.resolve_ship(entity(CommitManifest).id) is CommitManifest
 
 
+# tarav.breadcrumb 20e20b4bfd9e7a19c97838ed9e3f372ce80e8b3fcc948f2b0cd672c792818782
+def test_workspaces_own_their_entities_and_project_only_integrates():
+    from tarav.l1.workspaces import Workspace, WorkspacesWorkflow
+    from tarav.l2.project import Project
+    from tarav.l2.project.workspaces import ProjectWorkspaces
+    from tarav.l3.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("workspaces") is WorkspacesWorkflow
+    assert entity(Workspace).workflow is WorkspacesWorkflow()
+    assert runtime.records.resolve_ship(entity(Workspace).id) is Workspace
+    assert "project" not in _top_level_import_graph()["workspaces.model"]
+    assert "project" not in _top_level_import_graph()["workspaces.depot"]
+    assert Project.workspaces is not None
+    assert ProjectWorkspaces.__module__ == "tarav.l2.project.workspaces"
+
+
 def test_poi_workflow_ownership_and_runtime_composition():
     from tarav.l1.poi import POI_RECORD_TYPES, POIWorkflow
     from tarav.l1.checks import Check, CheckPOI, ChecksWorkflow

@@ -265,6 +265,12 @@ def create_runtime(
     from tarav.l1.lines import Line, LineScope, LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
+    # tarav.breadcrumb 35548ca6fdf72e93e3a5008225dcf66e71eb81faeaa264535405ebd242768a7a
+    from tarav.l1.workspaces import (
+        WORKSPACE_RECORD_TYPES, WorkspaceIntegrityCheck, WorkspacePOI,
+        WorkspaceReferenceCheck, WorkspaceRemovalCheck, WorkspaceResetCheck,
+        WorkspacesWorkflow,
+    )
     from tarav.l2.git.breadcrumbs import GIT_BREADCRUMB_RECORD_TYPES, audit_commit
     from tarav.l1.python_env import PYTHON_RECORD_TYPES, PythonWorkflow
     from tarav.l1.programs import ProgramsWorkflow, TaravProgram
@@ -345,6 +351,12 @@ def create_runtime(
                 *REFERENCE_RECORD_TYPES,
                 *BREADCRUMB_RECORD_TYPES,
                 *GIT_RECORD_TYPES,
+                *WORKSPACE_RECORD_TYPES,
+                WorkspaceIntegrityCheck,
+                WorkspaceReferenceCheck,
+                WorkspaceRemovalCheck,
+                WorkspaceResetCheck,
+                WorkspacePOI,
                 *GIT_BREADCRUMB_RECORD_TYPES,
                 *(
                     record_type
@@ -422,6 +434,7 @@ def create_runtime(
         ReferenceWorkflow,
         BreadcrumbWorkflow,
         GitWorkflow,
+        WorkspacesWorkflow,
         ArchiveWorkflow,
         RecordArchiveWorkflow,
         LinesWorkflow,

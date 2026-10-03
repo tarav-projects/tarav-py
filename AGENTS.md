@@ -69,6 +69,11 @@
 
 - `.tarav/project.json` is the canonical project marker. It stores portable
   project identity and metadata, not machine-local paths.
+- The featured `Project.workspaces()` interface delegates to the independent
+  Workspaces workflow; minimal `TaravProject` does not import it. Workspace
+  manifests live under `~/Documents/tarav/workspaces/` and are not Project
+  marker fields. Git worktrees are created and removed through `GitRepository`.
+  <!-- tarav.breadcrumb 974d29f6f10401aa7ea49d4165f6cb29d198adc956fff1f28f085109dcad2bff -->
 - For `tarav run`, a bare `--project` discovers the nearest Project from the
   current directory upward, and fails when there is none. Without the flag,
   `tarav run` uses the installed Tarav interpreter even inside a Project.

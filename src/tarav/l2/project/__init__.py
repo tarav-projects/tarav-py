@@ -29,6 +29,11 @@ class Project(TaravProject):
         from .wiki import ProjectWiki
         return ProjectWiki(self).open()
 
+    # tarav.breadcrumb ead5ff16cd263a233872279d3931b33bcd85eeedd12400506fccdcd6470802de
+    def workspaces(self):
+        from .workspaces import ProjectWorkspaces
+        return ProjectWorkspaces(self)
+
 
 __all__ = [
     "PROJECT_RUNNER_RECORD_TYPES",

@@ -2,12 +2,13 @@
 
 <!-- tarav.sessions
 f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf0496f867fc656fdad9063980a184f7c3f15c54adf8fcb31f
+6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 -->
 
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design only.
-Status: ready; open questions below are not blocking.
+Status: implemented in product; Wiki closure pending.
 
 Revisit the August `Run.Workspace` design and make it more powerful. A
 workspace becomes a Tarav entity described by a JSON manifest that states its
@@ -172,6 +173,24 @@ machine, so there is nothing to migrate.
    from the workspace label.
 2. Whether `tarav workspace guide` and its unlock token survive the revisit.
 
+### Execute decisions
+
+The manifest pins exact worktree commits and retains a distinct Workspace Ship.
+`clone()` copies the recipe and seed bytes into a new identity, allocating a
+branch from that identity and entry path. Copied and new documents retain seed
+bytes beside the manifest so reset reproduces their initial content rather than
+merely noticing a source hash mismatch. Symlinks stay live. These are Execute
+choices resolving the reset and duplicate-branch ambiguities, not claims that
+the original User Turns prescribed these particular mechanics.
+
+`reset()` conservatively refuses changed documents, dirty worktrees, and
+worktrees with commits beyond setup. Removal requires `harvested` or
+`abandoned`; a harvested Workspace must record extraction. Clean committed
+worktrees can be removed from the folder because their Git branches remain.
+The old `AGENTS.md` manifest, unlock token, and age-based deletion of open
+workspaces were retired. Known external file references can be checked for a
+nonblocking Workspace reminder POI; there is no global reference scan.
+
 ## Impl.Req.Wiki
 
 Product project: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Capture of
@@ -207,3 +226,17 @@ hand raises a POI; removal through the depot leaves no stale registration.
   Inspected `l1/workspaces/*`, `l1/git/repository.py`, `l1/project/base.py`.
   The User chose worktrees over the Agent's recommendation of local clones.
   No product code changed.
+- 2026-10-03 Execute: added Git worktree operations; manifest-backed Workspace
+  Entity, four typed entries, setup observations, retained seeds, checks/POIs,
+  safe lifecycle operations, featured Project integration, and new CLI adapter.
+  `WorkspacesWorkflow` and its Record/Check Types are registered in runtime.
+  The configured suite passed 156 tests, Ruff passed, and the reinstalled CLI
+  returned the new workspace help and an empty-depot listing.
+  <!-- tarav.breadcrumb 1681c692b9c97c3604719a0ccb14aee4e896329aa00145e150c3b4afb8853911 -->
+- 2026-10-03 Product inlined capture: Git, Workspace, Project, runtime,
+  architecture, guidance, and test surfaces received exact User-Turn
+  Breadcrumbs. Audits passed; moved pre-existing positions in `AGENTS.md`,
+  `ARCHITECTURE.md`, `runtime.py`, and `tests/test_architecture.py` were
+  refreshed append-only. No new marker was justified for the export-only
+  `workspaces/__init__.py`; deleted legacy files have no active surface to
+  annotate.

@@ -1,19 +1,22 @@
-# $kw: ^workspaces-public --from Run.Workspace --note [DF] the public surface for one-run agentic workspaces, rooted outside every project ^<anchor-on-landing>
-"""`Run.Workspace`: one-run agentic workspaces, deletable whole."""
+"""Manifest-backed, identified working folders outside Project roots."""
 
-from .guide import GuideError, guide_text, guide_token, parse_guide_token
-from .manifest import Manifest, ManifestError, Status, read_manifest, render_agents_md
+from .checks import (
+    WorkspaceIntegrityCheck, WorkspacePOI, WorkspaceReferenceCheck,
+    WorkspaceRemovalCheck, WorkspaceResetCheck,
+)
+from .depot import WorkspaceDepot, WorkspaceError
+from .model import (
+    WORKSPACE_RECORD_TYPES, CopiedDocument, NewDocument, RepositoryWorktree,
+    Workspace, WorkspaceManifest, WorkspaceSetupRecord, WorkspaceSymlink,
+)
 from .root import resolve_workspaces_root
+from .workflow import WorkspacesWorkflow
 
 __all__ = [
-    "GuideError",
-    "Manifest",
-    "ManifestError",
-    "Status",
-    "read_manifest",
-    "render_agents_md",
-    "resolve_workspaces_root",
-    "guide_text",
-    "guide_token",
-    "parse_guide_token",
+    "CopiedDocument", "NewDocument", "RepositoryWorktree", "Workspace",
+    "WorkspaceDepot", "WorkspaceError", "WorkspaceIntegrityCheck",
+    "WorkspaceManifest", "WorkspacePOI", "WorkspaceReferenceCheck",
+    "WorkspaceRemovalCheck", "WorkspaceResetCheck",
+    "WorkspaceSetupRecord", "WorkspaceSymlink", "WorkspacesWorkflow",
+    "WORKSPACE_RECORD_TYPES", "resolve_workspaces_root",
 ]
