@@ -6,10 +6,11 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Design ready; Execute pending. Phase: Develop.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Implemented and verified. Phase: Develop.
 
-Make `tarav run [--project PATH] -- <python arguments>` the single user-facing Python runner. The separator assigns all following words to Python, including `script.py`, `-c`, `-m`, `-`, and their arguments. Without `--project`, use Tarav's current interpreter; with it, use the selected Project's configured interpreter and working directory. Remove the `tarav project harness run` and `tarav python run` CLI leaves. Keep `tarav project harness` setup/inspection commands and `tarav python path`.
+Make `tarav run [--project [PATH]] -- <python arguments>` the single user-facing Python runner. The separator assigns all following words to Python, including `script.py`, `-c`, `-m`, `-`, and their arguments. Without `--project`, use Tarav's current interpreter even inside a Project. Bare `--project` discovers the nearest Project from the current directory upward and errors if none exists; `--project PATH` starts discovery at PATH. A selected Project supplies its configured interpreter and working directory. Remove the `tarav project harness run` and `tarav python run` CLI leaves. Keep `tarav project harness` setup/inspection commands and `tarav python path`.
 <!-- tarav.breadcrumb 40f0c902aa010a0b870d59f4c5d5e74cc1f7efc54d731d49d2a6bd8b2adc27c3 -->
+<!-- tarav.breadcrumb 7b2eee03f6813a0f8a058588e82328d87c156c0d1f70e47cf1691d09c0978434 -->
 
 This is a CLI composition change. Preserve the existing runner, Project configuration, and trusted typed-Project bootstrap library APIs. Do not add implicit `project` or `runtime` globals to the general runner, change Project records, or alter environment installation.
 
@@ -22,18 +23,20 @@ The Project flag selects environment and cwd, not a specialized injected namespa
 
 ## Impl.Req.Wiki
 
-Product project: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant design: Project harness and Python runner contracts in `ARCHITECTURE.md`; relevant source: `src/tarav/l3/run.py`, `src/tarav/l3/project/commands.py`, `src/tarav/l1/python_env/commands.py`. Supporting discussion: current User Turns requesting `tarav run --project PATH -- ...`, removal of `project harness run`, CLI-only scope, and the Python-library-first interface. Exact Chatlas/Breadcrumb capture is pending.
+Product project: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant design: Project harness and Python runner contracts in `ARCHITECTURE.md`; relevant source: `src/tarav/l3/run.py`, `src/tarav/l3/project/commands.py`, `src/tarav/l1/python_env/commands.py`. Supporting discussion: current User Turns requesting `tarav run --project PATH -- ...`, removal of `project harness run`, CLI-only scope, and the Python-library-first interface. Exact Chatlas/Breadcrumb capture is attached in this request and the implemented surfaces.
 
 ## Execution.Plan
 
 1. Check the shared worktree and make a scoped start evidence checkpoint before product edits.
 2. Replace root `run` argument parsing with one explicit `--` boundary and forward its Python vector through the existing runner configuration. Remove only the duplicate CLI leaves; leave their library helpers intact.
 3. Update Tarav CLI documentation and examples, plus directly affected md-library caller guidance, without changing Python library structure.
-4. Verify current and Project selection, script/`-c`/`-m`/stdin forwarding, exact argument and exit-code propagation, and rejection of missing/empty separator. Run focused tests and CLI help checks; capture Product.Surface Breadcrumbs and Wiki context in the Hugentics workflow.
+4. Verify current and Project selection, bare `--project` upward discovery and missing-Project error, script/`-c`/`-m`/stdin forwarding, exact argument and exit-code propagation, and rejection of missing/empty separator. Run focused tests and CLI help checks; capture Product.Surface Breadcrumbs and Wiki context in the Hugentics workflow.
 
-Acceptance: the two proposed command forms work; `project harness run` and `python run` are absent from help; setup commands and `python path` remain; no typed Project bootstrap library API changes.
+Acceptance: the command forms work; `project harness run` and `python run` are absent from help; setup commands and `python path` remain; no typed Project bootstrap library API changes.
 
 ## Impl.Log
 
-- Design only so far. No product code or library structure changed.
-- The Tarav worktree contains extensive concurrent unrelated changes; the declared work scope is limited to the CLI adapters, focused tests, directly affected guidance, and this request.
+- Scoped start evidence checkpoint: `2d76220f7a3e0e5852b0069533249712a7e33bfc`. Concurrent unrelated work remains outside the declared scope.
+- Root `run` forwards post-`--` Python arguments through the existing runner; duplicate CLI leaves are removed. The trusted library bootstrap and Project Records were not changed. A bare `--project` uses existing upward discovery; no flag selects the installed Tarav interpreter.
+- Installed CLI checks covered script, `-c`, `-m`, stdin heredoc, explicit Project, parent Project discovery, global execution within a Project, missing Project, error handling, and removed leaves. `uv run pytest -q tests/cli/test_run_unified.py tests/test_architecture.py` passed 46 tests; Ruff and diff checks passed. The md-library transcript example ran cleanly through `tarav run --project . -- examples/check_transcript.py ...`.
+- Product.Surface Breadcrumbs were submitted for every edited Tarav code, test, and guidance surface and audited clean after refreshing shifted older file positions. Tarav Wiki capture is in `notes/wiki/daily/2026-10-03.md` and `notes/wiki/tarav-harness.md`, committed as `be7bad5a8897a3579f24c32a9dcbd57f8818a43c`; commit-message audit passed. Md-library caller guidance is tracked separately in request 592.

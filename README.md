@@ -49,10 +49,11 @@ tarav project harness scaffold --project /path/to/project \
   --package my_project --tarav-source /path/to/tarav-py
 tarav project harness sync --project /path/to/project
 tarav project harness inspect --project /path/to/project
-tarav project harness run --project /path/to/project \
-  --code 'print(type(project).__name__, project.id)'
-tarav project harness run --project /path/to/project --file /path/to/script.py -- --flag value
+tarav run --project /path/to/project -- /path/to/script.py --flag value
+tarav run --project /path/to/project -- -c 'import my_project; print(my_project.__file__)'
+tarav run --project -- /path/to/script.py --flag value
 ```
+<!-- tarav.breadcrumb 0f7d6215f010aefa07f9d8348928517983aebaa49b460465e501da996b4d8aaf -->
 
 The Project directory must already exist. `--tarav-source` explicitly selects
 a local Tarav checkout or wheel. An existing base/untyped marker requires
@@ -63,10 +64,15 @@ ignores env while preserving existing rules.
 
 The package under `.tarav/src/` owns a concrete `MyProject(TaravProject)` and
 its trusted `__main__` launcher. `.tarav/pyproject.toml` holds package launch
-configuration, separate from the marker. Code and files run in a child process
-with `project` and `runtime` available; arguments follow `--`, and the child's
-exit status is returned. An absent environment requires explicit sync. The
-ordinary `tarav python run` still uses whichever interpreter is running Tarav.
+configuration, separate from the marker. `tarav run` selects the Project
+interpreter and working directory when `--project` is present. A bare
+`--project` searches the current directory and its parents, failing if no
+Project marker exists; a path starts the search there. Without `--project`,
+the current Tarav interpreter is used, including inside a Project. All arguments after `--` go directly
+to Python, whose exit status is returned. Scripts use library APIs explicitly;
+the general runner does not inject `project` or `runtime`. An absent Project
+environment requires explicit sync.
+<!-- tarav.breadcrumb 183d55ff0858594084c5e551bf83b4d9788e9818c421b999213507943e110eab -->
 
 The same filesystem operations are available through
 `tarav.l2.project.harness.ProjectHarness`; runtime bootstrap and subprocess

@@ -6,8 +6,7 @@ import argparse
 import json
 import platform
 
-from .core import environment_root, interpreter, run_file, run_source
-from .runner import CurrentRunnerConfigurator
+from .core import environment_root, interpreter
 
 
 def _cmd_path(args: argparse.Namespace) -> int:
@@ -30,15 +29,7 @@ def _cmd_path(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_run(args: argparse.Namespace) -> int:
-    configuration = CurrentRunnerConfigurator().configure()
-    if args.src is not None:
-        return run_source(
-            args.src, configuration=configuration, arguments=args.arguments
-        )
-    return run_file(args.file, configuration=configuration, arguments=args.arguments)
-
-
+# tarav.breadcrumb 301a46f1f2fea8453e61253f9beb750a7d61cc60f73e3cfac6553f075fa34742
 def register_python_commands(subparsers: argparse._SubParsersAction) -> None:
     python = subparsers.add_parser(
         "python",
@@ -52,44 +43,5 @@ def register_python_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     path.add_argument("--json", action="store_true", help="Print structured JSON.")
     path.set_defaults(handler=_cmd_path)
-
-    runner = commands.add_parser(
-        "run",
-        help="Run a script with the Tarav interpreter.",
-        description=(
-            "Run a script with the interpreter that runs Tarav, so the script "
-            "can import Tarav without installing it. Arguments for the script "
-            "itself follow a -- separator."
-        ),
-        epilog=(
-            "examples:\n"
-            "  tarav python run --file probe.py\n"
-            "  tarav python run --file probe.py -- --limit 5\n"
-            '  tarav python run --src "import tarav; print(tarav.__version__)"\n'
-            "  tarav python run --file - <<'PY'\n"
-            "  import tarav\n"
-            "  PY"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    script = runner.add_mutually_exclusive_group(required=True)
-    script.add_argument(
-        "--file",
-        metavar="PATH",
-        help="Script to run; - reads the script from standard input.",
-    )
-    script.add_argument(
-        "--src",
-        metavar="SOURCE",
-        help="Source to run directly.",
-    )
-    runner.add_argument(
-        "arguments",
-        nargs="*",
-        metavar="ARG",
-        help="Arguments passed to the script, after a -- separator.",
-    )
-    runner.set_defaults(handler=_cmd_run)
-
 
 __all__ = ["register_python_commands"]

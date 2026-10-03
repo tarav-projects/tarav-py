@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 from tarav.l2.project.harness import ProjectHarness
-from tarav.l3.project.harness import run
 
 
 def _inspect(args):
@@ -30,22 +29,17 @@ def _sync(args):
     return 0
 
 
-def _run(args):
-    arguments = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
-    return run(path=args.project, code=args.code, file=args.file, arguments=arguments)
-
-
+# tarav.breadcrumb cda75bb67890cd0689bc23663933587045238f15701eae9a828e453d6dffe3df
 def register_harness_commands(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "harness",
-        help="Inspect, scaffold, sync and run a Project-local Python harness.",
+        help="Inspect, scaffold and sync a Project-local Python harness.",
     )
     operations = parser.add_subparsers(dest="harness_command", required=True)
     for operation, handler in (
         ("inspect", _inspect),
         ("scaffold", _scaffold),
         ("sync", _sync),
-        ("run", _run),
     ):
         child = operations.add_parser(operation)
         child.add_argument(
@@ -66,8 +60,3 @@ def register_harness_commands(subparsers: argparse._SubParsersAction) -> None:
                 "--python",
                 help="Interpreter for a new environment; existing environments are preserved.",
             )
-        elif operation == "run":
-            source = child.add_mutually_exclusive_group()
-            source.add_argument("--code")
-            source.add_argument("--file", type=Path)
-            child.add_argument("arguments", nargs=argparse.REMAINDER)

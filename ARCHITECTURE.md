@@ -366,9 +366,16 @@ The generated package keeps its code-owned Project TypeShip and package
 bootstrap metadata in `.tarav/pyproject.toml`, while the marker retains its
 separate project-instance identity. Adoption of an existing base/untyped marker
 is explicit; specialized markers and edited source are not overwritten.
-Package execution binds the trusted class before dynamic loading. The generic
-`tarav run` command executes caller-supplied Python with current or explicit
-Project configuration and does not inject a runtime or Project object.
+Package execution binds the trusted class before dynamic loading. The sole CLI
+runner is `tarav run [--project [PATH]] -- <python arguments>`. Bare
+`--project` discovers the nearest parent Project and fails when absent;
+omitting it uses the current Tarav interpreter even inside a Project. It executes
+caller-supplied Python with current or selected Project configuration and does
+not inject a runtime or Project object. The typed bootstrap remains a library
+operation; the duplicate `project harness run` and `python run` CLI leaves are
+absent.
+<!-- tarav.breadcrumb e8ab00134f9f3d963f3a3a30cd96fc36190a12c2c2d6762cf992d9486ae3da9b -->
+<!-- tarav.breadcrumb b79a8bbf9c2eb86e97adaa9e7580e6b44498aab5e61797662db178b846712288 -->
 
 `tarav.l1.chatlas.sessions` exposes indexed conversations through an
 `ExplorerFolder`: entries construct a portable `ChatSession` without capture or

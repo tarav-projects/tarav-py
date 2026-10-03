@@ -62,13 +62,17 @@
 
 - Explicit Project-local harness mechanics live in `tarav.l2.project.harness`;
   runtime bootstrap and command launch live in `tarav.l3.project`. Discovery
-  never provisions. `tarav project harness` explicitly scaffolds/syncs/runs
-  `.tarav/env`; `tarav python run` continues to use the caller's interpreter.
+  never provisions. `tarav project harness` scaffolds, inspects, and syncs
+  `.tarav/env`; `tarav run [--project [PATH]] -- <python arguments>` is the sole
+  Python execution CLI.
+  <!-- tarav.breadcrumb 62f9b9610c90a49367930ec4ceb23870ff8317959192d9ffba572c3d1d2a409c -->
 
 - `.tarav/project.json` is the canonical project marker. It stores portable
   project identity and metadata, not machine-local paths.
-- A bare `--project` selects the current directory where a command supports it.
-  Commands decide whether project selection is required.
+- For `tarav run`, a bare `--project` discovers the nearest Project from the
+  current directory upward, and fails when there is none. Without the flag,
+  `tarav run` uses the installed Tarav interpreter even inside a Project.
+  <!-- tarav.breadcrumb a063022465541b6bdc1076d3a5ad853099d0c2c8f01eb8243e32c7b976917a5f -->
 - Environment variables and machine-state paths retain the names encoded by
   their current storage contracts until an explicit migration changes them.
 
@@ -162,7 +166,7 @@
 
 ## Editing and tests
 
-- The Python library is the primary interface. Use `tarav python run --file`
+- The Python library is the primary interface. Use `tarav run -- script.py`
   for scripts in Tarav's installed environment; source paths are available
   through `create_runtime().source_root`.
 - Record/provider registration is explicit trusted code. External Record Types
