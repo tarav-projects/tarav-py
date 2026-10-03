@@ -34,3 +34,24 @@ dev = [
 
 [tool.ruff]
 extend-exclude = ["_DEPRECATED"]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests/test_architecture.py",
+    "tests/kernel/test_ships.py",
+    "tests/kernel/test_entity.py",
+    "tests/kernel/test_object_record_contract.py",
+    "tests/kernel/test_record_interface.py",
+    "tests/kernel/test_json_loading.py",
+    "tests/kernel/test_environment.py",
+    "tests/kernel/test_library_runtime.py",
+    "tests/kernel/test_references.py",
+    "tests/kernel/test_context.py",
+    "tests/kernel/test_explorer_conformance.py",
+    "tests/record_archive/test_record_archive.py",
+    "tests/test_lite_records.py",
+    "tests/test_checks_workflow.py",
+    "tests/test_poi_primitives.py",
+    "tests/test_poi_workflow.py",
+    "tests/test_skw_poi.py",
+]
