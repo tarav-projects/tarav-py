@@ -122,6 +122,6 @@ Project path/storage semantics remain explicitly deferred.
   configured suite passed (152); Ruff and `git diff --check` passed.
 - Product.Surface Breadcrumb capture completed on the new Type boundaries,
   their hierarchy test, and the maintained architecture guidance.
-- Wiki capture completed in `daily/2026-10-02.md` and `skillware.md`; both
+- Wiki capture completed in `daily/2026-10-03.md` and `skillware.md`; both
   audits passed. Position refresh emitted only informational notifications for
   older labels shifted by the appended sections.
