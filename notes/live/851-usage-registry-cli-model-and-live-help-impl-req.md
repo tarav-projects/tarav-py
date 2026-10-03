@@ -204,6 +204,18 @@ written here.
 <!-- tarav.breadcrumb b7b856bc84ed9afe6f93384724dad9b935a8c54a4e1ddce569fb499df9817a53 -->
 <!-- tarav.breadcrumb 2947768d6ca6eea25c3d93446ed31a9951f9973d33e554e527dac0355198b64c -->
 
+### Trace content, superseding review decision 1
+
+The first implementation recorded option names only, which made a recent use
+too thin to serve as an example. The User decided to remove any truncation
+and not to weigh privacy or security in this feature: the traces are local to
+`~/Documents/tarav` and so already private, and the ruling principle is that
+each workflow is responsible for what it stores for an Agent to see how it
+was used. The CLI client now records the complete argument list, including
+words after `--`, and Live Help prints it as a runnable `tarav ...` line.
+<!-- tarav.breadcrumb aa143a761a6a4adf921983801203f19a870fa2e011e095fa6a4507ecb124bf2a -->
+<!-- tarav.breadcrumb 56067a441a0b08a4b102d6e65800ab5db654e58a9cdbf4a83884a1a4251f3666 -->
+
 ### Provisional follow-ups
 
 1. Live Help currently has its own workflow. Integration with a Command's
@@ -280,3 +292,8 @@ partition; a non-CLI caller can record and query a trace; the configured suite p
   positions were refreshed append-only. Wiki capture updated the daily note
   and `live-help.md`; their Breadcrumbs submitted and audited. Scoped completion
   commits are reported in the execution handoff.
+- 2026-10-03 Trace content changed by User decision (commit `719b7d9`):
+  `l3/cli/cli.py` records full `argv` and the option-name filter is removed,
+  `l1/live_help` renders it, and `tests/test_usage_live_help.py` asserts that
+  values and the Python remainder are kept. Focused tests (5) and the
+  configured suite (156) passed.
