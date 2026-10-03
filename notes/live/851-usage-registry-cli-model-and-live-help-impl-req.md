@@ -272,6 +272,9 @@ partition; a non-CLI caller can record and query a trace; the configured suite p
   bound Check cannot be reconstructed from a retained Record. They now remain
   runtime-derived Tarav Objects with stable Ships and inspectable projections,
   outside the dynamic Record registry. The corrected suite passed.
+- 2026-10-03 Command metadata checks over the built tree inspected 213 parser
+  nodes and surfaced 19 missing-help POIs and no unavailable-handler-source
+  POIs. These findings were left for subsequent command owners.
 - 2026-10-03 Product capture: new Breadcrumbs were submitted on the usage,
   CLI, Live Help, runtime, tests, and architecture surfaces. Existing moved
   positions were refreshed append-only. Wiki capture updated the daily note
