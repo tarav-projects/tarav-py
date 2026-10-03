@@ -34,17 +34,26 @@ class Project(TaravProject):
         from .workspaces import ProjectWorkspaces
         return ProjectWorkspaces(self)
 
+    # tarav.breadcrumb 060a215350155cc5aae758df05ae3113dc6967b15fd4cda50852d9327456335b
+    def decisions(self):
+        """This Project's Decisions: every subtype, blessings included."""
+        from .decisions import ProjectDecisions
+
+        return ProjectDecisions(self)
+
     # tarav.breadcrumb 99811cb8c39c0f0f8a3111bca58e6e7dfcf146cb5aa168c1f9f6e5a8d643ba87
     def poi_board(self, *, blessings=None, decisions=None):
-        """Open this Project's tracked-POI board without creating its store."""
-        from tarav.l1.decisions import DecisionStore
+        """Open this Project's tracked-POI board without creating its stores."""
         from tarav.l1.poi import TrackedPOIStore
         from tarav.l2.poi import TrackedPOIBoard
 
+        decisions = decisions or self.decisions()
+        if blessings is None and hasattr(decisions, "blessings"):
+            blessings = decisions.blessings()
         return TrackedPOIBoard(
             TrackedPOIStore(self.root / ".tarav" / "tracked-pois"),
             blessings=blessings,
-            decisions=decisions or DecisionStore(self.root / ".tarav" / "decisions"),
+            decisions=decisions,
         )
 
 

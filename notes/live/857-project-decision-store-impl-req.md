@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready.
+Status: implemented.
 
 Give every Project one place for its Decisions: `.tarav/decisions/`, opened
 with `Project.decisions()`. It holds any `Decision` subtype, blessings
@@ -66,7 +66,7 @@ Record types.
   exclusively and never rewritten. Parallel agents and worktrees never write
   the same file. The directory is meant to be committed with the Project.
 - **Types.** Records are resolved through the registered Record types, not a
-  caller-supplied list. `snapshot(type=...)` returns records whose type is the
+  caller-supplied list. `snapshot(decision_type=...)` returns records whose type is the
   given class or a subclass; the default is `Decision`.
 - **Unknown and foreign records.** A record whose type is not registered is
   kept on disk and reported as a finding. A registered record that is not a
@@ -99,14 +99,14 @@ Capture status: pending.
 ## Execution.Plan
 
 1. **Store.** Add `tarav.l2.project.decisions.ProjectDecisions` (`add`,
-   `snapshot(type=None)`, `load`, `blessings()`), and `Project.decisions()`.
+   `snapshot(decision_type=Decision)`, `load`, `blessings()`), and `Project.decisions()`.
    Check: any registered Decision subtype round-trips; a Type filter returns
    subtypes; an unregistered type is a finding; a second write of one identity
    fails.
 2. **Blessings in the same place.** Let `BlessingStore` skip non-blessing
    Decision records it is told about.
    Check: a blessing made through `project.decisions().blessings()` appears in
-   `snapshot(type=BlessingRecord)` and in `snapshot()`, gives `blessed`
+   `snapshot(decision_type=BlessingRecord)` and in `snapshot()`, gives `blessed`
    standing, and produces no finding beside another Decision type.
 3. **Remove the old store; rewire the board.** Delete `DecisionStore`; the
    board accepts the Project store and does not double-count blessings;
@@ -118,4 +118,29 @@ Risk: other agents are working in this repository. Keep commits scoped and
 short-lived; recheck the worktree before each commit.
 
 ## Impl.Log
-
+- Start checkpoint 9f50eca.
+- Slice 1: `src/tarav/l2/project/decisions.py` adds `ProjectDecisions` (`add`,
+  `snapshot(decision_type=Decision)`, `load`, `blessings()`); `Project.decisions()`
+  opens it. Types come from the current Record registry, or from an explicit
+  `record_types` argument. The filter parameter is named `decision_type`
+  because `type` would shadow the builtin.
+- Slice 2: `BlessingStore` takes `other_decision_types` and skips those
+  records; `ProjectDecisions.blessings()` passes every registered non-blessing
+  Decision type. Blessing behaviour is otherwise unchanged.
+- Slice 3: `DecisionStore` deleted from `tarav.l1.decisions`, which now owns no
+  storage. The board accepts any object with `snapshot()` as `decisions` and
+  counts a blessing found in both views once. `Project.poi_board()` defaults
+  both to the Project store.
+- Slice 4: `ARCHITECTURE.md` (two places) and `AGENTS.md` (Project model).
+- Tests: two new tests cover round trip, exclusive write, subtype filtering,
+  blessing standing from the shared directory with no findings, an unregistered
+  type as a finding, and single counting on the board. `uv run pytest -q`: 164
+  passed. `tests/test_architecture.py` with `tests/decisions`: 48 passed. Ruff
+  clean on `src` and `tests`.
+- Observation: a test needs an explicit `record_types`, because
+  `current_records()` reads the process-wide runtime, not one created locally
+  with `create_runtime`.
+- Breadcrumbs: three on product code and tests, one on `AGENTS.md`; shifted
+  positions in the edited files re-recorded; all audits clean.
+- Not done, by design: no migration of existing blessing stores; no CLI; SKW
+  skills and md-library still use their own blessing directories.

@@ -1,8 +1,7 @@
-"""Minimal, attributed Decision records and append-only storage."""
+"""The minimal, attributed Decision record. This workflow owns no storage."""
 
 import json
 from datetime import datetime
-from pathlib import Path
 
 from tarav.l0.kernel import FileRecord, TaravClass, TaravEntity, TypeShip, entity
 from tarav.l1.scoring import Assertable
@@ -86,52 +85,3 @@ class Decision(TaravEntity, FileRecord, Assertable):
             "rationale": "Example intervention",
             "support": [],
         }
-
-
-class DecisionStore:
-    """Retain the Decision types its caller registers; blessings stay in BlessingStore."""
-
-    def __init__(self, root, *, record_types=()):
-        self.root = Path(root).resolve()
-        self.record_types = {}
-        for cls in record_types:
-            if not issubclass(cls, Decision):
-                raise TypeError("Expected a Decision type")
-            name = entity(cls).name
-            if name in self.record_types and self.record_types[name] is not cls:
-                raise ValueError(f"Duplicate Decision type: {name}")
-            self.record_types[name] = cls
-
-    def add(self, decision: Decision):
-        record = decision.to_record()
-        if self.record_types.get(record["type"]) is not type(decision):
-            raise TypeError("Decision type is not registered in this store")
-        self.root.mkdir(parents=True, exist_ok=True)
-        with (self.root / f"{decision.id}.json").open("x", encoding="utf-8") as handle:
-            json.dump(record, handle, ensure_ascii=False, indent=2, allow_nan=False)
-            handle.write("\n")
-        return decision
-
-    def snapshot(self):
-        records, findings = [], []
-        if not self.root.exists():
-            return {"records": records, "findings": findings}
-        for path in sorted(self.root.glob("*.json")):
-            try:
-                record = json.loads(path.read_text(encoding="utf-8"))
-                cls = self.record_types[record["type"]]
-                cls.validate_record(record)
-                if path.stem != record["id"]:
-                    raise ValueError("Decision filename disagrees with identity")
-            except (OSError, ValueError, TypeError, KeyError) as exc:
-                findings.append({"kind": "invalid-decision-record", "path": str(path),
-                                 "detail": str(exc)})
-                continue
-            records.append(record)
-        return {"records": records, "findings": findings}
-
-    def load(self, identity):
-        for record in self.snapshot()["records"]:
-            if record["id"] == str(identity):
-                return self.record_types[record["type"]].from_record(record)
-        raise KeyError(identity)

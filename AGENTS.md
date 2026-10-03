@@ -74,6 +74,12 @@
   manifests live under `~/Documents/tarav/workspaces/` and are not Project
   marker fields. Git worktrees are created and removed through `GitRepository`.
   <!-- tarav.breadcrumb 974d29f6f10401aa7ea49d4165f6cb29d198adc956fff1f28f085109dcad2bff -->
+- `Project.decisions()` is the Project's Decision store, `.tarav/decisions/`:
+  one append-only file per Record, any `Decision` subtype, filtered by Type
+  including subtypes. Project blessings live there through
+  `Project.decisions().blessings()`. The Decisions workflow owns no storage,
+  and other workflows may still keep Decisions elsewhere.
+  <!-- tarav.breadcrumb 8f4344f85bcaecfe7ab8c9fc47cddb92f71f93869fd489846ad5bc69136ad845 -->
 - For `tarav run`, a bare `--project` discovers the nearest Project from the
   current directory upward, and fails when there is none. Without the flag,
   `tarav run` uses the installed Tarav interpreter even inside a Project.

@@ -245,9 +245,15 @@ def _validate(record, *, blessing):
 
 
 class BlessingStore:
-    def __init__(self, root, *, record_types=()):
+    def __init__(self, root, *, record_types=(), other_decision_types=()):
         self.root = Path(root).resolve()
         self.record_types = {}
+        # Decision types that may share this directory and are not blessings.
+        self._other_decisions = set()
+        for cls in other_decision_types:
+            if not issubclass(cls, Decision) or issubclass(cls, BlessingRecord):
+                raise TypeError("Expected a non-blessing Decision type")
+            self._other_decisions.add(entity(cls).name)
         for cls in (BlessingRecord, BlessingAssessmentRecord, *record_types):
             if not issubclass(cls, (BlessingRecord, BlessingAssessmentRecord)):
                 raise TypeError("Expected a blessing or assessment type")
@@ -298,6 +304,8 @@ class BlessingStore:
         for path in sorted(self.root.glob("*.json")):
             try:
                 record = json.loads(path.read_text())
+                if isinstance(record, dict) and record.get("type") in self._other_decisions:
+                    continue
                 self._type(record).validate_record(record)
             except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
                 findings.append(

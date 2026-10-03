@@ -1,14 +1,13 @@
 """A pageable view over explicitly tracked POIs and optional Decisions."""
 
 from tarav.l1.blessings import BlessingStore
-from tarav.l1.decisions import DecisionStore
 from tarav.l1.poi import TrackedPOIStore
 
 
 # tarav.breadcrumb 11e779ea8d3adbe7f335b96fa331d324f983ea00254c8add9c09104ec6c2f29a
 class TrackedPOIBoard:
     def __init__(self, store: TrackedPOIStore, *, blessings: BlessingStore | None = None,
-                 decisions: DecisionStore | None = None):
+                 decisions=None):
         if not isinstance(store, TrackedPOIStore):
             raise TypeError("Expected a TrackedPOIStore")
         self.store = store
@@ -31,7 +30,10 @@ class TrackedPOIBoard:
             if record.get("poi", {}).get("id"):
                 by_poi.setdefault(record["poi"]["id"], []).append(record["id"])
         other = {}
+        blessed = {identity for values in by_poi.values() for identity in values}
         for record in decisions["records"]:
+            if record["id"] in blessed:
+                continue  # a shared store lists each blessing as a Decision too
             for poi_id in record.get("poi_ids", ()):
                 other.setdefault(poi_id, []).append(record["id"])
         rows = []

@@ -9,10 +9,11 @@ import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.blessings import BlessablePOI, BlessingRecord, BlessingStore
-from tarav.l1.decisions import Decision, DecisionStore
+from tarav.l1.decisions import Decision
 from tarav.l1.poi import IdentifiedPOI, POICollector, TrackedPOIStore
 from tarav.l2.poi import TrackedPOIBoard
 from tarav.l2.project import Project
+from tarav.l2.project.decisions import ProjectDecisions
 from tarav.l3.runtime import create_runtime
 
 
@@ -64,12 +65,6 @@ def test_decision_types_and_unchanged_blessing_schema(tmp_path):
     assert decision.decider == record["actor"]
     assert decision.poi_ids == ()
     assert tuple(decision.assertions) == ("main",)
-    store = DecisionStore(tmp_path / "decisions", record_types=(ExampleDecision,))
-    store.add(decision)
-    assert store.load(decision.id).to_record() == record
-    with pytest.raises(TypeError):
-        DecisionStore(tmp_path / "unregistered").add(decision)
-
     old_record = deepcopy(BlessingRecord.record_example())
     blessing = runtime.records.from_record(old_record)
     assert isinstance(blessing, Decision)
@@ -161,3 +156,75 @@ def test_featured_project_exposes_a_caller_rooted_board(tmp_path):
     board = project.poi_board()
     assert board.store.root == tmp_path / ".tarav" / "tracked-pois"
     assert board.report()["total"] == 0
+
+
+def _project(tmp_path):
+    marker = tmp_path / ".tarav" / "project.json"
+    marker.parent.mkdir()
+    marker.write_text(json.dumps(Project.record_example()), encoding="utf-8")
+    return Project.from_path(tmp_path)
+
+
+# tarav.breadcrumb 759580814ab6b198d65103c278d4ca330779d6de41cd9eff7fb7559b296e626c
+def test_project_store_holds_every_decision_type_and_filters_by_subtype(tmp_path):
+    runtime = create_runtime(archive_root=tmp_path / "archive",
+                             record_types=(ExamplePOI, ExampleDecision))
+    project = _project(tmp_path)
+    assert project.decisions().root == tmp_path / ".tarav" / "decisions"
+    store = ProjectDecisions(project, record_types=runtime.records.record_types)
+    assert store.snapshot() == {"records": [], "findings": []}
+    assert not store.root.exists()
+
+    record = ExampleDecision.record_example()
+    record["id"] = str(uuid4())
+    decision = runtime.records.from_record(record)
+    store.add(decision)
+    with pytest.raises(FileExistsError):
+        store.add(decision)
+    with pytest.raises(TypeError):
+        store.add(object())
+
+    occurrence = poi()
+    blessing = store.blessings().bless(
+        occurrence,
+        actor={"type": "Example.Actor", "locator": {"name": "reviewer"}},
+        rationale="Reviewed for now",
+    )
+    everything = store.snapshot()
+    assert {row["id"] for row in everything["records"]} == {record["id"], blessing["id"]}
+    assert everything["findings"] == []
+    assert [row["id"] for row in store.snapshot(decision_type=BlessingRecord)["records"]] == [
+        blessing["id"]]
+    assert [row["id"] for row in store.snapshot(decision_type=ExampleDecision)["records"]] == [
+        record["id"]]
+    assert store.load(record["id"]).to_record() == record
+    with pytest.raises(TypeError):
+        store.snapshot(decision_type=dict)
+
+    # tarav.breadcrumb f34b06cac58de0d8085404d8c0e31d487f5e132a44f75e470e3184f2ee1f104c
+    blessings = store.blessings()
+    assert blessings.standing(occurrence)["status"] == "blessed"
+    assert blessings.snapshot()["findings"] == []
+    assert [row["id"] for row in blessings.snapshot()["records"]] == [blessing["id"]]
+
+    unknown = {**record, "id": str(uuid4()), "type": "Example.Unregistered"}
+    (store.root / f"{unknown['id']}.json").write_text(json.dumps(unknown), encoding="utf-8")
+    findings = store.snapshot()["findings"]
+    assert [row["kind"] for row in findings] == ["unknown-decision-type"]
+    assert len(store.snapshot()["records"]) == 2
+
+
+def test_project_board_counts_a_shared_blessing_once(tmp_path):
+    create_runtime(archive_root=tmp_path / "archive", record_types=(ExamplePOI,))
+    project = _project(tmp_path)
+    occurrence = poi()
+    board = project.poi_board()
+    board.store.track(occurrence, scope={"check": "example"})
+    project.decisions().blessings().bless(
+        occurrence,
+        actor={"type": "Example.Actor", "locator": {"name": "reviewer"}},
+        rationale="Reviewed for now",
+    )
+    item = project.poi_board().report()["items"][0]
+    assert item["disposition"] == "blessed"
+    assert len(item["decisions"]) == 1
