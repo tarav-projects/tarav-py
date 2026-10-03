@@ -36,6 +36,9 @@ GROUNDING_ASSERTION_TYPE = "Index.Line.Grounding.Assertion"
 GROUNDING_ASSERTION_REFERENCE_TYPE = f"{GROUNDING_ASSERTION_TYPE}.Reference"
 DIAGRAM_LINE_EDITION_REFERENCE_TYPE = "Diagram.Line.Edition.Reference"
 WIN_RATE_SCORE = "Assertion.Ranking.WinRate.Score.v1"
+TRIBUNAL_CASE_TYPE = "Assertion.Tribunal.Case"
+TRIBUNAL_PAIR_TYPE = "Assertion.Tribunal.Pair"
+TRIBUNAL_JUDGMENT_TYPE = "Assertion.Tribunal.Judgment"
 
 RECORD_KINDS = {
     GROUNDING_POOL_TYPE: "pools",
@@ -45,6 +48,9 @@ RECORD_KINDS = {
     RESULT_TYPE: "results",
     SCORING_TRACE_TYPE: "assertion-traces",
     SCORING_EVENT_TYPE: "events",
+    TRIBUNAL_CASE_TYPE: "tribunal-cases",
+    TRIBUNAL_PAIR_TYPE: "tribunal-pairs",
+    TRIBUNAL_JUDGMENT_TYPE: "tribunal-judgments",
 }
 RECORD_REFERENCE_TARGETS = {
     f"{record_type}.Reference": record_type for record_type in RECORD_KINDS
@@ -408,6 +414,89 @@ class ScoringEventRecord(ScoringRecord):
         )
 
 
+class TribunalCaseRecord(ScoringRecord):
+    """Exact closed case enrolled in one tribunal population."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls,
+                          id=TypeShip('91702f79-2d55-475c-adfd-64644ee7d8ac'),
+                          name=TRIBUNAL_CASE_TYPE)
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[TRIBUNAL_CASE_TYPE]
+        tribunal_type_id: str
+        assertion_ref: AssertionReferenceInterface
+        case: dict
+
+    @classmethod
+    def record_example(cls) -> dict[str, object]:
+        return _record_example(entity(cls).name,
+                               tribunal_type_id='00000000-0000-4000-8000-000000000006',
+                               assertion_ref=_assertion_reference_example(),
+                               case={'type': 'Example.AssessmentCase',
+                                     'tribunal_type_id': '00000000-0000-4000-8000-000000000006',
+                                     'assertion_ref': _assertion_reference_example(),
+                                     'question': 'Which claim is better supported?',
+                                     'presentation': 'Example evidence.'})
+
+
+class TribunalPairRecord(ScoringRecord):
+    """Frozen two-case comparison, including the exact presented prompt."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls,
+                          id=TypeShip('6c2458b7-0b25-4c91-92fb-81712fb21b96'),
+                          name=TRIBUNAL_PAIR_TYPE)
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[TRIBUNAL_PAIR_TYPE]
+        tribunal_type_id: str
+        a_case_ref: RecordReferenceInterface
+        b_case_ref: RecordReferenceInterface
+        prompt: str
+        prompt_sha256: str
+
+    @classmethod
+    def record_example(cls) -> dict[str, object]:
+        prompt = 'Compare A and B using only the supplied cases.'
+        return _record_example(entity(cls).name,
+                               tribunal_type_id='00000000-0000-4000-8000-000000000006',
+                               a_case_ref=_record_reference_example(TRIBUNAL_CASE_TYPE),
+                               b_case_ref={**_record_reference_example(TRIBUNAL_CASE_TYPE),
+                                           'id': '00000000-0000-4000-8000-000000000007'},
+                               prompt=prompt,
+                               prompt_sha256=hashlib.sha256(prompt.encode('utf-8')).hexdigest())
+
+
+class TribunalJudgmentRecord(ScoringRecord):
+    """One attributed A/B/tie/abstain result for a frozen pair."""
+    # tarav.breadcrumb d4b75cd5d386e8c3e6c5f44b2825198339da96c987c684f75da1c69547fb1b07
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls,
+                          id=TypeShip('d74e1f21-cabf-467a-a976-a9f8fd6e68ae'),
+                          name=TRIBUNAL_JUDGMENT_TYPE)
+
+    class RecordInterface(ScoringRecord.RecordInterface):
+        type: Literal[TRIBUNAL_JUDGMENT_TYPE]
+        tribunal_type_id: str
+        pair_ref: RecordReferenceInterface
+        outcome: Literal['A', 'B', 'tie', 'abstain']
+        judge: dict
+        rationale: str
+
+    @classmethod
+    def record_example(cls) -> dict[str, object]:
+        return _record_example(entity(cls).name,
+                               tribunal_type_id='00000000-0000-4000-8000-000000000006',
+                               pair_ref=_record_reference_example(TRIBUNAL_PAIR_TYPE),
+                               outcome='tie', judge={'type': 'Example.Judge'},
+                               rationale='Equal support in these cases.')
+
+
 SCORING_RECORD_TYPES = (
     GroundingRankingPoolRecord,
     PoolEnrollmentRecord,
@@ -416,6 +505,9 @@ SCORING_RECORD_TYPES = (
     RankingResultRecord,
     ScoringTraceRecord,
     ScoringEventRecord,
+    TribunalCaseRecord,
+    TribunalPairRecord,
+    TribunalJudgmentRecord,
 )
 SCORING_RECORD_TYPES_BY_NAME = {
     entity(record_type).name: record_type for record_type in SCORING_RECORD_TYPES
@@ -973,6 +1065,41 @@ def _validate_scoring_event(record: Mapping[str, object]) -> None:
     _validate_score_statistics(record)
 
 
+def _validate_tribunal_case(record: Mapping[str, object]) -> None:
+    _uuid(_required_string(record, 'tribunal_type_id'), 'tribunal_type_id')
+    assertion_ref = _required_object(record, 'assertion_ref')
+    _validate_assertion_reference(assertion_ref)
+    case = _required_object(record, 'case')
+    _required_string(case, 'type')
+    _required_string(case, 'question')
+    _required_string(case, 'presentation')
+    if case.get('assertion_ref') != assertion_ref:
+        raise ScoringError('tribunal case Assertion reference does not match its packet')
+    if case.get('tribunal_type_id') != record['tribunal_type_id']:
+        raise ScoringError('tribunal case packet belongs to another tribunal')
+
+
+def _validate_tribunal_pair(record: Mapping[str, object]) -> None:
+    _uuid(_required_string(record, 'tribunal_type_id'), 'tribunal_type_id')
+    for field in ('a_case_ref', 'b_case_ref'):
+        _validate_reference(record.get(field), expected_target=TRIBUNAL_CASE_TYPE)
+    if record['a_case_ref']['id'] == record['b_case_ref']['id']:
+        raise ScoringError('pair requires distinct cases')
+    prompt = _required_string(record, 'prompt')
+    digest = _required_string(record, 'prompt_sha256')
+    if digest != hashlib.sha256(prompt.encode('utf-8')).hexdigest():
+        raise ScoringError('pair prompt hash disagrees with retained prompt')
+
+
+def _validate_tribunal_judgment(record: Mapping[str, object]) -> None:
+    _uuid(_required_string(record, 'tribunal_type_id'), 'tribunal_type_id')
+    _validate_reference(record.get('pair_ref'), expected_target=TRIBUNAL_PAIR_TYPE)
+    if _required_string(record, 'outcome') not in {'A', 'B', 'tie', 'abstain'}:
+        raise ScoringError('judgment outcome must be A, B, tie, or abstain')
+    _required_string(_required_object(record, 'judge'), 'type')
+    _required_string(record, 'rationale')
+
+
 def _validate_code_provenance(provenance: Mapping[str, object]) -> None:
     _required_string(provenance, "version")
     git_commit = provenance.get("git_commit")
@@ -1034,6 +1161,9 @@ def _validate_record_semantics(record: Mapping[str, object]) -> None:
         RESULT_TYPE: _validate_result,
         SCORING_TRACE_TYPE: _validate_scoring_trace,
         SCORING_EVENT_TYPE: _validate_scoring_event,
+        TRIBUNAL_CASE_TYPE: _validate_tribunal_case,
+        TRIBUNAL_PAIR_TYPE: _validate_tribunal_pair,
+        TRIBUNAL_JUDGMENT_TYPE: _validate_tribunal_judgment,
     }
     validator = (
         _validate_pool if is_pool_record_type(record_type) else validators[record_type]
@@ -1081,6 +1211,9 @@ def record_relations(record):
         RESULT_TYPE: ('run_ref',),
         SCORING_TRACE_TYPE: ('assertion_ref',),
         SCORING_EVENT_TYPE: ('trace_ref',),
+        TRIBUNAL_CASE_TYPE: ('assertion_ref',),
+        TRIBUNAL_PAIR_TYPE: ('a_case_ref', 'b_case_ref'),
+        TRIBUNAL_JUDGMENT_TYPE: ('pair_ref',),
     }.get(kind, ())
     refs = [(field, _required_object(record, field)) for field in fields]
     if kind == GROUNDING_TASK_TYPE:
@@ -1188,6 +1321,9 @@ __all__ = [
     "SCORING_EVENT_TYPE",
     "SCORING_RECORD_TYPES",
     "SCORING_TRACE_TYPE",
+    "TRIBUNAL_CASE_TYPE",
+    "TRIBUNAL_PAIR_TYPE",
+    "TRIBUNAL_JUDGMENT_TYPE",
     "CodeProvenanceInterface",
     "GroundingAssertionReferenceInterface",
     "GroundingRankingPoolRecord",
@@ -1204,6 +1340,9 @@ __all__ = [
     "ScoringError",
     "ScoringRecord",
     "ScoringTraceRecord",
+    "TribunalCaseRecord",
+    "TribunalPairRecord",
+    "TribunalJudgmentRecord",
     "WIN_RATE_SCORE",
     "candidate_labels",
     "compute_win_rate_scores",

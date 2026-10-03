@@ -55,7 +55,19 @@ These are now identified Tarav entities. Their Context exposes named reference
 edges and the full Record. `ScoringReference.resolve()` preserves repository
 hash checks and requires explicit resolution dependencies. Derived win-rate
 scores remain derived; a high relative ranking is not proof of correctness.
-No new automatic low-score threshold or POI emission policy is imposed.
+The legacy Line ranking does not impose an automatic low-score threshold.
+
+Generic pairwise scoring uses `PairwiseRankingCase`, a registered `Tribunal`
+Type, and `enroll_case` → `prepare_pair` → `judge_pair` or `submit_judgment`.
+Each case keeps its Assertion reference and closed packet. The tribunal supplies
+the common question and admission decision; the ranker supplies the same
+A/B/tie/abstain procedure for every tribunal. The prompt and each attributed
+judgment are retained under the existing `ScoringRepository` Git root.
+`tribunal_scores` derives relative win/tie support and shows comparison count,
+abstentions, opponent count, and coverage separately. One case has no relative
+score. `TribunalScoreCheck` surfaces unassessed, sparse, or weak support as POIs
+without treating low relative rank as a falsity verdict.
+<!-- tarav.breadcrumb 964976f03c0e4fc414063cb418332d74ace9066971845c9099bc3d4d8a1d95ba -->
 
 The prior `IndexLineGroundingAssertionType` adapter was replaced by the actual
 `LineGroundingAssertion` class. Pool operations are class methods;

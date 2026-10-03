@@ -48,6 +48,11 @@ from .model import (
     validate_record,
 )
 from .repository import ScoringRepository, default_scoring_root
+from .tribunals import (
+    PairwiseRankingCase, Tribunal, TribunalRegistry, TribunalScoreCheck,
+    TribunalScorePOI, enroll_case, prepare_pair, render_pair, judge_pair,
+    submit_judgment, tribunal_scores,
+)
 from .workflow import ScoringWorkflow
 from .rendering import (
     CURRENT_SCORE_RENDERER,
@@ -61,6 +66,17 @@ from .rendering import (
 
 __all__ = [
     "Assertion",
+    "PairwiseRankingCase",
+    "Tribunal",
+    "TribunalRegistry",
+    "TribunalScoreCheck",
+    "TribunalScorePOI",
+    "enroll_case",
+    "prepare_pair",
+    "render_pair",
+    "judge_pair",
+    "submit_judgment",
+    "tribunal_scores",
     "Assertable",
     "AssertionNamespace",
     "AssessmentCase",

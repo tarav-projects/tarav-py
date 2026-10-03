@@ -21,6 +21,9 @@ from .model import (
     RUN_TYPE,
     SCORING_EVENT_TYPE,
     SCORING_TRACE_TYPE,
+    TRIBUNAL_CASE_TYPE,
+    TRIBUNAL_PAIR_TYPE,
+    TRIBUNAL_JUDGMENT_TYPE,
     JsonObject,
     ScoringError,
     canonical_json,
@@ -109,12 +112,22 @@ class ScoringRepository:
     def save(
         self, record: Mapping[str, object], *, message: str | None = None
     ) -> JsonObject:
+        # tarav.breadcrumb 898d2a78acf1426b0160b966b8d2c4f18fd7b23a8241316766b0f5779e254780
         payload = dict(record)
         validate_record(payload)
         if payload["type"] == SCORING_EVENT_TYPE:
             raise ScoringError("Scoring Events are append-only; use append_event")
         path = self.path_for(payload)
         with FileLock(str(self.root / ".write.lock")):
+            if payload['type'] == TRIBUNAL_PAIR_TYPE:
+                a = self.resolve_reference(_reference(payload, 'a_case_ref'))
+                b = self.resolve_reference(_reference(payload, 'b_case_ref'))
+                if (
+                    a['tribunal_type_id'] != payload['tribunal_type_id']
+                    or b['tribunal_type_id'] != payload['tribunal_type_id']
+                    or a['assertion_ref'] == b['assertion_ref']
+                ):
+                    raise ScoringError('Pair cases must be distinct Assertions in one tribunal')
             if payload["type"] == RESULT_TYPE:
                 run_id = _reference_id(payload.get("run_ref"))
                 existing_result = self.result_for_run(str(run_id))
@@ -123,12 +136,26 @@ class ScoringRepository:
                     and existing_result["id"] != payload["id"]
                 ):
                     raise ScoringError(f"Ranking Run already has a Result: {run_id}")
+            if payload["type"] == TRIBUNAL_JUDGMENT_TYPE:
+                pair = self.resolve_reference(_reference(payload, 'pair_ref'))
+                if pair['tribunal_type_id'] != payload['tribunal_type_id']:
+                    raise ScoringError('Judgment tribunal disagrees with its Pair')
+                pair_id = _reference_id(payload.get('pair_ref'))
+                if any(
+                    item['id'] != payload['id'] and _reference_id(item.get('pair_ref')) == pair_id
+                    for item in self.records(TRIBUNAL_JUDGMENT_TYPE)
+                ):
+                    raise ScoringError(f'Tribunal Pair already has a Judgment: {pair_id}')
             if path.exists():
                 previous = self._read_json(path)
                 if previous.get("type") != payload["type"]:
                     raise ScoringError(
                         "a Record UUID cannot be rebound to another Type"
                     )
+                if payload['type'] in {
+                    TRIBUNAL_CASE_TYPE, TRIBUNAL_PAIR_TYPE, TRIBUNAL_JUDGMENT_TYPE,
+                } and previous != payload:
+                    raise ScoringError('Tribunal Records are immutable; create a new edition')
             path.parent.mkdir(parents=True, exist_ok=True)
             if is_pool_record_type(str(payload["type"])):
                 for child in ("enrollments", "tasks", "runs", "results"):
@@ -458,6 +485,14 @@ class ScoringRepository:
         if record_type == SCORING_EVENT_TYPE:
             trace = self.resolve_reference(_reference(record, "trace_ref"))
             return self.root / "assertion-traces" / str(trace["id"]) / "events.jsonl"
+        if record_type in {TRIBUNAL_CASE_TYPE, TRIBUNAL_PAIR_TYPE, TRIBUNAL_JUDGMENT_TYPE}:
+            tribunal_id = str(record['tribunal_type_id'])
+            child_dir = {
+                TRIBUNAL_CASE_TYPE: 'cases',
+                TRIBUNAL_PAIR_TYPE: 'pairs',
+                TRIBUNAL_JUDGMENT_TYPE: 'judgments',
+            }[record_type]
+            return self.root / 'tribunals' / tribunal_id / child_dir / f'{record_id}.json'
         pool_id = self._pool_id_for(record)
         child_dir = {
             POOL_ENROLLMENT_TYPE: "enrollments",
@@ -494,11 +529,16 @@ class ScoringRepository:
             GROUNDING_TASK_TYPE: "*/tasks/*.json",
             RUN_TYPE: "*/runs/*.json",
             RESULT_TYPE: "*/results/*.json",
+            TRIBUNAL_CASE_TYPE: "*/cases/*.json",
+            TRIBUNAL_PAIR_TYPE: "*/pairs/*.json",
+            TRIBUNAL_JUDGMENT_TYPE: "*/judgments/*.json",
         }.get(record_type)
         if record_type == SCORING_TRACE_TYPE:
             return tuple(sorted((self.root / "assertion-traces").glob("*/trace.json")))
         if pattern is None:
             return ()
+        if record_type in {TRIBUNAL_CASE_TYPE, TRIBUNAL_PAIR_TYPE, TRIBUNAL_JUDGMENT_TYPE}:
+            return tuple(sorted((self.root / 'tribunals').glob(pattern)))
         return tuple(sorted((self.root / "pools").glob(pattern)))
 
     def _load_path(self, path: Path) -> JsonObject:

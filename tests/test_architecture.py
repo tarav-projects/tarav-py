@@ -95,11 +95,15 @@ def test_poi_workflow_ownership_and_runtime_composition():
 
 
 def test_assertion_foundation_and_line_specialization_are_separate():
+    # tarav.breadcrumb 73c1e18245d93a9476d49b977aa509c06e1ef721a4f3ff39b7b0398c5011349a
     from tarav.l2.lines.assertions import (
         LineGroundingAssertion, LineGroundingCase, LineSupportInventoryCase,
     )
     from tarav.l1.lines.workflow import LinesWorkflow
-    from tarav.l2.scoring import Assertable, Assertion, AssessmentCase, ScoringWorkflow
+    from tarav.l2.scoring import (
+        Assertable, Assertion, AssessmentCase, PairwiseRankingCase,
+        ScoringWorkflow, TribunalScoreCheck, TribunalScorePOI,
+    )
     from tarav.l3.runtime import create_runtime
 
     assert issubclass(LineGroundingAssertion, Assertion)
@@ -108,7 +112,10 @@ def test_assertion_foundation_and_line_specialization_are_separate():
     assert entity(AssessmentCase).workflow is ScoringWorkflow()
     assert entity(LineGroundingAssertion).workflow is LinesWorkflow()
     runtime = create_runtime()
-    for case_type in (AssessmentCase, LineGroundingCase, LineSupportInventoryCase):
+    for case_type in (
+        AssessmentCase, PairwiseRankingCase, LineGroundingCase,
+        LineSupportInventoryCase, TribunalScoreCheck, TribunalScorePOI,
+    ):
         assert runtime.records.resolve_ship(entity(case_type).id) is case_type
     graph = _top_level_import_graph()
     assert not any(name.startswith('lines') for name in graph['scoring.assertions'])
