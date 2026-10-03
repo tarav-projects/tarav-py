@@ -25,3 +25,9 @@ class StaleOutput(CheckPOI, BlessablePOI):
 receive an attributed blessing. A POI is not blessable unless its concrete
 type inherits that capability. `BlessingStore` retains acceptance and
 assessment Records without suppressing the POI.
+
+`tarav.l2.blessings.attention_report` is a separate, pageable view of a
+`POICollector` evaluation. It selects currently due POIs for an agent while
+`POICollector.report()` continues to show all emissions. A missing POI has no
+attention schedule, and `show_all` or `force_review` can expose deferred POIs.
+<!-- tarav.breadcrumb 919ad0356a7b415abc1cb46bd0a15ef2478b17c468675dc3e5ed2c6440496cb1 -->

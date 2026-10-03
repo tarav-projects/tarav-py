@@ -512,6 +512,15 @@ standing behavior and storage location.
 <!-- tarav.breadcrumb 903d50edc16c9a21d196b1271302c63a2574659e7adb9bda716b62a9314de7a3 -->
 <!-- tarav.breadcrumb b6bdfb5131dd4eb553fce00b71dc1f8557188d614541a26666481bc6853125c0 -->
 
+`l2.blessings.attention` composes the current POI collector, l1 BlessingStore,
+and l2 ScoringRepository into a separate, pageable due/deferred view. It does
+not change check output, l1 binary standing, or retained Record schemas. A
+changed situation has a new POI identity; a mechanically absent POI is never
+scheduled. Source independence is explicit and conservative, and the derived
+score remains relative rather than a truth scalar.
+<!-- tarav.breadcrumb d6e3d0827437513471422c2b746bb86ae468ccd2ebeb05292beb44d65d785dee -->
+<!-- tarav.breadcrumb dc5c60cd5793d3b5adfee34f6fc6c811c17b005ca1313178cb0b23f13306175a -->
+
 Assertions identify typed subjects; their subtypes define evidence and check
 semantics. Scores are separate judgments, not Assertion identity. Scoring
 reference Context entries resolve only through an explicitly supplied

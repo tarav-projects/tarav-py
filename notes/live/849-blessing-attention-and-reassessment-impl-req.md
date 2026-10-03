@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: design ready; Wiki capture pending. Phase: Design only.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: implementation verified; Wiki capture pending. Phase: Execute.
 
 Add Tarav's reusable attention policy for continuing, judgment-based POIs. Checks keep detecting the situation; blessings and their scored Assertions affect when that same situation is offered for another review. Weakly assessed or old blessings return sooner, repeated well-supported reassessments may defer review longer up to a cap, and a user or agent can request every POI regardless of standing.
 
@@ -44,3 +44,7 @@ Acceptance: a still-triggering blessed POI remains visible in the full result; a
 - Design only; no scheduler, presentation path, or retained blessing data changed.
 - Concrete durations and formula are implementation parameters to pilot, not user-approved constants.
 - Recovery: moved from temporary staging into this product repository as request 849; Chatlas and Breadcrumb evidence now live in Tarav's durable data depot. Project.Wiki capture remains pending.
+- 2026-10-03 Execute: scoped start checkpoint `1a75d53eb7381b88105076b5e8b171938d96ad0f`. `tarav.l2.blessings.attention_report` provides a pageable due/deferred view over current collector emissions, exact-situation Blessing Records, and named score-vector entries. It does not alter detection, retained records, or the l1 binary standing view. `show_all` and `force_review` expose deferred POIs without changing their schedules.
+- Pilot policy parameters are configurable: a first or weakly assessed blessing defers for one day; sufficiently sampled favorable *relative* scoring extends that interval by three, and separately scored reviews from different actors with explicitly disjoint `independence_group` source cues can extend it further, subject to a cap. Correlated or unscored repetitions do not extend deferral. These durations and thresholds are implementation choices for the pilot, not user-set constants or proof of truth.
+- Controlled-clock tests cover initial deferral, aging, independent and correlated reviews, strong and weak relative scores, cap, changed situation, absent POI, force review, and bounded all-POI paging. After Product.Surface capture, 63 focused cross-boundary tests and the configured 155-test suite passed. Ruff passed on all 849 Python surfaces and the scoped diff passed `git diff --check`. A repository-wide Ruff run was interrupted by an unused import in unrelated, concurrent workspace work; 849 does not modify that module.
+- Product.Surface Breadcrumb submission and audits are clean on the attention implementation, tests, architecture, and POI/scoring guidance. The package `__init__.py` change is only an export and has no justified conversational attachment. Wiki capture remains to close.

@@ -153,6 +153,21 @@ def test_blessing_assertions_compose_without_reverse_layer_imports():
         )
 
 
+def test_attention_composition_stays_above_poi_and_blessing_foundations():
+    # tarav.breadcrumb c8849217c14eb05bfb144a6f80f23d096fd3196ec3a5f8d1cb7a34ab0f305f9a
+    from tarav.l2.blessings import BlessingAttentionPolicy, attention_report
+
+    assert BlessingAttentionPolicy.__module__ == 'tarav.l2.blessings.attention'
+    assert attention_report.__module__ == 'tarav.l2.blessings.attention'
+    for path in (PACKAGE_ROOT / 'l1/poi/primitives.py',
+                 PACKAGE_ROOT / 'l1/blessings/store.py'):
+        tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+        assert not any(
+            isinstance(node, ast.ImportFrom) and (node.module or '').startswith('tarav.l2')
+            for node in ast.walk(tree)
+        )
+
+
 def test_wiki_ownership_and_parsing_boundary():
     from tarav.l3.runtime import create_runtime
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow

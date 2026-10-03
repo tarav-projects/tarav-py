@@ -80,6 +80,18 @@ blessing or merging legacy BlessingAssessmentRecords. Detection and the old
 binary standing view remain unchanged.
 <!-- tarav.breadcrumb 5a29a5247ba8f886c1f9c8d31820023fc0f323edee9e15bd073f06aa96c8ecee -->
 
+`tarav.l2.blessings.attention_report` reads current POIs, their exact-situation
+blessings, and the named `main` score. A first blessing defers briefly; a
+well-sampled favorable relative score can extend the interval, with further
+extension only for distinct actors and explicitly disjoint source groups.
+Unscored or weak claims use the short interval. All intervals are configurable
+and capped; elapsed time returns a still-detected POI to the due view.
+`show_all` and `force_review` preserve direct access without changing stored
+blessings or the existing binary standing view. An `independence_group` on an
+offered support reference is an explicit correlation cue, not proof of truth.
+<!-- tarav.breadcrumb c00d3877419932a2a6a9b73112f4f14b2cc2007a8c3122baff9658766bb39a57 -->
+<!-- tarav.breadcrumb 704d0e14058bbe28de042ca36804bc98fb8de9f394f343e3e55a3984577f7bea -->
+
 The prior `IndexLineGroundingAssertionType` adapter was replaced by the actual
 `LineGroundingAssertion` class. Pool operations are class methods;
 `from_line()` / `from_reference()` produce assertion objects whose `candidate()`
