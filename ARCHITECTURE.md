@@ -420,7 +420,7 @@ schema or an additional Workflow identity.
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `scoring` | Common Assertable capability, identified Assertions, closed typed assessment cases, and evaluation mechanics: pools, tribunal cases and pairwise judgments, tasks, runs, results, derived scores, and traces. Scoring Records are entities with explicit Context reference edges. |
 | `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. Opt-in TrackedPOI Records retain detection history at a caller-selected root; only a completed evaluation of the same declared scope may infer absence. The l2 board joins optional Decisions and pages/filter these Records without turning disposition into detection. |
-| `decisions` | DecisionsWorkflow owns the shared attributed Decision contract and Order/ReportedAction records. The common actor field is exposed as `decider`; subtype schemas keep their own subjects and optional POI links. l2 builds an inspectable main Assertion for generic Decisions; assessment cases and attention policy are not yet prescribed. Existing Blessing Records subtype Decision without changing their Type Ship or schema. |
+| `decisions` | DecisionsWorkflow owns the shared attributed Decision contract and prescribes no concrete subtype of its own; consuming workflows define theirs. The common actor field is exposed as `decider`; subtype schemas keep their own fields and optional POI links. l2 builds an inspectable main Assertion for generic Decisions; assessment cases and attention policy are not yet prescribed. Existing Blessing Records subtype Decision without changing their Type Ship or schema. |
 | `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. BlessingRecord is Assertable through Decision; its established Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. Blessings match situation identity directly and never suppress a POI. BlessingStore remains independently usable without tracking. |
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. SituationChecks evaluate a detached Situation and use that same snapshot as the POI acceptance scope. Execution completion and a POI's failure signal are separate. |
 <!-- tarav.breadcrumb b750afdefcc38c23df01af9ca67d4f9d81f2795c8e12860d22ddc28782038a74 -->
@@ -515,8 +515,8 @@ standing behavior and storage location.
 
 Decision records share attributed fields without imposing a new Blessing schema:
 `BlessingRecord.actor` remains stored unchanged, while `Decision.decider` reads
-that role. Order and ReportedAction can refer to tracked POIs but do not require
-one. Their first `main` Assertion identifies the retained intervention; no
+that role. A Decision subtype can refer to tracked POIs but does not require
+one. The generic `main` Assertion identifies the retained intervention; no
 scoring case is claimed yet. `TrackedPOIStore` is caller-rooted, and a Project's
 featured `poi_board()` uses `.tarav/tracked-pois` with a separate local Decision
 store. A board may also be given a BlessingStore, including its existing Archive
