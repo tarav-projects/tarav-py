@@ -15,34 +15,6 @@ from tarav.l1.cli import Command, CliWorkflow, commands_from_parser
 from tarav.l1.live_help import LiveHelpArgumentParser, render_live_help
 
 
-def _safe_options(
-    argv: Sequence[str], root: argparse.ArgumentParser, command: Command,
-) -> list[str]:
-    """Record option names only; option and remainder values may be secrets."""
-    known: set[str] = set()
-    node = root
-    known.update(option for action in node._actions for option in action.option_strings)
-    for segment in command.path:
-        branch = next(
-            (action for action in node._actions
-             if isinstance(action, argparse._SubParsersAction) and segment in action.choices),
-            None,
-        )
-        if branch is None:
-            break
-        node = branch.choices[segment]
-        known.update(option for action in node._actions for option in action.option_strings)
-    names: list[str] = []
-    for word in argv:
-        if word == "--":
-            break
-        if word.startswith("-") and word != "-":
-            name = word.split("=", 1)[0]
-            if name in known and name not in names:
-                names.append(name)
-    return names
-
-
 # tarav.breadcrumb d5c2c85ac9548726cf6c417c56b639efeda056143548f190e445113aafbb9cd1
 def build_parser(
     *,
@@ -101,7 +73,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "exit_code": exit_code,
                     "duration_ms": round((perf_counter() - started) * 1000),
                     "cwd": str(Path.cwd()),
-                    "options": _safe_options(argv_list, parser, command),
+                    # Complete arguments: traces stay in the local Tarav data
+                    # root, and the registering workflow decides what to keep.
+                    "argv": list(argv_list),
                 },
             )
 

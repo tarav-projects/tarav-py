@@ -112,9 +112,9 @@ def render_live_help(
         stamp = str(use.get("recorded_at", ""))[:16].replace("T", " ")
         lines.append(f"  {stamp}  exit {outcome}")
         if isinstance(payload, dict):
-            options = payload.get("options")
-            if isinstance(options, list) and options:
-                lines.append("                    options " + " ".join(str(value) for value in options))
+            argv = payload.get("argv")
+            if isinstance(argv, list) and argv:
+                lines.append("                    tarav " + shlex.join(str(value) for value in argv))
             cwd = payload.get("cwd")
             if cwd:
                 lines.append(f"                    cwd {cwd}")

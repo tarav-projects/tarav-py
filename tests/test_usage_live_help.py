@@ -59,17 +59,16 @@ def test_command_model_is_stable_and_raises_missing_help_poi() -> None:
     assert [poi.code for poi in command.checks[0].run().pois()] == ["cli.missing-help"]
 
 
-def test_cli_help_and_safe_recent_use(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_cli_help_shows_complete_recent_use(tmp_path: Path, monkeypatch, capsys) -> None:
     runtime = create_runtime(archive_root=tmp_path)
     monkeypatch.setattr(cli_adapter, "create_runtime", lambda: runtime)
-    secret = "private-example-value"
+    value = "example-subject-value"
 
-    assert cli_adapter.main(["usage", "query", "--subject", secret]) == 0
+    assert cli_adapter.main(["usage", "query", "--subject", value]) == 0
     capsys.readouterr()
     rows = runtime.usage.query(workflow=CliWorkflow, subject="usage query")
     assert len(rows) == 1
-    assert rows[0]["payload"]["options"] == ["--subject"]
-    assert secret not in str(rows)
+    assert rows[0]["payload"]["argv"] == ["usage", "query", "--subject", value]
     assert runtime.usage.record(
         workflow=LiveHelpWorkflow, subject="usage query", payload={"exit_code": 9},
     )
@@ -82,7 +81,7 @@ def test_cli_help_and_safe_recent_use(tmp_path: Path, monkeypatch, capsys) -> No
     assert "source:" in help_text
     assert "recent uses (1 of 1)" in help_text
     assert "exit 9" not in help_text
-    assert secret not in help_text
+    assert f"tarav usage query --subject {value}" in help_text
 
 
 def test_usage_write_failure_preserves_cli_outcome(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -93,12 +92,12 @@ def test_usage_write_failure_preserves_cli_outcome(tmp_path: Path, monkeypatch, 
     assert capsys.readouterr().out.strip() == "[]"
 
 
-def test_python_remainder_is_absent_from_usage_trace(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_python_remainder_is_kept_in_usage_trace(tmp_path: Path, monkeypatch, capsys) -> None:
     runtime = create_runtime(archive_root=tmp_path)
     monkeypatch.setattr(cli_adapter, "create_runtime", lambda: runtime)
-    secret = "private-python-source-value"
-    assert cli_adapter.main(["run", "--", "-c", f"print({secret!r})"]) == 0
+    code = "print('python-source-value')"
+    assert cli_adapter.main(["run", "--", "-c", code]) == 0
     capsys.readouterr()
     rows = runtime.usage.query(workflow=CliWorkflow, subject="run")
     assert len(rows) == 1
-    assert secret not in str(rows)
+    assert rows[0]["payload"]["argv"] == ["run", "--", "-c", code]
