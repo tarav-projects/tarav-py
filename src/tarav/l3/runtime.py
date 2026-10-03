@@ -291,6 +291,10 @@ def create_runtime(
         BlessingStore,
         BlessingsWorkflow,
     )
+    from tarav.l1.decisions import (
+        DECISION_RECORD_TYPES, DecisionsWorkflow, bind_decision_assertions,
+    )
+    from tarav.l2.decisions import DecisionReportAssertion, assertions_for_decision
     from tarav.l1.blessings.store import bind_blessing_assertion_services
     from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow
     from tarav.l1.breadcrumbs.auditing import BreadcrumbAuditCheck
@@ -378,6 +382,8 @@ def create_runtime(
                 ProjectProgram,
                 *POI_RECORD_TYPES,
                 *BLESSING_RECORD_TYPES,
+                *DECISION_RECORD_TYPES,
+                DecisionReportAssertion,
                 BlessablePOI,
                 Check,
                 CheckPOI,
@@ -445,6 +451,7 @@ def create_runtime(
         ProjectWikiWorkflow,
         POIWorkflow,
         BlessingsWorkflow,
+        DecisionsWorkflow,
         ChecksWorkflow,
         UsageRegistryWorkflow,
         CliWorkflow,
@@ -485,6 +492,7 @@ def create_runtime(
         assertions=assertions_for_blessing,
         scores=score_vector_for_blessing,
     )
+    bind_decision_assertions(assertions_for_decision)
     registry = HookRegistry()
     register_hook_sampling_callbacks(registry)
     register_claude_usage_hook_callbacks(registry)

@@ -419,8 +419,9 @@ schema or an additional Workflow identity.
 | `models` | ModelsWorkflow owns the Model handler, ModelShipRecord, and ModelEditionRecord. Project associations do not imply ownership; several projects may share one Model. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `scoring` | Common Assertable capability, identified Assertions, closed typed assessment cases, and evaluation mechanics: pools, tribunal cases and pairwise judgments, tasks, runs, results, derived scores, and traces. Scoring Records are entities with explicit Context reference edges. |
-| `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. |
-| `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. BlessingRecord is Assertable; its Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. Blessings match situation identity directly and never suppress a POI. |
+| `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. Opt-in TrackedPOI Records retain detection history at a caller-selected root; only a completed evaluation of the same declared scope may infer absence. The l2 board joins optional Decisions and pages/filter these Records without turning disposition into detection. |
+| `decisions` | DecisionsWorkflow owns the shared attributed Decision contract and Order/ReportedAction records. The common actor field is exposed as `decider`; subtype schemas keep their own subjects and optional POI links. l2 builds an inspectable main Assertion for generic Decisions; assessment cases and attention policy are not yet prescribed. Existing Blessing Records subtype Decision without changing their Type Ship or schema. |
+| `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. BlessingRecord is Assertable through Decision; its established Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. Blessings match situation identity directly and never suppress a POI. BlessingStore remains independently usable without tracking. |
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. SituationChecks evaluate a detached Situation and use that same snapshot as the POI acceptance scope. Execution completion and a POI's failure signal are separate. |
 <!-- tarav.breadcrumb b750afdefcc38c23df01af9ca67d4f9d81f2795c8e12860d22ddc28782038a74 -->
 <!-- tarav.breadcrumb 28df20317b527872af6eb271a0ede8e2a1c30d0b8fc98201f63e8cb564ec6183 -->
@@ -511,6 +512,17 @@ references make a case incomplete rather than inviting the scorer to research.
 The read-only score vector queries scorer-owned tribunal results by Assertion
 reference, while historical BlessingAssessmentRecords keep their separate
 standing behavior and storage location.
+
+Decision records share attributed fields without imposing a new Blessing schema:
+`BlessingRecord.actor` remains stored unchanged, while `Decision.decider` reads
+that role. Order and ReportedAction can refer to tracked POIs but do not require
+one. Their first `main` Assertion identifies the retained intervention; no
+scoring case is claimed yet. `TrackedPOIStore` is caller-rooted, and a Project's
+featured `poi_board()` uses `.tarav/tracked-pois` with a separate local Decision
+store. A board may also be given a BlessingStore, including its existing Archive
+partition. Detection changes only through explicitly completed evaluations with
+an exact, caller-declared scope; a blessing changes review disposition, never
+detection or POI identity.
 <!-- tarav.breadcrumb 903d50edc16c9a21d196b1271302c63a2574659e7adb9bda716b62a9314de7a3 -->
 <!-- tarav.breadcrumb b6bdfb5131dd4eb553fce00b71dc1f8557188d614541a26666481bc6853125c0 -->
 

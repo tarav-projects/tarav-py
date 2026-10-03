@@ -148,11 +148,16 @@ def test_blessing_assertions_compose_without_reverse_layer_imports():
         BlessingGroundsAssertion, BlessingGroundsCase,
     )
     from tarav.l2.scoring import Assertable
+    from tarav.l1.decisions import Decision, DecisionsWorkflow
+    from tarav.l2.decisions import DecisionReportAssertion
     from tarav.l3.runtime import create_runtime
 
     assert issubclass(BlessingRecord, Assertable)
+    assert issubclass(BlessingRecord, Decision)
     assert entity(BlessingRecord).workflow is BlessingsWorkflow()
-    assert entity(Assertable).id in {base.id for base in entity(BlessingRecord).bases()}
+    assert entity(Decision).id in {base.id for base in entity(BlessingRecord).bases()}
+    assert entity(Decision).workflow is DecisionsWorkflow()
+    assert entity(DecisionReportAssertion).workflow is DecisionsWorkflow()
     runtime = create_runtime()
     for record_type in (
         BlessingAcceptanceAssertion, BlessingAcceptanceCase,
@@ -386,8 +391,10 @@ def _top_level_import_graph() -> dict[str, set[str]]:
         # Check their actual module dependencies, not a collapsed package cycle.
         if source in {"lines", "unsorted", "scoring", "models", "project"}:
             source = ".".join(Path(*parts).with_suffix("").parts).removesuffix(".__init__")
-        if relative.parts[:2] == ('l1', 'scoring'):
-            source = source.replace('scoring', 'scoring.foundation', 1)
+        if relative.parts[0] == 'l1' and relative.parts[1] in {
+            'scoring', 'poi', 'blessings', 'decisions',
+        }:
+            source = source.replace(relative.parts[1], relative.parts[1] + '.foundation', 1)
         # skw.skills is a composition leaf above the generic SKW document kernel.
         if Path(*parts).as_posix() in {
             "skw/skills.py",
@@ -427,8 +434,10 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                     target = name.split(".", 2)[-1] if name.startswith("tarav.l") else name.removeprefix("tarav.")
                     if target.startswith(("l1.", "l2.", "l3.")):
                         target = target.split(".", 1)[1]
-                if name == 'tarav.l1.scoring' or name.startswith('tarav.l1.scoring.'):
-                    target = target.replace('scoring', 'scoring.foundation', 1)
+                for foundation in ('scoring', 'poi', 'blessings', 'decisions'):
+                    if name == f'tarav.l1.{foundation}' or name.startswith(f'tarav.l1.{foundation}.'):
+                        target = target.replace(foundation, foundation + '.foundation', 1)
+                        break
                 if name == "tarav.l2.skw.skills" or name.startswith("tarav.l2.skw.skills."):
                     target = "skw.skills"
                 if target != source:
@@ -575,9 +584,9 @@ def test_kernel_is_a_dependency_clean_application_base() -> None:
     assert "l0.kernel" in imports["lines.records"]
     assert "l0.kernel" in imports["archive"]
     assert "l0.kernel" in imports["navigation"]
-    assert "poi" in imports["navigation"]
+    assert "poi.foundation" in imports["navigation"]
     assert "navigation" not in imports["l0.kernel"]
-    assert imports["references"] <= {"l0.kernel", "poi"}
+    assert imports["references"] <= {"l0.kernel", "poi.foundation"}
     assert "references" in imports["archive"]
     assert "record_archive" not in imports
     assert not (PACKAGE_ROOT / "record_archive" / "__init__.py").exists()

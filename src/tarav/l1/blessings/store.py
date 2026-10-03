@@ -16,7 +16,7 @@ from tarav.l0.kernel import (
     entity,
 )
 from tarav.l1.poi import fingerprint
-from tarav.l1.scoring import Assertable
+from tarav.l1.decisions import Decision
 
 from .capability import BlessablePOI
 from .workflow import BLESSINGS_WORKFLOW_SHIP
@@ -36,9 +36,10 @@ def bind_blessing_assertion_services(*, assertions, scores) -> None:
     _score_provider = scores
 
 
-class BlessingRecord(TaravEntity, FileRecord, Assertable):
+# tarav.breadcrumb 77e3776202a020cf5caa253438fbd0dafbf2796bd6fd03abfc2141d1d6732d9c
+class BlessingRecord(Decision):
     # tarav.breadcrumb 1f79ed706a8e477702024e29b419cb676616dfd0c877392cb3dd9d31f8beebb9
-    class RecordInterface(TaravEntity.RecordInterface):
+    class RecordInterface(Decision.RecordInterface):
         schema_version: int
         created_at: str
         actor: dict
@@ -100,6 +101,10 @@ class BlessingRecord(TaravEntity, FileRecord, Assertable):
     def ships(self):
         poi = self.to_record()["poi"]
         return (*super().ships(), TypeShip(poi["class_id"]))
+
+    @property
+    def poi_ids(self) -> tuple[str, ...]:
+        return (self.to_record()["poi"]["id"],)
 
     def obj_context(self, builder):
         from tarav.l1.poi import POIDetails

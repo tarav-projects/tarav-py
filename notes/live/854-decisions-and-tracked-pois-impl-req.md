@@ -1,6 +1,7 @@
 # 854 — Decisions as the root type, and tracked POIs on a board
 
 <!-- tarav.sessions
+6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 64298cbc = claude-code:9da4cef5-68b7-4d17-8a06-1351ca51e82f @64298cbc8db2e7aa971e0828653c07bcb483cfed40931fdf87d5abe7ce1c60b3
 -->
 
@@ -8,7 +9,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: needs-alignment (Design only; no product code changed).
+Status: implemented (first slice; attention policy and g70203 adoption deferred).
 
 Establish the scaffolding for two generalizations learned while redesigning
 g70203 on Tarav:
@@ -185,7 +186,9 @@ Supporting chat: Claude Code session `9da4cef5-68b7-4d17-8a06-1351ca51e82f`
 
 ## Execution.Plan
 
-Pending alignment on the open questions. Provisional:
+Executed as a bounded first slice after the User authorized execution and
+asked the Agent to resolve the remaining alignment choices.
+<!-- tarav.breadcrumb d76d35ebf17aba06251e4499b41155382039db71dbef26e8e004b38cb8d7dabb -->
 
 1. Cold-read `l1/poi`, `l1/blessings`, `l1/scoring`, `l2/blessings` and
    their tests; confirm Record loading of retained blessings.
@@ -218,3 +221,28 @@ Pending alignment on the open questions. Provisional:
   decisions. All three points were checked against the code and accepted.
 <!-- tarav.breadcrumb f1b000250df40c007fd11d821f4c81350786e29699299c10cc4124333c4deaff -->
 <!-- tarav.breadcrumb 5fc8429030c9375526217ab5c30104679e989f3b0e991448495161e4a8da23ec -->
+- 2026-10-03 Execute: chose in-place `BlessingRecord` inheritance from
+  `Decision`, preserving its Type Ship and stored schema. The shared role is
+  still stored as `actor`, with `decider` as an accessor. `Order` and
+  `ReportedAction` retain optional POI links and typed subjects. A generic
+  main Assertion is inspectable but has no scoring case yet.
+- Tracking is opt-in and caller-rooted. `TrackedPOIStore.reconcile` treats only
+  completed evaluations with an *exact* caller-declared scope as evidence of
+  absence; another scope or an incomplete run changes nothing. The board
+  derives the first disposition (`blessed` or `unreviewed`) from attached
+  Blessing Records, includes other Decision references, and never lets that
+  disposition alter detection. `Project.poi_board()` uses local tracking and
+  Decision roots; callers may supply an existing BlessingStore. The POI's
+  concrete Type declares the owning workflow. These are first-slice choices,
+  not a new universal attention policy.
+- Verification: `uv run pytest -q` passed 156 tests; `uv run ruff check src
+  tests` and `git diff --check` passed. Product Surface Breadcrumbs were
+  submitted in the Decision and POI foundations, Blessing inheritance,
+  assertions, board, Project entry, and focused tests; audits passed after
+  refreshing three older stale locations in `blessings/store.py` and eleven
+  older locations in `ARCHITECTURE.md`. Pure registration and import adapters
+  had no additional justified annotation position. Wiki capture updated the
+  2026-10-03 daily note and topical Decisions/POI notes; audits passed after
+  refreshing older Decisions-note positions. Completion commit identities
+  are reported in the execution handoff; they cannot be recorded in their
+  own committed note without another commit.

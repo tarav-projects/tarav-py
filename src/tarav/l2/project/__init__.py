@@ -34,6 +34,19 @@ class Project(TaravProject):
         from .workspaces import ProjectWorkspaces
         return ProjectWorkspaces(self)
 
+    # tarav.breadcrumb 99811cb8c39c0f0f8a3111bca58e6e7dfcf146cb5aa168c1f9f6e5a8d643ba87
+    def poi_board(self, *, blessings=None, decisions=None):
+        """Open this Project's tracked-POI board without creating its store."""
+        from tarav.l1.decisions import DecisionStore
+        from tarav.l1.poi import TrackedPOIStore
+        from tarav.l2.poi import TrackedPOIBoard
+
+        return TrackedPOIBoard(
+            TrackedPOIStore(self.root / ".tarav" / "tracked-pois"),
+            blessings=blessings,
+            decisions=decisions or DecisionStore(self.root / ".tarav" / "decisions"),
+        )
+
 
 __all__ = [
     "PROJECT_RUNNER_RECORD_TYPES",
