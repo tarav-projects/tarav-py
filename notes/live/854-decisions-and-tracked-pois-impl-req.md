@@ -135,10 +135,26 @@ is an axis independent of those types.
   action** may wrap the existing commit-evidence record rather than define a
   new one.
 - **Tracked POI** as a persisted Record holding the POI snapshot, owner
-  workflow, state and history; states `open`, `resolved` (detection
-  disappeared), `closed` (by a decision), `ignored`. Re-detection of a
-  resolved POI reopens it by situation identity.
-- **Board** = a store plus filters (workflow, type, state, subject), reusing
+  workflow and history, with two independent dimensions (amended after
+  review, see Impl.Log):
+  - **detection**: `detected` / `not detected`, set only by evaluations whose
+    declared scope covers the POI;
+  - **disposition**: derived from the attached Decisions, which stay
+    revisable and are scheduled by attention. It is never a terminal stored
+    state, so a still-detected POI cannot quietly become permanently done.
+  "Resolved" just means not detected. Re-detection is the same POI by
+  situation identity.
+- **Evaluation scope**: reconciliation consumes an evaluation that declares
+  its scope (which Checks, which subjects) and signals completion. Only a
+  completed evaluation covering a tracked POI may mark it not detected;
+  absence from a partial or failed run changes nothing.
+- **Storage root is separate from ownership.** The owning workflow is a
+  field on the record and a board filter. Files live under whatever root the
+  caller supplies: `BlessingStore` already supports an Archive partition
+  (`from_archive`, under the POI workflow) and a Project-local root (SKW's
+  `.skw/blessings`, `l2/skw/skills.py:159`).
+- **Board** = a store plus filters (workflow, type, detection, disposition,
+  subject), reusing
   the 849 paging conventions; attention ranks the board.
 - Attention dispatch by Decision type (a policy method on each subtype) is the
   follow-up, not this request.
@@ -149,10 +165,12 @@ is an axis independent of those types.
    POI store and board query), with attention dispatch left to a follow-up?
 2. Re-parent `BlessingRecord` in place (keeping its Type Ship), or introduce
    Decision beside it and migrate later?
-3. Tracked-POI states: are `open / resolved / closed / ignored` the right
-   initial set, and does a resolved POI reopen on re-detection?
-4. Where do tracked POIs live: one store per Project (like blessings) or per
-   workflow?
+3. Is detection plus derived disposition the right model, and which
+   Decision subtypes define the first dispositions?
+4. Storage root: Archive partition (as `BlessingStore.from_archive`), a
+   Project-local root, or caller-supplied with one default?
+5. Ownership: is the owning workflow a required field on every tracked POI,
+   and can a POI be shared by several workflows?
 
 ## Impl.Req.Wiki
 
@@ -173,15 +191,30 @@ Pending alignment on the open questions. Provisional:
    their tests; confirm Record loading of retained blessings.
 2. Add `tarav.l1.decisions`: `Decision` base (Assertable) and `Order`,
    `ReportedAction` subtypes; re-parent `BlessingRecord` per question 2.
-3. Add tracked POIs: Record, store, lifecycle transitions, and attaching
-   Decisions; reconcile against a `POICollector` evaluation (new → open,
-   gone → resolved, back → reopened).
+3. Add tracked POIs: Record, store, and attaching Decisions. Add a scoped
+   evaluation (declared Checks and subjects, completion signal) and reconcile
+   detection only within a completed evaluation's scope: emitted → detected;
+   covered but not emitted → not detected; outside scope or incomplete →
+   unchanged. Disposition is computed from Decisions, not stored.
 4. Add the board query (filters, paging) and expose it through the Project.
 5. Tests: retained blessings load unchanged; each Decision subtype
-   round-trips; tracked-POI lifecycle under a controlled clock; board filters.
+   round-trips; detection reconciliation (including a partial run that must
+   not resolve uncovered POIs, and a failed run that changes nothing); a
+   still-detected POI with a Decision stays visible and revisable; board
+   filters; both storage roots.
    Run focused and configured suites.
 
 ## Impl.Log
 
 - 2026-10-03 Design: note written from the g70203 discussion; code inspected
   as listed under Current behavior. No product code changed.
+- 2026-10-03 Design amended after an external review relayed by the User:
+  (1) absence from one `POICollector` run is not resolution, so
+  reconciliation needs a scoped, completed evaluation; (2) the
+  `open/resolved/closed/ignored` states mixed detection with disposition and
+  let a still-detected POI become permanently closed, contradicting the
+  never-permanent decisions requirement, so detection and disposition are
+  now separate; (3) storage root and workflow ownership are separate
+  decisions. All three points were checked against the code and accepted.
+<!-- tarav.breadcrumb f1b000250df40c007fd11d821f4c81350786e29699299c10cc4124333c4deaff -->
+<!-- tarav.breadcrumb 5fc8429030c9375526217ab5c30104679e989f3b0e991448495161e4a8da23ec -->
