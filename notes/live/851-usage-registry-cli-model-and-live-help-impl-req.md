@@ -7,7 +7,8 @@ f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf049
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design only.
-Status: needs alignment on the open questions below; otherwise ready.
+Status: ready after the review decisions; two open questions remain, neither
+blocking.
 
 Add a Usage Registry workflow where any workflow can leave traces of how it
 was used, model the `tarav` command line as Tarav objects that register each
@@ -63,9 +64,8 @@ Agent proposal:
 - `Command`: one object per parser in the tree, derived mechanically by
   walking the built argparse tree; never declared by hand, so it cannot drift.
   It holds the command path (`skw document record`), help text, and handler.
-  Identity is the command path, not a UUID, so a removed command leaves
-  honest history behind.
-- `CommandInvocation`: one record per call.
+  The command path is its readable key. Its Ship is derived deterministically
+  from that key, so nothing is stored (see Review decisions).
 - Checks on `Command` through the existing Checks workflow, raising POIs such
   as missing help text or a handler whose source cannot be located. The User
   named missing help as an example of what the model should let us detect.
@@ -108,8 +108,9 @@ query their JSON.
 
 Agent proposal:
 
-- `UsageRegistryWorkflow` owns one Archive partition, with one sub-partition
-  per registering workflow and one JSON-lines file per day.
+- `UsageRegistryWorkflow` owns one Archive partition. Each registering
+  workflow gets one typed Archive folder in it, holding one JSON-lines file
+  per day as plain workflow-owned files (see Review decisions).
 - One library call, `record_usage(workflow, subject, payload, project=None)`,
   appends a `LiteRecord` with time, workflow, subject, project, harness
   session when cheaply resolvable, and the caller's free payload. It never
@@ -121,7 +122,8 @@ Agent proposal:
 - The rolling window and its trimming are declared in this workflow's
   constitution; trimming deletes day files older than the window.
 - The CLI model is the first client: `main()` records each command call with
-  subject = command path and payload = argv, cwd, exit code, and duration.
+  subject = command path and a safe payload: outcome, duration, cwd, and
+  parsed named options, never the raw argument list (see Review decisions).
 
 ### Live Help
 
@@ -152,7 +154,8 @@ moved from "live context" to "live help".
 Agent proposal: `LiveHelpWorkflow` defines one small capability type, a
 provider that returns a source location, a Usage Registry subject, and
 plain-text hint lines, plus the renderer for the section above. Recent uses
-are read from the Usage Registry. `Command` implements it. The section is produced only when help is requested, so
+are read from the Usage Registry. `Command` implements it. The section is produced only when help is
+requested, through the parser's help formatting (see Review decisions), so
 ordinary commands pay nothing.
 
 Relevant existing design (inspected, not discussed with the User):
@@ -162,16 +165,49 @@ class's `source_path` and `source_line` mechanically, and the Wiki's
 with reactive `context()` as the expandable route. Live Help should reuse
 that source-location mechanism for handlers and stay consistent with it.
 
+### Review decisions
+
+A cold review of this request raised four specification gaps. The claims were
+checked against the code and the User asked for these resolutions to be
+written here.
+<!-- tarav.breadcrumb 19e2cde98cbab2c39464d5804bfb343541e582d9a426f84ff4e187751fd7af8c -->
+<!-- tarav.breadcrumb 67faff12225e18b121735bc9247249fed6eae258667edda05d4be2f3dde0f378 -->
+
+1. Safe CLI trace. Raw arguments must not be retained or shown in help:
+   `tarav run -- ...` can carry arbitrary code. The CLI client stores the
+   command path, exit code, duration, cwd, and the parsed named options with
+   long values truncated. Words after a `--` separator and argparse remainder
+   arguments are dropped. Values of named options are kept because they are
+   what makes a recent use readable as an example. This follows the registry
+   rule that the registering workflow decides what to store.
+2. Help integration point. `argparse` prints help and raises `SystemExit`
+   inside `parse_args()`, before `main()` reaches a handler, so a hook around
+   the handler never sees `--help`. Use one `ArgumentParser` subclass for the
+   root parser that appends the Live Help section when formatting help.
+   Subparsers inherit the root parser's class, so the whole tree is covered,
+   and exit behavior is unchanged.
+3. Storage shape. `ArchivePartition.ls()` lists only child directories, so
+   bare day files in a partition are not navigable Archive objects. Each
+   registering workflow's space is one typed Archive folder created through
+   the partition; its day files are plain workflow-owned files inside it,
+   read by the registry's own query. Trimming is therefore maintenance of
+   files inside a folder, not deletion of Archive records. The window is
+   still declared in the `UsageRegistryWorkflow` constitution.
+4. Command identity. A `TaravEntity` id must be a Ship. The command path is
+   the readable key and the Usage Registry subject; the `Command` Ship is a
+   UUIDv5 of that path under a fixed CLI namespace. A renamed command gets a
+   new Ship and its old usage records keep the old key. Aliases are out of
+   scope.
+<!-- tarav.breadcrumb b7b856bc84ed9afe6f93384724dad9b935a8c54a4e1ddce569fb499df9817a53 -->
+<!-- tarav.breadcrumb 2947768d6ca6eea25c3d93446ed31a9951f9973d33e554e527dac0355198b64c -->
+
 ### Open questions
 
 1. Is `LiveHelpWorkflow` a new workflow beside Context, or should recent uses
    be contributed to a `Command`'s existing reactive `context()`, with Live
    Help only rendering it? The User asked for a workflow; the Agent notes the
    overlap and recommends a small separate workflow that reuses `help()`.
-2. A rolling window deletes Archive records routinely. The Constitution allows
-   explicit Archive maintenance; the Agent recommends declaring the window in
-   the `UsageRegistryWorkflow` constitution. The User has not answered.
-3. Default window length.
+2. Default window length.
 
 ## Impl.Req.Wiki
 
@@ -192,10 +228,12 @@ this design in `live-help.md`. Supporting chat: session `f5845518` above.
    tree. Test on a small synthetic parser: every leaf yields one `Command`.
 3. `tarav.l1.live_help`: the provider type and the section renderer. Tests
    with a fake provider.
-4. `tarav.l3.cli`: in `main()`, record each call in the Usage Registry after
-   the handler returns or raises, and attach the Live Help section to help
-   output. Tests: a failing registry write does not change the exit code; `--help` of a leaf
-   shows `source:` pointing at the handler's file.
+4. `tarav.l3.cli`: in `main()`, record each call's safe trace in the Usage
+   Registry after the handler returns or raises; build the root parser from
+   the Live Help `ArgumentParser` subclass. Tests: a failing registry write
+   does not change the exit code; `--help` of a leaf shows `source:` pointing
+   at the handler's file and still exits 0; words after `--` never reach the
+   registry; two builds of the tree give each command the same Ship.
 5. Checks on `Command` for missing help text and unlocatable handler source;
    run them over the real tree and record the POI count, without fixing them.
 6. Register the workflows in runtime, extend `tests/test_architecture.py` for
@@ -217,3 +255,5 @@ partition; a non-CLI caller can record and query a trace; the configured suite p
   `l2/context/storage.py`, `l1/checks/__init__.py`. No product code changed.
 - 2026-10-03 Design revision: the registry became the general Usage Registry
   workflow with the CLI as its first client, following the User's correction.
+- 2026-10-03 Review decisions recorded: safe CLI trace, help integration via a
+  parser subclass, typed folder with plain day files, UUIDv5 command Ships.
