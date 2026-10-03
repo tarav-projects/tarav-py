@@ -426,10 +426,10 @@ def test_skw_owns_the_retained_document_kernel() -> None:
 def test_native_surfaces_do_not_import_skillware() -> None:
     from tarav.l0.kernel import TaravObject, entity
     from tarav.l1.surfaces import SurfacesWorkflow
-    from tarav.l1.surfaces.markdown import MarkdownNormalModel
+    from tarav.l1.surfaces.markdown import LineMarkdownModel, MarkdownNormalModel
     from tarav.l1.surfaces.python import PythonNormalModel
 
-    for model in (MarkdownNormalModel, PythonNormalModel):
+    for model in (MarkdownNormalModel, LineMarkdownModel, PythonNormalModel):
         assert issubclass(model, TaravObject)
         assert entity(model).workflow is SurfacesWorkflow()
     imports = _top_level_import_graph()

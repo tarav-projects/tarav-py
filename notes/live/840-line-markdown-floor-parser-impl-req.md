@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready.
+Status: implemented.
 
 Add `LineMarkdownModel`, a strict sibling of `MarkdownNormalModel` in
 `tarav.l1.surfaces.markdown`. It parses a restricted, explicitly named Markdown
@@ -127,3 +127,22 @@ outside the touched area are reported, not fixed.
 
 - Design: the error is a plain exception rather than a POI, keeping
   `surfaces` free of Check/POI imports; consumers own the POI mapping.
+- Slices 1–2: `src/tarav/l1/surfaces/markdown/line.py` adds
+  `LineMarkdownModel`, `MarkdownMathBlock` and `LineMarkdownViolation`; it
+  reuses the base module's line, heading and fence types and regexes. Exported
+  from `tarav.l1.surfaces.markdown` and registered in `tarav.l3.runtime`.
+  `tests/test_line_markdown.py`: 13 passed (conforming parse, Record round
+  trip, each rule with its line, first-violation stop, escaped `\$$` and tilde
+  info strings, lenient parser unchanged).
+- Slice 3: surfaces assertion in `tests/test_architecture.py` extended; it
+  passes within the full architecture run (in isolation it fails before and
+  after this change because Workflow resolution is not configured).
+  `test_subsystem_import_graph_is_acyclic` fails on a `project` →
+  `project.reading` cycle from another session's uncommitted work; unrelated.
+  README updated. Ruff clean on touched files.
+- Deviation: `ARCHITECTURE.md`'s surfaces row is updated in the worktree but
+  left out of this request's commit, because another live session changed the
+  same file (SKW ReadingGraph) during execution and evidence commits take whole
+  files. It will land with that session's commit or a later scoped one.
+- Product Breadcrumbs: three on `line.py` (dialect rules, hard stop, sibling
+  parser), audit clean.

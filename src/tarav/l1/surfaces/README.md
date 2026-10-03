@@ -10,6 +10,16 @@ Records preserve those structures, positions, and diagnostics without rerunning
 the parser. Shared spans and extracted items remain lightweight dataclasses.
 Consumers such as Wiki and Breadcrumbs supply domain interpretation.
 
+`LineMarkdownModel` is a strict subtype of MarkdownNormalModel for Markdown
+formats a project owns. In its dialect every block delimiter sits alone on its
+own line: code fences open and close on separate lines, and `$$` opens or
+closes a math block only as the whole line. It is a floor: `from_text` raises
+`LineMarkdownViolation` (rule, message, span) at the first violation and returns
+no partial model, because later structure cannot be trusted. Its model adds
+`math_blocks`, and headings inside fences or math blocks are not headings.
+Higher-resolution parsers consume the model rather than the text; mapping a
+violation to a POI belongs to the consuming workflow.
+
 The standalone `tarav surfaces` command is disconnected from runtime composition.
 Its command adapter remains here for deliberate future reuse, with isolated
 tests. The Surfaces workflow is registered independently from that CLI adapter.

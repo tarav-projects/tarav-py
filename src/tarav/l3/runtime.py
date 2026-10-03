@@ -281,7 +281,7 @@ def create_runtime(
     from tarav.l1.breadcrumbs.auditing import BreadcrumbAuditCheck
     from tarav.l1.poi.workflow import POI_WORKFLOW_SHIP
     from tarav.l1.surfaces import SurfacesWorkflow
-    from tarav.l1.surfaces.markdown import MarkdownNormalModel
+    from tarav.l1.surfaces.markdown import LineMarkdownModel, MarkdownNormalModel
     from tarav.l1.surfaces.python import PythonNormalModel
     from tarav.l2.unsorted.workflow import UnsortedWorkflow
     from tarav.l1.references.workflow import REFERENCE_RECORD_TYPES
@@ -350,6 +350,7 @@ def create_runtime(
                 CheckResult,
                 BreadcrumbAuditCheck,
                 MarkdownNormalModel,
+                LineMarkdownModel,
                 PythonNormalModel,
                 *SCORING_RECORD_TYPES,
                 Assertion,
