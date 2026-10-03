@@ -1,11 +1,4 @@
-# $kw: ^workspaces-root --from Run.Workspace --note [DC] workspaces live at ~/.tarav/workspaces/<date>-<slug>/, one directory per run --supp ^c20260809-87u ^<anchor-on-landing>
-"""Where one-run workspaces live.
-
-One rooted directory outside every project, holding one directory per run. The
-path carries no lifetime claim: a workspace's life is decided by its `status`
-and `extracted` manifest fields and the sweep that reads them, not by where it
-sits.
-"""
+"""Locate the independent Workspace depot under the Tarav data root."""
 
 from __future__ import annotations
 
@@ -15,9 +8,6 @@ from pathlib import Path
 # tarav.breadcrumb 551c11edc0622147571a79851111de7c07e57fdfb759ea2f754e536299a45aad
 WORKSPACES_ENV_VAR = "TARAV_WORKSPACES_ROOT"
 DEFAULT_WORKSPACES_RELATIVE = Path("Documents") / "tarav" / "workspaces"
-
-AGENTS_FILENAME = "AGENTS.md"
-
 
 def resolve_workspaces_root(root: Path | str | None) -> Path:
     """Explicit argument, then environment, then the canonical global default."""
