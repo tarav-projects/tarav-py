@@ -88,86 +88,13 @@ class Decision(TaravEntity, FileRecord, Assertable):
         }
 
 
-class Order(Decision):
-    """A recorded instruction to change data; recording does not execute it."""
-
-    class RecordInterface(Decision.RecordInterface):
-        subjects: list[dict]
-        poi_ids: list[str]
-
-    @classmethod
-    def class_entity(cls):
-        return TaravClass(
-            target=cls,
-            id=TypeShip("e4fb9ce9-5f54-4e27-9c07-f6c326c4bcac"),
-            name="Tarav.Decisions.Order",
-            workflow=DECISIONS_WORKFLOW_SHIP,
-        )
-
-    @classmethod
-    def validate_record(cls, value):
-        data = super().validate_record(value)
-        for subject in data.subjects:
-            _reference(subject)
-        _validate_poi_ids(data.poi_ids)
-        return data
-
-    @classmethod
-    def record_example(cls):
-        return {
-            **super().record_example(),
-            "subjects": [{"type": "Example.Data", "locator": {"path": "data.json"}}],
-            "poi_ids": [],
-        }
-
-
-class ReportedAction(Decision):
-    """A recorded account of an action; evidence can include Git references."""
-
-    class RecordInterface(Decision.RecordInterface):
-        subjects: list[dict]
-        poi_ids: list[str]
-
-    @classmethod
-    def class_entity(cls):
-        return TaravClass(
-            target=cls,
-            id=TypeShip("f3e32b49-6f89-4b66-9849-c63891af354e"),
-            name="Tarav.Decisions.ReportedAction",
-            workflow=DECISIONS_WORKFLOW_SHIP,
-        )
-
-    @classmethod
-    def validate_record(cls, value):
-        data = super().validate_record(value)
-        for subject in data.subjects:
-            _reference(subject)
-        _validate_poi_ids(data.poi_ids)
-        return data
-
-    @classmethod
-    def record_example(cls):
-        return {
-            **super().record_example(),
-            "subjects": [{"type": "Example.Data", "locator": {"path": "data.json"}}],
-            "poi_ids": [],
-        }
-
-
-def _validate_poi_ids(values):
-    if any(not isinstance(value, str) or not value for value in values):
-        raise ValueError("POI references must be nonempty identities")
-    if len(values) != len(set(values)):
-        raise ValueError("Duplicate POI reference")
-
-
 class DecisionStore:
-    """Retain non-Blessing decisions; existing blessings stay in BlessingStore."""
+    """Retain the Decision types its caller registers; blessings stay in BlessingStore."""
 
     def __init__(self, root, *, record_types=()):
         self.root = Path(root).resolve()
         self.record_types = {}
-        for cls in (Order, ReportedAction, *record_types):
+        for cls in record_types:
             if not issubclass(cls, Decision):
                 raise TypeError("Expected a Decision type")
             name = entity(cls).name

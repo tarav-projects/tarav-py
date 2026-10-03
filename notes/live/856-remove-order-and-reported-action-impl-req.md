@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready (Design only; not executed, at the User's instruction).
+Status: implemented.
 
 Delete the `Order` and `ReportedAction` Decision subtypes added by request 854.
 `Decision` stays as the root type and `BlessingRecord` keeps subtyping it.
@@ -78,3 +78,17 @@ Capture status: design captured in `tarav-md/notes/wiki/decisions.md` and `daily
   product code, test or `ARCHITECTURE.md` change was made. Baseline before any
   edit: `tests/decisions` and `tests/test_architecture.py`, 46 passed.
 - The User asked to stop after Design. Execution is pending a later request.
+- Execute, at the User's later instruction. Slice 1: `Order`, `ReportedAction`
+  and the now-unused `_validate_poi_ids` removed from
+  `src/tarav/l1/decisions/records.py`; exports and `DECISION_RECORD_TYPES`
+  reduced to `Decision`; `DecisionStore` registers only caller-supplied types.
+- Slice 2: the test now uses a test-local `ExampleDecision(Decision)` and also
+  asserts that a store refuses a type it was not given. `tests/decisions` and
+  `tests/test_architecture.py`: 46 passed; ruff clean on the touched paths.
+- Slice 3: `ARCHITECTURE.md` updated in two places. Another agent's start
+  checkpoint (5125d2d, request 855) ran while the edit was uncommitted and
+  absorbed it, because evidence commits take whole files. The content is as
+  intended; it is simply attributed to that commit.
+- No reference to either name remains in `src`, `tests` or `ARCHITECTURE.md`.
+  Breadcrumb positions re-recorded in the two edited files; audits clean.
+- The storage design stays open, as recorded above.

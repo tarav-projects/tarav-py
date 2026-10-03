@@ -9,7 +9,7 @@ import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.blessings import BlessablePOI, BlessingRecord, BlessingStore
-from tarav.l1.decisions import Decision, DecisionStore, Order, ReportedAction
+from tarav.l1.decisions import Decision, DecisionStore
 from tarav.l1.poi import IdentifiedPOI, POICollector, TrackedPOIStore
 from tarav.l2.poi import TrackedPOIBoard
 from tarav.l2.project import Project
@@ -23,6 +23,18 @@ class ExamplePOI(IdentifiedPOI, BlessablePOI):
             target=cls,
             id=TypeShip("1120cd8e-d47d-49dd-884c-707117a963d4"),
             name="Example.TrackedPOI",
+        )
+
+
+class ExampleDecision(Decision):
+    """A consumer-owned Decision type; the core workflow prescribes none."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(
+            target=cls,
+            id=TypeShip("5b0f2a55-7b0c-4f0e-9d0b-0c2f6a1a7e31"),
+            name="Example.Decision",
         )
 
 
@@ -43,19 +55,20 @@ def collector(*values):
 # tarav.breadcrumb f7a0423ffc8b7ace60117c25dced069fe711e2984aeca2b13a54b39fe369cb00
 def test_decision_types_and_unchanged_blessing_schema(tmp_path):
     runtime = create_runtime(archive_root=tmp_path / "archive",
-                             record_types=(ExamplePOI,))
-    for cls in (Order, ReportedAction):
-        record = cls.record_example()
-        record["id"] = str(uuid4())
-        decision = runtime.records.from_record(record)
-        assert isinstance(decision, Decision)
-        assert decision.to_record() == record
-        assert decision.decider == record["actor"]
-        assert decision.poi_ids == ()
-        assert tuple(decision.assertions) == ("main",)
-        store = DecisionStore(tmp_path / "decisions")
-        store.add(decision)
-        assert store.load(decision.id).to_record() == record
+                             record_types=(ExamplePOI, ExampleDecision))
+    record = ExampleDecision.record_example()
+    record["id"] = str(uuid4())
+    decision = runtime.records.from_record(record)
+    assert isinstance(decision, Decision)
+    assert decision.to_record() == record
+    assert decision.decider == record["actor"]
+    assert decision.poi_ids == ()
+    assert tuple(decision.assertions) == ("main",)
+    store = DecisionStore(tmp_path / "decisions", record_types=(ExampleDecision,))
+    store.add(decision)
+    assert store.load(decision.id).to_record() == record
+    with pytest.raises(TypeError):
+        DecisionStore(tmp_path / "unregistered").add(decision)
 
     old_record = deepcopy(BlessingRecord.record_example())
     blessing = runtime.records.from_record(old_record)
