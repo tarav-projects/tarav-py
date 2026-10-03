@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import builtins
+
 from collections.abc import Callable, Iterable, Mapping
 from copy import copy
 from dataclasses import dataclass
@@ -257,6 +259,11 @@ class Context(ContextObject):
     __slots__ = ("subject", "_populator", "_entries")
     placement_type: ClassVar[type[str] | type[int]] = str
 
+    @classmethod
+    def for_subject(cls, subject):
+        """Specializations explicitly declare the subjects they support."""
+        raise TypeError(f"Unsupported context type: {cls.__name__}")
+
     def __init__(self, subject: ContextSubject, populator: ContextPopulator) -> None:
         super().__init__()
         self.subject = subject
@@ -447,9 +454,17 @@ def explore(
     subject: ContextSubject | ContextEntry,
     *,
     contributors: Iterable[ContextContributor] = (),
-) -> ContextExplorer:
+    type: builtins.type[Context] | None = None,
+) -> ContextExplorer | Context:
     """Start a new exploration, or continue through an explorer-bound entry."""
 
+    if type is not None:
+        if not isinstance(type, builtins.type) or not issubclass(type, Context):
+            raise TypeError("context type must be a Context subclass")
+        view = type.for_subject(subject)
+        if not isinstance(view, type):
+            raise TypeError("Context factory returned an incompatible view")
+        return view
     if isinstance(subject, ContextEntry):
         if subject.explorer is None:
             raise ValueError("Context entry is not bound to an explorer")

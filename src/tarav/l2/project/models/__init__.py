@@ -32,6 +32,8 @@ class ProjectModels(TaravType):
                           name="Tarav.Project.Models", workflow=PROJECT_MODELS_WORKFLOW_SHIP)
 
     def __init__(self, project: TaravProject, *, diagram=None):
+        from tarav.l2.models.errors import require_models
+        require_models()
         if not isinstance(project, TaravProject):
             raise TypeError("project must be a TaravProject")
         self.project = project

@@ -637,6 +637,8 @@ class DiagramNamespace:
     def create_model(
         self, *, model_ship: str | None = None, label: str | None = None
     ) -> Model:
+        from tarav.l2.models.errors import require_models
+        require_models()
         ship = model_ship or str(uuid4())
         edition_id = str(uuid4())
         draft = ShipDraftInterface.from_record(
@@ -660,6 +662,8 @@ class DiagramNamespace:
         return Model(ship, self, edition_id)
 
     def model(self, model_ship: str) -> Model:
+        from tarav.l2.models.errors import require_models
+        require_models()
         ship = _uuid(model_ship, field="Model.ship")
         try:
             typed = self.ship(ship).specialize()
@@ -674,6 +678,8 @@ class DiagramNamespace:
         return Model(ship, self, _edition_id(typed.editions[-1]))
 
     def models(self) -> tuple[Model, ...]:
+        from tarav.l2.models.errors import require_models
+        require_models()
         result: list[Model] = []
         for ship in self.ships():
             try:
@@ -693,6 +699,8 @@ class DiagramNamespace:
         evidence: ChatlasEvidence | None = None,
         commit: bool = True,
     ) -> CaptureReceipt:
+        from tarav.l2.models.errors import require_models
+        require_models()
         self.model(manifest.model_ship)
         ship_drafts = list(manifest.ship_drafts)
         annotation_drafts = list(manifest.annotations)
@@ -728,6 +736,8 @@ class DiagramNamespace:
         extra: Iterable[DiagramAnnotation] = (),
         include_collection_content: bool = False,
     ) -> DiagramProjection:
+        from tarav.l2.models.errors import require_models
+        require_models()
         ship = _uuid(model_ship, field="Model.ship")
         combined = {
             item.id: item for item in (*self.model_annotations(ship), *tuple(extra))
@@ -1035,6 +1045,8 @@ class Diagram:
         return matches[0]
 
     def model(self, model_ship: str) -> Model:
+        from tarav.l2.models.errors import require_models
+        require_models()
         matches: list[Model] = []
         for space in self.namespaces:
             if not (space.ships_root / f"{model_ship}.json").is_file():
@@ -1048,6 +1060,8 @@ class Diagram:
         return matches[0]
 
     def models(self, *, namespace: str | None = None) -> tuple[Model, ...]:
+        from tarav.l2.models.errors import require_models
+        require_models()
         spaces = (self.namespace(namespace),) if namespace else self.namespaces
         return tuple(model for space in spaces for model in space.models())
 
@@ -1058,6 +1072,8 @@ class Diagram:
         evidence: ChatlasEvidence | None = None,
         commit: bool = True,
     ) -> CaptureReceipt:
+        from tarav.l2.models.errors import require_models
+        require_models()
         return self.model(manifest.model_ship).namespace.apply(
             manifest, evidence=evidence, commit=commit
         )
@@ -1158,6 +1174,8 @@ class Diagram:
         )
 
     def ensure_project_model(self, project_root: Path) -> Model:
+        from tarav.l2.models.errors import require_models
+        require_models()
         marker_path = project_marker_path(project_root.expanduser().resolve())
         marker = load_project_marker(marker_path)
         setting = marker.get("diagram")
@@ -1174,6 +1192,8 @@ class Diagram:
         return model
 
     def project_model(self, project_root: Path) -> Model:
+        from tarav.l2.models.errors import require_models
+        require_models()
         marker = load_project_marker(
             project_marker_path(project_root.expanduser().resolve())
         )
@@ -1189,6 +1209,8 @@ class Diagram:
     def set_project_main_model(
         self, project_root: Path, model_ship: str
     ) -> Model:
+        from tarav.l2.models.errors import require_models
+        require_models()
         """Point one Project at an existing Model without implying ownership."""
         model = self.model(model_ship)
         marker_path = project_marker_path(project_root.expanduser().resolve())

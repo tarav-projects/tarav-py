@@ -14,7 +14,7 @@ from tarav.l2.lines.references import DiagramBlockLocationInterface
 from tarav.l2.lines.references import DiagramLocationInterface
 from tarav.l2.unsorted.primitives import DiagramModelError
 from tarav.l2.unsorted.contracts import Finding
-from tarav.l2.lines.identity import LINES_WORKFLOW_SHIP
+from tarav.l1.lines.identity import LINES_WORKFLOW_SHIP
 from tarav.l2.unsorted.constants import LINE_ANNOTATION_TYPE
 from tarav.l2.unsorted.constants import LINE_EDITION_TYPE
 from tarav.l2.unsorted.constants import LINE_GATE_ANNOTATION_TYPE

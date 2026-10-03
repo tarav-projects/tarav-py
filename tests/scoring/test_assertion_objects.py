@@ -6,7 +6,7 @@ import pytest
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
 from tarav.l2.lines.assertions import LineGroundingAssertion
-from tarav.l2.lines.workflow import LinesWorkflow
+from tarav.l1.lines.workflow import LinesWorkflow
 from tarav.l3.runtime import create_runtime
 from tarav.l2.scoring import (
     Assertion, GROUNDING_POOL_TYPE, ScoringError, ScoringRepository, ScoringWorkflow,

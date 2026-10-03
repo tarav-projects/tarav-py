@@ -7,7 +7,7 @@ from tarav.l2.scoring.model import (
     LineEditionReferenceInterface, ScoringError, record_reference,
 )
 from tarav.l2.unsorted.primitives import DiagramError
-from .identity import LINES_WORKFLOW_SHIP
+from tarav.l1.lines.identity import LINES_WORKFLOW_SHIP
 
 
 class LineGroundingAssertion(Assertion):

@@ -41,6 +41,8 @@ def digest(value):
 
 class ModelPublication:
     def __init__(self, source, *, root):
+        from tarav.l2.models.errors import require_models
+        require_models()
         self.source = Path(source).resolve()
         self.root = Path(root).resolve()
         self.key = self.source.relative_to(self.root).as_posix()

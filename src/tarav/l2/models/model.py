@@ -7,6 +7,7 @@ from .records import ModelShipRecord
 from .workflow import MODELS_WORKFLOW_SHIP
 from tarav.l0.kernel import TaravType, TaravClass, TypeShip
 from dataclasses import dataclass
+from .errors import require_models
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -20,6 +21,9 @@ class Model(TaravType):
     ship: str
     namespace: DiagramNamespace
     current_edition_id: str
+
+    def __post_init__(self):
+        require_models()
 
     @classmethod
     def class_entity(cls):

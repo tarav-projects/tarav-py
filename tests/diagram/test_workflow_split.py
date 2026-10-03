@@ -9,7 +9,7 @@ from tarav.l2.unsorted.capture import CaptureManifest
 from tarav.l2.unsorted.drafts import DiagramDraft
 from tarav.l2.unsorted.views import DiagramViewManifest
 from tarav.l2.unsorted.retired import DIAGRAM_WORKFLOW_SHIP
-from tarav.l2.lines.workflow import LinesWorkflow
+from tarav.l1.lines.workflow import LinesWorkflow
 from tarav.l2.unsorted.workflow import UnsortedWorkflow
 
 

@@ -95,6 +95,8 @@ def _audit_dispatch(args: argparse.Namespace) -> int:
         return int(args.breadcrumb_file_audit_handler(args))
     if args.surface is not None or args.repo is None:
         raise CliError("Commit audit requires --commit and --repo without --surface")
+    if args.refresh_positions:
+        raise CliError("--refresh-positions is only supported for file audits")
     try:
         result = args.breadcrumb_commit_auditor(
             args.repo,

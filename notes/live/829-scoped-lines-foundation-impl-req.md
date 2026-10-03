@@ -210,3 +210,45 @@ The daily submission failed; our appended section remains alongside their
 work. Do not commit or repair their edits as part of this request. Completion
 scope excludes the shared daily file; its submission/audit/closure must be
 reconciled after the concurrent writer finishes. No product tests were run.
+
+### 2026-09-30 — Develop extension and implementation
+
+The user requested Lines, typed Context and Models disconnection together.
+This extends the original scope: default context remains the general explorer;
+explicit `type` selects a read-only specialized Context. Unsupported types
+fail. `LineScope` exposes the single interpretive dependency, not placement.
+Models execution is disabled in place, not removed; guidance and retained
+data remain unchanged. This supersedes the earlier legacy-callability promise.
+
+Implemented:
+- `tarav.l1.lines.Line`: identity, text, one TaravEntity scope, scope Ship
+  record projection, explicit identity-checked binding, and lazy scope context.
+- LinesWorkflow moved to l1 with established identities preserved; maintained
+  imports updated. Legacy l2 projection/record implementations remain present.
+- Typed context selection in standalone and runtime interfaces; object
+  `.context(type=...)` delegates through a host-configured Kernel hook.
+- `LineScope` ContextFolder specialization; default ContextExplorer unchanged.
+- Models construction/resolution/creation/projection/application and Project
+  integration entry points raise `ToImplementError` before their old work.
+- Explicit SKW ModelPublication access raises the same error; package checks
+  and builds no longer execute model publications automatically, reporting
+  `model-publication-disconnected` instead. Other document builds still run.
+
+Start checkpoint: `0a6692d3`. No retained Model data was migrated or touched.
+External class metadata referring to the old workflow Python path has not
+been migrated; no compatibility alias or runtime repair was added.
+
+Verification uses the existing `.venv/bin/python`: uv command startup and
+editable reinstall both panic in system-configuration (NULL dynamic-store
+object). The focused Ruff selection and `git diff --check` passed.
+Product Breadcrumb capture remains pending across changed source/test/docs:
+Chatlas cannot create its Normal Model lock under the filesystem permissions.
+No substitute Turn evidence was invented. Completion evidence commit remains
+pending with that capture; the start checkpoint had an explicit evidence gap.
+
+Combined verification: 128 tests passed across scoped Lines, architecture,
+Context, runtime, object records, Type declarations, SKW skills/loading,
+workflow identity and Assertion objects. These are targeted suites, not a
+claim that legacy Models behavior tests remain valid after disconnection.
+The Wiki daily entry records implementation facts with source/test pointers;
+its conversational Breadcrumbs and closure remain pending too.
