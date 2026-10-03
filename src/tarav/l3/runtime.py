@@ -41,6 +41,7 @@ from tarav.l1.loading import LoadingProfile, profile_paths
 from tarav.l1.navigation import Navigation, NavigationService
 from tarav.l1.references.workflow import ReferenceWorkflow, ReferenceService
 from tarav.l1.breadcrumbs.workflow import BreadcrumbService
+from tarav.l1.usage import UsageRegistry
 
 from tarav.l1.chatlas.hook_consumers import register_chatlas_hook_callbacks
 from tarav.l1.agent.providers.claude_code.usage_hooks import (
@@ -77,6 +78,7 @@ class TaravRuntime:
     navigation: NavigationService
     references: ReferenceService
     breadcrumbs: BreadcrumbService
+    usage: UsageRegistry
     breadcrumb_integrations: tuple[BreadcrumbIntegration, ...]
     pois: POICollector
     blessings: BlessingStore
@@ -160,6 +162,7 @@ class TaravRuntime:
         from tarav.l1.system import register_system_commands
         from tarav.l1.stdlib.utils import register_utils_commands
         from tarav.l1.workspaces.commands import register_workspace_commands
+        from tarav.l1.usage.commands import register_usage_commands
 
         register_agent_commands(subparsers)
         register_daemon_commands(
@@ -203,6 +206,11 @@ class TaravRuntime:
         register_scoring_commands(subparsers)
         register_workspace_commands(subparsers)
         register_skw_commands(subparsers, registry=self.records)
+        # tarav.breadcrumb ad568a3bc811a526540d9a6106f706ed2ff8e77d3d823d93cb82d67fcbe98568
+        register_usage_commands(
+            subparsers, registry=self.usage,
+            workflow_resolver=self.workflows.get,
+        )
 
 
 CommandRegistrar = Callable[["argparse._SubParsersAction"], None]
@@ -303,6 +311,9 @@ def create_runtime(
     from tarav.l2.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
     from tarav.l2.test_workflow import TestEntity, TestItem, TestWorkflow
     from tarav.l1.skills.routing import SkillsSelectionNotification, SkillsStatusPOI
+    from tarav.l1.cli import CliWorkflow
+    from tarav.l1.live_help import LiveHelpWorkflow
+    from tarav.l1.usage import UsageRegistryWorkflow
 
     composed_breadcrumb_integrations = (
         chatlas_context_integration(commit_auditor=audit_commit),
@@ -405,6 +416,9 @@ def create_runtime(
         POIWorkflow,
         BlessingsWorkflow,
         ChecksWorkflow,
+        UsageRegistryWorkflow,
+        CliWorkflow,
+        LiveHelpWorkflow,
         SurfacesWorkflow,
         UnsortedWorkflow,
         ScoringWorkflow,
@@ -452,6 +466,7 @@ def create_runtime(
         contexts=contexts,
         references=references,
         breadcrumbs=breadcrumbs,
+        usage=UsageRegistry(contexts.archive_root),
         navigation=navigation,
         breadcrumb_integrations=composed_breadcrumb_integrations,
         pois=POICollector(),

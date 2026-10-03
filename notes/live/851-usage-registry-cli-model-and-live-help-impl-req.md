@@ -6,9 +6,9 @@ f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf049
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design only.
-Status: ready after the review decisions; two open questions remain, neither
-blocking.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Execute complete.
+Status: implemented and verified; the selected seven-day default and separate
+Live Help workflow are provisional design choices.
 
 Add a Usage Registry workflow where any workflow can leave traces of how it
 was used, model the `tarav` command line as Tarav objects that register each
@@ -114,7 +114,8 @@ Agent proposal:
 - One library call, `record_usage(workflow, subject, payload, project=None)`,
   appends a `LiteRecord` with time, workflow, subject, project, harness
   session when cheaply resolvable, and the caller's free payload. It never
-  raises and never slows the caller: failures are swallowed and logged.
+  changes the caller's result when a write fails: failures are swallowed and
+  logged. Disk I/O remains synchronous and may add latency.
 - Read side: iterate records filtered by workflow, project, subject, and
   time, plus an optional JMESPath expression over each record. `jmespath` is
   already a declared dependency of `tarav-py` and is currently unused.
@@ -123,7 +124,8 @@ Agent proposal:
   constitution; trimming deletes day files older than the window.
 - The CLI model is the first client: `main()` records each command call with
   subject = command path and a safe payload: outcome, duration, cwd, and
-  parsed named options, never the raw argument list (see Review decisions).
+  supplied option names, never arbitrary values or the raw argument list
+  (see Review decisions).
 
 ### Live Help
 
@@ -134,8 +136,8 @@ the Agent where to find things. The User accepted this output shape:
 command:  skw document record
 source:   src/tarav/l2/skw/document.py:412  (handler _record)
 recent uses (3 of 17 in the last 7 days):
-  2026-10-03 13:10  exit 0  --source SKILL.skw.json --generation 954e…
-                    cwd tarav-md/skills/tarav-hugentics  session claude-code:4ee3…
+  2026-10-03 13:10  exit 0  options --source --generation
+                    cwd tarav-md/skills/tarav-hugentics
 history:  git -C <repo> log -5 -L412,450:src/tarav/l2/skw/document.py
 ```
 <!-- tarav.breadcrumb 384234849baa7e56e61562e91f5890fbe816cd2f88309b4ad2e07fc4cc0099fd -->
@@ -175,11 +177,12 @@ written here.
 
 1. Safe CLI trace. Raw arguments must not be retained or shown in help:
    `tarav run -- ...` can carry arbitrary code. The CLI client stores the
-   command path, exit code, duration, cwd, and the parsed named options with
-   long values truncated. Words after a `--` separator and argparse remainder
-   arguments are dropped. Values of named options are kept because they are
-   what makes a recent use readable as an example. This follows the registry
-   rule that the registering workflow decides what to store.
+   command path, exit code, duration, cwd, and supplied option names. Words
+   after a `--` separator and argparse remainder arguments are dropped. Named
+   option values may themselves be credentials or arbitrary code, so they are
+   absent from the default trace. A command-specific producer can later supply
+   selected safe values. This follows the registry rule that the registering
+   workflow decides what to store.
 2. Help integration point. `argparse` prints help and raises `SystemExit`
    inside `parse_args()`, before `main()` reaches a handler, so a hook around
    the handler never sees `--help`. Use one `ArgumentParser` subclass for the
@@ -201,13 +204,11 @@ written here.
 <!-- tarav.breadcrumb b7b856bc84ed9afe6f93384724dad9b935a8c54a4e1ddce569fb499df9817a53 -->
 <!-- tarav.breadcrumb 2947768d6ca6eea25c3d93446ed31a9951f9973d33e554e527dac0355198b64c -->
 
-### Open questions
+### Provisional follow-ups
 
-1. Is `LiveHelpWorkflow` a new workflow beside Context, or should recent uses
-   be contributed to a `Command`'s existing reactive `context()`, with Live
-   Help only rendering it? The User asked for a workflow; the Agent notes the
-   overlap and recommends a small separate workflow that reuses `help()`.
-2. Default window length.
+1. Live Help currently has its own workflow. Integration with a Command's
+   reactive `context()` remains a later design choice.
+2. The retention window defaults to seven days and can be configured in code.
 
 ## Impl.Req.Wiki
 
@@ -257,3 +258,22 @@ partition; a non-CLI caller can record and query a trace; the configured suite p
   workflow with the CLI as its first client, following the User's correction.
 - 2026-10-03 Review decisions recorded: safe CLI trace, help integration via a
   parser subclass, typed folder with plain day files, UUIDv5 command Ships.
+- 2026-10-03 Execute: the request was rechecked against current code. The
+  default CLI trace was narrowed from truncated option values to option names
+  because truncation can still retain secrets. The window defaults to seven
+  days, matching the example. Registry, command projection, live help, and
+  integration work is in progress; focused tests passed. A concurrent commit
+  included the architecture paragraph and its test while this execution was
+  running. Those changes remain in the intended product scope.
+- 2026-10-03 Execute verification: the full configured suite passed (153 tests),
+  Ruff passed, and the reinstalled `tarav` command showed the Usage Query help,
+  recorded a call, and displayed it as a recent use. A full-suite failure first
+  exposed a real Record loading mismatch: parser-derived `Command` and its
+  bound Check cannot be reconstructed from a retained Record. They now remain
+  runtime-derived Tarav Objects with stable Ships and inspectable projections,
+  outside the dynamic Record registry. The corrected suite passed.
+- 2026-10-03 Product capture: new Breadcrumbs were submitted on the usage,
+  CLI, Live Help, runtime, tests, and architecture surfaces. Existing moved
+  positions were refreshed append-only. Wiki capture updated the daily note
+  and `live-help.md`; their Breadcrumbs submitted and audited. Scoped completion
+  commits are reported in the execution handoff.

@@ -2,6 +2,7 @@
 
 <!-- tarav.sessions
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
+f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf0496f867fc656fdad9063980a184f7c3f15c54adf8fcb31f
 -->
 
 `tarav-py` is Tarav's maintained Python distribution. It is one modular
@@ -243,12 +244,16 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   presentation, and the Context Workflow declaration. `explore()` accepts
   explicit contributors without loading Archive or runtime.
 - `tarav.l1.cli` projects the built argparse tree as stable `Command` Entities
-  and supplies command checks. `tarav.l1.usage` retains bounded, workflow-attributed
+  and supplies command checks. These runtime-derived objects are resolved from
+  the current parser tree, not loaded as standalone retained Records.
+  `tarav.l1.usage` retains bounded, workflow-attributed
   traces in typed Archive folders with workflow-owned daily files. Callers
   choose their trace payloads. `tarav.l1.live_help` renders source and recent
   usage leads on demand; the l3 CLI adapter binds those capabilities to parser
   help and records completed command calls. CLI traces retain option names but
   omit arbitrary option values and arguments after `--`.
+  <!-- tarav.breadcrumb 217080a6ff2b0b121aee1e55ec553d860ad1076d13b23db78882b78b1694e72f -->
+  <!-- tarav.breadcrumb 5ede35bc5676515a281d72565d409ecb46bbe06adab48eedf903130170c49bcd -->
 - `tarav.l2.context` owns Archive-backed Context Types and `ContextService`;
   `tarav.l3.context` owns the runtime-aware `context()` convenience. Runtime
   assembly constructs its service directly; the l1 Workflow has no service factory. Kernel retains

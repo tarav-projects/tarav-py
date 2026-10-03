@@ -38,6 +38,7 @@ def test_loading_workflow_configures_kernel_without_reverse_imports():
     assert not any(name.startswith("loading") for name in graph["l0.kernel"])
 
 
+# tarav.breadcrumb b28351625fdfd6e99329fb66c0610f238c7b0bc4a1b86770ff68c2194b0078f6
 def test_cli_usage_and_live_help_workflows_are_separate() -> None:
     from tarav.l1.cli import CliWorkflow, Command
     from tarav.l1.live_help import LiveHelpProvider, LiveHelpWorkflow
@@ -50,7 +51,7 @@ def test_cli_usage_and_live_help_workflows_are_separate() -> None:
     assert runtime.workflows.get("live-help") is LiveHelpWorkflow
     assert entity(Command).workflow is CliWorkflow()
     assert issubclass(Command, LiveHelpProvider)
-    assert runtime.records.resolve_ship(entity(Command).id) is Command
+    assert Command not in runtime.records.record_types
     graph = _top_level_import_graph()
     assert "l3.runtime" not in graph["cli"]
     assert "l3.runtime" not in graph["usage"]

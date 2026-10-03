@@ -1,0 +1,57 @@
+"""Query adapter for retained usage traces."""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime
+import json
+from collections.abc import Callable
+
+from tarav.l0.kernel import Ship, WorkflowShip
+from tarav.l0._core.errors import CliError
+from tarav.l0.kernel.workflows import TaravWorkflow
+
+from . import UsageRegistry
+
+
+# tarav.breadcrumb eed9e202f400d354c3cfe3e29b7388c1478bbba38eacec8371ec5f6f50dc3ada
+def register_usage_commands(
+    subparsers: argparse._SubParsersAction,
+    *,
+    registry: UsageRegistry,
+    workflow_resolver: Callable[[str], type[TaravWorkflow]],
+) -> None:
+    parent = subparsers.add_parser("usage", help="Inspect recent Tarav usage traces")
+    children = parent.add_subparsers(dest="usage_command")
+    query = children.add_parser("query", help="Query recent workflow-attributed traces")
+    query.add_argument("--workflow", help="Workflow name or Ship")
+    query.add_argument("--project", help="Project Ship")
+    query.add_argument("--subject")
+    query.add_argument("--since", help="ISO datetime")
+    query.add_argument("--jmespath", help="JMESPath predicate over each JSON row")
+    query.add_argument("--limit", type=int)
+
+    def run(args: argparse.Namespace) -> int:
+        try:
+            workflow: type[TaravWorkflow] | WorkflowShip | None = None
+            if args.workflow:
+                try:
+                    workflow = WorkflowShip(args.workflow)
+                except ValueError:
+                    workflow = workflow_resolver(args.workflow)
+            project = Ship(args.project) if args.project else None
+            since = datetime.fromisoformat(args.since) if args.since else None
+            rows = registry.query(
+                workflow=workflow,
+                project=project,
+                subject=args.subject,
+                since=since,
+                expression=args.jmespath,
+                limit=args.limit,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CliError(f"invalid usage query: {exc}") from exc
+        print(json.dumps(rows, indent=2))
+        return 0
+
+    query.set_defaults(handler=run)
