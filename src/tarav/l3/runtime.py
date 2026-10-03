@@ -287,8 +287,10 @@ def create_runtime(
     from tarav.l1.references.workflow import REFERENCE_RECORD_TYPES
     from tarav.l1.archive.records import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
     from tarav.l2.scoring.model import SCORING_RECORD_TYPES
-    from tarav.l2.scoring import Assertion, ScoringDetails, ScoringReference
-    from tarav.l2.lines.assertions import LineGroundingAssertion
+    from tarav.l2.scoring import Assertion, AssessmentCase, ScoringDetails, ScoringReference
+    from tarav.l2.lines.assertions import (
+        LineGroundingAssertion, LineGroundingCase, LineSupportInventoryCase,
+    )
     from tarav.l2.scoring.workflow import ScoringWorkflow
     from tarav.l1.skw.code import (
         CodeWorkflow,
@@ -354,9 +356,12 @@ def create_runtime(
                 PythonNormalModel,
                 *SCORING_RECORD_TYPES,
                 Assertion,
+                AssessmentCase,
                 ScoringDetails,
                 ScoringReference,
                 LineGroundingAssertion,
+                LineGroundingCase,
+                LineSupportInventoryCase,
                 *SKW_CODE_RECORD_TYPES,
                 GenerationPOI,
                 SkillsSelectionNotification,

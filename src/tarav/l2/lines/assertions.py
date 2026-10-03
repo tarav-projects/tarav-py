@@ -1,13 +1,72 @@
 """Line-owned semantic assertions and their adaptation to ranking."""
 
+import json
+
 from tarav.l0.kernel import Ship, TaravClass, TypeShip
-from tarav.l2.scoring.assertions import Assertion, ScoringDetails
+from tarav.l2.scoring.assertions import (
+    Assertion, AssessmentCase, IncompleteCaseScope, ScoringDetails,
+)
 from tarav.l2.scoring.model import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE, GROUNDING_POOL_TYPE,
     LineEditionReferenceInterface, ScoringError, record_reference,
 )
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l1.lines.identity import LINES_WORKFLOW_SHIP
+
+
+class LineGroundingCase(AssessmentCase):
+    """Closed claim, Block context, and rendered Support.Set for grounding judgment."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(
+            target=cls,
+            id=TypeShip('5cd3c02b-950e-4358-8d33-b3cb9cf0f902'),
+            name='Index.Line.Grounding.AssessmentCase',
+            workflow=LINES_WORKFLOW_SHIP,
+        )
+
+    class RecordInterface(AssessmentCase.RecordInterface):
+        line_text: str
+        block_label: str | None
+        peer_lines: list[str]
+        support: list[dict]
+
+    @classmethod
+    def record_example(cls):
+        return cls(
+            assertion_ref=LineGroundingAssertion.from_record(
+                LineGroundingAssertion.record_example()).reference(),
+            question='How well is this Line supported?',
+            presentation='Line and declared Support.Set.',
+            line_text='Example Line', block_label=None, peer_lines=[], support=[{'turns': []}],
+        ).to_record()
+
+
+class LineSupportInventoryCase(AssessmentCase):
+    """Closed inventory of the exact Line edition's declared support."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(
+            target=cls,
+            id=TypeShip('f4d8def1-1636-4b6c-bf60-e4319898d149'),
+            name='Index.Line.SupportInventory.AssessmentCase',
+            workflow=LINES_WORKFLOW_SHIP,
+        )
+
+    class RecordInterface(AssessmentCase.RecordInterface):
+        edition_id: str
+        support_entries: list[dict]
+
+    @classmethod
+    def record_example(cls):
+        assertion = LineGroundingAssertion.from_record(LineGroundingAssertion.record_example())
+        return cls(
+            assertion_ref=assertion.reference(),
+            question='What support is declared?', presentation='Support inventory.',
+            edition_id=assertion.subject_ref['edition_id'], support_entries=[{'turns': []}],
+        ).to_record()
 
 
 class LineGroundingAssertion(Assertion):
@@ -76,6 +135,48 @@ class LineGroundingAssertion(Assertion):
         if not support:
             raise ScoringError(f"Line has no declared Support.Set: {self.subject_ref['line_ship']}")
         return support
+
+    @classmethod
+    def assessment_case_types(cls):
+        # tarav.breadcrumb 69595ba12bd1b514fb8c74d10be475f0f194ee8751724df9f79deac07bc818ce
+        return (LineGroundingCase, LineSupportInventoryCase)
+
+    def _build_assessment_case(self, case_type, *, projection=None, evidence=None):
+        if projection is None or evidence is None:
+            raise IncompleteCaseScope('Line assessment needs a projection and resolved evidence')
+        line, block, edition = self.resolve_subject(projection=projection)
+        support = edition.annotation.render_support(evidence)
+        if not support:
+            raise IncompleteCaseScope('Line assessment needs its declared Support.Set')
+        peers = [
+            peer.current_edition.text for peer in block.lines
+            if peer.ship != line.ship and peer.current_edition is not None
+        ]
+        if case_type is LineGroundingCase:
+            return LineGroundingCase(
+                assertion_ref=self.reference(),
+                question='How completely does the declared Support.Set support this Line claim?',
+                presentation=_render_candidate(
+                    line_text=edition.text, block_label=block.current_label,
+                    peer_lines=peers, support=support,
+                ),
+                line_text=edition.text,
+                block_label=block.current_label,
+                peer_lines=peers,
+                support=support,
+            )
+        if case_type is LineSupportInventoryCase:
+            return LineSupportInventoryCase(
+                assertion_ref=self.reference(),
+                question='What support is declared for this exact Line edition?',
+                presentation=json.dumps(
+                    {'line': edition.text, 'support': support},
+                    sort_keys=True, ensure_ascii=False,
+                ),
+                edition_id=str(edition.annotation.id),
+                support_entries=support,
+            )
+        raise AssertionError('Declared case Type has no producer')
 
     def candidate(self, *, enrollment, pool_type, projection, evidence):
         self.supports_pool(pool_type)

@@ -1,6 +1,16 @@
 # Assertions and scoring
 
 `ScoringWorkflow` owns `Assertion` and shared evaluation mechanics.
+It also owns the `Assertable` capability, an immutable label-addressed
+`.assertions` namespace, and the base `AssessmentCase` contract. An Assertion
+declares supported case Types and can close one from supplied material. Each
+case retains the Assertion reference, a question, and a complete presentation;
+the scorer consumes that snapshot without seeking more material. Unsupported
+case Types and incomplete scope are distinct errors. Subtypes own their payload
+schema, so no universal evidence format is imposed. The Line grounding
+Assertion demonstrates grounding and support-inventory cases while retaining
+its existing identity and ranking adapter.
+<!-- tarav.breadcrumb 7b05d770fd43c89ea4d4f59f69f662e595e2b17db978b545f3328199dc407c43 -->
 `LinesWorkflow` owns `LineGroundingAssertion(Assertion)`: the claim that a
 particular Line edition is supported by its declared Support.Set.
 

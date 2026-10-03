@@ -406,7 +406,7 @@ schema or an additional Workflow identity.
 | `lines` | LinesWorkflow owns Line, Block, Collection, their editions and relationships, projections, rendering, and LineGroundingAssertion semantics. |
 | `models` | ModelsWorkflow owns the Model handler, ModelShipRecord, and ModelEditionRecord. Project associations do not imply ownership; several projects may share one Model. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
-| `scoring` | Common Assertion entities and evaluation mechanics: pools, tasks, runs, results, derived scores, and traces. Existing scoring Records are entities with explicit Context reference edges. |
+| `scoring` | Common Assertable capability, identified Assertions, closed typed assessment cases, and evaluation mechanics: pools, tasks, runs, results, derived scores, and traces. Existing scoring Records are entities with explicit Context reference edges. |
 | `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. |
 | `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. Blessability is declared only through subtype composition; blessings match situation identity directly and never suppress a POI. |
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. SituationChecks evaluate a detached Situation and use that same snapshot as the POI acceptance scope. Execution completion and a POI's failure signal are separate. |
@@ -459,13 +459,19 @@ Project or legacy storage composition. `tarav.l2.models.Model` replaces
 the old `tarav.lines.model.DiagramModel` Python path; retained TypeShips,
 Record labels, Model UUIDs, and `diagram.main_model` associations are unchanged.
 
-Scoring's `assertions` module supplies the common Assertion contract without
+Scoring's `assertions` module supplies the common Assertable, Assertion, and
+AssessmentCase contracts without
 importing consumer workflows. `lines.assertions` specializes it for exact Line
-editions and supplies evidence presentation. `scoring.tasks` is the existing
+editions and supplies two case producers with different payloads. A case is a
+JSON snapshot of its claim, question, and supplied material; the scorer does
+not acquire source handles or search for further evidence. Unsupported case
+Types and supported Types lacking sufficient material fail distinctly. The
+runtime registers concrete case Types for Record round-trips. `scoring.tasks` is the existing
 ranking composition layer; it imports that specialization, while the scoring
 package's base exports do not import tasks. Import ranking adapters explicitly
 from `tarav.l2.scoring.tasks`. Architecture checks inspect Scoring at module
 granularity too, distinguishing foundations from composition.
+<!-- tarav.breadcrumb 9d28b8a71a32f7309fe03c9f8d1c1eb9ee3d8802d2f973f679e9b85ab9561bb9 -->
 
 Assertions identify typed subjects; their subtypes define evidence and check
 semantics. Scores are separate judgments, not Assertion identity. Scoring

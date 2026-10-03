@@ -1,12 +1,79 @@
 """Assertion objects carry check semantics; scoring owns evaluation mechanics."""
 
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from collections.abc import Iterator, Mapping
 import json
+from types import MappingProxyType
+from typing import Any
 from uuid import UUID, uuid5
 
 from pydantic import model_validator
 
-from tarav.l0.kernel import FileRecord, Ship, TaravClass, TaravEntity, TypeShip, entity
+from tarav.l0.kernel import (
+    FileRecord, Ship, TaravClass, TaravEntity, TaravObject, TaravType,
+    TypeShip, entity,
+)
 from .identity import SCORING_WORKFLOW_SHIP
+
+
+class UnsupportedAssessmentCase(TypeError):
+    """This Assertion does not produce the requested case Type."""
+
+
+class IncompleteCaseScope(ValueError):
+    """A supported case cannot yet be closed with the supplied material."""
+
+
+class Assertable(TaravType, ABC):
+    """A subject that exposes identified Assertions under durable labels."""
+    # tarav.breadcrumb 7c3445f11b528770c4bb7b112e1680f83f09ee16cdd421db955b3f5eb77f13a8
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(
+            target=cls,
+            id=TypeShip('9e2c02a0-5ebc-460b-bb8a-829f8c42dddf'),
+            name='Tarav.Scoring.Assertable',
+            workflow=SCORING_WORKFLOW_SHIP,
+        )
+
+    @property
+    @abstractmethod
+    def assertions(self) -> AssertionNamespace:
+        """Return labeled Assertions for this exact subject edition."""
+
+
+class AssertionNamespace(Mapping[str, 'Assertion']):
+    """An immutable, label-addressed view; list order is not identity."""
+
+    def __init__(self, assertions: Mapping[str, Assertion]) -> None:
+        selected = dict(assertions)
+        for label, assertion in selected.items():
+            if not isinstance(label, str) or not label.strip():
+                raise ValueError('Assertion labels must be non-empty strings')
+            if not isinstance(assertion, Assertion):
+                raise TypeError('Assertion namespace values must be Assertions')
+        ids = [str(assertion.id) for assertion in selected.values()]
+        if len(ids) != len(set(ids)):
+            raise ValueError('An Assertion cannot have two labels in one namespace')
+        self._assertions = MappingProxyType(selected)
+
+    def __getitem__(self, label: str) -> Assertion:
+        return self._assertions[label]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._assertions)
+
+    def __len__(self) -> int:
+        return len(self._assertions)
+
+    def by_id(self, identity: Ship | str) -> Assertion:
+        matches = [item for item in self._assertions.values() if str(item.id) == str(identity)]
+        if not matches:
+            raise KeyError(identity)
+        return matches[0]
 
 
 class ScoringDetails(FileRecord):
@@ -17,6 +84,77 @@ class ScoringDetails(FileRecord):
         return TaravClass(target=cls,
                           id=TypeShip('5cb94b42-7c0f-4a8d-950e-e9fbc50ecf72'),
                           name='Tarav.Scoring.Details', workflow=SCORING_WORKFLOW_SHIP)
+
+
+class AssertionReferenceInterface(ScoringDetails.RecordInterface):
+    """Common embedded reference shape; its owning type validates the subject."""
+    type: str
+    subject_ref: dict
+
+    @model_validator(mode='after')
+    def assertion_type(self):
+        if not self.type.endswith('.Assertion.Reference'):
+            raise ValueError('Expected an Assertion.Reference type')
+        Assertion.validate_subject(self.subject_ref)
+        return self
+
+
+class AssessmentCase(TaravObject):
+    """Typed, self-contained scorer input; subtypes own their payload schema."""
+    # tarav.breadcrumb fe2d8ede0b40fa05c752b4ed4ed02f4668169a4da1f913dc22a216aa0c394da7
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(
+            target=cls,
+            id=TypeShip('8ef744c9-f239-44bb-a8cb-b3dc26904352'),
+            name='Tarav.Scoring.AssessmentCase',
+            workflow=SCORING_WORKFLOW_SHIP,
+        )
+
+    class RecordInterface(TaravObject.RecordInterface):
+        assertion_ref: AssertionReferenceInterface
+        question: str
+        presentation: str
+
+    def __init__(
+        self, *, assertion_ref: Mapping[str, object], question: str,
+        presentation: str, **payload: Any,
+    ) -> None:
+        super().__init__()
+        record = {
+            'type': entity(type(self)).name,
+            'assertion_ref': dict(assertion_ref),
+            'question': question,
+            'presentation': presentation,
+            **payload,
+        }
+        # The scorer receives a snapshot, even if the producer later edits its inputs.
+        self._record = json.loads(json.dumps(record, allow_nan=False))
+        type(self).validate_record(self._record)
+
+    @classmethod
+    def validate_record(cls, value):
+        data = super().validate_record(value)
+        if not data.question.strip() or not data.presentation.strip():
+            raise IncompleteCaseScope('Assessment case needs a question and supplied material')
+        return data
+
+    @property
+    def assertion_ref(self) -> dict[str, object]:
+        return self.to_record()['assertion_ref']
+
+    @property
+    def presentation(self) -> str:
+        return self.to_record()['presentation']
+
+    @classmethod
+    def record_example(cls) -> dict[str, object]:
+        return cls(
+            assertion_ref=Assertion({'type': 'Example.Subject.Reference'}).reference(),
+            question='Is this claim supported?',
+            presentation='Claim and supplied evidence.',
+        ).to_record()
 
 
 class Assertion(TaravEntity):
@@ -75,6 +213,30 @@ class Assertion(TaravEntity):
                 'subject_ref': self.subject_ref}
 
     @classmethod
+    def assessment_case_types(cls) -> tuple[type[AssessmentCase], ...]:
+        """Case Types this Assertion can close for scoring workflows."""
+        return ()
+
+    def assessment_case(self, case_type: type[AssessmentCase], **material: object) -> AssessmentCase:
+        """Build a closed case, distinguishing unsupported Types from missing scope."""
+        if (
+            not isinstance(case_type, type)
+            or not issubclass(case_type, AssessmentCase)
+            or case_type not in type(self).assessment_case_types()
+        ):
+            raise UnsupportedAssessmentCase(f'{type(self).__name__} does not produce {case_type!r}')
+        case = self._build_assessment_case(case_type, **material)
+        if type(case) is not case_type:
+            raise TypeError('Assertion returned the wrong AssessmentCase Type')
+        if case.assertion_ref != self.reference():
+            raise ValueError('Assessment case belongs to another Assertion')
+        case.to_record()
+        return case
+
+    def _build_assessment_case(self, case_type: type[AssessmentCase], **material: object) -> AssessmentCase:
+        raise NotImplementedError('Supported case Types require an Assertion producer')
+
+    @classmethod
     def from_reference(cls, reference):
         if reference.get('type') != entity(cls).name + '.Reference':
             raise ValueError('Reference does not identify this Assertion type')
@@ -96,16 +258,3 @@ class Assertion(TaravEntity):
     def obj_context(self, builder):
         builder.add('subject', opener=lambda: ScoringDetails.from_record(
             {'type': entity(ScoringDetails).name, 'reference': self.subject_ref}))
-
-
-class AssertionReferenceInterface(ScoringDetails.RecordInterface):
-    """Common embedded reference shape; its owning type validates the subject."""
-    type: str
-    subject_ref: dict
-
-    @model_validator(mode='after')
-    def assertion_type(self):
-        if not self.type.endswith('.Assertion.Reference'):
-            raise ValueError('Expected an Assertion.Reference type')
-        Assertion.validate_subject(self.subject_ref)
-        return self

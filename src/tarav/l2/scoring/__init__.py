@@ -1,6 +1,9 @@
 """Tarav Assertion Scoring public domain surface."""
 
-from .assertions import Assertion, ScoringDetails
+from .assertions import (
+    Assertable, Assertion, AssertionNamespace, AssessmentCase,
+    IncompleteCaseScope, ScoringDetails, UnsupportedAssessmentCase,
+)
 from .model import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
     GROUNDING_ASSERTION_REFERENCE_TYPE,
@@ -58,6 +61,11 @@ from .rendering import (
 
 __all__ = [
     "Assertion",
+    "Assertable",
+    "AssertionNamespace",
+    "AssessmentCase",
+    "IncompleteCaseScope",
+    "UnsupportedAssessmentCase",
     "ScoringDetails",
     "CURRENT_SCORE_RENDERER",
     "DIAGRAM_LINE_EDITION_REFERENCE_TYPE",
