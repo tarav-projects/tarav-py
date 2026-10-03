@@ -38,6 +38,25 @@ def test_loading_workflow_configures_kernel_without_reverse_imports():
     assert not any(name.startswith("loading") for name in graph["l0.kernel"])
 
 
+def test_cli_usage_and_live_help_workflows_are_separate() -> None:
+    from tarav.l1.cli import CliWorkflow, Command
+    from tarav.l1.live_help import LiveHelpProvider, LiveHelpWorkflow
+    from tarav.l1.usage import UsageRegistryWorkflow
+    from tarav.l3.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("cli") is CliWorkflow
+    assert runtime.workflows.get("usage") is UsageRegistryWorkflow
+    assert runtime.workflows.get("live-help") is LiveHelpWorkflow
+    assert entity(Command).workflow is CliWorkflow()
+    assert issubclass(Command, LiveHelpProvider)
+    assert runtime.records.resolve_ship(entity(Command).id) is Command
+    graph = _top_level_import_graph()
+    assert "l3.runtime" not in graph["cli"]
+    assert "l3.runtime" not in graph["usage"]
+    assert "l3.runtime" not in graph["live_help"]
+
+
 def test_git_workflow_spans_mechanics_integration_and_process_adapters():
     from tarav.l1.git import GitRepository, GitWorkflow
     from tarav.l1.references.git import GitCommitMessagePositionReference

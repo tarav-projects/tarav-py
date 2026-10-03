@@ -242,6 +242,13 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
 - `tarav.l1.context` owns Context types, standalone navigation, class-bases
   presentation, and the Context Workflow declaration. `explore()` accepts
   explicit contributors without loading Archive or runtime.
+- `tarav.l1.cli` projects the built argparse tree as stable `Command` Entities
+  and supplies command checks. `tarav.l1.usage` retains bounded, workflow-attributed
+  traces in typed Archive folders with workflow-owned daily files. Callers
+  choose their trace payloads. `tarav.l1.live_help` renders source and recent
+  usage leads on demand; the l3 CLI adapter binds those capabilities to parser
+  help and records completed command calls. CLI traces retain option names but
+  omit arbitrary option values and arguments after `--`.
 - `tarav.l2.context` owns Archive-backed Context Types and `ContextService`;
   `tarav.l3.context` owns the runtime-aware `context()` convenience. Runtime
   assembly constructs its service directly; the l1 Workflow has no service factory. Kernel retains
