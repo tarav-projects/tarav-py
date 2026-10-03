@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
 import shlex
 
 from tarav.l0.kernel import TaravClass, TaravType, TypeShip, WorkflowShip
 from tarav.l0.kernel.workflows import TaravWorkflow
-from tarav.l1.usage import UsageRegistry
+from tarav.l1.usage import UsageRegistry, UsageTrace
 
 
 LIVE_HELP_WORKFLOW_SHIP = WorkflowShip("259a5d90-44a9-4dad-a8fa-8fcb704ed6c1")
@@ -56,6 +55,14 @@ class LiveHelpProvider(TaravType):
         raise NotImplementedError
 
     @property
+    def help_trace_type(self) -> type[UsageTrace]:
+        raise NotImplementedError
+
+    @property
+    def help_heading(self) -> str:
+        raise NotImplementedError
+
+    @property
     def source_location(self) -> tuple[Path, int] | None:
         raise NotImplementedError
 
@@ -97,31 +104,23 @@ def render_live_help(
     recent_limit: int = 3,
 ) -> str:
     """Render leads; missing history stays an honest absence."""
-    lines = [f"command:  {provider.help_subject or 'tarav'}"]
+    lines = [f"{provider.help_heading}:  {provider.help_subject}"]
     source = provider.source_location
     if source is not None:
         path, line = source
         lines.append(f"source:   {path}:{line}")
     try:
-        uses = registry.query(workflow=provider.help_workflow, subject=provider.help_subject)
+        # tarav.breadcrumb 5217c2e01194ba4df73a01a761799164d5926d2a4e12423d2d4c1b6dee0abe18
+        uses = registry.query(
+            workflow=provider.help_workflow,
+            subject=provider.help_subject,
+            trace_type=provider.help_trace_type,
+        )
     except OSError:
         uses = ()
     lines.append(f"recent uses ({min(recent_limit, len(uses))} of {len(uses)}):")
     for use in uses[:recent_limit]:
-        payload = use.get("payload") or {}
-        outcome = payload.get("exit_code", "?") if isinstance(payload, dict) else "?"
-        stamp = str(use.get("recorded_at", ""))[:16].replace("T", " ")
-        lines.append(f"  {stamp}  exit {outcome}")
-        if isinstance(payload, dict):
-            # tarav.breadcrumb fb608dd92ba41875a2f55c310ff6a0f64a71a9fc510d9508f72346e5933211f4
-            use = payload.get("use")
-            if isinstance(use, dict):
-                for key, value in use.items():
-                    shown = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
-                    lines.append(f"                    {key}: {shown}")
-            cwd = payload.get("cwd")
-            if cwd:
-                lines.append(f"                    cwd {cwd}")
+        lines.extend(provider.help_trace_type.render_trace(use))
     if source is not None:
         hint = _git_history_hint(*source)
         if hint is not None:

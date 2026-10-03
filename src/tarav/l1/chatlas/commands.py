@@ -20,12 +20,52 @@ from tarav.l1.chatlas.rendering import (
     ChatlasRenderError,
     renderer,
 )
+from tarav.l1.usage import describe_text
 
 
 _CURRENT_SESSION_ENV = {
     "codex": "CODEX_THREAD_ID",
     "claude-code": "CLAUDE_CODE_SESSION_ID",
 }
+
+
+def _describe_update(args: argparse.Namespace) -> dict[str, object]:
+    """Describe capture selection without retaining session identifiers."""
+    return {
+        **({"providers": args.providers} if args.providers else {}),
+        **({"session_count": len(args.session_ids)} if args.session_ids else {}),
+        **({"current_session": True} if args.current_session else {}),
+        **({"full_scan": True} if args.full_scan else {}),
+        **({"window_seconds": args.window_seconds}
+           if args.window_seconds is not None else {}),
+    }
+
+
+def _describe_query(args: argparse.Namespace) -> dict[str, object]:
+    reference = (
+        "current-session" if args.current_session else
+        "identity-hash" if args.identity_hash else "session-id"
+    )
+    return {
+        "session_ref": reference,
+        **({"provider": args.provider} if args.provider else {}),
+        **({"turn_hash_prefixes": args.turn_hash_prefixes}
+           if args.turn_hash_prefixes else {}),
+        **({"side": args.side} if args.side else {}),
+        **({"text_contains": describe_text(args.text_contains)}
+           if args.text_contains else {}),
+        "order": args.order,
+        "limit": args.limit,
+    }
+
+
+def _describe_render(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        **_describe_query(args),
+        "renderer": args.renderer,
+        **({"renderer_options": len(args.renderer_option)}
+           if args.renderer_option else {}),
+    }
 
 
 def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
@@ -39,7 +79,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "update", help="Capture chat deltas and update the session index."
     )
     _add_capture_options(update)
-    update.set_defaults(handler=_cmd_update)
+    update.set_defaults(handler=_cmd_update, usage_descriptor=_describe_update)
 
     current_session = commands.add_parser(
         "current-session",
@@ -121,7 +161,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
 
     query = commands.add_parser("query", help="Query one exact Chatlas Normal Model.")
     _add_query_options(query)
-    query.set_defaults(handler=_cmd_query)
+    query.set_defaults(handler=_cmd_query, usage_descriptor=_describe_query)
 
     render = commands.add_parser(
         "render", help="Render Chatlas Query findings through a named Renderer."
@@ -139,7 +179,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         metavar="NAME=VALUE",
         help="Renderer-owned option; may be repeated.",
     )
-    render.set_defaults(handler=_cmd_render)
+    render.set_defaults(handler=_cmd_render, usage_descriptor=_describe_render)
 
 
 def _add_capture_options(parser: argparse.ArgumentParser) -> None:

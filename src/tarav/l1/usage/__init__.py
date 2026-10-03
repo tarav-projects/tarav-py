@@ -13,7 +13,7 @@ from filelock import FileLock
 import jmespath
 
 from tarav.l0._core.data_root import default_tarav_data_root
-from tarav.l0.kernel import LiteRecord, Ship, TaravClass, TaravEntity, TypeShip, WorkflowShip
+from tarav.l0.kernel import LiteRecord, Ship, TaravClass, TaravEntity, TaravType, TypeShip, WorkflowShip, entity
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.archive.records import ArchiveFolder, ArchivePartition
 
@@ -42,6 +42,25 @@ class UsageRegistryWorkflow(TaravWorkflow):
     @classmethod
     def _workflow_id(cls) -> WorkflowShip:
         return USAGE_WORKFLOW_SHIP
+
+
+# tarav.breadcrumb 8c814524ab7806d18fc6774a923a01d4f5b22061aa7d27efc70672022b041c17
+class UsageTrace(TaravType):
+    """A trusted Type describes how its retained usage rows are presented."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("d8a80919-79f9-42b5-a0ad-e2bc0c70f0fa"),
+            name="Tarav.Usage.Trace",
+            workflow=USAGE_WORKFLOW_SHIP,
+        )
+
+    @classmethod
+    def render_trace(cls, row: Mapping[str, object]) -> tuple[str, ...]:
+        stamp = str(row.get("recorded_at", ""))[:16].replace("T", " ")
+        return (f"  {stamp}  {row.get('subject', '')}",)
 
 
 # tarav.breadcrumb b6575c66c1fa47b85dc84368182072438d35f09fa8b3ff0a7b003a2017127331
@@ -94,6 +113,7 @@ class UsageRegistry:
     def record(
         self,
         *,
+        trace_type: type[UsageTrace],
         workflow: type[TaravWorkflow] | TaravWorkflow | WorkflowShip,
         subject: str,
         payload: Mapping[str, object] | LiteRecord,
@@ -101,12 +121,15 @@ class UsageRegistry:
     ) -> bool:
         """Best effort: failure never changes the caller's outcome."""
         try:
+            if not isinstance(trace_type, type) or not issubclass(trace_type, UsageTrace):
+                raise TypeError("trace_type must be a UsageTrace class")
             if not isinstance(subject, str) or not subject:
                 raise ValueError("subject must be nonempty text")
             workflow_id = _workflow_ship(workflow)
             project_id = _project_ship(project)
             now = datetime.now(timezone.utc)
             row = {
+                "type": entity(trace_type).name,
                 "recorded_at": now.isoformat(),
                 "workflow": str(workflow_id),
                 "subject": subject,
@@ -152,6 +175,7 @@ class UsageRegistry:
         workflow: type[TaravWorkflow] | TaravWorkflow | WorkflowShip | None = None,
         project: TaravEntity | Ship | None = None,
         subject: str | None = None,
+        trace_type: type[UsageTrace] | str | None = None,
         since: datetime | None = None,
         expression: str | None = None,
         limit: int | None = None,
@@ -162,6 +186,12 @@ class UsageRegistry:
             return ()
         selected_workflow = str(_workflow_ship(workflow)) if workflow is not None else None
         selected_project = str(_project_ship(project)) if project is not None else None
+        if isinstance(trace_type, type) and issubclass(trace_type, UsageTrace):
+            selected_type = entity(trace_type).name
+        elif trace_type is None or isinstance(trace_type, str) and trace_type:
+            selected_type = trace_type
+        else:
+            raise TypeError("trace_type must be a UsageTrace class or nonempty label")
         retention_boundary = datetime.now(timezone.utc) - timedelta(days=self.window_days)
         if since is not None:
             since = (since.replace(tzinfo=timezone.utc) if since.tzinfo is None
@@ -190,6 +220,8 @@ class UsageRegistry:
                         continue
                     if selected_project and row.get("project") != selected_project:
                         continue
+                    if selected_type is not None and row.get("type") != selected_type:
+                        continue
                     if subject is not None and row.get("subject") != subject:
                         continue
                     if str(row.get("recorded_at", "")) < since.isoformat():
@@ -202,8 +234,12 @@ class UsageRegistry:
 
 
 # tarav.breadcrumb 49d903a04560c26555691aa1371dedd6f28f61ccb04a0d5c845c9bfd2bd89e87
-def describe_text(text: str, *, edge: int = 20) -> dict[str, object]:
-    """Optional helper: stand for a long text by its size, edges, and hash."""
+def describe_text(
+    text: str, *, edge: int = 20, inline_limit: int = 80,
+) -> str | dict[str, object]:
+    """Keep short text verbatim; stand for longer text by size, edges, and hash."""
+    if len(text) <= inline_limit:
+        return text
     return {
         "chars": len(text),
         "head": text[:edge],
@@ -227,12 +263,16 @@ def record_usage(
     subject: str,
     payload: Mapping[str, object] | LiteRecord,
     *,
+    trace_type: type[UsageTrace],
     project: TaravEntity | Ship | None = None,
 ) -> bool:
-    return UsageRegistry().record(workflow=workflow, subject=subject, payload=payload, project=project)
+    return UsageRegistry().record(
+        trace_type=trace_type, workflow=workflow, subject=subject,
+        payload=payload, project=project,
+    )
 
 
 __all__ = [
-    "UsageRegistry", "UsageRegistryWorkflow", "record_usage", "describe_text",
+    "UsageRegistry", "UsageRegistryWorkflow", "UsageTrace", "record_usage", "describe_text",
     "describe_file", "DEFAULT_WINDOW_DAYS",
 ]

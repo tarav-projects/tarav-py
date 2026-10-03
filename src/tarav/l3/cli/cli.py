@@ -11,7 +11,7 @@ from tarav import __version__
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.operational_logging import configure_operational_logging
 from tarav.l3.runtime import TaravRuntime, HookRegistrar, create_runtime
-from tarav.l1.cli import Command, CliWorkflow, commands_from_parser
+from tarav.l1.cli import Command, CommandUse, CliWorkflow, commands_from_parser
 from tarav.l1.live_help import LiveHelpArgumentParser, render_live_help
 
 
@@ -80,6 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         if command is not None and getattr(command, "handler", None) is not None:
             runtime.usage.record(
+                trace_type=CommandUse,
                 workflow=CliWorkflow,
                 subject=command.help_subject,
                 payload={

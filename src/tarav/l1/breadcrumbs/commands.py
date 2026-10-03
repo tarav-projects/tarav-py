@@ -187,6 +187,10 @@ def register_submission_command(
     _add_common(parser)
     parser.set_defaults(
         handler=_cmd_submit,
+        usage_descriptor=lambda args: {
+            "surface": args.surface,
+            **({"language": args.language} if args.language else {}),
+        },
         breadcrumb_annotation_workflow=workflow,
         breadcrumb_request_factory=request_factory,
     )
@@ -212,6 +216,13 @@ def register_audit_command(
     _add_common(parser)
     parser.set_defaults(
         handler=_cmd_audit,
+        usage_descriptor=lambda args: {
+            **({"surface": args.surface} if args.surface else {}),
+            **({"repo": args.repo, "commit": args.commit}
+               if getattr(args, "commit", None) else {}),
+            **({"language": args.language} if args.language else {}),
+            **({"refresh_positions": True} if args.refresh_positions else {}),
+        },
         breadcrumb_annotation_workflow=workflow,
         breadcrumb_request_factory=request_factory,
     )

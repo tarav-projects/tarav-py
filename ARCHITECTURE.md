@@ -248,10 +248,14 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   the current parser tree, not loaded as standalone retained Records.
   `tarav.l1.usage` retains bounded, workflow-attributed
   traces in typed Archive folders with workflow-owned daily files. Callers
-  choose their trace payloads. `tarav.l1.live_help` renders source and recent
-  usage leads on demand; the l3 CLI adapter binds those capabilities to parser
-  help and records completed command calls. CLI traces retain option names but
-  omit arbitrary option values and arguments after `--`.
+  choose their trace payloads and a `UsageTrace` subtype whose owner renders
+  that payload. Newly written rows carry the Type name; older untyped rows
+  remain queryable until they age out. `tarav.l1.live_help` renders source and
+  recent usage leads on demand, selecting exactly the Type and subject named
+  by its provider rather than interpreting CLI fields. The l3 CLI adapter
+  records `CommandUse` traces; command owners supply concise descriptors of
+  their calls.
+  <!-- tarav.breadcrumb 4c65e8ba6ee4799e598a5973b7dbfc70858d934bd4e2abc9bc4c07ac06e9d207 -->
   <!-- tarav.breadcrumb 217080a6ff2b0b121aee1e55ec553d860ad1076d13b23db78882b78b1694e72f -->
   <!-- tarav.breadcrumb 5ede35bc5676515a281d72565d409ecb46bbe06adab48eedf903130170c49bcd -->
 - `tarav.l2.context` owns Archive-backed Context Types and `ContextService`;

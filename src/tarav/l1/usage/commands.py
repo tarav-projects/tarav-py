@@ -27,6 +27,7 @@ def register_usage_commands(
     query.add_argument("--workflow", help="Workflow name or Ship")
     query.add_argument("--project", help="Project Ship")
     query.add_argument("--subject")
+    query.add_argument("--type", dest="trace_type", help="Exact usage trace Type label")
     query.add_argument("--since", help="ISO datetime")
     query.add_argument("--jmespath", help="JMESPath predicate over each JSON row")
     query.add_argument("--limit", type=int)
@@ -45,6 +46,7 @@ def register_usage_commands(
                 workflow=workflow,
                 project=project,
                 subject=args.subject,
+                trace_type=args.trace_type,
                 since=since,
                 expression=args.jmespath,
                 limit=args.limit,
@@ -62,6 +64,7 @@ def register_usage_commands(
             for key, value in (
                 ("workflow", args.workflow), ("project", args.project),
                 ("subject", args.subject), ("since", args.since),
+                ("type", args.trace_type),
                 ("jmespath", args.jmespath), ("limit", args.limit),
             )
             if value is not None

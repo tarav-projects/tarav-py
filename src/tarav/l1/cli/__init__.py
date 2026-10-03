@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import inspect
+import json
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid5
@@ -14,6 +15,7 @@ from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, WorkflowShi
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult
 from tarav.l1.live_help import LiveHelpProvider
+from tarav.l1.usage import UsageTrace
 
 
 CLI_WORKFLOW_SHIP = WorkflowShip("66ab1312-5e49-4849-8503-1315f461b4bd")
@@ -36,6 +38,36 @@ class CliWorkflow(TaravWorkflow):
     @classmethod
     def _workflow_id(cls) -> WorkflowShip:
         return CLI_WORKFLOW_SHIP
+
+
+# tarav.breadcrumb eb43ccb7c351be1beb0d5a32309a91ae213fae45eaeeef4f3ebd058a705dcc0c
+class CommandUse(UsageTrace):
+    """A CLI invocation, rendered by the workflow that knows its payload."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("ae5c5356-8701-4ed0-872c-a4984b382813"),
+            name="Tarav.CLI.Command.Use",
+            workflow=CLI_WORKFLOW_SHIP,
+        )
+
+    @classmethod
+    def render_trace(cls, row: dict[str, object]) -> tuple[str, ...]:
+        payload = row.get("payload")
+        values = payload if isinstance(payload, dict) else {}
+        stamp = str(row.get("recorded_at", ""))[:16].replace("T", " ")
+        lines = [f"  {stamp}  exit {values.get('exit_code', '?')}"]
+        descriptor = values.get("use")
+        if isinstance(descriptor, dict):
+            # tarav.breadcrumb fb608dd92ba41875a2f55c310ff6a0f64a71a9fc510d9508f72346e5933211f4
+            for key, value in descriptor.items():
+                shown = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+                lines.append(f"                    {key}: {shown}")
+        if values.get("cwd"):
+            lines.append(f"                    cwd {values['cwd']}")
+        return tuple(lines)
 
 
 class Command(TaravEntity, CheckProvider, LiveHelpProvider):
@@ -86,6 +118,14 @@ class Command(TaravEntity, CheckProvider, LiveHelpProvider):
     @property
     def help_workflow(self) -> type[TaravWorkflow]:
         return CliWorkflow
+
+    @property
+    def help_trace_type(self) -> type[UsageTrace]:
+        return CommandUse
+
+    @property
+    def help_heading(self) -> str:
+        return "command"
 
     @property
     def source_location(self) -> tuple[Path, int] | None:
@@ -158,4 +198,4 @@ def commands_from_parser(parser: argparse.ArgumentParser) -> tuple[Command, ...]
     return tuple(result)
 
 
-__all__ = ["CliWorkflow", "Command", "CommandMetadataCheck", "commands_from_parser"]
+__all__ = ["CliWorkflow", "CommandUse", "Command", "CommandMetadataCheck", "commands_from_parser"]

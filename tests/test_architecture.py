@@ -4,6 +4,7 @@ from __future__ import annotations
 from tarav.l0.kernel import entity
 
 import ast
+import argparse
 from collections import defaultdict
 from pathlib import Path
 
@@ -40,9 +41,9 @@ def test_loading_workflow_configures_kernel_without_reverse_imports():
 
 # tarav.breadcrumb b28351625fdfd6e99329fb66c0610f238c7b0bc4a1b86770ff68c2194b0078f6
 def test_cli_usage_and_live_help_workflows_are_separate() -> None:
-    from tarav.l1.cli import CliWorkflow, Command
+    from tarav.l1.cli import CliWorkflow, Command, CommandUse
     from tarav.l1.live_help import LiveHelpProvider, LiveHelpWorkflow
-    from tarav.l1.usage import UsageRegistryWorkflow
+    from tarav.l1.usage import UsageRegistryWorkflow, UsageTrace
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
@@ -50,12 +51,18 @@ def test_cli_usage_and_live_help_workflows_are_separate() -> None:
     assert runtime.workflows.get("usage") is UsageRegistryWorkflow
     assert runtime.workflows.get("live-help") is LiveHelpWorkflow
     assert entity(Command).workflow is CliWorkflow()
+    assert entity(CommandUse).workflow is CliWorkflow()
+    assert entity(UsageTrace).workflow is UsageRegistryWorkflow()
+    assert issubclass(CommandUse, UsageTrace)
+    assert Command((), argparse.ArgumentParser()).help_trace_type is CommandUse
     assert issubclass(Command, LiveHelpProvider)
     assert Command not in runtime.records.record_types
     graph = _top_level_import_graph()
     assert "l3.runtime" not in graph["cli"]
     assert "l3.runtime" not in graph["usage"]
     assert "l3.runtime" not in graph["live_help"]
+    assert "cli" not in graph["usage"]
+    assert "cli" not in graph["live_help"]
 
 
 def test_git_workflow_spans_mechanics_integration_and_process_adapters():
