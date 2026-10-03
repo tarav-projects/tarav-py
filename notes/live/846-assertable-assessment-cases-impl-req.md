@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: implementation verified; Wiki capture pending. Phase: Execute.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: implemented and captured. Phase: Execute.
 
 Introduce the smallest Tarav contract by which an `Assertable` object exposes labeled, identified Assertions and each Assertion can produce typed assessment cases for compatible scoring workflows. A case is the complete, bounded input to one scorer. The scorer judges it without searching for missing evidence. This is Tarav infrastructure, not an md-library specialization.
 
@@ -45,3 +45,4 @@ Acceptance: another workflow can expose named Assertions through `.assertions`; 
 - 2026-10-03 Execute: scoped start checkpoint `984791d5d60464f0264573505f57f5744b6abdc1`. Added `Assertable`/label-addressed `AssertionNamespace`, typed closed `AssessmentCase` snapshots, distinct unsupported/incomplete errors, and two Line-owned case producers. Registered case Types in the runtime; existing Line Assertion identity and ranking adapter were preserved.
 - Product.Surface Breadcrumbs were submitted and audited clean on the assertion and Line producers, case tests, architecture document, and scoring README. Runtime registration and exports are mechanical and had no separately justified conversational annotation.
 - Verification: `uv run pytest -q tests/scoring tests/test_architecture.py` (47 passed), `uv run ruff check src tests`, and `git diff --check` passed. A Pydantic forward-reference failure in the first test run was corrected by moving the reference interface before case declarations.
+- Product completion commit: `230b98a93a582994c11760348bd871bfcbd42058`; commit-message Breadcrumb audit clean. Wiki daily and new `assertions-scoring.md` topical capture committed as `3d559c51b9c4a5d0ab93f7ac746574a2d2e69c1d`, with file and commit Breadcrumb audits clean. A detached clean Tarav CLI snapshot was used for the Wiki commit because unrelated in-progress request 851 temporarily made the shared editable CLI fail runtime registration; no 851 files were changed here.
