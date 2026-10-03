@@ -1,4 +1,4 @@
-# 851 — CLI model, Live Help, and command invocation registry
+# 851 — Usage Registry, CLI model, and Live Help
 
 <!-- tarav.sessions
 f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf0496f867fc656fdad9063980a184f7c3f15c54adf8fcb31f
@@ -9,13 +9,15 @@ f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf049
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design only.
 Status: needs alignment on the open questions below; otherwise ready.
 
-Model the `tarav` command line as Tarav objects, record every `tarav`
-invocation in a registry owned by that model, and add a Live Help workflow
+Add a Usage Registry workflow where any workflow can leave traces of how it
+was used, model the `tarav` command line as Tarav objects that register each
+call there, and add a Live Help workflow
 that makes a reactive section a standard part of every `--help`: where the
 command's source is, how it was recently used, and a hint for its history.
 <!-- tarav.breadcrumb eefda0f30a44054db611f85bbf620cb401bb140a461362d5e6ace5dd6068e0d0 -->
 
-Non-goals: recording non-`tarav` shell commands; a Git query workflow;
+Non-goals: instrumenting workflows other than the CLI in this request;
+recording non-`tarav` shell commands; a Git query workflow;
 documentation staleness checks; any ranking or interpretation of recent uses;
 changing existing command behavior, arguments, or exit codes.
 
@@ -69,27 +71,57 @@ Agent proposal:
   named missing help as an example of what the model should let us detect.
 <!-- tarav.breadcrumb dea81d367d616c86b877b4d15f763cfc9702a28d755b22cea286d565cf6e92fc -->
 
-### Invocation registry
+### Usage Registry
 
-Every `tarav` command is stored: which command, its arguments, and so on. The
-registry must be queryable and may keep only a recent window (two days, three
-days, a week); the window is a parameter.
+Earlier in the discussion the registry was a CLI invocation log: every `tarav`
+command stored with its arguments, queryable, keeping only a recent window
+whose length is a parameter, in the central storage partition of its owning
+workflow (`ArchivePartition(root, workflow_ship)` in
+`src/tarav/l1/archive/records/navigation.py`, rooted at
+`~/Documents/tarav/archive/<workflow-ship>/`).
 <!-- tarav.breadcrumb 37cbdfc3fdd868f7927aa3560a609467aae9438b16ba8c464fa28c9f6b7a2d16 -->
 <!-- tarav.breadcrumb 7f23ddd8cd4c44a51a4d9e625819a28e79e27832f0fa9ecb202ff3a0412b457d -->
-
-It lives in Tarav's central storage, in the partition each workflow has
-there. Inspected mechanism: `ArchivePartition(root, workflow_ship)` in
-`src/tarav/l1/archive/records/navigation.py`, rooted at
-`~/Documents/tarav/archive/<workflow-ship>/`; Context and the Test workflow
-use it today.
 <!-- tarav.breadcrumb 18dab50bc9bd2d818bed4d77b591ad1eb2af6e7becd4f90e5344fddbfc3dc3e9 -->
 
-Agent proposal: each invocation is a `LiteRecord` appended as one JSON line to
-a per-day file inside the `CliWorkflow` partition, holding command path, argv,
-cwd, exit code, duration, start time, and the harness session when
-`tarav chatlas current-session` mechanics can resolve it cheaply. Trimming
-deletes day files older than the window. The write happens in `main()` and
-must never fail or slow the command: errors are swallowed and logged.
+The User then generalized it. The registry is its own workflow with one clear
+semantic: a place where you put your usage trace so Agents can discover fresh
+examples of how Tarav is being used. It is like a logging system with a
+specific meaning, which is why it is a workflow. It does not care what is
+registered. Each workflow is responsible for knowing what to store so an Agent
+can see how it was used; the registry provides only the minimal shape, handles
+storage, and provides the query.
+<!-- tarav.breadcrumb 41cfc576f94ac8ee2e3b6b7c5a11327a1f66e5eb3837c2225dc804ae3572f90d -->
+
+It is not tied to the CLI. Tarav's main interface is the library and the CLI
+is only a consumer, so a trace can be left from inside any method. A CLI
+command is an obvious good point, since a public command marks a typical or
+important path, but it is one client among others.
+<!-- tarav.breadcrumb 0178c821187df29350b75528dad7385100e4b854a237bf2c5efae38c0af153b0 -->
+
+Organization is minimal: each registering workflow may have its own partition
+inside the registry. General metadata such as the project and the workflow of
+the call lets Agents query back by those native Tarav objects; those queries
+are built in. Beyond them, Agents send a general query: Tarav databases are by
+default a set of JSON records, so the model is to iterate the records and
+query their JSON.
+<!-- tarav.breadcrumb 1d4db68395b52f43f2ef65dd4585e93b8c05f83e91f07661cbf20a89f9c4b005 -->
+
+Agent proposal:
+
+- `UsageRegistryWorkflow` owns one Archive partition, with one sub-partition
+  per registering workflow and one JSON-lines file per day.
+- One library call, `record_usage(workflow, subject, payload, project=None)`,
+  appends a `LiteRecord` with time, workflow, subject, project, harness
+  session when cheaply resolvable, and the caller's free payload. It never
+  raises and never slows the caller: failures are swallowed and logged.
+- Read side: iterate records filtered by workflow, project, subject, and
+  time, plus an optional JMESPath expression over each record. `jmespath` is
+  already a declared dependency of `tarav-py` and is currently unused.
+- One CLI leaf, `tarav usage query`, exposing those filters.
+- The rolling window and its trimming are declared in this workflow's
+  constitution; trimming deletes day files older than the window.
+- The CLI model is the first client: `main()` records each command call with
+  subject = command path and payload = argv, cwd, exit code, and duration.
 
 ### Live Help
 
@@ -118,9 +150,9 @@ moved from "live context" to "live help".
 <!-- tarav.breadcrumb aa9560e5f28922fc2c963129e4b224f7cb5d252289a127689025a373e0b4720f -->
 
 Agent proposal: `LiveHelpWorkflow` defines one small capability type, a
-provider that returns a source location, recent uses, and plain-text hint
-lines for a subject, plus the renderer for the section above. `Command`
-implements it. The section is produced only when help is requested, so
+provider that returns a source location, a Usage Registry subject, and
+plain-text hint lines, plus the renderer for the section above. Recent uses
+are read from the Usage Registry. `Command` implements it. The section is produced only when help is requested, so
 ordinary commands pay nothing.
 
 Relevant existing design (inspected, not discussed with the User):
@@ -138,7 +170,7 @@ that source-location mechanism for handlers and stay consistent with it.
    overlap and recommends a small separate workflow that reuses `help()`.
 2. A rolling window deletes Archive records routinely. The Constitution allows
    explicit Archive maintenance; the Agent recommends declaring the window in
-   the `CliWorkflow` constitution. The User has not answered.
+   the `UsageRegistryWorkflow` constitution. The User has not answered.
 3. Default window length.
 
 ## Impl.Req.Wiki
@@ -151,15 +183,18 @@ this design in `live-help.md`. Supporting chat: session `f5845518` above.
 ## Execution.Plan
 
 1. Scoped start evidence checkpoint.
-2. `tarav.l1.cli`: `CliWorkflow`, `Command` derived from a built argparse
-   tree, and `CommandInvocation` with its append and windowed read. Tests on a
-   small synthetic parser: every leaf yields one `Command`; append then read
-   round-trips; trimming removes only files outside the window.
+2. `tarav.l1.usage`: `UsageRegistryWorkflow`, `record_usage`, the filtered
+   and JMESPath read, trimming, and `tarav usage query`. Tests: append then
+   read round-trips; filters by workflow, project, and subject; a JMESPath
+   query; trimming removes only files outside the window; a failing write
+   does not raise.
+   `tarav.l1.cli`: `CliWorkflow` and `Command` derived from a built argparse
+   tree. Test on a small synthetic parser: every leaf yields one `Command`.
 3. `tarav.l1.live_help`: the provider type and the section renderer. Tests
    with a fake provider.
-4. `tarav.l3.cli`: in `main()`, record each invocation after the handler
-   returns or raises, and attach the Live Help section to help output. Tests:
-   a failing registry write does not change the exit code; `--help` of a leaf
+4. `tarav.l3.cli`: in `main()`, record each call in the Usage Registry after
+   the handler returns or raises, and attach the Live Help section to help
+   output. Tests: a failing registry write does not change the exit code; `--help` of a leaf
    shows `source:` pointing at the handler's file.
 5. Checks on `Command` for missing help text and unlocatable handler source;
    run them over the real tree and record the POI count, without fixing them.
@@ -169,8 +204,9 @@ this design in `live-help.md`. Supporting chat: session `f5845518` above.
    commit.
 
 Acceptance: `tarav <any command> --help` ends with the Live Help section;
-after running a command, its help lists that use; the registry sits in the
-`CliWorkflow` Archive partition; the configured suite passes.
+after running a command, its help lists that use and `tarav usage query`
+returns it; the registry sits in the `UsageRegistryWorkflow` Archive
+partition; a non-CLI caller can record and query a trace; the configured suite passes.
 
 ## Impl.Log
 
@@ -179,3 +215,5 @@ after running a command, its help lists that use; the registry sits in the
   `l0/kernel/records.py` (`help()`), `l0/kernel/lite_records.py`,
   `l1/archive/records/navigation.py` (`ArchivePartition`),
   `l2/context/storage.py`, `l1/checks/__init__.py`. No product code changed.
+- 2026-10-03 Design revision: the registry became the general Usage Registry
+  workflow with the CLI as its first client, following the User's correction.
