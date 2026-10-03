@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready.
+Status: ready (Design only; not executed, at the User's instruction).
 
 Delete the `Order` and `ReportedAction` Decision subtypes added by request 854.
 `Decision` stays as the root type and `BlessingRecord` keeps subtyping it.
@@ -63,7 +63,7 @@ Product owner: `tarav-py`.
 Wiki owner/root: `tarav-md/notes/wiki`.
 Relevant context: `tarav-md/notes/wiki/decisions.md`; request 854.
 Supporting chat: claude-code session `8c55cc60-f28a-439f-a6a0-0521567e600e`.
-Capture status: pending.
+Capture status: design captured in `tarav-md/notes/wiki/decisions.md` and `daily/2026-10-03.md`.
 
 ## Execution.Plan
 
@@ -74,4 +74,7 @@ Capture status: pending.
 3. Update the `decisions` row and paragraph in `ARCHITECTURE.md`.
 
 ## Impl.Log
-
+- Design: note written; start checkpoint 73e8823 contains only this note. No
+  product code, test or `ARCHITECTURE.md` change was made. Baseline before any
+  edit: `tests/decisions` and `tests/test_architecture.py`, 46 passed.
+- The User asked to stop after Design. Execution is pending a later request.
