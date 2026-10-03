@@ -94,7 +94,7 @@ Wiki owner/root: `tarav-md/notes/wiki`.
 Relevant context: `tarav-md/notes/wiki/decisions.md`, `projects.md`; requests
 854 and 856.
 Supporting chat: claude-code session `8c55cc60-f28a-439f-a6a0-0521567e600e`.
-Capture status: pending.
+Capture status: completed in `tarav-md/notes/wiki/decisions.md` and `daily/2026-10-03.md`.
 
 ## Execution.Plan
 
@@ -144,3 +144,4 @@ short-lived; recheck the worktree before each commit.
   positions in the edited files re-recorded; all audits clean.
 - Not done, by design: no migration of existing blessing stores; no CLI; SKW
   skills and md-library still use their own blessing directories.
+- Product commit 9f58050. Wiki captured; audits clean.
