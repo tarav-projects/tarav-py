@@ -13,7 +13,7 @@ from tarav.l1.skw.code import CodeWorkflow
 from tarav.l1.skw.depot import SkwDepot
 from tarav.l1.skw.document import Document, project_document, project_root, read
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
-from tarav.l1.skw.loading import LoadingModel, LoadingRecord, SkillDocument
+from tarav.l1.skw.loading import LoadingRecord, SkillDocument, SkillReadingGraph
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
 from tarav.l1.blessings import BlessingAssessmentRecord, BlessingRecord, BlessingStore
 from tarav.l1.checks import CheckProvider, run_checks
@@ -112,7 +112,7 @@ class SkwSkill(SkwDepot, CheckProvider):
         cls = SkillDocument if 'loading' in self.data else Document
         documents = [cls(self.path(p), root=self.root) for p in self.data['sources']]
         if 'loading' in self.data:
-            loading = LoadingModel(self, documents)
+            loading = SkillReadingGraph(self, documents)
             for document in documents:
                 document.loading = loading
         return documents
@@ -152,7 +152,7 @@ class SkwSkill(SkwDepot, CheckProvider):
 
     def loading(self):
         # tarav.breadcrumb 59cbf4641ecead3861c7589cc4925175b947f7cbb3c2df4adbb1eabef3901e5e
-        return LoadingModel(self, self.documents())
+        return SkillReadingGraph(self, self.documents())
 
     @property
     def blessings(self):

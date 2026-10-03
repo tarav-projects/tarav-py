@@ -2,6 +2,7 @@
 
 <!-- tarav.sessions
 1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
+6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 -->
 
 ## Read first
@@ -82,6 +83,11 @@
 
 - Skill packages with a `loading` declaration use `tarav.l1.skw.loading` for
   declared slot composition and `tarav.l1.skw.skills` for typed components.
+  `tarav.l1.skw.code.ReadingGraph` is the common static-analysis contract;
+  `SkillReadingGraph` owns the existing package binding, rendering, and path
+  analysis. `ProjectReadingGraph` is only a Project-owned specialization point
+  until concrete Project onboarding routes establish shared mechanics.
+  <!-- tarav.breadcrumb db4b6b30bfab0d34c188dea34dfea40b0dc9cd0eff9908b7bee01f5cedf08ad5 -->
   SKW blocks are Entities with UUID Ships and separate local labels. Typed
   reading declarations belong to source blocks; the loading Record binds
   blocks and routes, while l2 reading Checks interpret path analysis into POIs.

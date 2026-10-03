@@ -15,7 +15,7 @@ from .document import Document, read, write
 from .skills import SkillLink
 # tarav.breadcrumb 1b91190ba3c46ec2a8d828da9b596086e9b950234134ca26c90d95eb0dca37fb
 from .code import (BlockEntry, Contains, ExpectedLink, FileEntry,
-                   IncludesBlock, ReadingLink, ReadingDependency)
+                   IncludesBlock, ReadingGraph, ReadingLink, ReadingDependency)
 from .generation import _hash
 
 
@@ -59,7 +59,19 @@ class SkillDocument(Document):
 
 
 # tarav.breadcrumb f4d2fd588176b0f1faadd7a1173874ad992004685b107fa4d1fb52f55c4e97a5
-class LoadingModel:
+class SkillReadingGraph(ReadingGraph):
+    """Skill-package binding, rendering, and reading-path analysis."""
+    # tarav.breadcrumb f3128c51a3704497ef0342eead63829fff1db828630a02c4c04ac0c77ce3a836
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip("c6fa0495-acda-42ec-8669-380957fcdebe"),
+            name="Tarav.SKW.Skills.ReadingGraph",
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
     def __init__(self, package, documents):
         self.package = package
         # tarav.breadcrumb 1f2a5d756e2d5656f99872c4ef20e28c188475e20fd9454ac3ef0f4753e314a0

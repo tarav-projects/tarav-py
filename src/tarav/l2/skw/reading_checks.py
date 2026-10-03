@@ -5,6 +5,7 @@ from collections import defaultdict
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.checks import Check, CheckResult
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
+from tarav.l1.skw.loading import SkillReadingGraph
 
 from .pois import CLASSES, surface_state
 
@@ -17,7 +18,9 @@ class ReadingGraphCheck(Check):
                           name="Tarav.SKW.Check.ReadingGraph",
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
-    def __init__(self, graph, *, analysis=None):
+    def __init__(self, graph: SkillReadingGraph, *, analysis=None):
+        if not isinstance(graph, SkillReadingGraph):
+            raise TypeError("Skill reading checks require a SkillReadingGraph")
         super().__init__()
         self.graph = graph
         self.analysis = analysis
@@ -122,6 +125,6 @@ READING_CHECK_TYPES = (ReadingDeclarationsCheck, ReadingDependenciesCheck,
                        ReadingCoverageCheck)
 
 
-def reading_checks(graph, *, analysis=None):
+def reading_checks(graph: SkillReadingGraph, *, analysis=None):
     analysis = graph.analyze() if analysis is None else analysis
     return tuple(cls(graph, analysis=analysis) for cls in READING_CHECK_TYPES)

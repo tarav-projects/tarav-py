@@ -69,10 +69,10 @@ class SkwAnalysisCheck(Check):
 class UnannotatedOutputLink(SkwPOI, BlessablePOI):
     """An authored Markdown link has no SKW link primitive declaration.
 
-    LoadingModel binds source blocks, then parses their authored output solely
-    for conformance. This link contributes no simulated context edge. Bless
-    only an intentionally unmodeled link after evaluating its consumer effect;
-    an acceptance does not add an edge or satisfy a context requirement.
+    SkillReadingGraph binds source blocks, then parses their authored output
+    solely for conformance. This link contributes no simulated context edge.
+    Bless only an intentionally unmodeled link after evaluating its consumer
+    effect; an acceptance does not add an edge or satisfy a context requirement.
     """
 
     @classmethod
@@ -86,7 +86,7 @@ class UnannotatedOutputLink(SkwPOI, BlessablePOI):
 
 
 class MissingContext(SkwPOI):
-    """LoadingModel.analyze reached a requirement without its requested delivery.
+    """SkillReadingGraph found a requirement without its requested delivery.
 
     Evidence identifies the target, delivery and exact incoming path. Correct
     declarations or delivery primitives; this class does not permit blessing.

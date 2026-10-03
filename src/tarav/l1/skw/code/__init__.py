@@ -20,6 +20,7 @@ from ..document import (
     SkillwareWorkflow,
 )
 from ..identity import SKW_CODE_WORKFLOW_SHIP
+from .graph import ReadingGraph
 from .reading import (
     READING_DECLARATION_TYPES,
     READING_ENTRY_TYPES,
@@ -94,6 +95,7 @@ __all__ = [
     "ReadingDeclaration",
     "ReadingDependency",
     "ReadingEntry",
+    "ReadingGraph",
     "ReadingLink",
     "ReferenceDependency",
     "SkwBlock",
