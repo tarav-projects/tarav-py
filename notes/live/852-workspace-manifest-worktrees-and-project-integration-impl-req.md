@@ -7,8 +7,8 @@ f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf049
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design only.
-Status: implemented in product; Wiki closure pending.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design → Execute.
+Status: implemented and captured.
 
 Revisit the August `Run.Workspace` design and make it more powerful. A
 workspace becomes a Tarav entity described by a JSON manifest that states its
@@ -240,3 +240,9 @@ hand raises a POI; removal through the depot leaves no stale registration.
   refreshed append-only. No new marker was justified for the export-only
   `workspaces/__init__.py`; deleted legacy files have no active surface to
   annotate.
+- 2026-10-03 Closure: product commit `b1c9626` and its commit-message
+  Breadcrumb audit passed. The Workspaces topical Wiki capture closed in
+  `tarav-md` commit `2ff588f`; the daily 2026-10-03 entry was included by a
+  concurrent Wiki commit `09579cc`. Both Wiki Note audits passed. Shared
+  worktree changes outside 852 were not included in the product or topical
+  completion commits.
