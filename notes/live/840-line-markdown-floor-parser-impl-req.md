@@ -98,7 +98,7 @@ Wiki owner/root: `tarav-md/notes/wiki`.
 Relevant context: `tarav-md/notes/wiki/checks-workflow.md`,
 `tarav-md/notes/wiki/poi-system.md`, `tarav-md/notes/wiki/projects.md`.
 Supporting chat: claude-code session `8c55cc60-f28a-439f-a6a0-0521567e600e`.
-Capture status: pending.
+Capture status: completed in `tarav-md/notes/wiki/line-markdown-floor.md` (tarav-md 193f118); a daily section was added to `notes/wiki/daily/2026-10-02.md` but left uncommitted because another session has uncommitted edits in that file.
 
 ## Execution.Plan
 
