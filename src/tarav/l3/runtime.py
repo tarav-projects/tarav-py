@@ -285,6 +285,7 @@ def create_runtime(
         BlessingStore,
         BlessingsWorkflow,
     )
+    from tarav.l1.blessings.store import bind_blessing_assertion_services
     from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow
     from tarav.l1.breadcrumbs.auditing import BreadcrumbAuditCheck
     from tarav.l1.poi.workflow import POI_WORKFLOW_SHIP
@@ -303,6 +304,11 @@ def create_runtime(
         LineGroundingAssertion, LineGroundingCase, LineSupportInventoryCase,
     )
     from tarav.l2.scoring.workflow import ScoringWorkflow
+    from tarav.l2.blessings import (
+        BlessingAcceptanceAssertion, BlessingAcceptanceCase,
+        BlessingGroundsAssertion, BlessingGroundsCase,
+        assertions_for_blessing, score_vector_for_blessing,
+    )
     from tarav.l1.skw.code import (
         CodeWorkflow,
         READING_DECLARATION_TYPES,
@@ -377,6 +383,10 @@ def create_runtime(
                 ScoringReference,
                 TribunalScoreCheck,
                 TribunalScorePOI,
+                BlessingAcceptanceAssertion,
+                BlessingAcceptanceCase,
+                BlessingGroundsAssertion,
+                BlessingGroundsCase,
                 LineGroundingAssertion,
                 LineGroundingCase,
                 LineSupportInventoryCase,
@@ -456,6 +466,11 @@ def create_runtime(
         registrations.get(entity(record_type).workflow_ship)
     records.validate_external_with(
         lambda record_type: registrations.get(entity(record_type).workflow_ship)
+    )
+    bind_blessing_assertion_services(
+        # tarav.breadcrumb 5762311d941885cac4ff5fb89e21189d84007f35dc2d4c7560fa4630b9653ea4
+        assertions=assertions_for_blessing,
+        scores=score_vector_for_blessing,
     )
     registry = HookRegistry()
     register_hook_sampling_callbacks(registry)

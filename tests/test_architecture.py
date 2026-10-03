@@ -123,6 +123,36 @@ def test_assertion_foundation_and_line_specialization_are_separate():
     assert 'lines.assertions' in graph['scoring.tasks']
 
 
+def test_blessing_assertions_compose_without_reverse_layer_imports():
+    # tarav.breadcrumb 1fd36ba300aee30852e066b39cfe3bde2c2dd89a285d41e3ca14f9fbb69f9574
+    from tarav.l1.blessings import BlessingRecord, BlessingsWorkflow
+    from tarav.l2.blessings import (
+        BlessingAcceptanceAssertion, BlessingAcceptanceCase,
+        BlessingGroundsAssertion, BlessingGroundsCase,
+    )
+    from tarav.l2.scoring import Assertable
+    from tarav.l3.runtime import create_runtime
+
+    assert issubclass(BlessingRecord, Assertable)
+    assert entity(BlessingRecord).workflow is BlessingsWorkflow()
+    assert entity(Assertable).id in {base.id for base in entity(BlessingRecord).bases()}
+    runtime = create_runtime()
+    for record_type in (
+        BlessingAcceptanceAssertion, BlessingAcceptanceCase,
+        BlessingGroundsAssertion, BlessingGroundsCase,
+    ):
+        assert entity(record_type).workflow is BlessingsWorkflow()
+        assert runtime.records.resolve_ship(entity(record_type).id) is record_type
+        example = record_type.record_example()
+        assert runtime.records.from_record(example).to_record() == example
+    for path in (*PACKAGE_ROOT.glob('l1/scoring/*.py'), PACKAGE_ROOT / 'l1/blessings/store.py'):
+        tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+        assert not any(
+            isinstance(node, ast.ImportFrom) and (node.module or '').startswith('tarav.l2')
+            for node in ast.walk(tree)
+        )
+
+
 def test_wiki_ownership_and_parsing_boundary():
     from tarav.l3.runtime import create_runtime
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
@@ -324,6 +354,8 @@ def _top_level_import_graph() -> dict[str, set[str]]:
         # Check their actual module dependencies, not a collapsed package cycle.
         if source in {"lines", "unsorted", "scoring", "models", "project"}:
             source = ".".join(Path(*parts).with_suffix("").parts).removesuffix(".__init__")
+        if relative.parts[:2] == ('l1', 'scoring'):
+            source = source.replace('scoring', 'scoring.foundation', 1)
         # skw.skills is a composition leaf above the generic SKW document kernel.
         if Path(*parts).as_posix() in {
             "skw/skills.py",
@@ -363,6 +395,8 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                     target = name.split(".", 2)[-1] if name.startswith("tarav.l") else name.removeprefix("tarav.")
                     if target.startswith(("l1.", "l2.", "l3.")):
                         target = target.split(".", 1)[1]
+                if name == 'tarav.l1.scoring' or name.startswith('tarav.l1.scoring.'):
+                    target = target.replace('scoring', 'scoring.foundation', 1)
                 if name == "tarav.l2.skw.skills" or name.startswith("tarav.l2.skw.skills."):
                     target = "skw.skills"
                 if target != source:

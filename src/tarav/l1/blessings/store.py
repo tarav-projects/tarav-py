@@ -16,12 +16,28 @@ from tarav.l0.kernel import (
     entity,
 )
 from tarav.l1.poi import fingerprint
+from tarav.l1.scoring import Assertable
 
 from .capability import BlessablePOI
 from .workflow import BLESSINGS_WORKFLOW_SHIP
 
 
-class BlessingRecord(TaravEntity, FileRecord):
+_assertion_provider = None
+_score_provider = None
+
+
+def bind_blessing_assertion_services(*, assertions, scores) -> None:
+    """Compose higher-layer scoring behavior without reversing l1 imports."""
+
+    global _assertion_provider, _score_provider
+    if not callable(assertions) or not callable(scores):
+        raise TypeError('Blessing assertion services must be callable')
+    _assertion_provider = assertions
+    _score_provider = scores
+
+
+class BlessingRecord(TaravEntity, FileRecord, Assertable):
+    # tarav.breadcrumb 1f79ed706a8e477702024e29b419cb676616dfd0c877392cb3dd9d31f8beebb9
     class RecordInterface(TaravEntity.RecordInterface):
         schema_version: int
         created_at: str
@@ -64,6 +80,22 @@ class BlessingRecord(TaravEntity, FileRecord):
             for assessment in selected
             if assessment["score"] < 0.5
         ]
+
+    @property
+    def assertions(self):
+        """The current typed Assertions for this exact attributed blessing."""
+
+        if _assertion_provider is None:
+            raise RuntimeError('Blessing Assertion service has not been composed')
+        return _assertion_provider(self)
+
+    def score_vector(self, repository):
+        """Read scorer-owned results by Assertion identity without copying scores here."""
+        # tarav.breadcrumb b01648a982efd726c6623a6225cbdbb9fc69b7bd9b6f5c60c1b9f98cf68c7d4e
+
+        if _score_provider is None:
+            raise RuntimeError('Blessing scoring service has not been composed')
+        return _score_provider(self, repository)
 
     def ships(self):
         poi = self.to_record()["poi"]

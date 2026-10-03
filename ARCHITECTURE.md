@@ -420,7 +420,7 @@ schema or an additional Workflow identity.
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `scoring` | Common Assertable capability, identified Assertions, closed typed assessment cases, and evaluation mechanics: pools, tribunal cases and pairwise judgments, tasks, runs, results, derived scores, and traces. Scoring Records are entities with explicit Context reference edges. |
 | `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. |
-| `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. Blessability is declared only through subtype composition; blessings match situation identity directly and never suppress a POI. |
+| `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. BlessingRecord is Assertable; its Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. Blessings match situation identity directly and never suppress a POI. |
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. SituationChecks evaluate a detached Situation and use that same snapshot as the POI acceptance scope. Execution completion and a POI's failure signal are separate. |
 <!-- tarav.breadcrumb b750afdefcc38c23df01af9ca67d4f9d81f2795c8e12860d22ddc28782038a74 -->
 <!-- tarav.breadcrumb 28df20317b527872af6eb271a0ede8e2a1c30d0b8fc98201f63e8cb564ec6183 -->
@@ -495,6 +495,22 @@ One enrolled case alone has no relative score, and a low score is not a
 falsity verdict. No consumer workflow is imported by this shared module.
 <!-- tarav.breadcrumb 1d37ba88764215a6fe2ba19ce8b60bd618215f3ef92de30de942dacb95d616db -->
 <!-- tarav.breadcrumb afa385a96aeaf2ae558a4214fba859e9208c161d50405f1aa658112468efafa7 -->
+
+The `Assertable` capability and Scoring Workflow identity live in `l1.scoring`
+so `l1.blessings.BlessingRecord` can declare the capability without an `l1 → l2`
+import. `l2.scoring.assertions` retains the identified Assertion and closed
+case mechanics; `l2.blessings.assertions` supplies Blessing-owned producers.
+Runtime composition binds the pure provider functions to existing Blessing
+Records. A primary `main` Assertion addresses the exact blessing and POI
+situation; a `grounds` Assertion appears only when support is offered. Cases
+include the retained POI snapshot, rationale, actor, and resolved source
+passages. A blessing can still be recorded with no support; unresolved offered
+references make a case incomplete rather than inviting the scorer to research.
+The read-only score vector queries scorer-owned tribunal results by Assertion
+reference, while historical BlessingAssessmentRecords keep their separate
+standing behavior and storage location.
+<!-- tarav.breadcrumb 903d50edc16c9a21d196b1271302c63a2574659e7adb9bda716b62a9314de7a3 -->
+<!-- tarav.breadcrumb b6bdfb5131dd4eb553fce00b71dc1f8557188d614541a26666481bc6853125c0 -->
 
 Assertions identify typed subjects; their subtypes define evidence and check
 semantics. Scores are separate judgments, not Assertion identity. Scoring

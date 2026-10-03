@@ -69,6 +69,17 @@ score. `TribunalScoreCheck` surfaces unassessed, sparse, or weak support as POIs
 without treating low relative rank as a falsity verdict.
 <!-- tarav.breadcrumb 964976f03c0e4fc414063cb418332d74ace9066971845c9099bc3d4d8a1d95ba -->
 
+Blessing Records expose the same Assertable interface through a lower-layer
+capability and a runtime-composed Blessings producer. Their `main` Assertion
+claims that a continuing POI situation can be accepted for now. An optional
+`grounds` Assertion addresses offered source support. A case carries the
+retained POI and grounds; unresolved source references yield incomplete scope.
+`blessing.score_vector(repository)` reads named tribunal assessments from
+ScoringRepository by Assertion reference, without copying scores into the
+blessing or merging legacy BlessingAssessmentRecords. Detection and the old
+binary standing view remain unchanged.
+<!-- tarav.breadcrumb 5a29a5247ba8f886c1f9c8d31820023fc0f323edee9e15bd073f06aa96c8ecee -->
+
 The prior `IndexLineGroundingAssertionType` adapter was replaced by the actual
 `LineGroundingAssertion` class. Pool operations are class methods;
 `from_line()` / `from_reference()` produce assertion objects whose `candidate()`

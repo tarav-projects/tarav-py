@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping
 import json
 from types import MappingProxyType
@@ -12,9 +11,11 @@ from uuid import UUID, uuid5
 from pydantic import model_validator
 
 from tarav.l0.kernel import (
-    FileRecord, Ship, TaravClass, TaravEntity, TaravObject, TaravType,
+    FileRecord, Ship, TaravClass, TaravEntity, TaravObject,
     TypeShip, entity,
 )
+from tarav.l1.scoring import Assertable as Assertable
+# tarav.breadcrumb 7c3445f11b528770c4bb7b112e1680f83f09ee16cdd421db955b3f5eb77f13a8
 from .identity import SCORING_WORKFLOW_SHIP
 
 
@@ -24,25 +25,6 @@ class UnsupportedAssessmentCase(TypeError):
 
 class IncompleteCaseScope(ValueError):
     """A supported case cannot yet be closed with the supplied material."""
-
-
-class Assertable(TaravType, ABC):
-    """A subject that exposes identified Assertions under durable labels."""
-    # tarav.breadcrumb 7c3445f11b528770c4bb7b112e1680f83f09ee16cdd421db955b3f5eb77f13a8
-
-    @classmethod
-    def class_entity(cls):
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9e2c02a0-5ebc-460b-bb8a-829f8c42dddf'),
-            name='Tarav.Scoring.Assertable',
-            workflow=SCORING_WORKFLOW_SHIP,
-        )
-
-    @property
-    @abstractmethod
-    def assertions(self) -> AssertionNamespace:
-        """Return labeled Assertions for this exact subject edition."""
 
 
 class AssertionNamespace(Mapping[str, 'Assertion']):
