@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Autonomous
-Status: needs alignment (see Open points).
+Status: implemented; Product.Surface and Wiki capture pending sandbox access.
 
 The Checks workflow gains two typed objects. `CheckSuite` is what
 `CheckProvider.checks()` returns: the provider's Checks as one object that can
@@ -82,7 +82,8 @@ types produce their own types of POI.
   because a run-dependent source cannot be listed without running. A suite is
   composed (nested in another suite) and run. `CheckSuite.of(value)` accepts a
   suite or any iterable of Checks, so providers that still return a tuple or
-  generator keep working. (Proposed by the agent; not yet confirmed.)
+  generator keep working. The Execute phase selected this agent proposal;
+  standalone Checks remain directly runnable and inspectable.
 - **`suite.run()`** runs each Check as it arrives and returns the `CheckRun`.
   A Check that raises becomes a `failed` result; one bad Check does not hide
   the others. Options are keyword-only (`into`, `on_result`); this is where
@@ -133,11 +134,19 @@ clean, 1 otherwise, 2 when the Project declares no checks (unchanged). Options
 `--by`, `--sort`, `--limit`, `--offset`, `--type`, `--code`, `--check`. While
 running, progress goes to stderr when it is a terminal.
 
-## Open points
+## Execution choices
 
-- Whether a suite is iterable at all (the agent proposes not).
-- Tarav callers that iterate or index `checks()` today
-  (`workspaces/commands.py`, tests using `checks()[0]`) change to `run()`.
+- Suites are not iterable. A callable source can choose later Checks based on
+  earlier results, so iteration without execution cannot honestly enumerate
+  its content. Tarav callers that iterated or indexed `checks()` now run the
+  suite. A source may still be a generator, tuple, or nested suite.
+- The report groups by POI Type by default. Identity grouping retains all
+  distinct codes on a row, so code filtering happens before grouping;
+  non-identified POIs receive one group per emission in identity view.
+- Without a blessing store, every emitted POI counts as open for `clean`,
+  preserving the existing Project CLI exit policy. With a store, accepted
+  blessed POIs are not open. A later policy can distinguish neutral POIs
+  without changing their identity or this reporting structure.
 
 ## Acceptance
 
@@ -163,10 +172,34 @@ Capture status: pending.
 ## Execution.Plan
 
 1. `CheckSuite`, `CheckRun`, `render_check_run` in `tarav.l1.checks`; tests.
-2. `tarav check --project`: summary, 20 POIs, `--limit`, `--offset`,
-   `--code`, `--check`, `--sort`; tests.
+2. `tarav check --project`: summary, 20 groups, `--by`, `--limit`,
+   `--offset`, `--type`, `--code`, `--check`, `--sort`; tests.
 3. Tarav's providers return a suite; `ARCHITECTURE.md`/`AGENTS.md` where they
    describe the interface.
 4. Full suite; wiki capture.
 
 ## Impl.Log
+
+- 2026-10-04 Execute: scoped product checkpoint `8f33f97` succeeded with
+  an honest evidence-gap marker. The Chatlas-backed checkpoint attempt could
+  not acquire its lock under `~/Documents/tarav` in this sandbox.
+- Implemented `CheckSuite` and `CheckRun` as Checks-owned TaravObjects.
+  Suites accept static, nested, ready-result, and run-dependent sources;
+  `run()` catches Check exceptions into failed results. Reports group by
+  Type, code, Check, or identity, filter before grouping, page and sort,
+  and expose blessing-aware standing. Migrated Tarav providers and their
+  callers. The Project CLI now prints the bounded grouped report and
+  supports its selection flags; progress is written to terminal stderr.
+- Focused Checks, CLI, SKW, Workspace, and Live Help tests passed (33);
+  the configured suite passed 169 and Ruff passed. The installed CLI help
+  shows the new flags. The default `uv` cache is inaccessible in this
+  sandbox; `UV_CACHE_DIR=/tmp/tarav-860-uv-cache uv run --no-sync` ran the
+  configured suite and Ruff successfully. The installed editable CLI
+  already resolves the changed source; tool reinstallation outside the
+  writable roots was not attempted.
+- Capture gap: Chatlas update cannot write its cache under
+  `~/Documents/tarav`. Product.Surface Breadcrumb submission and grounded
+  Wiki capture therefore remain pending; no unsupported markers were added.
+- The separate md-library request 620 still asks to iterate a dynamic suite;
+  that downstream request must adopt `run()` before execution. It was not
+  edited from this product scope.

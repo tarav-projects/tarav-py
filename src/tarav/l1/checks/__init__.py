@@ -1,6 +1,7 @@
 """Independently runnable, bound checks and their execution snapshots."""
 
-from collections.abc import Iterable, Mapping
+from collections import Counter
+from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from typing import Literal
 
@@ -42,8 +43,8 @@ class CheckProvider(TaravType):
                           name="Tarav.Checks.Provider", workflow=CHECKS_WORKFLOW_SHIP)
 
     # tarav.breadcrumb 64a1988372d66010f27742f66c4dbd78874dd238958e97a63b93cfecd6fefa9a
-    def checks(self) -> Iterable["Check"]:
-        """The provider's bound Checks, typically yielded lazily; never run here."""
+    def checks(self) -> "CheckSuite":
+        """The provider's bound Checks as a runnable suite; never run here."""
         raise NotImplementedError(f"{entity(type(self)).name} declares no checks")
 
 
@@ -213,6 +214,212 @@ class CheckResult(TaravObject, POIProvider):
         return self._pois
 
 
+class CheckRun(TaravObject, POIProvider):
+    """Results of one suite execution, in execution order."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("b4ad5cfd-c3bc-41d0-acf9-de7fe1de8118"),
+                          name="Tarav.Checks.Run", workflow=CHECKS_WORKFLOW_SHIP)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.results: list[CheckResult] = []
+
+    def add(self, result: CheckResult) -> CheckResult:
+        if not isinstance(result, CheckResult):
+            raise TypeError("CheckRun accepts CheckResults")
+        self.results.append(result)
+        return result
+
+    def results_of(self, check_type: type[Check] | str) -> tuple[CheckResult, ...]:
+        if isinstance(check_type, str):
+            return tuple(result for result in self.results
+                         if entity(type(result.check)).name == check_type)
+        if not isinstance(check_type, type) or not issubclass(check_type, Check):
+            raise TypeError("Expected a Check Type or Type name")
+        return tuple(result for result in self.results if isinstance(result.check, check_type))
+
+    def pois(self) -> tuple[POI, ...]:
+        return tuple(poi for result in self.results for poi in result.pois())
+
+    def summary(self) -> dict[str, object]:
+        statuses: Counter[str] = Counter()
+        by_type: Counter[str] = Counter()
+        by_code: Counter[str] = Counter()
+        by_check: dict[str, dict[str, object]] = {}
+        for result in self.results:
+            check_name = entity(type(result.check)).name
+            statuses[result.status] += 1
+            check_row = by_check.setdefault(check_name, {"runs": 0, "by_status": {}, "pois": 0})
+            check_row["runs"] += 1
+            check_row["pois"] += len(result.pois())
+            check_row["by_status"][result.status] = check_row["by_status"].get(result.status, 0) + 1
+            for poi in result.pois():
+                by_type[entity(type(poi)).name] += 1
+                by_code[getattr(poi, "code", "(no code)")] += 1
+        return {
+            "checks": len(self.results),
+            "by_status": dict(statuses),
+            "incomplete": len(self.results) - statuses["completed"],
+            "pois": sum(by_type.values()),
+            "by_check": by_check,
+            "by_type": dict(by_type),
+            "by_code": dict(by_code),
+        }
+
+    def _standing(self, poi: POI, store, snapshot) -> str:
+        if store is not None and store.accepts(poi):
+            if store.standing(poi, snapshot=snapshot)["status"] == "blessed":
+                return "blessed"
+        return "open"
+
+    def clean(self, *, store=None) -> bool:
+        if any(result.status != "completed" for result in self.results):
+            return False
+        snapshot = store.snapshot() if store is not None else None
+        return all(self._standing(poi, store, snapshot) == "blessed" for poi in self.pois())
+
+    def report(
+        self, *, by: str = "type", sort: str = "run", offset: int = 0, limit: int = 20,
+        type: str | None = None, code: str | None = None, check: str | None = None,
+        store=None, detail: bool = False,
+    ) -> dict[str, object]:
+        if by not in ("type", "code", "check", "identity"):
+            raise ValueError("Unknown CheckRun grouping")
+        if sort not in ("run", "count"):
+            raise ValueError("Unknown CheckRun sort order")
+        if offset < 0 or limit < 1:
+            raise ValueError("Expected nonnegative offset and positive limit")
+        snapshot = store.snapshot() if store is not None else None
+        groups: dict[str, dict[str, object]] = {}
+        emission_index = 0
+        for result_index, result in enumerate(self.results):
+            check_name = entity(result.check.__class__).name
+            for poi in result.pois():
+                type_name = entity(poi.__class__).name
+                poi_code = getattr(poi, "code", "(no code)")
+                if (type is not None and type != type_name
+                        or code is not None and code != poi_code
+                        or check is not None and check != check_name):
+                    continue
+                emission_index += 1
+                key = {
+                    "type": type_name,
+                    "code": poi_code,
+                    "check": check_name,
+                    "identity": getattr(poi, "identity", f"emission:{emission_index}"),
+                }[by]
+                row = groups.setdefault(key, {
+                    "key": key, "by": by, "pois": 0, "checks": 0,
+                    "open": 0, "blessed": 0, "example": getattr(poi, "message", ""),
+                    "codes": [], "types": [], "_results": set(),
+                })
+                row["pois"] += 1
+                row[self._standing(poi, store, snapshot)] += 1
+                if result_index not in row["_results"]:
+                    row["_results"].add(result_index)
+                    row["checks"] += 1
+                if poi_code not in row["codes"]:
+                    row["codes"].append(poi_code)
+                if type_name not in row["types"]:
+                    row["types"].append(type_name)
+                if detail and "example_poi" not in row:
+                    row["example_poi"] = (poi.as_dict(detail=True)
+                                          if isinstance(poi, IdentifiedPOI) else poi.as_dict())
+        rows = list(groups.values())
+        if sort == "count":
+            rows.sort(key=lambda row: -row["pois"])
+        for row in rows:
+            del row["_results"]
+        page = rows[offset:offset + limit]
+        return {
+            "summary": self.summary(),
+            "by": by,
+            "sort": sort,
+            "matching": len(rows),
+            "offset": offset,
+            "shown": len(page),
+            "next_offset": offset + limit if offset + limit < len(rows) else None,
+            "items": page,
+        }
+
+
+class CheckSuite(TaravObject):
+    """A source of checks or ready results; run() is its only full traversal."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("dc589b3c-9a16-4c3d-8338-50ab6304b2f3"),
+                          name="Tarav.Checks.Suite", workflow=CHECKS_WORKFLOW_SHIP)
+
+    def __init__(self, source=(), *, name: str | None = None) -> None:
+        super().__init__()
+        self.source = source
+        self.name = name
+
+    @classmethod
+    def of(cls, value) -> "CheckSuite":
+        if isinstance(value, CheckSuite):
+            return value
+        if not isinstance(value, Iterable):
+            raise TypeError("CheckSuite source must be a suite or iterable")
+        return cls(value)
+
+    def run(
+        self, *, into: CheckRun | None = None,
+        on_result: Callable[[CheckResult], object] | None = None,
+    ) -> CheckRun:
+        run = into if into is not None else CheckRun()
+        if not isinstance(run, CheckRun):
+            raise TypeError("into must be a CheckRun")
+        if on_result is not None and not callable(on_result):
+            raise TypeError("on_result must be callable")
+
+        def consume(suite: CheckSuite) -> None:
+            items = suite.source(run) if callable(suite.source) else suite.source
+            for item in items:
+                if isinstance(item, CheckSuite):
+                    consume(item)
+                    continue
+                if isinstance(item, CheckResult):
+                    result = item
+                elif isinstance(item, Check):
+                    try:
+                        result = item.run()
+                    except Exception as exc:
+                        result = CheckResult(item, status="failed", reason=f"{type(exc).__name__}: {exc}")
+                else:
+                    raise TypeError("CheckSuite items must be Checks, suites or CheckResults")
+                run.add(result)
+                if on_result is not None:
+                    on_result(result)
+
+        consume(self)
+        return run
+
+
+def render_check_run(report: Mapping[str, object]) -> str:
+    """Render a bounded, grouped CheckRun report without dumping every result."""
+    summary = report["summary"]
+    lines = [f"{summary['checks']} checks, {summary['incomplete']} incomplete, "
+             f"{summary['pois']} POIs"]
+    for row in report["items"]:
+        lines.append(f"  {row['key']}: {row['pois']} POIs from {row['checks']} checks "
+                     f"({row['open']} open, {row['blessed']} blessed)"
+                     + (f" — {row['example']}" if row["example"] else ""))
+    lines.append("Checks by type: " + ", ".join(
+        f"{name} {data['runs']} ({data['by_status']})"
+        for name, data in summary["by_check"].items()) if summary["by_check"] else
+        "Checks by type: none")
+    lines.append("POIs by type: " + ", ".join(
+        f"{name} {count}" for name, count in summary["by_type"].items())
+        if summary["by_type"] else "POIs by type: none")
+    if report["next_offset"] is not None:
+        lines.append(f"Next offset: {report['next_offset']}")
+    return "\n".join(lines)
+
+
 def run_checks(checks: Iterable[Check]) -> tuple[CheckResult, ...]:
     """Run selected checks exactly once; exceptions remain visible to callers."""
     return tuple(check.run() for check in checks)
@@ -244,8 +451,11 @@ __all__ = [
     "CheckPOI",
     "CheckProvider",
     "CheckResult",
+    "CheckRun",
+    "CheckSuite",
     "Situation",
     "SituationCheck",
     "check_report",
     "run_checks",
+    "render_check_run",
 ]

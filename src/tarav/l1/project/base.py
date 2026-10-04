@@ -15,7 +15,7 @@ from .workflow import PROJECT_WORKFLOW_SHIP
 
 # tarav.breadcrumb 5cd4a1370534e180f82d31b551d9eb10ad12fe288b712dc707a8bb4faf489d2d
 class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
-    """A Project; a subtype lists its checks in checks() (CheckProvider)."""
+    """A Project; a subtype provides its CheckSuite through checks()."""
 
     @classmethod
     def loading_paths(cls) -> tuple[str, ...]:

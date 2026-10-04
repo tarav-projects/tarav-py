@@ -8,56 +8,44 @@ import sys
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.l1.checks import CheckResult, check_report
-
-
-def _run_one(check) -> CheckResult:
-    try:
-        return check.run()
-    except Exception as exc:  # a crashing Check is reported, not fatal
-        return CheckResult(check, status="failed", reason=f"{type(exc).__name__}: {exc}")
-
-
-def _print_result(row: dict) -> None:
-    print(f"{row['check']}: {row['status']} ({len(row['pois'])} POIs)", flush=True)
-    if row["reason"]:
-        print(f"  reason: {row['reason']}", flush=True)
-    for poi in row["pois"]:
-        label = poi.get("code") or poi.get("type")
-        print(f"  - {label}: {poi.get('message', '')}", flush=True)
+from tarav.l1.checks import CheckResult, CheckSuite, render_check_run
 
 
 # tarav.breadcrumb a671fcec806bcecf6adccaf70a7f2c991f04b2685ea24f7056aa3cf53f820f8e
-def report_project_checks(project, *, json_output: bool = False) -> int:
-    """Run each of project.checks() as it arrives, print, and return the exit code.
+def report_project_checks(
+    project, *, json_output: bool = False, by: str = "type", sort: str = "run",
+    limit: int = 20, offset: int = 0, poi_type: str | None = None,
+    code: str | None = None, check: str | None = None,
+) -> int:
+    """Run a Project's suite and show a bounded grouped report."""
+    def progress(result: CheckResult) -> None:
+        if sys.stderr.isatty():
+            print(f"{type(result.check).__name__}: {result.status}", file=sys.stderr,
+                  flush=True)
 
-    Text output streams one result at a time; JSON prints once at the end.
-    0 when every Check completed without POIs, 1 otherwise, 2 when the
-    Project declares no checks. The code informs callers; it blocks nothing.
-    """
-    results = []
     try:
-        for check in project.checks():
-            result = _run_one(check)
-            results.append(result)
-            if not json_output:
-                _print_result(check_report([result])["results"][0])
+        run = CheckSuite.of(project.checks()).run(on_result=progress)
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    report = check_report(results)
+    report = run.report(by=by, sort=sort, limit=limit, offset=offset,
+                        type=poi_type, code=code, check=check)
     if json_output:
         print(json.dumps(report, indent=2, default=str))
     else:
-        print(f"{report['checks']} checks, {report['incomplete']} incomplete, "
-              f"{report['pois']} POIs")
-    return 0 if report["incomplete"] == 0 and report["pois"] == 0 else 1
+        print(render_check_run(report))
+    return 0 if run.clean() else 1
 
 
-def _code(json_output: bool) -> str:
+def _code(args: argparse.Namespace) -> str:
+    options = {
+        "json_output": args.json, "by": args.by, "sort": args.sort,
+        "limit": args.limit, "offset": args.offset, "poi_type": args.poi_type,
+        "code": args.code, "check": args.check_type,
+    }
     return (
         "from tarav.l3.check import report_project_checks\n"
-        f"raise SystemExit(report_project_checks(project, json_output={json_output!r}))\n"
+        f"raise SystemExit(report_project_checks(project, **{options!r}))\n"
     )
 
 
@@ -67,7 +55,7 @@ def _check(args: argparse.Namespace) -> int:
         raise CliError("tarav check needs --project [PATH]")
     from tarav.l3.project.harness import run
 
-    return run(path=args.project, code=_code(args.json))
+    return run(path=args.project, code=_code(args))
 
 
 def register_check_command(subparsers: argparse._SubParsersAction) -> None:
@@ -89,6 +77,15 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
         help="Search this directory and parents for a Project; optionally start at PATH.",
     )
     parser.add_argument("--json", action="store_true", help="Print the report as JSON.")
+    parser.add_argument("--by", choices=("type", "code", "check", "identity"),
+                        default="type", help="Group POIs by this field (default: type).")
+    parser.add_argument("--sort", choices=("run", "count"), default="run",
+                        help="Sort groups by first occurrence or descending count.")
+    parser.add_argument("--limit", type=int, default=20, help="Maximum groups to show.")
+    parser.add_argument("--offset", type=int, default=0, help="First group to show.")
+    parser.add_argument("--type", dest="poi_type", help="Filter by exact POI Type name.")
+    parser.add_argument("--code", help="Filter by exact POI code.")
+    parser.add_argument("--check", dest="check_type", help="Filter by exact Check Type name.")
     parser.set_defaults(handler=_check)
 
 

@@ -380,13 +380,18 @@ environment. Paths cannot escape the Project root, and run never installs or
 selects a fallback interpreter.
 
 `TaravProject` is an ordinary `CheckProvider` (`tarav.l1.checks`): a Project
-subtype lists its checks in the `checks()` method, usually a generator, and the
-base declares none and raises. `tarav check --project` (`tarav.l3.check`)
-launches the Project harness, which binds the Project's own Type, runs each
-Check as it is yielded and streams its result. Selection and cost profiles are
-not part of the contract.
+subtype exposes its checks through the `checks()` method, and the base declares
+none and raises.
 <!-- tarav.breadcrumb f6132fabb0037fce1edf20f899399f42f53277dae02a26475989bfa4e0d2c2e9 -->
 <!-- tarav.breadcrumb 0bd03575af287c630888eba439224a79e98b04bb08e8371be586ba38c8416bbe -->
+
+The Checks workflow owns `CheckSuite` and `CheckRun`. A provider returns a
+suite; its `run()` executes lazily supplied Checks in order, allowing later
+selection to depend on earlier results. A suite is not itself iterable.
+`CheckRun` retains execution results and groups POIs for bounded reports.
+`tarav check --project` (`tarav.l3.check`) launches the Project harness,
+binds the Project's Type, and prints that report rather than every result.
+Selection and cost profiles are not part of the contract.
 
 The generated package keeps its code-owned Project TypeShip and package
 bootstrap metadata in `.tarav/pyproject.toml`, while the marker retains its

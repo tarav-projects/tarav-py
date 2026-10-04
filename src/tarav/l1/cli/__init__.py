@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, WorkflowShip
 from tarav.l0.kernel.workflows import TaravWorkflow
-from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult
+from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, CheckSuite
 from tarav.l1.live_help import LiveHelpProvider
 from tarav.l1.usage import UsageTrace
 
@@ -140,8 +140,8 @@ class Command(TaravEntity, CheckProvider, LiveHelpProvider):
         except (OSError, TypeError, ValueError):
             return None
 
-    def checks(self) -> tuple[Check, ...]:
-        return (CommandMetadataCheck(self),)
+    def checks(self) -> CheckSuite:
+        return CheckSuite((CommandMetadataCheck(self),))
 
 
 class CommandMetadataCheck(Check):

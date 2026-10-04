@@ -5,9 +5,11 @@ from tarav.l1.checks import (
     CheckPOI,
     CheckProvider,
     CheckResult,
+    CheckRun,
+    CheckSuite,
     Situation,
     SituationCheck,
-    run_checks,
+    render_check_run,
 )
 from tarav.l1.poi import POI, NotificationPOI, POICollector, POIError
 
@@ -49,7 +51,7 @@ class ExampleProvider(CheckProvider):
         self.runs = runs
 
     def checks(self):
-        return tuple(ExampleCheck(subject, self.runs) for subject in self.subjects)
+        return CheckSuite(ExampleCheck(subject, self.runs) for subject in self.subjects)
 
 
 class DifferenceSituation(Situation):
@@ -123,9 +125,108 @@ def test_check_results_are_snapshots_and_poi_emission_is_explicit():
 def test_provider_and_explicit_pool_use_the_same_runner():
     runs = []
     provider = ExampleProvider(("one", "two"), runs)
-    results = run_checks((*provider.checks(), ExampleCheck("cross-subject", runs)))
+    results = CheckSuite((provider.checks(), ExampleCheck("cross-subject", runs))).run().results
     assert runs == ["one", "two", "cross-subject"]
     assert [result.pois()[0].subject["subject"] for result in results] == runs
+
+
+def test_suite_runs_nested_and_run_dependent_sources_without_iteration():
+    runs = []
+    first = ExampleCheck("first", runs)
+    skipped = ExampleCheck("skipped", runs)
+
+    def dependent(run):
+        yield first
+        assert len(run.results) == 1
+        yield CheckResult(skipped, status="incomplete", reason="not ready")
+        yield CheckSuite.of((ExampleCheck("last", runs),))
+
+    suite = CheckSuite(dependent)
+    with pytest.raises(TypeError, match="not iterable"):
+        iter(suite)
+    observed = []
+    result = suite.run(on_result=observed.append)
+    assert runs == ["first", "last"]
+    assert observed == result.results
+    assert [row.status for row in result.results] == ["completed", "incomplete", "completed"]
+    assert result.summary()["incomplete"] == 1
+
+
+def test_suite_catches_crashing_check_and_keeps_later_results():
+    class CrashingCheck(ExampleCheck):
+        @classmethod
+        def class_entity(cls):
+            return TaravClass(target=cls, id=TypeShip("7547db9a-b060-4c90-987a-6159c986a87a"),
+                              name="Test.Checks.CrashingCheck")
+
+        def _run(self):
+            raise RuntimeError("boom")
+
+    runs = []
+    result = CheckSuite.of((CrashingCheck("bad", runs), ExampleCheck("good", runs))).run()
+    assert [row.status for row in result.results] == ["failed", "completed"]
+    assert result.results[0].reason == "RuntimeError: boom"
+    assert runs == ["good"]
+    assert not result.clean()
+
+
+def test_run_groups_pois_and_preserves_identity_code_distinction():
+    check = ExampleCheck("one", [])
+    first = ExamplePOI(check, "first", "First", situation={"subject": "one"})
+    second = ExamplePOI(check, "second", "Second", situation={"subject": "one"})
+    notice = NotificationPOI("notice", "An event")
+    run = CheckRun()
+    run.add(CheckResult(check, status="completed", pois=(first, second, notice)))
+    assert first.identity == second.identity
+    assert run.summary()["pois"] == 3
+    assert run.report()["matching"] == 2
+    by_identity = run.report(by="identity")
+    assert by_identity["matching"] == 2
+    assert by_identity["items"][0]["codes"] == ["first", "second"]
+    assert run.report(by="code", code="second")["items"][0]["pois"] == 1
+    assert run.report(by="identity", code="second")["items"][0]["codes"] == ["second"]
+    assert len(run.report(by="identity", type="Tarav.POI.Notification")["items"]) == 1
+    assert "POIs by type" in render_check_run(run.report())
+
+
+def test_run_pages_groups_and_blessings_do_not_hide_other_pois():
+    check = ExampleCheck("one", [])
+    run = CheckRun()
+    run.add(CheckResult(check, status="completed", pois=(
+        ExamplePOI(check, "first", "First", situation={"case": 1}),
+    )))
+
+    class Store:
+        def snapshot(self):
+            return {"records": []}
+
+        def accepts(self, poi):
+            return isinstance(poi, ExamplePOI)
+
+        def standing(self, poi, *, snapshot=None):
+            return {"status": "blessed"}
+
+    store = Store()
+    assert run.clean(store=store)
+    assert not run.clean()
+    report = run.report(store=store, limit=1)
+    assert (report["items"][0]["blessed"], report["items"][0]["open"]) == (1, 0)
+    assert report["next_offset"] is None
+    with pytest.raises(ValueError, match="positive limit"):
+        run.report(limit=0)
+
+
+def test_run_pages_distinct_identities_after_grouping():
+    run = CheckSuite.of(ExampleCheck(str(number), []) for number in range(25)).run()
+    grouped = run.report()
+    assert grouped["matching"] == 1
+    assert grouped["items"][0]["pois"] == 25
+
+    first = run.report(by="identity")
+    second = run.report(by="identity", offset=first["next_offset"])
+    assert (first["matching"], first["shown"], first["next_offset"]) == (25, 20, 20)
+    assert (second["shown"], second["next_offset"]) == (5, None)
+    assert run.report(by="check", sort="count")["items"][0]["checks"] == 25
 
 
 # tarav.breadcrumb f80da43bcc2b842c5857008fb9145baf66db8ca4efdd591b34e9a69f8e7f0ad0

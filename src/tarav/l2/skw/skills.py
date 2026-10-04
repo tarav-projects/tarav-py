@@ -16,7 +16,7 @@ from .publication import ModelPublication, ModelPublicationRecord, PublicationLo
 from tarav.l1.skw.loading import LoadingRecord, SkillDocument, SkillReadingGraph
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
 from tarav.l1.blessings import BlessingAssessmentRecord, BlessingRecord, BlessingStore
-from tarav.l1.checks import CheckProvider, run_checks
+from tarav.l1.checks import CheckProvider, CheckSuite, run_checks
 from tarav.l0._core.errors import CliError
 from .pois import (
     CLASSES,
@@ -161,7 +161,7 @@ class SkwSkill(SkwDepot, CheckProvider):
     # tarav.breadcrumb 2ceb31c9cf7073c74811cdb0fa857cc9cf09d51c80b4c776c5785c49bd3e1691
     # tarav.breadcrumb a751a7e31ab0fa605fefa90ae5d354f9c70250be88ab4a7024eefb094f29d08e
     def checks(self):
-        return self._checks()
+        return CheckSuite(self._checks())
 
     def _checks(self, *, skip_unresolved_freshness=True):
         documents = self.documents()

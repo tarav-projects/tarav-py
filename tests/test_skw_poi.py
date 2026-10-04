@@ -89,7 +89,7 @@ def test_generation_context_resolution_is_independent_and_repairable(tmp_path):
     skill = _skill(tmp_path)
 
     checks = tuple(
-        check for check in skill.checks()
+        check for check in skill._checks()
         if isinstance(check, GenerationContextResolutionCheck)
     )
     assert len(checks) == 2
@@ -141,7 +141,7 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
     ]
     source.write_text(json.dumps(data))
 
-    checks = tuple(check for check in skill.checks() if isinstance(
+    checks = tuple(check for check in skill._checks() if isinstance(
         check, (GenerationFreshnessCheck, ContextFreshnessCheck)
     ))
     assert {type(check) for check in checks} == {

@@ -47,8 +47,7 @@ def _cmd_show(args) -> int:
 
 def _cmd_check(args) -> int:
     workspace = _depot(args).open(args.id)
-    findings = [poi.as_dict(detail=True) for check in workspace.checks()
-                for poi in check.run().pois()]
+    findings = [poi.as_dict(detail=True) for poi in workspace.checks().run().pois()]
     return _output({"status": "ok", "pois": findings})
 
 

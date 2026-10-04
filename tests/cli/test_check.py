@@ -64,7 +64,7 @@ def test_clean_checks_exit_zero_and_pois_exit_one(capsys) -> None:
     assert report_project_checks(_Project(_Flags(False))) == 0
     assert "1 checks, 0 incomplete, 0 POIs" in capsys.readouterr().out
     assert report_project_checks(_Project(_Flags(True)), json_output=True) == 1
-    assert json.loads(capsys.readouterr().out)["pois"] == 1
+    assert json.loads(capsys.readouterr().out)["summary"]["pois"] == 1
 
 
 def test_a_project_without_checks_is_reported_not_raised(capsys) -> None:
@@ -95,10 +95,26 @@ def test_the_cli_needs_a_project() -> None:
     assert main(["check"]) != 0
 
 
-def test_results_stream_and_a_crash_becomes_a_failed_result(capsys) -> None:
+def test_report_is_grouped_and_a_crash_becomes_a_failed_result(capsys) -> None:
     assert report_project_checks(_Project(_Flags(False, crash=True), _Flags(False))) == 1
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == "Test.Checks.Flags: failed (0 POIs)"
-    assert lines[1] == "  reason: RuntimeError: boom"
-    assert lines[2] == "Test.Checks.Flags: completed (0 POIs)"
-    assert lines[-1] == "2 checks, 1 incomplete, 0 POIs"
+    assert lines[0] == "2 checks, 1 incomplete, 0 POIs"
+    assert "'failed': 1" in lines[1]
+    assert not any("RuntimeError: boom" in line for line in lines)
+
+
+def test_many_project_pois_render_as_one_type_group(capsys) -> None:
+    class ManyProject:
+        def checks(self):
+            return (_Flags(True) for _ in range(25))
+
+    assert report_project_checks(ManyProject()) == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "25 checks, 0 incomplete, 25 POIs"
+    assert len([line for line in lines if "POIs from" in line]) == 1
+    assert "25 POIs from 25 checks" in lines[1]
+
+    assert report_project_checks(ManyProject(), by="identity", limit=1, json_output=True) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["shown"] == 1
+    assert report["matching"] == 1  # all 25 checks found the same situation

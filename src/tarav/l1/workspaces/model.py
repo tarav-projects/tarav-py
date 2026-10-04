@@ -9,7 +9,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip
-from tarav.l1.checks import CheckProvider
+from tarav.l1.checks import CheckProvider, CheckSuite
 
 from .workflow import WORKSPACES_WORKFLOW_SHIP
 
@@ -134,7 +134,7 @@ class Workspace(TaravEntity, CheckProvider):
         setup = WorkspaceSetupRecord.model_validate_json(
             (self.root / "setup.json").read_text(encoding="utf-8"), strict=True
         )
-        return (WorkspaceIntegrityCheck(self, setup),)
+        return CheckSuite((WorkspaceIntegrityCheck(self, setup),))
 
     @classmethod
     def record_example(cls):

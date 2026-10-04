@@ -101,7 +101,7 @@ def test_workspaces_own_their_entities_and_project_only_integrates():
 
 def test_poi_workflow_ownership_and_runtime_composition():
     from tarav.l1.poi import POI_RECORD_TYPES, POIWorkflow
-    from tarav.l1.checks import Check, CheckPOI, ChecksWorkflow
+    from tarav.l1.checks import Check, CheckPOI, CheckRun, CheckSuite, ChecksWorkflow
     from tarav.l1.breadcrumbs.auditing import BreadcrumbAuditCheck
     from tarav.l1.breadcrumbs.workflow import BreadcrumbWorkflow
     from tarav.l3.runtime import create_runtime
@@ -113,6 +113,8 @@ def test_poi_workflow_ownership_and_runtime_composition():
         assert runtime.records.resolve_ship(entity(record_type).id) is record_type
     assert entity(Check).workflow is ChecksWorkflow()
     assert entity(CheckPOI).workflow is ChecksWorkflow()
+    assert entity(CheckSuite).workflow is ChecksWorkflow()
+    assert entity(CheckRun).workflow is ChecksWorkflow()
     assert entity(BreadcrumbAuditCheck).workflow is BreadcrumbWorkflow()
     assert runtime.records.resolve_ship(entity(CheckPOI).id) is CheckPOI
     assert 'runtime' not in _top_level_import_graph()['poi']
