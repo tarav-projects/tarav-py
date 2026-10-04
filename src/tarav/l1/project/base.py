@@ -1,7 +1,7 @@
 """Identified projects backed by their existing portable marker."""
 
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field
 
@@ -10,6 +10,9 @@ from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
 from tarav.l1.loading import LoadingProfile
 
 from .workflow import PROJECT_WORKFLOW_SHIP
+
+if TYPE_CHECKING:
+    from tarav.l1.checks import CheckResult
 
 
 class TaravProject(TaravEntity, LoadingProfile):
@@ -73,6 +76,17 @@ class TaravProject(TaravEntity, LoadingProfile):
             self.source.parent.parent
             if self.source.parent.name == ".tarav"
             else self.source.parent
+        )
+
+    # tarav.breadcrumb 1c22c9fda5c41f9155483c2108760644a695bfc8bc8b862263168bc7a04bb064
+    def check(self) -> tuple["CheckResult", ...]:
+        """Run this Project's checks; the only entry point for them.
+
+        A Project subtype implements this with Tarav Checks. Whatever it runs
+        is what runs when someone asks for the Project's checks.
+        """
+        raise NotImplementedError(
+            f"Project Type {entity(type(self)).name} does not implement check()"
         )
 
     @property

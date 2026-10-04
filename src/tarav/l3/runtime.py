@@ -150,6 +150,7 @@ class TaravRuntime:
         from tarav.l3.project.commands import register_harness_commands
         from tarav.l1.python_env import register_python_commands
         from tarav.l3.run import register_run_command
+        from tarav.l3.check import register_check_command
         from tarav.l3.git.commands import (
             register_breadcrumb_git_commands,
             register_commands as register_git_commands,
@@ -192,6 +193,7 @@ class TaravRuntime:
         register_system_commands(subparsers)
         register_python_commands(subparsers)
         register_run_command(subparsers)
+        register_check_command(subparsers)
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
         _register_stdlib_commands(

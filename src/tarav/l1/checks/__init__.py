@@ -217,6 +217,26 @@ def run_checks(checks: Iterable[Check]) -> tuple[CheckResult, ...]:
     return tuple(check.run() for check in checks)
 
 
+def check_report(results: Iterable[CheckResult]) -> dict[str, object]:
+    """Plain, JSON-ready data for executed results; it never reruns a Check."""
+    rows = []
+    for result in results:
+        if not isinstance(result, CheckResult):
+            raise TypeError("check_report() expects CheckResults")
+        rows.append({
+            "check": entity(type(result.check)).name,
+            "status": result.status,
+            "reason": result.reason,
+            "pois": [poi.as_dict() for poi in result.pois()],
+        })
+    return {
+        "checks": len(rows),
+        "incomplete": sum(row["status"] != "completed" for row in rows),
+        "pois": sum(len(row["pois"]) for row in rows),
+        "results": rows,
+    }
+
+
 __all__ = [
     "ChecksWorkflow",
     "Check",
@@ -225,5 +245,6 @@ __all__ = [
     "CheckResult",
     "Situation",
     "SituationCheck",
+    "check_report",
     "run_checks",
 ]

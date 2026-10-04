@@ -3,6 +3,7 @@
 <!-- tarav.sessions
 1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
+64298cbc = claude-code:9da4cef5-68b7-4d17-8a06-1351ca51e82f @64298cbc8db2e7aa971e0828653c07bcb483cfed40931fdf87d5abe7ce1c60b3
 -->
 
 ## Read first
@@ -84,6 +85,12 @@
   current directory upward, and fails when there is none. Without the flag,
   `tarav run` uses the installed Tarav interpreter even inside a Project.
   <!-- tarav.breadcrumb a063022465541b6bdc1076d3a5ad853099d0c2c8f01eb8243e32c7b976917a5f -->
+- A Project's checks have one entry point: `TaravProject.check()`, which a
+  Project subtype implements with Tarav Checks and which returns its
+  `CheckResult`s. `tarav check --project [PATH] [--json]` runs it in the
+  Project's harness and prints `check_report()`; exit 0 means every Check
+  completed without POIs. The base raises `NotImplementedError`.
+  <!-- tarav.breadcrumb 2cad01bfc733b3b450e3908f187d06d110c511dd5329d9b74e0165b87839fbc9 -->
 - Environment variables and machine-state paths retain the names encoded by
   their current storage contracts until an explicit migration changes them.
 

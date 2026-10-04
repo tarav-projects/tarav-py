@@ -3,6 +3,7 @@
 <!-- tarav.sessions
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf0496f867fc656fdad9063980a184f7c3f15c54adf8fcb31f
+64298cbc = claude-code:9da4cef5-68b7-4d17-8a06-1351ca51e82f @64298cbc8db2e7aa971e0828653c07bcb483cfed40931fdf87d5abe7ce1c60b3
 -->
 
 `tarav-py` is Tarav's maintained Python distribution. It is one modular
@@ -377,6 +378,13 @@ configuration read these common fields without importing the product package or
 dispatching the marker's concrete Type. Sync targets exactly the selected
 environment. Paths cannot escape the Project root, and run never installs or
 selects a fallback interpreter.
+
+A Project's checks have one entry point, `TaravProject.check()` in
+`tarav.l1.project`, returning `CheckResult`s from `tarav.l1.checks`; the base
+declares no checks and raises. `tarav check --project` (`tarav.l3.check`)
+launches the Project harness, which binds the Project's own Type, and prints
+`check_report()`. Selection and cost profiles are not part of the contract.
+<!-- tarav.breadcrumb 0bd03575af287c630888eba439224a79e98b04bb08e8371be586ba38c8416bbe -->
 
 The generated package keeps its code-owned Project TypeShip and package
 bootstrap metadata in `.tarav/pyproject.toml`, while the marker retains its

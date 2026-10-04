@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready (Develop: design then execute in the same invocation).
+Status: implemented.
 
 Establish one standard entry point for a Project's checks: every
 `TaravProject` has a `check()` method that a Project subtype implements by
@@ -115,3 +115,17 @@ chat: Claude Code session `9da4cef5-68b7-4d17-8a06-1351ca51e82f` (alias
 
 - 2026-10-03 Design: written after inspecting the Project base, Checks
   primitives, the harness launch path and the `run` CLI.
+- 2026-10-03 Execute: added `TaravProject.check()` (base raises
+  `NotImplementedError`), `tarav.l1.checks.check_report()`, and
+  `tarav check --project [PATH] [--json]` in `tarav.l3.check`, launched
+  through `tarav.l3.project.harness.run` with `report_project_checks`
+  (exit 0 clean, 1 POIs or incomplete, 2 no `check()`). Tests:
+  `tests/cli/test_check.py` (6 passed); full suite 164 passed; ruff clean;
+  tool reinstalled. Smoke against md-library: `tarav check --project`
+  bound `MdLibrary.Project` in its harness and exited 2 with "does not
+  implement check()"; md-library was not modified. Docs: `AGENTS.md`
+  Project model bullet, `ARCHITECTURE.md` Project section. Breadcrumbs
+  submitted on `base.py`, `l3/check.py`, `AGENTS.md`, `ARCHITECTURE.md`;
+  audits clean after refreshing positions shifted by the edits.
+- Follow-ups (not done): implement `check()` for md-library and for g70203
+  (g70203 first needs a typed harness declaration).
