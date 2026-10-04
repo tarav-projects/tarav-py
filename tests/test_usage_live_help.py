@@ -62,7 +62,7 @@ def test_command_model_is_stable_and_raises_missing_help_poi() -> None:
     assert isinstance(command, Command)
     assert command.help_subject == "probe"
     assert command.to_record()["path"] == ["probe"]
-    assert [poi.code for poi in command.checks[0].run().pois()] == [
+    assert [poi.code for poi in command.checks()[0].run().pois()] == [
         "cli.missing-help", "cli.missing-usage-descriptor",
     ]
 

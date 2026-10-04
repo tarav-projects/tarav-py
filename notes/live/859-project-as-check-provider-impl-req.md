@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready (Develop).
+Status: implemented.
 
 Revise [858](858-project-checks-entry-point-impl-req.md): the Project's checks
 live in `checks()`, because `TaravProject` is an ordinary `CheckProvider`;
@@ -91,3 +91,16 @@ Supporting chat: session `9da4cef5-68b7-4d17-8a06-1351ca51e82f` (alias
 ## Impl.Log
 
 - 2026-10-03 Design: written from the discussion after 858.
+- 2026-10-03 Execute: `CheckProvider.checks()` is a method (base raises
+  naming the Type); `SkwSkill`, `Workspace`, `Command`, the test example and
+  callers (`workspaces/commands.py`, four test files) moved to `checks()`.
+  `TaravProject` subclasses `CheckProvider`; `check()` removed (its 858
+  Breadcrumb went with the code). `report_project_checks` iterates
+  `checks()`, streams text output with flush, turns a raising Check into a
+  `failed` result. Tests: `tests/cli/test_check.py` 7 passed (new: stream
+  order and crash → failed); full suite 164 passed; ruff clean; tool
+  reinstalled. Smoke: md-library exits 2, "MdLibrary.Project declares no
+  checks"; g70203 (request 535) ran end to end: 1 check, 763 POIs, matching
+  `g70203 lint`'s default total, in 7.5 minutes. Breadcrumbs on `base.py`,
+  `checks/__init__.py`, `l3/check.py`, `AGENTS.md`, `ARCHITECTURE.md`; audits
+  clean after position refresh.

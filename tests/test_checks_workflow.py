@@ -48,7 +48,6 @@ class ExampleProvider(CheckProvider):
         self.subjects = subjects
         self.runs = runs
 
-    @property
     def checks(self):
         return tuple(ExampleCheck(subject, self.runs) for subject in self.subjects)
 
@@ -124,7 +123,7 @@ def test_check_results_are_snapshots_and_poi_emission_is_explicit():
 def test_provider_and_explicit_pool_use_the_same_runner():
     runs = []
     provider = ExampleProvider(("one", "two"), runs)
-    results = run_checks((*provider.checks, ExampleCheck("cross-subject", runs)))
+    results = run_checks((*provider.checks(), ExampleCheck("cross-subject", runs)))
     assert runs == ["one", "two", "cross-subject"]
     assert [result.pois()[0].subject["subject"] for result in results] == runs
 

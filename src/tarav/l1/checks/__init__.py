@@ -41,9 +41,10 @@ class CheckProvider(TaravType):
         return TaravClass(target=cls, id=TypeShip("fb89da94-f920-47a1-979e-1ed8e521ea13"),
                           name="Tarav.Checks.Provider", workflow=CHECKS_WORKFLOW_SHIP)
 
-    @property
+    # tarav.breadcrumb 64a1988372d66010f27742f66c4dbd78874dd238958e97a63b93cfecd6fefa9a
     def checks(self) -> Iterable["Check"]:
-        raise NotImplementedError
+        """The provider's bound Checks, typically yielded lazily; never run here."""
+        raise NotImplementedError(f"{entity(type(self)).name} declares no checks")
 
 
 # tarav.breadcrumb 8f9efe635d3ac2a87d8d913d499580f8a2fc652d3424a6c5b5df282dd09714c5

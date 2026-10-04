@@ -85,11 +85,13 @@
   current directory upward, and fails when there is none. Without the flag,
   `tarav run` uses the installed Tarav interpreter even inside a Project.
   <!-- tarav.breadcrumb a063022465541b6bdc1076d3a5ad853099d0c2c8f01eb8243e32c7b976917a5f -->
-- A Project's checks have one entry point: `TaravProject.check()`, which a
-  Project subtype implements with Tarav Checks and which returns its
-  `CheckResult`s. `tarav check --project [PATH] [--json]` runs it in the
-  Project's harness and prints `check_report()`; exit 0 means every Check
-  completed without POIs. The base raises `NotImplementedError`.
+- `TaravProject` is a `CheckProvider`: a Project subtype lists its checks in
+  `checks()`, a method that typically yields bound Checks lazily (every
+  `CheckProvider.checks()` is a method; the base raises
+  `NotImplementedError`). `tarav check --project [PATH] [--json]` runs them in
+  the Project's harness one at a time, streams each result (a crashing Check
+  becomes a `failed` result) and exits 0 only when all completed without POIs.
+  <!-- tarav.breadcrumb f1b6c4d85568e1afc1b76afc02983662c5d2be806b568698cd7b28b853a639e6 -->
   <!-- tarav.breadcrumb 2cad01bfc733b3b450e3908f187d06d110c511dd5329d9b74e0165b87839fbc9 -->
 - Environment variables and machine-state paths retain the names encoded by
   their current storage contracts until an explicit migration changes them.

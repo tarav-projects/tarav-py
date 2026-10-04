@@ -126,7 +126,6 @@ class Workspace(TaravEntity, CheckProvider):
     def _to_record(self):
         return self.manifest.model_dump(mode="json")
 
-    @property
     def checks(self):
         if self.root is None:
             raise ValueError("Detached Workspace has no checkable setup")

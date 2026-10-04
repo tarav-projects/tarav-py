@@ -379,11 +379,13 @@ dispatching the marker's concrete Type. Sync targets exactly the selected
 environment. Paths cannot escape the Project root, and run never installs or
 selects a fallback interpreter.
 
-A Project's checks have one entry point, `TaravProject.check()` in
-`tarav.l1.project`, returning `CheckResult`s from `tarav.l1.checks`; the base
-declares no checks and raises. `tarav check --project` (`tarav.l3.check`)
-launches the Project harness, which binds the Project's own Type, and prints
-`check_report()`. Selection and cost profiles are not part of the contract.
+`TaravProject` is an ordinary `CheckProvider` (`tarav.l1.checks`): a Project
+subtype lists its checks in the `checks()` method, usually a generator, and the
+base declares none and raises. `tarav check --project` (`tarav.l3.check`)
+launches the Project harness, which binds the Project's own Type, runs each
+Check as it is yielded and streams its result. Selection and cost profiles are
+not part of the contract.
+<!-- tarav.breadcrumb f6132fabb0037fce1edf20f899399f42f53277dae02a26475989bfa4e0d2c2e9 -->
 <!-- tarav.breadcrumb 0bd03575af287c630888eba439224a79e98b04bb08e8371be586ba38c8416bbe -->
 
 The generated package keeps its code-owned Project TypeShip and package

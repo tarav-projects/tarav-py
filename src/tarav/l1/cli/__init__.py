@@ -140,7 +140,6 @@ class Command(TaravEntity, CheckProvider, LiveHelpProvider):
         except (OSError, TypeError, ValueError):
             return None
 
-    @property
     def checks(self) -> tuple[Check, ...]:
         return (CommandMetadataCheck(self),)
 

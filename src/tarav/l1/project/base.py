@@ -1,21 +1,22 @@
 """Identified projects backed by their existing portable marker."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from pydantic import Field
 
 from tarav.l0._core.project import project_marker_name, require_agentos_project
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
+from tarav.l1.checks import CheckProvider
 from tarav.l1.loading import LoadingProfile
 
 from .workflow import PROJECT_WORKFLOW_SHIP
 
-if TYPE_CHECKING:
-    from tarav.l1.checks import CheckResult
 
+# tarav.breadcrumb 5cd4a1370534e180f82d31b551d9eb10ad12fe288b712dc707a8bb4faf489d2d
+class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
+    """A Project; a subtype lists its checks in checks() (CheckProvider)."""
 
-class TaravProject(TaravEntity, LoadingProfile):
     @classmethod
     def loading_paths(cls) -> tuple[str, ...]:
         return (".tarav/project.json", "project.json")
@@ -76,17 +77,6 @@ class TaravProject(TaravEntity, LoadingProfile):
             self.source.parent.parent
             if self.source.parent.name == ".tarav"
             else self.source.parent
-        )
-
-    # tarav.breadcrumb 1c22c9fda5c41f9155483c2108760644a695bfc8bc8b862263168bc7a04bb064
-    def check(self) -> tuple["CheckResult", ...]:
-        """Run this Project's checks; the only entry point for them.
-
-        A Project subtype implements this with Tarav Checks. Whatever it runs
-        is what runs when someone asks for the Project's checks.
-        """
-        raise NotImplementedError(
-            f"Project Type {entity(type(self)).name} does not implement check()"
         )
 
     @property
