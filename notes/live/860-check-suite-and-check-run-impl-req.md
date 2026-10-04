@@ -79,6 +79,62 @@ design is left to the agent.
 - Tarav's own providers (`TaravProject`, SKW skills, Workspace, CLI Command)
   return a `CheckSuite`.
 
+## Interface sketch
+
+In `tarav.l1.checks`, both `TaravObject`s of the Checks workflow:
+
+```python
+class CheckSuite:
+    def __init__(self, source=(), *, name: str | None = None): ...
+    @classmethod
+    def of(cls, value) -> "CheckSuite": ...        # a suite, or any iterable of Checks
+    def __iter__(self): ...                         # Checks, lazily, nested suites flattened
+    def run(self, *, into: "CheckRun | None" = None, on_result=None) -> "CheckRun": ...
+
+class CheckRun:                                     # also a POIProvider
+    results: list[CheckResult]
+    def add(self, result: CheckResult) -> CheckResult: ...
+    def results_of(self, check_type) -> tuple[CheckResult, ...]: ...
+    def pois(self) -> tuple[POI, ...]: ...
+    def summary(self) -> dict: ...
+    def report(self, *, offset=0, limit=20, code=None, check=None,
+               sort="run", store=None, blessing=None, detail=False) -> dict: ...
+    def clean(self, *, store=None) -> bool: ...
+
+def render_check_run(report: dict) -> str: ...
+```
+
+- `source` is an iterable, or a callable `(run) -> iterable`. Items are a
+  `Check`, a `CheckSuite`, or a `CheckResult`.
+- `summary()`: `checks`, `by_status`, `incomplete` (not completed), `pois`
+  (distinct identities), `findings` (emissions), `by_check` (per Check type:
+  runs, statuses, POIs), `by_code`.
+- A `report()` row is one POI identity: the first emission's record plus
+  `findings`, `subjects` and `messages` (distinct, in order). With `store`:
+  `blessing` standing per row, open rows first, `open_by_code`. The result
+  carries the summary, `matching`, `offset`, `shown`, `next_offset`, `items`.
+- `render_check_run` prints the rows, then one line of Checks by type and
+  status, one of POIs by code, and the paging hint.
+
+`tarav check --project`: build `CheckSuite.of(project.checks())`, run it,
+print `render_check_run(run.report(...))` or the JSON report. Exit 0 when
+clean, 1 otherwise, 2 when the Project declares no checks (unchanged). Options
+`--limit`, `--offset`, `--code`, `--check`, `--sort`. While running, progress
+goes to stderr when it is a terminal, so a long run is not silent.
+
+## Acceptance
+
+- A suite built from a generator, a tuple, a nested suite and a callable
+  source all run in order; the callable sees earlier results in the run.
+- A raising Check gives a `failed` result and the run continues.
+- `report()` pages at 20, groups emissions of one identity into one row,
+  filters by code and by Check type, and sorts three ways.
+- With a store, a blessed POI does not make the run unclean.
+- `tarav check --project` on a Project with more than 20 POIs prints 20 rows,
+  the totals and the next offset.
+- Existing tests of workspaces, SKW and live help pass with providers
+  returning a suite (tests that index `checks()[0]` are adjusted).
+
 ## Impl.Req.Wiki
 
 Product owner: `tarav-py`.
