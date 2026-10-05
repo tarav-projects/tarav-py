@@ -68,6 +68,12 @@
   Python execution CLI.
   <!-- tarav.breadcrumb 62f9b9610c90a49367930ec4ceb23870ff8317959192d9ffba572c3d1d2a409c -->
 
+- This folder is a `Tarav.Project.PythonPackage` child of the Taravangian
+  root (`../.tarav/project.json`) and uses the root's environment
+  (`harness.project`). `tarav check --project` runs the test suite as one
+  Check; each failing test is a POI. Development still uses this folder's own
+  `.venv` through `uv run`.
+  <!-- tarav.breadcrumb 2407cd94597e19dd391e332b269374527b2c4be897c48078f7d31ae1d691c845 -->
 - A harness manifest may list several trusted Project Types
   (`[tool.tarav.harness] projects`), started through `tarav.l3.project.launch`.
   `RootProject` (`tarav.l2.project.root`) lists child Projects in its marker

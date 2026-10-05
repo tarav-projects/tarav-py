@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Autonomous
-Status: ready after 861. Design only; to be executed by another agent.
+Status: implemented (execution 2026-10-05); Wiki capture pending at the end of the batch.
 Depends on request 861.
 
 The Taravangian development folder becomes a tree of typed Projects: a root
@@ -86,3 +86,41 @@ Capture status: pending.
    to run its checks; wiki capture.
 
 ## Impl.Log
+
+### 2026-10-05 — Execute
+
+Executed after 861 in the same session, by the User's `/goal` invocation of
+`tarav-hugentics --impl --exec`.
+<!-- tarav.context 5a029cbf:b2b4e6e82374611f -->
+
+- Classes (deviation from "tarav.dev"): the general classes live in
+  `tarav.l2.project.dev`: `PythonPackageProject` (`Tarav.Project.PythonPackage`,
+  one `TestSuiteCheck` running pytest with the running interpreter; each
+  `FAILED`/`ERROR` line is a `TestFailurePOI`) and `DocsProject`
+  (`Tarav.Project.Docs`: each skill package's own `SkwSkill.checks()` suite,
+  a `SkillLoadCheck` incomplete result when a skill cannot load, and
+  `ProvisionalMarkersCheck` over `notes/wiki`). Tarav has no behaviour of its
+  own yet, so the markers use these classes directly and no `tarav.dev`
+  subclasses or new top-level package were added; AGENTS.md says the root
+  package holds metadata only. A Tarav-specific subtype is added when a
+  Tarav-only check appears.
+- "Every skill builds without a change" became "each skill's own checks":
+  building in place would mutate the tree, and `SkwSkill` already provides a
+  suite through Tarav's interface.
+- Root environment: `taravangian-project/.tarav/pyproject.toml` (virtual
+  project: `tarav` editable from `../tarav-py`, `pytest`; `projects` lists
+  RootProject, PythonPackageProject, DocsProject), `.tarav/.gitignore`
+  ignores `env/`; synced with `tarav project harness sync --project .`.
+- Markers: root typed `Tarav.Project.Root` with `children: [tarav-py,
+  tarav-md]`; `tarav-py` and `tarav-md` typed and `harness: {project: ".."}`.
+  `diagram` and `index` fields kept; `Project.from_path` still resolves
+  (checked on `tarav-md`, including `wiki()`).
+- Runs: `tarav check --project` in `tarav-md`: 357 checks, 53 POIs (StaleContext
+  13, UnannotatedOutputLink 19, UnreachableBlock 12, ProvisionalMarker 9), 11 s.
+  At the root: 358 checks (adds TestSuite, completed, no failing test), same
+  53 POIs, 32 s.
+- The root folder is not a Git repository: its marker, manifest, lock and
+  `AGENTS.md` section are written but not committed anywhere.
+- Tests: `tests/test_project_dev.py` (3). Breadcrumbs: `dev.py`, tarav-py
+  `AGENTS.md`, tarav-md `AGENTS.md`, root `AGENTS.md` (audits ok, 0 POIs).
+
