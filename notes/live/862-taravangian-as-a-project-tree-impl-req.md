@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Autonomous
-Status: implemented (execution 2026-10-05); Wiki capture pending at the end of the batch.
+Status: implemented (execution 2026-10-05); Wiki captured.
 Depends on request 861.
 
 The Taravangian development folder becomes a tree of typed Projects: a root
@@ -76,7 +76,7 @@ as well.
 Product owner: `tarav-py`.
 Wiki owner/root: `tarav-md/notes/wiki`.
 Relevant context: request 861; `projects.md`.
-Capture status: pending.
+Capture status: done, tarav-md 0ea3b6e (`projects.md`, daily 2026-10-05).
 
 ## Execution.Plan
 

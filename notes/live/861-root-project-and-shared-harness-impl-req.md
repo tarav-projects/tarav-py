@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Autonomous
-Status: implemented (execution 2026-10-05); Wiki capture pending at the end of the batch.
+Status: implemented (execution 2026-10-05); Wiki captured.
 
 Tarav gains what a development folder made of several Projects needs. A root
 Project lists its child Projects and its checks are theirs. Several Projects
@@ -108,7 +108,7 @@ Product owner: `tarav-py`.
 Wiki owner/root: `tarav-md/notes/wiki`.
 Relevant context: `projects.md` section "Places, libraries and Project
 classes"; requests 824, 826, 858, 859, 860.
-Capture status: pending.
+Capture status: done, tarav-md 0ea3b6e (`projects.md`, daily 2026-10-05).
 
 ## Execution.Plan
 
