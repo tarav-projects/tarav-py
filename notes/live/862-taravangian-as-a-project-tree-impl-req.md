@@ -123,4 +123,8 @@ Executed after 861 in the same session, by the User's `/goal` invocation of
   `AGENTS.md` section are written but not committed anywhere.
 - Tests: `tests/test_project_dev.py` (3). Breadcrumbs: `dev.py`, tarav-py
   `AGENTS.md`, tarav-md `AGENTS.md`, root `AGENTS.md` (audits ok, 0 POIs).
+- Follow-up found by md-library-py 622: pytest stops at a test file that
+  cannot be collected (exit 2), which made the whole TestSuite Check
+  `failed`. `TestSuiteCheck` now passes `--continue-on-collection-errors`, so
+  the file is an `ERROR` POI and the rest of the suite runs; test added.
 

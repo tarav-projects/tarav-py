@@ -36,6 +36,15 @@ def test_a_failing_test_is_a_poi_named_by_its_test(tmp_path: Path) -> None:
     assert "1 failed, 1 passed" in result.data["summary"]
 
 
+def test_a_test_file_that_cannot_be_collected_is_a_poi(tmp_path: Path) -> None:
+    (tmp_path / "test_broken.py").write_text("import no_such_module_anywhere\n")
+    (tmp_path / "test_fine.py").write_text("def test_fine():\n    assert True\n")
+    result = TestSuiteCheck(tmp_path).run()
+    assert result.status == "completed"
+    assert [poi.situation["test"] for poi in result.pois()] == ["test_broken.py"]
+    assert "1 passed" in result.data["summary"]
+
+
 def test_a_suite_that_cannot_run_is_a_failed_result(tmp_path: Path) -> None:
     result = TestSuiteCheck(tmp_path, arguments=("--no-such-option",)).run()
     assert result.status == "failed"

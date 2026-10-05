@@ -49,8 +49,10 @@ class TestSuiteCheck(Check):
 
     def _run(self) -> CheckResult:
         completed = subprocess.run(
+            # A test file that cannot be collected is reported, not a reason to
+            # skip the rest of the suite.
             [sys.executable, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider",
-             *self.arguments],
+             "--continue-on-collection-errors", *self.arguments],
             cwd=self.root, capture_output=True, text=True, check=False,
         )
         lines = completed.stdout.splitlines()
