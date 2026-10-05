@@ -68,6 +68,13 @@
   Python execution CLI.
   <!-- tarav.breadcrumb 62f9b9610c90a49367930ec4ceb23870ff8317959192d9ffba572c3d1d2a409c -->
 
+- A harness manifest may list several trusted Project Types
+  (`[tool.tarav.harness] projects`), started through `tarav.l3.project.launch`.
+  `RootProject` (`tarav.l2.project.root`) lists child Projects in its marker
+  and its `checks()` are theirs; a child may declare `harness.project` to use
+  the environment of an ancestor that lists it. Tarav does not model the
+  Python library; a Project Type is an object inside one.
+  <!-- tarav.breadcrumb d310f661f8f7879f3921034bdf5fde72b44b06fc86b842b082a64c57cf5ce6d8 -->
 - `.tarav/project.json` is the canonical project marker. It stores portable
   project identity and metadata, not machine-local paths.
 - The featured `Project.workspaces()` interface delegates to the independent

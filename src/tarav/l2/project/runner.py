@@ -34,6 +34,7 @@ class ProjectLaunchConfiguration(TaravObject):
         manifest: str
         environment: str
         declared: bool
+        harness_root: str | None = None
 
     def __init__(
         self,
@@ -42,9 +43,15 @@ class ProjectLaunchConfiguration(TaravObject):
         manifest: Path | str,
         environment: Path | str,
         declared: bool,
+        harness_root: Path | str | None = None,
     ) -> None:
         super().__init__()
         self.root = Path(root).expanduser().resolve()
+        # The Project whose folder holds the harness: this one, or an ancestor
+        # that lists this Project as a child and shares its environment.
+        self.harness_root = (
+            Path(harness_root).expanduser().resolve() if harness_root else self.root
+        )
         self.manifest = Path(manifest).expanduser().resolve()
         self.environment = Path(environment).expanduser().resolve()
         self.declared = declared
@@ -68,11 +75,56 @@ class ProjectLaunchConfiguration(TaravObject):
             )
         if not isinstance(declaration, Mapping):
             raise ProjectRunnerError("Project harness declaration must be an object")
+        if "project" in declaration:
+            return cls._from_ancestor(root, declaration)
         return cls(
             root=root,
             manifest=cls._relative_path(declaration, "manifest", root),
             environment=cls._relative_path(declaration, "environment", root),
             declared=True,
+        )
+
+    # tarav.breadcrumb e3562e3dd3610cd7e7841afc0b4dc571d01ba89255c966ab3eda504b3d22bc20
+    @classmethod
+    def _from_ancestor(
+        cls, root: Path, declaration: Mapping[object, object]
+    ) -> ProjectLaunchConfiguration:
+        """Use the harness of an ancestor Project that lists this one as a child."""
+        if set(declaration) != {"project"}:
+            raise ProjectRunnerError(
+                "A Project harness declaration names an ancestor Project or "
+                "a manifest and environment, not both"
+            )
+        value = declaration["project"]
+        if not isinstance(value, str) or not value or Path(value).is_absolute():
+            raise ProjectRunnerError(
+                "Project harness project must be a relative path to an ancestor"
+            )
+        ancestor = (root / value).resolve()
+        if ancestor == root or not root.is_relative_to(ancestor):
+            raise ProjectRunnerError(
+                f"Project harness project must be an ancestor folder: {ancestor}"
+            )
+        handler = require_agentos_project(ancestor)
+        if handler.root.resolve() != ancestor:
+            raise ProjectRunnerError(f"No Project marker at the ancestor: {ancestor}")
+        children = handler.project_json.get("children")
+        child = root.relative_to(ancestor).as_posix()
+        if not isinstance(children, list) or child not in children:
+            raise ProjectRunnerError(
+                f"The ancestor Project does not list this Project as a child: {child}"
+            )
+        shared = cls.from_path(ancestor)
+        if shared.harness_root != ancestor:
+            raise ProjectRunnerError(
+                "The ancestor Project must keep its own harness, not share another"
+            )
+        return cls(
+            root=root,
+            manifest=shared.manifest,
+            environment=shared.environment,
+            declared=True,
+            harness_root=ancestor,
         )
 
     @staticmethod
@@ -100,7 +152,7 @@ class ProjectLaunchConfiguration(TaravObject):
 
     def _require_contained(self, path: Path, field: str) -> None:
         try:
-            path.relative_to(self.root)
+            path.relative_to(self.harness_root)
         except ValueError as exc:
             raise ProjectRunnerError(
                 f"Project harness {field} resolves outside the Project root"
@@ -129,6 +181,7 @@ class ProjectLaunchConfiguration(TaravObject):
             manifest=record_data.manifest,
             environment=record_data.environment,
             declared=record_data.declared,
+            harness_root=record_data.harness_root,
         )
 
     def _to_record(self):
@@ -138,6 +191,7 @@ class ProjectLaunchConfiguration(TaravObject):
             "manifest": str(self.manifest),
             "environment": str(self.environment),
             "declared": self.declared,
+            "harness_root": str(self.harness_root),
         }
 
     @classmethod

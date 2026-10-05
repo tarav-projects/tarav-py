@@ -18,16 +18,24 @@ from tarav.l2.project.runner import ProjectRunnerConfigurator, ProjectRunnerErro
 from tarav.l3.runtime import create_runtime, set_runtime
 
 
-def bootstrap(*, project_type: type[TaravProject], path: Path | str):
-    """Trusted package source selects its Type; the marker supplies instance data."""
+def bootstrap(
+    *,
+    project_type: type[TaravProject] | Sequence[type[TaravProject]],
+    path: Path | str,
+):
+    """Trusted package source selects the Types; the marker selects one of them."""
+    project_types = (
+        (project_type,) if isinstance(project_type, type) else tuple(project_type)
+    )
     environment = TaravEnvironment()
-    environment.bind_type(entity(project_type).name, project_type)
+    for trusted in project_types:
+        environment.bind_type(entity(trusted).name, trusted)
     runtime = create_runtime(environment=environment)
     set_runtime(runtime)
     project = TaravProject.load_project(path=path)
-    if type(project) is not project_type:
+    if type(project) not in project_types:
         raise ProjectHarnessError(
-            "Project marker does not identify the launched package's exact Type"
+            "Project marker does not identify one of the launched harness's Types"
         )
     return project, runtime
 
@@ -39,33 +47,22 @@ def run(
     file: Path | str | None = None,
     arguments: Sequence[str] = (),
 ) -> int:
-    """Launch only the configured installed package in this Project's environment."""
-    if code is not None and file is not None:
-        raise ProjectHarnessError("Choose code or file, not both")
+    """Launch this Project's harness environment with its trusted Project Types."""
     harness = ProjectHarness.from_path(path=path)
-    config = harness.configuration()
+    command = harness.command(code=code, file=file, arguments=arguments)
     try:
         configuration = ProjectRunnerConfigurator(harness.launch).configure()
     except ProjectRunnerError as exc:
         raise ProjectHarnessError(str(exc)) from exc
-    command = [
-        str(harness.interpreter),
-        "-I",
-        "-m",
-        config["package"],
-        "--project",
-        str(harness.root),
-    ]
-    if code is not None:
-        command.append("--code=" + code)
-    elif file is not None:
-        command.extend(["--file", str(Path(file).expanduser().resolve())])
-    command.extend(["--", *arguments])
-    return run_python(command[1:], configuration=configuration)
+    return run_python(command, configuration=configuration)
 
 
-def main(*, project_type: type[TaravProject], argv: Sequence[str] | None = None) -> int:
-    """Entrypoint called by the installed Project package's __main__.py."""
+def main(
+    *,
+    project_type: type[TaravProject] | Sequence[type[TaravProject]],
+    argv: Sequence[str] | None = None,
+) -> int:
+    """Run code with a Project whose marker names one of the trusted Types."""
     parser = argparse.ArgumentParser(
         description="Run code with this Project and its Tarav runtime."
     )

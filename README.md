@@ -79,6 +79,36 @@ The same filesystem operations are available through
 launch are in `tarav.l3.project.harness`. Normal Project discovery neither installs
 packages nor imports the Project's specialization.
 
+### Root Projects and shared environments
+
+A Python library can provide several Project Types. Its harness manifest lists
+them as trusted `module:Class` paths, and a marker selects one of them:
+
+```toml
+[tool.tarav.harness]
+projects = ["tarav.l2.project.root:RootProject", "my_lib.dev:ImplProject"]
+```
+
+A development folder made of several Projects can be a root Project
+(`Tarav.Project.Root`) whose marker lists its children. Its checks are the
+checks of the listed children, in order; folders it does not list, such as a
+link to another place, are not collected. A child keeps its own marker and
+can use the root's environment by naming it:
+
+```json
+{"type": {"label": "Tarav.Project.Root"}, "children": ["impl", "docs"],
+ "harness": {"manifest": "pyproject.toml", "environment": ".venv"}}
+{"type": {"label": "MyLib.Dev.Impl"}, "harness": {"project": ".."}}
+```
+
+Only an ancestor that lists the child can lend its harness. `tarav check
+--project` at the root runs children sharing its environment in one process;
+a child with its own environment runs there and is reported as one result
+with a POI per type and its count. A listed child that is missing or cannot
+be loaded is an incomplete result.
+<!-- tarav.breadcrumb 396afee40c0c1101e8fe83ebfe4839d1f6bc8d6dbebeccf53f1b64f23fc5ede2 -->
+<!-- tarav.breadcrumb 94e2da75af3ba6fe18d0a7856543ebee9ca7c253a013f5859d5b02a196933892 -->
+
 ## Main systems
 
 - `tarav agent` — provider-neutral agent and account operations.

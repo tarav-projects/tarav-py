@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Autonomous
-Status: ready. Design only; to be executed by another agent.
+Status: implemented (execution 2026-10-05); Wiki capture pending at the end of the batch.
 
 Tarav gains what a development folder made of several Projects needs. A root
 Project lists its child Projects and its checks are theirs. Several Projects
@@ -118,3 +118,54 @@ Capture status: pending.
 4. Tests on fixtures; README and wiki capture.
 
 ## Impl.Log
+
+### 2026-10-05 — Execute
+
+Executed in the same Claude Code session that designed it, by the User's
+`/goal` invocation of `tarav-hugentics --impl --exec` over requests 861, 862
+and md-library-py 621–623.
+<!-- tarav.context 5a029cbf:b2b4e6e82374611f -->
+
+- Checkpoint: the declared scope was clean at b341761; no empty commit made.
+- Several Types per environment: `ProjectHarness.project_types()` reads
+  `[tool.tarav.harness] projects` (trusted `module:Class` paths); the old
+  single `package`/`class_name` form still returns its one Type.
+  `ProjectHarness.command()` builds the launch arguments; a `projects`
+  manifest starts through the new `tarav.l3.project.launch`, which imports the
+  listed Types and calls `main()`. A single-class manifest still starts
+  through its package's `__main__`, exactly as before: md-library-py's
+  manifest names a class its package does not export, so a generic import
+  would have broken it. `bootstrap()`/`main()` accept a Type or a sequence.
+- Ancestor harness: a marker `harness: {"project": ".."}` resolves through
+  `ProjectLaunchConfiguration._from_ancestor`; the ancestor must be a strict
+  ancestor folder, have its own marker and harness (no chains), and list the
+  child in `children`. `harness_root` records whose folder holds the harness;
+  containment checks use it. Other paths outside the root are still refused.
+- Root Project: `RootProject` (`Tarav.Project.Root`, `tarav.l2.project.root`)
+  subclasses the featured `Project`. `child_paths()` validates the listed
+  paths (relative, below the root after resolving links); `child()` and
+  `children()` load them; `checks()` is a run-time suite of each child's
+  suite. A child whose environment is the running one (`sys.prefix`) runs in
+  place; a child with its own environment runs through `ChildProjectCheck` in
+  a subprocess and returns one `ChildProjectPOI` per POI type with its count
+  (the first-version fallback the design allowed). A missing marker, an
+  unbound Type or a child without checks is an incomplete result.
+- Deviation: `RootProject` is not registered in `create_runtime()`. Doing so
+  made the harness `bootstrap()` fail with a duplicate Type binding when a
+  manifest lists it; it is trusted through manifests like any library Type.
+- Tests: `tests/test_project_tree.py` (9 tests: ancestor harness, unlisted
+  and outside paths, several Types per manifest, loading, root run, missing
+  child, own-environment child with a stubbed subprocess, child path
+  validation). `tests/cli`, `tests/test_architecture.py`,
+  `tests/test_checks_workflow.py`: 76 passed. Ruff clean.
+- Manual: md-library-py's existing harness still launches
+  (`MdLibraryProject` loaded through `tarav.l3.project.harness.run`).
+- `tarav project harness inspect|sync` accept a `projects` manifest; inspect
+  reports `harness_root` and paths relative to it.
+- Full suite after the change: 169 passed (`uv run pytest`).
+- Docs: README "Root Projects and shared environments"; AGENTS.md Project
+  model bullet.
+- Product.Surface Breadcrumbs (all audits ok, 0 POIs): `runner.py`,
+  `harness.py`, `root.py`, `README.md`, `AGENTS.md`, attached to User Turns
+  75f0c9ab, c885f97b and 557ff2e6.
+

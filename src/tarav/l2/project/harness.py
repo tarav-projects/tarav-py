@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+from collections.abc import Sequence
 from uuid import UUID, uuid4
 
 from tarav.l0._core.persistence import atomic_write_json
@@ -114,16 +115,73 @@ class ProjectHarness(TaravObject):
                 f"Invalid or absent Project harness configuration: {self.manifest}: {exc}"
             ) from exc
 
+    def _harness_table(self) -> dict[str, object]:
+        try:
+            document = tomllib.loads(self.manifest.read_text(encoding="utf-8"))
+            return document["tool"]["tarav"]["harness"]
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise ProjectHarnessError(
+                f"Invalid or absent Project harness configuration: {self.manifest}: {exc}"
+            ) from exc
+
+    # tarav.breadcrumb 11105a6b96fc632b26133674958a794af4684c7e6f5332e71b18f99c4348e561
+    def project_types(self) -> tuple[str, ...]:
+        """Trusted `module:Class` paths of the Project Types this environment runs.
+
+        `[tool.tarav.harness] projects` lists several, so one library can
+        provide several Project Types; otherwise the scaffolded package and
+        class name the only one. Markers never select these import paths.
+        """
+        config = self._harness_table()
+        if "projects" not in config:
+            single = self.configuration()
+            return (f"{single['package']}:{single['class_name']}",)
+        specs = config["projects"]
+        if not isinstance(specs, list) or not specs:
+            raise ProjectHarnessError("Harness projects must be a non-empty list")
+        for spec in specs:
+            module, _, name = spec.partition(":") if isinstance(spec, str) else ("", "", "")
+            if not module or not all(part.isidentifier() for part in module.split(".")):
+                raise ProjectHarnessError(f"Harness project must be module:Class: {spec!r}")
+            _identifier(name, "Project class name")
+        return tuple(specs)
+
+    def command(
+        self,
+        *,
+        code: str | None = None,
+        file: Path | str | None = None,
+        arguments: Sequence[str] = (),
+    ) -> list[str]:
+        """Interpreter arguments that start this Project with its trusted Types."""
+        if code is not None and file is not None:
+            raise ProjectHarnessError("Choose code or file, not both")
+        # A single scaffolded class starts through its package's own entry.
+        self.project_types()
+        entry = ("tarav.l3.project.launch" if "projects" in self._harness_table()
+                 else self.configuration()["package"])
+        command = ["-I", "-m", entry, "--project", str(self.root)]
+        if code is not None:
+            command.append("--code=" + code)
+        elif file is not None:
+            command.extend(["--file", str(Path(file).expanduser().resolve())])
+        command.extend(["--", *arguments])
+        return command
+
     def inspect(self) -> dict[str, object]:
         marker = load_project_marker(self.marker)
-        scaffold = (
-            self.configuration()
-            if not self.launch.declared and self.manifest.exists()
-            else None
-        )
+        scaffold = None
+        if not self.launch.declared and self.manifest.exists():
+            scaffold = (
+                {"projects": list(self.project_types())}
+                if "projects" in self._harness_table()
+                else self.configuration()
+            )
+        owner = self.launch.harness_root
         launch = {
-            "manifest": str(self.manifest.relative_to(self.root)),
-            "environment": str(self.env.relative_to(self.root)),
+            "harness_root": str(owner),
+            "manifest": str(self.manifest.relative_to(owner)),
+            "environment": str(self.env.relative_to(owner)),
             "declared": self.launch.declared,
         }
         return {
@@ -280,7 +338,7 @@ class ProjectHarness(TaravObject):
     def _check_local_paths(self) -> None:
         for name, path in (("manifest", self.manifest), ("environment", self.env)):
             try:
-                path.resolve().relative_to(self.root)
+                path.resolve().relative_to(self.launch.harness_root)
             except ValueError as exc:
                 raise ProjectHarnessError(
                     f"Harness {name} must not redirect outside the Project root"
@@ -301,7 +359,7 @@ class ProjectHarness(TaravObject):
                 f"Project harness manifest is absent: {self.manifest}"
             )
         if not self.launch.declared:
-            self.configuration()
+            self.project_types()
         uv = shutil.which("uv")
         if uv is None:
             raise ProjectHarnessError("uv is required to sync the Project harness")
