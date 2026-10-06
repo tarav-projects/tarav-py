@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 
 from tarav.l0.kernel import FileRecord, TaravClass, TaravEntity, TypeShip, entity
-from tarav.l1.scoring import Assertable
+from tarav.l1.assertions import Assertable
 
 from .workflow import DECISIONS_WORKFLOW_SHIP
 

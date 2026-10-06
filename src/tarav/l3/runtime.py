@@ -307,17 +307,21 @@ def create_runtime(
     from tarav.l2.unsorted.workflow import UnsortedWorkflow
     from tarav.l1.references.workflow import REFERENCE_RECORD_TYPES
     from tarav.l1.archive.records import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
+    from tarav.l1.assertions import AssertionsWorkflow, TaravAssertion
     from tarav.l2.scoring.model import SCORING_RECORD_TYPES
     from tarav.l2.scoring import (
         Assertion, AssessmentCase, PairwiseRankingCase, ScoringDetails,
-        ScoringReference, TribunalScoreCheck, TribunalScorePOI,
+        ScoringReference, Score, RankingScore, Tribunal,
+        TribunalScoreCheck, TribunalScorePOI,
     )
+    from tarav.l2.scoring.ranking.workflow import RankingWorkflow
     from tarav.l2.lines.assertions import (
         LineGroundingAssertion, LineGroundingCase, LineSupportInventoryCase,
     )
     from tarav.l2.scoring.workflow import ScoringWorkflow
     from tarav.l2.blessings import (
         BlessingAcceptanceAssertion, BlessingAcceptanceCase,
+        BlessingAcceptanceTribunal,
         BlessingGroundsAssertion, BlessingGroundsCase,
         assertions_for_blessing, score_vector_for_blessing,
     )
@@ -395,16 +399,21 @@ def create_runtime(
                 LineMarkdownModel,
                 PythonNormalModel,
                 *SCORING_RECORD_TYPES,
+                TaravAssertion,
                 # tarav.breadcrumb c0353f7338306168e94150267e651c46257eff0e611e7f8bb2e59a7d50fe4067
                 Assertion,
                 AssessmentCase,
+                Score,
+                RankingScore,
                 PairwiseRankingCase,
+                Tribunal,
                 ScoringDetails,
                 ScoringReference,
                 TribunalScoreCheck,
                 TribunalScorePOI,
                 BlessingAcceptanceAssertion,
                 BlessingAcceptanceCase,
+                BlessingAcceptanceTribunal,
                 BlessingGroundsAssertion,
                 BlessingGroundsCase,
                 LineGroundingAssertion,
@@ -460,7 +469,9 @@ def create_runtime(
         LiveHelpWorkflow,
         SurfacesWorkflow,
         UnsortedWorkflow,
+        AssertionsWorkflow,
         ScoringWorkflow,
+        RankingWorkflow,
         SkillwareWorkflow,
         # tarav.breadcrumb eae69a7746f4a20cd6a37196b1384f6e615b348574b6791f791ca6baa9ce96ab
         CodeWorkflow,

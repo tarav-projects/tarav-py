@@ -11,10 +11,10 @@ from uuid import UUID, uuid5
 from pydantic import model_validator
 
 from tarav.l0.kernel import (
-    FileRecord, Ship, TaravClass, TaravEntity, TaravObject,
+    FileRecord, Ship, TaravClass, TaravObject,
     TypeShip, entity,
 )
-from tarav.l1.scoring import Assertable as Assertable
+from tarav.l1.assertions import Assertable as Assertable, TaravAssertion
 # tarav.breadcrumb 7c3445f11b528770c4bb7b112e1680f83f09ee16cdd421db955b3f5eb77f13a8
 from .identity import SCORING_WORKFLOW_SHIP
 
@@ -139,7 +139,7 @@ class AssessmentCase(TaravObject):
         ).to_record()
 
 
-class Assertion(TaravEntity):
+class Assertion(TaravAssertion):
     """A typed claim about an exact subject; evaluations are separate objects.
 
     Subtypes define the subject coordinate and how to obtain/present evidence.
@@ -153,7 +153,7 @@ class Assertion(TaravEntity):
                           id=TypeShip('25a185c0-f0df-4969-9ba0-f4d8cde4df0f'),
                           name='Tarav.Scoring.Assertion', workflow=SCORING_WORKFLOW_SHIP)
 
-    class RecordInterface(TaravEntity.RecordInterface):
+    class RecordInterface(TaravAssertion.RecordInterface):
         subject_ref: dict
 
     def __init__(self, subject_ref):

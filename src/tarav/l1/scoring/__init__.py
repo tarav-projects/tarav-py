@@ -1,6 +1,5 @@
-"""Lower-layer Scoring capabilities shared by producer workflows."""
+"""Lower-layer Scoring identity."""
 
-from .capability import Assertable
 from .identity import SCORING_WORKFLOW_SHIP
 
-__all__ = ['Assertable', 'SCORING_WORKFLOW_SHIP']
+__all__ = ['SCORING_WORKFLOW_SHIP']

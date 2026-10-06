@@ -126,20 +126,32 @@ def test_assertion_foundation_and_line_specialization_are_separate():
         LineGroundingAssertion, LineGroundingCase, LineSupportInventoryCase,
     )
     from tarav.l1.lines.workflow import LinesWorkflow
+    from tarav.l1.assertions import AssertionsWorkflow, TaravAssertion
     from tarav.l2.scoring import (
         Assertable, Assertion, AssessmentCase, PairwiseRankingCase,
-        ScoringWorkflow, TribunalScoreCheck, TribunalScorePOI,
+        RankingScore, RankingWorkflow, Score, ScoringWorkflow, Tribunal,
+        TribunalScoreCheck, TribunalScorePOI,
     )
     from tarav.l3.runtime import create_runtime
 
     assert issubclass(LineGroundingAssertion, Assertion)
+    assert issubclass(Assertion, TaravAssertion)
+    assert entity(TaravAssertion).workflow is AssertionsWorkflow()
     assert entity(Assertion).workflow is ScoringWorkflow()
-    assert entity(Assertable).workflow is ScoringWorkflow()
+    assert entity(Assertable).workflow is AssertionsWorkflow()
     assert entity(AssessmentCase).workflow is ScoringWorkflow()
+    assert entity(Score).workflow is ScoringWorkflow()
+    assert issubclass(RankingWorkflow, ScoringWorkflow)
+    assert RankingWorkflow().workflow is ScoringWorkflow()
+    assert entity(RankingScore).workflow is RankingWorkflow()
+    assert entity(PairwiseRankingCase).workflow is RankingWorkflow()
+    assert entity(Tribunal).workflow is RankingWorkflow()
     assert entity(LineGroundingAssertion).workflow is LinesWorkflow()
     runtime = create_runtime()
+    assert runtime.records.resolve_ship(entity(TaravAssertion).id) is TaravAssertion
     for case_type in (
-        AssessmentCase, PairwiseRankingCase, LineGroundingCase,
+        AssessmentCase, Score, RankingScore, PairwiseRankingCase, Tribunal,
+        LineGroundingCase,
         LineSupportInventoryCase, TribunalScoreCheck, TribunalScorePOI,
     ):
         assert runtime.records.resolve_ship(entity(case_type).id) is case_type

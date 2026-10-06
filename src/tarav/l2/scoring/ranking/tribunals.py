@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Mapping, Sequence
+from threading import RLock
 from typing import Literal
 
-from tarav.l0.kernel import TaravClass, TaravType, TypeShip, entity
+from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
 from tarav.l1.checks import Check, CheckPOI, CheckResult
 
-from .assertions import AssessmentCase, Assertion
-from .identity import SCORING_WORKFLOW_SHIP
-from .model import (
+from ..assertions import AssessmentCase, Assertion
+from ..model import (
     TRIBUNAL_CASE_TYPE, TRIBUNAL_JUDGMENT_TYPE, TRIBUNAL_PAIR_TYPE,
     ScoringError, canonical_json, new_record, record_reference, validate_record,
 )
-from .repository import ScoringRepository
+from ..repository import ScoringRepository
+from .score import RankingScore
+from .workflow import RANKING_WORKFLOW_SHIP
 
 
 class PairwiseRankingCase(AssessmentCase):
@@ -26,7 +28,7 @@ class PairwiseRankingCase(AssessmentCase):
         return TaravClass(target=cls,
                           id=TypeShip('6022dc2e-9727-433a-bfaa-9b21d95f0564'),
                           name='Tarav.Scoring.PairwiseRankingCase',
-                          workflow=SCORING_WORKFLOW_SHIP)
+                          workflow=RANKING_WORKFLOW_SHIP)
 
     class RecordInterface(AssessmentCase.RecordInterface):
         tribunal_type_id: str
@@ -51,16 +53,56 @@ class PairwiseRankingCase(AssessmentCase):
         return str(self.to_record()['tribunal_type_id'])
 
 
-class Tribunal(TaravType):
-    """Typed population boundary and common comparison instructions."""
+class Tribunal(TaravEntity):
+    """One identified comparison context per concrete Tribunal class."""
     # tarav.breadcrumb bf84293588c4eed3e274b4d351175a02b8e46f8969df6a4631bfe74cbf92888d
+    # tarav.context 6734aba0:bba1c976c99de9c3
+    # tarav.context 6734aba0:e3a12d122bc8c5ca
+
+    _instances: dict[type, 'Tribunal'] = {}
+    _instance_lock = RLock()
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if not isinstance(cls.__dict__.get('_tribunal_id'), classmethod):
+            raise TypeError(f'{cls.__name__} must declare a class-local _tribunal_id()')
 
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls,
                           id=TypeShip('c05e455a-6d3b-4101-9e4e-bf66c38c5610'),
                           name='Tarav.Scoring.Tribunal',
-                          workflow=SCORING_WORKFLOW_SHIP)
+                          workflow=RANKING_WORKFLOW_SHIP)
+
+    @classmethod
+    def _tribunal_id(cls) -> Ship:
+        return Ship('56ced523-4b67-4a81-a410-f2f0acb83077')
+
+    def __new__(cls):
+        with Tribunal._instance_lock:
+            if cls not in Tribunal._instances:
+                identity = cls._tribunal_id()
+                if not isinstance(identity, Ship):
+                    raise TypeError('Tribunal identity must be a Ship')
+                if str(identity) == str(entity(cls).id):
+                    raise ValueError('Tribunal object and class need distinct identities')
+                instance = super().__new__(cls)
+                TaravEntity.__init__(instance, identity)
+                Tribunal._instances[cls] = instance
+            return Tribunal._instances[cls]
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def _from_record(cls, data):
+        if data.id != cls._tribunal_id():
+            raise ValueError('Record does not identify this Tribunal')
+        return cls()
+
+    @classmethod
+    def record_example(cls):
+        return cls().to_record()
 
     def comparison_question(self) -> str:
         raise NotImplementedError
@@ -211,7 +253,7 @@ def judge_pair(
     )
 
 
-def tribunal_scores(repository: ScoringRepository, tribunal_type_id: str) -> tuple[dict, ...]:
+def tribunal_scores(repository: ScoringRepository, tribunal_type_id: str) -> tuple[RankingScore, ...]:
     """Derived relative support plus sampling, keyed by exact Assertion reference."""
     # tarav.breadcrumb 8d68e5873d281106ba1cf7f65cb59c8cd6cbd6fd668cdc47e8cbfa804f83b3e9
 
@@ -273,7 +315,8 @@ def tribunal_scores(repository: ScoringRepository, tribunal_type_id: str) -> tup
             'coverage': len(row['opponents']) / (population - 1) if population > 1 else 0.0,
             'tribunal_type_id': tribunal_type_id,
         })
-    return tuple(sorted(output, key=lambda row: canonical_json(row['assertion_ref'])))
+    return tuple(RankingScore(row) for row in sorted(
+        output, key=lambda row: canonical_json(row['assertion_ref'])))
 
 
 class TribunalScorePOI(CheckPOI):
@@ -282,7 +325,7 @@ class TribunalScorePOI(CheckPOI):
         return TaravClass(target=cls,
                           id=TypeShip('ec5a6bc9-b6bd-413d-a713-1325eb7014a5'),
                           name='Tarav.Scoring.TribunalScore.POI',
-                          workflow=SCORING_WORKFLOW_SHIP)
+                          workflow=RANKING_WORKFLOW_SHIP)
 
 
 class TribunalScoreCheck(Check):
@@ -293,7 +336,7 @@ class TribunalScoreCheck(Check):
         return TaravClass(target=cls,
                           id=TypeShip('11dba7b2-38c5-4396-8b94-08e8b862112d'),
                           name='Tarav.Scoring.TribunalScore.Check',
-                          workflow=SCORING_WORKFLOW_SHIP)
+                          workflow=RANKING_WORKFLOW_SHIP)
 
     def __init__(self, repository: ScoringRepository, tribunal_type_id: str,
                  *, low_support: float = 0.35, sparse_coverage: float = 0.5) -> None:
@@ -321,10 +364,11 @@ class TribunalScoreCheck(Check):
                     situation={'tribunal_type_id': self.tribunal_type_id,
                                'assertion_ref': row['assertion_ref'], 'code': code,
                                'comparisons': row['comparisons']},
-                    subject={'assertion_ref': row['assertion_ref']}, evidence=row,
-                    details=row,
+                    subject={'assertion_ref': row['assertion_ref']},
+                    evidence=row.as_row(), details=row.as_row(),
                 ))
-        return CheckResult(self, status='completed', pois=pois, data=rows)
+        return CheckResult(self, status='completed', pois=pois,
+                           data=tuple(row.as_row() for row in rows))
 
 
 __all__ = [

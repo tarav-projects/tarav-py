@@ -1,8 +1,9 @@
 # Assertions and scoring
 
-`ScoringWorkflow` owns `Assertion` and shared evaluation mechanics.
-It also owns the `Assertable` capability, an immutable label-addressed
-`.assertions` namespace, and the base `AssessmentCase` contract. An Assertion
+`AssertionsWorkflow` owns the shallow `TaravAssertion` root and `Assertable`
+capability. `ScoringWorkflow` owns its identified, case-producing `Assertion`
+subtype, the label-addressed `.assertions` namespace, `AssessmentCase`, and a
+shallow `Score` root. An Assertion
 declares supported case Types and can close one from supplied material. Each
 case retains the Assertion reference, a question, and a complete presentation;
 the scorer consumes that snapshot without seeking more material. Unsupported
@@ -57,13 +58,18 @@ hash checks and requires explicit resolution dependencies. Derived win-rate
 scores remain derived; a high relative ranking is not proof of correctness.
 The legacy Line ranking does not impose an automatic low-score threshold.
 
-Generic pairwise scoring uses `PairwiseRankingCase`, a registered `Tribunal`
-Type, and `enroll_case` → `prepare_pair` → `judge_pair` or `submit_judgment`.
+`RankingWorkflow` is a Scoring child and Python subtype. Its pairwise path uses
+`PairwiseRankingCase`, a registered singleton `Tribunal` entity, and
+`enroll_case` → `prepare_pair` → `judge_pair` or `submit_judgment`. The
+Tribunal's Type Ship identifies its class; its separately declared Ship
+identifies the singleton object. Existing `tribunal_type_id` fields still
+identify the class.
 Each case keeps its Assertion reference and closed packet. The tribunal supplies
 the common question and admission decision; the ranker supplies the same
 A/B/tie/abstain procedure for every tribunal. The prompt and each attributed
 judgment are retained under the existing `ScoringRepository` Git root.
-`tribunal_scores` derives relative win/tie support and shows comparison count,
+`tribunal_scores` derives typed, ephemeral `RankingScore` objects with relative
+win/tie support and shows comparison count,
 abstentions, opponent count, and coverage separately. One case has no relative
 score. `TribunalScoreCheck` surfaces unassessed, sparse, or weak support as POIs
 without treating low relative rank as a falsity verdict.

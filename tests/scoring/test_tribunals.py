@@ -4,10 +4,11 @@ from uuid import uuid4
 
 import pytest
 
-from tarav.l0.kernel import TaravClass, TypeShip, entity
+from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l2.scoring import (
     Assertion, PairwiseRankingCase, ScoringError, ScoringRepository,
-    Tribunal, TribunalRegistry, TribunalScoreCheck, enroll_case, prepare_pair,
+    RankingScore, RankingWorkflow, Score, ScoringWorkflow, Tribunal,
+    TribunalRegistry, TribunalScoreCheck, enroll_case, prepare_pair,
     judge_pair, submit_judgment, tribunal_scores,
 )
 from tarav.l2.scoring.model import (
@@ -17,11 +18,46 @@ from tarav.l2.scoring.model import (
 from tarav.l3.runtime import create_runtime
 
 
+def test_ranking_workflow_and_tribunal_have_distinct_class_and_object_identities(tmp_path):
+    # tarav.context 6734aba0:e3a12d122bc8c5ca
+    assert issubclass(RankingWorkflow, ScoringWorkflow)
+    assert RankingWorkflow().workflow is ScoringWorkflow()
+    assert EvidenceTribunal() is EvidenceTribunal()
+    assert StyleTribunal() is StyleTribunal()
+    assert EvidenceTribunal() is not StyleTribunal()
+    assert EvidenceTribunal().id != entity(EvidenceTribunal).id
+    assert EvidenceTribunal().id != StyleTribunal().id
+    assert EvidenceTribunal.from_record(EvidenceTribunal().to_record()) is EvidenceTribunal()
+    runtime = create_runtime(archive_root=tmp_path, record_types=(EvidenceTribunal,))
+    assert runtime.records.from_record(EvidenceTribunal().to_record()) is EvidenceTribunal()
+
+
+def test_ranking_score_is_typed_but_derived(tmp_path):
+    repository = ScoringRepository.initialize(tmp_path / 'scoring')
+    registry = TribunalRegistry((EvidenceTribunal(),))
+    enroll_case(repository, _case(EvidenceCase, claim='Only', material='Quote'),
+                registry=registry)
+    score, = tribunal_scores(repository, str(entity(EvidenceTribunal).id))
+    assert isinstance(score, RankingScore)
+    assert isinstance(score, Score)
+    assert score['value'] is None
+    assert score.as_row() == dict(score)
+    detached_ref = score['assertion_ref']
+    detached_ref['type'] = 'Changed.Reference'
+    assert score['assertion_ref'] != detached_ref
+    runtime = create_runtime(archive_root=tmp_path / 'archive')
+    assert runtime.records.from_record(score.to_record()).to_record() == score.to_record()
+
+
 class EvidenceTribunal(Tribunal):
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls, id=TypeShip('46da1f8a-5c3c-4554-9285-1dc1115fa421'),
                           name='Example.Evidence.Tribunal')
+
+    @classmethod
+    def _tribunal_id(cls):
+        return Ship('122ec8df-6147-45c6-8c35-47c9370b2fd6')
 
     def comparison_question(self):
         return 'Which claim has stronger source support?'
@@ -32,6 +68,10 @@ class StyleTribunal(Tribunal):
     def class_entity(cls):
         return TaravClass(target=cls, id=TypeShip('d35553d7-07cb-42ca-8f92-97521de036a7'),
                           name='Example.Style.Tribunal')
+
+    @classmethod
+    def _tribunal_id(cls):
+        return Ship('c8aa8db1-d391-403b-9df5-bebcdfe10ac3')
 
     def comparison_question(self):
         return 'Which phrasing is clearer?'

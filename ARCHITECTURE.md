@@ -437,7 +437,9 @@ schema or an additional Workflow identity.
 | `lines` | LinesWorkflow owns Line, Block, Collection, their editions and relationships, projections, rendering, and LineGroundingAssertion semantics. |
 | `models` | ModelsWorkflow owns the Model handler, ModelShipRecord, and ModelEditionRecord. Project associations do not imply ownership; several projects may share one Model. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
-| `scoring` | Common Assertable capability, identified Assertions, closed typed assessment cases, and evaluation mechanics: pools, tribunal cases and pairwise judgments, tasks, runs, results, derived scores, and traces. Scoring Records are entities with explicit Context reference edges. |
+| `assertions` | AssertionsWorkflow owns the shallow TaravAssertion root and Assertable capability. The base imposes no case-production method. |
+| `scoring` | ScoringWorkflow owns the identified, case-producing Assertion subtype, closed AssessmentCase contract, shallow Score root, and retained evaluation mechanics. Scoring Records are entities with explicit Context reference edges. |
+| `scoring.ranking` | RankingWorkflow is a Scoring subtype and child workflow. It owns pairwise cases, singleton Tribunal entities, pairwise operations and Checks, and ephemeral RankingScore results. |
 | `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. Opt-in TrackedPOI Records retain detection history at a caller-selected root; only a completed evaluation of the same declared scope may infer absence. The l2 board joins optional Decisions and pages/filter these Records without turning disposition into detection. |
 | `decisions` | DecisionsWorkflow owns the shared attributed Decision contract and prescribes no concrete subtype of its own; consuming workflows define theirs. It owns no storage. The common actor field is exposed as `decider`; subtype schemas keep their own fields and optional POI links. l2 builds an inspectable main Assertion for generic Decisions; assessment cases and attention policy are not yet prescribed. Existing Blessing Records subtype Decision without changing their Type Ship or schema. |
 | `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. BlessingRecord is Assertable through Decision; its established Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. Blessings match situation identity directly and never suppress a POI. BlessingStore remains independently usable without tracking. |
@@ -493,8 +495,9 @@ Project or legacy storage composition. `tarav.l2.models.Model` replaces
 the old `tarav.lines.model.DiagramModel` Python path; retained TypeShips,
 Record labels, Model UUIDs, and `diagram.main_model` associations are unchanged.
 
-Scoring's `assertions` module supplies the common Assertable, Assertion, and
-AssessmentCase contracts without
+Assertions owns the common Assertable and shallow TaravAssertion contracts.
+Scoring's `assertions` module supplies its identified, case-producing Assertion
+subtype and the AssessmentCase contract without
 importing consumer workflows. `lines.assertions` specializes it for exact Line
 editions and supplies two case producers with different payloads. A case is a
 JSON snapshot of its claim, question, and supplied material; the scorer does
@@ -507,20 +510,24 @@ from `tarav.l2.scoring.tasks`. Architecture checks inspect Scoring at module
 granularity too, distinguishing foundations from composition.
 <!-- tarav.breadcrumb 9d28b8a71a32f7309fe03c9f8d1c1eb9ee3d8802d2f973f679e9b85ab9561bb9 -->
 
-`scoring.tribunals` is the cross-workflow pairwise path. Tribunal Types define
+`scoring.ranking.tribunals` is the cross-workflow pairwise path. Each concrete
+Tribunal class constructs one identified singleton Tribunal entity. Its class
+representative's Type Ship and its object's Ship remain distinct; existing
+`tribunal_type_id` records still identify the class. Tribunal Types define
 population membership, question, and instructions; case subtypes keep their
 own payload schemas. The common ranker freezes a two-case prompt, retains an
 attributed A/B/tie/abstain judgment in the existing ScoringRepository, and
-derives relative support with separate comparison and coverage metadata.
+derives an ephemeral RankingScore with separate comparison and coverage data.
 Its Check emits POIs for unassessed, sparse, and weakly supported Assertions.
 One enrolled case alone has no relative score, and a low score is not a
 falsity verdict. No consumer workflow is imported by this shared module.
 <!-- tarav.breadcrumb 1d37ba88764215a6fe2ba19ce8b60bd618215f3ef92de30de942dacb95d616db -->
 <!-- tarav.breadcrumb afa385a96aeaf2ae558a4214fba859e9208c161d50405f1aa658112468efafa7 -->
 
-The `Assertable` capability and Scoring Workflow identity live in `l1.scoring`
-so `l1.blessings.BlessingRecord` can declare the capability without an `l1 → l2`
-import. `l2.scoring.assertions` retains the identified Assertion and closed
+The `Assertable` capability lives in `l1.assertions`, so
+`l1.blessings.BlessingRecord` can declare it without an `l1 → l2` import.
+Scoring's Workflow Ship remains in `l1.scoring`; `l2.scoring.assertions`
+retains the identified Assertion and closed
 case mechanics; `l2.blessings.assertions` supplies Blessing-owned producers.
 Runtime composition binds the pure provider functions to existing Blessing
 Records. A primary `main` Assertion addresses the exact blessing and POI

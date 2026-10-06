@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Sequence
 from uuid import UUID
 
-from tarav.l0.kernel import TaravClass, TypeShip, entity
+from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.blessings import BlessingRecord
 from tarav.l1.blessings.workflow import BLESSINGS_WORKFLOW_SHIP
 from tarav.l2.scoring import (
@@ -29,6 +29,10 @@ class BlessingAcceptanceTribunal(Tribunal):
             name='Tarav.Blessings.Acceptance.Tribunal',
             workflow=BLESSINGS_WORKFLOW_SHIP,
         )
+
+    @classmethod
+    def _tribunal_id(cls):
+        return Ship('ddf43a66-b162-419a-984c-c2b235f9a27e')
 
     def comparison_question(self) -> str:
         return 'Which blessing better justifies leaving its continuing POI without immediate action?'
@@ -270,7 +274,7 @@ def score_vector_for_blessing(
         entries = []
         for tribunal_id in tribunal_ids:
             entries.extend(
-                row for row in tribunal_scores(repository, tribunal_id)
+                row.as_row() for row in tribunal_scores(repository, tribunal_id)
                 if row['assertion_ref'] == reference
             )
         status = ('unassessed' if not entries else

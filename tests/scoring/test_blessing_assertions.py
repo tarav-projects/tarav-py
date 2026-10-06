@@ -52,6 +52,9 @@ def _blessing(*, support=()):
 
 def test_blessing_is_assertable_and_main_case_has_exact_poi_context(tmp_path):
     runtime = create_runtime(archive_root=tmp_path)
+    tribunal = BlessingAcceptanceTribunal()
+    assert runtime.records.resolve_ship(entity(BlessingAcceptanceTribunal).id) is BlessingAcceptanceTribunal
+    assert runtime.records.from_record(tribunal.to_record()) is tribunal
     blessing = _blessing()
     assert isinstance(blessing, Assertable)
     assert tuple(blessing.assertions) == ('main',)

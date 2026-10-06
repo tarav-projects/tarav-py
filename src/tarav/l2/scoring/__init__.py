@@ -48,7 +48,9 @@ from .model import (
     validate_record,
 )
 from .repository import ScoringRepository, default_scoring_root
-from .tribunals import (
+from .score import Score
+from .ranking import RankingScore, RankingWorkflow
+from .ranking.tribunals import (
     PairwiseRankingCase, Tribunal, TribunalRegistry, TribunalScoreCheck,
     TribunalScorePOI, enroll_case, prepare_pair, render_pair, judge_pair,
     submit_judgment, tribunal_scores,
@@ -66,6 +68,9 @@ from .rendering import (
 
 __all__ = [
     "Assertion",
+    "Score",
+    "RankingScore",
+    "RankingWorkflow",
     "PairwiseRankingCase",
     "Tribunal",
     "TribunalRegistry",
