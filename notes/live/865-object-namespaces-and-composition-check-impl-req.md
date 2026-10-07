@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Ready. Phase: Develop.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Complete. Phase: Develop (Execute).
 
 Introduce a small object-level namespace mechanism in Kernel, demonstrate it through `obj.records`, and reject class compositions that silently lose an independent parent's contribution to the same namespace. Keep storage/navigation in TaravRecords and retain existing Record call sites for a later, explicit migration.
 <!-- tarav.breadcrumb 7b15a924a199091347afff993b692c68102388494355bd821aae360aafb88cf0 -->
@@ -28,7 +28,7 @@ Current code: `TaravObject` in `tarav.l0.kernel.records` owns `_record`, `to_rec
 
 ## Impl.Req.Wiki
 
-Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; topical candidate `tarav-records.md`; daily `2026-10-07.md`. Supporting session: `codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8`. Capture status: pending submission and audit.
+Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; topical `record-framework.md`; daily `2026-10-07.md`. Supporting session: `codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8`. Capture status: complete; new labels submitted and resolved.
 
 ## Execution.Plan
 
@@ -40,3 +40,9 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; topical candidate `tara
 ## Impl.Log
 
 - Design: reviewed Constitution, project routing, Record source and callers, and current worktree. The worktree contains unrelated edits, including `ARCHITECTURE.md` and architecture tests; preserve them.
+- Impl.Req design Breadcrumbs: eight submitted and audited without findings; design note committed as `a41ac5ba216e830c5a1345b8b43116831dc9ada1`.
+- Execute start checkpoint: `4f4dfdb902c9ca0268c477c9caae944788a508a2`, empty and scoped to clean Kernel files. Shared dirty architecture files were excluded from that checkpoint.
+- Implemented `NamespaceBase` and class-creation composition validation in Kernel. `TaravObject.Records` binds through `obj.records`; its `to_record()` owns the unchanged projection logic and the existing root method delegates to it. The independent-base example and missing-composition failure have focused tests.
+- Verification: `uv run pytest -q` passed 175 tests; Ruff on changed Python files passed; `git diff --check` passed. Product completion commit `8f86df0a7079287b49f554d73f4f23f0de81c61a` includes only this slice's hunks; unrelated edits in `ARCHITECTURE.md` and `tests/test_architecture.py` remain in the working tree. Commit-message Breadcrumb audit passed.
+- Product.Surface capture: new Breadcrumbs were submitted in all six changed product files and resolve. Audits of `records.py`, `ARCHITECTURE.md`, and `tests/test_architecture.py` retain older `breadcrumb-position-missing` POIs from earlier observations; this slice's labels resolve.
+- Wiki start checkpoint `c0e665ec45810e8a113c3537970edafa518ce3e6`; daily and topical capture committed as `9d91d167bb1b6ea61bf35995453216b71993fd7c`. Daily audit is clean; all five new topical labels resolve, while the older `record-framework.md` retains historical position POIs.
