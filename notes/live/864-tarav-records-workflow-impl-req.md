@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Implementation verified; evidence closure pending. Phase: Develop (Execute).
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Complete. Phase: Develop (Execute).
 
 Introduce `TaravRecords` as the workflow for reusable Record storage primitives and basic discovery and navigation across storage solutions contributed by other workflows. A contributing source must be able to expose its Records without registering every Record in a central index. Tarav should also offer standard Record storage locations, while workflows remain free to use the same primitives in their own storage.
 <!-- tarav.breadcrumb 20afcba0227f4eeb35a648765a9dd1172c5cf15d76d1ab9a33b29059fc815fb1 -->
@@ -80,3 +80,5 @@ Acceptance requires a real workflow with discoverable contributed Records, a sta
 - Extracted a shared typed atomic write boundary and workflow-neutral Git init/selected-path commit operations. Record Archive uses the typed writer and Git initializer without changing its retained layout or Artifact semantics.
 - Verification: focused suite 75 passed; full `uv run pytest -q` 174 passed; Ruff on the changed code passed. Architecture dependency graph passed after moving shared Git mutations into `l0._core`.
 - Product.Surface Inlined Capture: new Breadcrumbs submitted for every changed product surface; new labels audited as resolved. Some earlier Breadcrumb observations in `ARCHITECTURE.md`, runtime, Git repository, and tests report `breadcrumb-position-missing` after line shifts from this and other worktree edits; they remain a capture POI, not a test failure. Wiki daily and topical implementation capture submitted and audited with no findings.
+- Scoped product completion commit: `b1f8751ee0263b82eeb09f7b610e7a10c949b5e7`; its three commit-message Breadcrumbs audited `ok`. For the three files with pre-existing user edits (`ARCHITECTURE.md`, `src/tarav/l3/runtime.py`, and `tests/test_architecture.py`), the commit contains only this request's hunks; their full working copies were restored afterward and the unrelated edits remain in the worktree.
+- Wiki capture start checkpoint: `808bf7b615bf1a15be51a8c8a691af551fa0eb39`. Wiki completion commit: `393a2de986d3272cde95b8ade6a6fd2c2c80901d`; its commit-message Breadcrumb audited `ok`. The unrelated untracked recovered-discussion note remains untouched.
