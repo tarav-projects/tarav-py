@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, BinaryIO, Self, TextIO, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
+from .namespaces import NamespaceBase, check_namespace_composition
 from .identity import (
     KERNEL_WORKFLOW_SHIP,
     TYPE_WORKFLOW_SHIP,
@@ -140,6 +141,22 @@ class TaravObject(TaravType):
 
         model_config = ConfigDict(strict=True, extra="allow")
 
+    class Records(NamespaceBase["TaravObject"]):
+        """Record projection of one object; subclasses may extend this view."""
+        # tarav.breadcrumb 3798a3aa52c91ae8a762c4d0ac4d26a737636fcdf02723d934665e30dc13367e
+
+        def to_record(self) -> dict[str, object]:
+            record = _json_object(self.obj._to_record())
+            type(self.obj)._check_record_type(record)
+            type(self.obj).validate_record(record)
+            return record
+
+    @property
+    def records(self) -> Records:
+        """Bind the class-selected Record namespace to this object."""
+
+        return type(self).Records(self)
+
     @property
     def workflow(self) -> TaravWorkflow:
         """Return this object's containing workflow."""
@@ -200,10 +217,7 @@ class TaravObject(TaravType):
     def to_record(self) -> dict[str, object]:
         """Validate, detach, and return the object's current Record projection."""
 
-        record = _json_object(self._to_record())
-        type(self)._check_record_type(record)
-        type(self).validate_record(record)
-        return record
+        return self.records.to_record()
 
     @classmethod
     def _check_record_type(cls, record: Mapping[str, object]) -> None:
@@ -245,6 +259,7 @@ class TaravObject(TaravType):
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
+        check_namespace_composition(cls)
         if "from_record" in cls.__dict__:
             raise TaravTypeDeclarationError(
                 "Tarav owns from_record(); customize _from_record() instead"

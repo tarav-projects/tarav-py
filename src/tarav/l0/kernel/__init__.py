@@ -11,6 +11,8 @@ from .identity import (
     WorkflowShip,
 )
 from .lite_records import LiteRecord, LiteRecordSerializer
+from .namespaces import NamespaceBase, check_namespace_composition
+# tarav.breadcrumb 2ba7b744a82791df277c38ce55a693a28bf49a403c7f2f15e533790cbc6a8473
 from .records import (
     DIRECTORY_ENTRY_PATH,
     DirectoryRecord,
@@ -69,6 +71,8 @@ __all__ = [
     "KERNEL_WORKFLOW_SHIP",
     "LiteRecord",
     "LiteRecordSerializer",
+    "NamespaceBase",
+    "check_namespace_composition",
     "KernelWorkflow",
     "TypeWorkflow",
     "TYPE_RESOLUTION_PATH",

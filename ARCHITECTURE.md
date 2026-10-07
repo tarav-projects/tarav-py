@@ -327,6 +327,14 @@ The Kernel establishes only the common contracts needed for interoperability:
 - `TaravType` provides class help, class context, and the `class_entity()` hook
   used to project the Python class into the Diagram.
 - `TaravObject(TaravType)` adds an instance and a class-owned Record projection.
+- Object namespaces are bound views: the host class selects an uppercase
+  `NamespaceBase` subtype and an instance property exposes its lowercase path.
+  When independent bases contribute the same namespace, the combined class
+  explicitly selects a subtype of every contribution; class creation checks
+  this instead of silently accepting Python's first MRO choice.
+  `TaravObject.Records` and `obj.records.to_record()` provide the initial
+  Record path while existing root Record calls remain in use.
+  <!-- tarav.breadcrumb 41d6e41fe955b0a983f42dd222805b0c3d1500ad9f0455ef74ed524d1797e80f -->
 - `TaravEntity(TaravObject)` adds a stable `Ship` identity as class-owned
   runtime state and projects it through the Entity's Record interface.
 - Every concrete Type has a class-local `class_entity()` definition. Its

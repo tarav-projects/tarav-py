@@ -12,6 +12,14 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
+    from tarav.l0.kernel import NamespaceBase, TaravObject
+
+    assert issubclass(TaravObject.Records, NamespaceBase)
+    assert "l1.records" not in _top_level_import_graph()["l0.kernel"]
+    # tarav.breadcrumb bece7d874166e00ed8162186de9a880d068a99e6e2baeb13f0a5783afe3485c6
+
+
 def test_project_ownership_and_consumer_direction():
     from tarav.l1.project import ProjectWorkflow
     from tarav.l2.project import Project
