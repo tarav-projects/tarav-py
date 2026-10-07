@@ -107,7 +107,7 @@ The registries keep mechanics separate from semantics:
 - Each Workflow class declares its code-owned text constitution alongside its
   name; the constitution remains code-owned rather than a retained instance field.
 - Runtime-local state lives in `ContextService`, `ReferenceService`,
-  `BreadcrumbService`, and `NavigationService`, not Workflow instances or mutable
+  `BreadcrumbService`, and `RecordsService`, not Workflow instances or mutable
   Workflow class attributes. Separate runtimes receive separate service objects.
 - Runtime composition verifies that every registered Type's Workflow Ship
   resolves to a registered Workflow.
@@ -241,6 +241,13 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   Entities, Ships, class-owned Record interfaces, Explorer contracts,
   Record-space contracts, and trusted Type and Workflow registries. Kernel
   imports no application domain.
+- `tarav.l1.records` owns `TaravRecords`: runtime-local mounts of workflow-
+  contributed Record providers, a lazy `RecordsRoot`/`RecordsExplorer`, and
+  on-demand Entity discovery. `RecordMap` is an optional typed, keyed store;
+  `RecordRegistry` offers Workflow Ship partitions under
+  `~/Documents/tarav/records/` or an explicitly selected root. Records sources
+  keep their own storage layouts and need no per-Record global registration.
+  <!-- tarav.breadcrumb 013cd36673190cd8c872889558b1cb8ac1236068984883faab3582e17d8db005 -->
 - `tarav.l1.context` owns Context types, standalone navigation, class-bases
   presentation, and the Context Workflow declaration. `explore()` accepts
   explicit contributors without loading Archive or runtime.
@@ -428,6 +435,8 @@ schema or an additional Workflow identity.
 | `agent` | Provider-neutral agent, account, session, and monitoring behavior; concrete providers live below `agent.providers`. |
 | `archive` | Artifact identity, retained Archive Records, and Archive-specific location history. |
 | `archive.records` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
+| `records` | TaravRecords workflow: contributed Record-source navigation, on-demand Entity view, and optional standard keyed RecordRegistry partitions. |
+<!-- tarav.breadcrumb 9b87f84163c1777984484c0543b3e3011a5bea09e1c24833b15527175c4f9e52 -->
 | `l1.context`, `l2.context`, `l3.context` | The same Context Workflow spans standalone navigation, Archive-backed retention, and runtime selection. |
 | `references` | Shared typed locator, check, hints, and resolution mechanics. |
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |

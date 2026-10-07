@@ -21,5 +21,12 @@ class ScoringWorkflow(TaravWorkflow):
     workflow_name = "scoring"
     constitution = "Assess semantic assertions and expose their scores and findings."
 
+    @classmethod
+    def provider(cls, root, records):
+        # tarav.breadcrumb 530e96e33eeddd3f67ddfa11f935401172ced777a6c7085b4b666b907934869c
+        from .provider import ScoringProvider
+
+        return ScoringProvider(root, records)
+
 
 __all__ = ["ScoringWorkflow"]

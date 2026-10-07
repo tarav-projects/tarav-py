@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+from tarav.l0._core.git_repository import initialize_repository as _initialize_repository
+# tarav.breadcrumb be55aa1795b6cd35b1a97c77d00706182d212063250726b8198935df93fe53cd
 
 
 GIT_CONFIG_FILENAME = "git-config.json"
@@ -107,4 +109,4 @@ def placement_for_nested_child(parent: Path, archive_root: Path) -> GitPlacement
 
 
 def initialize_repository(directory: Path) -> None:
-    subprocess.run(["git", "init", "--quiet", str(directory)], check=True)
+    _initialize_repository(directory)

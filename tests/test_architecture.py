@@ -604,14 +604,26 @@ def test_kernel_is_a_dependency_clean_application_base() -> None:
     assert imports["l0.kernel"] == set()
     assert "l0.kernel" in imports["lines.records"]
     assert "l0.kernel" in imports["archive"]
-    assert "l0.kernel" in imports["navigation"]
-    assert "poi.foundation" in imports["navigation"]
-    assert "navigation" not in imports["l0.kernel"]
+    assert "l0.kernel" in imports["records"]
+    assert "poi.foundation" in imports["records"]
+    assert "records" not in imports["l0.kernel"]
     assert imports["references"] <= {"l0.kernel", "poi.foundation"}
     assert "references" in imports["archive"]
     assert "record_archive" not in imports
     assert not (PACKAGE_ROOT / "record_archive" / "__init__.py").exists()
     assert not (PACKAGE_ROOT / "harness").exists()
+
+
+def test_records_workflow_owns_navigation_without_owning_contributed_storage() -> None:
+    # tarav.breadcrumb b38987be170681c8355be449b609785866a0b4737bb4a6bd634113e9d43179b7
+    from tarav.l1.records import RecordsRoot, TaravRecords
+    from tarav.l3.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("records") is TaravRecords
+    assert entity(RecordsRoot).workflow is TaravRecords()
+    assert "archive" not in _top_level_import_graph()["records"]
+    assert "scoring" not in _top_level_import_graph()["records"]
 
 
 def test_root_is_metadata_only_and_runtime_wires_services() -> None:

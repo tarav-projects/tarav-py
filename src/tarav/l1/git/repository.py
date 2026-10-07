@@ -2,23 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-import os
-from pathlib import Path, PurePosixPath
-import subprocess
-import tempfile
+from pathlib import Path
 from typing import Literal
 
 from pydantic import ConfigDict, Field
 
+from tarav.l0._core.git_repository import (
+    GitError,
+    commit_paths,
+    initialize_repository,
+    run_git as _run_git,
+)
+# tarav.breadcrumb 748e430a920a826d8c69df0ccf0cd18353e8665d899ec7b1bbea01cf3b5f4c61
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip, entity
 
 from .workflow import GIT_WORKFLOW_SHIP
-
-
-class GitError(ValueError):
-    """A requested Git operation could not be completed."""
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,11 @@ class GitRepository(GitObject):
         discovered = git_text(selected, "rev-parse", "--show-toplevel")
         self.root = Path(discovered).resolve()
         self._record = {"type": entity(type(self)).name, "root": str(self.root)}
+
+    @classmethod
+    def initialize(cls, root: str | Path) -> GitRepository:
+        """Initialize an explicitly selected repository and open it."""
+        return cls(initialize_repository(root))
 
     @classmethod
     def _from_record(cls, record_data):
@@ -155,75 +160,7 @@ class GitRepository(GitObject):
     ) -> str:
         """Commit exactly ``paths`` while retaining unrelated staged changes."""
 
-        selected = tuple(_repository_path(path) for path in paths)
-        if len(selected) != len(set(selected)):
-            raise GitError("Commit paths must be unique")
-        if not selected and not allow_empty:
-            raise GitError("A nonempty commit requires at least one selected path")
-        if not isinstance(message, str) or not message.strip():
-            raise GitError("Commit message must be nonempty")
-
-        with tempfile.TemporaryDirectory(prefix="tarav-git-") as temporary:
-            index = Path(temporary) / "index"
-            message_path = Path(temporary) / "message.txt"
-            message_path.write_text(message.rstrip("\n") + "\n", encoding="utf-8")
-            environment = {**os.environ, "GIT_INDEX_FILE": str(index)}
-            head_exists = _git_result(
-                self.root,
-                "rev-parse",
-                "--verify",
-                "--quiet",
-                "HEAD",
-                environment=environment,
-            ).returncode == 0
-            if head_exists:
-                _run_git(self.root, "read-tree", "HEAD", environment=environment)
-            else:
-                _run_git(self.root, "read-tree", "--empty", environment=environment)
-            if selected:
-                _run_git(
-                    self.root,
-                    "add",
-                    "-A",
-                    "--",
-                    *(_literal_pathspec(path) for path in selected),
-                    environment=environment,
-                )
-            changed = (
-                _git_result(
-                    self.root,
-                    "diff",
-                    "--cached",
-                    "--quiet",
-                    environment=environment,
-                ).returncode
-                != 0
-            )
-            if not changed and not allow_empty:
-                raise GitError("Selected paths contain no changes")
-            arguments = [
-                "commit",
-                "--cleanup=verbatim",
-                "--file",
-                str(message_path),
-            ]
-            if allow_empty:
-                arguments.append("--allow-empty")
-            _run_git(self.root, *arguments, environment=environment)
-
-        exact, retained_message = self.commit_message("HEAD")
-        if retained_message != message.rstrip("\n"):
-            raise GitError(f"Commit {exact} did not retain the prepared message exactly")
-        if selected:
-            _run_git(
-                self.root,
-                "reset",
-                "-q",
-                "HEAD",
-                "--",
-                *(_literal_pathspec(path) for path in selected),
-            )
-        return exact
+        return commit_paths(self.root, paths, message, allow_empty=allow_empty)
 
 
 GIT_RECORD_TYPES = (GitObject, GitRepository)
@@ -235,47 +172,6 @@ def git_bytes(repository: str | Path, *args: str) -> bytes:
 
 def git_text(repository: str | Path, *args: str) -> str:
     return git_bytes(repository, *args).decode("utf-8").strip()
-
-
-def _git_result(
-    repository: str | Path,
-    *args: str,
-    environment: Mapping[str, str] | None = None,
-) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(
-        ["git", "-C", str(repository), *args],
-        env=dict(environment) if environment is not None else None,
-        capture_output=True,
-        check=False,
-    )
-
-
-def _run_git(
-    repository: str | Path,
-    *args: str,
-    environment: Mapping[str, str] | None = None,
-) -> subprocess.CompletedProcess[bytes]:
-    result = _git_result(repository, *args, environment=environment)
-    if result.returncode:
-        message = result.stderr.decode(errors="replace").strip()
-        raise GitError(message or f"Git command failed: {' '.join(args)}")
-    return result
-
-
-def _repository_path(value: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise GitError("Commit paths must be nonempty repository-relative strings")
-    path = PurePosixPath(value)
-    if path.is_absolute() or ".." in path.parts or ".git" in path.parts:
-        raise GitError(f"Unsafe repository path: {value}")
-    normalized = path.as_posix()
-    if normalized in {"", "."}:
-        raise GitError(f"Unsafe repository path: {value}")
-    return normalized
-
-
-def _literal_pathspec(path: str) -> str:
-    return f":(top,literal){path}"
 
 
 __all__ = [

@@ -29,6 +29,8 @@ from tarav.l0.kernel import (
 )
 from tarav.l1.context import ContextFolder, ContextBuilder
 from tarav.l0.kernel.workflows import TaravWorkflow
+from tarav.l1.records.storage import write_typed_record
+# tarav.breadcrumb a64a1925bb137ec1ec7ef10d1b432b5a3c349ffdcd505583c00cf3eb99b75b4c
 
 from .git import (
     GIT_CONFIG_FILENAME,
@@ -261,12 +263,9 @@ class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
     def _store(self, obj: TaravObject) -> str:
         if isinstance(obj, ArchiveEntity):
             raise TypeError("Create nested Archives in place with put_archive()")
-        record = obj.to_record()
-        if current_records().resolve(record) is not type(obj):
-            raise ValueError("Stored object must have its exact registered Type")
         key = uuid4().hex
         artifact = f"artifacts/{key}.json"
-        atomic_write_json(self._storage_target("artifacts", f"{key}.json"), record)
+        write_typed_record(self._storage_target("artifacts", f"{key}.json"), obj)
         return self._write_entry(key, artifact)
 
     def _write_entry(self, key: str, artifact: str) -> str:

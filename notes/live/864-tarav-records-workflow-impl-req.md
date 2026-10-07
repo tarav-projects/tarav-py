@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Needs alignment. Phase: Develop (Design).
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Implementation verified; evidence closure pending. Phase: Develop (Execute).
 
 Introduce `TaravRecords` as the workflow for reusable Record storage primitives and basic discovery and navigation across storage solutions contributed by other workflows. A contributing source must be able to expose its Records without registering every Record in a central index. Tarav should also offer standard Record storage locations, while workflows remain free to use the same primitives in their own storage.
 <!-- tarav.breadcrumb 20afcba0227f4eeb35a648765a9dd1172c5cf15d76d1ab9a33b29059fc815fb1 -->
@@ -51,6 +51,9 @@ Archive keeps Artifact and preservation semantics. Adopting Registry primitives 
 
 Choose the first execution boundary: **A.** introduce `TaravRecords` discovery/navigation and generic primitives around current stores, with adapters demonstrating Archive and Scoring reachability, then migrate Record Archive storage in a later request; or **B.** include renaming/refactoring the current Record Archive into the standard RecordRegistry and any required data migration in this request. A is the recommended first slice because it tests the extension contract against distinct real stores before changing retained layouts. This choice affects scope, tests, documentation, and the worktree conflict.
 
+The User selected the incremental first boundary: establish the workflow organization and extract common or easily migrated primitives now; workflows may retain custom storage and further alignment follows later. This authorizes A and a bounded standard Registry without a Record Archive data migration.
+<!-- tarav.breadcrumb 8c6ea8fd95ab9394630db8ad490c2ba05a82da870ab504292d45ecdd09fe6111 -->
+
 ## Impl.Req.Wiki
 
 Product project: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant Notes: `record-framework.md`, `record-archive.md`, `context-graph.md`, `references.md`, `archive-doi-registry.md`, and new candidate-design Note `tarav-records.md`. Supporting chat: current Codex Chatlas session `01a1176b-f14c-7fd0-a97c-b22279c3f8c8`, identity `473c89a00e2367fb827193af74a6375c60a96b0be110f21df0aff49360ca972f`; exact User Turns are attached beside the decisions above. Capture status: seven Inlined Capture Breadcrumbs submitted and audited. Wiki daily and topical capture completed in `cf8c01147bd51efb743fc5933392f51efa5ddd90`; design alignment pending.
@@ -72,3 +75,8 @@ Acceptance requires a real workflow with discoverable contributed Records, a sta
 - Impl.Req Inlined Capture: seven User-Turn Breadcrumbs submitted; audit reported `status: ok` without findings.
 - Wiki capture: empty scoped start checkpoint `62be24cf67f8fd7a36223f31197f472371777d7b`; daily `2026-10-07.md` and topical `tarav-records.md` committed as `cf8c01147bd51efb743fc5933392f51efa5ddd90`. Nine Note Breadcrumbs and two commit-message Breadcrumbs audited without findings. The unrelated untracked recovered-discussion note remains untouched.
 - Scoped `tarav-py` design start checkpoint: `db063eb3bcd146c45c178768dc94f9d2520a224e`. Its scope is this new Impl.Req only; pre-existing product edits remain outside the checkpoint.
+- Execute start checkpoint: `0b37d6306dffe6aec6a989f94fbdebefafb83d26` in `tarav-py`, empty and scoped to this implementation. The pre-existing dirty changes remain outside its scope.
+- Implemented `tarav.l1.records` as the TaravRecords workflow, replacing the former Navigation namespace while keeping its Workflow Ship. Runtime composes `RecordsService`; `RecordProvider` contributions remain per source. Archive and Scoring expose existing custom storage; a standard RecordRegistry stores typed Records by Workflow Ship with insert/replace policy and working, committed-head, and exact-edition references. An Entity view scans contributed sources on demand without a per-Record central index.
+- Extracted a shared typed atomic write boundary and workflow-neutral Git init/selected-path commit operations. Record Archive uses the typed writer and Git initializer without changing its retained layout or Artifact semantics.
+- Verification: focused suite 75 passed; full `uv run pytest -q` 174 passed; Ruff on the changed code passed. Architecture dependency graph passed after moving shared Git mutations into `l0._core`.
+- Product.Surface Inlined Capture: new Breadcrumbs submitted for every changed product surface; new labels audited as resolved. Some earlier Breadcrumb observations in `ARCHITECTURE.md`, runtime, Git repository, and tests report `breadcrumb-position-missing` after line shifts from this and other worktree edits; they remain a capture POI, not a test failure. Wiki daily and topical implementation capture submitted and audited with no findings.
