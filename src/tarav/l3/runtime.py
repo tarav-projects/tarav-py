@@ -39,6 +39,7 @@ from tarav.l0.kernel.current import configure_current_records
 from tarav.l0.kernel.workflows import TaravWorkflow, WorkflowRegistry
 from tarav.l1.loading import LoadingProfile, profile_paths
 from tarav.l1.records import RECORDS_TYPES, RecordsService, TaravRecords
+from tarav.l1.search import SearchQuery, SearchService, SearchWorkflow
 # tarav.breadcrumb d21dbd1bb68d43440be82f23b46100f9559dfb7f2d7470826bb94c9a1861139c
 from tarav.l1.references.workflow import ReferenceWorkflow, ReferenceService
 from tarav.l1.breadcrumbs.workflow import BreadcrumbService
@@ -77,6 +78,7 @@ class TaravRuntime:
     environment: TaravEnvironment
     contexts: ContextService
     navigation: RecordsService
+    search: SearchService
     references: ReferenceService
     breadcrumbs: BreadcrumbService
     usage: UsageRegistry
@@ -351,6 +353,7 @@ def create_runtime(
                 FileRecord,
                 DirectoryRecord,
                 *RECORDS_TYPES,
+                SearchQuery,
                 *CONTEXT_RECORD_TYPES,
                 TaravClass,
                 Line,
@@ -438,6 +441,8 @@ def create_runtime(
     )
     registrations = WorkflowRegistry()
     navigation = TaravRecords.service()
+    # tarav.breadcrumb 62297208d649cb6d9101c2e75061f5637bdc22d0150e28dc7b6e0576fb5c52d2
+    search = SearchWorkflow.service()
     references = ReferenceWorkflow.service(records)
     contexts = ContextService(archive_root, records)
     breadcrumbs = BreadcrumbWorkflow.service(composed_breadcrumb_integrations)
@@ -479,6 +484,7 @@ def create_runtime(
         CodeWorkflow,
         SkillsWorkflow,
         TaravRecords,
+        SearchWorkflow,
         TestWorkflow,
         *workflows,
     ):
@@ -526,6 +532,7 @@ def create_runtime(
         breadcrumbs=breadcrumbs,
         usage=UsageRegistry(contexts.archive_root),
         navigation=navigation,
+        search=search,
         breadcrumb_integrations=composed_breadcrumb_integrations,
         pois=POICollector(),
         blessings=BlessingStore(

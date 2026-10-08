@@ -456,6 +456,8 @@ schema or an additional Workflow identity.
 | `archive` | Artifact identity, retained Archive Records, and Archive-specific location history. |
 | `archive.records` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
 | `records` | TaravRecords workflow: contributed Record-source navigation, on-demand Entity view, and optional standard keyed RecordRegistry partitions. |
+| `search` | SearchWorkflow owns typed incremental queries and a registry-backed meta engine. SearchEngine Types contribute a bound `.search` namespace; the runtime holds one SearchService per composition. Engine registration does not imply storing queries or hits. |
+<!-- tarav.breadcrumb 4597f1786f7c1c0b1fce993a19bef717743bb666489fd98b1b2fcad2d4f8e253 -->
 <!-- tarav.breadcrumb 9b87f84163c1777984484c0543b3e3011a5bea09e1c24833b15527175c4f9e52 -->
 | `l1.context`, `l2.context`, `l3.context` | The same Context Workflow spans standalone navigation, Archive-backed retention, and runtime selection. |
 | `references` | Shared typed locator, check, hints, and resolution mechanics. |
