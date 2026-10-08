@@ -670,3 +670,19 @@ import `tarav`. The mark is a usability guard, not a security boundary, and
 does not appear in the error message.
 <!-- tarav.breadcrumb d85bcbec96c2c33b21a12ac57fc844ce0fdcb1a428026756ff13ec5d3e8041a2 -->
 <!-- tarav.breadcrumb fb964adb1a2f8cfbdef9fabf07f33c12806155d2ff7c24a42fbe5329e9e59da2 -->
+
+### Run registry
+
+`tarav run` retains the code it executes so agents can study recent Tarav
+scripts. `tarav.l1.python_env.registry.RunRegistry` owns the store under
+`~/.tarav/run-registry/` (`TARAV_RUN_REGISTRY` relocates it for tests). Each run
+gets one folder holding `entry.json` and, when there is source, `source.py`: a
+copy of the script file, the `-c` text, or standard input, which the command
+reads fully and replays to the child. A `-m` run keeps the module name only.
+Runs with `--project` are partitioned by the Project's id and the rest go to
+`global`. The entry is written before the child starts and completed with its
+exit status. Size is the only retention rule: a source beyond 1 MB is cut and
+marked, and a partition beyond 50 MB loses its oldest entries during the write.
+The registry is best effort; a failure is logged and the run is unchanged.
+<!-- tarav.breadcrumb 04da500bc54214879fa3a0f8232b112490cda176917b4db38c121fcbefc7bd84 -->
+<!-- tarav.breadcrumb 649ec18a1017f2ff0525ba9bc96eb1f33a319556bf9e2789f24eb9d5ec2287e3 -->

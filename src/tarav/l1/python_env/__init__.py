@@ -2,6 +2,7 @@
 
 from .commands import register_python_commands
 from .core import environment_root, interpreter, run_file, run_python, run_source
+from .registry import RunRegistry, registry_root
 from .runner import (
     CurrentRunnerConfigurator,
     PYTHON_RECORD_TYPES,
@@ -22,6 +23,8 @@ __all__ = [
     "register_python_commands",
     "RunnerConfiguration",
     "RunnerConfigurator",
+    "RunRegistry",
+    "registry_root",
     "run_file",
     "run_python",
     "run_source",

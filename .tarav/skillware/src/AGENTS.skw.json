@@ -269,6 +269,10 @@
         "  outside a Tarav-started process. Deliberate direct callers import",
         "  `tarav_bypass` first; it is the explicit alternative entry point.",
         "  <!-- tarav.breadcrumb 0319d00f271187db1c68b562c9b9e9cf8d775c549d5e9d8b0113fa24d30a42c0 -->",
+        "- `tarav run` retains the code it executes in a best-effort registry under",
+        "  `~/.tarav/run-registry/`, one folder per Project id plus `global`, bounded by",
+        "  size. Browse it for recent examples of Tarav scripts, including other",
+        "  Projects'. `tarav.l1.python_env.registry` owns it; it must never change a run.",
         ""
       ]
     },

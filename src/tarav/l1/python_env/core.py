@@ -66,9 +66,14 @@ def run_file(
 
 
 def run_python(
-    arguments: Sequence[str], *, configuration: RunnerConfiguration
+    arguments: Sequence[str], *, configuration: RunnerConfiguration,
+    stdin: bytes | None = None,
 ) -> int:
-    """Run one explicit Python argument vector with a resolved configuration."""
+    """Run one explicit Python argument vector with a resolved configuration.
+
+    ``stdin`` replays input the caller already consumed; by default the child
+    inherits the caller's standard input.
+    """
     # tarav.breadcrumb f342326ee3e6fed178a6d6ed8cf66adf548b7a87b8ed42d841bf4efa853edfad
 
     if not isinstance(configuration, RunnerConfiguration):
@@ -78,6 +83,7 @@ def run_python(
             [str(configuration.interpreter), *arguments],
             cwd=configuration.cwd,
             check=False,
+            **({} if stdin is None else {"input": stdin}),
         ).returncode
     except OSError as exc:
         raise PythonRunError(
