@@ -83,12 +83,16 @@ def test_registry_path_load_constructs_exact_registered_class(
     assert loaded._record == {"type": "Registered.Record", "value": 7}
 
 
+# tarav.breadcrumb 8584bce0a339be6df5d7d5784b1d025d33bca9e4d3f831bc564bd73a06dffe2d
 def test_registry_from_record_routes_through_selected_class(
     registry: TypeRegistry[TaravObject],
 ) -> None:
     loaded = registry.from_record({"type": "Registered.Record", "value": 7})
 
     assert type(loaded) is RegisteredRecord
+    assert RegisteredRecord.records.obj is RegisteredRecord
+    restored = RegisteredRecord.records.from_record(loaded.records.to_record())
+    assert restored.records.to_record() == loaded.records.to_record()
     assert loaded.to_record() == {"type": "Registered.Record", "value": 7}
     assert loaded.to_record() is not loaded._record
 

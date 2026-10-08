@@ -121,6 +121,16 @@ class TaravType:
         return result
 
 
+# tarav.breadcrumb 925bef28324b122a6586a10881867798f2cc80325f6349389a7752be8fab96d9
+class _RecordsDescriptor:
+    """Bind one selected Record namespace to an object or its concrete class."""
+
+    def __get__(
+        self, instance: TaravObject | None, owner: type[TaravObject]
+    ) -> TaravObject.Records:
+        return owner.Records(owner if instance is None else instance)
+
+
 class TaravObject(TaravType):
     """Semantic Python object with a class-owned Record projection.
 
@@ -141,21 +151,35 @@ class TaravObject(TaravType):
 
         model_config = ConfigDict(strict=True, extra="allow")
 
-    class Records(NamespaceBase["TaravObject"]):
-        """Record projection of one object; subclasses may extend this view."""
+    class Records(NamespaceBase["TaravObject | type[TaravObject]"]):
+        """Record projection and loading for one object or concrete class."""
         # tarav.breadcrumb 3798a3aa52c91ae8a762c4d0ac4d26a737636fcdf02723d934665e30dc13367e
 
         def to_record(self) -> dict[str, object]:
+            if isinstance(self.obj, type):
+                raise TypeError("Record projection requires an object instance")
             record = _json_object(self.obj._to_record())
             type(self.obj)._check_record_type(record)
             type(self.obj).validate_record(record)
             return record
 
-    @property
-    def records(self) -> Records:
-        """Bind the class-selected Record namespace to this object."""
+        # tarav.breadcrumb fe4ebb28de64e5b877ab6930e1e8e60757b1348684e02906a633c888afebe087
+        def from_record(self, value: object) -> TaravObject:
+            """Construct the bound Type through its hook and retain the Record."""
 
-        return type(self).Records(self)
+            owner = self.obj if isinstance(self.obj, type) else type(self.obj)
+            if owner is TaravObject:
+                raise TypeError("TaravObject is not an opaque JSON wrapper")
+            record = _json_object(value)
+            owner._check_record_type(record)
+            record_data = owner.validate_record(record)
+            result = owner._from_record(record_data)
+            if type(result) is not owner:
+                raise TypeError(f"{owner.__name__}._from_record() must return exact class")
+            result._record = record
+            return result
+
+    records = _RecordsDescriptor()
 
     @property
     def workflow(self) -> TaravWorkflow:
@@ -193,18 +217,9 @@ class TaravObject(TaravType):
 
     @classmethod
     def from_record(cls, value: object) -> Self:
-        """Construct through the class hook and retain the supplied Record."""
+        """Construct through the class-selected Record namespace."""
 
-        if cls is TaravObject:
-            raise TypeError("TaravObject is not an opaque JSON wrapper")
-        record = _json_object(value)
-        cls._check_record_type(record)
-        record_data = cls.validate_record(record)
-        result = cls._from_record(record_data)
-        if type(result) is not cls:
-            raise TypeError(f"{cls.__name__}._from_record() must return exact class")
-        result._record = record
-        return result
+        return cls.records.from_record(value)
 
     @classmethod
     def _from_record(cls, record_data: BaseModel) -> Self:

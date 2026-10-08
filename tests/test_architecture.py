@@ -25,10 +25,12 @@ def test_project_capabilities_use_bound_semantic_paths() -> None:
     assert not hasattr(Project, "wiki")
 
 
+# tarav.breadcrumb 7211da22c6b149eacceffb125752d5822078f3a4714caefd83aa20834f10bab5
 def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
     from tarav.l0.kernel import NamespaceBase, TaravObject
 
     assert issubclass(TaravObject.Records, NamespaceBase)
+    assert TaravObject.records.obj is TaravObject
     assert "l1.records" not in _top_level_import_graph()["l0.kernel"]
     # tarav.breadcrumb bece7d874166e00ed8162186de9a880d068a99e6e2baeb13f0a5783afe3485c6
 

@@ -324,7 +324,8 @@ class TypeRegistry(Generic[RecordTypeT]):
     ) -> RecordTypeT:
         """Construct with an already checked Type and bind nested Record loading."""
 
-        result = authority.from_record(record)
+        # tarav.breadcrumb 468893297110bc212d846527957d628e8b9f195279e1411a7eb08e766a6c5d92
+        result = authority.records.from_record(record)
         bind_loader = getattr(result, "_bind_record_loader", None)
         if bind_loader is not None:
             bind_loader(self.from_record)

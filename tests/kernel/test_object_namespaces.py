@@ -105,3 +105,16 @@ def test_record_namespace_uses_the_existing_projection() -> None:
     obj = Combined()
     assert obj.records.obj is obj
     assert obj.records.to_record() == obj.to_record() == {"type": "Test.Combined"}
+
+
+# tarav.breadcrumb 39175d7f24002b4b04f89a0ad24c150174cabd1fa53a8de58b495e0445549778
+def test_record_namespace_binds_inherited_class_loading() -> None:
+    assert Combined.records.obj is Combined
+    loaded = Combined.records.from_record({"type": "Test.Combined"})
+    assert type(loaded) is Combined
+    assert loaded.records.to_record() == {"type": "Test.Combined"}
+
+    with pytest.raises(TypeError, match="requires an object instance"):
+        Combined.records.to_record()
+    with pytest.raises(TypeError, match="not an opaque JSON wrapper"):
+        TaravObject.records.from_record({})

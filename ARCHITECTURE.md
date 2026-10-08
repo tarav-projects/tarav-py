@@ -1,6 +1,7 @@
 # Tarav Python Architecture
 
 <!-- tarav.sessions
+473c89a0 = codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8 @473c89a00e2367fb827193af74a6375c60a96b0be110f21df0aff49360ca972f
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf0496f867fc656fdad9063980a184f7c3f15c54adf8fcb31f
 64298cbc = claude-code:9da4cef5-68b7-4d17-8a06-1351ca51e82f @64298cbc8db2e7aa971e0828653c07bcb483cfed40931fdf87d5abe7ce1c60b3
@@ -328,12 +329,15 @@ The Kernel establishes only the common contracts needed for interoperability:
   used to project the Python class into the Diagram.
 - `TaravObject(TaravType)` adds an instance and a class-owned Record projection.
 - Object namespaces are bound views: the host class selects an uppercase
-  `NamespaceBase` subtype and an instance property exposes its lowercase path.
+  `NamespaceBase` subtype and a lowercase accessor exposes its path.
   When independent bases contribute the same namespace, the combined class
   explicitly selects a subtype of every contribution; class creation checks
   this instead of silently accepting Python's first MRO choice.
-  `TaravObject.Records` and `obj.records.to_record()` provide the initial
-  Record path while existing root Record calls remain in use.
+  `TaravObject.Records` is the selected class. Its `records` descriptor binds
+  either an instance for `obj.records.to_record()` or the concrete class for
+  `Type.records.from_record(record)`. Existing root Record calls delegate while
+  their many callers are migrated separately.
+  <!-- tarav.breadcrumb 78e31bb5c1cea43feb37bc863e871c7a37989518872a563facced759839b0eae -->
   <!-- tarav.breadcrumb 41d6e41fe955b0a983f42dd222805b0c3d1500ad9f0455ef74ed524d1797e80f -->
 - `TaravEntity(TaravObject)` adds a stable `Ship` identity as class-owned
   runtime state and projects it through the Entity's Record interface.
@@ -345,10 +349,11 @@ The Kernel establishes only the common contracts needed for interoperability:
 - A Record is a projection, not the Object's runtime data model. `_record`
   retains loader-supplied material when it exists; runtime-created Objects need
   not populate it.
-- `to_record()` calls the class-owned `_to_record()` hook, then validates and
-  detaches the result. `from_record()` validates input before calling the
-  class-owned `_from_record()` construction hook. When a Record supplies a Type
-  reference, both boundaries require it to identify the object's exact class;
+- `obj.records.to_record()` calls the class-owned `_to_record()` hook, then
+  validates and detaches the result. `Type.records.from_record()` validates
+  input before calling the class-owned `_from_record()` construction hook.
+  When a Record supplies a Type reference, both boundaries require it to
+  identify the object's exact class;
   a direct class call may also accept a Record without that reference. Dynamic
   loading requires a Type reference for dispatch.
 - Types decide what their Records contain, how they keep runtime state, how
