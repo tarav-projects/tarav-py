@@ -114,18 +114,18 @@ def _merge_limits_tracking_configs(
 def _merge_auto_prime_configs(
     configs: tuple[MonitorWorkflowConfig, ...],
 ) -> MonitorWorkflowConfig:
+    """Union the targets; the shortest interval and highest threshold win."""
+
     if len(configs) == 1:
         return configs[0]
     targets: list[MonitorTarget] = []
     target_keys: set[tuple[str, str, str]] = set()
-    target_limit_ids: dict[str, tuple[str, ...]] = {}
-    triggers: dict[str, tuple[str, ...]] = {}
     raw_configs: list[dict[str, object]] = []
     interval_sec = min(config.refresh_interval_sec for config in configs)
-    retry_cooldown_sec = min(
-        config.retry_cooldown_sec
+    threshold_percent = max(
+        config.threshold_percent
         for config in configs
-        if config.retry_cooldown_sec is not None
+        if config.threshold_percent is not None
     )
     for config in configs:
         for target in config.targets:
@@ -134,29 +134,19 @@ def _merge_auto_prime_configs(
                 continue
             target_keys.add(target_key)
             targets.append(target)
-        for provider, limit_ids in config.target_limit_ids.items():
-            existing = target_limit_ids.get(provider, ())
-            target_limit_ids[provider] = tuple(dict.fromkeys((*existing, *limit_ids)))
-        for provider, trigger_names in config.triggers.items():
-            existing = triggers.get(provider, ())
-            triggers[provider] = tuple(dict.fromkeys((*existing, *trigger_names)))
         raw_configs.append(config.raw_config)
     return MonitorWorkflowConfig(
         name=AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
         targets=tuple(targets),
         refresh_interval_sec=interval_sec,
         start_path=configs[0].start_path,
-        retry_cooldown_sec=retry_cooldown_sec,
-        target_limit_ids=target_limit_ids,
-        triggers=triggers,
+        threshold_percent=threshold_percent,
         loaded_at=configs[0].loaded_at,
         config_fingerprint=configs[0].config_fingerprint,
         raw_config={
             "workflow": AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
             "interval_sec": interval_sec,
-            "retry_cooldown_sec": retry_cooldown_sec,
-            "target_limits": target_limit_ids,
-            "triggers": triggers,
+            "threshold_percent": threshold_percent,
             "configs": raw_configs,
         },
     )

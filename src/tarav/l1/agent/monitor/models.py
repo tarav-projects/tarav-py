@@ -11,27 +11,8 @@ MonitorUsageVariant = Literal["used", "left"]
 ACCOUNT_ROTATION_WORKFLOW = "account-rotation"
 AUTO_PRIME_ZERO_LIMITS_WORKFLOW = "auto-prime-zero-limits"
 LIMITS_TRACKING_WORKFLOW = "limits-tracking"
-AUTO_PRIME_TRIGGER_ZERO_USAGE = "zero_usage"
-AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW = "near_zero_full_window"
-AUTO_PRIME_TRIGGER_SLIDING_RESET = "sliding_reset"
-AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN = "period_key_churn"
-AUTO_PRIME_SUPPORTED_TRIGGERS = (
-    AUTO_PRIME_TRIGGER_ZERO_USAGE,
-    AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW,
-    AUTO_PRIME_TRIGGER_SLIDING_RESET,
-    AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN,
-)
-AUTO_PRIME_UNINITIALIZED_TRIGGERS = frozenset(
-    (
-        AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW,
-        AUTO_PRIME_TRIGGER_SLIDING_RESET,
-        AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN,
-    )
-)
-AUTO_PRIME_PING_SUCCEEDED_STATUS = "ping_succeeded"
-AUTO_PRIME_VERIFICATION_PENDING = "pending_verification"
-AUTO_PRIME_VERIFICATION_EFFECTIVE = "effective"
-AUTO_PRIME_VERIFICATION_INEFFECTIVE = "ineffective"
+AUTO_PRIME_DEFAULT_INTERVAL_SEC = 600
+AUTO_PRIME_DEFAULT_THRESHOLD_PERCENT = 5
 
 
 @dataclass(frozen=True)
@@ -71,9 +52,7 @@ class MonitorWorkflowConfig:
     refresh_interval_sec: float
     raw_config: dict[str, object]
     start_path: Path | None = None
-    target_limit_ids: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    triggers: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    retry_cooldown_sec: float | None = None
+    threshold_percent: float | None = None
     auto_materialize: bool | None = None
     loaded_at: str | None = None
     config_fingerprint: str | None = None

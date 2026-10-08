@@ -3,9 +3,9 @@
 
 The limits-tracking and auto-prime workflows keep their tick-to-tick state in
 these dataclasses. ``payload()`` is the JSON boundary: the monitor result
-payload serializes state through it. Innermost data rows (observations,
-primed periods, decisions) stay plain dicts — they are JSON-shaped records
-written and read only by their owning workflow.
+payload serializes state through it. Innermost data rows (account status,
+last scan, errors) stay plain dicts — they are JSON-shaped records written
+and read only by their owning workflow.
 """
 
 from __future__ import annotations
@@ -93,12 +93,8 @@ class AutoPrimeTargetState:
     account: str | None = None
     home: str | None = None
     profile: str | None = None
-    start_path: str | None = None
-    observations: dict[str, dict[str, object]] = field(default_factory=dict)
-    primed_periods: dict[str, dict[str, object]] = field(default_factory=dict)
-    last_decisions: list[dict[str, object]] = field(default_factory=list)
-    last_decision: dict[str, object] | None = None
-    retry_after_monotonic: float | None = None
+    burst_used_percent: int | None = None
+    last_ping_at: str | None = None
     last_error: dict[str, object] | None = None
     last_attempt_tick: int | None = None
     last_success_tick: int | None = None
@@ -108,11 +104,8 @@ class AutoPrimeTargetState:
             "provider": self.provider,
             "account": self.account,
             "home": self.home,
-            "observations": self.observations,
-            "primed_periods": self.primed_periods,
-            "last_decisions": list(self.last_decisions),
-            "last_decision": self.last_decision,
-            "retry_after_monotonic": self.retry_after_monotonic,
+            "burst_used_percent": self.burst_used_percent,
+            "last_ping_at": self.last_ping_at,
             "last_error": self.last_error,
             "last_attempt_tick": self.last_attempt_tick,
             "last_success_tick": self.last_success_tick,
@@ -127,13 +120,11 @@ class AutoPrimeWorkflowState:
     last_tick: int | None = None
     run_count: int | None = None
     interval_sec: float | None = None
-    retry_cooldown_sec: float | None = None
+    threshold_percent: float | None = None
     fired_alarms: list[str] = field(default_factory=list)
     loaded_at: str | None = None
     config_fingerprint: str | None = None
     target_summary: list[dict[str, str]] = field(default_factory=list)
-    target_limit_ids: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    triggers: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def payload(self) -> dict[str, object]:
         return {
@@ -145,13 +136,11 @@ class AutoPrimeWorkflowState:
             "last_tick": self.last_tick,
             "run_count": self.run_count,
             "interval_sec": self.interval_sec,
-            "retry_cooldown_sec": self.retry_cooldown_sec,
+            "threshold_percent": self.threshold_percent,
             "fired_alarms": list(self.fired_alarms),
             "loaded_at": self.loaded_at,
             "config_fingerprint": self.config_fingerprint,
             "target_summary": list(self.target_summary),
-            "target_limit_ids": dict(self.target_limit_ids),
-            "triggers": dict(self.triggers),
         }
 
 

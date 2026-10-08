@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Ready. Phase: Develop (Design).
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Complete. Phase: Develop (Execute).
 
 Make the account monitor's pings work again and reduce the `auto-prime-zero-limits` workflow to one rule: every `interval_sec` (default 600), for each configured target, read the last limits-tracking usage reading; when its burst `used_percent` is below `threshold_percent` (default 5), run the account's configured ping. Change the default Codex ping model from `gpt-5.4-mini` to `gpt-6-luna`.
 
@@ -63,3 +63,10 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; no existing monitor Not
 
 - Design start checkpoint `f900aaa761dc71e7e3099b73af6a2bd3b5d7829e` (empty scope).
 - Monitor tests were pruned in `2b01171`; only `tests/_monitor_helpers.py` remains, so the new test file restores focused coverage for this behavior.
+- Design commit `2f8c06b5d869da3b3bf22df2fb16d1a62fe4a360`; six note Breadcrumbs audited with no POIs. Execute start checkpoint `5fbbd730a2bf7f46d2022a2da7ff81a313c1b69a` (empty scope). The pre-existing `tarav.l0._core.home` import edits in `monitor/config.py` and the deleted `auto_prime_registry.py` belong to an uncommitted refactor (`_core/home.py` is untracked); the completion commit keeps `config.py`'s HEAD import so HEAD stays importable, and the worktree keeps the refactor's line.
+- `auto_prime.py` is now ≈270 lines: per interval, each configured target with an ok limits-tracking reading whose `burst` `used_percent` is below `threshold_percent` is pinged; each attempt logs `auto_prime_pinged` or `auto_prime_failed` to the monitor log. Trigger, period, verification, retry-cooldown state and constants are gone; `auto_prime_registry.py` is deleted. Config defaults `interval_sec` 600 and `threshold_percent` 5; providers limited to `codex` and `claude-code`; builder merge keeps union/min/max. The account row shows `ping ok|failed just now|<age> ago`. Codex default ping model is `gpt-6-luna`.
+- Checks: new `tests/test_agent_monitor_auto_prime.py` passes (7). Ruff passes on `src` and `tests`. The maintained suite (explicit `testpaths` in `pyproject.toml`) passes (179) but does not collect the new file; adding it is left to the User because `pyproject.toml` carries an unrelated pending edit and the monitor tests were deliberately pruned in `2b01171`. Editable tool reinstalled.
+- Live verification through the monitor's `resolve_account_runtime_agent(...).ping()` path: Codex jp `gpt-6-luna` ok (11.4 s); Claude jp `haiku` ok (3.8 s).
+- User config `~/.tarav/config.json` (backup `config.json.pre-auto-prime-simplify`): auto-prime entry now `interval_sec` 600, `threshold_percent` 5, retired keys dropped, targets Codex jp/mm/tk/br + Claude jp/br (Claude om excluded). It loads as 600 s / 5% / six targets. A running monitor must be restarted to pick up the code change.
+- Product.Surface capture: Breadcrumbs `cbc3ba5f…` (`auto_prime.py` workflow class), `59253674…` (`config.py` supported providers), `80e2a23a…` (`_config_models.py` Luna default); all three surfaces audit with no POIs.
+- Not addressed: the Codex `workspace routing discovery failed` errors seen for tk/br/mm since 2026-09-25.

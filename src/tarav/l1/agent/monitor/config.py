@@ -22,14 +22,10 @@ from tarav.l1.agent.profile_scope import (
     format_allowed_values,
 )
 from tarav.l1.agent.monitor.loop import MonitorLoop
-from tarav.l1.agent.account_status import BURST_LIMIT_ID, WEEKLY_LIMIT_ID
 from tarav.l1.agent.monitor.models import (
     ACCOUNT_ROTATION_WORKFLOW,
-    AUTO_PRIME_SUPPORTED_TRIGGERS,
-    AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW,
-    AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN,
-    AUTO_PRIME_TRIGGER_SLIDING_RESET,
-    AUTO_PRIME_TRIGGER_ZERO_USAGE,
+    AUTO_PRIME_DEFAULT_INTERVAL_SEC,
+    AUTO_PRIME_DEFAULT_THRESHOLD_PERCENT,
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
     MonitorTarget,
@@ -37,23 +33,8 @@ from tarav.l1.agent.monitor.models import (
 )
 from tarav.l1.agent.monitor.workflows import build_monitor_workflows
 
-AUTO_PRIME_ZERO_LIMITS_DEFAULT_TARGET_LIMITS = {
-    "codex": (BURST_LIMIT_ID,),
-    "claude-code": (BURST_LIMIT_ID,),
-}
-AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS = {
-    "codex": (BURST_LIMIT_ID, WEEKLY_LIMIT_ID),
-    "claude-code": (BURST_LIMIT_ID, WEEKLY_LIMIT_ID),
-}
-AUTO_PRIME_ZERO_LIMITS_DEFAULT_TRIGGERS = {
-    "codex": (
-        AUTO_PRIME_TRIGGER_ZERO_USAGE,
-        AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW,
-        AUTO_PRIME_TRIGGER_SLIDING_RESET,
-        AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN,
-    ),
-    "claude-code": (AUTO_PRIME_TRIGGER_ZERO_USAGE,),
-}
+# tarav.breadcrumb 59253674199cb28ccf9536f012a35645bfef42fdbff1ffb4d95f19fc2b2c1285
+AUTO_PRIME_SUPPORTED_PROVIDERS = ("codex", "claude-code")
 
 MONITOR_CONFIG_SOURCE = AgentConfigSource(
     object_path=("agent", "accounts", "monitor"),
@@ -112,24 +93,15 @@ def load_monitor_workflow_configs(
                         field_name=entry.field_name(
                             _workflow_interval_key(workflow_name)
                         ),
+                        default=AUTO_PRIME_DEFAULT_INTERVAL_SEC
+                        if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
+                        else 60,
                     ),
-                    target_limit_ids=_target_limit_ids(
+                    threshold_percent=_positive_number_config(
                         raw_config,
-                        field_name=entry.field_name("target_limits"),
-                    )
-                    if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
-                    else {},
-                    triggers=_auto_prime_triggers(
-                        raw_config,
-                        field_name=entry.field_name("triggers"),
-                    )
-                    if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
-                    else {},
-                    retry_cooldown_sec=_positive_number_config(
-                        raw_config,
-                        key="retry_cooldown_sec",
-                        field_name=entry.field_name("retry_cooldown_sec"),
-                        default=600,
+                        key="threshold_percent",
+                        field_name=entry.field_name("threshold_percent"),
+                        default=AUTO_PRIME_DEFAULT_THRESHOLD_PERCENT,
                     )
                     if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
                     else None,
@@ -357,85 +329,11 @@ def _positive_number_config(
     return float(value)
 
 
-def _target_limit_ids(
-    raw_config: dict[str, object], *, field_name: str
-) -> dict[str, tuple[str, ...]]:
-    raw_target_limits = raw_config.get("target_limits")
-    if raw_target_limits is None:
-        return dict(AUTO_PRIME_ZERO_LIMITS_DEFAULT_TARGET_LIMITS)
-    if not isinstance(raw_target_limits, dict):
-        raise CliError(f"{field_name} must be a JSON object")
-    target_limits: dict[str, tuple[str, ...]] = dict(
-        AUTO_PRIME_ZERO_LIMITS_DEFAULT_TARGET_LIMITS
-    )
-    for provider, raw_limit_ids in raw_target_limits.items():
-        provider_field = f"{field_name}.{provider}"
-        if not isinstance(provider, str) or not provider:
-            raise CliError(f"{field_name} keys must be non-empty provider names")
-        supported = AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS.get(provider)
-        if supported is None:
-            raise CliError(
-                f"{provider_field} is not supported by auto-prime-zero-limits"
-            )
-        if not isinstance(raw_limit_ids, list) or not raw_limit_ids:
-            raise CliError(f"{provider_field} must be a non-empty JSON array")
-        limit_ids: list[str] = []
-        for index, raw_limit_id in enumerate(raw_limit_ids):
-            limit_field = f"{provider_field}[{index}]"
-            if not isinstance(raw_limit_id, str) or not raw_limit_id:
-                raise CliError(f"{limit_field} must be a non-empty string")
-            limit_id = validate_string_for_path(raw_limit_id, field_name=limit_field)
-            if limit_id not in supported:
-                raise CliError(
-                    f"{limit_field} is not supported by auto-prime-zero-limits"
-                )
-            limit_ids.append(limit_id)
-        target_limits[provider] = tuple(dict.fromkeys(limit_ids))
-    return target_limits
-
-
-def _auto_prime_triggers(
-    raw_config: dict[str, object], *, field_name: str
-) -> dict[str, tuple[str, ...]]:
-    raw_triggers = raw_config.get("triggers")
-    if raw_triggers is None:
-        return dict(AUTO_PRIME_ZERO_LIMITS_DEFAULT_TRIGGERS)
-    if not isinstance(raw_triggers, dict):
-        raise CliError(f"{field_name} must be a JSON object")
-    triggers: dict[str, tuple[str, ...]] = dict(AUTO_PRIME_ZERO_LIMITS_DEFAULT_TRIGGERS)
-    for provider, raw_trigger_names in raw_triggers.items():
-        provider_field = f"{field_name}.{provider}"
-        if not isinstance(provider, str) or not provider:
-            raise CliError(f"{field_name} keys must be non-empty provider names")
-        if provider not in AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS:
-            raise CliError(
-                f"{provider_field} is not supported by auto-prime-zero-limits"
-            )
-        if not isinstance(raw_trigger_names, list) or not raw_trigger_names:
-            raise CliError(f"{provider_field} must be a non-empty JSON array")
-        trigger_names: list[str] = []
-        for index, raw_trigger_name in enumerate(raw_trigger_names):
-            trigger_field = f"{provider_field}[{index}]"
-            if not isinstance(raw_trigger_name, str) or not raw_trigger_name:
-                raise CliError(f"{trigger_field} must be a non-empty string")
-            trigger_name = validate_string_for_path(
-                raw_trigger_name,
-                field_name=trigger_field,
-            )
-            if trigger_name not in AUTO_PRIME_SUPPORTED_TRIGGERS:
-                raise CliError(
-                    f"{trigger_field} is not supported by auto-prime-zero-limits"
-                )
-            trigger_names.append(trigger_name)
-        triggers[provider] = tuple(dict.fromkeys(trigger_names))
-    return triggers
-
-
 def _validate_auto_prime_target_providers(
     targets: tuple[MonitorTarget, ...], *, field_name: str
 ) -> None:
     for index, target in enumerate(targets):
-        if target.provider in AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS:
+        if target.provider in AUTO_PRIME_SUPPORTED_PROVIDERS:
             continue
         raise CliError(
             f"{field_name}[{index}].provider is not supported by auto-prime-zero-limits"

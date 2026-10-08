@@ -3,7 +3,7 @@
 
 Submodule ownership:
 - ``limits_tracking``: usage refresh, transition/error logging, limit row rendering.
-- ``auto_prime``: trigger detection, eligibility, prime pings, and status parts.
+- ``auto_prime``: burst-threshold pings and their account-row status part.
 - ``account_rotation``: periodic capture+rotate sweeps and drift reporting.
 - ``builder``: assembly of configured workflows, including multi-config merging.
 - ``_common``: shared value parsing, formatting, and target-key helpers.
