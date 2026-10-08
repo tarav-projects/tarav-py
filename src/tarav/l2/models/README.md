@@ -8,16 +8,18 @@ raise until Model resolution is restored.
 `ModelsWorkflow` owns `Model`, `ModelShipRecord`, and `ModelEditionRecord`.
 Lines, Blocks, and Collections retain their own LinesWorkflow ownership.
 
+Intended resolution calls once the backend reconnects:
+
 ```python
-from tarav.l1.project import Project
+from tarav.l2.project import Project
 
 model = Project.from_path(path).models.main()
 model = diagram.model(model_ship)  # No project required.
 ```
 
 Project discovery and the `diagram.main_model` association belong to
-`tarav.l1.project.models.ProjectModels`, not Model. The integration loads the
-existing configured storage lazily and never creates an association.
+`tarav.l2.project.models.ProjectModels`, not Model. When connected, the
+integration will load configured storage lazily without creating an association.
 Several projects may point to the same Model. Models can exist without projects.
 
 Named associations live in the project's `diagram.models` mapping:
@@ -27,7 +29,7 @@ Named associations live in the project's `diagram.models` mapping:
 ```
 
 `project.models.ls()` lists names in sorted order without loading storage.
-`project.models.get("research")` resolves the selected Model; absent names
+`project.models.get("research")` will resolve the selected Model; absent names
 raise KeyError. The existing `diagram.main_model` remains independent, so
 `main()` does not require a named alias. Reads never modify the marker.
 
