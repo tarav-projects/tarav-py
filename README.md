@@ -2,7 +2,7 @@
 
 `tarav-py` is the maintained Python distribution for Agentos. It ships one
 modular monolith under the `tarav` package: the CLI, runtime, daemon, Chatlas,
-Archive, Diagram, SKW, agent/provider support, and Iterante runtimes.
+Archive, Diagram, SKW, and agent/provider support.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership and dependency direction.
 `tarav.l0.kernel` provides the dependency-clean semantic roles and trusted Record
@@ -15,12 +15,10 @@ uv sync
 uv tool install --reinstall --editable .
 ```
 
-The distribution provides four executables:
+The distribution provides two executables:
 
 - `tarav`
 - `tarav-daemon`
-- `iterante`
-- `iterante2`
 
 Use CLI help as the command reference; it is generated from the maintained
 parser rather than copied into this document:

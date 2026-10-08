@@ -20,8 +20,6 @@ dependencies = [
 [project.scripts]
 tarav = "tarav.l3.cli:main"
 tarav-daemon = "tarav.l3.daemon.entrypoint:main"
-iterante = "tarav.l1.iterante.cli:main"
-iterante2 = "tarav.l1.iterante2.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tarav"]

@@ -488,7 +488,6 @@ schema or an additional Workflow identity.
 | `skills` | User-facing skill operations. |
 | `hooks`, `daemon` | Hook validation and dispatch, plus daemon-owned delivery adapters. |
 | `stdlib` | Small reusable library and CLI primitives. |
-| `iterante`, `iterante2` | Independently maintained mission runtimes; shared behavior is promoted only after convergence. |
 <!-- tarav.breadcrumb 5390bce98b91f130684fb3322d8ee0022a5e60bd1d5390e7e05c8c53b6718e01 -->
 
 Other cohesive command domains follow the same rule: they own their behavior
