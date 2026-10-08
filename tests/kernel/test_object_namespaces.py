@@ -118,3 +118,25 @@ def test_record_namespace_binds_inherited_class_loading() -> None:
         Combined.records.to_record()
     with pytest.raises(TypeError, match="not an opaque JSON wrapper"):
         TaravObject.records.from_record({})
+
+
+# tarav.breadcrumb f4ec8f4bcffb99b7116dd27486141b249dbfb1a4151c3d635fc3961c56204184
+def test_record_namespace_preserves_specialized_validation_and_examples() -> None:
+    from tarav.l1.blessings.store import BlessingRecord
+    from tarav.l1.decisions.records import Decision
+
+    assert Combined.records.record_example() == {"type": "Test.Combined"}
+    assert Combined.records.validate_record({"type": "Test.Combined"})
+
+    decision = Decision.records.record_example()
+    assert decision == Decision.record_example()
+    assert Decision.records.validate_record(decision).created_at == decision["created_at"]
+    without_timezone = {**decision, "created_at": "2026-10-07T12:00:00"}
+    with pytest.raises(ValueError, match="timezone"):
+        Decision.records.validate_record(without_timezone)
+    with pytest.raises(ValueError, match="timezone"):
+        Decision.records.from_record(without_timezone)
+
+    blessing = BlessingRecord.records.record_example()
+    assert blessing == BlessingRecord.record_example()
+    assert type(BlessingRecord.records.from_record(blessing)) is BlessingRecord

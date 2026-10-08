@@ -155,24 +155,38 @@ class TaravObject(TaravType):
         """Record projection and loading for one object or concrete class."""
         # tarav.breadcrumb 3798a3aa52c91ae8a762c4d0ac4d26a737636fcdf02723d934665e30dc13367e
 
+        @property
+        def _owner(self) -> type[TaravObject]:
+            return self.obj if isinstance(self.obj, type) else type(self.obj)
+
+        # tarav.breadcrumb 2c1992f27b7e7d4a5654511f96daae71ec6ac32d3fc3df264a3776ec5f1b82e5
+        def validate_record(self, value: object) -> BaseModel:
+            """Validate through the bound Type's existing override chain."""
+            return self._owner.validate_record(value)
+
+        # tarav.breadcrumb 195ac6bd926aadf2a3e426441e7834a38b9d139ae284bc1a6f282c16d096789d
+        def record_example(self) -> dict[str, object]:
+            """Get the bound Type's storage-independent example."""
+            return self._owner.record_example()
+
         def to_record(self) -> dict[str, object]:
             if isinstance(self.obj, type):
                 raise TypeError("Record projection requires an object instance")
             record = _json_object(self.obj._to_record())
             type(self.obj)._check_record_type(record)
-            type(self.obj).validate_record(record)
+            self.validate_record(record)
             return record
 
         # tarav.breadcrumb fe4ebb28de64e5b877ab6930e1e8e60757b1348684e02906a633c888afebe087
         def from_record(self, value: object) -> TaravObject:
             """Construct the bound Type through its hook and retain the Record."""
 
-            owner = self.obj if isinstance(self.obj, type) else type(self.obj)
+            owner = self._owner
             if owner is TaravObject:
                 raise TypeError("TaravObject is not an opaque JSON wrapper")
             record = _json_object(value)
             owner._check_record_type(record)
-            record_data = owner.validate_record(record)
+            record_data = self.validate_record(record)
             result = owner._from_record(record_data)
             if type(result) is not owner:
                 raise TypeError(f"{owner.__name__}._from_record() must return exact class")

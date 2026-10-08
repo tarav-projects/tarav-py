@@ -31,6 +31,8 @@ def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
 
     assert issubclass(TaravObject.Records, NamespaceBase)
     assert TaravObject.records.obj is TaravObject
+    # tarav.breadcrumb 6756f126eb6b4468aadc15dfb56e2e4b2c712811699c4bdfe5913f5b47fe60c1
+    assert TaravObject.records.record_example() == TaravObject.record_example()
     assert "l1.records" not in _top_level_import_graph()["l0.kernel"]
     # tarav.breadcrumb bece7d874166e00ed8162186de9a880d068a99e6e2baeb13f0a5783afe3485c6
 

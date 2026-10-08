@@ -337,6 +337,10 @@ The Kernel establishes only the common contracts needed for interoperability:
   either an instance for `obj.records.to_record()` or the concrete class for
   `Type.records.from_record(record)`. Existing root Record calls delegate while
   their many callers are migrated separately.
+  `Type.records.validate_record(value)` and `Type.records.record_example()`
+  dispatch to the Type's existing classmethod overrides. Those classmethods
+  remain extension hooks while their many implementations are in use.
+  <!-- tarav.breadcrumb 6281d4ad34d874e60b28ba7685121b6fe4e82a3ca009fedd5f7e24c7d5029161 -->
   <!-- tarav.breadcrumb 78e31bb5c1cea43feb37bc863e871c7a37989518872a563facced759839b0eae -->
   <!-- tarav.breadcrumb 41d6e41fe955b0a983f42dd222805b0c3d1500ad9f0455ef74ed524d1797e80f -->
 - `TaravEntity(TaravObject)` adds a stable `Ship` identity as class-owned
