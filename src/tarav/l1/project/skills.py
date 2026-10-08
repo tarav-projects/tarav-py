@@ -83,7 +83,7 @@ class TaravPackageSkillPOI(CheckPOI):
 
 
 class ProjectPackageSkillPOI(CheckPOI):
-    """The Project names no package skill, or the named one is not available."""
+    """Family, never raised: the Project's package skill is undeclared or unavailable."""
 
     read_first = ("tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'",)
     may_do = ("Name it in the marker as agents.package_skill, or import it.", "Raise it first.")
@@ -96,7 +96,7 @@ class ProjectPackageSkillPOI(CheckPOI):
 
 
 class SkillFoldersPOI(CheckPOI):
-    """The skill folders an agent would load are missing or disagree."""
+    """Family, never raised: the skill folders an agent would load are missing or disagree."""
 
     read_first = ("tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'",)
     may_do = ("Recreate the folders with `tarav project skills import`.", "Raise it first.")
@@ -106,6 +106,57 @@ class SkillFoldersPOI(CheckPOI):
         return TaravClass(target=cls, id=TypeShip("0ef39065-28a2-4c91-ae45-a4c994b8e2b8"),
                           name="Tarav.Project.Agents.SkillFoldersPOI",
                           workflow=PROJECT_WORKFLOW_SHIP)
+
+
+class ProjectPackageSkillUndeclared(ProjectPackageSkillPOI):
+    """The Project marker names no package skill."""
+
+    may_do = ("Name the skill in the marker as agents.package_skill.", "Raise it first.")
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("7aaa4b65-adc8-43ae-8684-483928b1fa6b"),
+                          name="Tarav.Project.Agents.ProjectPackageSkill.Undeclared", workflow=PROJECT_WORKFLOW_SHIP)
+
+
+class ProjectPackageSkillMissing(ProjectPackageSkillPOI):
+    """The package skill the Project names is in neither the Project nor the home skill folder."""
+
+    may_do = ("Import it with `tarav project skills import`.", "Raise it first.")
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("20ea655f-c874-4c57-a395-8e00b9a2d214"),
+                          name="Tarav.Project.Agents.ProjectPackageSkill.Missing", workflow=PROJECT_WORKFLOW_SHIP)
+
+
+class AgentsSkillsFolderAbsent(SkillFoldersPOI):
+    """The `.agents/skills` folder does not exist."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("4dd74485-c0dd-4ed5-b269-933e86cb9aa6"),
+                          name="Tarav.Project.Agents.SkillFolders.AgentsSkillsAbsent", workflow=PROJECT_WORKFLOW_SHIP)
+
+
+class ClaudeSkillsFolderAbsent(SkillFoldersPOI):
+    """The `.claude/skills` folder does not exist."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("0e939a77-b9d7-455b-a429-00fe06ab1827"),
+                          name="Tarav.Project.Agents.SkillFolders.ClaudeSkillsAbsent", workflow=PROJECT_WORKFLOW_SHIP)
+
+
+class ClaudeSkillsFolderDiverges(SkillFoldersPOI):
+    """`.claude/skills` does not resolve to the same directory as `.agents/skills`."""
+
+    may_do = ("Make `.claude/skills` resolve to the `.agents/skills` directory.", "Raise it first.")
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("892effc9-8062-411d-95f9-79d299bce4a8"),
+                          name="Tarav.Project.Agents.SkillFolders.ClaudeSkillsDiverges", workflow=PROJECT_WORKFLOW_SHIP)
 
 
 class _SkillsCheck(Check):
@@ -119,12 +170,11 @@ class _SkillsCheck(Check):
         super().__init__()
         self.skills = skills
 
-    def finding(self, poi_type: type[CheckPOI], code: str, message: str,
+    def finding(self, poi_type: type[CheckPOI], message: str,
                 *, scope: str = "project") -> CheckPOI:
         return poi_type(
-            self, code, message,
-            situation={"project": str(self.skills.project.root), "scope": scope,
-                       "code": code},
+            self, message,
+            situation={"project": str(self.skills.project.root), "scope": scope},
             details={"search_places": [str(p) for p in self.skills.search_places],
                      "repair": "tarav project skills import"},
         )
@@ -139,7 +189,7 @@ class TaravPackageSkillCheck(_SkillsCheck):
 
     def _run(self) -> CheckResult:
         pois = () if self.skills.find(TARAV_PACKAGE_SKILL) else (
-            self.finding(TaravPackageSkillPOI, "missing",
+            self.finding(TaravPackageSkillPOI,
                          f"Required Tarav package skill {TARAV_PACKAGE_SKILL} is missing"),)
         return CheckResult(self, status="completed", pois=pois)
 
@@ -154,10 +204,10 @@ class ProjectPackageSkillCheck(_SkillsCheck):
     def _run(self) -> CheckResult:
         name = self.skills.package_skill
         if name is None:
-            pois = (self.finding(ProjectPackageSkillPOI, "undeclared",
+            pois = (self.finding(ProjectPackageSkillUndeclared,
                                  "Project agents package_skill is undeclared"),)
         elif not self.skills.find(name):
-            pois = (self.finding(ProjectPackageSkillPOI, "missing",
+            pois = (self.finding(ProjectPackageSkillMissing,
                                  f"Project package skill {name} is missing"),)
         else:
             pois = ()
@@ -181,20 +231,22 @@ class SkillFoldersCheck(_SkillsCheck):
         claude = self.root / ".claude/skills"
         findings = []
         if not agents.is_dir():
-            findings.append(("agents-skills-absent", f"Skills folder absent: {agents}"))
+            findings.append((AgentsSkillsFolderAbsent, f"Skills folder absent: {agents}"))
         if not claude.is_dir():
-            findings.append(("claude-skills-absent", f"Claude skills folder absent: {claude}"))
+            findings.append((ClaudeSkillsFolderAbsent, f"Claude skills folder absent: {claude}"))
         if agents.is_dir() and claude.is_dir() and agents.resolve() != claude.resolve():
-            findings.append(("claude-skills-diverges",
+            findings.append((ClaudeSkillsFolderDiverges,
                              f"Claude skills folder differs from agents skills: {claude}"))
         return CheckResult(
             self, status="completed",
-            pois=tuple(self.finding(SkillFoldersPOI, code, message, scope=self.scope)
-                       for code, message in findings),
+            pois=tuple(self.finding(case, message, scope=self.scope)
+                       for case, message in findings),
         )
 
 
 PROJECT_SKILLS_RECORD_TYPES = (
     ProjectSkills, TaravPackageSkillPOI, ProjectPackageSkillPOI, SkillFoldersPOI,
     TaravPackageSkillCheck, ProjectPackageSkillCheck, SkillFoldersCheck,
+    ProjectPackageSkillUndeclared, ProjectPackageSkillMissing,
+    AgentsSkillsFolderAbsent, ClaudeSkillsFolderAbsent, ClaudeSkillsFolderDiverges,
 )

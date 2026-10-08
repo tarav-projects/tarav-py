@@ -7,6 +7,7 @@ import json
 from collections.abc import Callable, Sequence
 
 from tarav.l0._core.errors import CliError
+from tarav.l0.kernel import entity
 
 from .auditing import audit_annotations
 from .integrations import BreadcrumbIntegration
@@ -85,12 +86,12 @@ def _cmd_audit(args: argparse.Namespace) -> int:
         f"breadcrumbs: {len(result.context.breadcrumbs)}",
     ]
     lines.extend(
-        f"info: {poi.code}: {poi.details['breadcrumb_id']} "
+        f"info: {entity(type(poi)).name}: {poi.details['breadcrumb_id']} "
         f"at {poi.details['file']}:{poi.details['line']}"
         for poi in result.notifications
     )
     lines.extend(
-        f"poi: {finding.code}: {finding.message}" for finding in result.findings
+        f"poi: {entity(type(finding)).name}: {finding.message}" for finding in result.findings
     )
     _print(args, payload, tuple(lines))
     return 0 if result.ok else 1

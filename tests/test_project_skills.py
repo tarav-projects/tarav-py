@@ -6,7 +6,11 @@ from uuid import uuid4
 
 from tarav.l1.project import TaravProject
 from tarav.l1.project.skills import (
-    ProjectPackageSkillPOI,
+    AgentsSkillsFolderAbsent,
+    ClaudeSkillsFolderAbsent,
+    ClaudeSkillsFolderDiverges,
+    ProjectPackageSkillMissing,
+    ProjectPackageSkillUndeclared,
     ProjectSkills,
     SkillFoldersPOI,
     TaravPackageSkillPOI,
@@ -63,8 +67,7 @@ def test_project_and_home_discovery_and_required_skills(tmp_path: Path) -> None:
     project = _project(project_root, "other-pkg")
     skills = ProjectSkills(project, home=home)
     assert skills.search_places == (local, global_skills)
-    assert {p.code for p in _pois(skills)} == {"missing"}
-    assert {type(p) for p in _pois(skills)} == {TaravPackageSkillPOI, ProjectPackageSkillPOI}
+    assert {type(p) for p in _pois(skills)} == {TaravPackageSkillPOI, ProjectPackageSkillMissing}
 
     tarav = _skill(global_skills, "prefixed-tarav", "tarav-pkg")
     other = _skill(local, "local-other", "other-pkg")
@@ -86,9 +89,9 @@ def test_undeclared_package_and_project_suite_composition(tmp_path: Path) -> Non
     _skill(local, "tarav-pkg")
     project = _project(root, None)
     skills = ProjectSkills(project, home=home)
-    assert [(type(p), p.code) for p in _pois(skills)] == [(ProjectPackageSkillPOI, "undeclared")]
+    assert [type(p) for p in _pois(skills)] == [ProjectPackageSkillUndeclared]
     assert isinstance(project.agents.skills, ProjectSkills)
-    assert any(isinstance(p, ProjectPackageSkillPOI) and p.code == "undeclared"
+    assert any(isinstance(p, ProjectPackageSkillUndeclared)
                for p in project.checks.run().pois())
 
 
@@ -105,13 +108,13 @@ def test_folder_structure_accepts_shared_depot_and_reports_each_scope(tmp_path: 
     assert _pois(skills) == ()
 
     (root / ".claude/skills").unlink()
-    codes = {(p.code, p.situation["scope"]) for p in _pois(skills) if isinstance(p, SkillFoldersPOI)}
-    assert codes == {("claude-skills-absent", "project")}
+    cases = {(type(p), p.situation["scope"]) for p in _pois(skills) if isinstance(p, SkillFoldersPOI)}
+    assert cases == {(ClaudeSkillsFolderAbsent, "project")}
     (root / ".claude/skills").mkdir()
-    codes = {(p.code, p.situation["scope"]) for p in _pois(skills) if isinstance(p, SkillFoldersPOI)}
-    assert codes == {("claude-skills-diverges", "project")}
+    cases = {(type(p), p.situation["scope"]) for p in _pois(skills) if isinstance(p, SkillFoldersPOI)}
+    assert cases == {(ClaudeSkillsFolderDiverges, "project")}
 
     (home / ".agents/skills").unlink()
-    codes = {(p.code, p.situation["scope"]) for p in _pois(skills) if isinstance(p, SkillFoldersPOI)}
-    assert codes == {("claude-skills-diverges", "project"),
-                     ("agents-skills-absent", "home")}
+    cases = {(type(p), p.situation["scope"]) for p in _pois(skills) if isinstance(p, SkillFoldersPOI)}
+    assert cases == {(ClaudeSkillsFolderDiverges, "project"),
+                     (AgentsSkillsFolderAbsent, "home")}

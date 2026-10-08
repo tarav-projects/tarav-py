@@ -29,7 +29,7 @@ class ExampleCheck(Check):
 
     def _run(self):
         return CheckResult(self, status='completed', pois=(
-            ExamplePOI(self, 'review', 'Review this situation',
+            ExamplePOI(self, 'Review this situation',
                        situation={'path': 'example.md', 'edition': 1}),
         ))
 

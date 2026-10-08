@@ -302,7 +302,9 @@ def create_runtime(
     from tarav.l2.decisions import DecisionReportAssertion, assertions_for_decision
     from tarav.l1.blessings.store import bind_blessing_assertion_services
     from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow
-    from tarav.l1.breadcrumbs.auditing import BreadcrumbAuditCheck
+    from tarav.l1.breadcrumbs.auditing import (
+        BreadcrumbAuditCheck, BreadcrumbAuditPOI, BreadcrumbPositionUpdated,
+    )
     from tarav.l1.poi.workflow import POI_WORKFLOW_SHIP
     from tarav.l1.surfaces import SurfacesWorkflow
     from tarav.l1.surfaces.markdown import LineMarkdownModel, MarkdownNormalModel
@@ -377,6 +379,7 @@ def create_runtime(
                 WorkspaceRemovalCheck,
                 WorkspaceResetCheck,
                 WorkspacePOI,
+                *WorkspacePOI.__subclasses__(),  # its atomic cases
                 *GIT_BREADCRUMB_RECORD_TYPES,
                 *(
                     record_type
@@ -408,6 +411,9 @@ def create_runtime(
                 CheckPOI,
                 CheckResult,
                 BreadcrumbAuditCheck,
+                BreadcrumbAuditPOI,
+                *BreadcrumbAuditPOI.__subclasses__(),  # its atomic cases
+                BreadcrumbPositionUpdated,
                 MarkdownNormalModel,
                 LineMarkdownModel,
                 PythonNormalModel,
@@ -424,6 +430,7 @@ def create_runtime(
                 ScoringReference,
                 TribunalScoreCheck,
                 TribunalScorePOI,
+                *TribunalScorePOI.__subclasses__(),  # its atomic cases
                 BlessingAcceptanceAssertion,
                 BlessingAcceptanceCase,
                 BlessingAcceptanceTribunal,
@@ -434,8 +441,10 @@ def create_runtime(
                 LineSupportInventoryCase,
                 *SKW_CODE_RECORD_TYPES,
                 GenerationPOI,
+                *GenerationPOI.__subclasses__(),  # its atomic cases
                 SkillsSelectionNotification,
                 SkillsStatusPOI,
+                *SkillsStatusPOI.__subclasses__(),  # its atomic cases
                 *READING_DECLARATION_TYPES,
                 *READING_ENTRY_TYPES,
                 *SKILLS_RECORD_TYPES,

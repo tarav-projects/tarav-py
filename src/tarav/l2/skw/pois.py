@@ -32,11 +32,11 @@ class SkwPOI(CheckPOI):
     def finding(cls, check, subject, *, situation, evidence=None):
         evidence = evidence or {}
         raw = evidence.get("finding", {})
-        code = raw.get("kind", entity(cls).name.rsplit(".", 1)[-1])
-        message = raw.get("detail") or raw.get("message") or code
+        # The class already states the kind; the lint key only supplies a fallback message.
+        message = (raw.get("detail") or raw.get("message") or raw.get("kind")
+                   or entity(cls).name.rsplit(".", 1)[-1])
         return cls(
             check,
-            code,
             str(message),
             situation=situation,
             details=evidence,
@@ -707,7 +707,6 @@ def _freshness_result(check, *, poi_type, kind, message, baseline_key, current_k
     }
     poi = check.finding(
         poi_type,
-        code=kind,
         message=message,
         subject=subject,
         details=evidence,

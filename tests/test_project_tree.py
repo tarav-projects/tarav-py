@@ -33,7 +33,7 @@ class _Found(Check):
         self.where = where
 
     def _run(self) -> CheckResult:
-        poi = CheckPOI(self, "found", f"found in {self.where}", situation={"where": self.where})
+        poi = CheckPOI(self, f"found in {self.where}", situation={"where": self.where})
         return CheckResult(self, status="completed", pois=[poi])
 
 

@@ -19,7 +19,6 @@ class AppReview(IdentifiedPOI, BlessablePOI):
     @classmethod
     def finding(cls, subject, *, evidence=None, situation=None):
         return cls(
-            "app-review",
             "Review application",
             situation=subject if situation is None else situation,
             subject=subject,
@@ -39,7 +38,6 @@ class AppError(IdentifiedPOI):
     @classmethod
     def finding(cls, subject, *, evidence=None):
         return cls(
-            "app-error",
             "Application error",
             situation=subject,
             subject=subject,
@@ -144,3 +142,24 @@ def test_corrupt_record_does_not_hide_pois(tmp_path):
     collector.emit(AppError.finding({}))
     report = collector.report(store=store)
     assert report["total"] == 1 and len(report["store_findings"]) == 2
+
+
+# tarav.breadcrumb 60ad34642493726fbf971cf722a95e7eaeda0049c5dd3660a97ca55f7692c6e2
+def test_pois_are_atomic_and_carry_no_code():
+    import inspect
+
+    from tarav.l1.poi import NotificationPOI
+
+    poi = AppError.finding({"path": "a"})
+    assert not hasattr(poi, "code") and "code" not in poi.as_dict(detail=True)
+    notice = NotificationPOI("Something happened")
+    assert not hasattr(notice, "code") and "code" not in notice.as_dict()
+
+    def subclasses(cls):
+        for item in cls.__subclasses__():
+            yield item
+            yield from subclasses(item)
+
+    for base in (IdentifiedPOI, NotificationPOI):
+        for poi_type in (base, *subclasses(base)):
+            assert "code" not in inspect.signature(poi_type.__init__).parameters, poi_type

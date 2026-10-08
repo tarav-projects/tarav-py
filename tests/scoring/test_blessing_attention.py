@@ -33,7 +33,7 @@ class ExamplePOI(CheckPOI, BlessablePOI):
 
 
 def _poi(edition=1):
-    return ExamplePOI(ExampleCheck(), 'review', 'Review the ambiguity',
+    return ExamplePOI(ExampleCheck(), 'Review the ambiguity',
                       situation={'edition': edition}, subject={'line': 1})
 
 

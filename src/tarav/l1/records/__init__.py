@@ -156,7 +156,6 @@ class RecordsService:
             return RecordsResult(
                 pois=(
                     ProviderError(
-                        "provider-error",
                         str(exc),
                         situation={"path": path, "operation": operation},
                         subject={"path": path, "operation": operation},

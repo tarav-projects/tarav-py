@@ -15,7 +15,7 @@ from tarav.l1.checks import CheckResult, render_check_run
 def report_project_checks(
     project, *, json_output: bool = False, by: str = "type", sort: str = "run",
     limit: int = 20, offset: int = 0, poi_type: str | None = None,
-    code: str | None = None, check: str | None = None,
+    check: str | None = None,
 ) -> int:
     """Run a Project's suite and show a bounded grouped report."""
     def progress(result: CheckResult) -> None:
@@ -30,7 +30,7 @@ def report_project_checks(
         print(f"error: {exc}", file=sys.stderr)
         return 2
     report = run.report(by=by, sort=sort, limit=limit, offset=offset,
-                        type=poi_type, code=code, check=check)
+                        type=poi_type, check=check)
     if json_output:
         print(json.dumps(report, indent=2, default=str))
     else:
@@ -42,7 +42,7 @@ def _code(args: argparse.Namespace) -> str:
     options = {
         "json_output": args.json, "by": args.by, "sort": args.sort,
         "limit": args.limit, "offset": args.offset, "poi_type": args.poi_type,
-        "code": args.code, "check": args.check_type,
+        "check": args.check_type,
     }
     return (
         "from tarav.l3.check import report_project_checks\n"
@@ -78,14 +78,13 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
         help="Search this directory and parents for a Project; optionally start at PATH.",
     )
     parser.add_argument("--json", action="store_true", help="Print the report as JSON.")
-    parser.add_argument("--by", choices=("type", "code", "check", "identity"),
+    parser.add_argument("--by", choices=("type", "check", "identity"),
                         default="type", help="Group POIs by this field (default: type).")
     parser.add_argument("--sort", choices=("run", "count"), default="run",
                         help="Sort groups by first occurrence or descending count.")
     parser.add_argument("--limit", type=int, default=20, help="Maximum groups to show.")
     parser.add_argument("--offset", type=int, default=0, help="First group to show.")
     parser.add_argument("--type", dest="poi_type", help="Filter by exact POI Type name.")
-    parser.add_argument("--code", help="Filter by exact POI code.")
     parser.add_argument("--check", dest="check_type", help="Filter by exact Check Type name.")
     parser.set_defaults(handler=_check)
 

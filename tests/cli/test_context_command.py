@@ -35,7 +35,7 @@ class SampleCheck(Check):
 
     def _run(self) -> CheckResult:
         return CheckResult(self, status="completed", pois=[
-            GuidedPOI(self, "found", "Something was found", situation={"where": place},
+            GuidedPOI(self, "Something was found", situation={"where": place},
                       details={"where": place}) for place in ("a", "b")])
 
 

@@ -63,8 +63,8 @@ def test_command_model_is_stable_and_raises_missing_help_poi() -> None:
     assert command.help_subject == "probe"
     assert command.records.to_record()["path"] == ["probe"]
     # tarav.breadcrumb d65d6209603feceafaec80acbf3cd7d966cb0d478418dd279d3ee8c532f89bd6
-    assert [poi.code for poi in command.checks.run().pois()] == [
-        "cli.missing-help", "cli.missing-usage-descriptor",
+    assert [type(poi).__name__ for poi in command.checks.run().pois()] == [
+        "CommandHelpMissing", "CommandUsageDescriptorMissing",
     ]
 
 

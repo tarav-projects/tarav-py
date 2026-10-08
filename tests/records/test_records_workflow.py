@@ -116,7 +116,7 @@ def test_invalid_provider_entry_is_reported_without_mutation():
     service.mount("bad", BadSource())
     outcome = service.list("/bad")
     assert not outcome.ok
-    assert outcome.pois[0].code == "provider-error"
+    assert type(outcome.pois[0]).__name__ == "ProviderError"
 
 
 def test_standard_registry_retains_typed_current_and_exact_git_editions(tmp_path):

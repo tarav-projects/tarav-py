@@ -52,7 +52,6 @@ def poi(*, evidence=None, situation=None):
     check = ExampleCheck()
     return ExampleBlessablePOI(
         check,
-        "example",
         "Example concern",
         situation=(
             {"path": "sample.md", "line": 12}

@@ -35,7 +35,7 @@ class ExampleCheck(Check):
     def _run(self):
         self.runs.append(self.subject)
         return CheckResult(self, status="completed",
-                           pois=(ExamplePOI(self, "example", "Example POI",
+                           pois=(ExamplePOI(self, "Example POI",
                                             situation={"subject": self.subject},
                                             subject={"subject": self.subject}),))
 
@@ -81,7 +81,6 @@ class DifferenceCheck(SituationCheck):
         if self.situation["before"] != self.situation["after"]:
             pois = (self.finding(
                 ExamplePOI,
-                code="changed",
                 message="The values differ.",
             ),)
         return CheckResult(self, status="completed", pois=pois)
@@ -99,7 +98,6 @@ class MismatchedSituationCheck(SituationCheck):
     def _run(self):
         poi = ExamplePOI(
             self,
-            "changed",
             "Wrong situation.",
             situation={"different": True},
         )
@@ -174,11 +172,11 @@ def test_suite_catches_crashing_check_and_keeps_later_results():
     assert not result.clean()
 
 
-def test_run_groups_pois_and_preserves_identity_code_distinction():
+def test_run_groups_pois_by_type_and_identity_without_codes():
     check = ExampleCheck("one", [])
-    first = ExamplePOI(check, "first", "First", situation={"subject": "one"})
-    second = ExamplePOI(check, "second", "Second", situation={"subject": "one"})
-    notice = NotificationPOI("notice", "An event")
+    first = ExamplePOI(check, "First", situation={"subject": "one"})
+    second = ExamplePOI(check, "Second", situation={"subject": "one"})
+    notice = NotificationPOI("An event")
     run = CheckRun()
     run.add(CheckResult(check, status="completed", pois=(first, second, notice)))
     assert first.identity == second.identity
@@ -186,9 +184,11 @@ def test_run_groups_pois_and_preserves_identity_code_distinction():
     assert run.report()["matching"] == 2
     by_identity = run.report(by="identity")
     assert by_identity["matching"] == 2
-    assert by_identity["items"][0]["codes"] == ["first", "second"]
-    assert run.report(by="code", code="second")["items"][0]["pois"] == 1
-    assert run.report(by="identity", code="second")["items"][0]["codes"] == ["second"]
+    assert by_identity["items"][0]["pois"] == 2
+    assert "codes" not in by_identity["items"][0] and "by_code" not in run.summary()
+    assert "code" not in first.as_dict() and "code" not in notice.as_dict()
+    with pytest.raises(ValueError):
+        run.report(by="code")
     assert len(run.report(by="identity", type="Tarav.POI.Notification")["items"]) == 1
     assert "POIs by type" in render_check_run(run.report())
 
@@ -197,7 +197,7 @@ def test_run_pages_groups_and_blessings_do_not_hide_other_pois():
     check = ExampleCheck("one", [])
     run = CheckRun()
     run.add(CheckResult(check, status="completed", pois=(
-        ExamplePOI(check, "first", "First", situation={"case": 1}),
+        ExamplePOI(check, "First", situation={"case": 1}),
     )))
 
     class Store:
@@ -261,12 +261,12 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
     get_runtime()
     check = ExampleCheck("one", [])
     plain = POI()
-    notice = NotificationPOI("position-updated", "Position recorded.")
-    failure = CheckPOI(check, "position-stale", "Position needs attention.",
-                       situation={"code": "position-stale", "line": 3},
+    notice = NotificationPOI("Position recorded.")
+    failure = CheckPOI(check, "Position needs attention.",
+                       situation={"state": "stale", "line": 3},
                        details={"line": 3})
-    positive = CheckPOI(check, "position-current", "Position is current.",
-                        situation={"code": "position-current"},
+    positive = CheckPOI(check, "Position is current.",
+                        situation={"state": "current"},
                         failure=False)
     result = CheckResult(check, status="completed",
                          pois=(plain, notice, failure, positive))

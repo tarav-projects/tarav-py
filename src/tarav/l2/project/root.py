@@ -135,7 +135,7 @@ class ChildProjectCheck(Check):
         except (CliError, OSError, ValueError, IndexError) as exc:
             return CheckResult(self, status="failed", reason=f"{type(exc).__name__}: {exc}")
         pois = [
-            ChildProjectPOI(self, row["key"],
+            ChildProjectPOI(self,
                             f"{row['pois']} {row['key']} POIs in {self.child}",
                             situation={"child": self.child, "type": row["key"]},
                             details={"pois": row["pois"], "open": row["open"],

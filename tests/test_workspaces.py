@@ -61,7 +61,7 @@ def test_workspace_reproduces_seeded_files_and_unique_worktree_branches(tmp_path
     assert not workspace.checks.run().pois()
 
     source.write_text("second", encoding="utf-8")
-    assert {poi.code for poi in workspace.checks.run().pois()} == {"copy-source-changed"}
+    assert {type(poi).__name__ for poi in workspace.checks.run().pois()} == {"WorkspaceCopySourceChanged"}
     clone = depot.clone(workspace, label="copy")
     assert clone.id != workspace.id
     assert (clone.root / "copied.txt").read_text() == "first"
@@ -70,7 +70,7 @@ def test_workspace_reproduces_seeded_files_and_unique_worktree_branches(tmp_path
     (workspace.root / "draft.txt").write_text("changed", encoding="utf-8")
     with pytest.raises(WorkspaceError) as failure:
         depot.reset(workspace)
-    assert {poi.code for poi in failure.value.pois} == {"changed-document"}
+    assert {type(poi).__name__ for poi in failure.value.pois} == {"WorkspaceDocumentChanged"}
     (workspace.root / "draft.txt").write_text("draft", encoding="utf-8")
     depot.reset(workspace)
     assert (workspace.root / "copied.txt").read_text() == "first"
@@ -95,7 +95,7 @@ def test_missing_worktree_produces_poi(tmp_path):
     depot = WorkspaceDepot(tmp_path / "workspaces")
     workspace = depot.create(manifest)
     repository.remove_worktree(workspace.root / "code")
-    assert {poi.code for poi in workspace.checks.run().pois()} == {"missing-worktree"}
+    assert {type(poi).__name__ for poi in workspace.checks.run().pois()} == {"WorkspaceWorktreeMissing"}
     with pytest.raises(WorkspaceError):
         depot.reset(workspace)
 
@@ -132,7 +132,7 @@ def test_completed_workspace_removal_retains_committed_branch(tmp_path):
     (code / "tracked.txt").write_text("work", encoding="utf-8")
     with pytest.raises(WorkspaceError) as failure:
         depot.remove(depot.set_status(workspace, "abandoned"))
-    assert {poi.code for poi in failure.value.pois} == {"dirty-worktree"}
+    assert {type(poi).__name__ for poi in failure.value.pois} == {"WorkspaceWorktreeDirty"}
     _git(code, "add", "tracked.txt")
     _git(code, "commit", "-qm", "work")
     workspace = depot.open(workspace.id)
@@ -164,7 +164,7 @@ def test_known_reference_into_workspace_is_a_nonblocking_reminder(tmp_path):
     outside = tmp_path / "stable.md"
     target = workspace.root / "draft.md"
     findings = depot.reference_check(source=outside, target=target).run().pois()
-    assert [poi.code for poi in findings] == ["workspace-reference"]
+    assert [type(poi).__name__ for poi in findings] == ["WorkspaceReferencedByStableSurface"]
     assert not depot.reference_check(source=workspace.root / "AGENTS.md",
                                      target=target).run().pois()
 
@@ -178,9 +178,9 @@ def test_missing_copy_seed_cannot_silently_fall_back_to_changed_source(tmp_path)
     ]))
     source.write_text("later", encoding="utf-8")
     (workspace.root / "seeds" / "copy.txt").unlink()
-    assert "seed-changed" in {poi.code for poi in workspace.checks.run().pois()}
+    assert "WorkspaceSeedChanged" in {type(poi).__name__ for poi in workspace.checks.run().pois()}
     with pytest.raises(WorkspaceError) as failure:
         depot.reset(workspace)
-    assert "seed-changed" in {poi.code for poi in failure.value.pois}
+    assert "WorkspaceSeedChanged" in {type(poi).__name__ for poi in failure.value.pois}
     with pytest.raises(WorkspaceError, match="Retained copy seed is missing"):
         depot.clone(workspace, label="clone")

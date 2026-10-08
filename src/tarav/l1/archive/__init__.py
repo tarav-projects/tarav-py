@@ -300,7 +300,6 @@ class Archive:
             # tarav.breadcrumb 73bbbd2f1a9c94a38a20356a3dd57f3c52701fa317c80ea4f6c6e2451b02fd37
             emit_notification(
                 ArchiveNotificationPOI(
-                    "skipped-git-remote-locators",
                     f"skipped {skipped_count} suspicious or unsupported Git remote locator(s)",
                     details={"count": skipped_count, "repository": str(source_root)},
                 )

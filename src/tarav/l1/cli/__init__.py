@@ -146,6 +146,42 @@ class Command(TaravEntity, CheckProvider, LiveHelpProvider):
             return CheckSuite((CommandMetadataCheck(self.obj),))
 
 
+class CommandMetadataPOI(CheckPOI):
+    """Family, never raised: a command lacks metadata agents rely on."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("9d22138e-af8c-4aec-8ce6-1583d45c6e91"),
+                          name="Tarav.CLI.Command.Metadata.POI", workflow=CLI_WORKFLOW_SHIP)
+
+
+class CommandHelpMissing(CommandMetadataPOI):
+    """A command has no description."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("bdf59ffa-b0f1-4e9a-bff0-24a6a3fb8ee0"),
+                          name="Tarav.CLI.Command.Metadata.HelpMissing", workflow=CLI_WORKFLOW_SHIP)
+
+
+class CommandSourceUnavailable(CommandMetadataPOI):
+    """A command handler's source location cannot be found."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("ec58ad21-cbcd-47c6-8d62-fcf6367462b3"),
+                          name="Tarav.CLI.Command.Metadata.SourceUnavailable", workflow=CLI_WORKFLOW_SHIP)
+
+
+class CommandUsageDescriptorMissing(CommandMetadataPOI):
+    """A command does not describe its calls for the Usage Registry."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("e6ae640d-f2f7-46f8-83a3-a633b78ddaf6"),
+                          name="Tarav.CLI.Command.Metadata.UsageDescriptorMissing", workflow=CLI_WORKFLOW_SHIP)
+
+
 class CommandMetadataCheck(Check):
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -162,18 +198,18 @@ class CommandMetadataCheck(Check):
     def _run(self) -> CheckResult:
         problems: list[CheckPOI] = []
         if not self.command.description and self.command.path:
-            problems.append(CheckPOI(
-                self, "cli.missing-help", "Command has no description",
+            problems.append(CommandHelpMissing(
+                self, "Command has no description",
                 situation={"command": self.command.help_subject},
             ))
         if self.command.handler is not None and self.command.source_location is None:
-            problems.append(CheckPOI(
-                self, "cli.missing-source", "Command handler source is unavailable",
+            problems.append(CommandSourceUnavailable(
+                self, "Command handler source is unavailable",
                 situation={"command": self.command.help_subject},
             ))
         if self.command.handler is not None and self.command.usage_descriptor is None:
-            problems.append(CheckPOI(
-                self, "cli.missing-usage-descriptor",
+            problems.append(CommandUsageDescriptorMissing(
+                self,
                 "Command does not describe its calls for the Usage Registry",
                 situation={"command": self.command.help_subject},
             ))

@@ -79,7 +79,7 @@ def reported_record(poi: IdentifiedPOI) -> dict[str, object]:
     """Everything the reporting process knows about one POI, as plain data."""
     check = getattr(poi, "check", None)
     return {
-        "id": poi.identity, "code": poi.code, "message": poi.message,
+        "id": poi.identity, "message": poi.message,
         "situation": poi.situation, "subject": poi.subject, "evidence": poi.evidence,
         "details": deepcopy(getattr(poi, "details", {})),
         "poi_type": _class_record(type(poi)),
@@ -151,14 +151,13 @@ class ReportedPOI(TaravObject):
         return str(self.record["id"])
 
     def summary(self) -> dict[str, object]:
-        return {"id": self.identity, "code": self.record.get("code"),
-                "message": self.record.get("message"),
+        return {"id": self.identity, "message": self.record.get("message"),
                 "poi_type": (self.record.get("poi_type") or {}).get("type"),
                 "project": self.project, "reported_at": self.reported_at}
 
     def obj_context(self, builder) -> None:
         builder.add("summary", opener=lambda: _value(self.summary()),
-                    description="Identifier, code, message, Project and when it was reported.")
+                    description="Identifier, message, Type, Project and when it was reported.")
         builder.add("record", opener=lambda: _value(self.record),
                     description="The complete retained record.")
 
@@ -188,8 +187,8 @@ class ReportedPOIContext(ContextFolder):
             builder.add("raised-by", opener=lambda: _value(record.get("raised_by")),
                         description="The check that raised it, and where that check is defined.")
             builder.add("finding", opener=lambda: _value({
-                "id": record.get("id"), "code": record.get("code"),
-                "message": record.get("message"), "situation": record.get("situation"),
+                "id": record.get("id"), "message": record.get("message"),
+                "situation": record.get("situation"),
                 "details": record.get("details"), "project": subject.project,
                 "reported_at": subject.reported_at,
             }), description="What exactly was found in this instance.")

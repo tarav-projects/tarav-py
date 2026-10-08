@@ -31,7 +31,7 @@ class _Flags(Check):
             raise RuntimeError("boom")
         if not self.flagged:
             return CheckResult(self, status="completed")
-        poi = CheckPOI(self, "flagged", "something is off", situation={"case": "flagged"})
+        poi = CheckPOI(self, "something is off", situation={"case": "flagged"})
         return CheckResult(self, status="completed", pois=[poi])
 
 
@@ -60,7 +60,7 @@ def test_the_report_carries_every_result_and_its_pois() -> None:
     )
     assert (report["checks"], report["incomplete"], report["pois"]) == (2, 0, 1)
     assert [row["check"] for row in report["results"]] == ["Test.Checks.Flags"] * 2
-    assert report["results"][1]["pois"][0]["code"] == "flagged"
+    assert report["results"][1]["pois"][0]["message"] == "something is off"
     json.dumps(report)
 
 

@@ -56,6 +56,8 @@ class SkillsSelectionNotification(NotificationPOI):
 
 
 class SkillsStatusPOI(IdentifiedPOI):
+    """Family, never raised: a skill depot entry differs from the selected skills."""
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -67,7 +69,7 @@ class SkillsStatusPOI(IdentifiedPOI):
 
     @classmethod
     def from_entry(cls, category: str, depot_root: Path, entry: "SkillsStatusEntry"):
-        subject = {"category": category, "depot": str(depot_root),
+        subject = {"depot": str(depot_root),
                    "name": entry.name, "path": str(entry.path)}
         evidence = {
             "source": entry.source,
@@ -78,9 +80,64 @@ class SkillsStatusPOI(IdentifiedPOI):
             "actual_resolved_target": str(entry.actual_resolved_target)
             if entry.actual_resolved_target is not None else None,
         }
-        return cls(category, f"Skill depot entry is {category}: {entry.name}",
-                   situation=subject,
-                   subject=subject, evidence=evidence)
+        return _STATUS_POI[category](
+            f"Skill depot entry is {category}: {entry.name}",
+            situation=subject, subject=subject, evidence=evidence)
+
+
+class SkillDepotEntryMissing(SkillsStatusPOI):
+    """A selected skill is absent from the depot."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("2d98ba4f-7cb3-4145-bc71-998d965a2abc"),
+                          name="Tarav.Skills.POI.Status.Missing", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class SkillDepotEntryBroken(SkillsStatusPOI):
+    """A depot entry is a link whose target does not exist."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("6429363e-a2b0-4007-9bc9-b2c70218dfa8"),
+                          name="Tarav.Skills.POI.Status.Broken", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class SkillDepotEntryUnsynced(SkillsStatusPOI):
+    """A depot entry points at a different source than the selected skill."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("7e6a1b46-243b-4b55-b08a-2f3cd4f7497d"),
+                          name="Tarav.Skills.POI.Status.Unsynced", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class SkillDepotEntryConflicting(SkillsStatusPOI):
+    """A depot entry is occupied by something that is not the selected skill's link."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("444b8c7e-a306-4da3-af3c-52a837c0b8e1"),
+                          name="Tarav.Skills.POI.Status.Conflicting", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class SkillDepotEntryExtra(SkillsStatusPOI):
+    """A depot entry corresponds to no selected skill."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("4a680ef3-4378-403d-aff5-92a0fffe8e0c"),
+                          name="Tarav.Skills.POI.Status.Extra", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+# Depot status categories are the status analysis's keys; each selects one POI Type.
+_STATUS_POI = {
+    "missing": SkillDepotEntryMissing,
+    "broken": SkillDepotEntryBroken,
+    "unsynced": SkillDepotEntryUnsynced,
+    "conflicts": SkillDepotEntryConflicting,
+    "extra": SkillDepotEntryExtra,
+}
 
 
 @dataclass(frozen=True)
@@ -120,7 +177,6 @@ class SkillsSelection:
     def pois(self):
         return tuple(
             SkillsSelectionNotification(
-                "skills-selection-warning",
                 warning,
                 details={"caller_root": str(self.caller_root)},
             )

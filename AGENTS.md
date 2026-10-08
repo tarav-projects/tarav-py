@@ -263,6 +263,8 @@ Importing `tarav` alone initializes no services or layered modules.
   `~/.tarav/run-registry/`, one folder per Project id plus `global`, bounded by
   size. Browse it for recent examples of Tarav scripts, including other
   Projects'. `tarav.l1.python_env.registry` owns it; it must never change a run.
+- POI Types are atomic: a POI has no `code`, and each Type states one situation.
+  Give related situations one class each under a family parent that is never raised.
 
 # Tarav System Prompt
 

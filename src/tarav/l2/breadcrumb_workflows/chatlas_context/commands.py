@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
+from tarav.l0.kernel import entity
 from tarav.l1.breadcrumbs.commands import (
     register_audit_command,
     register_submission_command,
@@ -118,7 +119,7 @@ def _audit_dispatch(args: argparse.Namespace) -> int:
         print(f"commit: {args.commit}")
         print(f"breadcrumbs: {len(result.context.breadcrumbs)}")
         for finding in result.findings:
-            print(f"poi: {finding.code}: {finding.message}")
+            print(f"poi: {entity(type(finding)).name}: {finding.message}")
     return 0 if result.ok else 1
 
 

@@ -324,12 +324,41 @@ def tribunal_scores(repository: ScoringRepository, tribunal_type_id: str) -> tup
 
 
 class TribunalScorePOI(CheckPOI):
+    """Family, never raised: an Assertion's comparative score needs attention."""
+
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls,
                           id=TypeShip('ec5a6bc9-b6bd-413d-a713-1325eb7014a5'),
                           name='Tarav.Scoring.TribunalScore.POI',
                           workflow=RANKING_WORKFLOW_SHIP)
+
+
+class TribunalAssertionUnassessed(TribunalScorePOI):
+    """An Assertion has no comparative judgment yet."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('0e3c3a0a-56f7-4efb-ae03-8facbc7475b2'),
+                          name='Tarav.Scoring.TribunalScore.POI.Unassessed', workflow=RANKING_WORKFLOW_SHIP)
+
+
+class TribunalRelativeSupportLow(TribunalScorePOI):
+    """An Assertion has weak relative support."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('4dd9d7b0-d25a-44f2-8a9e-8ed0e47a6675'),
+                          name='Tarav.Scoring.TribunalScore.POI.RelativeSupportLow', workflow=RANKING_WORKFLOW_SHIP)
+
+
+class TribunalCoverageSparse(TribunalScorePOI):
+    """An Assertion was compared against too few others."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('98e71505-0939-461b-b388-37c558f97b45'),
+                          name='Tarav.Scoring.TribunalScore.POI.CoverageSparse', workflow=RANKING_WORKFLOW_SHIP)
 
 
 class TribunalScoreCheck(Check):
@@ -354,19 +383,19 @@ class TribunalScoreCheck(Check):
         rows = tribunal_scores(self.repository, self.tribunal_type_id)
         pois = []
         for row in rows:
-            codes = []
+            cases = []
             if row['value'] is None:
-                codes.append(('Scoring.Unassessed', 'No comparative judgment yet'))
+                cases.append((TribunalAssertionUnassessed, 'No comparative judgment yet'))
             else:
                 if row['value'] < self.low_support:
-                    codes.append(('Scoring.LowRelativeSupport', 'Weak relative support'))
+                    cases.append((TribunalRelativeSupportLow, 'Weak relative support'))
                 if row['coverage'] < self.sparse_coverage:
-                    codes.append(('Scoring.SparseCoverage', 'Sparse comparison coverage'))
-            for code, message in codes:
-                pois.append(TribunalScorePOI(
-                    self, code, message,
+                    cases.append((TribunalCoverageSparse, 'Sparse comparison coverage'))
+            for case, message in cases:
+                pois.append(case(
+                    self, message,
                     situation={'tribunal_type_id': self.tribunal_type_id,
-                               'assertion_ref': row['assertion_ref'], 'code': code,
+                               'assertion_ref': row['assertion_ref'],
                                'comparisons': row['comparisons']},
                     subject={'assertion_ref': row['assertion_ref']},
                     evidence=row.as_row(), details=row.as_row(),

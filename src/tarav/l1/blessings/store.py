@@ -68,7 +68,6 @@ class BlessingRecord(Decision):
             poi = {
                 "type": "Example.BlessablePOI",
                 "class_id": "7d28d632-2ec5-4c5a-997f-224ad508ce9d",
-                "code": "example",
                 "message": "Synthetic POI",
                 "situation": {"example": "situation"},
                 "subject": {},

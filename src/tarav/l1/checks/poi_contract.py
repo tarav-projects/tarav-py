@@ -75,7 +75,7 @@ class POIGuidanceCheck(Check):
                 continue
             name = entity(poi_type).name
             pois.append(POIGuidanceMissingPOI(
-                self, "undeclared", f"{name} declares nothing to read or do",
+                self, f"{name} declares nothing to read or do",
                 situation={"poi_type": name},
                 details={"poi_type": name, **{key: poi_type.help().get(key)
                                                for key in ("class", "source_path", "source_line")}}))
@@ -83,7 +83,7 @@ class POIGuidanceCheck(Check):
 
 
 class POIContextRoundTripPOI(CheckPOI):
-    """The context command a check report advertises does not lead to a POI's context."""
+    """Family, never raised: a check report's advertised context command does not lead to a POI."""
 
     read_first = _READ
     may_do = ("Repair the report header, the reported-POI resolver or its view in tarav-py.",
@@ -96,6 +96,42 @@ class POIContextRoundTripPOI(CheckPOI):
                           workflow=CHECKS_WORKFLOW_SHIP)
 
 
+class POIContextInstructionMissing(POIContextRoundTripPOI):
+    """A rendered check report advertises no context command."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("ea4588cf-24ed-412d-81f2-40c056d96568"),
+                          name="Tarav.Checks.POIContextRoundTrip.InstructionMissing", workflow=CHECKS_WORKFLOW_SHIP)
+
+
+class POIContextCommandUnparsable(POIContextRoundTripPOI):
+    """The context command a check report advertises names no identifier."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("1951a335-d8cf-42e9-9527-133c151e59f2"),
+                          name="Tarav.Checks.POIContextRoundTrip.CommandUnparsable", workflow=CHECKS_WORKFLOW_SHIP)
+
+
+class POIContextCommandUnresolved(POIContextRoundTripPOI):
+    """The context command a check report advertises does not open the reported POI."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("ce077b67-644c-4d5c-bf29-2f32a87209b6"),
+                          name="Tarav.Checks.POIContextRoundTrip.CommandUnresolved", workflow=CHECKS_WORKFLOW_SHIP)
+
+
+class POIContextViewEmpty(POIContextRoundTripPOI):
+    """The context view a check report advertises has no entries."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("5b96101e-f649-45b5-9b33-34ad483ecfe0"),
+                          name="Tarav.Checks.POIContextRoundTrip.ViewEmpty", workflow=CHECKS_WORKFLOW_SHIP)
+
+
 class POIContextRoundTripCheck(Check):
     """Render a report, take the command its header advertises, and follow it."""
 
@@ -104,12 +140,12 @@ class POIContextRoundTripCheck(Check):
         return TaravClass(target=cls, id=TypeShip("7d3f9b61-2e48-4a05-8c17-6a0e5d1f3b29"),
                           name="Tarav.Checks.POIContextRoundTrip", workflow=CHECKS_WORKFLOW_SHIP)
 
-    def _finding(self, code: str, message: str, **details) -> CheckResult:
-        return CheckResult(self, status="completed", pois=[POIContextRoundTripPOI(
-            self, code, message, situation={"code": code}, details=details)])
+    def _finding(self, case: type[CheckPOI], message: str, **details) -> CheckResult:
+        return CheckResult(self, status="completed", pois=[case(
+            self, message, situation={"surface": "check-report"}, details=details)])
 
     def _run(self) -> CheckResult:
-        sample = CheckPOI(self, "sample", "Round-trip sample",
+        sample = CheckPOI(self, "Round-trip sample",
                           situation={"sample": "poi-context-round-trip"})
         run = CheckRun()
         run.add(CheckResult(self, status="completed", pois=[sample]))
@@ -117,13 +153,13 @@ class POIContextRoundTripCheck(Check):
         example = next((line.strip()[len("e.g. "):] for line in rendered.splitlines()
                         if line.strip().startswith("e.g. tarav context ")), None)
         if example is None:
-            return self._finding("no-instruction",
+            return self._finding(POIContextInstructionMissing,
                                  "The check report advertises no context command",
                                  rendered=rendered)
         words = shlex.split(example)
         options = dict(zip(words[2::2], words[3::2]))
         if "--id" not in options:
-            return self._finding("unparsable", "The advertised command has no --id",
+            return self._finding(POIContextCommandUnparsable, "The advertised command has no --id",
                                  example=example)
         with tempfile.TemporaryDirectory(prefix="tarav-poi-round-trip-") as folder:
             store = ReportedPOIStore(Path(folder))
@@ -137,21 +173,25 @@ class POIContextRoundTripCheck(Check):
                 opened = [entry.open() for entry in answer.target.ls()] \
                     if answer.subject is not None else []
             except Exception as exc:
-                return self._finding("unresolved", "The advertised command failed",
+                return self._finding(POIContextCommandUnresolved, "The advertised command failed",
                                      example=example, error=f"{type(exc).__name__}: {exc}")
         if answer.subject is None or answer.subject.identity != sample.identity:
-            return self._finding("unresolved",
+            return self._finding(POIContextCommandUnresolved,
                                  "The advertised command does not resolve the reported POI",
                                  example=example)
         if not opened:
-            return self._finding("empty-view", "The advertised view has no entries",
+            return self._finding(POIContextViewEmpty, "The advertised view has no entries",
                                  example=example)
         return CheckResult(self, status="completed")
 
 
 __all__ = [
+    "POIContextCommandUnparsable",
+    "POIContextCommandUnresolved",
+    "POIContextInstructionMissing",
     "POIContextRoundTripCheck",
     "POIContextRoundTripPOI",
+    "POIContextViewEmpty",
     "POIGuidanceCheck",
     "POIGuidanceMissingPOI",
     "defined_under",

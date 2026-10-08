@@ -89,6 +89,198 @@ class BreadcrumbAuditContext:
     breadcrumbs: tuple[AuditedBreadcrumb, ...]
 
 
+class BreadcrumbAuditPOI(CheckPOI):
+    """Family, never raised: an audited surface and its retained Breadcrumbs disagree."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('fd78dc93-f719-4149-8ab8-f67933cd373e'),
+                          name='Tarav.Breadcrumbs.Audit.POI', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class BreadcrumbRecordUnavailable(BreadcrumbAuditPOI):
+    """A Breadcrumb's retained record cannot be read."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('27680081-5ca5-4f3a-b2f1-ed82f8e71756'),
+                          name='Tarav.Breadcrumbs.Audit.POI.RecordUnavailable', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class BreadcrumbPositionMissing(BreadcrumbAuditPOI):
+    """No recorded position contains the Breadcrumb's label."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('d28f9d43-1f76-46ef-aa36-2bb4a031331c'),
+                          name='Tarav.Breadcrumbs.Audit.POI.PositionMissing', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class BreadcrumbPositionAmbiguous(BreadcrumbAuditPOI):
+    """Several recorded positions contain the Breadcrumb's label."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('9f6b2541-e9af-4502-ac9f-dfced8bbe1c1'),
+                          name='Tarav.Breadcrumbs.Audit.POI.PositionAmbiguous', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class BreadcrumbPositionDisagrees(BreadcrumbAuditPOI):
+    """A Breadcrumb's resolved position is not where the surface carries its label."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('f4876a51-b684-40e6-b71b-02834812e73b'),
+                          name='Tarav.Breadcrumbs.Audit.POI.PositionDisagrees', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class BreadcrumbPositionRefreshFailed(BreadcrumbAuditPOI):
+    """A Breadcrumb's new position could not be recorded."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('a58cd095-33fe-4fcd-9e89-d25d5ebfff1d'),
+                          name='Tarav.Breadcrumbs.Audit.POI.PositionRefreshFailed', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class BreadcrumbAttachmentMissing(BreadcrumbAuditPOI):
+    """A Breadcrumb has no retained workflow attachment."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('9dc4d2f8-6b04-4d62-95e2-ccf110715506'),
+                          name='Tarav.Breadcrumbs.Audit.POI.AttachmentMissing', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class BreadcrumbLabelMalformed(BreadcrumbAuditPOI):
+    """A surface comment holds a malformed Breadcrumb label."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('84b9c10a-cf29-46fd-902f-91fc0727a159'),
+                          name='Tarav.Breadcrumbs.Audit.POI.LabelMalformed', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class ChatlasContextAttachmentInvalid(BreadcrumbAuditPOI):
+    """A Breadcrumb's Chatlas-context attachment is not valid."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('337c43f6-baba-4d70-98d6-186a7c994d7c'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ChatlasContext.AttachmentInvalid', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class ChatlasContextAttachmentMissing(BreadcrumbAuditPOI):
+    """A Breadcrumb has no Chatlas-context attachment."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('de3581e8-c8ae-4c6a-892a-73cf9cfb1779'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ChatlasContext.AttachmentMissing', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class ChatlasContextAttachmentMultiple(BreadcrumbAuditPOI):
+    """A Breadcrumb has more than one Chatlas-context attachment."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('eae73739-9882-479c-8d4b-b3d54e124b50'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ChatlasContext.AttachmentMultiple', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class ChatlasContextMarkerMalformed(BreadcrumbAuditPOI):
+    """A surface holds a malformed provisional Chatlas-context marker."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('9a71ccec-b088-4d87-82c5-94dde4a42d1b'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ChatlasContext.MarkerMalformed', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class ChatlasContextMarkerUnsubmitted(BreadcrumbAuditPOI):
+    """A surface holds a provisional Chatlas-context marker that was never submitted."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('8da2ecd6-94f0-4ab7-b3b4-e7a79eefa0e2'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ChatlasContext.MarkerUnsubmitted', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class ChatlasContextTurnNotUser(BreadcrumbAuditPOI):
+    """A Breadcrumb's attached Chatlas Turn is not a User Turn."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('fb655512-0d52-4447-984c-66f61b01f788'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ChatlasContext.TurnNotUser', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class ChatlasContextTurnUnavailable(BreadcrumbAuditPOI):
+    """A Breadcrumb's attached Chatlas Turn cannot be found."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('a92048e2-d762-4237-9fa0-ca6732fcc4cf'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ChatlasContext.TurnUnavailable', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class CommitEvidenceInvalid(BreadcrumbAuditPOI):
+    """A commit message's evidence envelope is not valid."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('0b517ffc-5755-47b2-ba15-ca0fcaeb7d26'),
+                          name='Tarav.Breadcrumbs.Audit.POI.CommitEvidence.Invalid', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class CommitEvidenceRegistrationIncomplete(BreadcrumbAuditPOI):
+    """A commit's Breadcrumb evidence was not fully registered."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('a8745c40-4bc2-482e-b1d8-faf88d5ea716'),
+                          name='Tarav.Breadcrumbs.Audit.POI.CommitEvidence.RegistrationIncomplete', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class BreadcrumbAuditConcernUnrecognized(BreadcrumbAuditPOI):
+    """An annotation workflow reported an audit concern this check does not classify."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('81ca16a4-9273-4ed4-a179-8e491e1cc05e'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ConcernUnrecognized', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+# Audit concerns are transient inputs keyed by their producer; each key selects one POI Type.
+AUDIT_POI_TYPES = {
+    'breadcrumb-record-unavailable': BreadcrumbRecordUnavailable,
+    'breadcrumb-position-missing': BreadcrumbPositionMissing,
+    'breadcrumb-position-ambiguous': BreadcrumbPositionAmbiguous,
+    'breadcrumb-position-disagrees': BreadcrumbPositionDisagrees,
+    'breadcrumb-position-refresh-failed': BreadcrumbPositionRefreshFailed,
+    'breadcrumb-attachment-missing': BreadcrumbAttachmentMissing,
+    'breadcrumb-label-malformed': BreadcrumbLabelMalformed,
+    'chatlas-context-attachment-invalid': ChatlasContextAttachmentInvalid,
+    'chatlas-context-attachment-missing': ChatlasContextAttachmentMissing,
+    'chatlas-context-attachment-multiple': ChatlasContextAttachmentMultiple,
+    'chatlas-context-marker-malformed': ChatlasContextMarkerMalformed,
+    'chatlas-context-marker-unsubmitted': ChatlasContextMarkerUnsubmitted,
+    'chatlas-context-turn-not-user': ChatlasContextTurnNotUser,
+    'chatlas-context-turn-unavailable': ChatlasContextTurnUnavailable,
+    'commit-evidence-invalid': CommitEvidenceInvalid,
+    'commit-evidence-registration-incomplete': CommitEvidenceRegistrationIncomplete,
+}
+
+
+class BreadcrumbPositionUpdated(NotificationPOI):
+    """An audit recorded a Breadcrumb's refreshed file position."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('01cd56d7-2c07-42cc-8b97-4b6ae86c8e1e'),
+                          name='Tarav.Breadcrumbs.Audit.PositionUpdated', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
 # tarav.breadcrumb 43e2d650575b47a3589da47e2f062ae65d74c9238883b59137993caa52c4f0fd
 class BreadcrumbAuditCheck(Check):
     """Run the owning workflow's audit and report its bounded concerns."""
@@ -118,12 +310,13 @@ class BreadcrumbAuditCheck(Check):
                        **({'breadcrumb_id': item.breadcrumb_id}
                           if item.breadcrumb_id else {}),
                        **({'line': item.line} if item.line is not None else {})}
-            return CheckPOI(
+            case = AUDIT_POI_TYPES.get(item.code, BreadcrumbAuditConcernUnrecognized)
+            return case(
                 self,
-                item.code,
                 item.message,
-                situation={'code': item.code, **details},
-                details=details,
+                situation=details,
+                details=details if case is not BreadcrumbAuditConcernUnrecognized
+                else {**details, 'concern': item.code},
             )
 
         return CheckResult(self, status='completed', pois=(
@@ -155,8 +348,8 @@ class BreadcrumbAuditResult:
                       concerns: tuple[BreadcrumbAuditConcern, ...],
                       updates: tuple[Mapping[str, object], ...] = ()) -> 'BreadcrumbAuditResult':
         checked = BreadcrumbAuditCheck(context, concerns, workflow, request).run().pois()
-        notifications = tuple(NotificationPOI(
-            str(update['code']), 'Breadcrumb position observation appended.',
+        notifications = tuple(BreadcrumbPositionUpdated(
+            'Breadcrumb position observation appended.',
             details=dict(update)) for update in updates)
         return cls(context, workflow.name, (*checked, *notifications))
 
@@ -226,8 +419,7 @@ def audit_annotations(
                         "breadcrumb-position-refresh-failed", str(exc),
                         label.breadcrumb_id, label.line))
                 else:
-                    updates.append({"code": "breadcrumb-position-updated",
-                                    "breadcrumb_id": label.breadcrumb_id,
+                    updates.append({"breadcrumb_id": label.breadcrumb_id,
                                     "file": str(path), "line": label.line})
                     resolution = store.resolve(label.breadcrumb_id)
             observations = store.observations(label.breadcrumb_id)

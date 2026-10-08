@@ -190,7 +190,7 @@ def test_abstention_keeps_cases_unscored_and_pois_visible(tmp_path):
     result = TribunalScoreCheck(repository, tribunal_id).run()
     assert result.status == 'completed'
     assert len(result.pois()) == 3
-    assert all(poi.code == 'Scoring.Unassessed' for poi in result.pois())
+    assert all(type(poi).__name__ == 'TribunalAssertionUnassessed' for poi in result.pois())
 
 
 def test_pair_record_rejects_changed_or_outside_case(tmp_path):
@@ -236,10 +236,10 @@ def test_scorer_gets_only_prompt_and_sparse_weak_signals(tmp_path):
     assert sorted(row['value'] for row in rows if row['value'] is not None) == [0.0, 1.0]
     assert sorted(row['coverage'] for row in rows) == [0.0, 0.5, 0.5]
     result = TribunalScoreCheck(repository, tribunal_id, sparse_coverage=0.75).run()
-    codes = [poi.code for poi in result.pois()]
-    assert codes.count('Scoring.Unassessed') == 1
-    assert codes.count('Scoring.SparseCoverage') == 2
-    assert codes.count('Scoring.LowRelativeSupport') == 1
+    cases = [type(poi).__name__ for poi in result.pois()]
+    assert cases.count('TribunalAssertionUnassessed') == 1
+    assert cases.count('TribunalCoverageSparse') == 2
+    assert cases.count('TribunalRelativeSupportLow') == 1
 
 
 def test_tie_is_half_relative_support(tmp_path):

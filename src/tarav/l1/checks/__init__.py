@@ -97,7 +97,7 @@ class CheckPOI(IdentifiedPOI):
         return TaravClass(target=cls, id=TypeShip("20ad2c76-009f-4aae-a564-70b7925664ef"),
                           name="Tarav.Checks.POI", workflow=CHECKS_WORKFLOW_SHIP)
 
-    def __init__(self, check: Check, code: str, message: str, *,
+    def __init__(self, check: Check, message: str, *,
                  situation,
                  details: dict | None = None, failure: bool = True,
                  subject: dict | None = None, evidence: dict | None = None) -> None:
@@ -108,7 +108,7 @@ class CheckPOI(IdentifiedPOI):
         if not isinstance(failure, bool):
             raise TypeError("CheckPOI failure must be a boolean")
         self.failure = failure
-        super().__init__(code, message,
+        super().__init__(message,
                          situation=situation,
                          subject=deepcopy(subject if subject is not None else self.details),
                          evidence=deepcopy(evidence if evidence is not None else self.details))
@@ -168,7 +168,6 @@ class SituationCheck(Check):
         self,
         poi_type: type[CheckPOI],
         *,
-        code: str,
         message: str,
         details: dict | None = None,
         failure: bool = True,
@@ -181,7 +180,6 @@ class SituationCheck(Check):
             raise TypeError("SituationCheck findings require a CheckPOI Type")
         return poi_type(
             self,
-            code,
             message,
             situation=self._situation,
             details=details,
@@ -261,7 +259,6 @@ class CheckRun(TaravObject, POIProvider):
     def summary(self) -> dict[str, object]:
         statuses: Counter[str] = Counter()
         by_type: Counter[str] = Counter()
-        by_code: Counter[str] = Counter()
         by_check: dict[str, dict[str, object]] = {}
         for result in self.results:
             check_name = entity(type(result.check)).name
@@ -272,7 +269,6 @@ class CheckRun(TaravObject, POIProvider):
             check_row["by_status"][result.status] = check_row["by_status"].get(result.status, 0) + 1
             for poi in result.pois():
                 by_type[entity(type(poi)).name] += 1
-                by_code[getattr(poi, "code", "(no code)")] += 1
         return {
             "checks": len(self.results),
             "by_status": dict(statuses),
@@ -280,7 +276,6 @@ class CheckRun(TaravObject, POIProvider):
             "pois": sum(by_type.values()),
             "by_check": by_check,
             "by_type": dict(by_type),
-            "by_code": dict(by_code),
         }
 
     def _standing(self, poi: POI, store, snapshot) -> str:
@@ -297,10 +292,10 @@ class CheckRun(TaravObject, POIProvider):
 
     def report(
         self, *, by: str = "type", sort: str = "run", offset: int = 0, limit: int = 20,
-        type: str | None = None, code: str | None = None, check: str | None = None,
+        type: str | None = None, check: str | None = None,
         store=None, detail: bool = False,
     ) -> dict[str, object]:
-        if by not in ("type", "code", "check", "identity"):
+        if by not in ("type", "check", "identity"):
             raise ValueError("Unknown CheckRun grouping")
         if sort not in ("run", "count"):
             raise ValueError("Unknown CheckRun sort order")
@@ -313,30 +308,25 @@ class CheckRun(TaravObject, POIProvider):
             check_name = entity(result.check.__class__).name
             for poi in result.pois():
                 type_name = entity(poi.__class__).name
-                poi_code = getattr(poi, "code", "(no code)")
                 if (type is not None and type != type_name
-                        or code is not None and code != poi_code
                         or check is not None and check != check_name):
                     continue
                 emission_index += 1
                 key = {
                     "type": type_name,
-                    "code": poi_code,
                     "check": check_name,
                     "identity": getattr(poi, "identity", f"emission:{emission_index}"),
                 }[by]
                 row = groups.setdefault(key, {
                     "key": key, "by": by, "pois": 0, "checks": 0,
                     "open": 0, "blessed": 0, "example": getattr(poi, "message", ""),
-                    "codes": [], "types": [], "_results": set(),
+                    "types": [], "_results": set(),
                 })
                 row["pois"] += 1
                 row[self._standing(poi, store, snapshot)] += 1
                 if result_index not in row["_results"]:
                     row["_results"].add(result_index)
                     row["checks"] += 1
-                if poi_code not in row["codes"]:
-                    row["codes"].append(poi_code)
                 if type_name not in row["types"]:
                     row["types"].append(type_name)
                 if detail and "example_poi" not in row:

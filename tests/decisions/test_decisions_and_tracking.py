@@ -41,7 +41,7 @@ class ExampleDecision(Decision):
 
 def poi(path="one.md"):
     return ExamplePOI(
-        "example", "Inspect the file", situation={"path": path},
+        "Inspect the file", situation={"path": path},
         subject={"path": path}, evidence={"source": path},
     )
 
@@ -136,7 +136,7 @@ def test_board_keeps_detected_blessing_visible_and_filters(tmp_path):
 def test_new_evidence_for_same_situation_remains_in_history(tmp_path):
     store = TrackedPOIStore(tmp_path / "tracked")
     first = poi()
-    revised = ExamplePOI("example", "Inspect the file",
+    revised = ExamplePOI("Inspect the file",
                          situation={"path": "one.md"},
                          subject={"path": "one.md"}, evidence={"source": "new.md"})
     assert first.identity == revised.identity

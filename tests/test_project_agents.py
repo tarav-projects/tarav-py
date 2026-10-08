@@ -11,13 +11,20 @@ import pytest
 from tarav.l0.kernel import entity
 from tarav.l1.project import TaravProject
 from tarav.l1.project.agents import (
-    AgentsAliasPOI,
-    AgentsMdProductPOI,
+    AgentsAliasMissing,
+    AgentsAliasNotSymlink,
+    AgentsAliasWrongTarget,
+    AgentsMdProductDrift,
     ProjectSystemPrompt,
+    ProjectSystemPromptEmpty,
     ProjectSystemPromptPOI,
+    ProjectSystemPromptSourceUnavailable,
     PROMPT_SOURCE,
     TaravSystemPrompt,
+    TaravSystemPromptMissing,
     TaravSystemPromptPOI,
+    TaravSystemPromptSourceUnavailable,
+    TaravSystemPromptStale,
 )
 from tarav.l1.skw.document import DocumentRecord, project_document
 from tarav.l3.runtime import create_runtime
@@ -68,9 +75,9 @@ def test_default_bootstrap_reports_missing_source_and_opt_out(tmp_path: Path) ->
     assert agents.path == tmp_path / "AGENTS.md"
     assert agents.source == tmp_path / ".tarav/skillware/src/AGENTS.skw.json"
     pois = _pois(project)
-    assert any(isinstance(p, TaravSystemPromptPOI) and p.code == "no-source"
+    assert any(isinstance(p, TaravSystemPromptSourceUnavailable)
                for p in pois)
-    assert any(isinstance(p, ProjectSystemPromptPOI) and p.code == "no-source"
+    assert any(isinstance(p, ProjectSystemPromptSourceUnavailable)
                for p in pois)
 
     opted_out = _project(tmp_path, tarav_system_prompt=False,
@@ -94,26 +101,26 @@ def test_custom_depot_produce_compile_and_drift(tmp_path: Path) -> None:
     assert document.compile()["written"]
     assert _pois(project) == ()
     agents.path.write_text("changed\n")
-    assert any(isinstance(p, AgentsMdProductPOI) and p.code == "product-drift"
+    assert any(isinstance(p, AgentsMdProductDrift)
                for p in _pois(project))
 
 
 def test_missing_and_stale_prompt_blocks(tmp_path: Path) -> None:
     project = _project(tmp_path)
     data = _source(project, tarav=False)
-    assert any(isinstance(p, TaravSystemPromptPOI) and p.code == "missing"
+    assert any(isinstance(p, TaravSystemPromptMissing)
                for p in _pois(project))
     data["blocks"].append({
         "type": entity(TaravSystemPrompt).name, "id": str(uuid4()),
         "label": "tarav", "content": ["old"],
     })
     project.agents.agents_md.source.write_text(json.dumps(data))
-    assert any(isinstance(p, TaravSystemPromptPOI) and p.code == "stale"
+    assert any(isinstance(p, TaravSystemPromptStale)
                for p in _pois(project))
 
     data["blocks"][0]["content"] = []
     project.agents.agents_md.source.write_text(json.dumps(data))
-    assert any(isinstance(p, ProjectSystemPromptPOI) and p.code == "empty"
+    assert any(isinstance(p, ProjectSystemPromptEmpty)
                for p in _pois(project))
 
 
@@ -124,16 +131,16 @@ def test_declared_alias_must_link_to_main_file(tmp_path: Path) -> None:
     agents.document().produce("tarav")
     agents.document().compile()
     alias = tmp_path / "CLAUDE.md"
-    assert any(isinstance(p, AgentsAliasPOI) and p.code == "missing"
+    assert any(isinstance(p, AgentsAliasMissing)
                for p in _pois(project))
     alias.write_text("copy")
-    assert any(isinstance(p, AgentsAliasPOI) and p.code == "not-symlink"
+    assert any(isinstance(p, AgentsAliasNotSymlink)
                for p in _pois(project))
     alias.unlink()
     other = tmp_path / "other.md"
     other.write_text("other")
     alias.symlink_to(other)
-    assert any(isinstance(p, AgentsAliasPOI) and p.code == "wrong-target"
+    assert any(isinstance(p, AgentsAliasWrongTarget)
                for p in _pois(project))
     alias.unlink()
     alias.symlink_to(agents.path)

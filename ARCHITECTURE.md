@@ -709,3 +709,20 @@ both ends where the POI base Type is developed: a reminder POI for each POI Type
 that declares no guidance, and a round trip from the rendered example to the view.
 <!-- tarav.breadcrumb 5c2663eff9561ef3a40b8394241107400cd89fa7942dee0a3037aa987699ff79 -->
 <!-- tarav.breadcrumb 991c6bf77c55b2771e7572d07530f5c5b1a4abb64adddb3a2c966c06ee52f442 -->
+
+### Atomic POI types
+
+A POI has no `code`. Each POI Type describes exactly one situation, so the
+Type alone says what was found; identity remains the Type plus the situation.
+Where one check can find several related situations, each is its own class
+under a family parent that is never raised (for example
+`TaravSystemPromptPOI` over `TaravSystemPromptSourceUnavailable`, `Missing`,
+`Duplicated` and `Stale`), so a family can still be selected with
+`isinstance`. A check that receives a string kind from a non-POI producer,
+such as a Skillware lint finding or a Breadcrumb audit concern, maps it to a
+POI Type through a small table next to the check. Reports group and filter by
+Type, check or identity. Three older finding classes that subclass the bare
+`POI` as dataclasses (`BreadcrumbFinding`, `ReferenceFinding` and the Diagram
+`Finding`) still carry their own `code` and are not yet converted.
+<!-- tarav.breadcrumb c84140acad62e5b48e8b95892c1a749f806863a560f1bfeb08e13596ee2a9286 -->
+<!-- tarav.breadcrumb 4bf190d70e6ffac17923764dc3e93dc2ba5bba11a5de09e38a7fe7fd927af7d3 -->

@@ -22,7 +22,7 @@ _PROVISIONAL = re.compile(r"tarav\.context [0-9a-f]{8}:[0-9a-f]{16}")
 
 
 class TestFailurePOI(CheckPOI):
-    """A test of the Project's suite that failed or errored."""
+    """Family, never raised: a test of the Project's suite did not pass."""
 
     __test__ = False
 
@@ -30,6 +30,28 @@ class TestFailurePOI(CheckPOI):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("e79b1433-b8ee-4be9-a46b-1d6437214f63"),
                           name="Tarav.Project.Dev.TestFailure", workflow=PROJECT_WORKFLOW_SHIP)
+
+
+class TestFailed(TestFailurePOI):
+    """A test of the Project's suite failed an assertion."""
+
+    __test__ = False
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("a8ca5b56-7ed2-40ea-aa79-3a4cf850358b"),
+                          name="Tarav.Project.Dev.TestFailure.Failed", workflow=PROJECT_WORKFLOW_SHIP)
+
+
+class TestErrored(TestFailurePOI):
+    """A test of the Project's suite raised an error."""
+
+    __test__ = False
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("c5fc0e77-32f1-46fe-8ca7-a3ffc167ff41"),
+                          name="Tarav.Project.Dev.TestFailure.Errored", workflow=PROJECT_WORKFLOW_SHIP)
 
 
 class TestSuiteCheck(Check):
@@ -64,8 +86,9 @@ class TestSuiteCheck(Check):
             match = _FAILURE.match(line)
             if match:
                 outcome, test, message = match.groups()
-                pois.append(TestFailurePOI(
-                    self, outcome.lower(), f"{test}: {message or outcome.lower()}",
+                case = TestFailed if outcome == "FAILED" else TestErrored
+                pois.append(case(
+                    self, f"{test}: {message or outcome.lower()}",
                     situation={"project": self.root.name, "test": test}))
         return CheckResult(self, status="completed", pois=pois,
                            data={"summary": lines[-1] if lines else ""})
@@ -100,7 +123,7 @@ class ProvisionalMarkersCheck(Check):
             if count:
                 relative = note.relative_to(self.folder).as_posix()
                 pois.append(ProvisionalMarkerPOI(
-                    self, "provisional", f"{relative}: {count} provisional markers",
+                    self, f"{relative}: {count} provisional markers",
                     situation={"note": relative}, details={"markers": count}))
         return CheckResult(self, status="completed", pois=pois)
 

@@ -66,6 +66,8 @@ class Output:
 # tarav.breadcrumb 4b43d55059fb05aa7715826b8ba7ff6dd20358261d63637de0766aef86c39765
 # tarav.breadcrumb 761a547484e330286e3bc9e3cbab88e035e8700c14e8a03f0837c2c137bae58e
 class GenerationPOI(IdentifiedPOI):
+    """Family, never raised: a recorded generation no longer matches its inputs or output."""
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -75,17 +77,87 @@ class GenerationPOI(IdentifiedPOI):
             workflow=SKW_CODE_WORKFLOW_SHIP,
         )
 
-    def __init__(self, kind: str, invocation: str, detail: str):
-        self.kind = kind
+    def __init__(self, invocation: str, detail: str):
         self.invocation = invocation
         self.detail = detail
         super().__init__(
-            kind,
             detail,
-            situation={"invocation": invocation, "kind": kind},
+            situation={"invocation": invocation},
             subject={"invocation": invocation},
             evidence={"detail": detail},
         )
+
+
+class GenerationBlockMissing(GenerationPOI):
+    """An invocation's generation block no longer exists."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("6903c605-92b0-4549-a51b-f374233e7a8b"),
+                          name="Tarav.Skillware.Generation.POI.BlockMissing", workflow=SKW_CODE_WORKFLOW_SHIP)
+
+
+class GenerationBlockChanged(GenerationPOI):
+    """An invocation's generation block changed since it was recorded."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("630cfb35-58d4-46b2-a232-3e3ad5a0d97a"),
+                          name="Tarav.Skillware.Generation.POI.BlockChanged", workflow=SKW_CODE_WORKFLOW_SHIP)
+
+
+class GenerationOutputMissing(GenerationPOI):
+    """An invocation has no recorded output."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("b4a55172-aa7b-465f-a1c4-7533958b18a5"),
+                          name="Tarav.Skillware.Generation.POI.OutputMissing", workflow=SKW_CODE_WORKFLOW_SHIP)
+
+
+class GenerationOutputUnavailable(GenerationPOI):
+    """An invocation's output file cannot be read."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("9134f086-8f88-4100-9b23-7713d7084c19"),
+                          name="Tarav.Skillware.Generation.POI.OutputUnavailable", workflow=SKW_CODE_WORKFLOW_SHIP)
+
+
+class GenerationOutputChanged(GenerationPOI):
+    """An invocation's output file differs from its recorded output."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("da7e7187-1407-4811-ad73-9f77eeacbe0d"),
+                          name="Tarav.Skillware.Generation.POI.OutputChanged", workflow=SKW_CODE_WORKFLOW_SHIP)
+
+
+class GenerationDependencyMissing(GenerationPOI):
+    """An invocation depends on an invocation that no longer exists."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("178e8397-3d9a-40f1-b5a3-e37c72fc581e"),
+                          name="Tarav.Skillware.Generation.POI.DependencyMissing", workflow=SKW_CODE_WORKFLOW_SHIP)
+
+
+class GenerationDependencyChanged(GenerationPOI):
+    """An invocation's dependency produced different output since it was recorded."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("a9a0c920-3cee-4db6-9de8-75518db9684e"),
+                          name="Tarav.Skillware.Generation.POI.DependencyChanged", workflow=SKW_CODE_WORKFLOW_SHIP)
+
+
+class GenerationDependencyNeedsReview(GenerationPOI):
+    """An upstream invocation has POIs, so this invocation needs review."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("aef5e66f-5b1c-44cf-bf45-d74a1b1ab4f0"),
+                          name="Tarav.Skillware.Generation.POI.DependencyNeedsReview", workflow=SKW_CODE_WORKFLOW_SHIP)
 
 
 class Generation:
@@ -161,31 +233,31 @@ class Generation:
         findings: list[GenerationPOI] = []
         stale: set[str] = set()
         for identity, record in self.invocations.items():
-            def report(kind: str, detail: str) -> None:
-                findings.append(GenerationPOI(kind, identity, detail))
+            def report(case: type[GenerationPOI], detail: str) -> None:
+                findings.append(case(identity, detail))
                 stale.add(identity)
 
             block = self.blocks.get(record["block"])
             if block is None:
-                report("missing-block", record["block"])
+                report(GenerationBlockMissing, record["block"])
             elif block.fingerprint != record["block_hash"]:
-                report("block-changed", block.name)
+                report(GenerationBlockChanged, block.name)
             if record["output"] is None:
-                report("missing-output", "Invocation has no recorded output")
+                report(GenerationOutputMissing, "Invocation has no recorded output")
             if record["output_path"] is not None:
                 try:
                     current = Path(record["output_path"]).read_text()
                 except (OSError, UnicodeError) as exc:
-                    report("output-unavailable", str(exc))
+                    report(GenerationOutputUnavailable, str(exc))
                 else:
                     if current != record["output"]:
-                        report("output-changed", record["output_path"])
+                        report(GenerationOutputChanged, record["output_path"])
             for name, dependency in record["dependencies"].items():
                 source = self.invocations.get(dependency["invocation"])
                 if source is None:
-                    report("missing-dependency", name)
+                    report(GenerationDependencyMissing, name)
                 elif _hash(source["output"]) != dependency["hash"]:
-                    report("dependency-changed", name)
+                    report(GenerationDependencyChanged, name)
         # Propagate review standing even when downstream bytes are unchanged.
         while True:
             affected = {
@@ -197,7 +269,7 @@ class Generation:
             if not affected:
                 break
             for identity in sorted(affected):
-                findings.append(GenerationPOI("dependency-needs-review", identity,
+                findings.append(GenerationDependencyNeedsReview(identity,
                                               "An upstream invocation has POIs"))
             stale.update(affected)
         return tuple(findings)

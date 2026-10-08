@@ -65,7 +65,6 @@ class IdentifiedPOI(POI):
 
     def __init__(
         self,
-        code: str,
         message: str,
         *,
         situation: Mapping[str, object] | LiteRecord,
@@ -73,11 +72,9 @@ class IdentifiedPOI(POI):
         evidence: dict | None = None,
     ) -> None:
         super().__init__()
-        if not isinstance(code, str) or not code:
-            raise ValueError("IdentifiedPOI requires a nonempty code")
+        # The Type states which situation was found; there is no case label.
         if not isinstance(message, str):
             raise TypeError("IdentifiedPOI message must be text")
-        self.code = code
         self.message = message
         self._subject = canonical(subject or {})
         self._evidence = canonical(evidence or {})
@@ -106,7 +103,6 @@ class IdentifiedPOI(POI):
             "type": entity(type(self)).name,
             "class_id": self.class_id,
             "id": self.identity,
-            "code": self.code,
             "message": self.message,
             "situation": self.situation,
             "subject": self.subject,
@@ -134,16 +130,14 @@ class NotificationPOI(POI):
             workflow=POI_WORKFLOW_SHIP,
         )
 
-    def __init__(self, code: str, message: str, *, details: dict | None = None):
+    def __init__(self, message: str, *, details: dict | None = None):
         super().__init__()
-        self.code = code
         self.message = message
         self.details = deepcopy(details or {})
 
     def as_dict(self) -> dict[str, object]:
         return {
             "type": entity(type(self)).name,
-            "code": self.code,
             "message": self.message,
             "details": deepcopy(self.details),
         }
@@ -177,7 +171,7 @@ class POIError(Exception):
         name = entity(type(poi)).name
         if getattr(poi, "check", None) is not None:
             name = entity(type(poi.check)).name
-        super().__init__(f"{name}: {getattr(poi, 'identity', getattr(poi, 'code', 'POI'))}")
+        super().__init__(f"{name}: {getattr(poi, 'identity', 'POI')}")
 
 
 class POICollector:
