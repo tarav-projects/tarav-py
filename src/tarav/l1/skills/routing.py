@@ -45,6 +45,8 @@ SKILLS_GLOBAL_DEPOTS_DIR = ("skills", "depots")
 
 
 class SkillsSelectionNotification(NotificationPOI):
+    """A skills selection changed and its new targets may need inspection."""
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

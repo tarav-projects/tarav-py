@@ -8,13 +8,14 @@ import json
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.l0.kernel import entity
 from tarav.l1.breadcrumbs.commands import (
     register_audit_command,
     register_submission_command,
 )
 from tarav.l1.breadcrumbs import BreadcrumbError, BreadcrumbStore
 from tarav.l1.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow
+from tarav.l1.poi.rendering import POIRenderError, POISelection, renderer
+from tarav.l1.poi.reporting import retain_presented_pois
 
 from .workflow import ChatlasContextRequest
 
@@ -89,6 +90,7 @@ def register_chatlas_context_audit(
         parser.set_defaults(commit=None, repo=None)
 
 
+# tarav.breadcrumb 1e8258ee6485cebe0f7d899a1c691162632236275a5acb2388a9a94e56c621e7
 def _audit_dispatch(args: argparse.Namespace) -> int:
     if args.commit is None:
         if args.surface is None or args.repo is not None:
@@ -112,14 +114,21 @@ def _audit_dispatch(args: argparse.Namespace) -> int:
     payload["command"] = "tarav breadcrumbs audit chatlas-context"
     payload["repository"] = str(Path(args.repo).expanduser().resolve())
     payload["commit"] = args.commit
+    retain_presented_pois(result.pois, kind="breadcrumbs-commit",
+                          name="chatlas-context", root=args.repo)
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(f"status: {payload['status']}")
         print(f"commit: {args.commit}")
         print(f"breadcrumbs: {len(result.context.breadcrumbs)}")
-        for finding in result.findings:
-            print(f"poi: {entity(type(finding)).name}: {finding.message}")
+        if result.pois:
+            try:
+                print(renderer(args.renderer).render(
+                    POISelection.from_pois(result.pois, title="Breadcrumb POIs"),
+                    level=args.level))
+            except POIRenderError as exc:
+                raise CliError(str(exc)) from exc
     return 0 if result.ok else 1
 
 

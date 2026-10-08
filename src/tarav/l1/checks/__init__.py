@@ -130,6 +130,7 @@ class CheckPOI(IdentifiedPOI):
 
 
 # tarav.breadcrumb 17b06b58dc7c456e499067ef1304e2930c95b04b89c82e74b3a378d48ca7789a
+# tarav.breadcrumb 66d8e93f85ee6987e1291238add75e2e188bc27096a12a744560191a7e2a8fdb
 class SituationCheck(Check):
     """A Check whose evaluation and POI identity share one input snapshot."""
 
@@ -164,7 +165,7 @@ class SituationCheck(Check):
             }),
         )
 
-    def finding(
+    def poi(
         self,
         poi_type: type[CheckPOI],
         *,
@@ -319,7 +320,8 @@ class CheckRun(TaravObject, POIProvider):
                 }[by]
                 row = groups.setdefault(key, {
                     "key": key, "by": by, "pois": 0, "checks": 0,
-                    "open": 0, "blessed": 0, "example": getattr(poi, "message", ""),
+                    "open": 0, "blessed": 0, "example": poi.summary(),
+                    "id": getattr(poi, "identity", None),
                     "types": [], "_results": set(),
                 })
                 row["pois"] += 1
@@ -406,32 +408,6 @@ class CheckSuite(TaravObject):
         return run
 
 
-def render_check_run(report: Mapping[str, object]) -> str:
-    """Render a bounded, grouped CheckRun report without dumping every result."""
-    summary = report["summary"]
-    lines = [f"{summary['checks']} checks, {summary['incomplete']} incomplete, "
-             f"{summary['pois']} POIs"]
-    if summary["pois"]:
-        # One instruction for the whole report, ahead of the POIs it concerns.
-        from tarav.l1.poi.reporting import context_instruction
-
-        lines += ["", *context_instruction(report.get("context_example")), ""]
-    for row in report["items"]:
-        lines.append(f"  {row['key']}: {row['pois']} POIs from {row['checks']} checks "
-                     f"({row['open']} open, {row['blessed']} blessed)"
-                     + (f" — {row['example']}" if row["example"] else ""))
-    lines.append("Checks by type: " + ", ".join(
-        f"{name} {data['runs']} ({data['by_status']})"
-        for name, data in summary["by_check"].items()) if summary["by_check"] else
-        "Checks by type: none")
-    lines.append("POIs by type: " + ", ".join(
-        f"{name} {count}" for name, count in summary["by_type"].items())
-        if summary["by_type"] else "POIs by type: none")
-    if report["next_offset"] is not None:
-        lines.append(f"Next offset: {report['next_offset']}")
-    return "\n".join(lines)
-
-
 def run_checks(checks: Iterable[Check]) -> tuple[CheckResult, ...]:
     """Run selected checks exactly once; exceptions remain visible to callers."""
     return tuple(check.run() for check in checks)
@@ -469,5 +445,4 @@ __all__ = [
     "SituationCheck",
     "check_report",
     "run_checks",
-    "render_check_run",
 ]

@@ -9,9 +9,9 @@ from tarav.l1.checks import (
     CheckSuite,
     Situation,
     SituationCheck,
-    render_check_run,
 )
 from tarav.l1.poi import POI, NotificationPOI, POICollector, POIError
+from tarav.l1.poi.rendering import POISelection, renderer
 
 
 class ExamplePOI(CheckPOI):
@@ -79,7 +79,7 @@ class DifferenceCheck(SituationCheck):
     def _run(self):
         pois = ()
         if self.situation["before"] != self.situation["after"]:
-            pois = (self.finding(
+            pois = (self.poi(
                 ExamplePOI,
                 message="The values differ.",
             ),)
@@ -172,6 +172,7 @@ def test_suite_catches_crashing_check_and_keeps_later_results():
     assert not result.clean()
 
 
+# tarav.breadcrumb c1d8e1fc5d14330556280f20990a300b3f0ce01766b40e42602933df7a7be80d
 def test_run_groups_pois_by_type_and_identity_without_codes():
     check = ExampleCheck("one", [])
     first = ExamplePOI(check, "First", situation={"subject": "one"})
@@ -190,7 +191,7 @@ def test_run_groups_pois_by_type_and_identity_without_codes():
     with pytest.raises(ValueError):
         run.report(by="code")
     assert len(run.report(by="identity", type="Tarav.POI.Notification")["items"]) == 1
-    assert "POIs by type" in render_check_run(run.report())
+    assert "POIs by type" in renderer().render(POISelection.from_check_report(run.report()))
 
 
 def test_run_pages_groups_and_blessings_do_not_hide_other_pois():

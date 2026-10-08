@@ -7,6 +7,7 @@ was shown, so that the agent can ask for its context afterwards.
 from __future__ import annotations
 
 import inspect
+import hashlib
 import json
 import logging
 import os
@@ -47,9 +48,14 @@ def context_instruction(example_id: str | None = None) -> list[str]:
         f"  tarav context --id <poi-id> --view {REPORTED_POI_VIEW}",
     ]
     if example_id:
-        lines.append(f"  e.g. tarav context --id {example_id[:EXAMPLE_ID_LENGTH]} "
-                     f"--view {REPORTED_POI_VIEW}")
-    lines.append("List POI ids with `tarav check --project --by identity`; "
+        is_poi_id = (len(example_id) == 64
+                     and all(char in "0123456789abcdef" for char in example_id))
+        short = example_id[:EXAMPLE_ID_LENGTH] if is_poi_id else example_id
+        command = f"tarav context --id {short}"
+        if is_poi_id:
+            command += f" --view {REPORTED_POI_VIEW}"
+        lines.append(f"  e.g. {command}")
+    lines.append("Use the reporting command's `--json` output for full POI ids; "
                  "see `tarav context --help` for navigation and other views.")
     return lines
 
@@ -65,6 +71,18 @@ def reports_root() -> Path:
     home = os.getenv("TARAV_HOME")
     base = Path(home).expanduser() if home else Path.home() / ".tarav"
     return base.resolve() / "check-reports"
+
+
+# tarav.breadcrumb 2a87834a250e696d4e8f2f8fb6b8a04fbf7575471fdfefecf206b512719d7fe5
+def retain_presented_pois(
+    pois: Iterable[POI], *, kind: str, name: str, root: str | Path,
+) -> bool:
+    """Keep a non-Project command's displayed POIs openable through Context."""
+    location = Path(root).expanduser().resolve()
+    scope_id = hashlib.sha256(f"{kind}:{location}".encode()).hexdigest()[:24]
+    return ReportedPOIStore().retain(
+        pois, project={"id": f"{kind}-{scope_id}", "name": name,
+                       "root": str(location), "kind": kind})
 
 
 def _class_record(cls: type) -> dict[str, object]:
@@ -186,12 +204,12 @@ class ReportedPOIContext(ContextFolder):
                         description="What this kind of POI is, and where its class is defined.")
             builder.add("raised-by", opener=lambda: _value(record.get("raised_by")),
                         description="The check that raised it, and where that check is defined.")
-            builder.add("finding", opener=lambda: _value({
+            builder.add("occurrence", opener=lambda: _value({
                 "id": record.get("id"), "message": record.get("message"),
                 "situation": record.get("situation"),
                 "details": record.get("details"), "project": subject.project,
                 "reported_at": subject.reported_at,
-            }), description="What exactly was found in this instance.")
+            }), description="The situation reported in this instance.")
             builder.add("read-first", opener=lambda: _value(
                 guidance.get("read_first") or
                 ["This POI Type declares nothing to read; inspect poi-type and raised-by."]),
@@ -243,5 +261,6 @@ __all__ = [
     "context_instruction",
     "guidance_of",
     "reported_record",
+    "retain_presented_pois",
     "reports_root",
 ]

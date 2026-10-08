@@ -130,7 +130,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
     ) -> tuple[BreadcrumbAuditConcern, ...]:
         if not isinstance(request, ChatlasContextRequest):
             raise TypeError("chatlas-context requires a ChatlasContextRequest")
-        findings = [
+        concerns = [
             BreadcrumbAuditConcern(
                 "chatlas-context-marker-unsubmitted",
                 "Active tarav.context marker was not submitted as a Breadcrumb.",
@@ -138,7 +138,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             )
             for marker in _markers(context.surface.text, context.surface.language)
         ]
-        findings.extend(
+        concerns.extend(
             BreadcrumbAuditConcern(
                 "chatlas-context-marker-malformed",
                 "Surface comment contains a malformed tarav.context marker.",
@@ -159,7 +159,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             ]
             if not attachments:
                 if breadcrumb.attachments:
-                    findings.append(
+                    concerns.append(
                         BreadcrumbAuditConcern(
                             "chatlas-context-attachment-missing",
                             "Breadcrumb has no Chatlas-context attachment.",
@@ -169,7 +169,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                     )
                 continue
             if len(attachments) > 1:
-                findings.append(
+                concerns.append(
                     BreadcrumbAuditConcern(
                         "chatlas-context-attachment-multiple",
                         "Breadcrumb has multiple Chatlas-context attachments.",
@@ -207,7 +207,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                 resolution = resolve_chat_turn_ref(turns, locator)
                 standing = resolution.get("standing")
                 if standing != "MATCHED":
-                    findings.append(
+                    concerns.append(
                         BreadcrumbAuditConcern(
                             "chatlas-context-turn-unavailable",
                             f"Retained Chatlas Turn is {standing}.",
@@ -218,7 +218,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                     continue
                 turn = resolution.get("turn")
                 if not isinstance(turn, dict) or turn.get("side") != "user":
-                    findings.append(
+                    concerns.append(
                         BreadcrumbAuditConcern(
                             "chatlas-context-turn-not-user",
                             "Chatlas-context attachment does not resolve to a User Turn.",
@@ -227,7 +227,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                         )
                     )
             except (CliError, OSError, TypeError, ValueError) as exc:
-                findings.append(
+                concerns.append(
                     BreadcrumbAuditConcern(
                         "chatlas-context-attachment-invalid",
                         str(exc),
@@ -235,7 +235,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                         breadcrumb.line,
                     )
                 )
-        return tuple(findings)
+        return tuple(concerns)
 
 
 def _markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:
@@ -344,6 +344,7 @@ def _markdown_sessions(text: str) -> dict[str, SessionDeclaration]:
     return declarations
 
 
+# tarav.breadcrumb bd346b29e65ff0f3772f5d10187407df56e206c24fb9717b8b4f7f5af8ed45a8
 def _resolve_chatlas_turns(
     markers: tuple[ChatlasContextMarker, ...],
     *,
@@ -388,17 +389,17 @@ def _resolve_chatlas_turns(
             raise BreadcrumbError(
                 f"Session alias {alias} does not match resolved Chatlas identity"
             )
-        for finding in result.findings:
-            if finding.turn.get("side") != "user":
+        for match in result.matches:
+            if match.turn.get("side") != "user":
                 raise BreadcrumbError(
-                    f"Breadcrumb context must resolve to a User Turn: {finding.prefix}"
+                    f"Breadcrumb context must resolve to a User Turn: {match.prefix}"
                 )
-            records[(alias, finding.prefix)] = {
+            records[(alias, match.prefix)] = {
                 "type": entity(ChatlasTurnReference).name,
                 "locator": {
                     "session_identity": identity,
-                    "turn_address": finding.turn.get("turn_address"),
-                    "turn_hash": finding.turn.get("turn_hash"),
+                    "turn_address": match.turn.get("turn_address"),
+                    "turn_hash": match.turn.get("turn_hash"),
                 },
             }
     return records

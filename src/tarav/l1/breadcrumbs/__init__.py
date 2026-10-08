@@ -10,14 +10,18 @@ from .auditing import (
 )
 from .integrations import BreadcrumbCommandAdapter, BreadcrumbIntegration
 from .model import Breadcrumb, BreadcrumbId, LocatorObservation
+# tarav.breadcrumb 9cf8b90c47044379094d8f71ed551105c57120dc9a16e5e12dcc61a22910d1aa
 from .store import (
     BreadcrumbError,
-    BreadcrumbFinding,
+    BreadcrumbResolutionPOI,
+    BreadcrumbPositionMissing,
+    BreadcrumbPositionAmbiguous,
     BreadcrumbResolution,
     BreadcrumbStore,
     breadcrumb_label,
     default_breadcrumbs_root,
     parse_breadcrumb_label,
+    resolution_concern_kind,
 )
 from .surfaces import (
     BreadcrumbSurface,
@@ -42,7 +46,9 @@ __all__ = [
     "BreadcrumbAuditResult",
     "BreadcrumbCommandAdapter",
     "BreadcrumbError",
-    "BreadcrumbFinding",
+    "BreadcrumbResolutionPOI",
+    "BreadcrumbPositionMissing",
+    "BreadcrumbPositionAmbiguous",
     "BreadcrumbResolution",
     "BreadcrumbStore",
     "BreadcrumbSurface",
@@ -60,5 +66,6 @@ __all__ = [
     "breadcrumb_label",
     "default_breadcrumbs_root",
     "parse_breadcrumb_label",
+    "resolution_concern_kind",
     "submit_annotations",
 ]

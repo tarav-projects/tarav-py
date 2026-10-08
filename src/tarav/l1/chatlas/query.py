@@ -71,7 +71,8 @@ class ChatlasQuery:
 
 
 @dataclass(frozen=True, slots=True)
-class ChatlasTurnFinding:
+# tarav.breadcrumb 2dc9224fb6c140d75772053bcc581dd0794f9157464ad4eaef81b7d74f94f2a8
+class ChatlasTurnMatch:
     prefix: str
     turn: JsonObject
     messages: tuple[JsonObject, ...]
@@ -90,13 +91,13 @@ class ChatlasTurnFinding:
 class ChatlasQueryResult:
     query: ChatlasQuery
     session: JsonObject
-    findings: tuple[ChatlasTurnFinding, ...]
+    matches: tuple[ChatlasTurnMatch, ...]
 
     def to_dict(self) -> JsonObject:
         return {
             "query": self.query.to_dict(),
             "session": deepcopy(self.session),
-            "findings": [item.to_dict() for item in self.findings],
+            "matches": [item.to_dict() for item in self.matches],
         }
 
 
@@ -152,22 +153,22 @@ class ChatlasQueryEngine:
                     )
                 events[address] = event
 
-        findings = [
-            ChatlasTurnFinding(
+        matches = [
+            ChatlasTurnMatch(
                 prefix,
                 turn,
                 _messages_for_turn(turn, messages),
                 _started_at_for_turn(turn, events),
             )
-            for prefix, turn in _finding_inputs(query, selected)
+            for prefix, turn in _match_inputs(query, selected)
         ]
         if not query.turn_hash_prefixes:
-            findings = _filter_discovery_text(findings, query)
+            matches = _filter_discovery_text(matches, query)
         header = self.reader.model_header()
         session = header.get("session")
         if not isinstance(session, dict):
             raise ChatlasQueryError("Normal Model header has no Session")
-        return ChatlasQueryResult(query, deepcopy(session), tuple(findings))
+        return ChatlasQueryResult(query, deepcopy(session), tuple(matches))
 
 
 def _select_exact_turns(
@@ -192,7 +193,7 @@ def _select_exact_turns(
     return selected
 
 
-def _finding_inputs(
+def _match_inputs(
     query: ChatlasQuery, selected: list[JsonObject]
 ) -> Iterator[tuple[str, JsonObject]]:
     if query.turn_hash_prefixes:
@@ -217,14 +218,14 @@ def _select_discovery_turns(
 
 
 def _filter_discovery_text(
-    findings: list[ChatlasTurnFinding], query: ChatlasQuery
-) -> list[ChatlasTurnFinding]:
+    matches: list[ChatlasTurnMatch], query: ChatlasQuery
+) -> list[ChatlasTurnMatch]:
     if query.text_contains is None:
-        return findings
+        return matches
     needle = query.text_contains.casefold()
     selected = [
         item
-        for item in findings
+        for item in matches
         if needle
         in "\n".join(
             text
@@ -326,5 +327,5 @@ __all__ = [
     "ChatlasQueryEngine",
     "ChatlasQueryError",
     "ChatlasQueryResult",
-    "ChatlasTurnFinding",
+    "ChatlasTurnMatch",
 ]

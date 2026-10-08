@@ -8,14 +8,19 @@ import sys
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.l1.checks import CheckResult, render_check_run
+from tarav.l1.checks import CheckResult
+from tarav.l1.poi.rendering import (
+    DEFAULT_POI_RENDERER, POISelection, renderer, renderers,
+)
 
 
 # tarav.breadcrumb a671fcec806bcecf6adccaf70a7f2c991f04b2685ea24f7056aa3cf53f820f8e
+# tarav.breadcrumb 31d6a87727d93d79dc92f3804e9916b37f4a8d7639862d3ef2fe9144dc778ee1
 def report_project_checks(
     project, *, json_output: bool = False, by: str = "type", sort: str = "run",
     limit: int = 20, offset: int = 0, poi_type: str | None = None,
-    check: str | None = None,
+    check: str | None = None, renderer_name: str = DEFAULT_POI_RENDERER,
+    level: str = "line",
 ) -> int:
     """Run a Project's suite and show a bounded grouped report."""
     def progress(result: CheckResult) -> None:
@@ -30,11 +35,11 @@ def report_project_checks(
         print(f"error: {exc}", file=sys.stderr)
         return 2
     report = run.report(by=by, sort=sort, limit=limit, offset=offset,
-                        type=poi_type, check=check)
+                        type=poi_type, check=check, detail=level == "record")
     if json_output:
         print(json.dumps(report, indent=2, default=str))
     else:
-        print(render_check_run(report))
+        print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
     return 0 if run.clean() else 1
 
 
@@ -42,7 +47,7 @@ def _code(args: argparse.Namespace) -> str:
     options = {
         "json_output": args.json, "by": args.by, "sort": args.sort,
         "limit": args.limit, "offset": args.offset, "poi_type": args.poi_type,
-        "check": args.check_type,
+        "check": args.check_type, "renderer_name": args.renderer, "level": args.level,
     }
     return (
         "from tarav.l3.check import report_project_checks\n"
@@ -86,6 +91,10 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--offset", type=int, default=0, help="First group to show.")
     parser.add_argument("--type", dest="poi_type", help="Filter by exact POI Type name.")
     parser.add_argument("--check", dest="check_type", help="Filter by exact Check Type name.")
+    parser.add_argument("--renderer", choices=tuple(item.name for item in renderers()),
+                        default=DEFAULT_POI_RENDERER, help="Named POI renderer.")
+    parser.add_argument("--level", choices=("line", "record", "context"), default="line",
+                        help="POI detail level for rendered output.")
     parser.set_defaults(handler=_check)
 
 

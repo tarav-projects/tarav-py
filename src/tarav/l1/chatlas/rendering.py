@@ -1,4 +1,4 @@
-"""Named renderers for structured Chatlas Query findings."""
+"""Named renderers for structured Chatlas Query matches."""
 
 from __future__ import annotations
 
@@ -98,6 +98,7 @@ class ChatlasRendererRegistry:
         return tuple(self._renderers.values())
 
 
+# tarav.breadcrumb e6bad0e15d2bd92d4da898aae6f4fdf554811bdba84ae566e9b5939abf7e34d6
 def _default_renderer(result: ChatlasQueryResult, options: RenderOptions) -> str:
     if options:
         names = ", ".join(sorted(options))
@@ -105,13 +106,13 @@ def _default_renderer(result: ChatlasQueryResult, options: RenderOptions) -> str
             f"{DEFAULT_CHATLAS_RENDERER} accepts no Renderer options: {names}"
         )
     rendered: list[str] = []
-    for finding in result.findings:
-        side = finding.turn.get("side")
+    for match in result.matches:
+        side = match.turn.get("side")
         if side not in {"user", "agent"}:
             raise ChatlasRenderError("Chat.Turn has no renderable side")
         title = "User" if side == "user" else "Agent"
-        sections = [f"## {title} Turn `{finding.prefix}`"]
-        for message in finding.messages:
+        sections = [f"## {title} Turn `{match.prefix}`"]
+        for message in match.messages:
             text = message.get("text")
             if not isinstance(text, str):
                 raise ChatlasRenderError("Chat.Message has no renderable text")
@@ -143,15 +144,15 @@ def _inlined_capture_markdown_renderer(
     alias = _session_alias(result)
 
     references: list[str] = []
-    for finding in result.findings:
-        if finding.turn.get("side") != "user":
+    for match in result.matches:
+        if match.turn.get("side") != "user":
             raise ChatlasRenderError(
                 "Inlined.Capture references must resolve to User Turns"
             )
-        turn_hash = finding.turn.get("turn_hash")
+        turn_hash = match.turn.get("turn_hash")
         if not isinstance(turn_hash, str) or _FULL_HASH.fullmatch(turn_hash) is None:
             raise ChatlasRenderError("Chat.Turn has no renderable hash")
-        prefix_length = max(16, len(finding.prefix))
+        prefix_length = max(16, len(match.prefix))
         references.append(f"<!-- tarav.context {alias}:{turn_hash[:prefix_length]} -->")
     return "\n".join(references)
 
@@ -166,18 +167,18 @@ def _turn_ledger_renderer(
             f"{TURN_LEDGER_RENDERER} accepts no Renderer options: {names}"
         )
     rows: list[str] = []
-    for finding in result.findings:
-        side = finding.turn.get("side")
+    for match in result.matches:
+        side = match.turn.get("side")
         if side not in {"user", "agent"}:
             raise ChatlasRenderError("Chat.Turn has no renderable side")
         text = " ".join(
             " ".join(value.split())
-            for message in finding.messages
+            for message in match.messages
             if isinstance((value := message.get("text")), str)
         )
         rows.append(
-            f"{_ledger_timestamp(finding.started_at)}  "
-            f"{finding.prefix}  {side:<5}  {text[:160]}"
+            f"{_ledger_timestamp(match.started_at)}  "
+            f"{match.prefix}  {side:<5}  {text[:160]}"
         )
     return "\n".join(rows)
 
@@ -189,9 +190,9 @@ def _ledger_timestamp(value: str | None) -> str:
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
-        raise ChatlasRenderError("Turn finding has an invalid started_at") from exc
+        raise ChatlasRenderError("Turn match has an invalid started_at") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ChatlasRenderError("Turn finding started_at has no timezone")
+        raise ChatlasRenderError("Turn match started_at has no timezone")
     return parsed.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%MZ")
 
 
@@ -200,7 +201,7 @@ _REGISTRY.register(
     ChatlasRenderer(
         DEFAULT_CHATLAS_RENDERER,
         "text/markdown",
-        "Readable projection of resolved Chatlas Turn findings and their Messages.",
+        "Readable projection of resolved Chatlas Turn matches and their Messages.",
         _default_renderer,
     )
 )

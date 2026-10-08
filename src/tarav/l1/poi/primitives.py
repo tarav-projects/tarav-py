@@ -35,6 +35,7 @@ def fingerprint(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
+# tarav.breadcrumb 0e47f7f09769ba32c37969a636c8480ceef794d03f21b3306cfed321b6c1bdf7
 class POI(TaravObject):
     """A point of interest. Specialized workflows define its meaning."""
 
@@ -49,6 +50,13 @@ class POI(TaravObject):
 
     def as_dict(self) -> dict[str, object]:
         return {"type": entity(type(self)).name}
+
+    def summary(self) -> str:
+        """One POI's meaning; layout belongs to a renderer."""
+        message = getattr(self, "message", None)
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+        return (type(self).__doc__ or "").strip() or entity(type(self)).name
 
 
 class IdentifiedPOI(POI):

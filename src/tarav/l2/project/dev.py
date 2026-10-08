@@ -161,16 +161,19 @@ class PythonPackageProject(Project):
             return CheckSuite([super().suite(), TestSuiteCheck(self.obj.root),
                                *self.obj._poi_contract_checks()], name=self.obj.name)
 
+# tarav.breadcrumb d72b348467b8de83b8b8de698550a5382b36011821f0192de499492b38bb2e7d
     def _poi_contract_checks(self) -> list[Check]:
         """Where the POI base Type itself is developed, check the POI contract."""
         from tarav.l1.checks.poi_contract import (
-            POIContextRoundTripCheck, POIGuidanceCheck, defined_under,
+            POIContextRoundTripCheck, POIGuidanceCheck, POIRenderCoverageCheck,
+            defined_under,
         )
         from tarav.l1.poi import POI
 
         if not defined_under(POI, self.root):
             return []
-        return [POIGuidanceCheck(self.root), POIContextRoundTripCheck()]
+        return [POIGuidanceCheck(self.root), POIRenderCoverageCheck(self.root),
+                POIContextRoundTripCheck()]
 
 
 class DocsProject(Project):

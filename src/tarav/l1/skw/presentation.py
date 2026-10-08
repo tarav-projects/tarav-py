@@ -8,6 +8,10 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
+from tarav.l1.poi.rendering import (
+    DEFAULT_POI_RENDERER, JSON_LINES_POI_RENDERER, POISelection, renderer,
+)
+
 
 def add_output_mode(parser: argparse.ArgumentParser) -> None:
     modes = parser.add_mutually_exclusive_group()
@@ -187,77 +191,51 @@ def render_loading_context(result: dict[str, Any]) -> str:
     return "\n".join(rows)
 
 
-def _short_poi_type(value: str) -> str:
-    return value.removeprefix("Tarav.SKW.POI.")
+# tarav.breadcrumb cbdad46c901e98a6e0cd55696e3cebc0712f8b25281094227a47d13f5c9ae1c7
+def render_poi_report(result: dict[str, Any], *, operation: str,
+                      renderer_name: str = DEFAULT_POI_RENDERER,
+                      level: str = "line") -> str:
+    selection = POISelection.from_collector_report(result, title=operation)
+    rendered = renderer(renderer_name).render(selection, level=level)
+    store_observations = result.get("store_findings") or []
+    if store_observations and renderer_name == DEFAULT_POI_RENDERER:
+        rendered += f"\nblessing-store observations: {len(store_observations)}"
+    return rendered
 
 
-def render_poi_report(result: dict[str, Any], *, operation: str) -> str:
-    rows = [
-        f"{operation}: {result['total']} POIs",
-        f"showing: {result['shown']} of {result['matching']} matching",
-    ]
-    blessings = result.get("by_blessing") or {}
-    if blessings:
-        rows.append("blessings: " + ", ".join(
-            f"{name}={count}" for name, count in sorted(blessings.items())
-        ))
-    for item in result.get("items") or []:
-        standing = (item.get("blessing") or {}).get("status", "unblessed")
-        address = item["id"][:12]
-        if "index" in item:
-            address += f":{item['index']}"
-        rows.append(
-            f"  {_short_poi_type(item['type'])}  {address}  {standing}"
-        )
-        subject = _details(item.get("subject") or {})
-        if subject:
-            rows.append(f"    {subject}")
-    if result.get("next_offset") is not None:
-        rows.append(f"next offset: {result['next_offset']}")
-    store_findings = result.get("store_findings") or []
-    if store_findings:
-        rows.append(f"blessing-store findings: {len(store_findings)}")
-    return "\n".join(rows)
-
-
-def render_skill_operation(operation: str, result: dict[str, Any]) -> str:
+def render_skill_operation(operation: str, result: dict[str, Any], *,
+                           renderer_name: str = DEFAULT_POI_RENDERER,
+                           level: str = "line") -> str:
     if operation in {"check", "build"}:
-        return render_poi_report(result, operation=operation)
+        return render_poi_report(result, operation=operation,
+                                 renderer_name=renderer_name, level=level)
     if operation == "deploy":
+        if renderer_name == JSON_LINES_POI_RENDERER:
+            return "\n".join((
+                json.dumps({"kind": "deployment", "destination": result["destination"],
+                            "files": len(result.get("files") or []),
+                            "dependencies": len(result.get("dependencies") or [])}),
+                render_poi_report(result["findings"], operation="deploy check",
+                                  renderer_name=renderer_name, level=level),
+            ))
         rows = [
             f"deployed: {result['destination']}",
             f"files: {len(result.get('files') or [])}",
             f"consumer dependencies: {len(result.get('dependencies') or [])}",
             "",
-            render_poi_report(result["findings"], operation="deploy check"),
+            render_poi_report(result["findings"], operation="deploy check",
+                              renderer_name=renderer_name, level=level),
         ]
         return "\n".join(rows)
     raise ValueError(f"No skill operation renderer for {operation}")
 
 
-def render_poi(result: dict[str, Any]) -> str:
-    blessing = result.get("blessing") or {}
-    rows = [
-        f"POI: {_short_poi_type(result['type'])}",
-        f"id: {result['id']}",
-        f"blessable: {'yes' if 'blessing' in result else 'no'}",
-        f"blessing: {blessing.get('status', 'unblessed')}",
-    ]
-    if "index" in result:
-        rows.append(f"emission index: {result['index']}")
-    situation = _details(result.get("situation") or {})
-    if situation:
-        rows.append(f"situation: {situation}")
-    subject = _details(result.get("subject") or {})
-    if subject:
-        rows.append(f"subject: {subject}")
-    evidence = _details(result.get("evidence") or {})
-    if evidence:
-        rows.append(f"evidence: {evidence}")
-    source = (result.get("help") or {}).get("source_path")
-    if source:
-        rows.append(f"help: {source}")
-    return "\n".join(rows)
+def render_poi(result: dict[str, Any], *,
+               renderer_name: str = DEFAULT_POI_RENDERER,
+               level: str = "record") -> str:
+    selection = POISelection.from_collector_report(
+        {"total": 1, "matching": 1, "items": [result]}, title="POI")
+    return renderer(renderer_name).render(selection, level=level)
 
 
 def render_blessing_record(result: dict[str, Any]) -> str:

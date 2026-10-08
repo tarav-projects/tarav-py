@@ -18,7 +18,7 @@ from tarav.l0.kernel import (
     TypeShip,
     locate_record_type,
 )
-from tarav.l1.poi import POI
+from tarav.l1.poi import IdentifiedPOI
 from tarav.l1.references import FilePositionReference, FilePositionTarget
 from tarav.l1.references.git import (
     GitCommitMessagePositionReference,
@@ -37,23 +37,49 @@ class BreadcrumbError(ValueError):
     pass
 
 
-@dataclass(frozen=True, slots=True)
-class BreadcrumbFinding(POI):
+# tarav.breadcrumb 85e87dcfa1700c3a8b9826302e8eac01b86075ec63efc6d71e022edc31542f3c
+class BreadcrumbResolutionPOI(IdentifiedPOI):
+    """Family of failures to locate a Breadcrumb's canonical label."""
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
             target=cls,
             id=TypeShip('23e961ba-5383-4fc0-a386-b646b8b10240'),
-            name='Tarav.Breadcrumbs.Finding',
+            name='Tarav.Breadcrumbs.Resolution.POI',
             workflow=BREADCRUMBS_WORKFLOW_SHIP,
         )
 
-    code: str
-    message: str
 
-    def as_dict(self):
-        return {"type": entity(type(self)).name, "code": self.code,
-                "message": self.message}
+class BreadcrumbPositionMissing(BreadcrumbResolutionPOI):
+    """No recorded position contains the Breadcrumb's canonical label."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('a98d3411-c552-481f-974b-e54b83517a24'),
+                          name='Tarav.Breadcrumbs.Resolution.PositionMissing',
+                          workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class BreadcrumbPositionAmbiguous(BreadcrumbResolutionPOI):
+    """Several recorded positions contain the same Breadcrumb label."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('ac977f0a-6f4e-4d32-a50d-6cd56271d38b'),
+                          name='Tarav.Breadcrumbs.Resolution.PositionAmbiguous',
+                          workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+_RESOLUTION_CONCERN_KIND = {
+    BreadcrumbPositionMissing: "breadcrumb-position-missing",
+    BreadcrumbPositionAmbiguous: "breadcrumb-position-ambiguous",
+}
+
+
+def resolution_concern_kind(poi: BreadcrumbResolutionPOI) -> str:
+    """Translate an atomic POI for the audit Check's input vocabulary."""
+    return _RESOLUTION_CONCERN_KIND[type(poi)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +87,7 @@ class BreadcrumbResolution:
     breadcrumb: Breadcrumb
     status: str
     position: FilePositionTarget | GitCommitMessagePositionTarget | None = None
-    findings: tuple[BreadcrumbFinding, ...] = ()
+    pois: tuple[BreadcrumbResolutionPOI, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -72,9 +98,9 @@ class BreadcrumbResolution:
             "status": self.status,
             "breadcrumb": self.breadcrumb.records.to_record(),
             "position": _position_json(self.position),
-            "findings": [
+            "pois": [
                 item.as_dict()
-                for item in self.findings
+                for item in self.pois
             ],
         }
 
@@ -301,16 +327,17 @@ class BreadcrumbStore:
         if len(positions) == 1:
             return BreadcrumbResolution(breadcrumb, "resolved", next(iter(positions.values())))
         if not positions:
-            finding = BreadcrumbFinding(
-                "breadcrumb-position-missing",
+            poi = BreadcrumbPositionMissing(
                 "No recorded file position contains the Breadcrumb's exact canonical label.",
+                situation={"breadcrumb_id": breadcrumb.records.to_record()["id"]},
             )
-            return BreadcrumbResolution(breadcrumb, "unresolvable", findings=(finding,))
-        finding = BreadcrumbFinding(
-            "breadcrumb-position-ambiguous",
+            return BreadcrumbResolution(breadcrumb, "unresolvable", pois=(poi,))
+        poi = BreadcrumbPositionAmbiguous(
             f"{len(positions)} recorded file positions contain the Breadcrumb's canonical label.",
+            situation={"breadcrumb_id": breadcrumb.records.to_record()["id"]},
+            evidence={"position_count": len(positions)},
         )
-        return BreadcrumbResolution(breadcrumb, "ambiguous", findings=(finding,))
+        return BreadcrumbResolution(breadcrumb, "ambiguous", pois=(poi,))
 
 
 def _validated_id(value: str) -> str:
@@ -364,10 +391,13 @@ def _position_json(
 
 __all__ = [
     "BreadcrumbError",
-    "BreadcrumbFinding",
+    "BreadcrumbResolutionPOI",
+    "BreadcrumbPositionMissing",
+    "BreadcrumbPositionAmbiguous",
     "BreadcrumbResolution",
     "BreadcrumbStore",
     "breadcrumb_label",
     "default_breadcrumbs_root",
     "parse_breadcrumb_label",
+    "resolution_concern_kind",
 ]

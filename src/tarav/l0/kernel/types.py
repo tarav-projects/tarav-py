@@ -109,7 +109,8 @@ class RecordTypeReference:
 
 
 @dataclass(frozen=True, slots=True)
-class TypeReferenceFinding:
+# tarav.breadcrumb 8d46544023e1aece5d966c8221591fe88e7c9f95ae79bfd29ede11a5d3a5bf82
+class TypeReferenceObservation:
     """One deterministic observation about a retained Type reference."""
 
     code: str
@@ -331,33 +332,33 @@ class TypeRegistry(Generic[RecordTypeT]):
             bind_loader(self.from_record)
         return result
 
-    def record_findings(
+    def record_observations(
         self, record: Mapping[str, object]
-    ) -> tuple[TypeReferenceFinding, ...]:
+    ) -> tuple[TypeReferenceObservation, ...]:
         """Report what one Record's Type reference is missing or disagrees on."""
 
         location = locate_record_type(record)
         if location is None:
             return (
-                TypeReferenceFinding(
+                TypeReferenceObservation(
                     "record-type-component-missing",
                     TYPE_RESOLUTION_PATH[-1][0],
                     "Record carries no Type reference at any "
                     f"Type.Resolution.PATH entry: {_resolution_paths()}.",
                 ),
             )
-        return self.reference_findings(
+        return self.reference_observations(
             RecordTypeReference.parse(location.value), field=location.field
         )
 
-    def reference_findings(
+    def reference_observations(
         self, reference: RecordTypeReference, *, field: str = "type"
-    ) -> tuple[TypeReferenceFinding, ...]:
+    ) -> tuple[TypeReferenceObservation, ...]:
         """Report what is absent, unknown, or inconsistent in one reference."""
 
         if reference.ship is None and reference.label is None:
             return (
-                TypeReferenceFinding(
+                TypeReferenceObservation(
                     "record-type-component-missing",
                     field,
                     "Record.type carries no Type Ship and no Type label.",
@@ -369,7 +370,7 @@ class TypeRegistry(Generic[RecordTypeT]):
             ):
                 return ()
             return (
-                TypeReferenceFinding(
+                TypeReferenceObservation(
                     "record-type-label-unknown",
                     f"{field}.label",
                     f"Record Type label is not registered: {reference.label}.",
@@ -386,7 +387,7 @@ class TypeRegistry(Generic[RecordTypeT]):
                     pass
         if registered is None:
             return (
-                TypeReferenceFinding(
+                TypeReferenceObservation(
                     "record-type-ship-unknown",
                     f"{field}.uuid",
                     f"Record Type Ship is not registered: {reference.ship}.",
@@ -394,7 +395,7 @@ class TypeRegistry(Generic[RecordTypeT]):
             )
         if reference.label is None:
             return (
-                TypeReferenceFinding(
+                TypeReferenceObservation(
                     "record-type-component-missing",
                     f"{field}.label",
                     (
@@ -405,7 +406,7 @@ class TypeRegistry(Generic[RecordTypeT]):
             )
         if reference.label != entity(registered).name:
             return (
-                TypeReferenceFinding(
+                TypeReferenceObservation(
                     "record-type-label-conflict",
                     f"{field}.label",
                     (

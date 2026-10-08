@@ -164,7 +164,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     query.set_defaults(handler=_cmd_query, usage_descriptor=_describe_query)
 
     render = commands.add_parser(
-        "render", help="Render Chatlas Query findings through a named Renderer."
+        "render", help="Render Chatlas Query matches through a named Renderer."
     )
     _add_query_options(render)
     render.add_argument(
@@ -247,7 +247,7 @@ def _add_query_options(parser: argparse.ArgumentParser) -> None:
         "--limit",
         type=int,
         default=50,
-        help="Maximum discovery findings (default: 50).",
+        help="Maximum discovery matches (default: 50).",
     )
     parser.add_argument(
         "--refresh", action="store_true", help="Rebuild the Normal Model cache."
@@ -413,6 +413,7 @@ def _cmd_query(args: argparse.Namespace) -> int:
     )
 
 
+# tarav.breadcrumb 2a02bd8be13fa9ec70c84f2d7435ba6d016d952a6070c9b0d9606c18d2a73910
 def _cmd_render(args: argparse.Namespace) -> int:
     return _run_query_renderer(
         args,

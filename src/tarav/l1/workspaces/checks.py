@@ -147,7 +147,8 @@ class WorkspaceCheck(Check):
         self.workspace = workspace
         self.setup = setup
 
-    def _finding(self, case: type[WorkspacePOI], path: str, message: str,
+# tarav.breadcrumb 740c4ce061415bc689eb4ff993a4798c527c0bd17642fa38e48299cb21d27fcd
+    def _poi(self, case: type[WorkspacePOI], path: str, message: str,
                  **details) -> WorkspacePOI:
         return case(
             self, message,
@@ -172,7 +173,7 @@ class WorkspaceIntegrityCheck(WorkspaceCheck):
             destination = _destination(self.workspace.root, entry.path)
             observation = self.setup.entries.get(entry.path)
             if observation is None:
-                findings.append(self._finding(WorkspaceSetupMissing, entry.path,
+                findings.append(self._poi(WorkspaceSetupMissing, entry.path,
                                               "Entry has no setup observation"))
                 continue
             if isinstance(entry, RepositoryWorktree):
@@ -180,35 +181,35 @@ class WorkspaceIntegrityCheck(WorkspaceCheck):
                 registered = next((item for item in repository.worktrees()
                                    if item.path == destination), None)
                 if not destination.is_dir() or registered is None:
-                    findings.append(self._finding(WorkspaceWorktreeMissing, entry.path,
+                    findings.append(self._poi(WorkspaceWorktreeMissing, entry.path,
                                                   "Declared worktree is missing or unregistered"))
                 elif registered.branch != observation.branch:
-                    findings.append(self._finding(WorkspaceWorktreeBranchChanged, entry.path,
+                    findings.append(self._poi(WorkspaceWorktreeBranchChanged, entry.path,
                                                   "Worktree is on a different branch",
                                                   expected=observation.branch,
                                                   actual=registered.branch))
             elif isinstance(entry, CopiedDocument):
                 seed = self.workspace.root / "seeds" / entry.path
                 if not seed.is_file() or _hash(seed) != observation.content_hash:
-                    findings.append(self._finding(WorkspaceSeedChanged, entry.path,
+                    findings.append(self._poi(WorkspaceSeedChanged, entry.path,
                                                   "Retained copy seed is missing or changed"))
                 source = Path(entry.source)
                 if observation.source_hash is not None and source.is_file() and \
                         _hash(source) != observation.source_hash:
-                    findings.append(self._finding(WorkspaceCopySourceChanged, entry.path,
+                    findings.append(self._poi(WorkspaceCopySourceChanged, entry.path,
                                                   "Copy source changed after setup",
                                                   expected=observation.source_hash,
                                                   actual=_hash(source)))
                 elif not source.is_file():
-                    findings.append(self._finding(WorkspaceCopySourceMissing, entry.path,
+                    findings.append(self._poi(WorkspaceCopySourceMissing, entry.path,
                                                   "Copy source is unavailable"))
             elif isinstance(entry, WorkspaceSymlink) and not destination.exists():
-                findings.append(self._finding(WorkspaceSymlinkBroken, entry.path,
+                findings.append(self._poi(WorkspaceSymlinkBroken, entry.path,
                                               "Declared symlink does not resolve"))
             elif isinstance(entry, NewDocument):
                 seed = self.workspace.root / "seeds" / entry.seed
                 if not seed.is_file() or _hash(seed) != observation.content_hash:
-                    findings.append(self._finding(WorkspaceSeedChanged, entry.path,
+                    findings.append(self._poi(WorkspaceSeedChanged, entry.path,
                                                   "Retained document seed is missing or changed"))
         return CheckResult(self, status="completed", pois=findings)
 
@@ -227,7 +228,7 @@ class WorkspaceResetCheck(WorkspaceCheck):
             destination = _destination(self.workspace.root, entry.path)
             observation = self.setup.entries.get(entry.path)
             if observation is None:
-                findings.append(self._finding(WorkspaceSetupMissing, entry.path,
+                findings.append(self._poi(WorkspaceSetupMissing, entry.path,
                                               "Cannot prove reset safety without setup data"))
                 continue
             if isinstance(entry, RepositoryWorktree):
@@ -235,36 +236,36 @@ class WorkspaceResetCheck(WorkspaceCheck):
                 registered = next((item for item in repository.worktrees()
                                    if item.path == destination), None)
                 if not destination.is_dir() or registered is None:
-                    findings.append(self._finding(WorkspaceWorktreeMissing, entry.path,
+                    findings.append(self._poi(WorkspaceWorktreeMissing, entry.path,
                                                   "Cannot safely reset a missing worktree"))
                     continue
                 if registered.branch != observation.branch:
-                    findings.append(self._finding(WorkspaceWorktreeBranchChanged, entry.path,
+                    findings.append(self._poi(WorkspaceWorktreeBranchChanged, entry.path,
                                                   "Worktree branch changed"))
                 if registered.commit != observation.commit:
-                    findings.append(self._finding(WorkspaceWorktreeCommitsAhead, entry.path,
+                    findings.append(self._poi(WorkspaceWorktreeCommitsAhead, entry.path,
                                                   "Worktree has commits beyond its setup state",
                                                   initial=observation.commit,
                                                   current=registered.commit))
                 if git_text(destination, "status", "--porcelain"):
-                    findings.append(self._finding(WorkspaceWorktreeDirty, entry.path,
+                    findings.append(self._poi(WorkspaceWorktreeDirty, entry.path,
                                                   "Worktree has uncommitted changes"))
             elif isinstance(entry, WorkspaceSymlink):
                 if destination.exists() and not destination.is_symlink():
-                    findings.append(self._finding(WorkspaceSymlinkReplaced, entry.path,
+                    findings.append(self._poi(WorkspaceSymlinkReplaced, entry.path,
                                                   "A regular file replaced the declared symlink"))
             elif isinstance(entry, (CopiedDocument, NewDocument)):
                 seed_name = entry.path if isinstance(entry, CopiedDocument) else entry.seed
                 seed = self.workspace.root / "seeds" / seed_name
                 if (not seed.is_file() or observation.content_hash is None or
                         _hash(seed) != observation.content_hash):
-                    findings.append(self._finding(WorkspaceSeedChanged, entry.path,
+                    findings.append(self._poi(WorkspaceSeedChanged, entry.path,
                                                   "Reset seed no longer matches setup"))
                 if destination.exists() and (
                     not destination.is_file() or observation.content_hash is None or
                     _hash(destination) != observation.content_hash
                 ):
-                    findings.append(self._finding(WorkspaceDocumentChanged, entry.path,
+                    findings.append(self._poi(WorkspaceDocumentChanged, entry.path,
                                                   "Document differs from the initial copy"))
         return CheckResult(self, status="completed", pois=findings)
 
@@ -287,10 +288,10 @@ class WorkspaceRemovalCheck(WorkspaceCheck):
             if not destination.is_dir() or not any(
                 item.path == destination for item in repository.worktrees()
             ):
-                findings.append(self._finding(WorkspaceWorktreeMissing, entry.path,
+                findings.append(self._poi(WorkspaceWorktreeMissing, entry.path,
                                               "Worktree must be repaired before removal"))
             elif git_text(destination, "status", "--porcelain"):
-                findings.append(self._finding(WorkspaceWorktreeDirty, entry.path,
+                findings.append(self._poi(WorkspaceWorktreeDirty, entry.path,
                                               "Worktree has uncommitted changes"))
         return CheckResult(self, status="completed", pois=findings)
 

@@ -28,6 +28,7 @@ class ReadingGraphCheck(Check):
     def _analysis(self):
         return self.graph.analyze() if self.analysis is None else self.analysis
 
+# tarav.breadcrumb 15c7f0c5dc4cf892b31d5923a4c1aae4594dbf3283bf2431bc95b9dcab2f78ba
     def _poi(self, finding):
         kind = finding["kind"]
         cls = CLASSES[kind]
@@ -46,7 +47,7 @@ class ReadingGraphCheck(Check):
                     "check": {"type": entity(type(self)).name},
                     "loading": str(self.graph.source),
                     "surface_state": surface_state(self.graph.package)}
-        return cls.finding(
+        return cls.poi(
             self,
             subject,
             situation={

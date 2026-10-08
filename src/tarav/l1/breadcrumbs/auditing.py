@@ -16,7 +16,7 @@ from tarav.l1.surfaces.markdown import MarkdownNormalModel
 from tarav.l1.surfaces.python import PythonNormalModel
 from tarav.l1.references.git import GitCommitMessagePositionTarget
 
-from .store import BreadcrumbError, BreadcrumbResolution, BreadcrumbStore
+from .store import BreadcrumbError, BreadcrumbResolution, BreadcrumbStore, resolution_concern_kind
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
 from .surfaces import BreadcrumbSurface, infer_surface_language
 from .workflows import BreadcrumbAnnotationWorkflow
@@ -337,6 +337,7 @@ class BreadcrumbAuditCheck(Check):
 
 
 @dataclass(frozen=True, slots=True)
+# tarav.breadcrumb f30f87cf9b4f99e5814636176c19237fd190cd53e646284c2c3430dbfcf6cfe6
 class BreadcrumbAuditResult:
     context: BreadcrumbAuditContext
     workflow: str
@@ -354,7 +355,7 @@ class BreadcrumbAuditResult:
         return cls(context, workflow.name, (*checked, *notifications))
 
     @property
-    def findings(self) -> tuple[CheckPOI, ...]:
+    def check_pois(self) -> tuple[CheckPOI, ...]:
         return tuple(poi for poi in self.pois if isinstance(poi, CheckPOI))
 
     @property
@@ -363,7 +364,7 @@ class BreadcrumbAuditResult:
 
     @property
     def ok(self) -> bool:
-        return not any(poi.failure for poi in self.findings)
+        return not any(poi.failure for poi in self.check_pois)
 
     def to_json(self) -> dict[str, object]:
         return {
@@ -434,11 +435,11 @@ def audit_annotations(
                 )
             )
         else:
-            for finding in resolution.findings:
+            for poi in resolution.pois:
                 findings.append(
                     BreadcrumbAuditConcern(
-                        finding.code,
-                        finding.message,
+                        resolution_concern_kind(poi),
+                        poi.message,
                         label.breadcrumb_id,
                         label.line,
                     )

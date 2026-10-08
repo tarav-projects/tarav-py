@@ -170,7 +170,8 @@ class _SkillsCheck(Check):
         super().__init__()
         self.skills = skills
 
-    def finding(self, poi_type: type[CheckPOI], message: str,
+# tarav.breadcrumb f17227c8295b7828019c505669cdf97d24ec4c48e647ea8b7e247d95e2fda204
+    def poi(self, poi_type: type[CheckPOI], message: str,
                 *, scope: str = "project") -> CheckPOI:
         return poi_type(
             self, message,
@@ -189,7 +190,7 @@ class TaravPackageSkillCheck(_SkillsCheck):
 
     def _run(self) -> CheckResult:
         pois = () if self.skills.find(TARAV_PACKAGE_SKILL) else (
-            self.finding(TaravPackageSkillPOI,
+            self.poi(TaravPackageSkillPOI,
                          f"Required Tarav package skill {TARAV_PACKAGE_SKILL} is missing"),)
         return CheckResult(self, status="completed", pois=pois)
 
@@ -204,10 +205,10 @@ class ProjectPackageSkillCheck(_SkillsCheck):
     def _run(self) -> CheckResult:
         name = self.skills.package_skill
         if name is None:
-            pois = (self.finding(ProjectPackageSkillUndeclared,
+            pois = (self.poi(ProjectPackageSkillUndeclared,
                                  "Project agents package_skill is undeclared"),)
         elif not self.skills.find(name):
-            pois = (self.finding(ProjectPackageSkillMissing,
+            pois = (self.poi(ProjectPackageSkillMissing,
                                  f"Project package skill {name} is missing"),)
         else:
             pois = ()
@@ -239,7 +240,7 @@ class SkillFoldersCheck(_SkillsCheck):
                              f"Claude skills folder differs from agents skills: {claude}"))
         return CheckResult(
             self, status="completed",
-            pois=tuple(self.finding(case, message, scope=self.scope)
+            pois=tuple(self.poi(case, message, scope=self.scope)
                        for case, message in findings),
         )
 

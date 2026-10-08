@@ -66,11 +66,11 @@ def test_runtime_lazily_loads_an_external_class_from_its_environment(
     assert loaded.source == path
     assert "external_example.records" in sys.modules
     assert type(loaded) in runtime.records.record_types
-    assert registry_findings(runtime, path) == ()
+    assert registry_observations(runtime, path) == ()
 
     replacement = importlib.import_module("external_example.records").ReplacementNote
     environment.bind_type("External.Note", replacement)
-    assert registry_findings(runtime, path)[0].code == "record-type-ship-unknown"
+    assert registry_observations(runtime, path)[0].code == "record-type-ship-unknown"
     with pytest.raises(UnknownRecordType):
         runtime.load_object(path)
     path.write_text(
@@ -90,8 +90,9 @@ def test_runtime_lazily_loads_an_external_class_from_its_environment(
         runtime.load_object(path)
 
 
-def registry_findings(runtime, path):
-    return runtime.records.record_findings(json.loads(path.read_text()))
+# tarav.breadcrumb a34ef57b15b3383f01fed464c4fbc975fde35cfa070931f6c40c6a1bf11dbe59
+def registry_observations(runtime, path):
+    return runtime.records.record_observations(json.loads(path.read_text()))
 
 
 def test_external_paths_are_explicit_and_checked_before_dispatch() -> None:

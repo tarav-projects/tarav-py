@@ -1,10 +1,11 @@
 from .core import chatlas_raw_sources, chatlas_update
+# tarav.breadcrumb 4654578f861aec75ee792d93c36bcdd8e1e80029aff80de57c05bf527d533fcd
 from .query import (
     ChatlasQuery,
     ChatlasQueryEngine,
     ChatlasQueryError,
     ChatlasQueryResult,
-    ChatlasTurnFinding,
+    ChatlasTurnMatch,
 )
 from .rendering import (
     DEFAULT_CHATLAS_RENDERER,
@@ -31,7 +32,7 @@ __all__ = [
     "ChatlasRendererRegistry",
     "ChatlasRenderError",
     "ChatlasRenderResult",
-    "ChatlasTurnFinding",
+    "ChatlasTurnMatch",
     "DEFAULT_CHATLAS_RENDERER",
     "INLINED_CAPTURE_MARKDOWN_RENDERER",
     "TURN_LEDGER_RENDERER",

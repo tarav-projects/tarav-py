@@ -12,30 +12,43 @@ from pydantic import ConfigDict, Field, JsonValue, model_validator
 
 from tarav.l0.kernel.identity import TypeShip
 from tarav.l0.kernel.records import FileRecord, TaravObject, _json_object
-from tarav.l1.poi import POI
+from tarav.l1.poi import IdentifiedPOI
 from tarav.l1.references.identity import REFERENCES_WORKFLOW_SHIP
 
 
 # tarav.breadcrumb 3c3e9e1c1b19de808006014b3cf685ebb28509c8865341fa023223530d94ba77
-class ReferenceFinding(POI):
+# tarav.breadcrumb de146a92d0c7301624402ae9cb446816fba032e65301d5e5a4ad47fa3ef76a45
+class ReferenceResolutionPOI(IdentifiedPOI):
+    """Family of failed Reference resolutions."""
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
             target=cls,
             id=TypeShip('cd189772-73f1-4ddb-9fdd-610bc12a7fd3'),
-            name='Tarav.References.Finding',
+            name='Tarav.References.Resolution.POI',
             workflow=REFERENCES_WORKFLOW_SHIP,
         )
 
-    def __init__(self, code: str, message: str, hints: object):
-        super().__init__()
-        self.code = code
-        self.message = message
-        self.hints = hints
 
-    def as_dict(self):
-        return {"type": entity(type(self)).name, "code": self.code,
-                "message": self.message, "hints": self.hints}
+class ReferenceMismatch(ReferenceResolutionPOI):
+    """The target exists but fails the Reference's declared check."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('a6774890-e2f7-41c0-855c-5e89d3f10f99'),
+                          name='Tarav.References.Resolution.Mismatch',
+                          workflow=REFERENCES_WORKFLOW_SHIP)
+
+
+class ReferenceUnresolvable(ReferenceResolutionPOI):
+    """The declared target cannot currently be resolved."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('28ba074b-6670-43d8-8db4-6ba13fc3b974'),
+                          name='Tarav.References.Resolution.Unresolvable',
+                          workflow=REFERENCES_WORKFLOW_SHIP)
 
 
 @dataclass(frozen=True)
@@ -50,11 +63,13 @@ class ReferenceResult:
         return self.status == "resolved"
 
     @property
-    def pois(self) -> tuple[ReferenceFinding, ...]:
+    def pois(self) -> tuple[ReferenceResolutionPOI, ...]:
         return (
             ()
             if self.ok
-            else (ReferenceFinding(self.status, self.message, self.hints),)
+            else ((ReferenceMismatch if self.status == "mismatch" else ReferenceUnresolvable)(
+                self.message, situation={"message": self.message},
+                evidence={"hints": self.hints}),)
         )
 
 
@@ -231,7 +246,9 @@ __all__ = [
     "FilePositionTarget",
     "FileReference",
     "Reference",
-    "ReferenceFinding",
+    "ReferenceResolutionPOI",
+    "ReferenceMismatch",
+    "ReferenceUnresolvable",
     "ReferenceResult",
     "ReferenceTaravMetadata",
     "Sha256Check",

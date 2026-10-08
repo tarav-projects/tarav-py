@@ -414,13 +414,14 @@ class AgentsMdProducedOutputInvalid(AgentsMdProductPOI):
                           name="Tarav.Project.Agents.Product.ProducedOutputInvalid", workflow=PROJECT_WORKFLOW_SHIP)
 
 
-class AgentsMdLintFindingUnrecognized(AgentsMdProductPOI):
-    """Skillware lint reported a finding about the agents file that this check does not classify."""
+# tarav.breadcrumb e89ee6a0f00a183a370aee37c7e80d0a659a41c54ae6c552f30be16e18ca96f9
+class AgentsMdLintKindUnrecognized(AgentsMdProductPOI):
+    """Skillware lint reported an unknown kind about the agents file."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("454c1852-10ef-4901-bd77-6b64a977bd89"),
-                          name="Tarav.Project.Agents.Product.LintFindingUnrecognized", workflow=PROJECT_WORKFLOW_SHIP)
+                          name="Tarav.Project.Agents.Product.LintKindUnrecognized", workflow=PROJECT_WORKFLOW_SHIP)
 
 
 # Skillware lint kinds are that linter's keys; each selects one atomic POI Type here.
@@ -486,7 +487,7 @@ class _AgentsCheck(Check):
         super().__init__()
         self.agents = agents
 
-    def finding(self, poi_type: type[CheckPOI], message: str,
+    def poi(self, poi_type: type[CheckPOI], message: str,
                 *, path: Path | None = None, detail: str = "") -> CheckPOI:
         target = path or self.agents.path
         details = {"path": str(target), "source": str(self.agents.source),
@@ -517,20 +518,20 @@ class TaravSystemPromptCheck(_AgentsCheck):
     def _run(self) -> CheckResult:
         document = self._document()
         if document is None:
-            poi = self.finding(TaravSystemPromptSourceUnavailable,
+            poi = self.poi(TaravSystemPromptSourceUnavailable,
                                "Tarav System Prompt source is unavailable",
                                path=self.agents.source)
         else:
             blocks = [block for block in document.blocks.values()
                       if isinstance(block, TaravSystemPrompt)]
             if not blocks:
-                poi = self.finding(TaravSystemPromptMissing,
+                poi = self.poi(TaravSystemPromptMissing,
                                    "Tarav System Prompt block is missing")
             elif len(blocks) > 1:
-                poi = self.finding(TaravSystemPromptDuplicated,
+                poi = self.poi(TaravSystemPromptDuplicated,
                                    "Multiple Tarav System Prompt blocks found")
             elif blocks[0].get("content") != _prompt_lines():
-                poi = self.finding(TaravSystemPromptStale,
+                poi = self.poi(TaravSystemPromptStale,
                                    "Tarav System Prompt differs from shipped text")
             else:
                 poi = None
@@ -549,20 +550,20 @@ class ProjectSystemPromptCheck(_AgentsCheck):
     def _run(self) -> CheckResult:
         document = self._document()
         if document is None:
-            poi = self.finding(ProjectSystemPromptSourceUnavailable,
+            poi = self.poi(ProjectSystemPromptSourceUnavailable,
                                "Project System Prompt source is unavailable",
                                path=self.agents.source)
         else:
             blocks = [block for block in document.blocks.values()
                       if isinstance(block, ProjectSystemPrompt)]
             if not blocks:
-                poi = self.finding(ProjectSystemPromptMissing,
+                poi = self.poi(ProjectSystemPromptMissing,
                                    "Project System Prompt block is missing")
             elif len(blocks) > 1:
-                poi = self.finding(ProjectSystemPromptDuplicated,
+                poi = self.poi(ProjectSystemPromptDuplicated,
                                    "Multiple Project System Prompt blocks found")
             elif not any(line.strip() for line in blocks[0].get("content") or []):
-                poi = self.finding(ProjectSystemPromptEmpty,
+                poi = self.poi(ProjectSystemPromptEmpty,
                                    "Project System Prompt has no content")
             else:
                 poi = None
@@ -587,7 +588,7 @@ class AgentsMdProductCheck(_AgentsCheck):
         except (OSError, ValueError, TypeError, KeyError) as exc:
             findings = [{"kind": "invalid-source", "detail": str(exc)}]
         pois = tuple(
-            self.finding(_PRODUCT_POI.get(finding["kind"], AgentsMdLintFindingUnrecognized),
+            self.poi(_PRODUCT_POI.get(finding["kind"], AgentsMdLintKindUnrecognized),
                          f"Agents file: {finding['kind']}",
                          detail=finding.get("detail", "") or finding["kind"])
             for finding in findings
@@ -620,7 +621,7 @@ class AgentsAliasCheck(_AgentsCheck):
         else:
             case, state = None, ""
         pois = () if case is None else (
-            self.finding(case, f"Agents alias is {state}", path=self.alias),
+            self.poi(case, f"Agents alias is {state}", path=self.alias),
         )
         return CheckResult(self, status="completed", pois=pois)
 
@@ -636,7 +637,7 @@ PROJECT_AGENTS_RECORD_TYPES = (
     AgentsMdSourceUncompiled, AgentsMdProductUnavailable, AgentsMdProductDrift,
     AgentsMdBlockContentMissing, AgentsMdGenerationStale, AgentsMdContextUnresolvable,
     AgentsMdContextUnobserved, AgentsMdContextStale, AgentsMdOutputChanged,
-    AgentsMdAnnotationInvalid, AgentsMdProducedOutputInvalid, AgentsMdLintFindingUnrecognized,
+    AgentsMdAnnotationInvalid, AgentsMdProducedOutputInvalid, AgentsMdLintKindUnrecognized,
     AgentsAliasMissing, AgentsAliasNotSymlink, AgentsAliasWrongTarget,
 )
 

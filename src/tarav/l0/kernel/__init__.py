@@ -32,6 +32,7 @@ from .records import (
     isrecordsubclass,
     issubrecord,
 )
+# tarav.breadcrumb 7be348cc12560b61f6b1265cc055f341098f0fe390abd3f523b7aa37f7cd207f
 from .types import (
     TYPE_RESOLUTION_PATH,
     DuplicateTypeRegistration,
@@ -39,7 +40,7 @@ from .types import (
     RecordTypeLocation,
     RecordTypeReference,
     locate_record_type,
-    TypeReferenceFinding,
+    TypeReferenceObservation,
     TypeRegistrationError,
     TypeRegistry,
     UnknownRecordType,
@@ -92,7 +93,7 @@ __all__ = [
     "TaravType",
     "TaravTypeDeclarationError",
     "TARAV",
-    "TypeReferenceFinding",
+    "TypeReferenceObservation",
     "TypeRegistrationError",
     "TypeRegistry",
     "TypeShip",

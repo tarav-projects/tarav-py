@@ -154,21 +154,21 @@ def _matches(cargo: object, query: Query) -> bool:
 
 
 @dataclass(frozen=True)
-class RecordDepotCheckFinding:
+# tarav.breadcrumb 2a7c4e9da1202027309f2678befde740ee323008677ac3ba4fbd85fbb4ad4d58
+class UnreadableRecord:
     """One record that does not parse. `path` is depot-relative, for a human to open."""
 
-    code: str
     path: str
     message: str
 
 
 @dataclass(frozen=True)
 class RecordDepotCheckResult:
-    findings: tuple[RecordDepotCheckFinding, ...]
+    unreadable: tuple[UnreadableRecord, ...]
 
     @property
     def ok(self) -> bool:
-        return not self.findings
+        return not self.unreadable
 
 
 class OpaqueRecordDepot:
@@ -446,10 +446,10 @@ class OpaqueRecordDepot:
         payload carried the store's envelope, and that the id inside a record matched its
         filename. All three describe a store that models its cargo. Nothing resolves by
         filename, there is no envelope, and a record has no id the store knows about — so
-        those findings could only report on a structure that no longer exists.
+        those observations could only report on a structure that no longer exists.
         """
 
-        findings: list[RecordDepotCheckFinding] = []
+        unreadable: list[UnreadableRecord] = []
         with self._lock(exclusive=False, create=False):
             paths = (
                 self._shard_paths(None)
@@ -460,14 +460,13 @@ class OpaqueRecordDepot:
                 try:
                     json.loads(path.read_text("utf-8"))
                 except (OSError, ValueError) as exc:
-                    findings.append(
-                        RecordDepotCheckFinding(
-                            code="invalid-json",
+                    unreadable.append(
+                        UnreadableRecord(
                             path=str(path.relative_to(self.root)),
                             message=str(exc),
                         )
                     )
-        return RecordDepotCheckResult(findings=tuple(sorted(findings, key=lambda f: f.path)))
+        return RecordDepotCheckResult(unreadable=tuple(sorted(unreadable, key=lambda f: f.path)))
 
     # -- stable references -------------------------------------------------------
 
@@ -555,7 +554,7 @@ class OpaqueRecordDepot:
 
 
 __all__ = [
-    "RecordDepotCheckFinding",
+    "UnreadableRecord",
     "RecordDepotCheckResult",
     "OpaqueRecordDepot",
     "RecordDepotError",

@@ -29,7 +29,8 @@ class SkwPOI(CheckPOI):
         )
 
     @classmethod
-    def finding(cls, check, subject, *, situation, evidence=None):
+    # tarav.breadcrumb 358f9776a4d31e8930d727fec6ccb95407790af6d2893c204b16cb9cb572cde9
+    def poi(cls, check, subject, *, situation, evidence=None):
         evidence = evidence or {}
         raw = evidence.get("finding", {})
         # The class already states the kind; the lint key only supplies a fallback message.
@@ -495,7 +496,7 @@ class GenerationContextResolutionCheck(Check):
                 "finding": finding,
                 "declaration": deepcopy(self.declaration),
             }
-            poi = ContextUnresolvable.finding(
+            poi = ContextUnresolvable.poi(
                 self,
                 self.subject,
                 situation={
@@ -705,7 +706,7 @@ def _freshness_result(check, *, poi_type, kind, message, baseline_key, current_k
         "baseline": baseline,
         "current": current,
     }
-    poi = check.finding(
+    poi = check.poi(
         poi_type,
         message=message,
         subject=subject,
@@ -891,7 +892,7 @@ def _analysis_pois(check):
         subject = {'project': str(package.root),
                    **{k: raw[k] for k in ('block', 'path', 'target', 'delivery', 'code') if k in raw}}
         evidence = {'finding': raw, 'surface_state': state}
-        yield cls.finding(
+        yield cls.poi(
             check,
             subject,
             situation={"subject": subject, "surface_state": state},

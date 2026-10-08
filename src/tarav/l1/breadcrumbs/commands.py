@@ -7,7 +7,10 @@ import json
 from collections.abc import Callable, Sequence
 
 from tarav.l0._core.errors import CliError
-from tarav.l0.kernel import entity
+from tarav.l1.poi.rendering import (
+    DEFAULT_POI_RENDERER, POIRenderError, POISelection, renderer,
+)
+from tarav.l1.poi.reporting import retain_presented_pois
 
 from .auditing import audit_annotations
 from .integrations import BreadcrumbIntegration
@@ -32,6 +35,14 @@ def _print(
         for line in lines:
             print(line)
     return 0
+
+
+def _render_pois(pois, args: argparse.Namespace) -> str:
+    try:
+        return renderer(args.renderer).render(
+            POISelection.from_pois(pois, title="Breadcrumb POIs"), level=args.level)
+    except POIRenderError as exc:
+        raise CliError(str(exc)) from exc
 
 
 def _cmd_submit(args: argparse.Namespace) -> int:
@@ -62,6 +73,7 @@ def _cmd_submit(args: argparse.Namespace) -> int:
     )
 
 
+# tarav.breadcrumb 2d4af9cff1b5cabef0d26e33b28eaf190d5357966a99bb674918d7f2d4fa3e71
 def _cmd_audit(args: argparse.Namespace) -> int:
     try:
         workflow = args.breadcrumb_annotation_workflow
@@ -85,14 +97,10 @@ def _cmd_audit(args: argparse.Namespace) -> int:
         f"surface: {result.context.surface.path}",
         f"breadcrumbs: {len(result.context.breadcrumbs)}",
     ]
-    lines.extend(
-        f"info: {entity(type(poi)).name}: {poi.details['breadcrumb_id']} "
-        f"at {poi.details['file']}:{poi.details['line']}"
-        for poi in result.notifications
-    )
-    lines.extend(
-        f"poi: {entity(type(finding)).name}: {finding.message}" for finding in result.findings
-    )
+    retain_presented_pois(result.pois, kind="breadcrumbs", name=workflow.name,
+                          root=result.context.surface.path)
+    if result.pois:
+        lines.append(_render_pois(result.pois, args))
     _print(args, payload, tuple(lines))
     return 0 if result.ok else 1
 
@@ -162,10 +170,10 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
     lines = [f"status: {resolution.status}"]
     if resolution.position is not None:
         lines.append(f"position: {resolution.position.path}:{resolution.position.line}")
-    else:
-        lines.extend(
-            f"poi: {finding.code}: {finding.message}" for finding in resolution.findings
-        )
+    if resolution.pois:
+        retain_presented_pois(resolution.pois, kind="breadcrumbs", name="resolve",
+                              root=_store(args).root)
+        lines.append(_render_pois(resolution.pois, args))
     _print(args, payload, tuple(lines))
     return 0 if resolution.ok else 1
 
@@ -173,6 +181,11 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--breadcrumbs-root", help="Breadcrumb store root override.")
     parser.add_argument("--json", action="store_true")
+
+
+def _add_poi_render_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--renderer", default=DEFAULT_POI_RENDERER)
+    parser.add_argument("--level", choices=("line", "record", "context"), default="line")
 
 
 def register_submission_command(
@@ -215,6 +228,7 @@ def register_audit_command(
         help="Append repaired file-position observations for uniquely located stale Breadcrumbs; leave the surface unchanged.",
     )
     _add_common(parser)
+    _add_poi_render_options(parser)
     parser.set_defaults(
         handler=_cmd_audit,
         usage_descriptor=lambda args: {
@@ -284,6 +298,7 @@ def register_breadcrumb_commands(
     )
     resolve.add_argument("--label", required=True)
     _add_common(resolve)
+    _add_poi_render_options(resolve)
     resolve.set_defaults(handler=_cmd_resolve)
 
     show = commands.add_parser(

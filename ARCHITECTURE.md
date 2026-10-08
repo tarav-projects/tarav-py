@@ -702,11 +702,14 @@ A POI exists only during its check run, so `tarav check --project` retains what 
 reported, best effort, in `~/.tarav/check-reports/<project id>.json`
 (`TARAV_CHECK_REPORTS` relocates it). `tarav.l1.poi.reporting` owns that store, the
 `ReportedPOI` subject, its resolver, and the `reported-poi` view with the entries
-`poi-type`, `raised-by`, `finding`, `read-first` and `may-do`. A POI Type declares
-`read_first` and `may_do`; `render_check_run()` opens every report that has POIs
-with one instruction and an example command. `tarav.l1.checks.poi_contract` checks
-both ends where the POI base Type is developed: a reminder POI for each POI Type
-that declares no guidance, and a round trip from the rendered example to the view.
+`poi-type`, `raised-by`, `occurrence`, `read-first` and `may-do`. A POI Type declares
+`read_first` and `may_do`. `tarav.l1.poi.rendering` owns named renderers for a
+selected page of POIs; the default and JSON-lines renderers expose `line`,
+`record`, and `context` levels. Commands choose a renderer after selection and
+retain displayed identified POIs so the shared context instruction resolves.
+`tarav.l1.checks.poi_contract` checks guidance, default-renderer coverage, and
+a round trip from each registered renderer's example to the context view.
+<!-- tarav.breadcrumb 0f987fcde26031c37c5760d787340675b644c752fb3410bb7e8b98183f5fd71f -->
 <!-- tarav.breadcrumb 5c2663eff9561ef3a40b8394241107400cd89fa7942dee0a3037aa987699ff79 -->
 <!-- tarav.breadcrumb 991c6bf77c55b2771e7572d07530f5c5b1a4abb64adddb3a2c966c06ee52f442 -->
 
@@ -721,9 +724,11 @@ under a family parent that is never raised (for example
 `isinstance`. A check that receives a string kind from a non-POI producer,
 such as a Skillware lint finding or a Breadcrumb audit concern, maps it to a
 POI Type through a small table next to the check. Reports group and filter by
-Type, check or identity. Three older finding classes that subclass the bare
-`POI` as dataclasses (`BreadcrumbFinding`, `ReferenceFinding` and the Diagram
-`Finding`) still carry their own `code` and are not yet converted.
+Type, check or identity. Breadcrumb and Reference resolution each use an
+atomic identified POI family. The Diagram's `Finding` remains a coded POI:
+Capture Receipt records retain its coded shape and require a deliberate data
+migration before its many distinct cases can become atomic Types.
+<!-- tarav.breadcrumb 0d39e5ec3a25287e419935d916d0a7c9d270b87dfc428775b346dfa162fb7483 -->
 <!-- tarav.breadcrumb c84140acad62e5b48e8b95892c1a749f806863a560f1bfeb08e13596ee2a9286 -->
 <!-- tarav.breadcrumb 4bf190d70e6ffac17923764dc3e93dc2ba5bba11a5de09e38a7fe7fd927af7d3 -->
 

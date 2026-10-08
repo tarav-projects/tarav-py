@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckRun, render_check_run
+from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckRun
 from tarav.l1.checks.poi_contract import (
     POIContextRoundTripCheck, POIGuidanceCheck, POIGuidanceMissingPOI,
 )
@@ -19,6 +19,7 @@ from tarav.l1.poi.reporting import (
     REPORTED_POI_VIEW, ReportedPOI, ReportedPOIContext, ReportedPOIResolver,
     ReportedPOIStore, context_instruction, guidance_of,
 )
+from tarav.l1.poi.rendering import POISelection, renderer
 from tarav.l1.search import SearchEngine, SearchHit
 from tarav.l3.cli.cli import main
 
@@ -73,7 +74,7 @@ def test_an_identity_query_opens_the_requested_view(reported: list[str]) -> None
 
     assert isinstance(answer.subject, ReportedPOI)
     assert [entry.name for entry in answer.target.ls()] == [
-        "poi-type", "raised-by", "finding", "read-first", "may-do"]
+        "poi-type", "raised-by", "occurrence", "read-first", "may-do"]
     assert answer.views == (REPORTED_POI_VIEW,)
 
 
@@ -131,10 +132,12 @@ def test_guidance_is_read_from_the_poi_type() -> None:
 
 
 # tarav.breadcrumb 74712dcf68e97f58fe0e4ee967aac259d1ae2d412c8eb34f0fb4864be1b10b9a
+# tarav.breadcrumb 9b5c21419a84b555a93bf7f45e6d5cc16156f43c1f4406d7cf135057a48e3318
 def test_a_report_with_pois_opens_with_one_instruction() -> None:
     run = CheckRun()
     run.add(SampleCheck().run())
-    rendered = render_check_run(run.report(by="identity")).splitlines()
+    rendered = renderer().render(POISelection.from_check_report(
+        run.report(by="identity"))).splitlines()
 
     first = run.pois()[0].identity
     assert rendered[2:5] == context_instruction(first)[:3]
@@ -142,16 +145,17 @@ def test_a_report_with_pois_opens_with_one_instruction() -> None:
     assert sum("Before acting on any POI" in line for line in rendered) == 1
 
     empty = CheckRun()
-    assert "tarav context" not in render_check_run(empty.report())
+    assert "tarav context" not in renderer().render(
+        POISelection.from_check_report(empty.report()))
 
 
 def test_the_command_lists_opens_and_reports_misses(reported: list[str], capsys) -> None:
     assert main(["context", "--id", reported[0][:12], "--view", REPORTED_POI_VIEW]) == 0
     listing = capsys.readouterr().out
-    assert "finding" in listing and "may-do" in listing
+    assert "occurrence" in listing and "may-do" in listing
 
     assert main(["context", "--id", reported[0], "--view", REPORTED_POI_VIEW,
-                 "--path", "finding", "--json"]) == 0
+                 "--path", "occurrence", "--json"]) == 0
     value = json.loads(capsys.readouterr().out)["value"]["value"]
     assert value["situation"] == {"where": "a"}
 

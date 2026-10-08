@@ -20,11 +20,12 @@ from tarav.l1.breadcrumbs import (
     BreadcrumbAuditConcern,
     BreadcrumbAuditResult,
     BreadcrumbError,
-    BreadcrumbFinding,
+    BreadcrumbPositionMissing,
     BreadcrumbResolution,
     BreadcrumbStore,
     BreadcrumbSurface,
     breadcrumb_label,
+    resolution_concern_kind,
 )
 from tarav.l1.breadcrumbs.auditing import surface_labels
 from tarav.l1.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow
@@ -282,6 +283,7 @@ def register_commit(
     return RegisteredCommit(selected.root, exact, expected_ids)
 
 
+# tarav.breadcrumb 99b7ba51eb7aee2aaa5c4e5603c2995fd5e479c5dbe1ef090d8f42a842193ee1
 def audit_commit(
     repository: str | Path,
     commit: str,
@@ -351,11 +353,11 @@ def audit_commit(
                 )
             )
         else:
-            for finding in resolution.findings:
+            for poi in resolution.pois:
                 findings.append(
                     BreadcrumbAuditConcern(
-                        finding.code,
-                        finding.message,
+                        resolution_concern_kind(poi),
+                        poi.message,
                         label.breadcrumb_id,
                         label.line,
                     )
@@ -552,10 +554,10 @@ def _resolve_commit_label(
     return BreadcrumbResolution(
         breadcrumb,
         "unresolvable",
-        findings=(
-            BreadcrumbFinding(
-                "breadcrumb-position-missing",
+        pois=(
+            BreadcrumbPositionMissing(
                 "No observation resolves this Breadcrumb at the audited commit line.",
+                situation={"breadcrumb_id": breadcrumb.records.to_record()["id"]},
             ),
         ),
     )

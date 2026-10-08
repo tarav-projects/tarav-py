@@ -6,14 +6,18 @@ from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.references.identity import REFERENCES_WORKFLOW_SHIP
-from . import FilePositionReference, FileReference, Reference, ReferenceFinding, ReferenceResult
+from . import (FilePositionReference, FileReference, Reference, ReferenceMismatch,
+               ReferenceResolutionPOI, ReferenceResult, ReferenceUnresolvable)
 from .git import GitCommitMessagePositionReference, GitFileReference
 from .structured import StructuredFileReference
 
 
+# tarav.breadcrumb 386ae4a7c75e0a6e4680a64282a25d0a3c5bf3701b9dda39b9706efb7f1ba037
 REFERENCE_RECORD_TYPES = (
     Reference,
-    ReferenceFinding,
+    ReferenceResolutionPOI,
+    ReferenceMismatch,
+    ReferenceUnresolvable,
     FileReference,
     FilePositionReference,
     GitCommitMessagePositionReference,

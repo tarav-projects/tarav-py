@@ -6,7 +6,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Autonomous (selected on resume). Status: executing. Phase: Develop; design revision complete, Execute in progress.
+Knowledge.Surface: wiki. Alignment.Mode: Autonomous (selected on resume). Status: implemented. Phase: Develop; design revision and Execute complete.
 
 Make the things in `tarav-py` that look like POIs be POIs of the core tree, and give POIs one rendering path: a POI renderer type, a registry of named renderers with one default, and command-line surfaces that choose a renderer by name instead of formatting POIs themselves. Remove the word "finding" where the thing is a POI, and rename it where the thing is something else.
 
@@ -117,3 +117,13 @@ Bounded implementation choices under autonomous alignment: keep the POI root in 
 <!-- tarav.breadcrumb aed0ab0d58c1ed9baa6e4b8d1c59047fcb6703a2f2cad970a2c902e84c22caa4 -->
 
 Start checkpoint for this resumed Develop pass: `141da47307f4e48e6ad641eeb9b7373095255753`. No product source had been changed by request 879 at this point; the shared worktree carries unrelated edits across Tarav layers. Inlined Capture and commits must stay scoped to this request.
+
+## Execution observations — 2026-10-08
+
+- Shared `POISelection`, named `POIRenderer` registry, default and JSON-lines renderers, and `line`/`record`/`context` levels now drive `tarav check` and Skillware POI output. `POI.summary()` supplies instance meaning with a Type-description fallback. The renderer receives an already selected page. `POIContextRoundTripCheck` exercises every registered renderer; `POIRenderCoverageCheck` samples loaded leaf POI Types.
+- Breadcrumb and Reference resolution now return atomic `IdentifiedPOI` families instead of code-bearing data. Breadcrumb file and commit audits and resolve output use the common renderer and retain displayed identified POIs for `tarav context`. `SituationCheck.poi()` and its callers replace the POI constructor named `finding`; the reported context entry is `occurrence`.
+- Chatlas query results now report `matches` of `ChatlasTurnMatch`, since a matched Turn is not a POI. The two `l0` record/type inspections now report plain observations or unreadable records; neither creates an upward dependency. The Project agents unknown-lint-kind POI loses `Finding` in its Type name.
+- Diagram was inspected down to its retained boundary: about 85 `Finding(...)` constructions, roughly 74 coded cases, and 50 retained Drafts under the local Diagram data root with Capture Receipt `findings[]` rows. Those rows persist `type=Tarav.Diagram.Finding`, `code`, `path`, and `message`; `CaptureReceipt` rehydrates them by code. A safe atomic-Type conversion needs a typed case catalog, a receipt schema/version migration for those real records, and targeted tests of read/write/replay. This pass leaves Diagram's coded class as a concrete exception and records the migration as follow-up work. The user-facing SKW `Document.lint()` dictionaries already map to typed POIs at their consumers; blessing-store standing findings and tracked POI policy remain outside this request.
+- Verification: 222 Python tests passed in the shared worktree; 212 passed in a scoped clean checkout that excludes concurrent work. Ruff passed on `src` and `tests`, including that checkout. A malformed Breadcrumb audit produced a JSON-lines POI, and its advertised short ID opened the `reported-poi` context view. The installed CLI was rebuilt. `tarav check --project --json` completed 11 checks with 98 pre-existing missing-guidance POIs and none from the new render-coverage or context-round-trip checks.
+- Product Inlined Capture submitted one context Breadcrumb on each of 36 changed Python surfaces and two on `ARCHITECTURE.md`; audits on all 37 surfaces finished `ok` (31 informational position-refresh notifications, no failing POIs). A current-source Skill routing change is intertwined with a separate uncommitted relocation; the scoped clean checkout applies its Type-summary addition at the old path while the shared worktree retains the captured new-path edit. The renderer and POI changes are otherwise isolated from those unrelated edits.
+- Wiki capture updated `tarav-md/notes/wiki/poi-system.md` and `daily/2026-10-08.md`, with exact Turn Breadcrumbs; scoped Wiki completion commit `03e29e41b7c1db5e0cebb61e34b2eb3c1ab86c31` and its commit audit are clean. Product scoped completion is the remaining closure step.
