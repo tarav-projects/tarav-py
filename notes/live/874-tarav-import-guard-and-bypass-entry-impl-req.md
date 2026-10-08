@@ -6,9 +6,9 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: needs-alignment (two open questions below). Phase: Design.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: complete. Phase: Execute.
 
-Split the way into the Tarav library into two entry points over one code base. `import tarav` becomes a guarded entry: in a process that was not started through Tarav it fails with an error that tells the reader to run the script with `tarav run`. A second top-level package, `tarav_bypass`, is the explicit way through for deliberate users. Adopt `tarav_bypass` everywhere that legitimately imports Tarav outside `tarav run`: Tarav's own console commands, its test suite, its maintenance scripts, and the other repositories on this machine that use Tarav as a library.
+Split the way into the Tarav library into two entry points over one code base. `import tarav` becomes a guarded entry: in a process that was not started through Tarav it fails with an error that tells the reader to run the script with `tarav run`. A second top-level package, `tarav_bypass`, is the explicit way through for deliberate users. This request adopts `tarav_bypass` in Tarav's own console commands, test suite, and direct-import maintenance scripts. Other repositories remain outside its scope by the User's later decision.
 
 Non-goals, all of them brainstormed in the same session and not decided:
 
@@ -104,8 +104,8 @@ An architecture test asserts that nothing in `tarav` imports `tarav_bypass`, and
 ### Open questions
 
 1. **Other repositories.** Resolved: not this request's concern; see the design section above.
-2. **The mark's value.** Keep a value naming the door, or use a bare flag?
-3. **Maintenance scripts.** Should `tooling/` and `scripts/` migration scripts get `import tarav_bypass`, or are they expected to be run with `tarav run`?
+2. **The mark's value.** Resolved for this implementation: the value names the door (`cli`, `daemon`, or `bypass`); the guard tests presence only.
+3. **Maintenance scripts.** Resolved for this implementation: direct-import migration scripts in `tooling/` and `scripts/` import `tarav_bypass`; historical `dev/live` files are left alone.
 
 ## Impl.Req.Wiki
 
@@ -129,3 +129,14 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `tarav-
 - Wiki capture in `tarav-md`: new topical note `notes/wiki/tarav-scripts-and-entry-points.md` (19 Breadcrumbs, audit clean) and two sections appended to daily `2026-10-08.md` (4 Breadcrumbs, no new POIs; the note keeps its 13 earlier `breadcrumb-position-missing` POIs). Start checkpoint `bcb0436cd7d6fe67f61bcb8bd9ab9df9fae528ca`, completion commit `7abcfd990e8dbcd25223475debdee5bdb6ebfdff`.
 - Alignment (2026-10-08): the User decided that other repositories are not this request's concern. They will see the error and their maintainers will resolve it. The design section, open question 1 and plan step 4 were updated in place; the request now changes `tarav-py` only.
 <!-- tarav.breadcrumb 80e625feceb21dce105d9b6e1a989dc920e6a1077e58305bb1add9f15cf06fa9 -->
+- Execute (2026-10-08): reviewed the topical Wiki, daily entry, and ten relevant User turns before editing. Started with scoped checkpoint `b90e097190c84b54121514f7480bf336c10e7470`. Implemented `tarav_bypass`, guarded root import, console doors, test collection setup, direct-import maintenance script adoption, and guidance. The internal mark's door value and maintenance-script adoption are bounded implementation choices, not additional User decisions.
+<!-- tarav.breadcrumb 747964ca6058b11dc21535850732de12117cfe52e1a7f17ac598ab5b59a816e8 -->
+- Product verification: isolated committed tree passed 178 tests and Ruff; shared worktree passed 188 tests and Ruff. Built wheel includes `tarav_bypass`. Reinstalled the CLI; plain and Project `tarav run` imports passed. Root `tarav check --project .` completed 362 checks with 65 POIs from existing Project state. Restarted the installed daemon through the CLI and launchd; it returned running with a new PID. Product completion commit `4629dd90ad45e1ac35e9b2b915dae6a9304c9a05`, commit evidence audit clean.
+- Product Inlined Capture linked the changed Python and Markdown surfaces to the design turns. TOML and generated JSON have no registered native inline convention; their changes are covered by the scoped commit evidence. Pre-existing Breadcrumb position POIs remain in some older edited surfaces; new labels audit in place. Other repositories and historical `dev/live` scripts were not edited.
+
+<!-- tarav.sessions
+473c89a0 = codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8 @473c89a00e2367fb827193af74a6375c60a96b0be110f21df0aff49360ca972f
+-->
+
+- Wiki capture appended implementation and verification to the topical note and daily log. Topical audit is clean; daily retains its 13 pre-existing position POIs without new findings. Scoped Wiki start checkpoint `bb26076828a678b0b90c962538806a28d64b0842` and completion commit `60deb3892d1e34885f864f9a8e3f0da3c772a3fd`.
+<!-- tarav.breadcrumb ff6558343c58d392e816727457738cb02c545d2f6a09f9b5c4e3047b92afe2e4 -->
