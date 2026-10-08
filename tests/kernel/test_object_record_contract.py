@@ -42,15 +42,15 @@ def test_registered_runtime_objects_round_trip_their_record_examples() -> None:
     registry = create_runtime().records
 
     for object_type in registry.record_types:
-        example = object_type.record_example()
+        example = object_type.records.record_example()
         first = registry.from_record(example)
-        encoded = first.to_record()
+        encoded = first.records.to_record()
         assert encoded == example, object_type.__name__
         second = registry.from_record(encoded)
 
         assert type(first) is object_type, object_type.__name__
         assert type(second) is object_type, object_type.__name__
-        assert second.to_record() == encoded, object_type.__name__
+        assert second.records.to_record() == encoded, object_type.__name__
 
 
 def test_runtime_object_projects_state_without_a_loaded_record() -> None:
@@ -59,18 +59,18 @@ def test_runtime_object_projects_state_without_a_loaded_record() -> None:
     assert subject._record is None
     assert not hasattr(subject, "record")
     assert not hasattr(subject, "record_data")
-    assert subject.to_record() == {"type": "Test.RuntimeProjection", "value": 7}
+    assert subject.records.to_record() == {"type": "Test.RuntimeProjection", "value": 7}
 
 
 def test_loaded_record_is_input_material_not_the_objects_source_of_truth() -> None:
     supplied = {"type": "Test.RuntimeProjection", "value": 7}
-    subject = RuntimeProjection.from_record(supplied)
+    subject = RuntimeProjection.records.from_record(supplied)
 
     assert subject._record == supplied
     assert subject._record is not supplied
     subject._record["value"] = 99
     assert subject.value == 7
-    assert subject.to_record() == supplied
+    assert subject.records.to_record() == supplied
 
 
 def test_default_projection_is_the_types_minimal_record() -> None:
@@ -86,11 +86,11 @@ def test_default_projection_is_the_types_minimal_record() -> None:
     subject = Minimal()
 
     assert subject._record is None
-    assert subject.to_record() == {"type": "Test.Minimal"}
+    assert subject.records.to_record() == {"type": "Test.Minimal"}
 
 
 def test_tarav_owns_the_public_record_loading_boundary() -> None:
-    with pytest.raises(TaravTypeDeclarationError, match="customize _from_record"):
+    with pytest.raises(TaravTypeDeclarationError, match="selected Records namespace"):
 
         class InvalidLoader(TaravObject):
             @classmethod

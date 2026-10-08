@@ -126,7 +126,7 @@ def test_test_workflow_stores_and_reopens_both_archive_structures(tmp_path) -> N
     assert old_second.record_path == reopened_ordered.get(2).record_path
     assert old_second.artifact == reopened_ordered.get(2).artifact
     assert old_second.placement == 1  # a placement snapshot, not object identity
-    assert "placement" not in old_second.to_record()
+    assert "placement" not in old_second.records.to_record()
     assert len(json.loads((root / "ordered" / "entries.json").read_text())) == 3
 
     archive_context = runtime.context(reopened_named)
@@ -339,7 +339,7 @@ def test_archive_tree_navigates_placements_without_changing_workflow_objects(
     assert archive.for_workflow(WorkspaceWorkflow).directory == partition.directory
     assert partition.directory == root / str(workflow().id)
     assert not partition.directory.exists()
-    restored_partition = runtime.records.from_record(partition.to_record())
+    restored_partition = runtime.records.from_record(partition.records.to_record())
     assert restored_partition.directory == partition.directory
     named, ordered = workflow.create_record_archives(partition, run)
 
@@ -386,7 +386,7 @@ def test_dictionary_name_is_not_a_ship_and_unknown_types_remain_inspectable(
     archive = ArchiveFolder.create(tmp_path / "records", constitution="Test")
     entry = archive.put("ordinary-name", WorkspaceItem("known"))
     assert not isinstance(entry.placement, Ship)
-    assert archive.get("ordinary-name").to_record()["archive"] == str(archive.id)
+    assert archive.get("ordinary-name").records.to_record()["archive"] == str(archive.id)
     with pytest.raises(FileExistsError):
         archive.put("ordinary-name", WorkspaceItem("replacement"))
     with pytest.raises(ValueError, match="ordinary path segment"):

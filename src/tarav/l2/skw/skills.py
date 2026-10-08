@@ -148,7 +148,7 @@ class SkwSkill(SkwDepot, CheckProvider):
         except (KeyError, ValueError) as exc:
             raise ValueError(f'Unknown block: {block}') from exc
         return {'source': str(document.source), 'output': str(document.target),
-                'block': selected.to_record()}
+                'block': selected.records.to_record()}
 
     def loading(self):
         # tarav.breadcrumb 59cbf4641ecead3861c7589cc4925175b947f7cbb3c2df4adbb1eabef3901e5e

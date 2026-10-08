@@ -101,9 +101,11 @@ class Reference(FileRecord):
                 raise ValueError("Reference requires type or __tarav__.type")
             return self
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "locator": "example"}
+    class Records(FileRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name, "locator": "example"}
+
 
     @property
     def locator(self) -> object:
@@ -155,9 +157,11 @@ class FileReference(Reference):
         locator: Annotated[str, Field(min_length=1)]
         check: Sha256Check | None = None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "locator": "/example/file.txt"}
+    class Records(Reference.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name, "locator": "/example/file.txt"}
+
 
     def __init__(self, record: Mapping | str | Path, *, check=None, hints=None):
         if not isinstance(record, Mapping):

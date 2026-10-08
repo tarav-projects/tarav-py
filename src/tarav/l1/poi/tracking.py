@@ -53,32 +53,51 @@ class TrackedPOI(TaravEntity, FileRecord):
     def identity_for(cls, poi_id):
         return Ship(uuid5(UUID(str(entity(cls).id)), poi_id))
 
-    @classmethod
-    def validate_record(cls, value):
-        data = super().validate_record(value)
-        if data.schema_version != 1:
-            raise ValueError("Unsupported tracked POI schema")
-        if data.id != cls.identity_for(data.poi_id):
-            raise ValueError("Tracked identity disagrees with POI situation")
-        TypeShip(data.poi_type_id)
-        UUID(data.owner_workflow)
-        _scope(data.scope)
-        if (data.poi.get("id") != data.poi_id
-                or data.poi.get("class_id") != data.poi_type_id
-                or fingerprint([data.poi_type_id, data.poi.get("situation")]) != data.poi_id):
-            raise ValueError("Tracked POI snapshot disagrees with identity")
-        if not data.history:
-            raise ValueError("Tracked POI requires an observation history")
-        for observation in data.history:
-            if not isinstance(observation, dict) or type(observation.get("detected")) is not bool:
-                raise ValueError("Invalid tracked POI observation")
-            _timestamp(datetime.fromisoformat(observation["at"]))
-            prior = observation.get("poi")
-            if prior is not None and (not isinstance(prior, dict)
-                                      or prior.get("id") != data.poi_id
-                                      or prior.get("class_id") != data.poi_type_id):
-                raise ValueError("Observation belongs to another POI situation")
-        return data
+    class Records(TaravEntity.Records):
+        def validate_record(self, value):
+            cls = self._owner
+            data = super().validate_record(value)
+            if data.schema_version != 1:
+                raise ValueError("Unsupported tracked POI schema")
+            if data.id != cls.identity_for(data.poi_id):
+                raise ValueError("Tracked identity disagrees with POI situation")
+            TypeShip(data.poi_type_id)
+            UUID(data.owner_workflow)
+            _scope(data.scope)
+            if (data.poi.get("id") != data.poi_id
+                    or data.poi.get("class_id") != data.poi_type_id
+                    or fingerprint([data.poi_type_id, data.poi.get("situation")]) != data.poi_id):
+                raise ValueError("Tracked POI snapshot disagrees with identity")
+            if not data.history:
+                raise ValueError("Tracked POI requires an observation history")
+            for observation in data.history:
+                if not isinstance(observation, dict) or type(observation.get("detected")) is not bool:
+                    raise ValueError("Invalid tracked POI observation")
+                _timestamp(datetime.fromisoformat(observation["at"]))
+                prior = observation.get("poi")
+                if prior is not None and (not isinstance(prior, dict)
+                                          or prior.get("id") != data.poi_id
+                                          or prior.get("class_id") != data.poi_type_id):
+                    raise ValueError("Observation belongs to another POI situation")
+            return data
+
+        def record_example(self):
+            cls = self._owner
+            poi = {
+                "type": "Example.POI", "class_id": "7d28d632-2ec5-4c5a-997f-224ad508ce9d",
+                "situation": {"example": 1}, "subject": {}, "evidence": {},
+            }
+            poi["id"] = fingerprint([poi["class_id"], poi["situation"]])
+            return {
+                "type": entity(cls).name, "schema_version": 1,
+                "id": str(cls.identity_for(poi["id"])), "poi_id": poi["id"],
+                "poi_type_id": poi["class_id"],
+                "owner_workflow": str(POI_WORKFLOW_SHIP), "scope": {"example": 1},
+                "poi": poi, "detected": True,
+                "history": [{"at": "2026-10-03T00:00:00+00:00", "detected": True,
+                             "poi": poi}],
+            }
+
 
     @classmethod
     def from_poi(cls, poi: IdentifiedPOI, *, scope: Mapping, at=None):
@@ -98,24 +117,8 @@ class TrackedPOI(TaravEntity, FileRecord):
             "history": [{"at": stamp, "detected": True,
                          "poi": poi.as_dict(detail=True)}],
         }
-        return cls.from_record(record)
+        return cls.records.from_record(record)
 
-    @classmethod
-    def record_example(cls):
-        poi = {
-            "type": "Example.POI", "class_id": "7d28d632-2ec5-4c5a-997f-224ad508ce9d",
-            "situation": {"example": 1}, "subject": {}, "evidence": {},
-        }
-        poi["id"] = fingerprint([poi["class_id"], poi["situation"]])
-        return {
-            "type": entity(cls).name, "schema_version": 1,
-            "id": str(cls.identity_for(poi["id"])), "poi_id": poi["id"],
-            "poi_type_id": poi["class_id"],
-            "owner_workflow": str(POI_WORKFLOW_SHIP), "scope": {"example": 1},
-            "poi": poi, "detected": True,
-            "history": [{"at": "2026-10-03T00:00:00+00:00", "detected": True,
-                         "poi": poi}],
-        }
 
 
 class TrackedPOIStore:
@@ -131,7 +134,7 @@ class TrackedPOIStore:
         for path in sorted(self.root.glob("*.json")):
             try:
                 record = json.loads(path.read_text(encoding="utf-8"))
-                TrackedPOI.validate_record(record)
+                TrackedPOI.records.validate_record(record)
                 if path.stem != record["id"]:
                     raise ValueError("Tracked POI filename disagrees with identity")
             except (OSError, ValueError, TypeError, KeyError) as exc:
@@ -145,15 +148,15 @@ class TrackedPOIStore:
         identity = str(TrackedPOI.identity_for(poi_id))
         path = self.root / f"{identity}.json"
         record = json.loads(path.read_text(encoding="utf-8"))
-        TrackedPOI.validate_record(record)
-        return TrackedPOI.from_record(record)
+        TrackedPOI.records.validate_record(record)
+        return TrackedPOI.records.from_record(record)
 
     def track(self, poi: IdentifiedPOI, *, scope: Mapping, at=None):
         tracked = TrackedPOI.from_poi(poi, scope=scope, at=at)
         path = self.root / f"{tracked.id}.json"
         self.root.mkdir(parents=True, exist_ok=True)
         with path.open("x", encoding="utf-8") as handle:
-            json.dump(tracked.to_record(), handle, ensure_ascii=False, indent=2, allow_nan=False)
+            json.dump(tracked.records.to_record(), handle, ensure_ascii=False, indent=2, allow_nan=False)
             handle.write("\n")
         return tracked
 
@@ -201,7 +204,7 @@ class TrackedPOIStore:
         return self.snapshot()
 
     def _replace(self, record):
-        TrackedPOI.validate_record(record)
+        TrackedPOI.records.validate_record(record)
         self.root.mkdir(parents=True, exist_ok=True)
         target = self.root / f"{record['id']}.json"
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.root,

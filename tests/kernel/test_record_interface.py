@@ -103,11 +103,11 @@ def test_inherited_and_independent_representations():
     ):
         obj = registry.from_record(value)
         assert obj.label() == "Calculator"
-        assert obj.to_record() == value
+        assert obj.records.to_record() == value
     with pytest.raises(ValidationError):
-        B.from_record({"path": "calc.py"})
+        B.records.from_record({"path": "calc.py"})
     with pytest.raises(ValidationError):
-        A.from_record({"name": 1})
+        A.records.from_record({"name": 1})
     assert "name" in B.RecordInterface.model_json_schema()["required"]
 
 
@@ -180,9 +180,9 @@ def test_closed_child_accepts_inherited_fields_and_rejects_extras():
             model_config = ConfigDict(extra="forbid")
 
     value = {"name": "Calculator", "path": "calc.py"}
-    assert Closed.from_record(value).to_record() == value
+    assert Closed.records.from_record(value).records.to_record() == value
     with pytest.raises(ValidationError):
-        Closed.from_record({**value, "unexpected": True})
+        Closed.records.from_record({**value, "unexpected": True})
 
 
 def test_no_coercion_discard_or_default_insertion():
@@ -198,11 +198,11 @@ def test_no_coercion_discard_or_default_insertion():
         class RecordInterface(A.RecordInterface):
             count: int = 1
 
-    obj = Defaults.from_record({"name": "x", "unknown": [1]})
-    assert Defaults.validate_record(obj.to_record()).count == 1
-    assert obj.to_record() == {"name": "x", "unknown": [1]}
+    obj = Defaults.records.from_record({"name": "x", "unknown": [1]})
+    assert Defaults.records.validate_record(obj.records.to_record()).count == 1
+    assert obj.records.to_record() == {"name": "x", "unknown": [1]}
     with pytest.raises(InvalidRecordJSON):
-        A.from_record({"name": "x", "hints": {1: "a", "1": "b"}})
+        A.records.from_record({"name": "x", "hints": {1: "a", "1": "b"}})
 
     class Transform(A):
         @classmethod
@@ -220,8 +220,8 @@ def test_no_coercion_discard_or_default_insertion():
                 return value.upper()
 
     with pytest.raises(InvalidRecordJSON, match="transform"):
-        Transform.from_record({"name": "x"})
+        Transform.records.from_record({"name": "x"})
     assert obj._record is not None
     obj._record["name"] = 1
     with pytest.raises(ValidationError):
-        obj.to_record()
+        obj.records.to_record()

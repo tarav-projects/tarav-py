@@ -105,7 +105,7 @@ class DiagramDraft(TaravObject):
         }
         if receipt is not None:
             record["receipt"] = receipt
-        draft = cls.from_record(record)
+        draft = cls.records.from_record(record)
         draft.source = path.expanduser().resolve()
         return draft
 
@@ -134,7 +134,7 @@ class DiagramDraft(TaravObject):
         registry = TypeRegistry(TaravObject, (cls,))
         if registry.resolve(data) is not cls:
             raise DiagramDraftError("Record is not a Diagram.Draft")
-        draft = cls.from_record(data)
+        draft = cls.records.from_record(data)
         draft.source = resolved
         return draft
 
@@ -234,7 +234,7 @@ class DiagramDraftRepository:
     def save(self, draft: DiagramDraft) -> DiagramDraft:
         if draft.path.parent != self.root:
             raise DiagramDraftError("Diagram.Draft belongs to another repository")
-        atomic_write_json(draft.path, draft.to_record(), ensure_ascii=False)
+        atomic_write_json(draft.path, draft.records.to_record(), ensure_ascii=False)
         return DiagramDraft.read(draft.path)
 
     def reconcile(
@@ -273,7 +273,7 @@ class DiagramDraftRepository:
             "Applied",
             draft.ship_drafts,
             draft.annotations,
-            receipt.to_record(),
+            receipt.records.to_record(),
         )
         self.save(applied)
         return receipt

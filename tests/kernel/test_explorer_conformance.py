@@ -123,7 +123,7 @@ def _context_list(root: Path) -> ExplorerCase:
 class ArchiveContractTests(ExplorerContractTests):
     def assert_value(self, case, key, value):
         if key == case.leaf:
-            assert value.to_record() == WorkspaceItem("one").to_record()
+            assert value.records.to_record() == WorkspaceItem("one").records.to_record()
         elif isinstance(case.value, (ArchiveFolder, ArchiveList)):
             assert isinstance(value, ArchiveFolder)
             assert value.constitution == ("Child" if key == case.child else "Other")
@@ -150,7 +150,7 @@ class TestArchivePartition(ArchiveContractTests):
 class ContextContractTests(ExplorerContractTests):
     def assert_value(self, case, key, value):
         if key == case.leaf:
-            assert value.to_record() == WorkspaceItem("one").to_record()
+            assert value.records.to_record() == WorkspaceItem("one").records.to_record()
         else:
             assert isinstance(value, type(case.value))
             assert value.subject is WorkspaceItem

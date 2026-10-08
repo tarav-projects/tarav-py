@@ -107,7 +107,7 @@ class TypedShip(FileRecord):
             retained = _object(record, field="Ship.Record")
         super().__init__()
         self._record = _json_object(retained)
-        type(self).validate_record(self._record)
+        type(self).records.validate_record(self._record)
         self._validate_record()
 
     @classmethod
@@ -119,14 +119,16 @@ class TypedShip(FileRecord):
     def _validate_record(self) -> None:
         return None
 
-    @classmethod
-    def record_example(cls) -> JsonObject:
-        example = super().record_example()
-        if entity(cls).name in {BLOCK_SHIP_TYPE, LINE_SHIP_TYPE, COLLECTION_SHIP_TYPE}:
-            example["model_ship"] = _EXAMPLE_MODEL
-        if entity(cls).name == LINE_SHIP_TYPE:
-            example["block_ship"] = _EXAMPLE_BLOCK
-        return example
+    class Records(FileRecord.Records):
+        def record_example(self) -> JsonObject:
+            cls = self._owner
+            example = super().record_example()
+            if entity(cls).name in {BLOCK_SHIP_TYPE, LINE_SHIP_TYPE, COLLECTION_SHIP_TYPE}:
+                example["model_ship"] = _EXAMPLE_MODEL
+            if entity(cls).name == LINE_SHIP_TYPE:
+                example["block_ship"] = _EXAMPLE_BLOCK
+            return example
+
 
     def _binding(self) -> DiagramShip:
         if self.ship is None:
@@ -236,7 +238,7 @@ class TypedAnnotation(FileRecord):
             retained = _object(record, field="Annotation.Record")
         super().__init__()
         self._record = _json_object(retained)
-        type(self).validate_record(self._record)
+        type(self).records.validate_record(self._record)
         self._validate_record()
 
     @classmethod
@@ -248,94 +250,96 @@ class TypedAnnotation(FileRecord):
     def _validate_record(self) -> None:
         return None
 
-    @classmethod
-    def record_example(cls) -> JsonObject:
-        example = super().record_example()
-        location = {
-            "model_ship": _EXAMPLE_MODEL,
-            "block_ship": _EXAMPLE_BLOCK,
-            "line_ship": _EXAMPLE_LINE,
-        }
-        if entity(cls).name == MODEL_EDITION_TYPE:
-            example["model_ship"] = _EXAMPLE_MODEL
-        elif entity(cls).name == LINE_ANNOTATION_TYPE:
-            example.update(
-                model_ship=_EXAMPLE_MODEL,
-                editions=[
-                    {
-                        "id": _EXAMPLE_EDITION,
-                        "arguments": [
-                            {
-                                "namespace_id": _EXAMPLE_NAMESPACE,
-                                "kind": "ship",
-                                "id": _EXAMPLE_LINE,
-                            }
-                        ],
-                        "data": {"text": "Example line"},
-                    }
-                ],
-            )
-        elif entity(cls).name == LINE_EDITION_TYPE:
-            example.update(location=location, data={"text": "Example line"})
-        elif entity(cls).name == BLOCK_EDITION_TYPE:
-            example.update(
-                location={key: location[key] for key in ("model_ship", "block_ship")},
-                data={"label": "Example block"},
-            )
-        elif entity(cls).name == COLLECTION_EDITION_TYPE:
-            example.update(
-                model_ship=_EXAMPLE_MODEL,
-                collection_ship=_EXAMPLE_COLLECTION,
-                collection_type=DIAGRAM_COLLECTION_OBJECT_TYPE,
-                data={"label": "Example collection"},
-            )
-        elif entity(cls).name == CAPTURE_AUTHORIZATION_GATE_TYPE:
-            turn = {
-                "session_identity": _EXAMPLE_DIGEST,
-                "turn_address": _EXAMPLE_DIGEST,
-                "turn_hash": _EXAMPLE_DIGEST,
+    class Records(FileRecord.Records):
+        def record_example(self) -> JsonObject:
+            cls = self._owner
+            example = super().record_example()
+            location = {
+                "model_ship": _EXAMPLE_MODEL,
+                "block_ship": _EXAMPLE_BLOCK,
+                "line_ship": _EXAMPLE_LINE,
             }
-            example.update(
-                model_ship=_EXAMPLE_MODEL,
-                token="example-authorization",
-                workflow="example",
-                permission_turn=turn,
-                operations=["example"],
-                target_scope=[
-                    {
-                        "namespace_id": _EXAMPLE_NAMESPACE,
-                        "kind": "ship",
-                        "id": _EXAMPLE_MODEL,
-                    }
-                ],
-            )
-        elif entity(cls).name == BLOCK_TYPE_ANNOTATION_TYPE:
-            example.update(
-                location={key: location[key] for key in ("model_ship", "block_ship")},
-                block_type=DIAGRAM_BLOCK_OBJECT_TYPE,
-            )
-        elif entity(cls).name == LINE_SUPPORT_ANNOTATION_TYPE:
-            example["location"] = location
-        elif entity(cls).name == LINE_TYPE_ANNOTATION_TYPE:
-            example.update(location=location, line_type=DIAGRAM_LINE_OBJECT_TYPE)
-        elif entity(cls).name == LINE_GATE_ANNOTATION_TYPE:
-            turn = {
-                "session_identity": _EXAMPLE_DIGEST,
-                "turn_address": _EXAMPLE_DIGEST,
-                "turn_hash": _EXAMPLE_DIGEST,
-            }
-            example.update(
-                target_edition=_EXAMPLE_EDITION,
-                gates=[
-                    {
-                        "type": VERBATIM_GATE_TYPE,
-                        "token": "example-gate",
-                        "proposal_turn": turn,
-                        "approval_turn": turn,
-                    }
-                ],
-            )
-        return example
+            if entity(cls).name == MODEL_EDITION_TYPE:
+                example["model_ship"] = _EXAMPLE_MODEL
+            elif entity(cls).name == LINE_ANNOTATION_TYPE:
+                example.update(
+                    model_ship=_EXAMPLE_MODEL,
+                    editions=[
+                        {
+                            "id": _EXAMPLE_EDITION,
+                            "arguments": [
+                                {
+                                    "namespace_id": _EXAMPLE_NAMESPACE,
+                                    "kind": "ship",
+                                    "id": _EXAMPLE_LINE,
+                                }
+                            ],
+                            "data": {"text": "Example line"},
+                        }
+                    ],
+                )
+            elif entity(cls).name == LINE_EDITION_TYPE:
+                example.update(location=location, data={"text": "Example line"})
+            elif entity(cls).name == BLOCK_EDITION_TYPE:
+                example.update(
+                    location={key: location[key] for key in ("model_ship", "block_ship")},
+                    data={"label": "Example block"},
+                )
+            elif entity(cls).name == COLLECTION_EDITION_TYPE:
+                example.update(
+                    model_ship=_EXAMPLE_MODEL,
+                    collection_ship=_EXAMPLE_COLLECTION,
+                    collection_type=DIAGRAM_COLLECTION_OBJECT_TYPE,
+                    data={"label": "Example collection"},
+                )
+            elif entity(cls).name == CAPTURE_AUTHORIZATION_GATE_TYPE:
+                turn = {
+                    "session_identity": _EXAMPLE_DIGEST,
+                    "turn_address": _EXAMPLE_DIGEST,
+                    "turn_hash": _EXAMPLE_DIGEST,
+                }
+                example.update(
+                    model_ship=_EXAMPLE_MODEL,
+                    token="example-authorization",
+                    workflow="example",
+                    permission_turn=turn,
+                    operations=["example"],
+                    target_scope=[
+                        {
+                            "namespace_id": _EXAMPLE_NAMESPACE,
+                            "kind": "ship",
+                            "id": _EXAMPLE_MODEL,
+                        }
+                    ],
+                )
+            elif entity(cls).name == BLOCK_TYPE_ANNOTATION_TYPE:
+                example.update(
+                    location={key: location[key] for key in ("model_ship", "block_ship")},
+                    block_type=DIAGRAM_BLOCK_OBJECT_TYPE,
+                )
+            elif entity(cls).name == LINE_SUPPORT_ANNOTATION_TYPE:
+                example["location"] = location
+            elif entity(cls).name == LINE_TYPE_ANNOTATION_TYPE:
+                example.update(location=location, line_type=DIAGRAM_LINE_OBJECT_TYPE)
+            elif entity(cls).name == LINE_GATE_ANNOTATION_TYPE:
+                turn = {
+                    "session_identity": _EXAMPLE_DIGEST,
+                    "turn_address": _EXAMPLE_DIGEST,
+                    "turn_hash": _EXAMPLE_DIGEST,
+                }
+                example.update(
+                    target_edition=_EXAMPLE_EDITION,
+                    gates=[
+                        {
+                            "type": VERBATIM_GATE_TYPE,
+                            "token": "example-gate",
+                            "proposal_turn": turn,
+                            "approval_turn": turn,
+                        }
+                    ],
+                )
+            return example
+
 
     def _binding(self) -> DiagramAnnotation:
         if self.annotation is None:
@@ -428,6 +432,6 @@ def _sort_typed(
     return tuple(
         sorted(
             annotations,
-            key=lambda item: (str(item.to_record().get("recorded_at", "")), item.id),
+            key=lambda item: (str(item.records.to_record().get("recorded_at", "")), item.id),
         )
     )

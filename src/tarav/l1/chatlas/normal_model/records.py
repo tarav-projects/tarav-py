@@ -68,9 +68,11 @@ class UserEvent(TaravObject):
         type: Literal["User.Event"]
         origin: Literal["user"]
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _event_example(entity(cls).name, "user")
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _event_example(entity(cls).name, "user")
+
 
 
 class AgentEvent(TaravObject):
@@ -87,9 +89,11 @@ class AgentEvent(TaravObject):
         type: Literal["Agent.Event"]
         origin: Literal["agent"]
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _event_example(entity(cls).name, "agent")
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _event_example(entity(cls).name, "agent")
+
 
 
 class UnresolvedEvent(TaravObject):
@@ -106,9 +110,11 @@ class UnresolvedEvent(TaravObject):
         type: Literal["Unresolved.Event"]
         origin: Literal["unresolved"]
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _event_example(entity(cls).name, "unresolved")
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _event_example(entity(cls).name, "unresolved")
+
 
 
 class ChatMessage(TaravObject):
@@ -131,16 +137,18 @@ class ChatMessage(TaravObject):
         text: str
         event_refs: list[EventRef] = Field(min_length=1)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "message_address": "3" * 64,
-            "message_hash": "4" * 64,
-            "side": "user",
-            "text": "Example Chatlas message.",
-            "event_refs": [_event_ref_example()],
-        }
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "message_address": "3" * 64,
+                "message_hash": "4" * 64,
+                "side": "user",
+                "text": "Example Chatlas message.",
+                "event_refs": [_event_ref_example()],
+            }
+
 
 
 class ChatTurn(TaravObject):
@@ -163,18 +171,20 @@ class ChatTurn(TaravObject):
         event_refs: list[EventRef] = Field(min_length=1)
         message_refs: list[MessageRef]
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "turn_address": "5" * 64,
-            "turn_hash": "6" * 64,
-            "side": "user",
-            "event_refs": [_event_ref_example()],
-            "message_refs": [
-                {"message_address": "3" * 64, "message_hash": "4" * 64}
-            ],
-        }
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "turn_address": "5" * 64,
+                "turn_hash": "6" * 64,
+                "side": "user",
+                "event_refs": [_event_ref_example()],
+                "message_refs": [
+                    {"message_address": "3" * 64, "message_hash": "4" * 64}
+                ],
+            }
+
 
 
 class AgentLoadedContext(TaravObject):
@@ -194,13 +204,15 @@ class AgentLoadedContext(TaravObject):
         agent_event_ref: EventRef
         event_refs: list[EventRef] = Field(min_length=1)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "agent_event_ref": _event_ref_example(),
-            "event_refs": [_event_ref_example()],
-        }
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "agent_event_ref": _event_ref_example(),
+                "event_refs": [_event_ref_example()],
+            }
+
 
 
 def _event_ref_example() -> dict[str, str]:
@@ -249,7 +261,7 @@ def event_record(value: object) -> TaravObject:
     record_type = EVENT_RECORD_TYPES.get(label) if isinstance(label, str) else None
     if record_type is None:
         raise ValueError(f"unknown Chatlas Event Type: {label!r}")
-    return record_type.from_record(value)
+    return record_type.records.from_record(value)
 
 
 __all__ = [

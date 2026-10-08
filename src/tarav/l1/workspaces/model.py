@@ -138,11 +138,13 @@ class Workspace(TaravEntity, CheckProvider):
             )
             return CheckSuite((WorkspaceIntegrityCheck(self.obj, setup),))
 
-    @classmethod
-    def record_example(cls):
-        return cls(WorkspaceManifest(
-            id=Ship("84e2214e-836a-4559-844b-cc4ee2a69ce7"), label="example"
-        )).to_record()
+    class Records(TaravEntity.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls(WorkspaceManifest(
+                id=Ship("84e2214e-836a-4559-844b-cc4ee2a69ce7"), label="example"
+            )).records.to_record()
+
 
 
 class EntryObservation(BaseModel):

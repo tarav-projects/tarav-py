@@ -105,7 +105,7 @@ class ChatlasNormalModel(DirectoryRecord):
             value = json.loads((path / MAIN_FILENAME).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise CliError(f"invalid Normal Model entry: {path / MAIN_FILENAME}") from exc
-        result = cls.from_record(value)
+        result = cls.records.from_record(value)
         result.source = path / MAIN_FILENAME
         return result
 
@@ -141,7 +141,7 @@ class ChatlasNormalModel(DirectoryRecord):
                 + ", ".join(sorted(unexpected))
             )
         header = {key: deepcopy(model.get(key)) for key in _HEADER_KEYS}
-        record = cls.from_record(header)
+        record = cls.records.from_record(header)
         collections: dict[str, list[JsonObject]] = {}
         for name in COLLECTION_FILES:
             values = model.get(name)
@@ -152,7 +152,7 @@ class ChatlasNormalModel(DirectoryRecord):
         for name, values in collections.items():
             if getattr(counts, name) != len(values):
                 raise CliError(f"Normal Model {name} count does not match its collection")
-        return record.to_record(), collections
+        return record.records.to_record(), collections
 
     def iter_events(self) -> Iterator[JsonObject]:
         yield from self._iter_collection("events")
@@ -167,7 +167,7 @@ class ChatlasNormalModel(DirectoryRecord):
         yield from self._iter_collection("loaded_contexts")
 
     def model_header(self) -> JsonObject:
-        return self.to_record()
+        return self.records.to_record()
 
     def project(
         self,
@@ -197,43 +197,45 @@ class ChatlasNormalModel(DirectoryRecord):
         for value in _iter_jsonl(self.directory / COLLECTION_FILES[name]):
             yield _validated_collection_row(name, value)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "schema_version": NORMAL_MODEL_SCHEMA_VERSION,
-            "metadata": {"commit": None},
-            "session": {
-                "provider": "codex",
-                "session_id": "example-session",
-                "identity_hash": "0" * 64,
-            },
-            "sources": [
-                {
-                    "source_id": "source-example",
-                    "path": "/example/transcript.jsonl",
-                    "role": "transcript",
-                    "raw_model_version": "example.raw-model",
-                    "status": "recognized",
-                }
-            ],
-            "counts": {
-                "events": 0,
-                "messages": 0,
-                "turns": 0,
-                "loaded_contexts": 0,
-            },
-        }
+    class Records(DirectoryRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "schema_version": NORMAL_MODEL_SCHEMA_VERSION,
+                "metadata": {"commit": None},
+                "session": {
+                    "provider": "codex",
+                    "session_id": "example-session",
+                    "identity_hash": "0" * 64,
+                },
+                "sources": [
+                    {
+                        "source_id": "source-example",
+                        "path": "/example/transcript.jsonl",
+                        "role": "transcript",
+                        "raw_model_version": "example.raw-model",
+                        "status": "recognized",
+                    }
+                ],
+                "counts": {
+                    "events": 0,
+                    "messages": 0,
+                    "turns": 0,
+                    "loaded_contexts": 0,
+                },
+            }
+
 
 
 def _validated_collection_row(name: str, value: object) -> JsonObject:
     if name == "events":
-        return event_record(value).to_record()
+        return event_record(value).records.to_record()
     if name == "messages":
-        return ChatMessage.from_record(value).to_record()
+        return ChatMessage.records.from_record(value).records.to_record()
     if name == "turns":
-        return ChatTurn.from_record(value).to_record()
-    return AgentLoadedContext.from_record(value).to_record()
+        return ChatTurn.records.from_record(value).records.to_record()
+    return AgentLoadedContext.records.from_record(value).records.to_record()
 
 
 def _write_jsonl(path: Path, values: list[JsonObject]) -> None:

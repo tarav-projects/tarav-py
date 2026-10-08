@@ -42,7 +42,7 @@ def compute_event_hash(event: JsonObject) -> str:
 
 
 def event_ref(event: JsonObject) -> JsonObject:
-    event = event_record(event).to_record()
+    event = event_record(event).records.to_record()
     address = _full_digest(event.get("event_address"), field="event_address")
     digest = _full_digest(event.get("event_hash"), field="event_hash")
     return {"event_address": address, "event_hash": digest}
@@ -62,7 +62,7 @@ def resolve_event_ref(
             "standing": "MISSING",
             "event": None,
         }
-    current = event_record(addressed[0]).to_record()
+    current = event_record(addressed[0]).records.to_record()
     current_hash = _full_digest(current.get("event_hash"), field="event_hash")
     return {
         "standing": "MATCHED" if current_hash == expected_hash else "AMENDED",

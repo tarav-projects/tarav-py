@@ -62,12 +62,14 @@ class BlessingAcceptanceCase(PairwiseRankingCase):
         support: list[dict]
         source_passages: list[dict]
 
-    @classmethod
-    def record_example(cls):
-        blessing = BlessingRecord.from_record(BlessingRecord.record_example())
-        return BlessingAcceptanceAssertion.from_blessing(blessing).assessment_case(
-            cls, blessing=blessing,
-        ).to_record()
+    class Records(PairwiseRankingCase.Records):
+        def record_example(self):
+            cls = self._owner
+            blessing = BlessingRecord.records.from_record(BlessingRecord.records.record_example())
+            return BlessingAcceptanceAssertion.from_blessing(blessing).assessment_case(
+                cls, blessing=blessing,
+            ).records.to_record()
+
 
 
 class BlessingGroundsCase(AssessmentCase):
@@ -88,16 +90,18 @@ class BlessingGroundsCase(AssessmentCase):
         support: list[dict]
         source_passages: list[dict]
 
-    @classmethod
-    def record_example(cls):
-        record = BlessingRecord.record_example()
-        support = {'type': 'Example.Source.Reference', 'locator': {'path': 'example.txt'}}
-        record['support'] = [support]
-        blessing = BlessingRecord.from_record(record)
-        return BlessingGroundsAssertion.from_blessing(blessing).assessment_case(
-            cls, blessing=blessing,
-            source_passages=[{'reference': support, 'text': 'Example passage.'}],
-        ).to_record()
+    class Records(AssessmentCase.Records):
+        def record_example(self):
+            cls = self._owner
+            record = BlessingRecord.records.record_example()
+            support = {'type': 'Example.Source.Reference', 'locator': {'path': 'example.txt'}}
+            record['support'] = [support]
+            blessing = BlessingRecord.records.from_record(record)
+            return BlessingGroundsAssertion.from_blessing(blessing).assessment_case(
+                cls, blessing=blessing,
+                source_passages=[{'reference': support, 'text': 'Example passage.'}],
+            ).records.to_record()
+
 
 
 class _BlessingAssertion(Assertion):
@@ -128,16 +132,18 @@ class _BlessingAssertion(Assertion):
             raise ValueError('Blessing Assertion requires the retained situation')
         return value
 
-    @classmethod
-    def record_example(cls):
-        blessing = BlessingRecord.from_record(BlessingRecord.record_example())
-        return cls.from_blessing(blessing).to_record()
+    class Records(Assertion.Records):
+        def record_example(self):
+            cls = self._owner
+            blessing = BlessingRecord.records.from_record(BlessingRecord.records.record_example())
+            return cls.from_blessing(blessing).records.to_record()
+
 
     @classmethod
     def from_blessing(cls, blessing: BlessingRecord):
         if not isinstance(blessing, BlessingRecord):
             raise TypeError('Expected a BlessingRecord')
-        record = blessing.to_record()
+        record = blessing.records.to_record()
         poi = record['poi']
         return cls({
             'type': 'Tarav.Blessings.Record.Reference',
@@ -153,7 +159,7 @@ class _BlessingAssertion(Assertion):
             raise IncompleteCaseScope('Blessing case needs the retained blessing Record')
         if type(self).from_blessing(blessing).id != self.id:
             raise ValueError('Blessing case belongs to another blessing or POI situation')
-        return blessing.to_record()
+        return blessing.records.to_record()
 
 
 class BlessingAcceptanceAssertion(_BlessingAssertion):
@@ -250,7 +256,7 @@ def assertions_for_blessing(blessing: BlessingRecord) -> AssertionNamespace:
     """Expose stable labels without turning an optional factual ground into fact."""
 
     assertions = {'main': BlessingAcceptanceAssertion.from_blessing(blessing)}
-    if blessing.to_record()['support']:
+    if blessing.records.to_record()['support']:
         assertions['grounds'] = BlessingGroundsAssertion.from_blessing(blessing)
     return AssertionNamespace(assertions)
 

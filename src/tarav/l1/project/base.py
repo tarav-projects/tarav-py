@@ -65,7 +65,7 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
             for key in location.path[:-1]:
                 target = target[key]
             target[location.path[-1]] = entity(cls).name
-        result = cls.from_record(record)
+        result = cls.records.from_record(record)
         result.source = handler.marker_path
         return result
 
@@ -81,7 +81,7 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
 
     @property
     def name(self) -> str:
-        return project_marker_name(self.to_record()) or self.root.name
+        return project_marker_name(self.records.to_record()) or self.root.name
 
     def _to_record(self):
         if self._record is not None:
@@ -92,10 +92,11 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
             "project_id": str(self.id),
         }
 
-    @classmethod
-    def record_example(cls):
-        return {
-            "type": entity(cls).name,
-            "class": "agentos.project",
-            "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
-        }
+    class Records(TaravEntity.Records):
+        def record_example(self):
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "class": "agentos.project",
+                "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
+            }

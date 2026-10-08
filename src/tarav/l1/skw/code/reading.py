@@ -18,10 +18,12 @@ class ReadingDeclaration(BlockAnnotation):
     class RecordInterface(BlockAnnotation.RecordInterface):
         target: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name,
-                "target": "27ad5113-56b1-4994-a6ea-013eddd422aa"}
+    class Records(BlockAnnotation.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name,
+                    "target": "27ad5113-56b1-4994-a6ea-013eddd422aa"}
+
 
     @property
     def target(self) -> str:
@@ -49,9 +51,11 @@ class BlockEntry(ReadingEntry):
     class RecordInterface(ReadingEntry.RecordInterface):
         node: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "node": "example"}
+    class Records(ReadingEntry.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name, "node": "example"}
+
 
 
 class FileEntry(ReadingEntry):
@@ -64,9 +68,11 @@ class FileEntry(ReadingEntry):
     class RecordInterface(ReadingEntry.RecordInterface):
         source: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "source": "SKILL.md"}
+    class Records(ReadingEntry.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name, "source": "SKILL.md"}
+
 
 
 # tarav.breadcrumb 7a8dc39912a8499d231b58a1b0532d3eb8ad195d19c6b5b0c9012e5f16ce897a
@@ -83,10 +89,12 @@ class Contains(BlockAnnotation):
             raise RuntimeError("Content declaration has no Record")
         return str(self._record["target"])
 
-    @classmethod
-    def record_example(cls):
-        return {"type": entity(cls).name,
-                "target": "27ad5113-56b1-4994-a6ea-013eddd422aa"}
+    class Records(BlockAnnotation.Records):
+        def record_example(self):
+            cls = self._owner
+            return {"type": entity(cls).name,
+                    "target": "27ad5113-56b1-4994-a6ea-013eddd422aa"}
+
 
     @classmethod
     def class_entity(cls) -> TaravClass:

@@ -99,7 +99,7 @@ def _plan_archive(main: Path) -> ArchiveMove | None:
         record = archive / record_relative
         record_data = ArchiveEntry(
             archive=archive_id, artifact=artifact_relative
-        ).to_record()
+        ).records.to_record()
         if artifact.exists() and artifact.read_bytes() != source.read_bytes():
             raise ValueError(f"Conflicting migrated artifact: {artifact}")
         if (

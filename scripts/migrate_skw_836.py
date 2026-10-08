@@ -100,7 +100,7 @@ def _old_context_hash(entries, *, source):
     for entry in entries:
         if entry.get("kind") != "reference":
             raise ValueError("Cannot translate a non-Reference context baseline")
-        reference = StructuredFileReference.from_record(entry["reference"])
+        reference = StructuredFileReference.records.from_record(entry["reference"])
         reference.source = source
         result = reference.resolve()
         if not result.ok:

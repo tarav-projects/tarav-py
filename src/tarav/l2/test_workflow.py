@@ -56,9 +56,11 @@ class TestItem(FileRecord):
     def _from_record(cls, record_data: BaseModel) -> Self:
         return cls(record_data.label)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "label": "example"}
+    class Records(FileRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name, "label": "example"}
+
 
     def _to_record(self) -> Mapping[str, object]:
         return {"type": entity(type(self)).name, "label": self.label}
@@ -88,13 +90,15 @@ class TestEntity(TaravEntity):
     def _from_record(cls, record_data: BaseModel) -> Self:
         return cls(record_data.id, record_data.label)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "id": str(TEST_ENTITY_SHIP),
-            "label": "example",
-        }
+    class Records(TaravEntity.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "id": str(TEST_ENTITY_SHIP),
+                "label": "example",
+            }
+
 
     def _to_record(self) -> Mapping[str, object]:
         return {**super()._to_record(), "label": self.label}

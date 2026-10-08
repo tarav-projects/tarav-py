@@ -64,7 +64,7 @@ def test_class_context_lists_without_opening_and_reifies_python_class() -> None:
 def test_object_context_is_a_read_only_cursor_over_nested_contexts() -> None:
     ContextExample.obj_context_calls = 0
     ContextExample.opened = 0
-    subject = ContextExample.from_record({"state": "ready"})
+    subject = ContextExample.records.from_record({"state": "ready"})
     view = context(subject)
 
     assert ContextExample.obj_context_calls == 0

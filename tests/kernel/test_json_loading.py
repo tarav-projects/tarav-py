@@ -93,8 +93,8 @@ def test_registry_from_record_routes_through_selected_class(
     assert RegisteredRecord.records.obj is RegisteredRecord
     restored = RegisteredRecord.records.from_record(loaded.records.to_record())
     assert restored.records.to_record() == loaded.records.to_record()
-    assert loaded.to_record() == {"type": "Registered.Record", "value": 7}
-    assert loaded.to_record() is not loaded._record
+    assert loaded.records.to_record() == {"type": "Registered.Record", "value": 7}
+    assert loaded.records.to_record() is not loaded._record
 
 
 def test_registry_construction_calls_the_selected_class_hook() -> None:
@@ -139,9 +139,9 @@ def test_direct_class_loading_rejects_a_child_type_before_construction() -> None
     RoutedRecord.construction_count = 0
 
     with pytest.raises(RecordTypeMismatch, match="expected exact Type"):
-        RegisteredRecord.from_record({"type": "Specialized.Record"})
+        RegisteredRecord.records.from_record({"type": "Specialized.Record"})
     with pytest.raises(RecordTypeMismatch, match="expected exact Type"):
-        RoutedRecord.from_record({"type": "Other.Record"})
+        RoutedRecord.records.from_record({"type": "Other.Record"})
 
     assert RoutedRecord.construction_count == 0
 
@@ -150,30 +150,30 @@ def test_direct_class_loading_uses_ship_authority_and_path_precedence() -> None:
     ship = str(entity(RegisteredRecord).id)
     drifted = {"type": {"uuid": ship, "label": "Renamed.Record"}}
 
-    assert RegisteredRecord.from_record(drifted).to_record() == drifted
+    assert RegisteredRecord.records.from_record(drifted).records.to_record() == drifted
     with pytest.raises(RecordTypeMismatch):
-        RegisteredRecord.from_record(
+        RegisteredRecord.records.from_record(
             {"type": {"uuid": str(entity(OtherRecord).id), "label": "Registered.Record"}}
         )
     with pytest.raises(RecordTypeMismatch, match="__tarav__.type"):
-        RegisteredRecord.from_record(
+        RegisteredRecord.records.from_record(
             {"__tarav__": {"type": "Other.Record"}, "type": "Registered.Record"}
         )
 
 
 def test_writing_rejects_a_record_that_identifies_another_type() -> None:
-    loaded = RegisteredRecord.from_record({"type": "Registered.Record"})
+    loaded = RegisteredRecord.records.from_record({"type": "Registered.Record"})
     assert loaded._record is not None
     loaded._record["type"] = "Specialized.Record"
 
     with pytest.raises(RecordTypeMismatch, match="expected exact Type"):
-        loaded.to_record()
+        loaded.records.to_record()
 
 
 def test_direct_class_loading_can_use_a_record_without_type_reference() -> None:
-    loaded = RegisteredRecord.from_record({"value": 7})
+    loaded = RegisteredRecord.records.from_record({"value": 7})
 
-    assert loaded.to_record() == {"value": 7}
+    assert loaded.records.to_record() == {"value": 7}
 
 
 def test_path_load_requires_a_root_object(

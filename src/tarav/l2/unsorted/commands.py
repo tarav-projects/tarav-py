@@ -513,7 +513,7 @@ def _cmd_diagram_capture_template(args: argparse.Namespace) -> int:
     try:
         _, model = _capture_model(args)
         manifest = CaptureManifest.template(model_ship=model.ship)
-        atomic_write_json(path, manifest.to_record(), ensure_ascii=False)
+        atomic_write_json(path, manifest.records.to_record(), ensure_ascii=False)
     except (DiagramError, DiagramModelError, OSError, ValueError) as exc:
         raise CliError(str(exc)) from exc
     return _emit(
@@ -522,7 +522,7 @@ def _cmd_diagram_capture_template(args: argparse.Namespace) -> int:
             "status": "ok",
             "command": "tarav diagram capture template",
             "manifest": str(path),
-            "capture": manifest.to_record(),
+            "capture": manifest.records.to_record(),
         },
         (f"manifest: {path}",),
     )
@@ -573,7 +573,7 @@ def _cmd_diagram_capture_apply(args: argparse.Namespace) -> int:
         "command": "tarav diagram capture apply",
         "namespace_id": receipt.namespace_id,
         "manifest": str(path),
-        "receipt": receipt.to_record(),
+        "receipt": receipt.records.to_record(),
     }
     return _emit(
         args,

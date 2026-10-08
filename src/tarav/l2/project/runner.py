@@ -194,15 +194,17 @@ class ProjectLaunchConfiguration(TaravObject):
             "harness_root": str(self.harness_root),
         }
 
-    @classmethod
-    def record_example(cls):
-        root = Path.cwd().resolve()
-        return cls(
-            root=root,
-            manifest=root / ".tarav/pyproject.toml",
-            environment=root / ".tarav/env",
-            declared=False,
-        ).to_record()
+    class Records(TaravObject.Records):
+        def record_example(self):
+            cls = self._owner
+            root = Path.cwd().resolve()
+            return cls(
+                root=root,
+                manifest=root / ".tarav/pyproject.toml",
+                environment=root / ".tarav/env",
+                declared=False,
+            ).records.to_record()
+
 
 
 class ProjectRunnerConfigurator(RunnerConfigurator):

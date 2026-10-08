@@ -77,9 +77,11 @@ class GitRepository(GitObject):
         result.root = Path(record_data.root).expanduser().resolve()
         return result
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "root": "/example/repository"}
+    class Records(GitObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name, "root": "/example/repository"}
+
 
     def exact_commit(self, revision: str) -> str:
         return git_text(

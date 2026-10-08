@@ -104,7 +104,7 @@ def test_missing_explicit_composition_is_rejected_at_class_creation() -> None:
 def test_record_namespace_uses_the_existing_projection() -> None:
     obj = Combined()
     assert obj.records.obj is obj
-    assert obj.records.to_record() == obj.to_record() == {"type": "Test.Combined"}
+    assert obj.records.to_record() == {"type": "Test.Combined"}
 
 
 # tarav.breadcrumb 39175d7f24002b4b04f89a0ad24c150174cabd1fa53a8de58b495e0445549778
@@ -122,6 +122,7 @@ def test_record_namespace_binds_inherited_class_loading() -> None:
 
 # tarav.breadcrumb f4ec8f4bcffb99b7116dd27486141b249dbfb1a4151c3d635fc3961c56204184
 def test_record_namespace_preserves_specialized_validation_and_examples() -> None:
+    # tarav.breadcrumb a3b9281034cb89b3ee020c4e3ac2e95717556d214885396afd08c48a7c81dabf
     from tarav.l1.blessings.store import BlessingRecord
     from tarav.l1.decisions.records import Decision
 
@@ -129,7 +130,7 @@ def test_record_namespace_preserves_specialized_validation_and_examples() -> Non
     assert Combined.records.validate_record({"type": "Test.Combined"})
 
     decision = Decision.records.record_example()
-    assert decision == Decision.record_example()
+    assert decision["type"] == "Tarav.Decisions.Decision"
     assert Decision.records.validate_record(decision).created_at == decision["created_at"]
     without_timezone = {**decision, "created_at": "2026-10-07T12:00:00"}
     with pytest.raises(ValueError, match="timezone"):
@@ -138,5 +139,6 @@ def test_record_namespace_preserves_specialized_validation_and_examples() -> Non
         Decision.records.from_record(without_timezone)
 
     blessing = BlessingRecord.records.record_example()
-    assert blessing == BlessingRecord.record_example()
+    assert blessing["type"] == "Tarav.Blessings.Record"
+    assert issubclass(BlessingRecord.Records, Decision.Records)
     assert type(BlessingRecord.records.from_record(blessing)) is BlessingRecord

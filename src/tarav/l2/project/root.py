@@ -36,7 +36,7 @@ class RootProject(Project):
                           name="Tarav.Project.Root", workflow=PROJECT_WORKFLOW_SHIP)
 
     def child_paths(self) -> tuple[str, ...]:
-        children = self.to_record().get("children", [])
+        children = self.records.to_record().get("children", [])
         if not isinstance(children, list):
             raise ProjectRunnerError("Root Project children must be a list of paths")
         for child in children:

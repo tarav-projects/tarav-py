@@ -43,9 +43,11 @@ class DecisionReportAssertion(Assertion):
             "decision_type_id": str(entity(type(decision)).id),
         })
 
-    @classmethod
-    def record_example(cls):
-        return cls.from_decision(Decision.from_record(Decision.record_example())).to_record()
+    class Records(Assertion.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls.from_decision(Decision.records.from_record(Decision.records.record_example())).records.to_record()
+
 
 
 def assertions_for_decision(decision: Decision):

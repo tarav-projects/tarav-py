@@ -932,7 +932,7 @@ class DiagramConfiguration(TaravObject):
         registry = TypeRegistry(TaravObject, (cls,))
         if registry.resolve(data) is not cls:
             raise DiagramError(f"Diagram configuration is invalid: {resolved}")
-        result = cls.from_record(data)
+        result = cls.records.from_record(data)
         result.source = resolved
         return result
 

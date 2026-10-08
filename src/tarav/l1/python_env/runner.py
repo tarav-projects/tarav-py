@@ -58,9 +58,11 @@ class RunnerConfiguration(PythonObject):
             "cwd": None if self.cwd is None else str(self.cwd),
         }
 
-    @classmethod
-    def record_example(cls):
-        return cls(interpreter=sys.executable).to_record()
+    class Records(PythonObject.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls(interpreter=sys.executable).records.to_record()
+
 
 
 class RunnerConfigurator(PythonObject, ABC):

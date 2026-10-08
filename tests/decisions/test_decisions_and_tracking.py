@@ -57,20 +57,20 @@ def collector(*values):
 def test_decision_types_and_unchanged_blessing_schema(tmp_path):
     runtime = create_runtime(archive_root=tmp_path / "archive",
                              record_types=(ExamplePOI, ExampleDecision))
-    record = ExampleDecision.record_example()
+    record = ExampleDecision.records.record_example()
     record["id"] = str(uuid4())
     decision = runtime.records.from_record(record)
     assert isinstance(decision, Decision)
-    assert decision.to_record() == record
+    assert decision.records.to_record() == record
     assert decision.decider == record["actor"]
     assert decision.poi_ids == ()
     assert tuple(decision.assertions) == ("main",)
-    old_record = deepcopy(BlessingRecord.record_example())
+    old_record = deepcopy(BlessingRecord.records.record_example())
     blessing = runtime.records.from_record(old_record)
     assert isinstance(blessing, Decision)
-    assert blessing.to_record() == old_record
-    assert "decider" not in blessing.to_record()
-    assert "subjects" not in blessing.to_record()
+    assert blessing.records.to_record() == old_record
+    assert "decider" not in blessing.records.to_record()
+    assert "subjects" not in blessing.records.to_record()
     assert blessing.decider == old_record["actor"]
     assert blessing.poi_ids == (old_record["poi"]["id"],)
 
@@ -100,10 +100,10 @@ def test_scoped_detection_does_not_resolve_partial_or_other_scope(tmp_path):
     store.reconcile(collector(), scope=a, completed=False, at=clock)
     assert store.snapshot() == before
     store.reconcile(collector(), scope=a, completed=True, at=clock)
-    assert store.load(first.identity).to_record()["detected"] is False
-    assert store.load(second.identity).to_record()["detected"] is True
+    assert store.load(first.identity).records.to_record()["detected"] is False
+    assert store.load(second.identity).records.to_record()["detected"] is True
     store.reconcile(collector(first), scope=a, completed=True, at=clock)
-    record = store.load(first.identity).to_record()
+    record = store.load(first.identity).records.to_record()
     assert record["detected"] is True
     assert [item["detected"] for item in record["history"]] == [True, False, True]
     with pytest.raises(ValueError, match="another evaluation scope"):
@@ -142,7 +142,7 @@ def test_new_evidence_for_same_situation_remains_in_history(tmp_path):
     assert first.identity == revised.identity
     store.reconcile(collector(first), scope={"check": "example"}, completed=True)
     store.reconcile(collector(revised), scope={"check": "example"}, completed=True)
-    record = store.load(first.identity).to_record()
+    record = store.load(first.identity).records.to_record()
     assert [row["poi"]["evidence"]["source"] for row in record["history"]] == [
         "one.md", "new.md",
     ]
@@ -151,7 +151,7 @@ def test_new_evidence_for_same_situation_remains_in_history(tmp_path):
 def test_featured_project_exposes_a_caller_rooted_board(tmp_path):
     marker = tmp_path / ".tarav" / "project.json"
     marker.parent.mkdir()
-    marker.write_text(json.dumps(Project.record_example()), encoding="utf-8")
+    marker.write_text(json.dumps(Project.records.record_example()), encoding="utf-8")
     project = Project.from_path(tmp_path)
     board = project.poi_board()
     assert board.store.root == tmp_path / ".tarav" / "tracked-pois"
@@ -161,7 +161,7 @@ def test_featured_project_exposes_a_caller_rooted_board(tmp_path):
 def _project(tmp_path):
     marker = tmp_path / ".tarav" / "project.json"
     marker.parent.mkdir()
-    marker.write_text(json.dumps(Project.record_example()), encoding="utf-8")
+    marker.write_text(json.dumps(Project.records.record_example()), encoding="utf-8")
     return Project.from_path(tmp_path)
 
 
@@ -175,7 +175,7 @@ def test_project_store_holds_every_decision_type_and_filters_by_subtype(tmp_path
     assert store.snapshot() == {"records": [], "findings": []}
     assert not store.root.exists()
 
-    record = ExampleDecision.record_example()
+    record = ExampleDecision.records.record_example()
     record["id"] = str(uuid4())
     decision = runtime.records.from_record(record)
     store.add(decision)
@@ -197,7 +197,7 @@ def test_project_store_holds_every_decision_type_and_filters_by_subtype(tmp_path
         blessing["id"]]
     assert [row["id"] for row in store.snapshot(decision_type=ExampleDecision)["records"]] == [
         record["id"]]
-    assert store.load(record["id"]).to_record() == record
+    assert store.load(record["id"]).records.to_record() == record
     with pytest.raises(TypeError):
         store.snapshot(decision_type=dict)
 

@@ -18,6 +18,7 @@ class TaravAssertion(TaravEntity):
             workflow=ASSERTIONS_WORKFLOW_SHIP,
         )
 
-    @classmethod
-    def record_example(cls):
-        return cls(Ship('f7b8c72f-a76e-4c50-a80c-d3dc92332218')).to_record()
+    class Records(TaravEntity.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls(Ship('f7b8c72f-a76e-4c50-a80c-d3dc92332218')).records.to_record()

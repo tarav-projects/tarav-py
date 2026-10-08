@@ -41,7 +41,7 @@ def _cmd_list(args) -> int:
 def _cmd_show(args) -> int:
     workspace = _depot(args).open(args.id)
     return _output({"status": "ok", "root": str(workspace.root),
-                    "manifest": workspace.to_record(),
+                    "manifest": workspace.records.to_record(),
                     "setup": _depot(args).setup_record(workspace).model_dump(mode="json")})
 
 

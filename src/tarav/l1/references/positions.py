@@ -52,12 +52,14 @@ class FilePositionReference(Reference):
         locator: FilePositionLocator
         check: FilePositionCheck | None = None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "locator": {"file": "/example/file.txt", "line": 1},
-        }
+    class Records(Reference.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "locator": {"file": "/example/file.txt", "line": 1},
+            }
+
 
     def locate(self, locator: object) -> FilePositionTarget:
         if not isinstance(locator, Mapping):
@@ -67,11 +69,11 @@ class FilePositionReference(Reference):
         if not isinstance(line, int) or isinstance(line, bool) or line < 1:
             raise ValueError("File-position line must be a positive integer")
         if isinstance(file_value, str):
-            file_reference = FileReference.from_record(
+            file_reference = FileReference.records.from_record(
                 {"type": entity(FileReference).name, "locator": file_value}
             )
         elif isinstance(file_value, Mapping):
-            file_reference = FileReference.from_record(file_value)
+            file_reference = FileReference.records.from_record(file_value)
         else:
             raise ValueError("File-position file must be a path or File Reference")
         file_reference.source = self.source

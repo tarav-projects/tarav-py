@@ -33,9 +33,11 @@ class Breadcrumb(DirectoryRecord):
         type: Literal["Tarav.Breadcrumb"]
         id: BreadcrumbId
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "id": "0" * 64}
+    class Records(DirectoryRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name, "id": "0" * 64}
+
 
 
 class LocatorHints(TaravObject.RecordInterface):
@@ -68,14 +70,16 @@ class LocatorObservation(TaravObject):
         )
         hints: LocatorHints | None = None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "breadcrumb_id": "0" * 64,
-            "observed_at": "1970-01-01T00:00:00Z",
-            "locator": FilePositionReference.record_example(),
-        }
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "breadcrumb_id": "0" * 64,
+                "observed_at": "1970-01-01T00:00:00Z",
+                "locator": FilePositionReference.records.record_example(),
+            }
+
 
 
 __all__ = [

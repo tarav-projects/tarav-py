@@ -93,7 +93,7 @@ class CaptureManifest(TaravObject):
         ships: Iterable[ShipDraftInterface] = (),
         annotations: Iterable[AnnotationDraftInterface] = (),
     ) -> CaptureManifest:
-        return cls.from_record(
+        return cls.records.from_record(
             {
                 "type": entity(cls).name,
                 "schema_version": SCHEMA_VERSION,
@@ -126,7 +126,7 @@ class CaptureManifest(TaravObject):
         record_type = registry.resolve(_read_json(path))
         if record_type is not cls:
             raise DiagramModelError("record is not a Capture.Manifest")
-        return cls.from_record(_read_json(path))
+        return cls.records.from_record(_read_json(path))
 
     @classmethod
     def template(
@@ -381,7 +381,7 @@ class CaptureReceipt(TaravObject):
         existing_annotations: Iterable[str] = (),
         authorizations: Iterable[JsonObject] = (),
     ) -> CaptureReceipt:
-        return cls.from_record(
+        return cls.records.from_record(
             {
                 "type": entity(cls).name,
                 "namespace_id": namespace_id,

@@ -48,9 +48,11 @@ class VersionedEntity(TaravEntity):
     def _to_record(self):
         return {**super()._to_record(), "value": self.value}
 
-    @classmethod
-    def record_example(cls):
-        return cls(Ship("8ff86f8c-3405-4e4b-b58b-1b843bb72d7b"), "first").to_record()
+    class Records(TaravEntity.Records):
+        def record_example(self):
+            return self._owner(
+                Ship("8ff86f8c-3405-4e4b-b58b-1b843bb72d7b"), "first"
+            ).records.to_record()
 
 
 def test_records_workflow_explores_mounted_sources_and_entity_occurrences(tmp_path):
@@ -59,9 +61,9 @@ def test_records_workflow_explores_mounted_sources_and_entity_occurrences(tmp_pa
     assert runtime.workflows.get("records") is TaravRecords
     root = tmp_path / "typed"
     root.mkdir()
-    (root / "system.json").write_text(json.dumps(TARAV.to_record()))
+    (root / "system.json").write_text(json.dumps(TARAV.records.to_record()))
     (root / "history.jsonl").write_text(
-        json.dumps(TARAV.to_record()) + "\n" + json.dumps(TARAV.to_record()) + "\n"
+        json.dumps(TARAV.records.to_record()) + "\n" + json.dumps(TARAV.records.to_record()) + "\n"
     )
     runtime.navigation.mount("typed", FilesystemProvider(root, runtime.records))
     runtime.navigation.mount("memory", MemorySource())

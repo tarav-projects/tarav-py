@@ -25,7 +25,7 @@ def test_runtime_bootstraps_tarav_and_the_kernel_workflow():
     runtime = create_runtime()
 
     assert runtime.system is TARAV
-    assert runtime.system.to_record() == {
+    assert runtime.system.records.to_record() == {
         "type": "Tarav.System",
         "id": "e5ff87ed-c382-49c8-855e-e04191dcf4c8",
         "name": "tarav",
@@ -79,7 +79,7 @@ def test_runtime_browses_archive_and_loads_reference_without_cli(tmp_path):
     assert record.value.contract["kind"] == "file-version"
     locator = runtime.navigation.load(f"/archive/artifacts/{doi}/locators.jsonl/0")
     assert locator.ok
-    assert locator.value.to_record()["value"] == str(payload)
+    assert locator.value.records.to_record()["value"] == str(payload)
     file = tmp_path / "reference.json"
     file.write_text(json.dumps(reference))
     assert runtime.load_object(file).resolve().ok
@@ -106,13 +106,13 @@ def test_reference_check_and_hints_are_separate(tmp_path):
         },
         hints={"content": "wrong"},
     )
-    assert create_runtime().references.resolve(reference.to_record()).ok
+    assert create_runtime().references.resolve(reference.records.to_record()).ok
     assert reference._record is not None
     reference._record["check"] = {"sha256": "0" * 64}
     reference._record["hints"] = {
         "sha256": "15a596e3c98c407e043751ff3b21ff0358a1bdfdf3fe948b1523893a8e5de2e8"
     }
-    result = create_runtime().references.resolve(reference.to_record())
+    result = create_runtime().references.resolve(reference.records.to_record())
     assert not result.ok
     assert result.status == "mismatch"
     assert result.hints == reference.hints
@@ -134,7 +134,7 @@ def test_old_archive_data_requires_explicit_migration(tmp_path):
 
 
 def test_reference_classes_respect_structural_type_authority(tmp_path):
-    reference = FileReference(tmp_path / "reference-target.txt").to_record()
+    reference = FileReference(tmp_path / "reference-target.txt").records.to_record()
     reference.pop("type")
     reference["__tarav__"] = {
         "type": {"uuid": str(entity(FileReference).id), "label": "old human label"}
@@ -145,7 +145,7 @@ def test_reference_classes_respect_structural_type_authority(tmp_path):
     archive = Archive.create(tmp_path / "archive")
     artifact = archive.register_artifact(locator=str(tmp_path / "data"))
     entry = archive.record(artifact.id)
-    retained = entry.to_record()
+    retained = entry.records.to_record()
     retained["type"] = {
         "uuid": str(entity(type(entry)).id),
         "label": "old human label",

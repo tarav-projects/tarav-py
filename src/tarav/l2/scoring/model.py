@@ -117,7 +117,7 @@ class ScoringRecord(TaravEntity, Mapping[str, object]):
     def __init__(self, record: Mapping[str, object]) -> None:
         super().__init__(Ship(record['id']))
         self._record = _json_object(record)
-        type(self).validate_record(self._record)
+        type(self).records.validate_record(self._record)
         _validate_record_semantics(self._record)
 
     @classmethod
@@ -148,8 +148,8 @@ class ScoringRecord(TaravEntity, Mapping[str, object]):
     def obj_context(self, builder):
         for name, reference in self.references().items():
             builder.add(name, opener=lambda reference=reference: reference)
-        builder.add('record', opener=lambda: ScoringDetails.from_record(
-            {'type': entity(ScoringDetails).name, 'value': self.to_record()}))
+        builder.add('record', opener=lambda: ScoringDetails.records.from_record(
+            {'type': entity(ScoringDetails).name, 'value': self.records.to_record()}))
 
 
 class ScoringReference(FileRecord):
@@ -183,7 +183,7 @@ class ScoringReference(FileRecord):
             if repository is None:
                 raise TypeError('A scoring repository is required')
             record = repository.resolve_reference(self._reference)
-            return scoring_record_class(record['type']).from_record(record)
+            return scoring_record_class(record['type']).records.from_record(record)
         if assertions is None:
             raise TypeError('A trusted Assertion registry is required')
         cls = assertions.resolve(self._reference['type'].removesuffix('.Reference'))
@@ -196,12 +196,14 @@ class ScoringReference(FileRecord):
     def _from_record(cls, data):
         return cls(data.reference)
 
-    @classmethod
-    def record_example(cls):
-        return cls(_record_reference_example(GROUNDING_POOL_TYPE)).to_record()
+    class Records(FileRecord.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls(_record_reference_example(GROUNDING_POOL_TYPE)).records.to_record()
+
 
     def obj_context(self, builder):
-        builder.add('reference', opener=lambda: ScoringDetails.from_record(
+        builder.add('reference', opener=lambda: ScoringDetails.records.from_record(
             {'type': entity(ScoringDetails).name, 'value': self.reference}))
 
 
@@ -218,9 +220,11 @@ class GroundingRankingPoolRecord(ScoringRecord):
         type: Literal[GROUNDING_POOL_TYPE]
         name: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _record_example(entity(cls).name, name="example-grounding-pool")
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _record_example(entity(cls).name, name="example-grounding-pool")
+
 
 
 class PoolEnrollmentRecord(ScoringRecord):
@@ -238,14 +242,16 @@ class PoolEnrollmentRecord(ScoringRecord):
         assertion_ref: AssertionReferenceInterface
         status: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _record_example(
-            entity(cls).name,
-            pool_ref=_record_reference_example(GROUNDING_POOL_TYPE),
-            assertion_ref=_assertion_reference_example(),
-            status="Enrolled",
-        )
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _record_example(
+                entity(cls).name,
+                pool_ref=_record_reference_example(GROUNDING_POOL_TYPE),
+                assertion_ref=_assertion_reference_example(),
+                status="Enrolled",
+            )
+
 
 
 class GroundingRankingTaskRecord(ScoringRecord):
@@ -266,21 +272,23 @@ class GroundingRankingTaskRecord(ScoringRecord):
         candidates: list[RankingCandidateInterface]
         response_contract: dict[str, object] = Field(default_factory=dict)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        enrollment_ref = _record_reference_example(POOL_ENROLLMENT_TYPE)
-        return _record_example(
-            entity(cls).name,
-            pool_ref=_record_reference_example(GROUNDING_POOL_TYPE),
-            background="Example ranking background.",
-            question="Which candidate is better supported?",
-            appendix=[],
-            candidates=[
-                {"id": "candidate-a", "presentation": "A", "enrollment_ref": enrollment_ref},
-                {"id": "candidate-b", "presentation": "B", "enrollment_ref": enrollment_ref},
-            ],
-            response_contract={"outcomes": ["ranked", "abstained"]},
-        )
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            enrollment_ref = _record_reference_example(POOL_ENROLLMENT_TYPE)
+            return _record_example(
+                entity(cls).name,
+                pool_ref=_record_reference_example(GROUNDING_POOL_TYPE),
+                background="Example ranking background.",
+                question="Which candidate is better supported?",
+                appendix=[],
+                candidates=[
+                    {"id": "candidate-a", "presentation": "A", "enrollment_ref": enrollment_ref},
+                    {"id": "candidate-b", "presentation": "B", "enrollment_ref": enrollment_ref},
+                ],
+                response_contract={"outcomes": ["ranked", "abstained"]},
+            )
+
 
 
 class RankingRunRecord(ScoringRecord):
@@ -302,21 +310,23 @@ class RankingRunRecord(ScoringRecord):
         rendered_prompt_sha256: str
         status: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _record_example(
-            entity(cls).name,
-            task_ref=_record_reference_example(GROUNDING_TASK_TYPE),
-            runner={"type": "Unknown.Ranking.Runner"},
-            labels={"A": "candidate-a", "B": "candidate-b"},
-            renderer={
-                "type": GROUNDING_TASK_RENDERER,
-                "code_provenance": _code_provenance_example(),
-            },
-            submission={"repository_root": "/example/scoring"},
-            rendered_prompt_sha256="0" * 64,
-            status="Awaiting.Result",
-        )
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _record_example(
+                entity(cls).name,
+                task_ref=_record_reference_example(GROUNDING_TASK_TYPE),
+                runner={"type": "Unknown.Ranking.Runner"},
+                labels={"A": "candidate-a", "B": "candidate-b"},
+                renderer={
+                    "type": GROUNDING_TASK_RENDERER,
+                    "code_provenance": _code_provenance_example(),
+                },
+                submission={"repository_root": "/example/scoring"},
+                rendered_prompt_sha256="0" * 64,
+                status="Awaiting.Result",
+            )
+
 
 
 class RankingResultRecord(ScoringRecord):
@@ -336,16 +346,18 @@ class RankingResultRecord(ScoringRecord):
         rationale: str | None = None
         abstain_reason: str | None = None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _record_example(
-            entity(cls).name,
-            run_ref=_record_reference_example(RUN_TYPE),
-            outcome="ranked",
-            tiers=[["A"], ["B"]],
-            rationale="Candidate A is better supported.",
-            abstain_reason=None,
-        )
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _record_example(
+                entity(cls).name,
+                run_ref=_record_reference_example(RUN_TYPE),
+                outcome="ranked",
+                tiers=[["A"], ["B"]],
+                rationale="Candidate A is better supported.",
+                abstain_reason=None,
+            )
+
 
 
 class ScoringTraceRecord(ScoringRecord):
@@ -361,12 +373,14 @@ class ScoringTraceRecord(ScoringRecord):
         type: Literal[SCORING_TRACE_TYPE]
         assertion_ref: AssertionReferenceInterface
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _record_example(
-            entity(cls).name,
-            assertion_ref=_assertion_reference_example(),
-        )
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _record_example(
+                entity(cls).name,
+                assertion_ref=_assertion_reference_example(),
+            )
+
 
 
 class ScoringEventRecord(ScoringRecord):
@@ -394,24 +408,26 @@ class ScoringEventRecord(ScoringRecord):
         comparisons: int
         value: float | int | None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _record_example(
-            entity(cls).name,
-            computed_at="2026-01-01T00:00:00+00:00",
-            trace_ref=_record_reference_example(SCORING_TRACE_TYPE),
-            method=WIN_RATE_SCORE,
-            pool_ids=["00000000-0000-4000-8000-000000000002"],
-            results_commit="0" * 40,
-            code_provenance=_code_provenance_example(),
-            result_count=1,
-            abstention_count=0,
-            wins=1,
-            losses=0,
-            ties=0,
-            comparisons=1,
-            value=1.0,
-        )
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _record_example(
+                entity(cls).name,
+                computed_at="2026-01-01T00:00:00+00:00",
+                trace_ref=_record_reference_example(SCORING_TRACE_TYPE),
+                method=WIN_RATE_SCORE,
+                pool_ids=["00000000-0000-4000-8000-000000000002"],
+                results_commit="0" * 40,
+                code_provenance=_code_provenance_example(),
+                result_count=1,
+                abstention_count=0,
+                wins=1,
+                losses=0,
+                ties=0,
+                comparisons=1,
+                value=1.0,
+            )
+
 
 
 class TribunalCaseRecord(ScoringRecord):
@@ -429,16 +445,18 @@ class TribunalCaseRecord(ScoringRecord):
         assertion_ref: AssertionReferenceInterface
         case: dict
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _record_example(entity(cls).name,
-                               tribunal_type_id='00000000-0000-4000-8000-000000000006',
-                               assertion_ref=_assertion_reference_example(),
-                               case={'type': 'Example.AssessmentCase',
-                                     'tribunal_type_id': '00000000-0000-4000-8000-000000000006',
-                                     'assertion_ref': _assertion_reference_example(),
-                                     'question': 'Which claim is better supported?',
-                                     'presentation': 'Example evidence.'})
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _record_example(entity(cls).name,
+                                   tribunal_type_id='00000000-0000-4000-8000-000000000006',
+                                   assertion_ref=_assertion_reference_example(),
+                                   case={'type': 'Example.AssessmentCase',
+                                         'tribunal_type_id': '00000000-0000-4000-8000-000000000006',
+                                         'assertion_ref': _assertion_reference_example(),
+                                         'question': 'Which claim is better supported?',
+                                         'presentation': 'Example evidence.'})
+
 
 
 class TribunalPairRecord(ScoringRecord):
@@ -458,16 +476,18 @@ class TribunalPairRecord(ScoringRecord):
         prompt: str
         prompt_sha256: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        prompt = 'Compare A and B using only the supplied cases.'
-        return _record_example(entity(cls).name,
-                               tribunal_type_id='00000000-0000-4000-8000-000000000006',
-                               a_case_ref=_record_reference_example(TRIBUNAL_CASE_TYPE),
-                               b_case_ref={**_record_reference_example(TRIBUNAL_CASE_TYPE),
-                                           'id': '00000000-0000-4000-8000-000000000007'},
-                               prompt=prompt,
-                               prompt_sha256=hashlib.sha256(prompt.encode('utf-8')).hexdigest())
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            prompt = 'Compare A and B using only the supplied cases.'
+            return _record_example(entity(cls).name,
+                                   tribunal_type_id='00000000-0000-4000-8000-000000000006',
+                                   a_case_ref=_record_reference_example(TRIBUNAL_CASE_TYPE),
+                                   b_case_ref={**_record_reference_example(TRIBUNAL_CASE_TYPE),
+                                               'id': '00000000-0000-4000-8000-000000000007'},
+                                   prompt=prompt,
+                                   prompt_sha256=hashlib.sha256(prompt.encode('utf-8')).hexdigest())
+
 
 
 class TribunalJudgmentRecord(ScoringRecord):
@@ -488,13 +508,15 @@ class TribunalJudgmentRecord(ScoringRecord):
         judge: dict
         rationale: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return _record_example(entity(cls).name,
-                               tribunal_type_id='00000000-0000-4000-8000-000000000006',
-                               pair_ref=_record_reference_example(TRIBUNAL_PAIR_TYPE),
-                               outcome='tie', judge={'type': 'Example.Judge'},
-                               rationale='Equal support in these cases.')
+    class Records(ScoringRecord.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return _record_example(entity(cls).name,
+                                   tribunal_type_id='00000000-0000-4000-8000-000000000006',
+                                   pair_ref=_record_reference_example(TRIBUNAL_PAIR_TYPE),
+                                   outcome='tie', judge={'type': 'Example.Judge'},
+                                   rationale='Equal support in these cases.')
+
 
 
 SCORING_RECORD_TYPES = (
@@ -577,7 +599,7 @@ def new_record(record_type: str, **fields: object) -> JsonObject:
     }
     record.update(fields)
     record_class = scoring_record_class(record_type)
-    return record_class.from_record(record).to_record()
+    return record_class.records.from_record(record).records.to_record()
 
 
 def record_reference(record: Mapping[str, object]) -> JsonObject:
@@ -1177,7 +1199,7 @@ def validate_record(record: Mapping[str, object]) -> None:
     record_type = _required_string(record, "type")
     record_class = scoring_record_class(record_type)
     try:
-        record_class.from_record(record)
+        record_class.records.from_record(record)
     except (InvalidRecordJSON, ValidationError) as exc:
         raise ScoringError(f"invalid {record_type} Record: {exc}") from exc
 

@@ -14,8 +14,8 @@ def make_line():
 
 def test_line_roundtrip_and_binding():
     line = make_line()
-    restored = Line.from_record(line.to_record())
-    assert restored.to_record() == line.to_record()
+    restored = Line.records.from_record(line.records.to_record())
+    assert restored.records.to_record() == line.records.to_record()
     with pytest.raises(LookupError):
         _ = restored.scope
     with pytest.raises(ValueError):
@@ -31,12 +31,12 @@ def test_line_roundtrip_and_binding():
 def test_nested_scope_and_typed_view():
     line = make_line()
     detail = Line(id=Ship(str(uuid4())), text="The finish is matte.", scope=line)
-    before = detail.to_record()
+    before = detail.records.to_record()
     view = explore(detail, type=LineScope)
     assert isinstance(view, LineScope)
     assert view.scope is line
     assert view.open("scope") is line
-    assert detail.to_record() == before
+    assert detail.records.to_record() == before
     assert isinstance(explore(detail), ContextExplorer)
     with pytest.raises(TypeError):
         explore(detail, type=Context)
@@ -48,11 +48,11 @@ def test_nested_scope_and_typed_view():
 
 def test_scope_cycles_are_serialized_as_edges():
     identity = Ship(str(uuid4()))
-    line = Line.from_record({"id": str(identity), "text": "self scoped",
+    line = Line.records.from_record({"id": str(identity), "text": "self scoped",
                              "scope_ship": str(identity)})
     line.bind_scope(line)
     assert line.scope is line
-    assert line.to_record()['scope_ship'] == str(identity)
+    assert line.records.to_record()['scope_ship'] == str(identity)
 
 
 def test_line_import_has_no_model_dependency():

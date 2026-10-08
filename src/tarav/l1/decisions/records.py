@@ -47,41 +47,42 @@ class Decision(TaravEntity, FileRecord, Assertable):
             workflow=DECISIONS_WORKFLOW_SHIP,
         )
 
-    @classmethod
-    def validate_record(cls, value):
-        data = super().validate_record(value)
-        stamp = datetime.fromisoformat(data.created_at)
-        if stamp.tzinfo is None:
-            raise ValueError("Decision time must include a timezone")
-        _reference(data.actor)
-        if not data.rationale.strip():
-            raise ValueError("Decision requires a rationale")
-        for item in data.support:
-            _reference(item)
-        return data
+    class Records(TaravEntity.Records):
+        def validate_record(self, value):
+            data = super().validate_record(value)
+            stamp = datetime.fromisoformat(data.created_at)
+            if stamp.tzinfo is None:
+                raise ValueError("Decision time must include a timezone")
+            _reference(data.actor)
+            if not data.rationale.strip():
+                raise ValueError("Decision requires a rationale")
+            for item in data.support:
+                _reference(item)
+            return data
+
+        def record_example(self):
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "id": "9205ba7f-4d2a-43c2-9fe8-9348c85ef447",
+                "created_at": "2026-10-03T00:00:00+00:00",
+                "actor": {"type": "Example.Actor", "locator": {"name": "example"}},
+                "rationale": "Example intervention",
+                "support": [],
+            }
+
 
     @property
     def decider(self):
         """The existing `actor` field is the shared semantic role, not a migration."""
-        return self.to_record()["actor"]
+        return self.records.to_record()["actor"]
 
     @property
     def poi_ids(self) -> tuple[str, ...]:
-        return tuple(self.to_record().get("poi_ids", ()))
+        return tuple(self.records.to_record().get("poi_ids", ()))
 
     @property
     def assertions(self):
         if _assertion_provider is None:
             raise RuntimeError("Decision Assertion service has not been composed")
         return _assertion_provider(self)
-
-    @classmethod
-    def record_example(cls):
-        return {
-            "type": entity(cls).name,
-            "id": "9205ba7f-4d2a-43c2-9fe8-9348c85ef447",
-            "created_at": "2026-10-03T00:00:00+00:00",
-            "actor": {"type": "Example.Actor", "locator": {"name": "example"}},
-            "rationale": "Example intervention",
-            "support": [],
-        }

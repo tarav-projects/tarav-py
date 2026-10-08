@@ -32,15 +32,17 @@ class LineGroundingCase(AssessmentCase):
         peer_lines: list[str]
         support: list[dict]
 
-    @classmethod
-    def record_example(cls):
-        return cls(
-            assertion_ref=LineGroundingAssertion.from_record(
-                LineGroundingAssertion.record_example()).reference(),
-            question='How well is this Line supported?',
-            presentation='Line and declared Support.Set.',
-            line_text='Example Line', block_label=None, peer_lines=[], support=[{'turns': []}],
-        ).to_record()
+    class Records(AssessmentCase.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls(
+                assertion_ref=LineGroundingAssertion.records.from_record(
+                    LineGroundingAssertion.records.record_example()).reference(),
+                question='How well is this Line supported?',
+                presentation='Line and declared Support.Set.',
+                line_text='Example Line', block_label=None, peer_lines=[], support=[{'turns': []}],
+            ).records.to_record()
+
 
 
 class LineSupportInventoryCase(AssessmentCase):
@@ -59,14 +61,16 @@ class LineSupportInventoryCase(AssessmentCase):
         edition_id: str
         support_entries: list[dict]
 
-    @classmethod
-    def record_example(cls):
-        assertion = LineGroundingAssertion.from_record(LineGroundingAssertion.record_example())
-        return cls(
-            assertion_ref=assertion.reference(),
-            question='What support is declared?', presentation='Support inventory.',
-            edition_id=assertion.subject_ref['edition_id'], support_entries=[{'turns': []}],
-        ).to_record()
+    class Records(AssessmentCase.Records):
+        def record_example(self):
+            cls = self._owner
+            assertion = LineGroundingAssertion.records.from_record(LineGroundingAssertion.records.record_example())
+            return cls(
+                assertion_ref=assertion.reference(),
+                question='What support is declared?', presentation='Support inventory.',
+                edition_id=assertion.subject_ref['edition_id'], support_entries=[{'turns': []}],
+            ).records.to_record()
+
 
 
 class LineGroundingAssertion(Assertion):
@@ -198,18 +202,20 @@ class LineGroundingAssertion(Assertion):
 
     def obj_context(self, builder):
         super().obj_context(builder)
-        builder.add('evidence', opener=lambda: ScoringDetails.from_record({
+        builder.add('evidence', opener=lambda: ScoringDetails.records.from_record({
             'type': 'Tarav.Scoring.Details',
             'reference': self.subject_ref,
             'relation': 'declared Support.Set of this exact Line edition',
         }))
 
-    @classmethod
-    def record_example(cls):
-        return cls({'type': DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
-                    'namespace_id': '00000000-0000-4000-8000-000000000001',
-                    'line_ship': '00000000-0000-4000-8000-000000000002',
-                    'edition_id': '00000000-0000-4000-8000-000000000003'}).to_record()
+    class Records(Assertion.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls({'type': DIAGRAM_LINE_EDITION_REFERENCE_TYPE,
+                        'namespace_id': '00000000-0000-4000-8000-000000000001',
+                        'line_ship': '00000000-0000-4000-8000-000000000002',
+                        'edition_id': '00000000-0000-4000-8000-000000000003'}).records.to_record()
+
 
 
 def _render_candidate(*, line_text, block_label, peer_lines, support):

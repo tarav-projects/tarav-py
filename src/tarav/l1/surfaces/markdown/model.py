@@ -104,9 +104,11 @@ class MarkdownNormalModel(TaravObject):
             diagnostics=record_data.diagnostics,
         )
 
-    @classmethod
-    def record_example(cls):
-        return cls.from_text("").to_record()
+    class Records(TaravObject.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls.from_text("").records.to_record()
+
 
     def fenced_line_numbers(self) -> frozenset[int]:
         """Return every source line belonging to a fenced region."""

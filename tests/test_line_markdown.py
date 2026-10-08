@@ -53,7 +53,7 @@ def test_conforming_text_yields_blocks_and_headings():
 def test_record_round_trip_preserves_math_blocks():
     model = LineMarkdownModel.from_text(CONFORMING)
 
-    restored = LineMarkdownModel.from_record(model.to_record())
+    restored = LineMarkdownModel.records.from_record(model.records.to_record())
 
     assert restored == model
 

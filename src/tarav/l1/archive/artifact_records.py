@@ -34,11 +34,11 @@ class ArtifactRecord(DirectoryRecord):
 
     @property
     def doi(self) -> str:
-        return str(self.to_record()["id"])
+        return str(self.records.to_record()["id"])
 
     @property
     def contract(self) -> object:
-        return self.to_record()["contract"]
+        return self.records.to_record()["contract"]
 
 
 class LocatorRecord(FileRecord):

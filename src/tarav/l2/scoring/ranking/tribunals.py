@@ -33,24 +33,26 @@ class PairwiseRankingCase(AssessmentCase):
     class RecordInterface(AssessmentCase.RecordInterface):
         tribunal_type_id: str
 
-    @classmethod
-    def validate_record(cls, value):
-        data = super().validate_record(value)
-        TypeShip(data.tribunal_type_id)
-        return data
+    class Records(AssessmentCase.Records):
+        def validate_record(self, value):
+            data = super().validate_record(value)
+            TypeShip(data.tribunal_type_id)
+            return data
 
-    @classmethod
-    def record_example(cls):
-        return cls(
-            assertion_ref=Assertion({'type': 'Example.Subject.Reference'}).reference(),
-            question='Which case is better supported?',
-            presentation='Claim and supplied evidence.',
-            tribunal_type_id='00000000-0000-4000-8000-000000000006',
-        ).to_record()
+        def record_example(self):
+            cls = self._owner
+            return cls(
+                assertion_ref=Assertion({'type': 'Example.Subject.Reference'}).reference(),
+                question='Which case is better supported?',
+                presentation='Claim and supplied evidence.',
+                tribunal_type_id='00000000-0000-4000-8000-000000000006',
+            ).records.to_record()
+
+
 
     @property
     def tribunal_type_id(self) -> str:
-        return str(self.to_record()['tribunal_type_id'])
+        return str(self.records.to_record()['tribunal_type_id'])
 
 
 class Tribunal(TaravEntity):
@@ -100,9 +102,11 @@ class Tribunal(TaravEntity):
             raise ValueError('Record does not identify this Tribunal')
         return cls()
 
-    @classmethod
-    def record_example(cls):
-        return cls().to_record()
+    class Records(TaravEntity.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls().records.to_record()
+
 
     def comparison_question(self) -> str:
         raise NotImplementedError
@@ -148,7 +152,7 @@ def enroll_case(
     tribunal = registry.resolve(case.tribunal_type_id)
     if not tribunal.admits(case):
         raise ScoringError('Tribunal rejected this case')
-    packet = case.to_record()
+    packet = case.records.to_record()
     record = new_record(
         TRIBUNAL_CASE_TYPE,
         tribunal_type_id=case.tribunal_type_id,

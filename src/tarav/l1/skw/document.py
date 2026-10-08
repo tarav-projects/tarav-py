@@ -119,14 +119,16 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
         objects_index: dict[str, dict] | None = None
         annotations: list[dict] | None = None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "id": "6df624aa-d8bb-46fb-a095-d91e2150b9a4",
-            "label": "example",
-            "content": ["Example."],
-        }
+    class Records(TaravEntity.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "id": "6df624aa-d8bb-46fb-a095-d91e2150b9a4",
+                "label": "example",
+                "content": ["Example."],
+            }
+
 
     def __init__(self, record: Mapping[str, object]) -> None:
         retired = {
@@ -141,7 +143,7 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
         self._registry: TypeRegistry[TaravObject] | None = None
         self._objects_index: dict[str, TaravObject] = {}
         self._annotations: tuple[BlockAnnotation, ...] = ()
-        type(self).validate_record(self._record)
+        type(self).records.validate_record(self._record)
         if not isinstance(self._record.get("label"), str) or not self._record["label"]:
             raise ValueError("Blocks require non-empty labels")
         if self._record.get("content") is not None:
@@ -386,7 +388,7 @@ class Document:
                 else:
                     fingerprint = _hash(content)
             else:
-                content = value.to_record()
+                content = value.records.to_record()
                 fingerprint = _hash(content)
             resolved.append({"declaration": record, "content": content,
                              "fingerprint": fingerprint})
@@ -425,7 +427,7 @@ class Document:
                             raise ValueError("Reference target is not a file")
                         item.update(size_bytes=stat.st_size, status="available-unchecked")
                 else:
-                    item.update(status="inline", record=value.to_record())
+                    item.update(status="inline", record=value.records.to_record())
             except (ValueError, TypeError, KeyError, OSError) as exc:
                 item.update(status="unresolvable", finding=str(exc))
             listing.append(item)
@@ -525,9 +527,9 @@ class Document:
     def produce(self, identity):
         block = self.block(identity)
         content = lines(block.produce(self))
-        original = block.to_record()
+        original = block.records.to_record()
         updated = {**original, "content": content}
-        type(block).validate_record(updated)
+        type(block).records.validate_record(updated)
         index = next(i for i, value in enumerate(self.data["blocks"])
                      if value["id"] == str(block.id))
         self.data["blocks"][index] = updated

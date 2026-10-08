@@ -156,7 +156,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
             {
                 "manifest": view.manifest,
                 "about": view.about,
-                "config": view.configuration.to_record(),
+                "config": view.configuration.records.to_record(),
                 "view": view.state,
                 "edition": view.edition(),
                 "findings": [item.to_dict() for item in view.check()],

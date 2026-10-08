@@ -551,7 +551,7 @@ def _sort_typed(
         sorted(
             annotations,
             key=lambda item: (
-                str(item.to_record().get("recorded_at", "")),
+                str(item.records.to_record().get("recorded_at", "")),
                 item.id,
             ),
         )

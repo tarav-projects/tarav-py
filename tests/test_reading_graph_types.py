@@ -35,7 +35,7 @@ def test_concrete_project_reading_graph_binds_one_project() -> None:
         def analyze(self, **options: object) -> dict[str, object]:
             return {"project": self.project, "options": options}
 
-    project = TaravProject.from_record(TaravProject.record_example())
+    project = TaravProject.records.from_record(TaravProject.records.record_example())
     graph = ExampleProjectReadingGraph(project)
 
     assert graph.analyze(limit=5) == {

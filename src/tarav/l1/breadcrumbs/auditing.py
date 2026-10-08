@@ -132,7 +132,7 @@ class BreadcrumbAuditCheck(Check):
 
     # tarav.breadcrumb 596b1161c0983854154effc76ffa82d48ca21c56785d6915423fe9d12ff196cf
     def obj_context(self, builder) -> None:
-        builder.add('audit', opener=lambda: POIDetails.from_record({
+        builder.add('audit', opener=lambda: POIDetails.records.from_record({
             'type': entity(POIDetails).name,
             'value': {
                 'surface': str(self.audit_context.surface.path),

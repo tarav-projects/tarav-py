@@ -72,7 +72,7 @@ def compute_chat_turn_hash(
 
 
 def chat_turn_ref(turn: JsonObject) -> JsonObject:
-    turn = ChatTurn.from_record(turn).to_record()
+    turn = ChatTurn.records.from_record(turn).records.to_record()
     return {
         "turn_address": _full_digest(turn.get("turn_address"), field="turn_address"),
         "turn_hash": _full_digest(turn.get("turn_hash"), field="turn_hash"),
@@ -95,7 +95,7 @@ def resolve_chat_turn_ref(
             "standing": "MISSING",
             "turn": None,
         }
-    current = ChatTurn.from_record(addressed[0]).to_record()
+    current = ChatTurn.records.from_record(addressed[0]).records.to_record()
     current_hash = _full_digest(current.get("turn_hash"), field="turn_hash")
     return {
         "standing": "MATCHED" if current_hash == expected_hash else "AMENDED",

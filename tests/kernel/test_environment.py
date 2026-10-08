@@ -112,8 +112,8 @@ def test_environment_is_a_runtime_object_with_a_record_projection() -> None:
     runtime = create_runtime(environment=environment)
 
     assert runtime.environment is environment
-    assert environment.to_record() == {"type": "Tarav.Environment"}
+    assert environment.records.to_record() == {"type": "Tarav.Environment"}
     assert environment.executable.is_file()
-    assert runtime.records.from_record(environment.to_record()).to_record() == (
-        environment.to_record()
+    assert runtime.records.from_record(environment.records.to_record()).records.to_record() == (
+        environment.records.to_record()
     )

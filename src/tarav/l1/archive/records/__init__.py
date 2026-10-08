@@ -145,13 +145,15 @@ class ArchiveEntry(ExplorerEntry, ArchiveObject):
             artifact=record_data.artifact,
         )
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "archive": "ec885738-bd64-4ba8-a223-5a92f0f25843",
-            "artifact": "artifacts/example.json",
-        }
+    class Records(ExplorerEntry.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "archive": "ec885738-bd64-4ba8-a223-5a92f0f25843",
+                "artifact": "artifacts/example.json",
+            }
+
 
     def _to_record(self) -> Mapping[str, object]:
         record: dict[str, object] = {"type": entity(type(self)).name}
@@ -216,13 +218,15 @@ class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
     def _from_record(cls, record_data: BaseModel) -> Self:
         return cls(record_data.id, record_data.constitution)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "id": "43c12f03-8699-4427-b780-a0c3ccf32289",
-            "constitution": "Example Archive.",
-        }
+    class Records(TaravEntity.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "id": "43c12f03-8699-4427-b780-a0c3ccf32289",
+                "constitution": "Example Archive.",
+            }
+
 
     @classmethod
     def from_path(cls, root: Path) -> Self:
@@ -248,7 +252,7 @@ class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
         """Concrete storage structures create their own empty entry registry."""
 
     def _save(self) -> None:
-        atomic_write_json(self.root / "main.json", self.to_record())
+        atomic_write_json(self.root / "main.json", self.records.to_record())
 
     def _write_lock(self) -> FileLock:
         return FileLock(str(self.root / ".entries.lock"))
@@ -272,7 +276,7 @@ class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
         relative = f"records/{key}.json"
         entry = ArchiveEntry(archive=self.id, artifact=artifact)
         atomic_write_json(
-            self._storage_target("records", f"{key}.json"), entry.to_record()
+            self._storage_target("records", f"{key}.json"), entry.records.to_record()
         )
         return relative
 

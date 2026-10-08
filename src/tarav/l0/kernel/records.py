@@ -136,6 +136,7 @@ class TaravObject(TaravType):
 
     Every subclass, including intermediate bases, projects its Python class to
     a distinct ``TaravClass`` Entity through ``class_entity()``.
+
     """
 
     @classmethod
@@ -153,6 +154,7 @@ class TaravObject(TaravType):
 
     class Records(NamespaceBase["TaravObject | type[TaravObject]"]):
         """Record projection and loading for one object or concrete class."""
+        # tarav.breadcrumb 515f098669710f4039af3cc0e7aa358bb097ab1bce7d5a6451ae8ef3850697dc
         # tarav.breadcrumb 3798a3aa52c91ae8a762c4d0ac4d26a737636fcdf02723d934665e30dc13367e
 
         @property
@@ -161,13 +163,24 @@ class TaravObject(TaravType):
 
         # tarav.breadcrumb 2c1992f27b7e7d4a5654511f96daae71ec6ac32d3fc3df264a3776ec5f1b82e5
         def validate_record(self, value: object) -> BaseModel:
-            """Validate through the bound Type's existing override chain."""
-            return self._owner.validate_record(value)
+            """Validate without transforming supplied JSON data."""
+            record = _json_object(value)
+            model = self._owner.RecordInterface.model_validate(
+                deepcopy(record), strict=True
+            )
+            represented = model.model_dump(mode="json", exclude_unset=True, by_alias=True)
+            if json.dumps(represented, sort_keys=True) != json.dumps(
+                record, sort_keys=True
+            ):
+                raise InvalidRecordJSON(
+                    "RecordInterface must not transform or discard supplied data"
+                )
+            return model
 
         # tarav.breadcrumb 195ac6bd926aadf2a3e426441e7834a38b9d139ae284bc1a6f282c16d096789d
         def record_example(self) -> dict[str, object]:
-            """Get the bound Type's storage-independent example."""
-            return self._owner.record_example()
+            """Return a minimal storage-independent example for the bound Type."""
+            return {"type": entity(self._owner).name}
 
         def to_record(self) -> dict[str, object]:
             if isinstance(self.obj, type):
@@ -209,31 +222,11 @@ class TaravObject(TaravType):
             if issubclass(parent, TaravObject)
         )
 
-    @classmethod
-    def validate_record(cls, value: object) -> BaseModel:
-        """Validate without accepting transformations of supplied JSON data."""
-        record = _json_object(value)
-        model = cls.RecordInterface.model_validate(deepcopy(record), strict=True)
-        represented = model.model_dump(mode="json", exclude_unset=True, by_alias=True)
-        if json.dumps(represented, sort_keys=True) != json.dumps(
-            record, sort_keys=True
-        ):
-            raise InvalidRecordJSON(
-                "RecordInterface must not transform or discard supplied data"
-            )
-        return model
-
     def __init__(self) -> None:
         if type(self) is TaravObject:
             raise TypeError("TaravObject is not an opaque JSON wrapper")
         self._record: dict[str, object] | None = None
         self.source: Path | None = None
-
-    @classmethod
-    def from_record(cls, value: object) -> Self:
-        """Construct through the class-selected Record namespace."""
-
-        return cls.records.from_record(value)
 
     @classmethod
     def _from_record(cls, record_data: BaseModel) -> Self:
@@ -242,11 +235,6 @@ class TaravObject(TaravType):
         result = cls.__new__(cls)
         TaravObject.__init__(result)
         return result
-
-    def to_record(self) -> dict[str, object]:
-        """Validate, detach, and return the object's current Record projection."""
-
-        return self.records.to_record()
 
     @classmethod
     def _check_record_type(cls, record: Mapping[str, object]) -> None:
@@ -271,12 +259,6 @@ class TaravObject(TaravType):
             return self._record
         return {"type": entity(type(self)).name}
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        """Return a minimal storage-independent representation for this Type."""
-
-        return {"type": entity(cls).name}
-
     def context(self, *, type=None):
         """Request a read-only context view from the configured host."""
         if _context_resolver is None:
@@ -289,9 +271,12 @@ class TaravObject(TaravType):
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         check_namespace_composition(cls)
-        if "from_record" in cls.__dict__:
+        direct_record_api = {"from_record", "to_record", "validate_record", "record_example"}
+        misplaced = direct_record_api.intersection(cls.__dict__)
+        if misplaced:
+            name = sorted(misplaced)[0]
             raise TaravTypeDeclarationError(
-                "Tarav owns from_record(); customize _from_record() instead"
+                f"{name}() belongs in the selected Records namespace"
             )
         if not isinstance(cls.RecordInterface, type) or not issubclass(
             cls.RecordInterface, BaseModel
@@ -415,11 +400,11 @@ class TaravClass(TaravEntity):
         result._workflow = record_data.workflow
         return result
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        """Use ``TaravType`` itself as the minimal concrete class subject."""
+    class Records(TaravEntity.Records):
+        def record_example(self) -> dict[str, object]:
+            """Use ``TaravType`` itself as the minimal concrete class subject."""
 
-        return entity(TaravType).to_record()
+            return entity(TaravType).records.to_record()
 
     def _to_record(self) -> Mapping[str, object]:
         return {
@@ -520,9 +505,9 @@ class TaravSystem(TaravEntity):
             raise InvalidRecordJSON("TaravSystem Record does not match Tarav identity")
         return cls()
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return cls._canonical_record()
+    class Records(TaravEntity.Records):
+        def record_example(self) -> dict[str, object]:
+            return self._owner._canonical_record()
 
     def _to_record(self) -> Mapping[str, object]:
         return type(self)._canonical_record()

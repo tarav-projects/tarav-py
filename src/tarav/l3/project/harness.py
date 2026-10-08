@@ -87,7 +87,7 @@ def main(
         elif args.file is not None:
             runpy.run_path(str(args.file), init_globals=namespace, run_name="__main__")
         else:
-            print(json.dumps(project.to_record(), indent=2))
+            print(json.dumps(project.records.to_record(), indent=2))
         return 0
     except CliError as exc:
         print(f"error: {exc}", file=sys.stderr)

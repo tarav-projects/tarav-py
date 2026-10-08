@@ -562,15 +562,15 @@ class DiagramProjectionBuilder:
                 else None
             )
             if closed_at is None and current is not None:
-                closed_at = _optional_timestamp(current.to_record().get("recorded_at"))
+                closed_at = _optional_timestamp(current.records.to_record().get("recorded_at"))
             close_is_already_landed = (
                 current is not None
-                and current.to_record().get("recorded_at") is not None
+                and current.records.to_record().get("recorded_at") is not None
             )
             for hosted_edition in hosted:
                 typed = self.typed_by_id.get(hosted_edition.edition)
                 recorded_at = (
-                    _optional_timestamp(typed.to_record().get("recorded_at"))
+                    _optional_timestamp(typed.records.to_record().get("recorded_at"))
                     if typed is not None
                     else None
                 )

@@ -103,9 +103,9 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             PreparedAnnotation(
                 item.position,
                 f"tarav.context {item.alias}:{item.turn_prefix}",
-                ChatlasTurnReference.from_record(
+                ChatlasTurnReference.records.from_record(
                     turn_records[(item.alias, item.turn_prefix)]
-                ).to_record(),
+                ).records.to_record(),
             )
             for item in markers
         )
@@ -121,7 +121,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             "workflow": "Tarav.Breadcrumbs.ChatlasContext",
             "context": annotation.state,
         }
-        return (ChatlasContextAttachment.from_record(attachment).to_record(),)
+        return (ChatlasContextAttachment.records.from_record(attachment).records.to_record(),)
 
     def audit(
         self,
@@ -179,8 +179,8 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                 )
                 continue
             try:
-                attachment = ChatlasContextAttachment.from_record(attachments[0])
-                payload = attachment.to_record()
+                attachment = ChatlasContextAttachment.records.from_record(attachments[0])
+                payload = attachment.records.to_record()
                 if payload["breadcrumb_id"] != breadcrumb.breadcrumb_id:
                     raise ValueError(
                         "Chatlas-context attachment belongs to another Breadcrumb"

@@ -87,23 +87,25 @@ class CommitManifest(GitObject):
             payload = json.loads(source.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise CommitEvidenceError(f"Cannot load commit manifest {source}: {exc}") from exc
-        result = cls.from_record(payload)
+        result = cls.records.from_record(payload)
         result.source = source
         return result
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "repository": ".",
-            "files": [],
-            "message": (
-                "Example evidence commit\n\n"
-                "- scope: example\n"
-                "<!-- tarav.evidence agent-initiated -->"
-            ),
-            "allow_empty": True,
-        }
+    class Records(GitObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "repository": ".",
+                "files": [],
+                "message": (
+                    "Example evidence commit\n\n"
+                    "- scope: example\n"
+                    "<!-- tarav.evidence agent-initiated -->"
+                ),
+                "allow_empty": True,
+            }
+
 
     @property
     def repository(self) -> str:
@@ -179,7 +181,7 @@ def prepare_message(
     breadcrumb_ids: list[str] = []
     for annotation in annotations:
         breadcrumb = store.create()
-        breadcrumb_id = str(breadcrumb.to_record()["id"])
+        breadcrumb_id = str(breadcrumb.records.to_record()["id"])
         attachments = tuple(
             _json_object(item)
             for item in workflow.attachments(annotation, breadcrumb_id)
@@ -542,7 +544,7 @@ def _resolve_commit_label(
             continue
         checked = dict(record)
         checked["check"] = {"contains": canonical}
-        reference = GitCommitMessagePositionReference.from_record(checked)
+        reference = GitCommitMessagePositionReference.records.from_record(checked)
         reference.source = breadcrumb.source
         result = reference.resolve()
         if result.ok and isinstance(result.target, GitCommitMessagePositionTarget):

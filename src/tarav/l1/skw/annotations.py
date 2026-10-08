@@ -48,13 +48,15 @@ class GenerationAnnotation(BlockAnnotation):
         instructions: list[str] = Field(default_factory=list)
         context: list[dict] = Field(default_factory=list)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "instructions": ["Explain the subject."],
-            "context": [],
-        }
+    class Records(BlockAnnotation.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "instructions": ["Explain the subject."],
+                "context": [],
+            }
+
 
     @property
     def instructions(self) -> tuple[str, ...]:
@@ -90,9 +92,11 @@ class ObjectIndexReference(Reference):
     class RecordInterface(TaravObject.RecordInterface):
         index: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name, "index": "policy"}
+    class Records(Reference.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name, "index": "policy"}
+
 
     @property
     def index(self) -> str:

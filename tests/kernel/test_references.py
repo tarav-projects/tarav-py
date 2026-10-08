@@ -69,19 +69,19 @@ def test_reference_record_interfaces_and_examples():
     ):
         assert issubrecord(reference_type, Reference)
         assert isrecordsubclass(reference_type, Reference)
-        example = reference_type.record_example()
-        assert reference_type.from_record(example).to_record() == example
+        example = reference_type.records.record_example()
+        assert reference_type.records.from_record(example).records.to_record() == example
 
     value = {"type": entity(FileReference).name, "locator": "/example/file.txt"}
-    reference = FileReference.from_record(value)
+    reference = FileReference.records.from_record(value)
     assert reference.check is None
     assert reference.hints is None
-    assert reference.to_record() == value
+    assert reference.records.to_record() == value
 
     with pytest.raises(ValidationError):
-        FileReference.from_record({"type": entity(FileReference).name})
+        FileReference.records.from_record({"type": entity(FileReference).name})
     with pytest.raises(ValidationError):
-        FileReference.from_record({**value, "locator": ""})
+        FileReference.records.from_record({**value, "locator": ""})
 
 
 def test_embedded_reference_interfaces_share_tarav_object_record_root():
@@ -111,7 +111,7 @@ def test_file_position_reference_accepts_cheap_and_rich_file_values(tmp_path):
     target = tmp_path / "surface.md"
     target.write_text("first\nanchor\nlast\n", encoding="utf-8")
 
-    cheap = FilePositionReference.from_record(
+    cheap = FilePositionReference.records.from_record(
         {
             "type": entity(FilePositionReference).name,
             "locator": {"file": str(target), "line": 2},
@@ -121,7 +121,7 @@ def test_file_position_reference_accepts_cheap_and_rich_file_values(tmp_path):
     )
     assert cheap.resolve().target.text == "anchor"
 
-    rich = FilePositionReference.from_record(
+    rich = FilePositionReference.records.from_record(
         {
             "type": entity(FilePositionReference).name,
             "locator": {
@@ -136,7 +136,7 @@ def test_file_position_reference_accepts_cheap_and_rich_file_values(tmp_path):
     cheap._record["locator"]["line"] = 1
     assert cheap.resolve().status == "mismatch"
 
-    relative = FilePositionReference.from_record(
+    relative = FilePositionReference.records.from_record(
         {
             "type": entity(FilePositionReference).name,
             "locator": {"file": "surface.md", "line": 2},

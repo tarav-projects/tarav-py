@@ -43,12 +43,12 @@ def _reference(name):
 
 
 def _add(store, poi, when, *, actor='agent', source=None):
-    record = deepcopy(BlessingRecord.record_example())
+    record = deepcopy(BlessingRecord.records.record_example())
     record.update(id=str(uuid4()), created_at=when.isoformat(),
                   actor={'type': 'Example.Actor', 'locator': {'name': actor}},
                   support=[] if source is None else [_reference(source)],
                   poi=poi.blessing_snapshot())
-    return store.add(BlessingRecord.from_record(record))
+    return store.add(BlessingRecord.records.from_record(record))
 
 
 def _setup(tmp_path):
@@ -124,7 +124,7 @@ def test_relative_score_extends_only_with_support_and_sampling(tmp_path):
     registry = TribunalRegistry((BlessingAcceptanceTribunal(),))
     cases = []
     for blessing in (first, prior, *others):
-        source = blessing.to_record()['support'][0]
+        source = blessing.records.to_record()['support'][0]
         case = blessing.assertions['main'].assessment_case(
             BlessingAcceptanceCase, blessing=blessing,
             source_passages=({'reference': source, 'text': 'Passage from source.'},),

@@ -56,11 +56,36 @@ class BlessingRecord(Decision):
             workflow=BLESSINGS_WORKFLOW_SHIP,
         )
 
-    @classmethod
-    def validate_record(cls, value):
-        data = super().validate_record(value)
-        _validate(value, blessing=True)
-        return data
+    class Records(Decision.Records):
+        # tarav.breadcrumb 5fb1497ccaebe6f54754ad41f4de4168067458f2bd131b7a5397374a37ef60e3
+        def validate_record(self, value):
+            data = super().validate_record(value)
+            _validate(value, blessing=True)
+            return data
+
+        def record_example(self):
+            cls = self._owner
+            poi = {
+                "type": "Example.BlessablePOI",
+                "class_id": "7d28d632-2ec5-4c5a-997f-224ad508ce9d",
+                "code": "example",
+                "message": "Synthetic POI",
+                "situation": {"example": "situation"},
+                "subject": {},
+                "evidence": {},
+            }
+            poi["id"] = fingerprint([poi["class_id"], poi["situation"]])
+            return {
+                "type": entity(cls).name,
+                "schema_version": 3,
+                "id": "b3c3a696-e88c-497f-b87d-cdc9a557d882",
+                "created_at": "2026-09-26T00:00:00+00:00",
+                "actor": {"type": "Example.Actor", "locator": {"name": "example"}},
+                "rationale": "Synthetic Record example",
+                "support": [],
+                "poi": poi,
+            }
+
 
     @classmethod
     def _from_record(cls, data):
@@ -99,45 +124,23 @@ class BlessingRecord(Decision):
         return _score_provider(self, repository)
 
     def ships(self):
-        poi = self.to_record()["poi"]
+        poi = self.records.to_record()["poi"]
         return (*super().ships(), TypeShip(poi["class_id"]))
 
     @property
     def poi_ids(self) -> tuple[str, ...]:
-        return (self.to_record()["poi"]["id"],)
+        return (self.records.to_record()["poi"]["id"],)
 
     def obj_context(self, builder):
         from tarav.l1.poi import POIDetails
 
         builder.add(
             "acceptance",
-            opener=lambda: POIDetails.from_record(
-                {"type": entity(POIDetails).name, "value": self.to_record()}
+            opener=lambda: POIDetails.records.from_record(
+                {"type": entity(POIDetails).name, "value": self.records.to_record()}
             ),
         )
 
-    @classmethod
-    def record_example(cls):
-        poi = {
-            "type": "Example.BlessablePOI",
-            "class_id": "7d28d632-2ec5-4c5a-997f-224ad508ce9d",
-            "code": "example",
-            "message": "Synthetic POI",
-            "situation": {"example": "situation"},
-            "subject": {},
-            "evidence": {},
-        }
-        poi["id"] = fingerprint([poi["class_id"], poi["situation"]])
-        return {
-            "type": entity(cls).name,
-            "schema_version": 3,
-            "id": "b3c3a696-e88c-497f-b87d-cdc9a557d882",
-            "created_at": "2026-09-26T00:00:00+00:00",
-            "actor": {"type": "Example.Actor", "locator": {"name": "example"}},
-            "rationale": "Synthetic Record example",
-            "support": [],
-            "poi": poi,
-        }
 
 
 class BlessingAssessmentRecord(TaravEntity, FileRecord):
@@ -160,11 +163,24 @@ class BlessingAssessmentRecord(TaravEntity, FileRecord):
             workflow=BLESSINGS_WORKFLOW_SHIP,
         )
 
-    @classmethod
-    def validate_record(cls, value):
-        data = super().validate_record(value)
-        _validate(value, blessing=False)
-        return data
+    class Records(TaravEntity.Records):
+        def validate_record(self, value):
+            data = super().validate_record(value)
+            _validate(value, blessing=False)
+            return data
+
+        def record_example(self):
+            cls = self._owner
+            record = BlessingRecord.records.record_example()
+            record.pop("poi")
+            record.update(
+                type=entity(cls).name,
+                blessing="b3c3a696-e88c-497f-b87d-cdc9a557d882",
+                assertion="acceptance-justified",
+                score=1.0,
+            )
+            return record
+
 
     @classmethod
     def _from_record(cls, data):
@@ -177,25 +193,14 @@ class BlessingAssessmentRecord(TaravEntity, FileRecord):
 
         builder.add(
             "assessment",
-            opener=lambda: POIDetails.from_record(
-                {"type": entity(POIDetails).name, "value": self.to_record()}
+            opener=lambda: POIDetails.records.from_record(
+                {"type": entity(POIDetails).name, "value": self.records.to_record()}
             ),
         )
 
     def ships(self):
-        return (*super().ships(), Ship(self.to_record()["blessing"]))
+        return (*super().ships(), Ship(self.records.to_record()["blessing"]))
 
-    @classmethod
-    def record_example(cls):
-        record = BlessingRecord.record_example()
-        record.pop("poi")
-        record.update(
-            type=entity(cls).name,
-            blessing="b3c3a696-e88c-497f-b87d-cdc9a557d882",
-            assertion="acceptance-justified",
-            score=1.0,
-        )
-        return record
 
 
 def reference(value):
@@ -284,13 +289,13 @@ class BlessingStore:
     def load(self, identity):
         for record in self.snapshot()["records"]:
             if record["id"] == str(identity):
-                return self._type(record).from_record(record)
+                return self._type(record).records.from_record(record)
         raise KeyError(identity)
 
     def add(self, blessing):
         if not isinstance(blessing, (BlessingRecord, BlessingAssessmentRecord)):
             raise TypeError("Expected a blessing or assessment object")
-        record = blessing.to_record()
+        record = blessing.records.to_record()
         if self._type(record) is not type(blessing):
             raise TypeError("Object does not match registered blessing type")
         self._append(record)
@@ -306,7 +311,7 @@ class BlessingStore:
                 record = json.loads(path.read_text())
                 if isinstance(record, dict) and record.get("type") in self._other_decisions:
                     continue
-                self._type(record).validate_record(record)
+                self._type(record).records.validate_record(record)
             except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
                 findings.append(
                     {"kind": "invalid-blessing-record", "path": str(path), "detail": str(exc)}
@@ -325,7 +330,7 @@ class BlessingStore:
         return {"records": records, "findings": findings}
 
     def _append(self, record):
-        self._type(record).validate_record(record)
+        self._type(record).records.validate_record(record)
         self.root.mkdir(parents=True, exist_ok=True)
         path = self.root / (record["id"] + ".json")
         with path.open("x", encoding="utf-8") as handle:
@@ -416,7 +421,7 @@ class BlessingStore:
             assessments = [
                 score for score in scores if score["blessing"] == record["id"]
             ]
-            obj = self._type(record).from_record(record)
+            obj = self._type(record).records.from_record(record)
             assessment_findings.extend(obj.assessment_findings(assessments))
         return {
             "status": status,

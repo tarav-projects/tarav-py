@@ -32,7 +32,11 @@ def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
     assert issubclass(TaravObject.Records, NamespaceBase)
     assert TaravObject.records.obj is TaravObject
     # tarav.breadcrumb 6756f126eb6b4468aadc15dfb56e2e4b2c712811699c4bdfe5913f5b47fe60c1
-    assert TaravObject.records.record_example() == TaravObject.record_example()
+    assert TaravObject.records.record_example() == {"type": "Tarav.Object"}
+    assert not hasattr(TaravObject, "record_example")
+    assert not hasattr(TaravObject, "validate_record")
+    assert not hasattr(TaravObject, "from_record")
+    assert not hasattr(TaravObject, "to_record")
     assert "l1.records" not in _top_level_import_graph()["l0.kernel"]
     # tarav.breadcrumb bece7d874166e00ed8162186de9a880d068a99e6e2baeb13f0a5783afe3485c6
 
@@ -211,8 +215,8 @@ def test_blessing_assertions_compose_without_reverse_layer_imports():
     ):
         assert entity(record_type).workflow is BlessingsWorkflow()
         assert runtime.records.resolve_ship(entity(record_type).id) is record_type
-        example = record_type.record_example()
-        assert runtime.records.from_record(example).to_record() == example
+        example = record_type.records.record_example()
+        assert runtime.records.from_record(example).records.to_record() == example
     for path in (*PACKAGE_ROOT.glob('l1/scoring/*.py'), PACKAGE_ROOT / 'l1/blessings/store.py'):
         tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
         assert not any(
@@ -730,7 +734,7 @@ def test_registered_workflows_have_code_owned_constitutions() -> None:
     for workflow in create_runtime().workflows.workflows.values():
         constitution = workflow.__dict__.get("constitution")
         assert isinstance(constitution, str) and constitution.strip()
-        assert "constitution" not in entity(workflow).to_record()
+        assert "constitution" not in entity(workflow).records.to_record()
 
 
 def test_context_storage_and_test_workspace_stay_above_kernel() -> None:

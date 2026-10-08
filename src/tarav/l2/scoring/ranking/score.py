@@ -50,7 +50,7 @@ class RankingScore(Score, Mapping[str, object]):
             raise ValueError('A score row must not supply its Type')
         self._row = json.loads(json.dumps(dict(row), allow_nan=False))
         self._record = {'type': entity(type(self)).name, **self._row}
-        type(self).validate_record(self._record)
+        type(self).records.validate_record(self._record)
 
     def __getitem__(self, key: str) -> object:
         return deepcopy(self._row[key])
@@ -69,12 +69,13 @@ class RankingScore(Score, Mapping[str, object]):
     def _from_record(cls, data):
         return cls({key: value for key, value in data.model_dump().items() if key != 'type'})
 
-    @classmethod
-    def record_example(cls):
-        return cls({
-            'assertion_ref': {'type': 'Example.Assertion.Reference'},
-            'case_ids': [], 'wins': 0, 'losses': 0, 'ties': 0,
-            'abstentions': 0, 'comparisons': 0, 'opponent_count': 0,
-            'possible_opponents': 0, 'value': None, 'coverage': 0.0,
-            'tribunal_type_id': '00000000-0000-4000-8000-000000000006',
-        }).to_record()
+    class Records(Score.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls({
+                'assertion_ref': {'type': 'Example.Assertion.Reference'},
+                'case_ids': [], 'wins': 0, 'losses': 0, 'ties': 0,
+                'abstentions': 0, 'comparisons': 0, 'opponent_count': 0,
+                'possible_opponents': 0, 'value': None, 'coverage': 0.0,
+                'tribunal_type_id': '00000000-0000-4000-8000-000000000006',
+            }).records.to_record()

@@ -68,8 +68,8 @@ def test_blessable_check_poi_composes_by_type_and_context():
     occurrence = poi()
     assert isinstance(occurrence, (CheckPOI, BlessablePOI))
     assert occurrence.context().open("check") is occurrence.check
-    assert occurrence.context().open("coordinate").to_record()["value"] == occurrence.subject
-    assert occurrence.context().open("evidence").to_record()["value"] == {"text": "x"}
+    assert occurrence.context().open("coordinate").records.to_record()["value"] == occurrence.subject
+    assert occurrence.context().open("evidence").records.to_record()["value"] == {"text": "x"}
     changed = poi(evidence={"text": "y"})
     assert changed.identity == occurrence.identity
     assert changed.evidence != occurrence.evidence
@@ -83,10 +83,10 @@ def test_blessable_check_poi_composes_by_type_and_context():
     ],
 )
 def test_invalid_blessing_snapshot_is_rejected(field, value):
-    record = deepcopy(BlessingRecord.record_example())
+    record = deepcopy(BlessingRecord.records.record_example())
     record["poi"][field] = value
     with pytest.raises(ValueError):
-        BlessingRecord.validate_record(record)
+        BlessingRecord.records.validate_record(record)
 
 
 def test_runtime_collector_and_blessing_storage_partition(tmp_path):
@@ -117,10 +117,10 @@ def test_typed_blessing_policy_roundtrip_context_and_identity(tmp_path):
     )
     loaded = store.load(record["id"])
     assert isinstance(loaded, TaravEntity)
-    assert loaded.to_record() == record
+    assert loaded.records.to_record() == record
     assert entity(type(occurrence)).id in loaded.ships()
     assert runtime.records.from_record(record).id == loaded.id
-    assert runtime.context(loaded).open("acceptance").to_record()["value"] == record
+    assert runtime.context(loaded).open("acceptance").records.to_record()["value"] == record
     assert store.standing(occurrence)["assessment_findings"][0]["kind"] == "review-required"
     assessment = store.assess(
         record["id"],
@@ -129,7 +129,7 @@ def test_typed_blessing_policy_roundtrip_context_and_identity(tmp_path):
         score=1,
         rationale="Fixture assessment",
     )
-    assert store.load(assessment["id"]).to_record() == assessment
+    assert store.load(assessment["id"]).records.to_record() == assessment
     assert loaded.id in store.load(assessment["id"]).ships()
     assert store.standing(occurrence)["assessment_findings"] == []
     assert store.standing(poi(evidence={"text": "changed"}))["status"] == "blessed"
@@ -139,10 +139,10 @@ def test_typed_blessing_policy_roundtrip_context_and_identity(tmp_path):
 
 def test_typed_append_preserves_extra_fields_and_refuses_overwrite(tmp_path):
     store = BlessingStore(tmp_path, record_types=(ReviewedBlessing,))
-    record = ReviewedBlessing.record_example()
+    record = ReviewedBlessing.records.record_example()
     record["review_ticket"] = "example-ticket"
-    blessing = ReviewedBlessing.from_record(record)
+    blessing = ReviewedBlessing.records.from_record(record)
     assert store.add(blessing) is blessing
-    assert store.load(blessing.id).to_record()["review_ticket"] == "example-ticket"
+    assert store.load(blessing.id).records.to_record()["review_ticket"] == "example-ticket"
     with pytest.raises(FileExistsError):
         store.add(blessing)

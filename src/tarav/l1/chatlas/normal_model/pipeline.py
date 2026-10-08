@@ -153,7 +153,7 @@ def build_normal_model_from_row(
         )
 
     events = sorted(
-        (event_record(event).to_record() for event in events_by_address.values()),
+        (event_record(event).records.to_record() for event in events_by_address.values()),
         key=_event_sort_key,
     )
     event_by_address = {str(event["event_address"]): event for event in events}
@@ -326,7 +326,7 @@ def _finalize_chat_message(
         event_by_address=event_by_address,
     )
     result["message_hash"] = compute_chat_message_hash(result)
-    return ChatMessage.from_record(result).to_record()
+    return ChatMessage.records.from_record(result).records.to_record()
 
 
 def _finalize_loaded_context(
@@ -343,7 +343,7 @@ def _finalize_loaded_context(
         result.pop("event_addresses", None),
         event_by_address=event_by_address,
     )
-    return AgentLoadedContext.from_record(result).to_record()
+    return AgentLoadedContext.records.from_record(result).records.to_record()
 
 
 def _finalize_chat_turn(
@@ -381,7 +381,7 @@ def _finalize_chat_turn(
         )
     except ValueError as exc:
         raise CliError(f"Chatlas cannot hash Chat.Turn: {exc}") from exc
-    return ChatTurn.from_record(result).to_record()
+    return ChatTurn.records.from_record(result).records.to_record()
 
 
 def _validate_message_turn_containment(

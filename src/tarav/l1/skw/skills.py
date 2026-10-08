@@ -24,12 +24,14 @@ class SkillLink(SkwBlock):
         target: str
         caption: str
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {"type": entity(cls).name,
-                "id": "d9c4a653-d76a-4f44-b823-af7df64783b0", "label": "example",
-                "target": "introduction", "caption": "Read more",
-                "content": ["[Read more](SKILL.md)"]}
+    class Records(SkwBlock.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {"type": entity(cls).name,
+                    "id": "d9c4a653-d76a-4f44-b823-af7df64783b0", "label": "example",
+                    "target": "introduction", "caption": "Read more",
+                    "content": ["[Read more](SKILL.md)"]}
+
 
     def __init__(self, record):
         super().__init__(record)

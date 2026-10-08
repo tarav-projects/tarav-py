@@ -17,9 +17,11 @@ class TaravProgram(TaravEntity):
             workflow=PROGRAMS_WORKFLOW_SHIP,
         )
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return cls(id=Ship("bbf8d724-f685-4919-99dd-e5cf11350e18")).to_record()
+    class Records(TaravEntity.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return cls(id=Ship("bbf8d724-f685-4919-99dd-e5cf11350e18")).records.to_record()
+
 
 
 __all__ = ["ProgramsWorkflow", "TaravProgram"]

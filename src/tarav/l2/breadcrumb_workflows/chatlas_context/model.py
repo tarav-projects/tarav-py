@@ -29,14 +29,16 @@ class ChatlasContextAttachment(TaravObject):
         workflow: Literal["Tarav.Breadcrumbs.ChatlasContext"]
         context: ChatlasTurnReference.RecordInterface
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "breadcrumb_id": "0" * 64,
-            "workflow": "Tarav.Breadcrumbs.ChatlasContext",
-            "context": ChatlasTurnReference.record_example(),
-        }
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "breadcrumb_id": "0" * 64,
+                "workflow": "Tarav.Breadcrumbs.ChatlasContext",
+                "context": ChatlasTurnReference.records.record_example(),
+            }
+
 
 
 __all__ = ["ChatlasContextAttachment"]

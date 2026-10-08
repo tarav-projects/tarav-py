@@ -116,11 +116,13 @@ class ChatSession(TaravObject):
             "identity_hash": self.identity_hash,
         }
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return cls(
-            provider="codex", instance="example", session_id="example"
-        ).to_record()
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return cls(
+                provider="codex", instance="example", session_id="example"
+            ).records.to_record()
+
 
     def model(self, *, refresh: bool = False) -> ChatlasNormalModel:
         """Read/create the derived Model through the existing cache contract."""

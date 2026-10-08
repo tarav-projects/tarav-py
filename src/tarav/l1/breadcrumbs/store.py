@@ -70,7 +70,7 @@ class BreadcrumbResolution:
     def to_json(self) -> dict[str, object]:
         return {
             "status": self.status,
-            "breadcrumb": self.breadcrumb.to_record(),
+            "breadcrumb": self.breadcrumb.records.to_record(),
             "position": _position_json(self.position),
             "findings": [
                 item.as_dict()
@@ -115,7 +115,7 @@ class BreadcrumbStore:
                 continue
             try:
                 record = {"type": entity(Breadcrumb).name, "id": selected}
-                Breadcrumb.from_record(record)
+                Breadcrumb.records.from_record(record)
                 atomic_write_json(directory / "main.json", record)
                 (directory / "attachments").mkdir()
             except Exception:
@@ -138,24 +138,24 @@ class BreadcrumbStore:
             payload = json.loads(source.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise BreadcrumbError(f"Cannot load Breadcrumb {breadcrumb_id}: {exc}") from exc
-        record = Breadcrumb.from_record(payload)
-        if record.to_record()["id"] != breadcrumb_id:
+        record = Breadcrumb.records.from_record(payload)
+        if record.records.to_record()["id"] != breadcrumb_id:
             raise BreadcrumbError("Breadcrumb directory and retained ID disagree")
         record.source = source
         return record
 
     def append_observation(self, label: str, record: Mapping[str, object]) -> None:
         breadcrumb = self.load(label)
-        observation = LocatorObservation.from_record(record)
-        if observation.to_record()["breadcrumb_id"] != breadcrumb.to_record()["id"]:
+        observation = LocatorObservation.records.from_record(record)
+        if observation.records.to_record()["breadcrumb_id"] != breadcrumb.records.to_record()["id"]:
             raise BreadcrumbError("Locator observation belongs to another Breadcrumb")
         path = breadcrumb.directory / "locator-observations.jsonl"
         prior = path.read_text(encoding="utf-8") if path.exists() else ""
-        identity = _observation_identity(observation.to_record())
+        identity = _observation_identity(observation.records.to_record())
         for retained in self.observations(label):
             if _observation_identity(retained) == identity:
                 return
-        serialized = json.dumps(observation.to_record(), sort_keys=True, ensure_ascii=False)
+        serialized = json.dumps(observation.records.to_record(), sort_keys=True, ensure_ascii=False)
         atomic_write_text(path, prior + serialized + "\n")
 
     def observe_position(
@@ -170,7 +170,7 @@ class BreadcrumbStore:
         breadcrumb = self.load(label)
         record: dict[str, object] = {
             "type": entity(LocatorObservation).name,
-            "breadcrumb_id": breadcrumb.to_record()["id"],
+            "breadcrumb_id": breadcrumb.records.to_record()["id"],
             "observed_at": _now(),
             "locator": {
                 "type": entity(FilePositionReference).name,
@@ -182,7 +182,7 @@ class BreadcrumbStore:
                 "previous_line": previous_line,
                 "next_line": next_line,
             }
-        self.append_observation(str(breadcrumb.to_record()["id"]), record)
+        self.append_observation(str(breadcrumb.records.to_record()["id"]), record)
         return record
 
     def observe_commit_position(
@@ -194,12 +194,12 @@ class BreadcrumbStore:
         line: int,
     ) -> dict[str, object]:
         breadcrumb = self.load(label)
-        breadcrumb_id = str(breadcrumb.to_record()["id"])
+        breadcrumb_id = str(breadcrumb.records.to_record()["id"])
         reference = GitCommitMessagePositionReference(
             repository=repository,
             commit=commit,
             line=line,
-        ).to_record()
+        ).records.to_record()
         reference["check"] = {"contains": breadcrumb_label(breadcrumb_id)}
         record = {
             "type": entity(LocatorObservation).name,
@@ -221,10 +221,10 @@ class BreadcrumbStore:
                 continue
             try:
                 value = json.loads(line)
-                observation = LocatorObservation.from_record(value)
+                observation = LocatorObservation.records.from_record(value)
             except (json.JSONDecodeError, ValueError, TypeError) as exc:
                 raise BreadcrumbError(f"Invalid locator observation at line {number}: {exc}") from exc
-            records.append(observation.to_record())
+            records.append(observation.records.to_record())
         return tuple(records)
 
     def attach(self, label: str, record: Mapping[str, object]) -> Path:
@@ -258,14 +258,14 @@ class BreadcrumbStore:
     def show(self, label: str) -> dict[str, object]:
         breadcrumb = self.load(label)
         return {
-            "breadcrumb": breadcrumb.to_record(),
+            "breadcrumb": breadcrumb.records.to_record(),
             "observations": list(self.observations(label)),
             "attachments": list(self.attachments(label)),
         }
 
     def resolve(self, label: str) -> BreadcrumbResolution:
         breadcrumb = self.load(label)
-        core_label = breadcrumb_label(str(breadcrumb.to_record()["id"]))
+        core_label = breadcrumb_label(str(breadcrumb.records.to_record()["id"]))
         positions: dict[
             tuple[object, ...], FilePositionTarget | GitCommitMessagePositionTarget
         ] = {}
@@ -279,9 +279,9 @@ class BreadcrumbStore:
                 continue
             reference_type = RecordTypeReference.parse(location.value)
             if FilePositionReference.matches(reference_type):
-                reference = FilePositionReference.from_record(checked)
+                reference = FilePositionReference.records.from_record(checked)
             elif GitCommitMessagePositionReference.matches(reference_type):
-                reference = GitCommitMessagePositionReference.from_record(checked)
+                reference = GitCommitMessagePositionReference.records.from_record(checked)
             else:
                 continue
             reference.source = breadcrumb.source

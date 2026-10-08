@@ -78,12 +78,14 @@ class ArchiveReference(Reference):
             | None
         ) = None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "locator": {"archive": "/example/archive", "doi": "0" * 64},
-        }
+    class Records(Reference.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "locator": {"archive": "/example/archive", "doi": "0" * 64},
+            }
+
 
     def __init__(
         self,

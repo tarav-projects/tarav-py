@@ -35,7 +35,7 @@ class ExampleAssertable(Assertable):
 
 
 def _line_case_material():
-    assertion = LineGroundingAssertion.from_record(LineGroundingAssertion.record_example())
+    assertion = LineGroundingAssertion.records.from_record(LineGroundingAssertion.records.record_example())
     subject = assertion.subject_ref
     annotation = SimpleNamespace(
         id=subject['edition_id'],
@@ -77,15 +77,15 @@ def test_line_produces_two_distinct_closed_case_types_and_roundtrips(tmp_path):
     cases = [assertion.assessment_case(case_type, projection=projection, evidence=evidence)
              for case_type in assertion.assessment_case_types()]
     assert [type(case) for case in cases] == [LineGroundingCase, LineSupportInventoryCase]
-    assert cases[0].to_record()['line_text'] == 'The measured value is 42.'
-    assert cases[0].to_record()['peer_lines'] == ['Peer context.']
+    assert cases[0].records.to_record()['line_text'] == 'The measured value is 42.'
+    assert cases[0].records.to_record()['peer_lines'] == ['Peer context.']
     assert 'Measured 42.' in cases[0].presentation
-    assert cases[1].to_record()['edition_id'] == assertion.subject_ref['edition_id']
-    assert cases[1].to_record()['support_entries'] == evidence
+    assert cases[1].records.to_record()['edition_id'] == assertion.subject_ref['edition_id']
+    assert cases[1].records.to_record()['support_entries'] == evidence
     for case in cases:
         assert case.assertion_ref == assertion.reference()
-        assert type(case).from_record(case.to_record()).to_record() == case.to_record()
-        assert runtime.records.from_record(case.to_record()).to_record() == case.to_record()
+        assert type(case).records.from_record(case.records.to_record()).records.to_record() == case.records.to_record()
+        assert runtime.records.from_record(case.records.to_record()).records.to_record() == case.records.to_record()
     # A consumer can judge the closed packet without receiving projection or evidence handles.
     def score(case: AssessmentCase) -> bool:
         return 'Measured 42.' in case.presentation
@@ -93,7 +93,7 @@ def test_line_produces_two_distinct_closed_case_types_and_roundtrips(tmp_path):
     assert score(cases[0]) and score(cases[1])
     evidence[0]['turns'][0]['text'] = 'Changed after case construction.'
     assert 'Changed after' not in cases[0].presentation
-    assert cases[1].to_record()['support_entries'][0]['turns'][0]['text'] == 'Measured 42.'
+    assert cases[1].records.to_record()['support_entries'][0]['turns'][0]['text'] == 'Measured 42.'
 
 
 def test_unsupported_case_and_incomplete_scope_are_distinct():

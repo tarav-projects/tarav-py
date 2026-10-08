@@ -158,15 +158,17 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
             Path(record_data.root), record_data.workflow, tuple(record_data.parts)
         )
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        ship = str(RECORD_ARCHIVE_WORKFLOW_SHIP)
-        return {
-            "type": entity(cls).name,
-            "workflow": ship,
-            "root": "/example/archive",
-            "parts": [ship],
-        }
+    class Records(ExplorerFolder.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            ship = str(RECORD_ARCHIVE_WORKFLOW_SHIP)
+            return {
+                "type": entity(cls).name,
+                "workflow": ship,
+                "root": "/example/archive",
+                "parts": [ship],
+            }
+
 
     def _to_record(self) -> dict[str, object]:
         return {

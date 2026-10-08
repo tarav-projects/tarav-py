@@ -27,9 +27,9 @@ def test_ranking_workflow_and_tribunal_have_distinct_class_and_object_identities
     assert EvidenceTribunal() is not StyleTribunal()
     assert EvidenceTribunal().id != entity(EvidenceTribunal).id
     assert EvidenceTribunal().id != StyleTribunal().id
-    assert EvidenceTribunal.from_record(EvidenceTribunal().to_record()) is EvidenceTribunal()
+    assert EvidenceTribunal.records.from_record(EvidenceTribunal().records.to_record()) is EvidenceTribunal()
     runtime = create_runtime(archive_root=tmp_path, record_types=(EvidenceTribunal,))
-    assert runtime.records.from_record(EvidenceTribunal().to_record()) is EvidenceTribunal()
+    assert runtime.records.from_record(EvidenceTribunal().records.to_record()) is EvidenceTribunal()
 
 
 def test_ranking_score_is_typed_but_derived(tmp_path):
@@ -46,7 +46,7 @@ def test_ranking_score_is_typed_but_derived(tmp_path):
     detached_ref['type'] = 'Changed.Reference'
     assert score['assertion_ref'] != detached_ref
     runtime = create_runtime(archive_root=tmp_path / 'archive')
-    assert runtime.records.from_record(score.to_record()).to_record() == score.to_record()
+    assert runtime.records.from_record(score.records.to_record()).records.to_record() == score.records.to_record()
 
 
 class EvidenceTribunal(Tribunal):
@@ -267,5 +267,5 @@ def test_tribunal_records_use_the_installed_scoring_registry(tmp_path):
     runtime = create_runtime(archive_root=tmp_path / 'archive')
     for record_type in (TribunalCaseRecord, TribunalPairRecord, TribunalJudgmentRecord):
         assert runtime.records.resolve_ship(entity(record_type).id) is record_type
-        example = record_type.record_example()
-        assert runtime.records.from_record(example).to_record() == example
+        example = record_type.records.record_example()
+        assert runtime.records.from_record(example).records.to_record() == example

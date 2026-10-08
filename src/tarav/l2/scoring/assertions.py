@@ -113,30 +113,32 @@ class AssessmentCase(TaravObject):
         }
         # The scorer receives a snapshot, even if the producer later edits its inputs.
         self._record = json.loads(json.dumps(record, allow_nan=False))
-        type(self).validate_record(self._record)
+        type(self).records.validate_record(self._record)
 
-    @classmethod
-    def validate_record(cls, value):
-        data = super().validate_record(value)
-        if not data.question.strip() or not data.presentation.strip():
-            raise IncompleteCaseScope('Assessment case needs a question and supplied material')
-        return data
+    class Records(TaravObject.Records):
+        def validate_record(self, value):
+            data = super().validate_record(value)
+            if not data.question.strip() or not data.presentation.strip():
+                raise IncompleteCaseScope('Assessment case needs a question and supplied material')
+            return data
+
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return cls(
+                assertion_ref=Assertion({'type': 'Example.Subject.Reference'}).reference(),
+                question='Is this claim supported?',
+                presentation='Claim and supplied evidence.',
+            ).records.to_record()
+
 
     @property
     def assertion_ref(self) -> dict[str, object]:
-        return self.to_record()['assertion_ref']
+        return self.records.to_record()['assertion_ref']
 
     @property
     def presentation(self) -> str:
-        return self.to_record()['presentation']
+        return self.records.to_record()['presentation']
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return cls(
-            assertion_ref=Assertion({'type': 'Example.Subject.Reference'}).reference(),
-            question='Is this claim supported?',
-            presentation='Claim and supplied evidence.',
-        ).to_record()
 
 
 class Assertion(TaravAssertion):
@@ -169,7 +171,7 @@ class Assertion(TaravAssertion):
         if not subject['type']:
             raise ValueError('Assertion subject type must not be empty')
         # Use the ordinary Object JSON contract; do not normalize caller values.
-        return ScoringDetails.from_record({'value': subject}).to_record()['value']
+        return ScoringDetails.records.from_record({'value': subject}).records.to_record()['value']
 
     @classmethod
     def subject_identity(cls, subject):
@@ -177,13 +179,19 @@ class Assertion(TaravAssertion):
         key = json.dumps(coordinate, sort_keys=True, separators=(',', ':'), allow_nan=False)
         return Ship(uuid5(UUID(str(entity(cls).id)), key))
 
-    @classmethod
-    def validate_record(cls, value):
-        data = super().validate_record(value)
-        subject = cls.validate_subject(data.subject_ref)
-        if data.id != cls.subject_identity(subject):
-            raise ValueError('Assertion identity disagrees with its subject')
-        return data
+    class Records(TaravAssertion.Records):
+        def validate_record(self, value):
+            cls = self._owner
+            data = super().validate_record(value)
+            subject = cls.validate_subject(data.subject_ref)
+            if data.id != cls.subject_identity(subject):
+                raise ValueError('Assertion identity disagrees with its subject')
+            return data
+
+        def record_example(self):
+            cls = self._owner
+            return cls({'type': 'Example.Subject.Reference', 'name': 'example'}).records.to_record()
+
 
     @property
     def subject_ref(self):
@@ -212,7 +220,7 @@ class Assertion(TaravAssertion):
             raise TypeError('Assertion returned the wrong AssessmentCase Type')
         if case.assertion_ref != self.reference():
             raise ValueError('Assessment case belongs to another Assertion')
-        case.to_record()
+        case.records.to_record()
         return case
 
     def _build_assessment_case(self, case_type: type[AssessmentCase], **material: object) -> AssessmentCase:
@@ -233,10 +241,7 @@ class Assertion(TaravAssertion):
     def _from_record(cls, data):
         return cls(data.subject_ref)
 
-    @classmethod
-    def record_example(cls):
-        return cls({'type': 'Example.Subject.Reference', 'name': 'example'}).to_record()
 
     def obj_context(self, builder):
-        builder.add('subject', opener=lambda: ScoringDetails.from_record(
+        builder.add('subject', opener=lambda: ScoringDetails.records.from_record(
             {'type': entity(ScoringDetails).name, 'reference': self.subject_ref}))

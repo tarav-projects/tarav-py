@@ -120,16 +120,18 @@ class GitFileReference(Reference):
         locator: GitFileLocator
         check: GitOidCheck | None = None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "locator": {
-                "repository": "/example/repository",
-                "commit": "0" * 40,
-                "path": "README.md",
-            },
-        }
+    class Records(Reference.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "locator": {
+                    "repository": "/example/repository",
+                    "commit": "0" * 40,
+                    "path": "README.md",
+                },
+            }
+
 
     def __init__(
         self,
@@ -210,16 +212,18 @@ class GitCommitMessagePositionReference(Reference):
         locator: GitCommitMessagePositionLocator
         check: GitCommitMessagePositionCheck | None = None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "locator": {
-                "repository": "/example/repository",
-                "commit": "0" * 40,
-                "line": 1,
-            },
-        }
+    class Records(Reference.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "locator": {
+                    "repository": "/example/repository",
+                    "commit": "0" * 40,
+                    "line": 1,
+                },
+            }
+
 
     def __init__(
         self,

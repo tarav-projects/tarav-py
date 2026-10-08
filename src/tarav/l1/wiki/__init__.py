@@ -82,9 +82,11 @@ class Wiki(TaravObject):
     def _from_record(cls, record_data):
         return cls(record_data.root)
 
-    @classmethod
-    def record_example(cls):
-        return {"type": entity(cls).name, "root": "/example/wiki"}
+    class Records(TaravObject.Records):
+        def record_example(self):
+            cls = self._owner
+            return {"type": entity(cls).name, "root": "/example/wiki"}
+
 
 
 class WikiNote(TaravObject):
@@ -140,9 +142,11 @@ class WikiNote(TaravObject):
     def _from_record(cls, record_data):
         return cls(Wiki.from_path(record_data.root), record_data.path)
 
-    @classmethod
-    def record_example(cls):
-        return {"type": entity(cls).name, "root": "/example/wiki", "path": "topic.md"}
+    class Records(TaravObject.Records):
+        def record_example(self):
+            cls = self._owner
+            return {"type": entity(cls).name, "root": "/example/wiki", "path": "topic.md"}
+
 
 
 __all__ = ["Wiki", "WikiNote", "WikiWorkflow"]

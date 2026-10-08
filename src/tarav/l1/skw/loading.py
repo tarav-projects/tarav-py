@@ -106,7 +106,7 @@ class SkillReadingGraph(ReadingGraph):
             try:
                 if node['reference'].get('type') != entity(StructuredFileReference).name:
                     raise ValueError('Expected StructuredFile block reference')
-                reference = StructuredFileReference.from_record(node['reference'])
+                reference = StructuredFileReference.records.from_record(node['reference'])
                 reference.source = self.source
                 result = reference.resolve()
                 if not result.ok:
@@ -120,7 +120,7 @@ class SkillReadingGraph(ReadingGraph):
                     raise ValueError('Select one complete source block')
                 block = result.target
                 typed = document.blocks_by_ship[Ship(block['id'])]
-                if typed.to_record() != block:
+                if typed.records.to_record() != block:
                     raise ValueError('Block reference disagrees with loaded Type')
                 key = (document.source, typed.label)
                 if key in self.by_block:

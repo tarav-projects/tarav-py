@@ -104,7 +104,7 @@ class ContextEntry(ExplorerEntry, ContextObject):
         self.backing = backing
         self._opener = opener
         self._cargo = (
-            cargo.to_record()
+            cargo.records.to_record()
             if isinstance(cargo, TaravObject)
             else dict(cargo)
             if cargo is not None
@@ -142,7 +142,7 @@ class ContextEntry(ExplorerEntry, ContextObject):
         if self._cargo is None and self.backing is not None:
             retained = self.backing.open()
             if isinstance(retained, ContextEntry):
-                return retained.to_record()
+                return retained.records.to_record()
         record: dict[str, object] = {"type": entity(type(self)).name}
         if self._cargo is not None:
             record["cargo"] = self._cargo

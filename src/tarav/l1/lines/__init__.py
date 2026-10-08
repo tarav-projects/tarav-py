@@ -18,12 +18,13 @@ class Line(TaravEntity):
         text: str
         scope_ship: Ship
 
-    @classmethod
-    def record_example(cls):
-        return {**super().record_example(),
-                "id": "93d415af-e04b-4e2b-a7c6-ea6514c6827b",
-                "text": "It is red.",
-                "scope_ship": "611a6454-f1c7-4647-8944-a6c6fd643119"}
+    class Records(TaravEntity.Records):
+        def record_example(self):
+            return {**super().record_example(),
+                    "id": "93d415af-e04b-4e2b-a7c6-ea6514c6827b",
+                    "text": "It is red.",
+                    "scope_ship": "611a6454-f1c7-4647-8944-a6c6fd643119"}
+
 
     def __init__(self, *, id: Ship, text: str, scope: TaravEntity):
         super().__init__(id)

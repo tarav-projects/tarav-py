@@ -12,7 +12,7 @@ def write_typed_record(
     path: Path, obj: TaravObject, *, records: TypeRegistry[TaravObject] | None = None,
 ) -> None:
     """Write the exact registered Type after its own Record validation."""
-    record = obj.to_record()
+    record = obj.records.to_record()
     selected = records if records is not None else current_records()
     if selected.resolve(record) is not type(obj):
         raise ValueError("Stored object must have its exact registered Type")

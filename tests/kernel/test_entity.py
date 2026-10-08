@@ -29,14 +29,14 @@ class ExampleEntity(TaravEntity):
 
 
 def test_entity_keeps_json_identity_and_exposes_a_typed_ship() -> None:
-    subject = ExampleEntity.from_record({"id": ENTITY_ID, "label": "example"})
+    subject = ExampleEntity.records.from_record({"id": ENTITY_ID, "label": "example"})
 
     assert subject._record == {"id": ENTITY_ID, "label": "example"}
     assert type(subject.id) is Ship
     assert subject.id == Ship(ENTITY_ID)
     assert not hasattr(subject, "record_data")
-    assert subject.to_record() == {"id": ENTITY_ID, "label": "example"}
-    assert ExampleEntity.from_record(subject.to_record()).id == subject.id
+    assert subject.records.to_record() == {"id": ENTITY_ID, "label": "example"}
+    assert ExampleEntity.records.from_record(subject.records.to_record()).id == subject.id
     assert subject.ships() == (entity(ExampleEntity).id, Ship(ENTITY_ID))
 
 
@@ -44,7 +44,7 @@ def test_runtime_entity_projects_its_explicit_identity() -> None:
     subject = ExampleEntity(Ship(ENTITY_ID))
 
     assert subject.id == Ship(ENTITY_ID)
-    assert subject.to_record() == {
+    assert subject.records.to_record() == {
         "type": "Example.Entity",
         "id": ENTITY_ID,
     }
@@ -54,13 +54,13 @@ def test_runtime_entity_projects_its_explicit_identity() -> None:
 
 def test_entity_requires_a_json_uuid_string_identity() -> None:
     with pytest.raises(ValidationError):
-        ExampleEntity.from_record({})
+        ExampleEntity.records.from_record({})
     with pytest.raises(ValidationError):
-        ExampleEntity.from_record({"id": "not-a-uuid"})
+        ExampleEntity.records.from_record({"id": "not-a-uuid"})
     with pytest.raises(InvalidRecordJSON, match="transform"):
-        ExampleEntity.from_record({"id": ENTITY_ID.replace("-", "")})
+        ExampleEntity.records.from_record({"id": ENTITY_ID.replace("-", "")})
     with pytest.raises(InvalidRecordJSON):
-        ExampleEntity.from_record({"id": Ship(ENTITY_ID)})
+        ExampleEntity.records.from_record({"id": Ship(ENTITY_ID)})
 
 
 @pytest.mark.parametrize("storage_base", [FileRecord, DirectoryRecord])
@@ -80,7 +80,7 @@ def test_entity_identity_composes_with_record_storage_shapes(storage_base) -> No
         ):
             pass
 
-    subject = StoredEntity.from_record({"id": ENTITY_ID})
+    subject = StoredEntity.records.from_record({"id": ENTITY_ID})
 
     assert StoredEntity.preserves_parent_record_interface()
     assert isinstance(subject, TaravEntity)

@@ -32,12 +32,14 @@ class StructuredFileReference(Reference):
         locator: StructuredFileLocator
         check: Sha256Check | None = None
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "locator": {"path": "example.json", "pointer": "/example"},
-        }
+    class Records(Reference.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "locator": {"path": "example.json", "pointer": "/example"},
+            }
+
 
     def address(self):
         """Return an absolute path and optional pointer without reading payloads."""

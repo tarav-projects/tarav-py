@@ -58,12 +58,14 @@ class StoredDictionaryContext(ContextFolder):
     def _from_record(cls, record_data: BaseModel) -> StoredDictionaryContext:
         return cls(record_data.archive)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "archive": "43c12f03-8699-4427-b780-a0c3ccf32289",
-        }
+    class Records(ContextFolder.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "archive": "43c12f03-8699-4427-b780-a0c3ccf32289",
+            }
+
 
     def _to_record(self) -> dict[str, object]:
         return {"type": entity(type(self)).name, "archive": str(self.archive)}
@@ -97,12 +99,14 @@ class StoredVectorContext(ContextList):
     def _from_record(cls, record_data: BaseModel) -> StoredVectorContext:
         return cls(record_data.archive)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "archive": "43c12f03-8699-4427-b780-a0c3ccf32289",
-        }
+    class Records(ContextList.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "archive": "43c12f03-8699-4427-b780-a0c3ccf32289",
+            }
+
 
     def _to_record(self) -> dict[str, object]:
         return {"type": entity(type(self)).name, "archive": str(self.archive)}
@@ -163,13 +167,15 @@ class SubjectContextRoot(ContextObject):
     def _from_record(cls, record_data: BaseModel) -> SubjectContextRoot:
         return cls(record_data.subject, record_data.archive)
 
-    @classmethod
-    def record_example(cls) -> dict[str, object]:
-        return {
-            "type": entity(cls).name,
-            "subject": "f1541079-b6ca-4e65-9d9c-4dd524597494",
-            "archive": "43c12f03-8699-4427-b780-a0c3ccf32289",
-        }
+    class Records(ContextObject.Records):
+        def record_example(self) -> dict[str, object]:
+            cls = self._owner
+            return {
+                "type": entity(cls).name,
+                "subject": "f1541079-b6ca-4e65-9d9c-4dd524597494",
+                "archive": "43c12f03-8699-4427-b780-a0c3ccf32289",
+            }
+
 
     def _to_record(self) -> dict[str, object]:
         return {
@@ -238,7 +244,7 @@ class ContextService:
         archive = self.partition.create_dictionary(str(ship), constitution=constitution)
         atomic_write_json(
             archive.root / "context.json",
-            SubjectContextRoot(ship, archive.id).to_record(),
+            SubjectContextRoot(ship, archive.id).records.to_record(),
         )
         return archive
 
@@ -358,7 +364,7 @@ class ContextService:
         # The Archive owns the directory; Context owns this path's attachment.
         atomic_write_json(
             child.root / "context.json",
-            ContextEntry(cargo=folder, description=description).to_record(),
+            ContextEntry(cargo=folder, description=description).records.to_record(),
         )
         return ContextEntry(
             backing.placement,

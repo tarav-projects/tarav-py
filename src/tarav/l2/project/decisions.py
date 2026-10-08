@@ -34,7 +34,7 @@ class ProjectDecisions:
     def add(self, decision):
         if not isinstance(decision, Decision):
             raise TypeError("Expected a Decision")
-        record = decision.to_record()
+        record = decision.records.to_record()
         if self._types().get(record["type"]) is not type(decision):
             raise TypeError("Decision type is not registered")
         self.root.mkdir(parents=True, exist_ok=True)
@@ -68,7 +68,7 @@ class ProjectDecisions:
             if not issubclass(cls, decision_type):
                 continue
             try:
-                cls.validate_record(record)
+                cls.records.validate_record(record)
                 if path.stem != record["id"]:
                     raise ValueError("Decision filename disagrees with identity")
             except (ValueError, TypeError, KeyError) as exc:
@@ -82,7 +82,7 @@ class ProjectDecisions:
         types = self._types()
         for record in self.snapshot()["records"]:
             if record["id"] == str(identity):
-                return types[record["type"]].from_record(record)
+                return types[record["type"]].records.from_record(record)
         raise KeyError(identity)
 
     def blessings(self):

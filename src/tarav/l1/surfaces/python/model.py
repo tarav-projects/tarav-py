@@ -110,9 +110,11 @@ class PythonNormalModel(TaravObject):
             diagnostics=record_data.diagnostics,
         )
 
-    @classmethod
-    def record_example(cls):
-        return cls.from_text("").to_record()
+    class Records(TaravObject.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls.from_text("").records.to_record()
+
 
 
 __all__ = [

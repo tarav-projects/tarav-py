@@ -166,7 +166,7 @@ class POIDetails(FileRecord):
 
 
 def _details(value) -> POIDetails:
-    return POIDetails.from_record(
+    return POIDetails.records.from_record(
         {"type": entity(POIDetails).name, "value": deepcopy(value)}
     )
 

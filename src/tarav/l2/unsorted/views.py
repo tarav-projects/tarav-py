@@ -147,7 +147,7 @@ class DiagramViewConfiguration(TaravObject):
     def create(
         cls, bootstrap_visible_lines: int = 4, max_visible_lines: int = 120
     ) -> DiagramViewConfiguration:
-        return cls.from_record(
+        return cls.records.from_record(
             {
                 "type": entity(cls).name,
                 "schema_version": VIEW_SCHEMA_VERSION,
@@ -261,7 +261,7 @@ def _view_record(path: Path, expected: type[ViewRecordT]) -> ViewRecordT:
     authority = registry.resolve(data)
     if authority is not expected:
         raise DiagramViewError(f"Unexpected Diagram.View Record Type: {path}")
-    result = authority.from_record(data)
+    result = authority.records.from_record(data)
     result.source = path
     return cast(ViewRecordT, result)
 
@@ -322,7 +322,7 @@ class DiagramView:
 
     @property
     def manifest(self) -> JsonObject:
-        return self.manifest_record.to_record()
+        return self.manifest_record.records.to_record()
 
     @property
     def manifest_record(self) -> DiagramViewManifest:
@@ -342,7 +342,7 @@ class DiagramView:
 
     @property
     def state(self) -> JsonObject:
-        return self.state_record.to_record()
+        return self.state_record.records.to_record()
 
     @property
     def state_record(self) -> DiagramViewState:
@@ -879,7 +879,7 @@ class DiagramViewRepository:
         config = configuration or DiagramViewConfiguration.create()
         atomic_write_json(
             root / "manifest.json",
-            DiagramViewManifest.from_record(
+            DiagramViewManifest.records.from_record(
                 {
                     "id": str(uuid4()),
                     "type": VIEW_MANIFEST_TYPE,
@@ -887,19 +887,19 @@ class DiagramViewRepository:
                     "schema_version": VIEW_SCHEMA_VERSION,
                     "view_ship": ship,
                 }
-            ).to_record(),
+            ).records.to_record(),
             ensure_ascii=False,
         )
         atomic_write_json(
             root / "about.json",
-            DiagramViewAbout.from_record(
+            DiagramViewAbout.records.from_record(
                 {"type": VIEW_ABOUT_TYPE, "data": dict(about or {})}
-            ).to_record(),
+            ).records.to_record(),
             ensure_ascii=False,
         )
         atomic_write_json(
             root / "config.json",
-            config.to_record(),
+            config.records.to_record(),
             ensure_ascii=False,
         )
         state = _materialize(
@@ -912,7 +912,7 @@ class DiagramViewRepository:
         state["view_ship"] = ship
         atomic_write_json(
             root / "view.json",
-            DiagramViewState.from_record(state).to_record(),
+            DiagramViewState.records.from_record(state).records.to_record(),
             ensure_ascii=False,
         )
         paths = tuple(path.relative_to(self.root) for path in sorted(root.iterdir()))

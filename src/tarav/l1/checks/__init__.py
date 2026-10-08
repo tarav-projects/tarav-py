@@ -115,14 +115,14 @@ class CheckPOI(IdentifiedPOI):
 
     def as_dict(self, *, detail: bool = False) -> dict[str, object]:
         return {**super().as_dict(detail=detail),
-                "check": entity(type(self.check)).to_record(),
+                "check": entity(type(self.check)).records.to_record(),
                 "details": deepcopy(self.details), "failure": self.failure}
 
     # tarav.breadcrumb 98efb14446fdafc5cbb4a98e2d0d162e31638150e69ea0198d0c4c6c3e0f7cd9
     def obj_context(self, builder) -> None:
         super().obj_context(builder)
         builder.add("check", opener=lambda: self.check)
-        builder.add("details", opener=lambda: POIDetails.from_record(
+        builder.add("details", opener=lambda: POIDetails.records.from_record(
             {"type": entity(POIDetails).name, "value": deepcopy(self.details)}))
 
     def error(self) -> None:
@@ -158,7 +158,7 @@ class SituationCheck(Check):
     def obj_context(self, builder) -> None:
         builder.add(
             "situation",
-            opener=lambda: POIDetails.from_record({
+            opener=lambda: POIDetails.records.from_record({
                 "type": entity(POIDetails).name,
                 "value": self._situation.to_json_value(),
             }),

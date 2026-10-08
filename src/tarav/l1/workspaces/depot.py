@@ -57,7 +57,7 @@ class WorkspaceDepot:
             record = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             raise WorkspaceError(f"Cannot read Workspace manifest: {path}") from error
-        workspace = Workspace.from_record(record)
+        workspace = Workspace.records.from_record(record)
         if workspace.id != selected:
             raise WorkspaceError("Workspace directory and manifest identities disagree")
         workspace.root = path
@@ -148,7 +148,7 @@ class WorkspaceDepot:
         """Reapply a recipe and its retained seeds with a fresh Workspace Ship."""
         if workspace.root is None:
             raise WorkspaceError("Detached Workspace cannot be cloned")
-        data = workspace.to_record()
+        data = workspace.records.to_record()
         data["id"] = str(uuid4())
         data["label"] = label
         data["status"] = "open"
@@ -226,7 +226,7 @@ class WorkspaceDepot:
         shutil.rmtree(workspace.root)
 
     def set_status(self, workspace: Workspace, status: str, *, extracted: str | None = None) -> Workspace:
-        data = workspace.to_record()
+        data = workspace.records.to_record()
         data["status"] = status
         if extracted is not None:
             data["extracted"] = extracted

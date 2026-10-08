@@ -148,7 +148,7 @@ def attention_report(
         if record['id'] not in vectors:
             blessing_type = store.record_types[record['type']]
             vectors[record['id']] = _compact_vector(
-                blessing_type.from_record(record).score_vector(repository))
+                blessing_type.records.from_record(record).score_vector(repository))
         return vectors[record['id']]
 
     for poi in collector.pois:
