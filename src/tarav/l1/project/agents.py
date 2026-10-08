@@ -159,43 +159,43 @@ class AgentsMd(TaravObject, CheckProvider):
 
 
 class TaravSystemPromptPOI(CheckPOI):
+    """The agents file lacks the current Tarav System Prompt."""
+    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md", "the agents file's own closing section")
+    may_do = ("Add or `produce` the TaravSystemPrompt block in the Skillware source, then compile.", "Raise it first.")
     @classmethod
     def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls, id=TypeShip("715798b8-b431-431e-be0f-15338b7e2ea1"),
-            name="Tarav.Project.Agents.TaravSystemPromptPOI",
-            workflow=PROJECT_WORKFLOW_SHIP,
-        )
+        return TaravClass(target=cls, id=TypeShip("715798b8-b431-431e-be0f-15338b7e2ea1"),
+                          name="Tarav.Project.Agents.TaravSystemPromptPOI", workflow=PROJECT_WORKFLOW_SHIP)
 
 
 class ProjectSystemPromptPOI(CheckPOI):
+    """The agents file lacks a Project System Prompt."""
+    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md", "the agents file's own closing section")
+    may_do = ("Author the ProjectSystemPrompt block with the User, then compile.", "Raise it first.")
     @classmethod
     def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls, id=TypeShip("64869199-6cbb-4653-808a-4cb03078fd0e"),
-            name="Tarav.Project.Agents.ProjectSystemPromptPOI",
-            workflow=PROJECT_WORKFLOW_SHIP,
-        )
+        return TaravClass(target=cls, id=TypeShip("64869199-6cbb-4653-808a-4cb03078fd0e"),
+                          name="Tarav.Project.Agents.ProjectSystemPromptPOI", workflow=PROJECT_WORKFLOW_SHIP)
 
 
 class AgentsMdProductPOI(CheckPOI):
+    """The agents file and its Skillware source disagree or cannot be compared."""
+    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md", "the agents file's own closing section")
+    may_do = ("Edit the source, never the product, then compile; lint shows the finding.", "Raise it first.")
     @classmethod
     def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls, id=TypeShip("d8353b6d-e8a7-46a7-ba8b-f21a1bc2b775"),
-            name="Tarav.Project.Agents.ProductPOI",
-            workflow=PROJECT_WORKFLOW_SHIP,
-        )
+        return TaravClass(target=cls, id=TypeShip("d8353b6d-e8a7-46a7-ba8b-f21a1bc2b775"),
+                          name="Tarav.Project.Agents.ProductPOI", workflow=PROJECT_WORKFLOW_SHIP)
 
 
 class AgentsAliasPOI(CheckPOI):
+    """A declared alias is not a symlink to the main agents file."""
+    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md", "the agents file's own closing section")
+    may_do = ("Replace the alias by a symlink to the main agents file.", "Raise it first.")
     @classmethod
     def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls, id=TypeShip("7890040b-6928-430e-876b-a3bf282c2eb1"),
-            name="Tarav.Project.Agents.AliasPOI",
-            workflow=PROJECT_WORKFLOW_SHIP,
-        )
+        return TaravClass(target=cls, id=TypeShip("7890040b-6928-430e-876b-a3bf282c2eb1"),
+                          name="Tarav.Project.Agents.AliasPOI", workflow=PROJECT_WORKFLOW_SHIP)
 
 
 class _AgentsCheck(Check):

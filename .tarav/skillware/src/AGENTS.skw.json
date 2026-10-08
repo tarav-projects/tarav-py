@@ -277,7 +277,6 @@
       ]
     },
     {
-      "type": "Tarav.Project.Agents.TaravSystemPrompt",
       "id": "3c02aa70-6e29-4b97-9f36-5e1a747810c5",
       "label": "tarav-system-prompt",
       "content": [
@@ -304,6 +303,8 @@
         "reported point of interest (POI) is a signal to investigate, not an automatic",
         "instruction to repair or a reason to stop unrelated work. A check may report",
         "missing context, stale generated output, or a problem that needs user judgment.",
+        "Before acting on any POI, open its context with the command the check report",
+        "prints (`tarav context --id <poi-id> --view reported-poi`).",
         "",
         "### Work with Tarav data",
         "",
@@ -334,7 +335,8 @@
         "`--depot .tarav/skillware`. A Project may declare aliases for the main agents",
         "file; those aliases are symlinks to the main file. Do not edit the compiled file",
         "or an alias as the source of truth."
-      ]
+      ],
+      "type": "Tarav.Project.Agents.TaravSystemPrompt"
     }
   ]
 }

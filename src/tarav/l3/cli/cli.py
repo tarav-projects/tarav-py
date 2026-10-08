@@ -46,6 +46,9 @@ def build_parser(
     subparsers = parser.add_subparsers(dest="command")
     composed = runtime or create_runtime(hook_registrars=hook_registrars)
     composed.register_commands(subparsers)
+    from tarav.l3.context.commands import register_context_command
+
+    register_context_command(subparsers, service=context_queries(composed))
     for command in commands_from_parser(parser):
         command.parser.set_defaults(_tarav_command=command)
         command.parser.live_help = (
@@ -90,6 +93,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "use": _describe_use(command, args),
                 },
             )
+
+
+
+# tarav.breadcrumb b567d02429f0dff5bbfaac61c15bf5682e95640251d0963d66249a87ee127c3a
+def context_queries(runtime: TaravRuntime):
+    """Compose the installed identifier resolvers and named Context views."""
+    from tarav.l1.context.query import ContextQueryService, TypeResolver
+    from tarav.l1.poi.reporting import (
+        REPORTED_POI_VIEW, ReportedPOIContext, ReportedPOIResolver,
+    )
+
+    service = ContextQueryService(opener=runtime.context)
+    service.register_resolver("reported-poi", ReportedPOIResolver())
+    service.register_resolver("type", TypeResolver(runtime.records.types))
+    service.register_view(REPORTED_POI_VIEW, ReportedPOIContext)
+    return service
 
 
 if __name__ == "__main__":

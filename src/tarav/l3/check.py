@@ -24,7 +24,7 @@ def report_project_checks(
                   flush=True)
 
     try:
-        run = project.checks.run(on_result=progress)
+        run = _retained(project, project.checks.run(on_result=progress))
         # tarav.breadcrumb ad61e17278a7f87bdbe6bba00b7195dd5389a8f9423618314b32ae8fa446c9e2
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -88,6 +88,18 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--code", help="Filter by exact POI code.")
     parser.add_argument("--check", dest="check_type", help="Filter by exact Check Type name.")
     parser.set_defaults(handler=_check)
+
+
+def _retained(project, run):
+    """Keep the reported POIs so `tarav context --id` can open them afterwards."""
+    from tarav.l1.poi.reporting import ReportedPOIStore
+
+    try:
+        identity = {"id": str(project.id), "name": project.name, "root": str(project.root)}
+    except Exception:
+        return run
+    ReportedPOIStore().retain(run.pois(), project=identity)
+    return run
 
 
 __all__ = ["register_check_command", "report_project_checks"]

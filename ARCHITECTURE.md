@@ -686,3 +686,26 @@ marked, and a partition beyond 50 MB loses its oldest entries during the write.
 The registry is best effort; a failure is logged and the run is unchanged.
 <!-- tarav.breadcrumb 04da500bc54214879fa3a0f8232b112490cda176917b4db38c121fcbefc7bd84 -->
 <!-- tarav.breadcrumb 649ec18a1017f2ff0525ba9bc96eb1f33a319556bf9e2789f24eb9d5ec2287e3 -->
+
+### Context queries and reported POIs
+
+`tarav context --id <identifier> [--view <name>] [--path a/b]` is the shell door
+to the same Context that scripts reach through `.context`. `tarav.l1.context.query`
+owns the typed `ContextQuery` (an identity query by default), a
+`ContextQueryService` whose resolvers are Search engines, and named views, which
+are `Context` subclasses opened through `explore(subject, type=...)`. The CLI
+layer composes the installed resolvers and views; the `context` subsystem imports
+no workflow that contributes to it. One match opens, several are listed, and a
+unique prefix is enough.
+
+A POI exists only during its check run, so `tarav check --project` retains what it
+reported, best effort, in `~/.tarav/check-reports/<project id>.json`
+(`TARAV_CHECK_REPORTS` relocates it). `tarav.l1.poi.reporting` owns that store, the
+`ReportedPOI` subject, its resolver, and the `reported-poi` view with the entries
+`poi-type`, `raised-by`, `finding`, `read-first` and `may-do`. A POI Type declares
+`read_first` and `may_do`; `render_check_run()` opens every report that has POIs
+with one instruction and an example command. `tarav.l1.checks.poi_contract` checks
+both ends where the POI base Type is developed: a reminder POI for each POI Type
+that declares no guidance, and a round trip from the rendered example to the view.
+<!-- tarav.breadcrumb 5c2663eff9561ef3a40b8394241107400cd89fa7942dee0a3037aa987699ff79 -->
+<!-- tarav.breadcrumb 991c6bf77c55b2771e7572d07530f5c5b1a4abb64adddb3a2c966c06ee52f442 -->

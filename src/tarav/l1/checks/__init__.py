@@ -350,6 +350,8 @@ class CheckRun(TaravObject, POIProvider):
         page = rows[offset:offset + limit]
         return {
             "summary": self.summary(),
+            "context_example": next(
+                (poi.identity for poi in self.pois() if isinstance(poi, IdentifiedPOI)), None),
             "by": by,
             "sort": sort,
             "matching": len(rows),
@@ -419,6 +421,11 @@ def render_check_run(report: Mapping[str, object]) -> str:
     summary = report["summary"]
     lines = [f"{summary['checks']} checks, {summary['incomplete']} incomplete, "
              f"{summary['pois']} POIs"]
+    if summary["pois"]:
+        # One instruction for the whole report, ahead of the POIs it concerns.
+        from tarav.l1.poi.reporting import context_instruction
+
+        lines += ["", *context_instruction(report.get("context_example")), ""]
     for row in report["items"]:
         lines.append(f"  {row['key']}: {row['pois']} POIs from {row['checks']} checks "
                      f"({row['open']} open, {row['blessed']} blessed)"

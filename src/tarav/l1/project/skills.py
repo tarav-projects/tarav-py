@@ -70,6 +70,11 @@ class ProjectSkills(TaravObject, CheckProvider):
 
 
 class TaravPackageSkillPOI(CheckPOI):
+    """The Tarav package skill is not in the Project or home skill folders."""
+
+    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'",)
+    may_do = ("Import it with `tarav project skills import`.", "Raise it first.")
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("7c5bce92-5ece-48e9-b803-444f7b6166cc"),
@@ -78,6 +83,11 @@ class TaravPackageSkillPOI(CheckPOI):
 
 
 class ProjectPackageSkillPOI(CheckPOI):
+    """The Project names no package skill, or the named one is not available."""
+
+    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'",)
+    may_do = ("Name it in the marker as agents.package_skill, or import it.", "Raise it first.")
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("1217d219-c0c4-48fc-9a4f-735a9d7e597b"),
@@ -86,6 +96,11 @@ class ProjectPackageSkillPOI(CheckPOI):
 
 
 class SkillFoldersPOI(CheckPOI):
+    """The skill folders an agent would load are missing or disagree."""
+
+    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'",)
+    may_do = ("Recreate the folders with `tarav project skills import`.", "Raise it first.")
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("0ef39065-28a2-4c91-ae45-a4c994b8e2b8"),

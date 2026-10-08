@@ -21,6 +21,8 @@ installed CLI. `tarav check --project [PATH]` runs the Project's checks. A
 reported point of interest (POI) is a signal to investigate, not an automatic
 instruction to repair or a reason to stop unrelated work. A check may report
 missing context, stale generated output, or a problem that needs user judgment.
+Before acting on any POI, open its context with the command the check report
+prints (`tarav context --id <poi-id> --view reported-poi`).
 
 ### Work with Tarav data
 
