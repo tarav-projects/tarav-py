@@ -2,11 +2,12 @@
 
 <!-- tarav.sessions
 abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c625e3f68354a234a91e4992b67406f075d93ccb20f4d4
+473c89a0 = codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8 @473c89a00e2367fb827193af74a6375c60a96b0be110f21df0aff49360ca972f
 -->
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: needs-alignment (three open questions below). Phase: Design.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: complete. Phase: Execute.
 
 Give every Tarav Project built-in checks that the skills an arriving agent needs are available. This is the second bootstrap level, after the agents file of [Impl.Req 872](872-project-agents-bootstrap-impl-req.md). Two skills are required: the **Tarav package skill**, whose name is fixed in Tarav code, and the **Project package skill**, which each Project names in its configuration. A skill is available when a skill with that declared name is found in the Project's `.agents/skills` folder or in the home folder's `.agents/skills`. Further checks confirm the minimal folder structure: `.agents/skills` exists, and `.claude/skills` leads to the same place, in both the Project and the home folder. Findings are typed check POIs and run inside `project.checks`, therefore inside `tarav check --project`.
 
@@ -125,7 +126,14 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `agents
 ## Impl.Log
 
 - Design inspection (2026-10-08): `l1/skills/skill.py`, `l1/skills/catalog.py`, `l2/project/skills/routing.py`, `tarav project skills --help`, and the skill folder layout of the Taravangian root, `tarav-py`, `tarav-md` and the home folder.
-- Request 872 is designed but not implemented; this request cannot start before it.
+- At design capture, request 872 was not yet implemented. It was complete before 873 execution began.
 - Design note capture: eight User-Turn Breadcrumbs submitted, audit clean; design commit `859083b17779ce0a84d8692d4a95a2ba60f15d25`.
 - Wiki capture in `tarav-md`: a Skill availability section appended to `notes/wiki/agents-bootstrap.md` (7 new Breadcrumbs, 25 in the note, audit clean) and a section appended to daily `2026-10-08.md` (2 new Breadcrumbs). Start checkpoint `467b4bb4bc78090f5a769601d61142742cb13f7c`, completion commit `589696b68216d3b2efc72fbe20a38ccf562daa40`.
 - The daily note audit still reports the 13 `breadcrumb-position-missing` POIs recorded in request 872's log; this capture appended only and added none.
+- Execute (2026-10-08): 872 is implemented. Chose resolved-directory equivalence for the two skill folders and unconditional checks, following the bounded proposal and the User's "start rigid" direction; these are implementation choices, not newly claimed User decisions. Scoped start checkpoint `00253b8ac7e2b006bdac5981fbdd7e80563f2459`.
+<!-- tarav.breadcrumb 8080d7f2ab4d495081ad9148881e509377c01f23c2df8b038035234fdfbd325a -->
+- Implemented folder-backed Skill identity, `project.agents.skills` discovery, three typed POI families and four checks (the folder check runs at Project and home), plus base Project check composition. Added focused tests, architecture guidance, and regenerated `AGENTS.md` from its Skillware source. Full suite: 183 passed; Ruff: clean; installed CLI refreshed. Root `tarav check --project .` ran 362 checks: all completed, 64 POIs across existing checks; the new skill checks produced three `package_skill` undeclared POIs and no missing Tarav skill or folder-structure POIs. Markers remain unmodified as this request excludes adoption/repair.
+- Product Surface Inlined Capture submitted 11 new Breadcrumbs across nine supported Python/Markdown files; the authoritative Skillware JSON source has no native inline convention. The old `tests/test_project_agents.py` Breadcrumb position changed when its helper was narrowed and now audits with a position POI; new capture there resolves. Shared worktree contains a separate uncommitted Skills Workflow refactor supplying `TaravSkill`, so scoped product closure must preserve that prerequisite without absorbing unrelated edits.
+- Product completion commit `2ea7d0bebf3ee3bb52787d09c9c32fb863c6209e` includes the bounded bootstrap and minimal `TaravSkill` prerequisite. Its commit Breadcrumb audit is clean. The committed tree passed 173 tests and Ruff in an isolated checkout; the full shared worktree passed 183 tests and Ruff. The installed CLI was reinstalled and the root Project check produced the expected new skill findings. Unrelated shared-worktree edits remain outside the commit.
+- Wiki capture in `tarav-md`: start checkpoint `fd6efbe0a020ebffc268a6809d974a49c870bdd1`; daily and topical notes updated with User-Turn-linked Breadcrumbs. Topical audit is clean; daily retains its 13 pre-existing position POIs, with the new Breadcrumb valid. Scoped completion commit `7725b64165469bc4b6df5ced3c0cf3fe08d774ac`.
+<!-- tarav.breadcrumb 4cf9620c3925df4f83a5e85d66153d00182624be783abf2219a4fc47042283aa -->
