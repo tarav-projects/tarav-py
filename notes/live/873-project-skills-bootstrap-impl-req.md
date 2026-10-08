@@ -126,3 +126,6 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `agents
 
 - Design inspection (2026-10-08): `l1/skills/skill.py`, `l1/skills/catalog.py`, `l2/project/skills/routing.py`, `tarav project skills --help`, and the skill folder layout of the Taravangian root, `tarav-py`, `tarav-md` and the home folder.
 - Request 872 is designed but not implemented; this request cannot start before it.
+- Design note capture: eight User-Turn Breadcrumbs submitted, audit clean; design commit `859083b17779ce0a84d8692d4a95a2ba60f15d25`.
+- Wiki capture in `tarav-md`: a Skill availability section appended to `notes/wiki/agents-bootstrap.md` (7 new Breadcrumbs, 25 in the note, audit clean) and a section appended to daily `2026-10-08.md` (2 new Breadcrumbs). Start checkpoint `467b4bb4bc78090f5a769601d61142742cb13f7c`, completion commit `589696b68216d3b2efc72fbe20a38ccf562daa40`.
+- The daily note audit still reports the 13 `breadcrumb-position-missing` POIs recorded in request 872's log; this capture appended only and added none.
