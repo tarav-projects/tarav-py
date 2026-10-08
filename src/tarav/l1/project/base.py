@@ -25,13 +25,22 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
 
             return AgentsMd(self.obj)
 
+        # tarav.breadcrumb 54df434f7c894a8c84736fa05c502a8697a1293f2bb1fc6aebdf4d9745c09c90
+        @property
+        def skills(self):
+            from .skills import ProjectSkills
+
+            return ProjectSkills(self.obj)
+
     @property
     def agents(self) -> Agents:
         return type(self).Agents(self)
 
     class Checks(CheckProvider.Checks):
+        # tarav.breadcrumb c1c38799380f065d088e5c7e704ac0e46755ff33a8171e0247bd531f899012ce
         def suite(self) -> CheckSuite:
-            return CheckSuite([self.obj.agents.agents_md.checks.suite()],
+            return CheckSuite([self.obj.agents.agents_md.checks.suite(),
+                               self.obj.agents.skills.checks.suite()],
                               name=self.obj.name)
 
     @classmethod

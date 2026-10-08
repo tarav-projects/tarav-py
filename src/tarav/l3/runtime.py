@@ -336,6 +336,10 @@ def create_runtime(
     )
     from tarav.l1.skw.document import SkillwareWorkflow
     from tarav.l1.project.agents import PROJECT_AGENTS_RECORD_TYPES
+    # tarav.breadcrumb c5d54c7649438c13a2949da87599cf3b307a97aa3a4bba56d4b9629006ad8a14
+    from tarav.l1.project.skills import PROJECT_SKILLS_RECORD_TYPES
+    from tarav.l1.skills.folder import FolderSkill
+    from tarav.l1.skills.workflow import SkillsWorkflow as BaseSkillsWorkflow
     from tarav.l1.skw.generation import GenerationPOI
     from tarav.l2.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
     from tarav.l2.test_workflow import TestEntity, TestItem, TestWorkflow
@@ -390,6 +394,7 @@ def create_runtime(
                 TaravProject,
                 # tarav.breadcrumb e413721d29ed9388d54184a6a29e121226d402b0561e3b98b101b9e8b4ab3309
                 *PROJECT_AGENTS_RECORD_TYPES,
+                *PROJECT_SKILLS_RECORD_TYPES,
                 *PYTHON_RECORD_TYPES,
                 *PROJECT_RUNNER_RECORD_TYPES,
                 TaravProgram,
@@ -434,6 +439,7 @@ def create_runtime(
                 *READING_DECLARATION_TYPES,
                 *READING_ENTRY_TYPES,
                 *SKILLS_RECORD_TYPES,
+                FolderSkill,
                 *record_types,
             )
         )
@@ -486,6 +492,7 @@ def create_runtime(
         # tarav.breadcrumb eae69a7746f4a20cd6a37196b1384f6e615b348574b6791f791ca6baa9ce96ab
         CodeWorkflow,
         SkillsWorkflow,
+        BaseSkillsWorkflow,
         TaravRecords,
         SearchWorkflow,
         TestWorkflow,

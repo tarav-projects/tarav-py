@@ -909,3 +909,15 @@ def test_consumers_import_the_normal_model_package_not_its_submodules() -> None:
         "import `tarav.l1.chatlas.normal_model`, not its submodules: "
         + "; ".join(sorted(offenders))
     )
+
+
+# tarav.breadcrumb 56810d2b44380634cc17abe006666e235be6aa3168c35377077ac05e4f943abb
+def test_project_skill_availability_stays_in_project_workflow() -> None:
+    from tarav.l0.kernel import entity
+    from tarav.l1.project.skills import ProjectSkills
+    from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
+    from tarav.l1.skills.folder import FolderSkill
+    from tarav.l1.skills.workflow import SKILLS_WORKFLOW_SHIP
+
+    assert entity(ProjectSkills).workflow_ship == PROJECT_WORKFLOW_SHIP
+    assert entity(FolderSkill).workflow_ship == SKILLS_WORKFLOW_SHIP

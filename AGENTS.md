@@ -98,11 +98,19 @@
   current directory upward, and fails when there is none. Without the flag,
   `tarav run` uses the installed Tarav interpreter even inside a Project.
   <!-- tarav.breadcrumb a063022465541b6bdc1076d3a5ad853099d0c2c8f01eb8243e32c7b976917a5f -->
-- `TaravProject` is a `CheckProvider`: base checks cover its agents file;
-  a subtype adds its suite in `Checks.suite()` and calls `super().suite()`.
-  `project.checks.run()` executes the composed suite.
+- `TaravProject` is a `CheckProvider`: base checks cover its agents file and
+  the skill bootstrap; a subtype adds its suite in `Checks.suite()` and calls
+  `super().suite()`. `project.checks.run()` executes the composed suite.
+  <!-- tarav.breadcrumb e975fb22535bf1b80fc7ee95b2b15fb340d677036ab7ba55adbba1f3c064deaf -->
   <!-- tarav.breadcrumb f1b6c4d85568e1afc1b76afc02983662c5d2be806b568698cd7b28b853a639e6 -->
   <!-- tarav.breadcrumb 2cad01bfc733b3b450e3908f187d06d110c511dd5329d9b74e0165b87839fbc9 -->
+- `project.agents.skills` discovers skill folders in Project and home
+  `.agents/skills`, using each `SKILL.md` declared name. Set
+  `agents.package_skill` in `.tarav/project.json`; the built-in Tarav skill
+  name is `tarav-pkg`. Project and home must each have `.agents/skills`
+  and `.claude/skills` resolving to the same directory. Checks report
+  missing skills and folder structure through typed POIs.
+  <!-- tarav.breadcrumb cf13f560fbda5e4ee266ba51759419ed3ae8d3bd3e954f8b6b0f3d8b9f33ef7c -->
 - `CheckProvider.checks.suite()` returns a `CheckSuite`. Its `run()` accumulates a
   `CheckRun`; suites are not iterable because sources can depend on earlier
   results. `tarav check --project [PATH] [--json]` runs the suite in the
