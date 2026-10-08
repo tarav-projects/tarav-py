@@ -921,3 +921,26 @@ def test_project_skill_availability_stays_in_project_workflow() -> None:
 
     assert entity(ProjectSkills).workflow_ship == PROJECT_WORKFLOW_SHIP
     assert entity(FolderSkill).workflow_ship == SKILLS_WORKFLOW_SHIP
+
+# tarav.breadcrumb f38fded0c826624e04780a3a2e18a014ded9311ab856a1384350d68acfefb6dd
+def test_bypass_entry_is_outside_the_guarded_import_graph() -> None:
+    for path in PACKAGE_ROOT.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                assert all(not alias.name.startswith("tarav_bypass")
+                           for alias in node.names), path
+            elif isinstance(node, ast.ImportFrom):
+                assert not (node.module or "").startswith("tarav_bypass"), path
+
+    bypass = PACKAGE_ROOT.parent / "tarav_bypass" / "__init__.py"
+    tree = ast.parse(bypass.read_text(encoding="utf-8"))
+    assert not any(
+        isinstance(node, ast.ImportFrom) and (node.module or "").startswith("tarav")
+        for node in tree.body
+    )
+    assert not any(
+        isinstance(node, ast.Import) and any(alias.name.startswith("tarav")
+                                             for alias in node.names)
+        for node in tree.body
+    )

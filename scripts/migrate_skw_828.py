@@ -11,6 +11,9 @@ import json
 from pathlib import Path
 from uuid import UUID, uuid5
 
+# tarav.breadcrumb c0e8f313eb8931681e48ad154be5a755b84a1c775a3bbe2e2fbb174b0cfe0b2d
+import tarav_bypass  # noqa: F401
+
 from tarav.l1.skw.generation import _hash
 
 

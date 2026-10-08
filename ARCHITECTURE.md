@@ -657,3 +657,16 @@ Runtime provider wiring lives in `tarav.l3.runtime`, not the package root.
 Import that assembly module before using current-registry or Workflow-instance
 resolution, or explicitly configure the lower-level hooks in a custom host.
 Importing `tarav` alone initializes no services or layered modules.
+
+## Import entry points
+
+Tarav has two import doors over the same library. The `tarav` console command,
+the daemon console command, and `tarav_bypass` set an inherited process mark
+before importing `tarav`. A plain import without that mark raises an error
+directing scripts to `tarav run`, whose child process inherits the mark and
+uses the selected Python environment. `tarav_bypass` is the explicit entry for
+developers and tests that import Tarav directly; its module import does not
+import `tarav`. The mark is a usability guard, not a security boundary, and
+does not appear in the error message.
+<!-- tarav.breadcrumb d85bcbec96c2c33b21a12ac57fc844ce0fdcb1a428026756ff13ec5d3e8041a2 -->
+<!-- tarav.breadcrumb fb964adb1a2f8cfbdef9fabf07f33c12806155d2ff7c24a42fbe5329e9e59da2 -->

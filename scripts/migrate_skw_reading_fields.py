@@ -6,6 +6,9 @@ import argparse
 import json
 from pathlib import Path
 
+# tarav.breadcrumb 2779e1bf04acb64e27cd87a2e0ff8fc52e9ad8b94b9fc16b0f6d7ee9c5dc2598
+import tarav_bypass  # noqa: F401
+
 from tarav.l1.skw.reading import Contains, ReadingDependency, ReadingLink, declaration_from_record
 
 

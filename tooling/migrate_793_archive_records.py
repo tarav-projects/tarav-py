@@ -10,6 +10,9 @@ import json
 from pathlib import Path
 import subprocess
 
+# tarav.breadcrumb e62452911a0dda3567af3d5a9d40dedf59dcb307d805ecd5dd00bf96b22b5806
+import tarav_bypass  # noqa: F401
+
 from tarav.l0._core.persistence import atomic_write_text
 from tarav.l1.archive.artifact_records import record_registry
 
