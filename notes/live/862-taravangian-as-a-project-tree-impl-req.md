@@ -91,7 +91,7 @@ Capture status: done, tarav-md 0ea3b6e (`projects.md`, daily 2026-10-05).
 
 Executed after 861 in the same session, by the User's `/goal` invocation of
 `tarav-hugentics --impl --exec`.
-<!-- tarav.context 5a029cbf:b2b4e6e82374611f -->
+<!-- tarav.breadcrumb fe3f7aa1ca6b17e11f603005ec68eb66022d2aa7578f268264ab6c650c25d247 -->
 
 - Classes (deviation from "tarav.dev"): the general classes live in
   `tarav.l2.project.dev`: `PythonPackageProject` (`Tarav.Project.PythonPackage`,

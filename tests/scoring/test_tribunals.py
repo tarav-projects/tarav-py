@@ -19,7 +19,7 @@ from tarav.l3.runtime import create_runtime
 
 
 def test_ranking_workflow_and_tribunal_have_distinct_class_and_object_identities(tmp_path):
-    # tarav.context 6734aba0:e3a12d122bc8c5ca
+    # tarav.breadcrumb a9435c4bc997322c773e21e48e34e069347b23475f3ad82d5d5801c80d5f7410
     assert issubclass(RankingWorkflow, ScoringWorkflow)
     assert RankingWorkflow().workflow is ScoringWorkflow()
     assert EvidenceTribunal() is EvidenceTribunal()

@@ -124,7 +124,7 @@ Capture status: done, tarav-md 0ea3b6e (`projects.md`, daily 2026-10-05).
 Executed in the same Claude Code session that designed it, by the User's
 `/goal` invocation of `tarav-hugentics --impl --exec` over requests 861, 862
 and md-library-py 621–623.
-<!-- tarav.context 5a029cbf:b2b4e6e82374611f -->
+<!-- tarav.breadcrumb 2276f08d3cf9a0213c5a85782c5acf7e45c629510b57e0a80950f5a8486884f5 -->
 
 - Checkpoint: the declared scope was clean at b341761; no empty commit made.
 - Several Types per environment: `ProjectHarness.project_types()` reads

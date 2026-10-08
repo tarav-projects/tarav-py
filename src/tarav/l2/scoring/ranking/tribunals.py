@@ -58,8 +58,8 @@ class PairwiseRankingCase(AssessmentCase):
 class Tribunal(TaravEntity):
     """One identified comparison context per concrete Tribunal class."""
     # tarav.breadcrumb bf84293588c4eed3e274b4d351175a02b8e46f8969df6a4631bfe74cbf92888d
-    # tarav.context 6734aba0:bba1c976c99de9c3
-    # tarav.context 6734aba0:e3a12d122bc8c5ca
+    # tarav.breadcrumb 6993f6372ad3872a03601ef784fe0daf1dc67d96e55e5ec3abb5e06ddb0ef200
+    # tarav.breadcrumb 5a75d5a01ed4541406dee6cd09582893ac6b64c27faa1bec7a39ace2c61af00d
 
     _instances: dict[type, 'Tribunal'] = {}
     _instance_lock = RLock()
