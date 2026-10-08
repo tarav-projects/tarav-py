@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Ready. Phase: Develop.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Complete. Phase: Develop (Execute).
 
 Make Project capabilities readable as `project.docs.wiki.daily(date)`, `project.models.ls()`, and `project.checks.run()`. Migrate maintained callers and declarations so these are actual paths, not examples beside the old method API.
 <!-- tarav.breadcrumb b82908d4b73c1eea771d28f975b7058003e01cce5326ac865b6e3421b921edc1 -->
@@ -21,7 +21,7 @@ Current code has `Project.models()` returning `ProjectModels`, `Project.wiki()` 
 
 ## Impl.Req.Wiki
 
-Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; topical `projects.md` and possibly checks. Supporting session: `codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8`. Capture status: pending.
+Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; topical `projects.md` and `checks-workflow.md`, daily `2026-10-07.md`. Supporting session: `codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8`. New User-Turn Breadcrumbs submitted; commit attachment audits passed. Topical surface audits timed out on older dense Notes.
 
 ## Execution.Plan
 
@@ -33,3 +33,11 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; topical `projects.md` a
 ## Impl.Log
 
 - Design inspection: current Project, ProjectModels, ProjectWiki, CheckProvider, concrete check providers, caller grep, and shared worktree status. Numerous unrelated edits exist, including overlapping Project and architecture files; preserve them.
+- Design note capture: three User-Turn Breadcrumbs submitted; design commit `de47b65a1360a3fc46d6ba1134d1292d1049c299`.
+- Execute start checkpoint `e79539db3be149d1537dddb0b813c5fa69fd622e` was empty and scoped to clean Project/Checks files.
+- `Project` now exposes `docs.wiki` and `models` as bound attributes. `ProjectModels.ls()` reads marker names; `get()` and `main()` still gate on the disconnected Models backend. The path itself no longer raises at construction.
+- `CheckProvider.Checks` supplies `suite()` and `run()`; concrete Project, Workspace, Command, and SKW skill providers declare their suites under that class. Maintained Python callers and the CLI were migrated. Explicit suite composition remains the responsibility of a composed provider.
+- Verification: 46 focused migration tests and the full 178-test Python suite passed; the two new path tests passed after the final doc capture; Ruff on changed Python files passed. The installed CLI was refreshed with `uv tool install --reinstall --editable .`. Both modified Hugentics SKW documents compiled and linted with no findings.
+- Product capture: new Breadcrumbs submitted in all 20 changed Python, test, and Markdown guidance surfaces. Full surface audits on files with many older labels were slow and not all completed; the scoped product commit audit resolved its two message Breadcrumbs without POIs. JSON SKW sources have no native Inlined Capture convention, so capture was placed in the authored Wiki and evidence commit rather than in JSON comments.
+- Scoped product completion commit `811e9a485627f4100267b927cb6f83c575cf8ffa` includes only this request's hunks. Unrelated edits in `ARCHITECTURE.md`, Project Models/Root, SKW skills, architecture tests, and Workspace tests were restored and remain uncommitted in the worktree.
+- Companion `tarav-md` request `865` updated the Hugentics skill sources and captured the discussion in daily/Projects/Checks Wiki Notes. Skill commit `0d9691d9380ebd7cb1d9002162d4ca0b1ab8673a`; Wiki commit `e242b8146220fc87b789e223eaea3400799e4dcf`. Their commit Breadcrumb audits passed. Wiki daily surface audit passed; Projects and Checks topical surface audits timed out while scanning older labels.
