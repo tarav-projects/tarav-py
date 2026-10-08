@@ -47,7 +47,7 @@ Codex pings should use Luna. All four Codex accounts' model caches list `gpt-6-l
 
 ## Impl.Req.Wiki
 
-Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; no existing monitor Note, daily `2026-10-08.md`. Supporting session: `claude-code:d237f00a-2da8-4b96-9b54-a1addd3a5b4e`. Capture status: pending.
+Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; new topical Note `agent-accounts-monitor.md`, daily `2026-10-08.md`. Supporting session: `claude-code:d237f00a-2da8-4b96-9b54-a1addd3a5b4e`. Capture status: complete.
 
 ## Execution.Plan
 
@@ -70,3 +70,4 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`; no existing monitor Not
 - User config `~/.tarav/config.json` (backup `config.json.pre-auto-prime-simplify`): auto-prime entry now `interval_sec` 600, `threshold_percent` 5, retired keys dropped, targets Codex jp/mm/tk/br + Claude jp/br (Claude om excluded). It loads as 600 s / 5% / six targets. A running monitor must be restarted to pick up the code change.
 - Product.Surface capture: Breadcrumbs `cbc3ba5f…` (`auto_prime.py` workflow class), `59253674…` (`config.py` supported providers), `80e2a23a…` (`_config_models.py` Luna default); all three surfaces audit with no POIs.
 - Not addressed: the Codex `workspace routing discovery failed` errors seen for tk/br/mm since 2026-09-25.
+- Product completion commit `2fbb77820e40986a75552a5b806c0484717327ca`; its evidence audit passed (6 Breadcrumbs, 0 POIs). Wiki start checkpoint `102e107db85f82e8debfd9ed75d89e518f75f50e`; daily and new `agent-accounts-monitor.md` captured in `615df0e05cf63dc32b3995b7a7c2f02bffeb98a2` (10 new labels resolve; commit audit passed). The daily Note's older 868 Breadcrumb now reports `breadcrumb-position-missing` because the added session declaration shifted it one line; left unrepaired.
