@@ -6,7 +6,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive (the User is working elsewhere; ordinary ambiguities are resolved as recorded agent choices). Status: ready. Phase: Design complete; Execute not started (stopped at the User's request, see Impl.Log).
+Knowledge.Surface: wiki. Alignment.Mode: Autonomous (selected on resume). Status: executing. Phase: Develop; design revision complete, Execute in progress.
 
 Make the things in `tarav-py` that look like POIs be POIs of the core tree, and give POIs one rendering path: a POI renderer type, a registry of named renderers with one default, and command-line surfaces that choose a renderer by name instead of formatting POIs themselves. Remove the word "finding" where the thing is a POI, and rename it where the thing is something else.
 
@@ -100,3 +100,20 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `poi-sy
 2. The Diagram `Finding` family (74 codes) is deferred to its own request. Is that acceptable, or should it be split here despite the missing tests?
 3. Is `occurrence` the right name for the view entry that replaces `finding`?
 4. A second named renderer is not required by any consumer yet. The plan adds a JSON-lines renderer for scripts; say if another layout matters more.
+
+<!-- tarav.sessions
+473c89a0 = codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8 @473c89a00e2367fb827193af74a6375c60a96b0be110f21df0aff49360ca972f
+-->
+
+## Develop revision — 2026-10-08
+
+The User resumed this request through Develop with autonomous alignment and sharpened the order: establish the shared primitives first, then visit as many POI-like Tarav systems as practical and unify their producers and presentations. The existing Diagram `Finding` family is therefore an integration target to inspect and attempt, rather than a blanket deferral. The earlier non-goals on tracked POI policy, notification-log redesign, repairing reported POIs and other repositories still stand. The User also required visits to the exact User Turns behind referenced design; the three distinct Turns already attached above, and the related context and atomic-POI Turns in the Wiki, were rendered before this revision.
+<!-- tarav.breadcrumb e857fcaeeed0e00fdbf9ae71e1b0c99ec3c0d111d9636e9d03b6de6b613423b1 -->
+
+Revised order: (1) one POI renderer interface, registry, selection value and default/JSON-lines instances, with check-report integration and a resolvable context instruction; (2) Breadcrumb and Reference resolution POIs and the common command presentation; (3) migrate remaining POI-shaped SKW and Diagram outputs through those primitives, including their retained/context paths where a command exposes them; (4) rename data that only resembles a POI without forcing an `l0` to `l1` dependency; (5) test each integration slice, perform a fresh whole-library inventory, and record any cases that cannot be safely integrated in this pass with a concrete reason. The renderer selects no POIs; the POI Type owns its one-line meaning. The old plan above is provenance where this revision changes it.
+<!-- tarav.breadcrumb 98855066aa8890ffdff7db3f3e6e9df756027fdd023358149e4351e2391463d5 -->
+
+Bounded implementation choices under autonomous alignment: keep the POI root in `l1`; `l0` observations become POIs when an `l1` consumer actually surfaces them. Use `occurrence` for the reported-POI view. A JSON-lines renderer is the second named layout because scripts can consume it; `--json` continues to produce structured records independently. A family parent may group atomic cases but must never be raised. Changing a retained record schema or dynamically allocating POI Types from observed codes would need a compatibility design, so inspect those boundaries before converting the Diagram cases.
+<!-- tarav.breadcrumb aed0ab0d58c1ed9baa6e4b8d1c59047fcb6703a2f2cad970a2c902e84c22caa4 -->
+
+Start checkpoint for this resumed Develop pass: `141da47307f4e48e6ad641eeb9b7373095255753`. No product source had been changed by request 879 at this point; the shared worktree carries unrelated edits across Tarav layers. Inlined Capture and commits must stay scoped to this request.
