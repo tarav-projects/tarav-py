@@ -12,6 +12,19 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+# tarav.breadcrumb bbd582b062040e5ec212d86d72680b8f1b6405acce4f97efbabea5d5766d7887
+def test_project_capabilities_use_bound_semantic_paths() -> None:
+    from tarav.l0.kernel import NamespaceBase
+    from tarav.l1.checks import CheckProvider
+    from tarav.l2.project import Project
+
+    assert issubclass(Project.Docs, NamespaceBase)
+    assert issubclass(CheckProvider.Checks, NamespaceBase)
+    assert isinstance(Project.models, property)
+    assert isinstance(Project.checks, property)
+    assert not hasattr(Project, "wiki")
+
+
 def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
     from tarav.l0.kernel import NamespaceBase, TaravObject
 

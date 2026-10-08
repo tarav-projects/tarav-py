@@ -126,15 +126,17 @@ class Workspace(TaravEntity, CheckProvider):
     def _to_record(self):
         return self.manifest.model_dump(mode="json")
 
-    def checks(self):
-        if self.root is None:
-            raise ValueError("Detached Workspace has no checkable setup")
-        from .checks import WorkspaceIntegrityCheck
+    # tarav.breadcrumb 0371eb7b22afd1b0b505ded202313dcdf9e765e46bc7abff8e71e135f94dc78c
+    class Checks(CheckProvider.Checks):
+        def suite(self) -> CheckSuite:
+            if self.obj.root is None:
+                raise ValueError("Detached Workspace has no checkable setup")
+            from .checks import WorkspaceIntegrityCheck
 
-        setup = WorkspaceSetupRecord.model_validate_json(
-            (self.root / "setup.json").read_text(encoding="utf-8"), strict=True
-        )
-        return CheckSuite((WorkspaceIntegrityCheck(self, setup),))
+            setup = WorkspaceSetupRecord.model_validate_json(
+                (self.obj.root / "setup.json").read_text(encoding="utf-8"), strict=True
+            )
+            return CheckSuite((WorkspaceIntegrityCheck(self.obj, setup),))
 
     @classmethod
     def record_example(cls):

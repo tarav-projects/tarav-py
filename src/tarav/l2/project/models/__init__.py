@@ -32,14 +32,16 @@ class ProjectModels(TaravType):
                           name="Tarav.Project.Models", workflow=PROJECT_MODELS_WORKFLOW_SHIP)
 
     def __init__(self, project: TaravProject, *, diagram=None):
-        from tarav.l2.models.errors import require_models
-        require_models()
         if not isinstance(project, TaravProject):
             raise TypeError("project must be a TaravProject")
         self.project = project
         self._diagram = diagram
 
+    # tarav.breadcrumb 79087186b939e0612e8a6f9c198406337d11580d134c7f9b2407fb4433577b85
     def _resolver(self):
+        from tarav.l2.models.errors import require_models
+
+        require_models()
         from tarav.l2.unsorted.storage import DiagramConfiguration
 
         diagram = self._diagram

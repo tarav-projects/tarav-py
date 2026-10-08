@@ -1,4 +1,4 @@
-"""Project checks CLI: run a Project's checks() in its harness environment."""
+"""Project checks CLI: run a Project's checks namespace in its harness."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.l1.checks import CheckResult, CheckSuite, render_check_run
+from tarav.l1.checks import CheckResult, render_check_run
 
 
 # tarav.breadcrumb a671fcec806bcecf6adccaf70a7f2c991f04b2685ea24f7056aa3cf53f820f8e
@@ -24,7 +24,8 @@ def report_project_checks(
                   flush=True)
 
     try:
-        run = CheckSuite.of(project.checks()).run(on_result=progress)
+        run = project.checks.run(on_result=progress)
+        # tarav.breadcrumb ad61e17278a7f87bdbe6bba00b7195dd5389a8f9423618314b32ae8fa446c9e2
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

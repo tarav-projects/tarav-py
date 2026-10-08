@@ -395,8 +395,10 @@ environment. Paths cannot escape the Project root, and run never installs or
 selects a fallback interpreter.
 
 `TaravProject` is an ordinary `CheckProvider` (`tarav.l1.checks`): a Project
-subtype exposes its checks through the `checks()` method, and the base declares
-none and raises.
+subtype declares its suite in a `Checks` namespace class. The bound
+`project.checks.suite()` exposes the suite without running it, while
+`project.checks.run()` executes it. The base declares no suite and raises.
+<!-- tarav.breadcrumb 8fa3ca276796996a3fe4d571fb8cae3876778ffccaf5ee40a6510ca1e046dff0 -->
 <!-- tarav.breadcrumb f6132fabb0037fce1edf20f899399f42f53277dae02a26475989bfa4e0d2c2e9 -->
 <!-- tarav.breadcrumb 0bd03575af287c630888eba439224a79e98b04bb08e8371be586ba38c8416bbe -->
 
@@ -467,7 +469,7 @@ schema or an additional Workflow identity.
 | `surfaces` | SurfacesWorkflow owns MarkdownNormalModel, its strict LineMarkdownModel subtype, and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. LineMarkdownModel is a floor for owned formats: it raises at the first dialect violation instead of returning a partial model. Consumers assign domain meaning. |
 | `wiki` | Folder-based Markdown Wiki and WikiNote objects, parsing through surfaces, and Wiki-scoped Git closure. No Project dependency. |
 | `project` | ProjectWorkflow owns minimal TaravProject and featured Project. Existing project_id is the Ship identity; discovered location stays outside the portable marker. |
-| `project.models`, `project.wiki` | Specialized child workflows own Project associations. Project lazily delegates models() and wiki(); the minimal base imports neither integration. |
+| `project.models`, `project.wiki` | Specialized child workflows own Project associations. The featured Project exposes `project.models` and `project.docs.wiki`; the minimal base imports neither integration. |
 | `workspaces` | Identified manifest-backed working folders under the Tarav data root. Exact worktree commits and retained file seeds define reproducible setup; a separate setup Record retains observed hashes and allocated branches. Workspace checks report POIs. The l1 workflow calls l1 Git for every worktree operation; l2 Project offers an optional view over the independent depot. |
 <!-- tarav.breadcrumb 28d74cb87df8e2cd06518e6e21e63155236c88bedc83944c038fb1e1405943c1 -->
 | `skills` | User-facing skill operations. |
@@ -490,10 +492,11 @@ retained Type tag in memory without changing the file. Generic from_record()
 and load_object() retain exact Type checks. Project-local code is never
 automatically imported by discovery. Subtypes define class_entity() normally.
 
-ProjectModels.main() resolves through existing Diagram configuration by default;
-an explicit resolver is optional for isolated integrations. ProjectWiki.open()
-returns the conventional notes/wiki folder. Neither operation creates data.
-Project.models() returns its integration handler; Project.wiki() returns a Wiki.
+`Project.models` exposes the bound ProjectModels handler. Its `ls()` reads named
+associations from the Project marker; Model resolution through `get()` and
+`main()` remains disconnected pending the Models redesign. `Project.docs.wiki`
+returns the conventional notes/wiki folder without creating data.
+<!-- tarav.breadcrumb a4389802948e1c2e30453b151e3436b217f6fbcff361475b4297284f7a80397e -->
 
 ## Integration invariants
 

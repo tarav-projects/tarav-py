@@ -1,4 +1,4 @@
-"""A Project is a CheckProvider; tarav check --project runs its checks()."""
+"""A Project is a CheckProvider; tarav check --project runs its checks."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, check_report
+from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, CheckSuite, check_report
 from tarav.l1.project import TaravProject
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 from tarav.l3.check import report_project_checks
@@ -41,19 +41,23 @@ class _Project:
     def __init__(self, *checks: Check) -> None:
         self._checks = checks
 
+    @property
     def checks(self):
-        yield from self._checks
+        return CheckSuite(self._checks)
 
 
+# tarav.breadcrumb 1c3211e4813cc9462c4d94f77ac404645ccf0c232bc8b4e184bccb4426600fa9
 def test_the_base_project_is_a_check_provider_with_no_checks() -> None:
     project = TaravProject.__new__(TaravProject)
     assert isinstance(project, CheckProvider)
     with pytest.raises(NotImplementedError, match="declares no checks"):
-        project.checks()
+        project.checks.suite()
 
 
 def test_the_report_carries_every_result_and_its_pois() -> None:
-    report = check_report(check.run() for check in _Project(_Flags(False), _Flags(True)).checks())
+    report = check_report(
+        check.run() for check in _Project(_Flags(False), _Flags(True)).checks.source
+    )
     assert (report["checks"], report["incomplete"], report["pois"]) == (2, 0, 1)
     assert [row["check"] for row in report["results"]] == ["Test.Checks.Flags"] * 2
     assert report["results"][1]["pois"][0]["code"] == "flagged"
@@ -105,8 +109,9 @@ def test_report_is_grouped_and_a_crash_becomes_a_failed_result(capsys) -> None:
 
 def test_many_project_pois_render_as_one_type_group(capsys) -> None:
     class ManyProject:
+        @property
         def checks(self):
-            return (_Flags(True) for _ in range(25))
+            return CheckSuite(_Flags(True) for _ in range(25))
 
     assert report_project_checks(ManyProject()) == 1
     lines = capsys.readouterr().out.splitlines()

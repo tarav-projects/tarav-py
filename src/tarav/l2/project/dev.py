@@ -131,8 +131,10 @@ class PythonPackageProject(Project):
         return TaravClass(target=cls, id=TypeShip("a9433958-371f-473d-bfdb-9a90f5d4c682"),
                           name="Tarav.Project.PythonPackage", workflow=PROJECT_WORKFLOW_SHIP)
 
-    def checks(self) -> CheckSuite:
-        return CheckSuite([TestSuiteCheck(self.root)], name=self.name)
+    # tarav.breadcrumb 3e2e1259e794f34ab722d40e3c964d52b00420a699c0d5da986870bcc1fbcb43
+    class Checks(Project.Checks):
+        def suite(self) -> CheckSuite:
+            return CheckSuite([TestSuiteCheck(self.obj.root)], name=self.obj.name)
 
 
 class DocsProject(Project):
@@ -147,8 +149,9 @@ class DocsProject(Project):
         return tuple(sorted(path.parent.parent for path in
                             (self.root / "skills").glob("*/.skw/main.json")))
 
-    def checks(self) -> CheckSuite:
-        return CheckSuite(lambda run: self._checks(), name=self.name)
+    class Checks(Project.Checks):
+        def suite(self) -> CheckSuite:
+            return CheckSuite(lambda run: self.obj._checks(), name=self.obj.name)
 
     def _checks(self):
         from tarav.l0.kernel.current import current_records
@@ -156,7 +159,7 @@ class DocsProject(Project):
 
         for folder in self.skill_folders():
             try:
-                yield load_skill(folder, registry=current_records()).checks()
+                yield load_skill(folder, registry=current_records()).checks.suite()
             except (OSError, ValueError, TypeError, RuntimeError) as exc:
                 yield SkillLoadCheck(folder, f"{type(exc).__name__}: {exc}")
         yield ProvisionalMarkersCheck(self.root / "notes" / "wiki")

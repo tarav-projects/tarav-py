@@ -57,10 +57,11 @@ def test_workspace_reproduces_seeded_files_and_unique_worktree_branches(tmp_path
     assert (workspace.root / "draft.txt").read_text() == "draft"
     assert (workspace.root / "live.txt").read_text() == "first"
     assert setup.entries["code"].commit == repository.exact_commit("HEAD")
-    assert not workspace.checks().run().pois()
+    # tarav.breadcrumb d77eb158c06f8b4b41f1aec87d54bf5d487e27146a3baca7d93d55a6b7df1257
+    assert not workspace.checks.run().pois()
 
     source.write_text("second", encoding="utf-8")
-    assert {poi.code for poi in workspace.checks().run().pois()} == {"copy-source-changed"}
+    assert {poi.code for poi in workspace.checks.run().pois()} == {"copy-source-changed"}
     clone = depot.clone(workspace, label="copy")
     assert clone.id != workspace.id
     assert (clone.root / "copied.txt").read_text() == "first"
@@ -94,7 +95,7 @@ def test_missing_worktree_produces_poi(tmp_path):
     depot = WorkspaceDepot(tmp_path / "workspaces")
     workspace = depot.create(manifest)
     repository.remove_worktree(workspace.root / "code")
-    assert {poi.code for poi in workspace.checks().run().pois()} == {"missing-worktree"}
+    assert {poi.code for poi in workspace.checks.run().pois()} == {"missing-worktree"}
     with pytest.raises(WorkspaceError):
         depot.reset(workspace)
 
@@ -115,7 +116,7 @@ def test_project_workspace_discovers_two_nested_repositories(tmp_path):
         "repositories/first", "repositories/second",
     ]
     assert [item.id for item in integration.list()] == [workspace.id]
-    assert not workspace.checks().run().pois()
+    assert not workspace.checks.run().pois()
 
 
 def test_completed_workspace_removal_retains_committed_branch(tmp_path):
@@ -177,7 +178,7 @@ def test_missing_copy_seed_cannot_silently_fall_back_to_changed_source(tmp_path)
     ]))
     source.write_text("later", encoding="utf-8")
     (workspace.root / "seeds" / "copy.txt").unlink()
-    assert "seed-changed" in {poi.code for poi in workspace.checks().run().pois()}
+    assert "seed-changed" in {poi.code for poi in workspace.checks.run().pois()}
     with pytest.raises(WorkspaceError) as failure:
         depot.reset(workspace)
     assert "seed-changed" in {poi.code for poi in failure.value.pois}

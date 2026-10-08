@@ -47,7 +47,8 @@ def _cmd_show(args) -> int:
 
 def _cmd_check(args) -> int:
     workspace = _depot(args).open(args.id)
-    findings = [poi.as_dict(detail=True) for poi in workspace.checks().run().pois()]
+    findings = [poi.as_dict(detail=True) for poi in workspace.checks.run().pois()]
+    # tarav.breadcrumb 8206fc5f20434c003d9aa84010e6d890c9b517734fdcb02549be007b7fdf4bd6
     return _output({"status": "ok", "pois": findings})
 
 

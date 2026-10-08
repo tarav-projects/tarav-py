@@ -140,8 +140,10 @@ class Command(TaravEntity, CheckProvider, LiveHelpProvider):
         except (OSError, TypeError, ValueError):
             return None
 
-    def checks(self) -> CheckSuite:
-        return CheckSuite((CommandMetadataCheck(self),))
+    # tarav.breadcrumb e0231acfee1ff85bd8138a210682a65196161d27071407447bee1049931a07c5
+    class Checks(CheckProvider.Checks):
+        def suite(self) -> CheckSuite:
+            return CheckSuite((CommandMetadataCheck(self.obj),))
 
 
 class CommandMetadataCheck(Check):

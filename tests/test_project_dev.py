@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 import uuid
 
@@ -14,6 +15,8 @@ from tarav.l2.project.dev import (
     TestFailurePOI,
     TestSuiteCheck,
 )
+from tarav.l2.project import Project
+from tarav.l2.project.models import ProjectModels
 
 
 def _project(root: Path, project_type):
@@ -23,12 +26,22 @@ def _project(root: Path, project_type):
     return project_type.from_path(root)
 
 
+# tarav.breadcrumb b5384665de6e46322ba6f6efbc7d38426123dc56f6d99c709ab99e869ef8fde6
+def test_project_capabilities_have_explicit_paths(tmp_path: Path) -> None:
+    project = _project(tmp_path, Project)
+
+    assert project.docs.wiki.daily(date(2026, 10, 7)).path.name == "2026-10-07.md"
+    assert isinstance(project.models, ProjectModels)
+    assert project.models.ls() == ()
+    assert not hasattr(project, "wiki")
+
+
 def test_a_failing_test_is_a_poi_named_by_its_test(tmp_path: Path) -> None:
     (tmp_path / "test_sample.py").write_text(
         "def test_passes():\n    assert True\n\n"
         "def test_fails():\n    assert 1 == 2, 'one is not two'\n")
     project = _project(tmp_path, PythonPackageProject)
-    run = project.checks().run()
+    run = project.checks.run()
     [result] = run.results
     assert result.status == "completed"
     assert [poi.situation["test"] for poi in result.pois()] == ["test_sample.py::test_fails"]
@@ -59,7 +72,7 @@ def test_docs_report_unsubmitted_markers_and_skills_that_do_not_load(tmp_path: P
     (tmp_path / "skills/broken/.skw").mkdir(parents=True)
     (tmp_path / "skills/broken/.skw/main.json").write_text("{}")
     project = _project(tmp_path, DocsProject)
-    run = project.checks().run()
+    run = project.checks.run()
     assert [type(result.check) for result in run.results] == [SkillLoadCheck,
                                                               ProvisionalMarkersCheck]
     assert run.results[0].status == "incomplete"

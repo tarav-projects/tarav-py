@@ -77,7 +77,7 @@
 - A harness manifest may list several trusted Project Types
   (`[tool.tarav.harness] projects`), started through `tarav.l3.project.launch`.
   `RootProject` (`tarav.l2.project.root`) lists child Projects in its marker
-  and its `checks()` are theirs; a child may declare `harness.project` to use
+  and its `checks` are theirs; a child may declare `harness.project` to use
   the environment of an ancestor that lists it. Tarav does not model the
   Python library; a Project Type is an object inside one.
   <!-- tarav.breadcrumb d310f661f8f7879f3921034bdf5fde72b44b06fc86b842b082a64c57cf5ce6d8 -->
@@ -98,15 +98,17 @@
   current directory upward, and fails when there is none. Without the flag,
   `tarav run` uses the installed Tarav interpreter even inside a Project.
   <!-- tarav.breadcrumb a063022465541b6bdc1076d3a5ad853099d0c2c8f01eb8243e32c7b976917a5f -->
-- `TaravProject` is a `CheckProvider`: a Project subtype exposes bound Checks
-  through `checks()`; the base raises `NotImplementedError`.
+- `TaravProject` is a `CheckProvider`: a Project subtype declares its suite in
+  `Checks.suite()`; `project.checks.run()` executes it. The base raises
+  `NotImplementedError` when no suite is declared.
   <!-- tarav.breadcrumb f1b6c4d85568e1afc1b76afc02983662c5d2be806b568698cd7b28b853a639e6 -->
   <!-- tarav.breadcrumb 2cad01bfc733b3b450e3908f187d06d110c511dd5329d9b74e0165b87839fbc9 -->
-- `CheckProvider.checks()` returns a `CheckSuite`. Its `run()` accumulates a
+- `CheckProvider.checks.suite()` returns a `CheckSuite`. Its `run()` accumulates a
   `CheckRun`; suites are not iterable because sources can depend on earlier
   results. `tarav check --project [PATH] [--json]` runs the suite in the
   Project harness and reports grouped POIs (20 groups by default). It exits
   0 only when all Checks completed without open POIs.
+  <!-- tarav.breadcrumb 1b6aa81a76ec0d6ff43faa8d080ab26dd80ab3a9098cf814f141182b5e2ff406 -->
 - Environment variables and machine-state paths retain the names encoded by
   their current storage contracts until an explicit migration changes them.
 

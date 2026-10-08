@@ -50,8 +50,12 @@ class ExampleProvider(CheckProvider):
         self.subjects = subjects
         self.runs = runs
 
-    def checks(self):
-        return CheckSuite(ExampleCheck(subject, self.runs) for subject in self.subjects)
+    # tarav.breadcrumb 49dfd66b8b659cca0b7b1bf975a0d0e68d95074082d73d912c36a1086278a601
+    class Checks(CheckProvider.Checks):
+        def suite(self):
+            return CheckSuite(
+                ExampleCheck(subject, self.obj.runs) for subject in self.obj.subjects
+            )
 
 
 class DifferenceSituation(Situation):
@@ -125,7 +129,7 @@ def test_check_results_are_snapshots_and_poi_emission_is_explicit():
 def test_provider_and_explicit_pool_use_the_same_runner():
     runs = []
     provider = ExampleProvider(("one", "two"), runs)
-    results = CheckSuite((provider.checks(), ExampleCheck("cross-subject", runs))).run().results
+    results = CheckSuite((provider.checks.suite(), ExampleCheck("cross-subject", runs))).run().results
     assert runs == ["one", "two", "cross-subject"]
     assert [result.pois()[0].subject["subject"] for result in results] == runs
 

@@ -160,8 +160,10 @@ class SkwSkill(SkwDepot, CheckProvider):
 
     # tarav.breadcrumb 2ceb31c9cf7073c74811cdb0fa857cc9cf09d51c80b4c776c5785c49bd3e1691
     # tarav.breadcrumb a751a7e31ab0fa605fefa90ae5d354f9c70250be88ab4a7024eefb094f29d08e
-    def checks(self):
-        return CheckSuite(self._checks())
+    # tarav.breadcrumb 923a65026ef70a0de363e3265111f35eaf46390daf1e42c4d75888a117aeffb3
+    class Checks(CheckProvider.Checks):
+        def suite(self) -> CheckSuite:
+            return CheckSuite(self.obj._checks())
 
     def _checks(self, *, skip_unresolved_freshness=True):
         documents = self.documents()

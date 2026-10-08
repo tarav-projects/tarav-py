@@ -59,9 +59,13 @@ class RootProject(Project):
     def children(self) -> tuple[TaravProject, ...]:
         return tuple(self.child(relative) for relative in self.child_paths())
 
-    def checks(self) -> CheckSuite:
-        return CheckSuite(lambda run: map(self._child_checks, self.child_paths()),
-                          name=self.name)
+    # tarav.breadcrumb fce5f1a0129b44b625e1de501793625ea4f9b2d0778224beb59c68e5a28fd8c9
+    class Checks(Project.Checks):
+        def suite(self) -> CheckSuite:
+            return CheckSuite(
+                lambda run: map(self.obj._child_checks, self.obj.child_paths()),
+                name=self.obj.name,
+            )
 
     def _child_checks(self, relative: str) -> CheckSuite | Check | CheckResult:
         """A child sharing this environment runs in place; others in their own."""
@@ -74,7 +78,7 @@ class RootProject(Project):
             launch = ProjectLaunchConfiguration.from_path(path)
             if launch.environment != Path(sys.prefix).resolve():
                 return check
-            return CheckSuite.of(self.child(relative).checks())
+            return CheckSuite.of(self.child(relative).checks.suite())
         except NotImplementedError as exc:
             return CheckResult(check, status="incomplete", reason=str(exc))
         except (CliError, TypeError, ValueError, LookupError) as exc:
@@ -113,7 +117,7 @@ class ChildProjectCheck(Check):
     def _run(self) -> CheckResult:
         path = (self.parent.root / self.child).resolve()
         code = ("import json\nfrom tarav.l1.checks import CheckSuite\n"
-                "run = CheckSuite.of(project.checks()).run()\n"
+                "run = project.checks.run()\n"
                 "print(json.dumps(run.report(limit=10**9), default=str))\n")
         try:
             harness = ProjectHarness.from_path(path=path)

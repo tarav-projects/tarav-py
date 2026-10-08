@@ -7,6 +7,7 @@ from typing import Literal
 
 from tarav.l0.kernel import (
     LiteRecord,
+    NamespaceBase,
     TaravClass,
     TaravObject,
     TaravType,
@@ -42,10 +43,24 @@ class CheckProvider(TaravType):
         return TaravClass(target=cls, id=TypeShip("fb89da94-f920-47a1-979e-1ed8e521ea13"),
                           name="Tarav.Checks.Provider", workflow=CHECKS_WORKFLOW_SHIP)
 
-    # tarav.breadcrumb 64a1988372d66010f27742f66c4dbd78874dd238958e97a63b93cfecd6fefa9a
-    def checks(self) -> "CheckSuite":
-        """The provider's bound Checks as a runnable suite; never run here."""
-        raise NotImplementedError(f"{entity(type(self)).name} declares no checks")
+    # tarav.breadcrumb 03380d96ad2b3416cfcf50b86c09190ccafb830186ad79d9ea47a34bd84c18e3
+    class Checks(NamespaceBase["CheckProvider"]):
+        """Bound access to a provider's Checks."""
+
+        # tarav.breadcrumb 64a1988372d66010f27742f66c4dbd78874dd238958e97a63b93cfecd6fefa9a
+        def suite(self) -> "CheckSuite":
+            """Build the provider's Checks without executing them."""
+            raise NotImplementedError(
+                f"{entity(type(self.obj)).name} declares no checks"
+            )
+
+        def run(self, *, into=None, on_result=None) -> "CheckRun":
+            """Run this provider's bound suite."""
+            return self.suite().run(into=into, on_result=on_result)
+
+    @property
+    def checks(self) -> Checks:
+        return type(self).Checks(self)
 
 
 # tarav.breadcrumb 8f9efe635d3ac2a87d8d913d499580f8a2fc652d3424a6c5b5df282dd09714c5

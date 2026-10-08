@@ -1,6 +1,6 @@
 """Featured Project integrations with Models and Wiki."""
 
-from tarav.l0.kernel import TaravClass, TypeShip
+from tarav.l0.kernel import NamespaceBase, TaravClass, TypeShip
 from tarav.l1.project import TaravProject
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 
@@ -21,13 +21,23 @@ class Project(TaravProject):
                           id=TypeShip("a5f2412f-1c41-4299-9bcd-90cf38685516"),
                           name="Tarav.Project", workflow=PROJECT_WORKFLOW_SHIP)
 
+    # tarav.breadcrumb c45b62790b589c7dca7f19cf431ca868cdb8739dcd1842b306ba54bdc9721689
+    class Docs(NamespaceBase["Project"]):
+        """Documentation attached to a Project."""
+
+        @property
+        def wiki(self):
+            from .wiki import ProjectWiki
+            return ProjectWiki(self.obj).open()
+
+    @property
+    def docs(self) -> Docs:
+        return type(self).Docs(self)
+
+    @property
     def models(self):
         from .models import ProjectModels
         return ProjectModels(self)
-
-    def wiki(self):
-        from .wiki import ProjectWiki
-        return ProjectWiki(self).open()
 
     # tarav.breadcrumb ead5ff16cd263a233872279d3931b33bcd85eeedd12400506fccdcd6470802de
     def workspaces(self):

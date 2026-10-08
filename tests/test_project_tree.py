@@ -43,8 +43,10 @@ class _ChildA(TaravProject):
         return TaravClass(target=cls, id=TypeShip("7f2e9b1c-0d4a-4c8e-b6f3-1a9d2e5c7b80"),
                           name="Test.Tree.ChildA", workflow=PROJECT_WORKFLOW_SHIP)
 
-    def checks(self):
-        return CheckSuite([_Found("a")])
+    # tarav.breadcrumb c22244b13cabc011727f7988826e4fb7519474b21bedc3e0353411fb1e61c4ab
+    class Checks(TaravProject.Checks):
+        def suite(self):
+            return CheckSuite([_Found("a")])
 
 
 class _ChildB(TaravProject):
@@ -53,8 +55,9 @@ class _ChildB(TaravProject):
         return TaravClass(target=cls, id=TypeShip("8a3f0c2d-1e5b-4d9f-a7c4-2b0e3f6d8c91"),
                           name="Test.Tree.ChildB", workflow=PROJECT_WORKFLOW_SHIP)
 
-    def checks(self):
-        return CheckSuite([_Found("b")])
+    class Checks(TaravProject.Checks):
+        def suite(self):
+            return CheckSuite([_Found("b")])
 
 
 def _marker(root: Path, project_type: type | None = None, **fields) -> None:
@@ -142,7 +145,7 @@ def test_a_marker_of_any_trusted_type_loads(tree: Path, in_root_environment) -> 
 
 def test_the_root_runs_its_listed_children_and_nothing_else(tree: Path,
                                                             in_root_environment) -> None:
-    run = in_root_environment.checks().run()
+    run = in_root_environment.checks.run()
     assert [poi.situation["where"] for poi in run.pois()] == ["a", "b"]
     assert all(result.status == "completed" for result in run.results)
     assert in_root_environment.child_paths() == ("a", "b")
@@ -150,7 +153,7 @@ def test_the_root_runs_its_listed_children_and_nothing_else(tree: Path,
 
 def test_a_missing_child_is_reported_not_skipped(tree: Path, in_root_environment) -> None:
     (tree / "b/.tarav/project.json").unlink()
-    run = in_root_environment.checks().run()
+    run = in_root_environment.checks.run()
     assert [result.status for result in run.results] == ["completed", "incomplete"]
     assert "no Project marker at b" in run.results[1].reason
 
@@ -172,7 +175,7 @@ def test_a_child_with_its_own_environment_reports_its_counts(tree: Path, in_root
         return subprocess.CompletedProcess(command, 1, stdout=json.dumps(report) + "\n")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    run = in_root_environment.checks().run()
+    run = in_root_environment.checks.run()
     child = run.results_of(ChildProjectCheck)[0]
     assert calls[0][0] == str((tree / "b/env/bin/python").resolve())
     assert (child.status, len(child.pois())) == ("completed", 1)
