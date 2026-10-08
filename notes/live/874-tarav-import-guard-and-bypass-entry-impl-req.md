@@ -6,7 +6,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: needs-alignment (three open questions below). Phase: Design.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: needs-alignment (two open questions below). Phase: Design.
 
 Split the way into the Tarav library into two entry points over one code base. `import tarav` becomes a guarded entry: in a process that was not started through Tarav it fails with an error that tells the reader to run the script with `tarav run`. A second top-level package, `tarav_bypass`, is the explicit way through for deliberate users. Adopt `tarav_bypass` everywhere that legitimately imports Tarav outside `tarav run`: Tarav's own console commands, its test suite, its maintenance scripts, and the other repositories on this machine that use Tarav as a library.
 
@@ -90,7 +90,7 @@ An architecture test asserts that nothing in `tarav` imports `tarav_bypass`, and
 
 **Landing order.** The guard is switched on last so nothing breaks midway: first add `tarav_bypass`, the console doors and `conftest.py`; then adopt `import tarav_bypass` in every importer that needs it; then enable the guard, reinstall the command, and confirm that the daemon still starts, including one started by launchd.
 
-**Other repositories.** `tarav-extension-py`, `md-library-py`, `g70203-py` and `telegram-archive-py` each get one `import tarav_bypass` at the package's entry point and one in its test configuration. The Wiki implementation module asks for one request per owning repository; this note proposes a single request with the adoption list above instead (open question 1).
+**Other repositories.** Out of scope by User decision (2026-10-08): the four importing repositories listed above are not adopted by this request. Once the guard is on they will meet the error, and their maintainers resolve it there. This request changes `tarav-py` only.
 
 **Known limitation.** The mark travels through the environment, so any process started from a marked process passes, and an agent that reads the source can set the mark itself. This is accepted: the guard is a speed bump, not a security boundary.
 
@@ -103,7 +103,7 @@ An architecture test asserts that nothing in `tarav` imports `tarav_bypass`, and
 
 ### Open questions
 
-1. **Other repositories.** One request with an adoption list, as written here, or a companion note in each of the four repositories?
+1. **Other repositories.** Resolved: not this request's concern; see the design section above.
 2. **The mark's value.** Keep a value naming the door, or use a bare flag?
 3. **Maintenance scripts.** Should `tooling/` and `scripts/` migration scripts get `import tarav_bypass`, or are they expected to be run with `tarav run`?
 
@@ -116,7 +116,7 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `tarav-
 1. **Bypass package and doors.** Add `src/tarav_bypass/` with the mark and the two console entry functions; add it to the wheel; point the console scripts at it. The guard is not yet active. Verify that the built wheel contains both packages and that `tarav --version` and `tarav-daemon` start after a reinstall.
 2. **Test configuration.** Add `tests/conftest.py` importing `tarav_bypass`. Run the full suite.
 3. **Adoption inside `tarav-py`.** Resolve open question 3, then update `tooling/` and `scripts/` accordingly. Leave `dev/live` historical files alone.
-4. **Adoption in the other repositories.** Resolve open question 1, then add the import at each package's entry point and test configuration, and run each repository's own tests.
+4. **Adoption inside `tarav-py` only.** Add the import where `tarav-py` itself needs it (tests, and the maintenance scripts according to open question 3). No other repository is edited.
 5. **Enable the guard.** Add the check and its error to `src/tarav/__init__.py`, the subprocess tests and the architecture test. Run the full suite and Ruff.
 6. **End-to-end verification.** Reinstall the command; run a script with `tarav run` and with `tarav run --project`; run `tarav check --project` at the Taravangian root, which exercises `ChildProjectCheck`, `TestSuiteCheck` and the harness launch; restart the daemon through `tarav daemon` and through launchd; confirm the harness hooks still work.
 7. **Guidance and closure.** Document the two entry points in `ARCHITECTURE.md` and `AGENTS.md`; note the companion change needed in the Tarav package skill in `tarav-md`. Inlined Capture on each changed surface, scoped completion commit, Wiki capture.
@@ -127,3 +127,5 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `tarav-
 - Not verified in Design: whether any process outside `/Users/pereiro/projects` imports Tarav, and how the launchd job behaves once the daemon door exists. Both are covered by step 6.
 - Design note capture: nine User-Turn Breadcrumbs submitted, audit clean; design commit `99693f65c311f5d24bea7b65041832e47f0978ae`.
 - Wiki capture in `tarav-md`: new topical note `notes/wiki/tarav-scripts-and-entry-points.md` (19 Breadcrumbs, audit clean) and two sections appended to daily `2026-10-08.md` (4 Breadcrumbs, no new POIs; the note keeps its 13 earlier `breadcrumb-position-missing` POIs). Start checkpoint `bcb0436cd7d6fe67f61bcb8bd9ab9df9fae528ca`, completion commit `7abcfd990e8dbcd25223475debdee5bdb6ebfdff`.
+- Alignment (2026-10-08): the User decided that other repositories are not this request's concern. They will see the error and their maintainers will resolve it. The design section, open question 1 and plan step 4 were updated in place; the request now changes `tarav-py` only.
+<!-- tarav.breadcrumb 80e625feceb21dce105d9b6e1a989dc920e6a1077e58305bb1add9f15cf06fa9 -->
