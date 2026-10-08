@@ -7,6 +7,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, Field
+
 from tarav.l0.kernel import (
     TaravClass,
     TaravObject,
@@ -15,6 +17,7 @@ from tarav.l0.kernel import (
     current_records,
 )
 from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, CheckSuite
+from tarav.l1.settings import SettingsProvider, SettingsValues
 from tarav.l1.skw.document import Document, SKW_CODE_RECORD_TYPES, SkwBlock
 
 from .workflow import PROJECT_WORKFLOW_SHIP
@@ -91,8 +94,17 @@ class ProjectSystemPrompt(SkwBlock):
 
 
 # tarav.breadcrumb 8b97ed485eccff4720809b740f11215ef20ae593f5a29f0051b472138ef64c30
-class AgentsMd(TaravObject, CheckProvider):
+class AgentsMd(TaravObject, CheckProvider, SettingsProvider):
     """A Project's main Skillware-produced agents file and declared aliases."""
+
+    # tarav.breadcrumb 8a30ced371d61e9dcca3930e1297a64fd5e9872dc8ba4fffa8901835f3a8ab48
+    class SettingsInterface(BaseModel):
+        """Controls of the bootstrap checks; the marker's `agents` entry stores them."""
+
+        tarav_system_prompt: bool = Field(
+            True, description="Require the Tarav System Prompt in the agents file.")
+        project_system_prompt: bool = Field(
+            True, description="Require a Project System Prompt in the agents file.")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -115,12 +127,20 @@ class AgentsMd(TaravObject, CheckProvider):
         self._aliases = tuple(_project_file(alias) for alias in aliases)
         if len(set(self._aliases)) != len(self._aliases) or self.main in self._aliases:
             raise ValueError("Project agents files must have distinct paths")
-        for key in ("tarav_system_prompt", "project_system_prompt"):
-            if not isinstance(raw.get(key, True), bool):
-                raise ValueError(f"Project agents {key} must be a boolean")
-        self.tarav_prompt_enabled = raw.get("tarav_system_prompt", True)
-        self.project_prompt_enabled = raw.get("project_system_prompt", True)
+        # The two switches are settings stored in the marker; main and aliases are data.
+        switches = {key: raw[key] for key in type(self).SettingsInterface.model_fields
+                    if key in raw}
+        self.settings.apply(values=SettingsValues.of(type(self), **switches),
+                            origin=f"file:{project.source}")
         self.source = self.depot / "src" / "AGENTS.skw.json"
+
+    @property
+    def tarav_prompt_enabled(self) -> bool:
+        return self.settings.get("tarav_system_prompt")
+
+    @property
+    def project_prompt_enabled(self) -> bool:
+        return self.settings.get("project_system_prompt")
 
     @property
     def path(self) -> Path:

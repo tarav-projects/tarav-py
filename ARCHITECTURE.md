@@ -726,3 +726,24 @@ Type, check or identity. Three older finding classes that subclass the bare
 `Finding`) still carry their own `code` and are not yet converted.
 <!-- tarav.breadcrumb c84140acad62e5b48e8b95892c1a749f806863a560f1bfeb08e13596ee2a9286 -->
 <!-- tarav.breadcrumb 4bf190d70e6ffac17923764dc3e93dc2ba5bba11a5de09e38a7fe7fd927af7d3 -->
+
+### Settings capability
+
+`tarav.l1.settings` gives capabilities one declared, checked place for their
+controls. A Type extends `SettingsProvider` and declares a nested pydantic
+`SettingsInterface` whose fields, all with defaults, are its settings; its
+objects then have a bound `.settings`. The partition is named by the declaring
+Type. A Type gets another Type's partition only by listing it in
+`settings_include`; neither declaration is inherited implicitly. Values arrive
+as a `SettingsValues` object at construction (`settings.apply`), by
+`settings.set` afterwards, or from a file loaded through the record registry
+(`SettingsValues.from_path`). Unknown partitions, unknown keys and values of
+the wrong type raise `SettingsError`. Each value records its origin. The
+runtime's context opener adds a `settings` entry to such objects, and a
+provider Type's class view has `settings-template`. Settings are controls on
+how an object operates, not the data it represents, and the capability does
+not regulate how a workflow uses, combines or locks the values it reads.
+`AgentsMd` is the first consumer: its two prompt switches are settings stored
+in the Project marker, while the main file and aliases remain data.
+<!-- tarav.breadcrumb 7d19421b22e7d9441b869a48ee3faca7ad6a058c4ecd8345680c1a5d14248da8 -->
+<!-- tarav.breadcrumb 23058407e5e3820b5a3c4fa83c924e2c60c44a4dda63253889c6d327265e0ceb -->

@@ -124,7 +124,10 @@ class TaravRuntime:
     def context(self, subject: ContextSubject | ContextEntry, *, type=None):
         """Compose runtime and retained entries into one read-only view."""
 
-        return open_context(subject, contributors=(self.contexts.contribute,), type=type)
+        from tarav.l1.settings import contribute_settings
+
+        return open_context(
+            subject, contributors=(self.contexts.contribute, contribute_settings), type=type)
 
     def register_commands(
         self,
@@ -288,6 +291,7 @@ def create_runtime(
     from tarav.l2.project.models import ProjectModelsWorkflow
     from tarav.l2.project.wiki import ProjectWikiWorkflow
     from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow
+    from tarav.l1.settings import SETTINGS_RECORD_TYPES, SettingsWorkflow
     from tarav.l1.blessings import (
         BLESSING_RECORD_TYPES,
         BlessablePOI,
@@ -414,6 +418,7 @@ def create_runtime(
                 BreadcrumbAuditPOI,
                 *BreadcrumbAuditPOI.__subclasses__(),  # its atomic cases
                 BreadcrumbPositionUpdated,
+                *SETTINGS_RECORD_TYPES,
                 MarkdownNormalModel,
                 LineMarkdownModel,
                 PythonNormalModel,
@@ -498,6 +503,7 @@ def create_runtime(
         ScoringWorkflow,
         RankingWorkflow,
         SkillwareWorkflow,
+        SettingsWorkflow,
         # tarav.breadcrumb eae69a7746f4a20cd6a37196b1384f6e615b348574b6791f791ca6baa9ce96ab
         CodeWorkflow,
         SkillsWorkflow,

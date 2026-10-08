@@ -37,6 +37,7 @@ extend-exclude = ["_DEPRECATED"]
 testpaths = [
     "tests/cli/test_import_guard.py",
     "tests/cli/test_run_registry.py",
+    "tests/test_settings.py",
     "tests/cli/test_context_command.py",
     "tests/test_architecture.py",
     "tests/kernel/test_ships.py",
