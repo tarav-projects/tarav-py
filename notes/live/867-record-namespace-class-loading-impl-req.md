@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Ready. Phase: Develop (Design).
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Complete. Phase: Develop (Execute).
 
 Complete the shared Record namespace boundary: `obj.records.to_record()` projects an instance and `SomeType.records.from_record(record)` loads that concrete Type. Keep the established validation, exact-Type checks, `_from_record()` hook, and `_record` retention behavior. Migrate the kernel's dynamic loading call to the new path and exercise both paths through public tests. Broad call-site migration across every domain remains a later slice; this request does not change storage or TaravRecords navigation.
 <!-- tarav.breadcrumb 1288ecfac9497d43d48ae24b34ecf98a5a7f3e002fda927285c26c0f1a37146d -->
@@ -22,7 +22,7 @@ The kernel's `TypeRegistry.from_record()` is a first-class dynamic loading consu
 
 ## Impl.Req.Wiki
 
-Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant Notes: `record-framework.md` and daily capture. Supporting session: `codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8`. Capture status: pending Execute.
+Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant Notes: `record-framework.md` and daily `2026-10-07.md`. Supporting session: `codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8`. Capture status: complete; new daily and topical Breadcrumbs resolve.
 
 ## Execution.Plan
 
@@ -34,3 +34,8 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant Notes: `record
 ## Impl.Log
 
 - Design inspection: `TaravObject.Records` already implements the projection; `TaravObject.from_record()` owns the class-loading body. `TypeRegistry.from_record()` calls the selected concrete class's direct method. The worktree has extensive unrelated edits, including `records.py`, `ARCHITECTURE.md`, and several tests; preserve them during scoped commits.
+- Design note Breadcrumb audit passed with four resolved labels. Design commit: `a08a375a476722b62c894d817119aa5806b1d7a2`. The Design note was written before its own start checkpoint; Execute used a separate scoped start checkpoint `782744e5a29e9ab23151c56361a3c244b97341d5` on clean product paths. Dirty shared files were excluded from the start checkpoint to avoid committing unrelated edits.
+- Added a Record namespace descriptor that binds `Type.records` to the concrete class and `obj.records` to the instance. Moved the base class loading body into `Records.from_record()`; the prior direct method delegates. `TypeRegistry` uses the class path. Tests cover inherited binding, class-side misuse of projection, abstract base rejection, and dynamic loading.
+- Focused Kernel and architecture tests: 66 passed. Full Python suite: 179 passed. Ruff across `src` and `tests` and scoped diff whitespace checks passed. The installed editable Tarav tool was refreshed. Product completion commit `c70a0ee7fa1c78287da1694f9d0c8598887635af` contains only this slice's changes; pre-existing worktree edits remain. Commit Breadcrumb audit passed without POIs.
+- Product.Surface capture: seven new labels across six code, test, and architecture surfaces resolve. Full audits of `records.py`, `tests/test_architecture.py`, and `ARCHITECTURE.md` retain respectively 3, 10, and 29 older position POIs; none points to a new label. Other changed surfaces audited cleanly.
+- Wiki start checkpoint `9a906f7ad89f0a94bd4d2cbbe9f877f5cc3dc0e9`; daily and `record-framework.md` capture committed as `8741982585c12b889221a25f65dfd31f66f1fc7b`. The four new Wiki labels resolve and the commit evidence audit passed. The topical note's full audit retains 144 older position POIs.
