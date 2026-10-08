@@ -118,3 +118,5 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `tarav-
 
 - Design inspection (2026-10-08): `l3/run.py`, `l1/python_env/core.py` and `runner.py`, `l2/project/runner.py`, `l1/usage/__init__.py`. The `tarav-py` worktree has unrelated uncommitted edits and other agents executing requests 872 and 873; Execute must checkpoint only its declared scope.
 - The User did not answer the partition-key and reading-side questions directly, but accepted the agent's choices and asked for common sense. Project id as partition key and folder browsing as the first reading side are therefore recorded as agent choices, not explicit User decisions.
+- Design note capture: five User-Turn Breadcrumbs submitted, audit clean; design commit `cf8adf1b99515ddda0985e53f7f832aceb689d9c`.
+- Wiki capture in `tarav-md`: two sections appended to `notes/wiki/tarav-scripts-and-entry-points.md` (4 new Breadcrumbs, 23 total, audit clean) and one to daily `2026-10-08.md` (3 new, 27 total; only the 13 earlier `breadcrumb-position-missing` POIs). Start checkpoint `f32bd1a7e28099afaeca1271f7482d7716296118`, completion commit `edbe4ec63649ad95a3344f37f218d6850ff9d759`.
