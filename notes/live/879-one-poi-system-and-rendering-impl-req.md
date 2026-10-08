@@ -6,7 +6,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive (the User is working elsewhere; ordinary ambiguities are resolved as recorded agent choices). Status: ready. Phase: Develop.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive (the User is working elsewhere; ordinary ambiguities are resolved as recorded agent choices). Status: ready. Phase: Design complete; Execute not started (stopped at the User's request, see Impl.Log).
 
 Make the things in `tarav-py` that look like POIs be POIs of the core tree, and give POIs one rendering path: a POI renderer type, a registry of named renderers with one default, and command-line surfaces that choose a renderer by name instead of formatting POIs themselves. Remove the word "finding" where the thing is a POI, and rename it where the thing is something else.
 
@@ -84,3 +84,19 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `poi-sy
 ## Impl.Log
 
 - Design inspection (2026-10-08): class list of POI-like types, counts of "finding" per file, the Chatlas renderer registry as precedent, `render_check_run`, the Skillware presentation module, and the construction sites of each coded class.
+- Design note capture: four User-Turn Breadcrumbs submitted in this note; design commit `4a21875`, which is also the scoped start state (no product file was edited).
+- Stopped after Design (2026-10-08) at the User's request, because of quota. No source, test or guidance file was changed by this request. Wiki capture is pending: nothing was written to `tarav-md/notes/wiki/` for this request.
+- Findings of the inspection that the executing agent should know:
+  - Callers of `render_check_run`: `l3/check.py`, `l1/checks/poi_contract.py`, `tests/test_checks_workflow.py`, `tests/cli/test_context_command.py` (which asserts that lines 3 to 5 of the output are the context instruction).
+  - Construction sites: `BreadcrumbFinding` 4, `ReferenceFinding` 8, `TypeReferenceFinding` 11, `RecordDepotCheckFinding` 5, `ChatlasTurnFinding` 8 (readers of `result.findings` in `l1/chatlas/rendering.py` and `l2/breadcrumb_workflows/chatlas_context`), private `_finding` helpers 33.
+  - POIs printed by `tarav skw skills check` are not retained in the reported-POI store, so the escalation instruction would not resolve for them until that surface retains what it prints.
+  - Files in the plan that carry someone else's uncommitted edits: `l2/skw/pois.py`, `l2/skw/skills.py`, `l3/runtime.py`, `tests/test_architecture.py`, `ARCHITECTURE.md`, `AGENTS.md` and its Skillware source. Stage only this request's hunks there or leave them uncommitted and report it.
+  - Only the files listed in `pyproject.toml` `testpaths` run by default; the Diagram code has almost no tests.
+- Next step for a resuming agent: cold-read this note and `AGENTS.md`, then start Execution.Plan step 1 (`tarav.l1.poi.rendering` and `tarav check` on the registry).
+
+## Open questions for the User
+
+1. Should the root POI type move to `l0`, so that the two `l0` data classes can be POIs themselves?
+2. The Diagram `Finding` family (74 codes) is deferred to its own request. Is that acceptable, or should it be split here despite the missing tests?
+3. Is `occurrence` the right name for the view entry that replaces `finding`?
+4. A second named renderer is not required by any consumer yet. The plan adds a JSON-lines renderer for scripts; say if another layout matters more.
