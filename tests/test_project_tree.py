@@ -143,10 +143,12 @@ def test_a_marker_of_any_trusted_type_loads(tree: Path, in_root_environment) -> 
         bootstrap(project_type=(_ChildA,), path=tree / "b")
 
 
+# tarav.breadcrumb 1b5c7c000bf93d1e3722395822537ab241bac4b01adf08fb5edc3684eabaca03
 def test_the_root_runs_its_listed_children_and_nothing_else(tree: Path,
                                                             in_root_environment) -> None:
     run = in_root_environment.checks.run()
-    assert [poi.situation["where"] for poi in run.pois()] == ["a", "b"]
+    assert [poi.situation["where"] for poi in run.pois()
+            if "where" in poi.situation] == ["a", "b"]
     assert all(result.status == "completed" for result in run.results)
     assert in_root_environment.child_paths() == ("a", "b")
 
@@ -154,8 +156,10 @@ def test_the_root_runs_its_listed_children_and_nothing_else(tree: Path,
 def test_a_missing_child_is_reported_not_skipped(tree: Path, in_root_environment) -> None:
     (tree / "b/.tarav/project.json").unlink()
     run = in_root_environment.checks.run()
-    assert [result.status for result in run.results] == ["completed", "incomplete"]
-    assert "no Project marker at b" in run.results[1].reason
+    child_results = [result for result in run.results
+                     if isinstance(result.check, (_Found, ChildProjectCheck))]
+    assert [result.status for result in child_results] == ["completed", "incomplete"]
+    assert "no Project marker at b" in child_results[1].reason
 
 
 def test_a_child_with_its_own_environment_reports_its_counts(tree: Path, in_root_environment,

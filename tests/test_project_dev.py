@@ -36,13 +36,14 @@ def test_project_capabilities_have_explicit_paths(tmp_path: Path) -> None:
     assert not hasattr(project, "wiki")
 
 
+# tarav.breadcrumb f06862ef757467e4e4b496ae060e210681d5410b3ec99b7aa5b8c907f2aa9713
 def test_a_failing_test_is_a_poi_named_by_its_test(tmp_path: Path) -> None:
     (tmp_path / "test_sample.py").write_text(
         "def test_passes():\n    assert True\n\n"
         "def test_fails():\n    assert 1 == 2, 'one is not two'\n")
     project = _project(tmp_path, PythonPackageProject)
     run = project.checks.run()
-    [result] = run.results
+    result = next(item for item in run.results if isinstance(item.check, TestSuiteCheck))
     assert result.status == "completed"
     assert [poi.situation["test"] for poi in result.pois()] == ["test_sample.py::test_fails"]
     assert isinstance(result.pois()[0], TestFailurePOI)
@@ -73,8 +74,10 @@ def test_docs_report_unsubmitted_markers_and_skills_that_do_not_load(tmp_path: P
     (tmp_path / "skills/broken/.skw/main.json").write_text("{}")
     project = _project(tmp_path, DocsProject)
     run = project.checks.run()
-    assert [type(result.check) for result in run.results] == [SkillLoadCheck,
-                                                              ProvisionalMarkersCheck]
-    assert run.results[0].status == "incomplete"
-    [poi] = run.results[1].pois()
+    domain_results = [result for result in run.results
+                      if isinstance(result.check, (SkillLoadCheck, ProvisionalMarkersCheck))]
+    assert [type(result.check) for result in domain_results] == [SkillLoadCheck,
+                                                                 ProvisionalMarkersCheck]
+    assert domain_results[0].status == "incomplete"
+    [poi] = domain_results[1].pois()
     assert poi.situation == {"note": "daily/today.md"}

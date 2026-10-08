@@ -352,14 +352,16 @@ def load_skill(root, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:
     return depot
 
 
-def skill_document(source, *, project=None, registry: TypeRegistry[TaravObject]):
-    document = project_document(source, project=project, registry=registry)
-    depot = document.root / '.skw'
+# tarav.breadcrumb 6d845a3dd724e27d5cd388eb4da30b722ef0cbe70f9683ed09d6b7083038c4f9
+def skill_document(source, *, project=None, depot=".skw",
+                   registry: TypeRegistry[TaravObject]):
+    document = project_document(source, project=project, depot=depot, registry=registry)
+    depot_path = document.depot
     try:
-        entry_file(depot)
+        entry_file(depot_path)
     except FileNotFoundError:
         return document
-    package = registry.load(depot)
+    package = registry.load(depot_path)
     if isinstance(package, SkwSkill) and 'loading' in package.data:
         matches = [d for d in package.documents() if d.source == document.source]
         if len(matches) != 1:

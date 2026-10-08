@@ -335,6 +335,7 @@ def create_runtime(
         SKW_CODE_RECORD_TYPES,
     )
     from tarav.l1.skw.document import SkillwareWorkflow
+    from tarav.l1.project.agents import PROJECT_AGENTS_RECORD_TYPES
     from tarav.l1.skw.generation import GenerationPOI
     from tarav.l2.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
     from tarav.l2.test_workflow import TestEntity, TestItem, TestWorkflow
@@ -387,6 +388,8 @@ def create_runtime(
                 WikiNote,
                 Project,
                 TaravProject,
+                # tarav.breadcrumb e413721d29ed9388d54184a6a29e121226d402b0561e3b98b101b9e8b4ab3309
+                *PROJECT_AGENTS_RECORD_TYPES,
                 *PYTHON_RECORD_TYPES,
                 *PROJECT_RUNNER_RECORD_TYPES,
                 TaravProgram,

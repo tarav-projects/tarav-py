@@ -60,10 +60,13 @@ class RootProject(Project):
         return tuple(self.child(relative) for relative in self.child_paths())
 
     # tarav.breadcrumb fce5f1a0129b44b625e1de501793625ea4f9b2d0778224beb59c68e5a28fd8c9
+    # tarav.breadcrumb 2b6fe56e6a9feeb5ea9ac5ce7cd3d4036cda1f0c9e630e4cd823cfc6af0e3a1f
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
             return CheckSuite(
-                lambda run: map(self.obj._child_checks, self.obj.child_paths()),
+                [super().suite(),
+                 CheckSuite(lambda run: map(self.obj._child_checks,
+                                            self.obj.child_paths()))],
                 name=self.obj.name,
             )
 

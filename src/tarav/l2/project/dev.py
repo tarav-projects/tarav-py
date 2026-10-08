@@ -132,9 +132,11 @@ class PythonPackageProject(Project):
                           name="Tarav.Project.PythonPackage", workflow=PROJECT_WORKFLOW_SHIP)
 
     # tarav.breadcrumb 3e2e1259e794f34ab722d40e3c964d52b00420a699c0d5da986870bcc1fbcb43
+    # tarav.breadcrumb deb8671fb2a6493d1541d891423fd388109ce31d67e9811515cc80828f5b4660
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
-            return CheckSuite([TestSuiteCheck(self.obj.root)], name=self.obj.name)
+            return CheckSuite([super().suite(), TestSuiteCheck(self.obj.root)],
+                              name=self.obj.name)
 
 
 class DocsProject(Project):
@@ -151,7 +153,9 @@ class DocsProject(Project):
 
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
-            return CheckSuite(lambda run: self.obj._checks(), name=self.obj.name)
+            return CheckSuite([super().suite(),
+                               CheckSuite(lambda run: self.obj._checks())],
+                              name=self.obj.name)
 
     def _checks(self):
         from tarav.l0.kernel.current import current_records

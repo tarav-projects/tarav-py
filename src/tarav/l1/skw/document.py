@@ -287,23 +287,30 @@ def _block_registry(registry: TypeRegistry[TaravObject] | None) -> TypeRegistry:
 class Document:
     """Load a fresh source for each operation. Storage is explicitly single-writer."""
 
-    def __init__(self, source, *, root=None, roles=None, registry=None):
+    def __init__(self, source, *, root=None, depot=None, roles=None, registry=None):
         if roles is not None:
             raise TypeError("Context roles were replaced by typed block annotations")
         self.source = Path(source).resolve()
         if root is None:
-            depot = next((p for p in self.source.parents if p.name == ".skw"), None)
-            if depot is None:
+            inferred = next((p for p in self.source.parents if p.name == ".skw"), None)
+            if inferred is None:
                 raise ValueError("Source outside .skw needs project root")
-            root = depot.parent
+            root = inferred.parent
         self.root = Path(root).resolve()
+        # tarav.breadcrumb b730537a34b4e309874cfcc5ba6aba3f6c04fe6af2cbc93987ca7dbd582ec99b
+        selected_depot = self.root / ".skw" if depot is None else Path(depot)
+        if not selected_depot.is_absolute():
+            selected_depot = self.root / selected_depot
+        self.depot = selected_depot.resolve()
+        if not self.depot.is_relative_to(self.root):
+            raise ValueError("Skillware depot must be inside project root")
         self.key = self.source.relative_to(self.root).as_posix()
         self.data = read(self.source)
         if self.data.get("type") != entity(DocumentRecord).name or self.data.get("schema_version") != 1:
             raise ValueError("Expected Skillware document schema 1")
         self.target = self.path(self.data["output"])
-        if self.target == self.source or self.target.is_relative_to(self.root / ".skw"):
-            raise ValueError("Output must be a product outside .skw")
+        if self.target == self.source or self.target.is_relative_to(self.depot):
+            raise ValueError("Output must be a product outside the Skillware depot")
         # tarav.breadcrumb e1dbc0ae21389449d35926a5dcf9fe717168db8afacbe4ff94f80ae4009325ce
         self.registry = _block_registry(registry)
         self.blocks: dict[str, SkwBlock] = {}
@@ -320,7 +327,7 @@ class Document:
                 raise ValueError("Blocks require unique labels and Ships in one document")
             self.blocks[block.label] = block
             self.blocks_by_ship[block.id] = block
-        self.lock_path = self.root / ".skw" / "lock.json"
+        self.lock_path = self.depot / "lock.json"
 
     def block(self, selector: str | Ship) -> SkwBlock:
         """Resolve a local label or an exact Ship; ambiguous scopes stay explicit."""
@@ -475,7 +482,7 @@ class Document:
     def annotation_path(self, identity):
         if len(identity) != 32 or any(c not in "0123456789abcdef" for c in identity):
             raise ValueError("Invalid generation ID")
-        return self.root / ".skw" / "generations" / (identity + ".json")
+        return self.depot / "generations" / (identity + ".json")
 
     def prepare(self, identity, *, chat=None):
         block = self.block(identity)
@@ -594,27 +601,30 @@ class Document:
         return {"written": True, "findings": self.lint()}
 
 
-def project_root(project=None):
+def project_root(project=None, *, depot=".skw"):
     """Select an explicit project or discover the nearest .skw ancestor."""
     start = Path(project).expanduser().resolve() if project is not None else Path.cwd().resolve()
     candidates = (start,) if project is not None else (start, *start.parents)
     for candidate in candidates:
-        if (candidate / ".skw").is_dir():
+        depot_path = (candidate / depot).resolve()
+        if not depot_path.is_relative_to(candidate):
+            raise ValueError("Skillware depot must be inside project root")
+        if depot_path.is_dir():
             return candidate
-    raise ValueError(f"No .skw project found at {start}" if project is not None
-                     else f"No .skw project found above {start}; supply --project")
+    raise ValueError(f"No {depot} depot found at {start}" if project is not None
+                     else f"No {depot} depot found above {start}; supply --project")
 
 
-def project_document(source, *, project=None, registry=None):
-    root = project_root(project)
+def project_document(source, *, project=None, registry=None, depot=".skw"):
+    root = project_root(project, depot=depot)
     relative = Path(source)
     if relative.is_absolute():
-        raise ValueError("--source must be relative to .skw/src")
-    base = (root / ".skw" / "src").resolve()
+        raise ValueError("--source must be relative to the depot's src directory")
+    base = (root / depot / "src").resolve()
     path = (base / relative).resolve()
     if not path.is_relative_to(base):
-        raise ValueError("--source escapes .skw/src")
-    return Document(path, root=root, registry=registry)
+        raise ValueError("--source escapes the depot's src directory")
+    return Document(path, root=root, depot=root / depot, registry=registry)
 
 
 def register_commands(subparsers, *, document_factory=project_document):
@@ -624,6 +634,7 @@ def register_commands(subparsers, *, document_factory=project_document):
         command = commands.add_parser(name)
         command.add_argument("--source", required=True, help="Source path relative to .skw/src.")
         command.add_argument("--project", help="Directory containing .skw; default: discover upward from cwd.")
+        command.add_argument("--depot", help="Project-relative Skillware depot; default: .skw.")
         if name in ("prepare", "produce", "context", "observe-context"):
             command.add_argument("--block", required=True)
         if name == "prepare":
@@ -644,7 +655,8 @@ def register_commands(subparsers, *, document_factory=project_document):
 def _command(args):
     try:
         factory = getattr(args, 'document_factory', project_document)
-        document = factory(args.source, project=args.project)
+        options = {"depot": args.depot} if args.depot is not None else {}
+        document = factory(args.source, project=args.project, **options)
         if args.document_command == "prepare":
             result = document.prepare(args.block, chat=args.chat)
         elif args.document_command == "record":

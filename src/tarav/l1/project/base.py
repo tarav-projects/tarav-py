@@ -6,8 +6,8 @@ from typing import Literal
 from pydantic import Field
 
 from tarav.l0._core.project import project_marker_name, require_agentos_project
-from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
-from tarav.l1.checks import CheckProvider
+from tarav.l0.kernel import NamespaceBase, Ship, TaravClass, TaravEntity, TypeShip, entity
+from tarav.l1.checks import CheckProvider, CheckSuite
 from tarav.l1.loading import LoadingProfile
 
 from .workflow import PROJECT_WORKFLOW_SHIP
@@ -15,7 +15,24 @@ from .workflow import PROJECT_WORKFLOW_SHIP
 
 # tarav.breadcrumb 5cd4a1370534e180f82d31b551d9eb10ad12fe288b712dc707a8bb4faf489d2d
 class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
-    """A Project; a subtype provides its CheckSuite through checks()."""
+    """A Project with shared bootstrap checks and subtype-specific checks."""
+
+    # tarav.breadcrumb 2493391ddebfa2966685ca8cf21006aa0fe701329a5dc3bfe27dc78d238a31ba
+    class Agents(NamespaceBase["TaravProject"]):
+        @property
+        def agents_md(self):
+            from .agents import AgentsMd
+
+            return AgentsMd(self.obj)
+
+    @property
+    def agents(self) -> Agents:
+        return type(self).Agents(self)
+
+    class Checks(CheckProvider.Checks):
+        def suite(self) -> CheckSuite:
+            return CheckSuite([self.obj.agents.agents_md.checks.suite()],
+                              name=self.obj.name)
 
     @classmethod
     def loading_paths(cls) -> tuple[str, ...]:

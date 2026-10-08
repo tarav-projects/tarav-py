@@ -289,7 +289,7 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   objects, workflow-owned block annotations, retained content, common reading
   declarations, the abstract ReadingGraph analysis contract, and compilation.
   The compiled product is an ordinary surface; the reader does not interpret
-  SKW source Records. `skw.skills` is a child workflow owning skill components,
+  SKW source Records in a selected Project depot. `skw.skills` owns skill components,
   its concrete SkillReadingGraph package binding and rendering, deployment, and
   checks. ProjectReadingGraph is a Project-owned specialization point, not a
   claim that Project path declarations already exist. Trusted Type dispatch
@@ -404,10 +404,11 @@ dispatching the marker's concrete Type. Sync targets exactly the selected
 environment. Paths cannot escape the Project root, and run never installs or
 selects a fallback interpreter.
 
-`TaravProject` is an ordinary `CheckProvider` (`tarav.l1.checks`): a Project
-subtype declares its suite in a `Checks` namespace class. The bound
-`project.checks.suite()` exposes the suite without running it, while
-`project.checks.run()` executes it. The base declares no suite and raises.
+`TaravProject` is a `CheckProvider` (`tarav.l1.checks`) whose base suite
+checks its Skillware-produced agents file through `project.agents.agents_md`.
+Subtypes compose that suite with `super().suite()` in their `Checks` namespace;
+`project.checks.run()` executes it and reports typed bootstrap POIs.
+<!-- tarav.breadcrumb b7370472b54dcbd8b1197f1213ba85bd1f81e661427b03739287f8c444921945 -->
 <!-- tarav.breadcrumb 8fa3ca276796996a3fe4d571fb8cae3876778ffccaf5ee40a6510ca1e046dff0 -->
 <!-- tarav.breadcrumb f6132fabb0037fce1edf20f899399f42f53277dae02a26475989bfa4e0d2c2e9 -->
 <!-- tarav.breadcrumb 0bd03575af287c630888eba439224a79e98b04bb08e8371be586ba38c8416bbe -->
@@ -480,7 +481,7 @@ schema or an additional Workflow identity.
 | `skw`, `skw.code`, `skw.skills` | Skillware umbrella, common source/compilation and ReadingGraph contract, and deployable-skill specialization. Blocks are Entities with Ships and separate labels; source blocks own typed reading declarations. SkillReadingGraph exposes route facts, while skill-owned Checks turn those facts into POIs. |
 | `surfaces` | SurfacesWorkflow owns MarkdownNormalModel, its strict LineMarkdownModel subtype, and PythonNormalModel TaravObjects. Their from_text/from_path methods parse native syntax; Records preserve parsed structures without reparsing. LineMarkdownModel is a floor for owned formats: it raises at the first dialect violation instead of returning a partial model. Consumers assign domain meaning. |
 | `wiki` | Folder-based Markdown Wiki and WikiNote objects, parsing through surfaces, and Wiki-scoped Git closure. No Project dependency. |
-| `project` | ProjectWorkflow owns minimal TaravProject and featured Project. Existing project_id is the Ship identity; discovered location stays outside the portable marker. |
+| `project` | ProjectWorkflow owns minimal TaravProject and featured Project. Existing project_id is the Ship identity; discovered location stays outside the portable marker. Every Project has checked agents-file bootstrap under `project.agents`; its Skillware source is `.tarav/skillware/src/AGENTS.skw.json`. |
 | `project.models`, `project.wiki` | Specialized child workflows own Project associations. The featured Project exposes `project.models` and `project.docs.wiki`; the minimal base imports neither integration. |
 | `workspaces` | Identified manifest-backed working folders under the Tarav data root. Exact worktree commits and retained file seeds define reproducible setup; a separate setup Record retains observed hashes and allocated branches. Workspace checks report POIs. The l1 workflow calls l1 Git for every worktree operation; l2 Project offers an optional view over the independent depot. |
 <!-- tarav.breadcrumb 28d74cb87df8e2cd06518e6e21e63155236c88bedc83944c038fb1e1405943c1 -->

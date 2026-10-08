@@ -14,8 +14,9 @@ def register_skw_commands(subparsers: argparse._SubParsersAction, *, registry) -
         help="Compile typed SKW documents and operate skill packages.",
     )
     commands = parser.add_subparsers(dest="skw_command", required=True)
-    def document_factory(source, *, project=None):
-        return skill_document(source, project=project, registry=registry)
+    # tarav.breadcrumb 0a34f529a08280d8447312f3adadeddc1c174ff62e3f67e444e7923800331bd9
+    def document_factory(source, *, project=None, depot=".skw"):
+        return skill_document(source, project=project, depot=depot, registry=registry)
 
     register_document_commands(commands, document_factory=document_factory)
     register_skill_commands(commands, registry=registry)
