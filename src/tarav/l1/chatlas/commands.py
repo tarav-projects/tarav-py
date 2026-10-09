@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 import sys
 
 from tarav.l0._core.errors import CliError
+from tarav.l1.agent.current_session import (
+    CurrentSessionAbsent,
+    CurrentSessionAmbiguous,
+    CurrentSessionUnsupported,
+    current_session,
+    session_reporters,
+)
 from tarav.l1.chatlas.core import chatlas_raw_sources, chatlas_update
 from tarav.l1.chatlas.delta_scan import chatlas_index_redo, chatlas_index_reset
 from tarav.l1.chatlas.normal_model import (
@@ -21,12 +27,6 @@ from tarav.l1.chatlas.rendering import (
     renderer,
 )
 from tarav.l1.usage import describe_text
-
-
-_CURRENT_SESSION_ENV = {
-    "codex": "CODEX_THREAD_ID",
-    "claude-code": "CLAUDE_CODE_SESSION_ID",
-}
 
 
 def _describe_update(args: argparse.Namespace) -> dict[str, object]:
@@ -87,7 +87,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     current_session.add_argument(
         "--provider",
-        choices=tuple(_CURRENT_SESSION_ENV),
+        choices=tuple(session_reporters()),
         help="Harness provider; recommended when more than one may be active.",
     )
     current_session.add_argument("--json", action="store_true")
@@ -350,32 +350,28 @@ def _reference(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
+# tarav.breadcrumb 77e8947e08844ffbf0be40cd72d8dd24aaecba5382e7450c26624fbae15ca08a
 def _resolve_current_session(provider: str | None) -> tuple[str, str]:
-    if provider is not None:
-        variable = _CURRENT_SESSION_ENV.get(provider)
-        if variable is None:
-            raise CliError(
-                f"--current-session is not supported for provider: {provider}"
-            )
-        session_id = os.environ.get(variable, "").strip()
-        if not session_id:
-            raise CliError(
-                f"--current-session found no {variable} for provider {provider}"
-            )
-        return provider, session_id
-
-    resolved = [
-        (name, value)
-        for name, variable in _CURRENT_SESSION_ENV.items()
-        if (value := os.environ.get(variable, "").strip())
-    ]
-    if not resolved:
+    """Ask the Agents workflow; keep this command's own error wording."""
+    try:
+        session = current_session(provider)
+    except CurrentSessionUnsupported as exc:
         raise CliError(
-            "--current-session found no verified harness context; supply --provider"
-        )
-    if len(resolved) != 1:
-        raise CliError("--current-session is ambiguous; supply --provider explicitly")
-    return resolved[0]
+            f"--current-session is not supported for provider: {exc.provider}"
+        ) from exc
+    except CurrentSessionAbsent as exc:
+        if exc.provider is None:
+            raise CliError(
+                "--current-session found no verified harness context; supply --provider"
+            ) from exc
+        raise CliError(
+            f"--current-session found no {exc.variable} for provider {exc.provider}"
+        ) from exc
+    except CurrentSessionAmbiguous as exc:
+        raise CliError(
+            "--current-session is ambiguous; supply --provider explicitly"
+        ) from exc
+    return session.provider, session.session_id
 
 
 def _cmd_raw_sources(args: argparse.Namespace) -> int:

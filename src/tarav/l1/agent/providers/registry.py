@@ -28,6 +28,12 @@ from tarav.l1.agent.providers.codex.agent import CodexAgent
 from tarav.l1.agent.providers.copilot_cli.agent import CopilotAgent
 
 
+PROVIDER_ADAPTERS: dict[str, type[AgentConfig]] = {
+    "codex": CodexAgent,
+    "claude-code": ClaudeAgent,
+    "copilot-cli": CopilotAgent,
+}
+
 # tarav.breadcrumb 0fb5b63712994b126870bcc61452540f671b831182e10816f9ca34efd5f1c233
 DEFAULT_RUN_PROVIDER_FAMILIES = ("claude-code", "codex", "copilot-cli")
 
@@ -44,13 +50,10 @@ def supported_default_run_provider_families() -> tuple[str, ...]:
 
 
 def agent_from_config(config: AgentConfig) -> AgentConfig:
-    if config.provider == "codex":
-        return CodexAgent.from_config(config)
-    if config.provider == "claude-code":
-        return ClaudeAgent.from_config(config)
-    if config.provider == "copilot-cli":
-        return CopilotAgent.from_config(config)
-    raise CliError(f"unsupported configured agent provider {config.provider}")
+    adapter = PROVIDER_ADAPTERS.get(config.provider)
+    if adapter is None:
+        raise CliError(f"unsupported configured agent provider {config.provider}")
+    return adapter.from_config(config)
 
 
 def resolve_account_runtime_agent(

@@ -28,6 +28,7 @@ from tarav.l1.agent.providers.claude_code.session import (
     find_claude_session_ref_by_id,
     load_claude_session,
 )
+from tarav.l1.agent.current_session import ReportsCurrentSession
 from tarav.l1.agent.providers.claude_code.account_status import _claude_account_status_impl
 
 
@@ -35,8 +36,9 @@ CLAUDE_PROVIDER = "claude-code"
 
 
 @dataclass(frozen=True)
-class ClaudeAgent(RunnableMixin, AgentConfig):
+class ClaudeAgent(ReportsCurrentSession, RunnableMixin, AgentConfig):
     provider: str = CLAUDE_PROVIDER
+    current_session_variable = "CLAUDE_CODE_SESSION_ID"
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> ClaudeAgent:

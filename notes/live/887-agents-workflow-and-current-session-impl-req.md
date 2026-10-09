@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design.
-Status: ready, after request 886.
+Status: implemented.
 
 Make the existing agent code an explicit Tarav workflow, and give it the
 first integration point the rest of Tarav needs: a Python answer to "which
@@ -97,3 +97,46 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 ## Impl.Log
 
 - Designed 2026-10-09. Not executed.
+- Executed 2026-10-09 at the User's request, after request 886.
+<!-- tarav.breadcrumb 13d03e891cc1032938e9be5050709564672d9060768a39fb0e9b117d97536be8 -->
+- Start checkpoint `a61114f` (empty).
+- Slice 1, inventory: a section of `tarav-md/notes/wiki/agents-workflow.md`
+  with the ten areas of the package, their size, purpose and users outside
+  it. 78 files, about 18,800 lines; no dead module by import; the commands
+  already use keyed options only.
+- Slice 2, workflow: `tarav.l1.agent.identity` (`AGENTS_WORKFLOW_SHIP`) and
+  `tarav.l1.agent.workflow.AgentsWorkflow` (`Tarav.Workflow.Agents`, name
+  `agents`), registered in `tarav.l3.runtime.create_runtime()`. No module was
+  moved.
+- Slice 3, current session: `tarav.l1.agent.current_session` with the
+  capability base `ReportsCurrentSession` (an adapter names the environment
+  variable its harness sets), `current_session(provider=None, environ=None)`
+  returning `CurrentSession(provider, session_id)`, and typed errors for an
+  unsupported provider, an absent session and an ambiguous one.
+  `ClaudeAgent` and `CodexAgent` inherit the capability. `PROVIDER_ADAPTERS`
+  in `providers/registry.py` is the one provider-to-adapter table;
+  `agent_from_config` uses it.
+- Copilot does not inherit the capability: whether its harness exposes a
+  session ID could not be established from the code or this machine. That is
+  the answer to the first open question for now.
+- The capability is a plain Python base class, not a registered Tarav Type:
+  the adapters are dataclasses and not Tarav Types, and the request does not
+  convert them.
+- Slice 4, Chatlas: `l1/chatlas/commands.py` asks `current_session()` and
+  keeps its own four error messages; the environment-variable table left
+  Chatlas. `--provider` choices for `tarav chatlas current-session` are the
+  reporting providers, the same two as before.
+- Tests: `tests/test_agents_workflow.py`, 6 tests (workflow registered, the
+  three supported providers, the capability by inheritance, the entry point
+  with one, none, a missing and several sessions, and Chatlas's unchanged
+  results and messages), added to `testpaths`. Full suite 250 passed; Ruff
+  clean. Live: `tarav chatlas current-session --json` returns this session;
+  `--provider codex` fails with the same message as before.
+- `AGENTS.md` and the package table of `ARCHITECTURE.md` state the workflow,
+  the supported providers and the entry point.
+- Product Breadcrumbs: 1 each in `agent/workflow.py`,
+  `agent/current_session.py`, `chatlas/commands.py` and the test file, 2 in
+  `AGENTS.md`; audits clean.
+- `src/tarav/l3/runtime.py`, `ARCHITECTURE.md` and `pyproject.toml` hold other
+  agents' uncommitted edits; only this request's lines were committed from
+  them.

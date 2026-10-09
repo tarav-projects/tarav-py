@@ -4,6 +4,7 @@
 1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 64298cbc = claude-code:9da4cef5-68b7-4d17-8a06-1351ca51e82f @64298cbc8db2e7aa971e0828653c07bcb483cfed40931fdf87d5abe7ce1c60b3
+abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c625e3f68354a234a91e4992b67406f075d93ccb20f4d4
 -->
 
 ## Read first
@@ -46,6 +47,14 @@
   context hooks have no runtime Context dependency.
 - Provider-neutral orchestration belongs in `tarav.l1.agent`; concrete adapters
   belong in `tarav.l1.agent.providers.<provider>`.
+- `tarav.l1.agent` is the Agents workflow (`AgentsWorkflow`). Supported
+  providers are Claude Code, Codex and Copilot. A provider adapter states what
+  its harness can do by subtyping: one that reports the running session
+  inherits `ReportsCurrentSession`. Ask
+  `tarav.l1.agent.current_session.current_session()` which session the running
+  agent is in; Chatlas commands do. It never guesses between providers.
+  <!-- tarav.breadcrumb c40e968e628610ad590863ebc8b39ffb40ff9d55bdb5353004c66c0f96976ed9 -->
+  <!-- tarav.breadcrumb bf11e82d28dbd62d821653cb98d77a5f415acdb7918de04dc8ca8703c1b84e12 -->
 - Shared infrastructure enters `tarav.l0._core` only after multiple consumers have
   demonstrated the same semantics. Callers retain policy, schema validation,
   locking, and error translation.

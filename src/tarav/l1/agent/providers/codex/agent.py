@@ -29,6 +29,7 @@ from tarav.l1.agent.providers.codex.session import (
     find_codex_session_ref_by_id,
     load_codex_session,
 )
+from tarav.l1.agent.current_session import ReportsCurrentSession
 from tarav.l1.agent.providers.codex.account_status import _codex_account_status_impl
 
 
@@ -36,8 +37,9 @@ CODEX_PROVIDER = "codex"
 
 
 @dataclass(frozen=True)
-class CodexAgent(RunnableMixin, AgentConfig):
+class CodexAgent(ReportsCurrentSession, RunnableMixin, AgentConfig):
     provider: str = CODEX_PROVIDER
+    current_session_variable = "CODEX_THREAD_ID"
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> CodexAgent:
