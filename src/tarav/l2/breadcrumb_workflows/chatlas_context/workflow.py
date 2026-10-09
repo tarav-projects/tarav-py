@@ -17,7 +17,7 @@ from tarav.l1.breadcrumbs.auditing import (
     BreadcrumbAuditContext,
     BreadcrumbAuditConcern,
 )
-from tarav.l1.breadcrumbs.surfaces import BreadcrumbSurface
+from tarav.l1.breadcrumbs.surfaces import UNSUPPORTED_LANGUAGE, BreadcrumbSurface
 from tarav.l1.breadcrumbs.workflows import (
     BreadcrumbAnnotationWorkflow,
     PreparedAnnotation,
@@ -29,6 +29,7 @@ from tarav.l1.chatlas.query import ChatlasQuery, ChatlasQueryEngine, ChatlasQuer
 from tarav.l1.chatlas.references import ChatlasTurnReference
 from tarav.l1.surfaces.markdown import MarkdownNormalModel
 from tarav.l1.surfaces.python import PythonNormalModel
+from tarav.l1.surfaces.typescript import TypeScriptNormalModel
 
 from .model import ChatlasContextAttachment
 
@@ -38,6 +39,7 @@ TurnResolver = Callable[[str, str], Mapping[str, object]]
 _CONTEXT_CORE = r"tarav\.context\s+([0-9a-f]{8}):([0-9a-f]{1,64})"
 _MARKDOWN_CONTEXT = re.compile(rf"^(\s*)<!--\s*{_CONTEXT_CORE}\s*-->\s*$")
 _PYTHON_CONTEXT = re.compile(rf"#\s*{_CONTEXT_CORE}\s*$")
+_TYPESCRIPT_CONTEXT = re.compile(rf"//\s*{_CONTEXT_CORE}\s*$")
 _SESSION_BLOCK = re.compile(r"<!--\s*tarav\.sessions\s*\n(.*?)\n\s*-->", re.DOTALL)
 _SESSION_LINE = re.compile(
     r"^\s*([0-9a-f]{8})\s*=\s*([a-z0-9-]+):([^\s]+)\s+@([0-9a-f]{64})\s*$"
@@ -260,16 +262,11 @@ def _markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:
                     )
                 )
         return tuple(result)
-    if language == "python":
-        model = PythonNormalModel.from_text(text)
-        if model.diagnostics:
-            raise BreadcrumbError(
-                "Python surface has normalization diagnostics: "
-                + "; ".join(item.message for item in model.diagnostics)
-            )
+    if language in ("python", "typescript"):
+        _, pattern, comments = _code_comments(text, language)
         result = []
-        for comment in model.comments:
-            match = _PYTHON_CONTEXT.fullmatch(comment.text)
+        for comment in comments:
+            match = pattern.fullmatch(comment.text)
             if match is not None:
                 result.append(
                     ChatlasContextMarker(
@@ -283,7 +280,25 @@ def _markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:
                     )
                 )
         return tuple(result)
-    raise BreadcrumbError("Breadcrumb surface language must be markdown or python")
+    raise BreadcrumbError(UNSUPPORTED_LANGUAGE)
+
+
+# tarav.breadcrumb 1677d0a1c26b714ef963c31f1e9ecd5146361c363859b1af7152a3e616ade229
+def _code_comments(text: str, language: str):
+    """A code surface's comments that can hold a marker, and the marker pattern."""
+    if language == "python":
+        model, pattern, name = PythonNormalModel.from_text(text), _PYTHON_CONTEXT, "Python"
+        comments = model.comments
+    else:
+        model, pattern, name = (TypeScriptNormalModel.from_text(text), _TYPESCRIPT_CONTEXT,
+                                "TypeScript")
+        comments = tuple(item for item in model.comments if item.kind == "line")
+    if model.diagnostics:
+        raise BreadcrumbError(
+            f"{name} surface has normalization diagnostics: "
+            + "; ".join(item.message for item in model.diagnostics)
+        )
+    return model, pattern, comments
 
 
 def _malformed_marker_lines(text: str, language: str) -> tuple[int, ...]:
@@ -299,21 +314,15 @@ def _malformed_marker_lines(text: str, language: str) -> tuple[int, ...]:
             and "tarav.context" in item.text
         )
         pattern = _MARKDOWN_CONTEXT
-    elif language == "python":
-        model = PythonNormalModel.from_text(text)
-        if model.diagnostics:
-            raise BreadcrumbError(
-                "Python surface has normalization diagnostics: "
-                + "; ".join(item.message for item in model.diagnostics)
-            )
+    elif language in ("python", "typescript"):
+        _, pattern, comments = _code_comments(text, language)
         candidates.extend(
             (item.span.start_line, item.text)
-            for item in model.comments
+            for item in comments
             if "tarav.context" in item.text
         )
-        pattern = _PYTHON_CONTEXT
     else:
-        raise BreadcrumbError("Breadcrumb surface language must be markdown or python")
+        raise BreadcrumbError(UNSUPPORTED_LANGUAGE)
     return tuple(line for line, value in candidates if pattern.fullmatch(value) is None)
 
 

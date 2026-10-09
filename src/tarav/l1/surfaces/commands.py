@@ -12,6 +12,7 @@ from tarav.l0._core.errors import CliError
 
 from .markdown import MarkdownNormalModel
 from .python import PythonNormalModel
+from .typescript import TypeScriptNormalModel
 
 
 _EXTENSION_LANGUAGES = {
@@ -19,10 +20,15 @@ _EXTENSION_LANGUAGES = {
     ".markdown": "markdown",
     ".py": "python",
     ".pyi": "python",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
 }
 _NORMALIZERS = {
     "markdown": MarkdownNormalModel.from_text,
     "python": PythonNormalModel.from_text,
+    "typescript": TypeScriptNormalModel.from_text,
 }
 
 

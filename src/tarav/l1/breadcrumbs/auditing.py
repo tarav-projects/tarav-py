@@ -14,17 +14,19 @@ from tarav.l1.checks import Check, CheckPOI, CheckResult
 from tarav.l1.poi import NotificationPOI, POI, POIDetails
 from tarav.l1.surfaces.markdown import MarkdownNormalModel
 from tarav.l1.surfaces.python import PythonNormalModel
+from tarav.l1.surfaces.typescript import TypeScriptNormalModel
 from tarav.l1.references.git import GitCommitMessagePositionTarget
 
 from .store import BreadcrumbError, BreadcrumbResolution, BreadcrumbStore, resolution_concern_kind
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
-from .surfaces import BreadcrumbSurface, infer_surface_language
+from .surfaces import UNSUPPORTED_LANGUAGE, BreadcrumbSurface, infer_surface_language
 from .workflows import BreadcrumbAnnotationWorkflow
 
 
 _BREADCRUMB_CORE = r"tarav\.breadcrumb\s+([0-9a-f]{64})"
 _MARKDOWN_BREADCRUMB = re.compile(rf"^\s*<!--\s*{_BREADCRUMB_CORE}\s*-->\s*$")
 _PYTHON_BREADCRUMB = re.compile(rf"#\s*{_BREADCRUMB_CORE}\s*$")
+_TYPESCRIPT_BREADCRUMB = re.compile(rf"//\s*{_BREADCRUMB_CORE}\s*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -508,8 +510,21 @@ def _surface_labels(
             if "tarav.breadcrumb" in item.text
         )
         pattern = _PYTHON_BREADCRUMB
+    elif surface.language == "typescript":
+        model = TypeScriptNormalModel.from_text(surface.text)
+        if model.diagnostics:
+            raise BreadcrumbError(
+                "TypeScript surface has normalization diagnostics: "
+                + "; ".join(item.message for item in model.diagnostics)
+            )
+        candidates.extend(
+            (item.span.start_line, item.text)
+            for item in model.comments
+            if item.kind == "line" and "tarav.breadcrumb" in item.text
+        )
+        pattern = _TYPESCRIPT_BREADCRUMB
     else:
-        raise BreadcrumbError("Breadcrumb surface language must be markdown or python")
+        raise BreadcrumbError(UNSUPPORTED_LANGUAGE)
 
     labels: list[SurfaceBreadcrumbLabel] = []
     findings: list[BreadcrumbAuditConcern] = []

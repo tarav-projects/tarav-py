@@ -11,6 +11,12 @@ from .store import BreadcrumbError, BreadcrumbStore, breadcrumb_label
 from .workflows import BreadcrumbAnnotationWorkflow, PreparedAnnotation
 
 
+# tarav.breadcrumb 8e22d670e075d8eceaa677a0914244d8c923b6bc3364e4f80e11a60e07f8da9b
+SURFACE_LANGUAGES = ("markdown", "python", "typescript")
+TYPESCRIPT_SUFFIXES = frozenset({".ts", ".tsx", ".mts", ".cts"})
+UNSUPPORTED_LANGUAGE = "Breadcrumb surface language must be markdown, python or typescript"
+
+
 @dataclass(frozen=True, slots=True)
 class BreadcrumbSurface:
     path: Path
@@ -127,6 +133,8 @@ def infer_surface_language(path: Path) -> str:
         return "markdown"
     if path.suffix.lower() == ".py":
         return "python"
+    if path.suffix.lower() in TYPESCRIPT_SUFFIXES:
+        return "typescript"
     raise BreadcrumbError(
         f"Cannot infer surface language from {path.suffix or '<no extension>'}; "
         "provide --language"
@@ -138,7 +146,9 @@ def render_surface_label(language: str, label: str) -> str:
         return f"<!-- {label} -->"
     if language == "python":
         return f"# {label}"
-    raise BreadcrumbError("Breadcrumb surface language must be markdown or python")
+    if language == "typescript":
+        return f"// {label}"
+    raise BreadcrumbError(UNSUPPORTED_LANGUAGE)
 
 
 def _validate_annotations(
@@ -162,6 +172,9 @@ def _validate_annotations(
 
 
 __all__ = [
+    "SURFACE_LANGUAGES",
+    "TYPESCRIPT_SUFFIXES",
+    "UNSUPPORTED_LANGUAGE",
     "BreadcrumbSurface",
     "SubmissionResult",
     "SubmittedBreadcrumb",

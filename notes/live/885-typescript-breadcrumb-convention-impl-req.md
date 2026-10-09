@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: ready.
+Status: implemented.
 
 Add TypeScript as a third native Breadcrumb surface beside Markdown and
 Python, so `tarav breadcrumbs submit chatlas-context` and `audit` work on
@@ -74,7 +74,7 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 `daily/2026-10-08.md`, and the inline-capture skill guidance
 `tarav-md/skills/tarav-hugentics/references/inline-capture.md`. Supporting
 session: `claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a`. Capture status:
-pending.
+done (`tarav-md` `notes/wiki/breadcrumbs.md`, daily note).
 
 ## Execution.Plan
 
@@ -88,3 +88,37 @@ pending.
 4. Guidance: inline-capture lists TypeScript; Wiki capture; commits.
 
 ## Impl.Log
+
+- Design and start checkpoint `32db15c` (only this note). 1 Breadcrumb,
+  audit clean.
+- Slice 1: `tarav.l1.surfaces.typescript` (`TypeScriptNormalModel`,
+  `TypeScriptComment`), registered in `tarav.l3.runtime` beside the Python
+  model. On the extension's four files it finds 11 line comments and 6 block
+  comments and no false comment in `pages.ts`, whose code holds regular
+  expressions with quotes and nested template literals.
+- Slice 2: `infer_surface_language` and `render_surface_label` know
+  `typescript`; shared constants `SURFACE_LANGUAGES`, `TYPESCRIPT_SUFFIXES`
+  and `UNSUPPORTED_LANGUAGE` in `tarav.l1.breadcrumbs.surfaces`; audit labels
+  in `auditing._surface_labels`; markers and malformed markers in the
+  chatlas-context workflow through one `_code_comments` helper shared with
+  Python; `--language` choices for `submit` and `audit`; the `tarav surfaces`
+  command map.
+- Tests: `tests/breadcrumbs/test_typescript_surface.py`, 12 tests (lexer,
+  spans, diagnostics, record round trip, language and label, markers only in
+  line comments, refusal on diagnostics, submit and audit on a `.ts` file),
+  added to `testpaths`. Full suite 244 passed; Ruff clean.
+- Slice 3, end to end with the real session: 7 provisional markers in
+  `vscode-tarav-center/src/{runner,workflows,extension,pages}.ts` submitted
+  as 7 Breadcrumbs; audits report `language: typescript`, no POIs; the
+  extension still compiles.
+- Product Breadcrumbs: 1 each in the model, `surfaces.py`, the workflow and
+  the test file; audits clean. My insertions shifted existing labels in
+  `workflow.py`, `auditing.py` and `runtime.py`; their positions were
+  refreshed with `--refresh-positions`, after which the audits are clean.
+- Guidance: `tarav-md/skills/tarav-hugentics/references/inline-capture.md`
+  lists TypeScript. Wiki: `notes/wiki/breadcrumbs.md` section and the daily
+  note.
+- Shared files: `src/tarav/l3/runtime.py` and `pyproject.toml` hold other
+  agents' uncommitted edits, and so does the `tarav-md` daily note. Only this
+  request's lines were committed from them; the rest stays in the worktree.
+

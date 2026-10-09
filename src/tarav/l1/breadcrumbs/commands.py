@@ -16,7 +16,7 @@ from tarav.l1.poi.reporting import retain_presented_pois
 from .auditing import audit_annotations
 from .integrations import BreadcrumbIntegration
 from .store import BreadcrumbError, BreadcrumbStore
-from .surfaces import submit_annotations
+from .surfaces import SURFACE_LANGUAGES, submit_annotations
 from .workflows import BreadcrumbAnnotationWorkflow
 
 
@@ -249,7 +249,7 @@ def register_submission_command(
 ) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(workflow.name, help=help_text)
     parser.add_argument("--surface", required=True)
-    parser.add_argument("--language", choices=("markdown", "python"))
+    parser.add_argument("--language", choices=SURFACE_LANGUAGES)
     _add_common(parser)
     parser.set_defaults(
         handler=_cmd_submit,
@@ -273,7 +273,7 @@ def register_audit_command(
     parser = subparsers.add_parser(workflow.name, help=help_text)
     parser.add_argument("--surface", action="append", help="Surface to audit; repeat for several files.")
     parser.add_argument("--files-from", help="Read one surface path per line from a UTF-8 manifest.")
-    parser.add_argument("--language", choices=("markdown", "python"))
+    parser.add_argument("--language", choices=SURFACE_LANGUAGES)
     parser.add_argument(
         "--refresh-positions",
         action="store_true",
