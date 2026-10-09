@@ -282,6 +282,7 @@ def create_runtime(
     from tarav.l2.git.breadcrumbs import GIT_BREADCRUMB_RECORD_TYPES, audit_commit
     from tarav.l1.python_env import PYTHON_RECORD_TYPES, PythonWorkflow
     from tarav.l1.programs import ProgramsWorkflow, TaravProgram
+    from tarav.l1.agent.workflow import AgentsWorkflow
     from tarav.l2.project.programs import ProjectProgram
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.l2.models import ModelsWorkflow
@@ -480,6 +481,7 @@ def create_runtime(
         LoadingWorkflow,
         PythonWorkflow,
         ProgramsWorkflow,
+        AgentsWorkflow,
         ContextWorkflow,
         ChatlasWorkflow,
         ReferenceWorkflow,

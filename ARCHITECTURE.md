@@ -454,7 +454,7 @@ schema or an additional Workflow identity.
 
 | Package | Architectural responsibility |
 | --- | --- |
-| `agent` | Provider-neutral agent, account, session, and monitoring behavior; concrete providers live below `agent.providers`. |
+| `agent` | AgentsWorkflow. Provider-neutral agent, account, session, and monitoring behavior; concrete providers (Claude Code, Codex, Copilot) live below `agent.providers`. `agent.current_session` names the running agent's session through the adapters that inherit `ReportsCurrentSession`. |
 | `archive` | Artifact identity, retained Archive Records, and Archive-specific location history. |
 | `archive.records` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
 | `records` | TaravRecords workflow: contributed Record-source navigation, on-demand Entity view, and optional standard keyed RecordRegistry partitions. |
