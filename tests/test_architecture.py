@@ -555,11 +555,7 @@ def test_provider_adapters_live_under_agent_namespace() -> None:
         "claude",
         "codex",
         "copilot",
-        "gemini",
         "home",
-        "openclaw",
-        "opencode",
-        "pi",
         "providers.py",
     }
     present = {path.name for path in PACKAGE_ROOT.iterdir()}
