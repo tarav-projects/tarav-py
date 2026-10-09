@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
 from tarav.l0._core.errors import CliError
 from tarav.l1.poi.rendering import (
@@ -74,35 +75,86 @@ def _cmd_submit(args: argparse.Namespace) -> int:
 
 
 # tarav.breadcrumb 2d4af9cff1b5cabef0d26e33b28eaf190d5357966a99bb674918d7f2d4fa3e71
-def _cmd_audit(args: argparse.Namespace) -> int:
-    try:
-        workflow = args.breadcrumb_annotation_workflow
-        request_factory = args.breadcrumb_request_factory
-        assert isinstance(workflow, BreadcrumbAnnotationWorkflow)
-        result = audit_annotations(
-            args.surface,
-            store=_store(args),
-            workflow=workflow,
-            request=request_factory(args),
-            language=args.language,
-            refresh_positions=args.refresh_positions,
-        )
-    except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
-        raise CliError(str(exc)) from exc
+# tarav.breadcrumb 9e49acb899c176065d1264621e9cdff046c88b559b59623850df69e4f21d0aef
+def _audit_paths(args: argparse.Namespace) -> tuple[Path, ...]:
+    paths = list(args.surface or ())
+    if args.files_from:
+        manifest = Path(args.files_from).expanduser()
+        try:
+            paths.extend(line.strip() for line in manifest.read_text(encoding="utf-8").splitlines()
+                         if line.strip())
+        except OSError as exc:
+            raise CliError(f"Cannot read audit manifest {manifest}: {exc}") from exc
+    selected = tuple(dict.fromkeys(Path(path).expanduser().resolve() for path in paths))
+    if not selected:
+        raise CliError("File audit requires --surface or --files-from")
+    return selected
+
+
+def _audit_file(args: argparse.Namespace, surface: Path) -> tuple[dict[str, object], tuple, bool]:
+    workflow = args.breadcrumb_annotation_workflow
+    request_factory = args.breadcrumb_request_factory
+    assert isinstance(workflow, BreadcrumbAnnotationWorkflow)
+    result = audit_annotations(
+        surface,
+        store=_store(args),
+        workflow=workflow,
+        request=request_factory(args),
+        language=args.language,
+        refresh_positions=args.refresh_positions,
+    )
     payload = result.to_json()
     payload["command"] = f"tarav breadcrumbs audit {workflow.name}"
     payload["store"] = str(_store(args).root)
-    lines = [
-        f"status: {payload['status']}",
-        f"surface: {result.context.surface.path}",
-        f"breadcrumbs: {len(result.context.breadcrumbs)}",
-    ]
     retain_presented_pois(result.pois, kind="breadcrumbs", name=workflow.name,
                           root=result.context.surface.path)
-    if result.pois:
-        lines.append(_render_pois(result.pois, args))
-    _print(args, payload, tuple(lines))
-    return 0 if result.ok else 1
+    return payload, result.pois, result.ok
+
+
+def _cmd_audit(args: argparse.Namespace) -> int:
+    paths = _audit_paths(args)
+    batch = len(args.surface or ()) != 1 or args.files_from is not None
+    if not batch:
+        try:
+            payload, pois, ok = _audit_file(args, paths[0])
+        except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
+            raise CliError(str(exc)) from exc
+        lines = [f"status: {payload['status']}", f"surface: {payload['surface']}",
+                 f"breadcrumbs: {len(payload['breadcrumbs'])}"]
+        if pois:
+            lines.append(_render_pois(pois, args))
+        _print(args, payload, tuple(lines))
+        return 0 if ok else 1
+
+    files: list[dict[str, object]] = []
+    lines: list[str] = []
+    all_ok = True
+    for path in paths:
+        try:
+            payload, pois, ok = _audit_file(args, path)
+        except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
+            payload, pois, ok = {"status": "error", "surface": str(path),
+                                 "error": str(exc)}, (), False
+        files.append(payload)
+        all_ok = all_ok and ok
+        lines.append(f"{payload['status']}: {path}")
+        if payload.get("error"):
+            lines.append(f"  {payload['error']}")
+        elif pois:
+            lines.append(_render_pois(pois, args))
+    errors = sum(item["status"] == "error" for item in files)
+    output = {
+        "status": "error" if errors else "ok" if all_ok else "pois",
+        "command": f"tarav breadcrumbs audit {args.breadcrumb_annotation_workflow.name}",
+        "store": str(_store(args).root),
+        "files": files,
+        "summary": {"files": len(files),
+                    "ok": sum(item["status"] == "ok" for item in files),
+                    "pois": sum(len(item.get("pois", ())) for item in files),
+                    "errors": errors},
+    }
+    _print(args, output, tuple(lines))
+    return 0 if all_ok else 1
 
 
 def _cmd_workflows(
@@ -217,10 +269,10 @@ def register_audit_command(
     workflow: BreadcrumbAnnotationWorkflow,
     request_factory: RequestFactory,
     help_text: str,
-    surface_required: bool = True,
 ) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(workflow.name, help=help_text)
-    parser.add_argument("--surface", required=surface_required)
+    parser.add_argument("--surface", action="append", help="Surface to audit; repeat for several files.")
+    parser.add_argument("--files-from", help="Read one surface path per line from a UTF-8 manifest.")
     parser.add_argument("--language", choices=("markdown", "python"))
     parser.add_argument(
         "--refresh-positions",
@@ -232,7 +284,9 @@ def register_audit_command(
     parser.set_defaults(
         handler=_cmd_audit,
         usage_descriptor=lambda args: {
-            **({"surface": args.surface} if args.surface else {}),
+            **({"surface": args.surface[0] if len(args.surface) == 1 else args.surface}
+               if args.surface else {}),
+            **({"files_from": args.files_from} if args.files_from else {}),
             **({"repo": args.repo, "commit": args.commit}
                if getattr(args, "commit", None) else {}),
             **({"language": args.language} if args.language else {}),

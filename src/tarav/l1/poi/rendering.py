@@ -34,8 +34,11 @@ class POISelection:
     title: str = "POIs"
     summary: Mapping[str, object] | None = None
     context_view: str = REPORTED_POI_VIEW
+    matching_pois: int | None = None
+    filters: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
+    # tarav.breadcrumb c99138a07b283e9b2a371bd4e3b7f82c5c3d0f277b0ac73d16e3003ca37b1c70
     def from_check_report(cls, report: Mapping[str, object]) -> POISelection:
         summary = report["summary"]
         if not isinstance(summary, Mapping):
@@ -44,6 +47,8 @@ class POISelection:
             "check", tuple(report["items"]), int(summary["pois"]),
             int(report["matching"]), report.get("next_offset"),
             report.get("context_example"), "Check POIs", summary,
+            matching_pois=int(report["matching_pois"]),
+            filters=report.get("filters") or {},
         )
 
     @classmethod
@@ -154,13 +159,17 @@ def _text(selection: POISelection, level: POILevel) -> str:
             if identifier:
                 lines.append(f"    tarav context --id {identifier} --view {selection.context_view}")
     if summary is not None and selection.source == "check":
-        by_check = summary.get("by_check") or {}
-        by_type = summary.get("by_type") or {}
-        lines.append("Checks by type: " + (", ".join(
-            f"{name} {data['runs']} ({data['by_status']})"
-            for name, data in by_check.items()) or "none"))
-        lines.append("POIs by type: " + (", ".join(
-            f"{name} {count}" for name, count in by_type.items()) or "none"))
+        if selection.filters:
+            criteria = ", ".join(f"{key}={value}" for key, value in selection.filters.items())
+            lines.append(f"Showing {selection.matching_pois} of {selection.total} POIs matching {criteria}")
+        else:
+            by_check = summary.get("by_check") or {}
+            by_type = summary.get("by_type") or {}
+            lines.append("Checks by type: " + (", ".join(
+                f"{name} {data['runs']} ({data['by_status']})"
+                for name, data in by_check.items()) or "none"))
+            lines.append("POIs by type: " + (", ".join(
+                f"{name} {count}" for name, count in by_type.items()) or "none"))
     if selection.next_offset is not None:
         lines.append(f"Next offset: {selection.next_offset}")
     return "\n".join(lines)
@@ -175,6 +184,9 @@ def _json_lines(selection: POISelection, level: POILevel) -> str:
                                                     view=selection.context_view)
                                 if selection.total else []),
     }]
+    if selection.source == "check":
+        rows[0]["matching_pois"] = selection.matching_pois
+        rows[0]["filters"] = dict(selection.filters)
     for item in selection.items:
         row: dict[str, object] = {"kind": "poi", "address": _address(item), **item}
         if level == "line":

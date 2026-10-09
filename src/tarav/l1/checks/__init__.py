@@ -319,6 +319,7 @@ class CheckRun(TaravObject, POIProvider):
         snapshot = store.snapshot() if store is not None else None
         return all(self._standing(poi, store, snapshot) == "blessed" for poi in self.pois())
 
+    # tarav.breadcrumb cb1a5772a23d17b22aa60b8bb37e1a3015cff629e44c47640e8886c7fe49d6e0
     def report(
         self, *, by: str = "type", sort: str = "run", offset: int = 0, limit: int = 20,
         type: str | None = None, check: str | None = None,
@@ -333,13 +334,21 @@ class CheckRun(TaravObject, POIProvider):
         snapshot = store.snapshot() if store is not None else None
         groups: dict[str, dict[str, object]] = {}
         emission_index = 0
+        matching_pois = 0
+        context_example = None
         for result_index, result in enumerate(self.results):
             check_name = entity(result.check.__class__).name
             for poi in result.pois():
                 type_name = entity(poi.__class__).name
-                if (type is not None and type != type_name
+                if (type is not None and not any(
+                        entity(base).name == type
+                        for base in poi.__class__.__mro__
+                        if issubclass(base, POI) and "class_entity" in base.__dict__)
                         or check is not None and check != check_name):
                     continue
+                matching_pois += 1
+                if context_example is None and isinstance(poi, IdentifiedPOI):
+                    context_example = poi.identity
                 emission_index += 1
                 key = {
                     "type": type_name,
@@ -370,8 +379,10 @@ class CheckRun(TaravObject, POIProvider):
         page = rows[offset:offset + limit]
         return {
             "summary": self.summary(),
-            "context_example": next(
-                (poi.identity for poi in self.pois() if isinstance(poi, IdentifiedPOI)), None),
+            "matching_pois": matching_pois,
+            "filters": {key: value for key, value in (("type", type), ("check", check))
+                        if value is not None},
+            "context_example": context_example,
             "by": by,
             "sort": sort,
             "matching": len(rows),

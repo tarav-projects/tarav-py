@@ -74,7 +74,6 @@ def register_chatlas_context_audit(
         workflow=workflow,
         request_factory=_audit_request,
         help_text="Audit Breadcrumb positions and retained Chatlas User-Turn context.",
-        surface_required=False,
     )
     parser.add_argument("--chatlas-root")
     if commit_auditor is not None:
@@ -92,12 +91,13 @@ def register_chatlas_context_audit(
 
 # tarav.breadcrumb 1e8258ee6485cebe0f7d899a1c691162632236275a5acb2388a9a94e56c621e7
 def _audit_dispatch(args: argparse.Namespace) -> int:
+    # tarav.breadcrumb 2fca27c41ee9a7bc4256a20ada664c0e38406ef56fb1dc2147899e0493733868
     if args.commit is None:
-        if args.surface is None or args.repo is not None:
-            raise CliError("File audit requires --surface and does not accept --repo")
+        if (not args.surface and not args.files_from) or args.repo is not None:
+            raise CliError("File audit requires --surface or --files-from and does not accept --repo")
         return int(args.breadcrumb_file_audit_handler(args))
-    if args.surface is not None or args.repo is None:
-        raise CliError("Commit audit requires --commit and --repo without --surface")
+    if args.surface or args.files_from or args.repo is None:
+        raise CliError("Commit audit requires --commit and --repo without file-selection options")
     if args.refresh_positions:
         raise CliError("--refresh-positions is only supported for file audits")
     try:

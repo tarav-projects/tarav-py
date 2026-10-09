@@ -46,6 +46,26 @@ class _Project:
         return CheckSuite(self._checks)
 
 
+class _SpecialPOI(CheckPOI):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("477c579d-6d72-4b3c-b0c1-58ee7df8a223"),
+                          name="Test.Checks.SpecialPOI", workflow=PROJECT_WORKFLOW_SHIP)
+
+
+class _Mixed(Check):
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("29a1c817-445b-4e4c-94ce-586d9470f30b"),
+                          name="Test.Checks.Mixed", workflow=PROJECT_WORKFLOW_SHIP)
+
+    def _run(self) -> CheckResult:
+        return CheckResult(self, status="completed", pois=[
+            CheckPOI(self, "base case", situation={"case": "base"}),
+            _SpecialPOI(self, "special case", situation={"case": "special"}),
+        ])
+
+
 # tarav.breadcrumb 1c3211e4813cc9462c4d94f77ac404645ccf0c232bc8b4e184bccb4426600fa9
 def test_the_base_project_is_a_check_provider_with_no_checks() -> None:
     project = TaravProject.__new__(TaravProject)
@@ -123,3 +143,32 @@ def test_many_project_pois_render_as_one_type_group(capsys) -> None:
     report = json.loads(capsys.readouterr().out)
     assert report["shown"] == 1
     assert report["matching"] == 1  # all 25 checks found the same situation
+
+
+# tarav.breadcrumb ff8a74613bbe43b5b554a34f8bad4b6a4d4e2d9ede3e357ab9a983dbb8f5135e
+def test_type_filter_includes_subtypes_and_preserves_full_run_status(capsys) -> None:
+    project = _Project(_Mixed())
+    assert report_project_checks(project, poi_type="Tarav.Checks.POI", json_output=True,
+                                 tracking="skip") == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["summary"]["pois"] == 2
+    assert report["matching_pois"] == 2
+    assert report["filters"] == {"type": "Tarav.Checks.POI"}
+    assert report["matching"] == 2
+
+    assert report_project_checks(project, poi_type="Test.Checks.SpecialPOI",
+                                 json_output=True, tracking="skip") == 1
+    exact = json.loads(capsys.readouterr().out)
+    assert exact["matching_pois"] == 1
+    assert exact["context_example"] == exact["items"][0]["id"]
+
+    assert report_project_checks(project, poi_type="Test.Checks.SpecialPOI",
+                                 tracking="skip") == 1
+    output = capsys.readouterr().out
+    assert "1 checks, 0 incomplete, 2 POIs" in output
+    assert "Showing 1 of 2 POIs matching type=Test.Checks.SpecialPOI" in output
+    assert "POIs by type:" not in output
+
+    assert report_project_checks(project, poi_type="Tarav.POI", json_output=True,
+                                 tracking="skip") == 1
+    assert json.loads(capsys.readouterr().out)["matching_pois"] == 2

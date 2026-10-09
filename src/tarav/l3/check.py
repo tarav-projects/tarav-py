@@ -94,7 +94,8 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
                         help="Sort groups by first occurrence or descending count.")
     parser.add_argument("--limit", type=int, default=20, help="Maximum groups to show.")
     parser.add_argument("--offset", type=int, default=0, help="First group to show.")
-    parser.add_argument("--type", dest="poi_type", help="Filter by exact POI Type name.")
+    # tarav.breadcrumb 1c56bfc2a3f025dba4e39391246e2c9ff6b82badb41849082dabe55687cf7e92
+    parser.add_argument("--type", dest="poi_type", help="Show this POI Type and its subtypes.")
     parser.add_argument("--check", dest="check_type", help="Filter by exact Check Type name.")
     parser.add_argument("--renderer", choices=tuple(item.name for item in renderers()),
                         default=DEFAULT_POI_RENDERER, help="Named POI renderer.")

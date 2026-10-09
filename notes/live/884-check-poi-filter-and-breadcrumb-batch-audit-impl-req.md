@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: ready. Phase: Design complete.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: complete. Phase: Execute complete.
 
 Improve two general Tarav CLI primitives: filter a Project check report by POI Type including subtypes, and audit or refresh Breadcrumb positions for a declared set of files in one invocation. These are independent conveniences for existing workflows; no implementation-specific checkpoint command is introduced.
 <!-- tarav.breadcrumb 8517f1975c0259313635bd92d7d282feb5cdea15e764eace5203419a21c3da95 -->
@@ -27,7 +27,7 @@ Current `tarav breadcrumbs audit chatlas-context --surface FILE [--refresh-posit
 
 ## Impl.Req.Wiki
 
-Product Project: `tarav-py/`. Wiki owner: `tarav-md/notes/wiki/`, principally `poi-system.md` and its daily note. Supporting User Turns: `fed80248f6c70da5` and `362e396c72e1c369` in the declared Codex session. Capture status: pending.
+Product Project: `tarav-py/`. Wiki owner: `tarav-md/notes/wiki/`, principally `poi-system.md` and its daily note. Supporting User Turns: `fed80248f6c70da5` and `362e396c72e1c369` in the declared Codex session. Capture status: Product.Surface Breadcrumbs submitted and batch-audited; Wiki capture completed.
 
 ## Execution.Plan
 
@@ -38,4 +38,5 @@ Product Project: `tarav-py/`. Wiki owner: `tarav-md/notes/wiki/`, principally `p
 
 ## Impl.Log
 
+- 2026-10-08, Execute. `tarav check --type` now selects matching POI Type descendants while its full-run summary, retention, tracking, and exit semantics stay intact. Filtered output shows selected versus total POI counts. Breadcrumb file audit accepts repeated `--surface` and a UTF-8 `--files-from` list, deduplicates paths, continues after one file error, and returns per-file results. The batch command audited eight real surfaces; one refresh pass repaired 11 stale position observations, then returned aggregate status `ok`. The focused suite passed 13 tests and Ruff passed. A root check run completed 365 Checks, reported 151 existing POIs, and selected all 151 with `--type Tarav.POI.Identified`. The broader `tests/cli/test_check.py` file still has four failures from concurrent Project changes in the shared checkout; its new filter test passes. No unrelated Project changes are part of this request.
 - 2026-10-08, Design. Confirmed `tarav check --type` exists but matches exact emitted names; `CheckRun.report()` and the Check renderer are the needed boundary. Confirmed Breadcrumb `--surface` is singular and the generic audit command can be reused for each selected file. The `l3/check.py` file has a concurrent unrelated Project-index change in the shared checkout; do not absorb it into this request's commits.
