@@ -806,6 +806,7 @@ def _cmd_diagram_renderer_show(args: argparse.Namespace) -> int:
     )
 
 
+# tarav.breadcrumb de29d63548186d64cdbcc61ad67d893c28f69ecb149ff9150fd71967eb82da08
 def _cmd_diagram_render(args: argparse.Namespace) -> int:
     try:
         diagram = _diagram_configuration(args.diagram_config).diagram()
@@ -840,10 +841,14 @@ def _cmd_diagram_render(args: argparse.Namespace) -> int:
         "command": "tarav diagram render",
         **result.to_dict(),
     }
+    poi_text = render_pois(args, result.pois, title="Diagram render POIs",
+                           root=diagram.namespace(target.namespace_id).root)
     if args.json:
         _print_json(payload)
     else:
         print(result.content)
+        if poi_text:
+            print(poi_text)
     return 0
 
 
@@ -1178,6 +1183,9 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
         "render", help="Render one Diagram target through a named Renderer."
     )
     render.add_argument("--renderer", required=True, help="Registered Renderer name.")
+    render.add_argument("--poi-renderer", help="Registered POI renderer name.")
+    render.add_argument("--level", choices=("line", "record", "context"),
+                        default="line", help="Detail level of POI presentation.")
     target = render.add_mutually_exclusive_group(required=True)
     target.add_argument("--annotation", help="Annotation UUID.")
     target.add_argument("--line-ship", help="Line ship UUID.")

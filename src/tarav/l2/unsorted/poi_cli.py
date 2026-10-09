@@ -29,6 +29,7 @@ def add_poi_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+# tarav.breadcrumb e491c09c8fb58e5d2d30d9388a615ee3f8727440c41fc3263fab8268a3390641
 def render_pois(
     args: argparse.Namespace,
     pois: tuple[POI, ...] | list[POI],
@@ -40,7 +41,7 @@ def render_pois(
         return ""
     selection = POISelection.from_pois(pois, title=title)
     try:
-        selected = renderer(getattr(args, "poi_renderer", DEFAULT_POI_RENDERER))
+        selected = renderer(getattr(args, "poi_renderer", None) or DEFAULT_POI_RENDERER)
         level = getattr(args, "level", "line")
         if level not in selected.levels:
             raise POIRenderError(f"{selected.name} does not support level {level}")

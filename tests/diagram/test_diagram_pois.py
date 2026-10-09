@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import argparse
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -24,6 +25,8 @@ from tarav.l2.unsorted.pois import (
     poi_from_dict,
 )
 from tarav.l2.unsorted.poi_cli import render_pois
+from tarav.l2.lines.rendering import DiagramRenderer, DiagramRenderTarget
+from tarav.l2.unsorted import commands as diagram_commands
 
 
 LEGACY_CODES = (
@@ -88,6 +91,52 @@ def test_diagram_uses_shared_poi_renderer(tmp_path: Path, monkeypatch: pytest.Mo
     )
     assert "Line Type is missing" in output
     assert "tarav context --id" in output
+
+
+# tarav.breadcrumb f9d73a04c65058c13ecb61dd49bfdfe6e1d728b2d1dc2eca6fa3f5b212cc61f6
+def test_diagram_render_presents_and_retains_pois_in_text_and_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
+) -> None:
+    monkeypatch.setenv("TARAV_CHECK_REPORTS", str(tmp_path / "reports"))
+    namespace_id = str(uuid4())
+    poi = LineTypeMissing(path="line.1", message="Line Type is missing")
+    target = DiagramRenderTarget("model", str(uuid4()), namespace_id, object())
+    content_renderer = DiagramRenderer(
+        "Example.Renderer", "model", "text/plain", "test",
+        lambda selected, context: ("Rendered model", (poi,)),
+    )
+    diagram = SimpleNamespace(
+        model=lambda ship: object(),
+        namespace=lambda selector: SimpleNamespace(root=tmp_path),
+    )
+    monkeypatch.setattr(diagram_commands, "_diagram_configuration",
+                        lambda path: SimpleNamespace(diagram=lambda: diagram))
+    monkeypatch.setattr(diagram_commands, "model_render_target", lambda model: target)
+    monkeypatch.setattr(diagram_commands, "renderer", lambda name: content_renderer)
+    monkeypatch.setattr(diagram_commands, "_diagram_evidence", lambda args: None)
+    args = argparse.Namespace(
+        annotation=None, line_ship=None, block_ship=None, collection_ship=None,
+        model_ship=target.identity, project=None, namespace=None, diagram_config=None,
+        chatlas_root=None, renderer="Example.Renderer", poi_renderer=None,
+        level="context", json=False,
+    )
+    assert diagram_commands._cmd_diagram_render(args) == 0
+    output = capsys.readouterr().out
+    assert "Rendered model" in output
+    assert f"tarav context --id {poi.identity}" in output
+
+    args.poi_renderer = "Tarav.POI.JsonLines.Renderer"
+    args.level = "record"
+    assert diagram_commands._cmd_diagram_render(args) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert json.loads(lines[1])["level"] == "record"
+    assert json.loads(lines[2])["type"] == entity(LineTypeMissing).name
+
+    args.json = True
+    assert diagram_commands._cmd_diagram_render(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["pois"][0]["type"] == entity(LineTypeMissing).name
+    assert payload["status"] == "poi"
 
 
 def test_draft_migration_preserves_all_eight_retained_case_shapes(tmp_path: Path) -> None:
