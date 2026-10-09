@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design.
-Status: ready.
+Status: implemented.
 
 Every POI can be raised as an exception by whoever wants that: `poi.throw()`
 raises an exception that carries the whole POI.
@@ -62,3 +62,22 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 ## Impl.Log
 
 - Designed 2026-10-09. Not executed.
+- Executed 2026-10-09 at the User's request.
+<!-- tarav.breadcrumb c46dfa62f1b5a41db1c0e56913f6d91f2f1dc9cf7982f558a903c69383297d96 -->
+- Start checkpoint `9dd0697` (empty).
+- `POI.throw()` added on the base class in `src/tarav/l1/poi/primitives.py`;
+  it raises `POIError(self)`. `CheckPOI.error()` and its now unused import
+  removed from `src/tarav/l1/checks/__init__.py`. `POIError` unchanged.
+- Tests: `tests/test_checks_workflow.py` uses `throw()`; a new test in
+  `tests/test_poi_primitives.py` throws an `IdentifiedPOI` and a
+  `NotificationPOI` and checks the error carries the POI and names its
+  identity. Full suite 251 passed; Ruff clean.
+- `src/tarav/l1/poi/README.md` describes `throw()`.
+- Observation, not changed: run alone, `tests/test_checks_workflow.py` has one
+  test that fails because the Context resolver is configured by an earlier
+  test file; it passes in the suite, before and after this request.
+- `tarav-md/notes/wiki/checks-workflow.md` still names `.error()` in its
+  account of the first Checks implementation; the POI note records the new
+  name.
+- Product Breadcrumbs: 2 in `primitives.py`, 1 in the new test, 2 in the
+  README; audits of the five changed files clean.

@@ -117,11 +117,11 @@ def test_check_results_are_snapshots_and_poi_emission_is_explicit():
     collector.emit(first[0])
     assert collector.pois == [first[0]]
     try:
-        first[0].error()
+        first[0].throw()
     except POIError as exc:
         assert exc.poi is first[0]
     else:
-        raise AssertionError("POI.error() should raise only when explicitly called")
+        raise AssertionError("POI.throw() should raise only when explicitly called")
 
 
 def test_provider_and_explicit_pool_use_the_same_runner():

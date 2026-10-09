@@ -16,7 +16,7 @@ from tarav.l0.kernel import (
     WorkflowShip,
     entity,
 )
-from tarav.l1.poi import IdentifiedPOI, POI, POIDetails, POIProvider, POIError, fingerprint
+from tarav.l1.poi import IdentifiedPOI, POI, POIDetails, POIProvider, fingerprint
 from tarav.l1.poi_tracking import CheckObservation, TrackablePOI
 
 CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
@@ -134,9 +134,6 @@ class CheckPOI(IdentifiedPOI, TrackablePOI):
         builder.add("check", opener=lambda: self.check)
         builder.add("details", opener=lambda: POIDetails.records.from_record(
             {"type": entity(POIDetails).name, "value": deepcopy(self.details)}))
-
-    def error(self) -> None:
-        raise POIError(self)
 
 
 # tarav.breadcrumb 17b06b58dc7c456e499067ef1304e2930c95b04b89c82e74b3a378d48ca7789a

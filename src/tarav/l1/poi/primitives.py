@@ -58,6 +58,12 @@ class POI(TaravObject):
             return message.strip()
         return (type(self).__doc__ or "").strip() or entity(type(self)).name
 
+    # tarav.breadcrumb 0216682f0099c00e834aa725e6214609154e74337b7c0ea50bf53d32d5b6948e
+    # tarav.breadcrumb 2f1b1fe8f260aab8fdc6686a018c0a67690193baef77db8ad977f39e23e73a84
+    def throw(self) -> None:
+        """Raise this POI as a `POIError` that carries it, for a caller that wants to stop."""
+        raise POIError(self)
+
 
 class IdentifiedPOI(POI):
     """A workflow-owned POI with identity defined by its Type and situation."""

@@ -163,3 +163,17 @@ def test_pois_are_atomic_and_carry_no_code():
     for base in (IdentifiedPOI, NotificationPOI):
         for poi_type in (base, *subclasses(base)):
             assert "code" not in inspect.signature(poi_type.__init__).parameters, poi_type
+
+
+# tarav.breadcrumb 3412dc1bc71d3a44a4afba8328b173c8b241bb66f6738f123df2f0d851444ba4
+def test_any_poi_can_be_thrown_and_the_error_carries_it():
+    from tarav.l1.poi import NotificationPOI, POIError
+
+    review = AppReview.finding({"app": "a"})
+    notice = NotificationPOI("Something happened")
+    for poi in (review, notice):
+        with pytest.raises(POIError) as raised:
+            poi.throw()
+        assert raised.value.poi is poi
+    with pytest.raises(POIError, match=review.identity):
+        review.throw()

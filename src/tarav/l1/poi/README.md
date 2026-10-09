@@ -13,6 +13,12 @@ repeated observations through a collector-local emission index.
 `POINotificationWarning` by default. `collect_notifications()` captures that
 same emission without also warning.
 
+No POI interrupts by itself. A caller that wants to stop calls `poi.throw()`,
+available on every POI: it raises `POIError`, which carries the whole POI as
+`.poi`, so whoever catches it still has the situation and its context.
+<!-- tarav.breadcrumb 3fdc50f3f56f19e353058957f9ecde9403136681d3dd9b2a339e0c6792138402 -->
+<!-- tarav.breadcrumb 9f6ed19f840ab6f7802c233860e111339115d0de49ff0a2030c6217de933cfa3 -->
+
 Checks and blessings are separate workflows:
 
 ```python
