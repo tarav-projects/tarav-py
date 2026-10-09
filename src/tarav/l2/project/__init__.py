@@ -52,19 +52,11 @@ class Project(TaravProject):
         return ProjectDecisions(self)
 
     # tarav.breadcrumb 99811cb8c39c0f0f8a3111bca58e6e7dfcf146cb5aa168c1f9f6e5a8d643ba87
-    def poi_board(self, *, blessings=None, decisions=None):
-        """Open this Project's tracked-POI board without creating its stores."""
-        from tarav.l1.poi import TrackedPOIStore
-        from tarav.l2.poi import TrackedPOIBoard
+    def poi_tracking(self):
+        """Open this Project's POI tracker without creating its store."""
+        from .tracking import open_tracker
 
-        decisions = decisions or self.decisions()
-        if blessings is None and hasattr(decisions, "blessings"):
-            blessings = decisions.blessings()
-        return TrackedPOIBoard(
-            TrackedPOIStore(self.root / ".tarav" / "tracked-pois"),
-            blessings=blessings,
-            decisions=decisions,
-        )
+        return open_tracker(self)
 
 
 __all__ = [

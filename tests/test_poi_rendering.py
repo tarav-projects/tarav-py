@@ -37,7 +37,7 @@ def test_every_named_renderer_keeps_a_resolvable_poi_and_context_route():
     run.add(SampleCheck().run())
     poi = run.pois()[0]
     selection = POISelection.from_check_report(run.report(by="identity", detail=True))
-    assert {item.name for item in renderers()} == {
+    assert {item.name for item in renderers()} >= {
         DEFAULT_POI_RENDERER, JSON_LINES_POI_RENDERER}
     for named in renderers():
         for level in named.levels:

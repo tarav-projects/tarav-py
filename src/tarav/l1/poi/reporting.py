@@ -41,11 +41,12 @@ def guidance_of(poi_type: type[POI]) -> dict[str, list[str]]:
 
 
 # tarav.breadcrumb d473114f4ea9f30435e91f06d6f8d4428f199fca20c04a03a96256fd57c646a3
-def context_instruction(example_id: str | None = None) -> list[str]:
+def context_instruction(example_id: str | None = None, *,
+                        view: str = REPORTED_POI_VIEW) -> list[str]:
     """The one instruction a surface prints before listing POIs."""
     lines = [
         "Before acting on any POI, open its context:",
-        f"  tarav context --id <poi-id> --view {REPORTED_POI_VIEW}",
+        f"  tarav context --id <poi-id> --view {view}",
     ]
     if example_id:
         is_poi_id = (len(example_id) == 64
@@ -53,7 +54,7 @@ def context_instruction(example_id: str | None = None) -> list[str]:
         short = example_id[:EXAMPLE_ID_LENGTH] if is_poi_id else example_id
         command = f"tarav context --id {short}"
         if is_poi_id:
-            command += f" --view {REPORTED_POI_VIEW}"
+            command += f" --view {view}"
         lines.append(f"  e.g. {command}")
     lines.append("Use the reporting command's `--json` output for full POI ids; "
                  "see `tarav context --help` for navigation and other views.")
@@ -219,6 +220,11 @@ class ReportedPOIContext(ContextFolder):
                 ["This POI Type declares no response. A POI is a signal, not an "
                  "instruction: decide with the User whether and how to act."]),
                 description="The responses open to you, and whether to raise it to the User.")
+            builder.add("track-record", opener=lambda: _value(
+                [f"tarav context --id {record.get('id')} --view tracked-poi",
+                 "Opens the Project's durable record of this POI: its status on every "
+                 "axis and how each changed. Absent when the POI is not tracked."]),
+                description="The command that opens this POI's history across check runs.")
 
         return cls(subject, populate)
 

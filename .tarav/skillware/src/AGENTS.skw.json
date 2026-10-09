@@ -279,6 +279,14 @@
         "  `settings_include`. See ARCHITECTURE.md, Settings capability.",
         "- POI Types are atomic: a POI has no `code`, and each Type states one situation.",
         "  Give related situations one class each under a family parent that is never raised.",
+        "- `tarav.l1.poi_tracking` keeps one durable record per POI identity in the Project's",
+        "  `.tarav/poi-tracking/`. `tarav check --project` writes it (`--tracking skip` to leave",
+        "  it alone); read it with `tarav poi tracking list --project [--axis KEY=VALUE]` and",
+        "  `tarav context --id <poi-id> --view tracked-poi`. A record's status is a set of",
+        "  independent axes, never one value. Checks only emit; `CheckRun.track(into=)` hands",
+        "  results to the tracker. A POI can read `passed` only when its check states an",
+        "  `identity`, as every `SituationCheck` does. A workflow adds a status by subtyping",
+        "  `TrackAxis`. See ARCHITECTURE.md, `poi_tracking`.",
         ""
       ]
     },

@@ -472,7 +472,8 @@ schema or an additional Workflow identity.
 | `assertions` | AssertionsWorkflow owns the shallow TaravAssertion root and Assertable capability. The base imposes no case-production method. |
 | `scoring` | ScoringWorkflow owns the identified, case-producing Assertion subtype, closed AssessmentCase contract, shallow Score root, and retained evaluation mechanics. Scoring Records are entities with explicit Context reference edges. |
 | `scoring.ranking` | RankingWorkflow is a Scoring subtype and child workflow. It owns pairwise cases, singleton Tribunal entities, pairwise operations and Checks, and ephemeral RankingScore results. |
-| `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. Opt-in TrackedPOI Records retain detection history at a caller-selected root; only a completed evaluation of the same declared scope may infer absence. The l2 board joins optional Decisions and pages/filter these Records without turning disposition into detection. |
+| `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. |
+| `poi_tracking` | POITrackingWorkflow keeps one TrackRecord per POI identity, forever, in a caller-rooted TrackRecordStore. A record's status is a set of independent TrackAxis entries, each with an owner workflow, a value and its own history; the tracker stores and filters them without interpreting them, and any workflow contributes an axis by subtyping TrackAxis. `TrackablePOI` is the capability, extended by `CheckPOI`, with a `tracked` setting for Types that include it. `POITracker.observe()` takes CheckObservation data points: a raised POI is active; a record whose owning check, recognized by `Check.identity`, completed without raising it has passed; anything else is not evaluated. Checks never write to it: `CheckRun.track(into=)` hands the results over. The module does not import Checks. The tracked-poi Context view, its resolver and the tracking POI renderer live in `poi_tracking.views`; `l2.blessings.tracking.BlessingAxis` derives the blessing axis from an unchanged BlessingStore, and `l2.project.tracking.open_tracker()` composes a Project's tracker at `.tarav/poi-tracking/`. |
 | `decisions` | DecisionsWorkflow owns the shared attributed Decision contract and prescribes no concrete subtype of its own; consuming workflows define theirs. It owns no storage. The common actor field is exposed as `decider`; subtype schemas keep their own fields and optional POI links. l2 builds an inspectable main Assertion for generic Decisions; assessment cases and attention policy are not yet prescribed. Existing Blessing Records subtype Decision without changing their Type Ship or schema. |
 | `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. BlessingRecord is Assertable through Decision; its established Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. Blessings match situation identity directly and never suppress a POI. BlessingStore remains independently usable without tracking. |
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. SituationChecks evaluate a detached Situation and use that same snapshot as the POI acceptance scope. Execution completion and a POI's failure signal are separate. |
@@ -577,12 +578,13 @@ Decision records share attributed fields without imposing a new Blessing schema:
 `BlessingRecord.actor` remains stored unchanged, while `Decision.decider` reads
 that role. A Decision subtype can refer to tracked POIs but does not require
 one. The generic `main` Assertion identifies the retained intervention; no
-scoring case is claimed yet. `TrackedPOIStore` is caller-rooted, and a Project's
-featured `poi_board()` uses `.tarav/tracked-pois` and the Project's Decision
-store. A board may also be given a BlessingStore, including its existing Archive
-partition. Detection changes only through explicitly completed evaluations with
-an exact, caller-declared scope; a blessing changes review disposition, never
-detection or POI identity.
+scoring case is claimed yet. A Project's featured `poi_tracking()` opens its
+tracker over `.tarav/poi-tracking/` with the blessing axis read from the
+Project's Decision store. `tarav check --project` hands the whole run to it
+unless `--tracking skip` is given. Observation changes only from check results;
+a blessing changes its own axis, never observation or POI identity. The
+machine-local check-report cache stays separate: it holds what a surface last
+showed, so that a printed identifier can be opened.
 <!-- tarav.breadcrumb 903d50edc16c9a21d196b1271302c63a2574659e7adb9bda716b62a9314de7a3 -->
 <!-- tarav.breadcrumb b6bdfb5131dd4eb553fce00b71dc1f8557188d614541a26666481bc6853125c0 -->
 

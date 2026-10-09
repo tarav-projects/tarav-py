@@ -12,6 +12,7 @@ from tarav.l1.checks import CheckResult
 from tarav.l1.poi.rendering import (
     DEFAULT_POI_RENDERER, POISelection, renderer, renderers,
 )
+import tarav.l1.poi_tracking.views  # noqa: F401  registers the tracking renderer
 
 
 # tarav.breadcrumb a671fcec806bcecf6adccaf70a7f2c991f04b2685ea24f7056aa3cf53f820f8e
@@ -20,7 +21,7 @@ def report_project_checks(
     project, *, json_output: bool = False, by: str = "type", sort: str = "run",
     limit: int = 20, offset: int = 0, poi_type: str | None = None,
     check: str | None = None, renderer_name: str = DEFAULT_POI_RENDERER,
-    level: str = "line",
+    level: str = "line", tracking: str = "write",
 ) -> int:
     """Run a Project's suite and show a bounded grouped report."""
     def progress(result: CheckResult) -> None:
@@ -36,10 +37,13 @@ def report_project_checks(
         return 2
     report = run.report(by=by, sort=sort, limit=limit, offset=offset,
                         type=poi_type, check=check, detail=level == "record")
+    tracked = _tracked(project, run) if tracking == "write" else None
     if json_output:
-        print(json.dumps(report, indent=2, default=str))
+        print(json.dumps({**report, "tracking": tracked}, indent=2, default=str))
     else:
         print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
+        if tracked is not None:
+            print(_tracking_line(tracked))
     return 0 if run.clean() else 1
 
 
@@ -48,6 +52,7 @@ def _code(args: argparse.Namespace) -> str:
         "json_output": args.json, "by": args.by, "sort": args.sort,
         "limit": args.limit, "offset": args.offset, "poi_type": args.poi_type,
         "check": args.check_type, "renderer_name": args.renderer, "level": args.level,
+        "tracking": args.tracking,
     }
     return (
         "from tarav.l3.check import report_project_checks\n"
@@ -95,6 +100,9 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
                         default=DEFAULT_POI_RENDERER, help="Named POI renderer.")
     parser.add_argument("--level", choices=("line", "record", "context"), default="line",
                         help="POI detail level for rendered output.")
+    parser.add_argument("--tracking", choices=("write", "skip"), default="write",
+                        help="Record this run in the Project's POI tracking store "
+                             "(.tarav/poi-tracking/), or leave the store untouched.")
     parser.set_defaults(handler=_check)
 
 
@@ -108,6 +116,27 @@ def _retained(project, run):
         return run
     ReportedPOIStore().retain(run.pois(), project=identity)
     return run
+
+
+# tarav.breadcrumb 0f714414fe0b5d467f093c13dbbacee44f95cc9708e21ee07ae0a693c81dc5e6
+def _tracked(project, run) -> dict[str, object] | None:
+    """Hand the whole run to the Project's tracker; a tracking failure never fails the check."""
+    try:
+        from tarav.l2.project.tracking import open_tracker
+
+        return run.track(into=open_tracker(project), whole=True)
+    except Exception as exc:
+        print(f"POI tracking was not written: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return None
+
+
+def _tracking_line(tracked: dict[str, object]) -> str:
+    axes = "; ".join(
+        f"{key}: " + ", ".join(f"{value} {count}" for value, count in values.items())
+        for key, values in tracked["by_axis"].items())
+    return (f"POI tracking: {tracked['records']} records ({axes}); "
+            f"{tracked['created']} new, {tracked['written']} written. "
+            "List them with `tarav poi tracking list --project`.")
 
 
 __all__ = ["register_check_command", "report_project_checks"]

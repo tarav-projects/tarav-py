@@ -266,7 +266,8 @@ class SettingsProvider(TaravType):
 
 def contribute_settings(subject: object, builder: object) -> None:
     """Context contributor: an object with settings gains a `settings` entry."""
-    if isinstance(subject, SettingsProvider) and not isinstance(subject, type):
+    if (isinstance(subject, SettingsProvider) and not isinstance(subject, type)
+            and type(subject).settings_partitions()):
         builder.add("settings",
                     description="This object's settings: partitions, values and origins.",
                     opener=lambda: _report(subject.settings.describe()))

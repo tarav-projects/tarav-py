@@ -16,7 +16,8 @@ from tarav.l0.kernel import (
     WorkflowShip,
     entity,
 )
-from tarav.l1.poi import IdentifiedPOI, POI, POIDetails, POIProvider, POIError
+from tarav.l1.poi import IdentifiedPOI, POI, POIDetails, POIProvider, POIError, fingerprint
+from tarav.l1.poi_tracking import CheckObservation, TrackablePOI
 
 CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
 
@@ -72,6 +73,15 @@ class Check(TaravObject):
         return TaravClass(target=cls, id=TypeShip("b119e6eb-cc5e-4da6-8296-1d33e9f4e303"),
                           name="Tarav.Checks.Check", workflow=CHECKS_WORKFLOW_SHIP)
 
+    @property
+    def identity(self) -> str | None:
+        """Which check this is across runs; None when it cannot say.
+
+        Tracking needs it to conclude that a POI passed: only the same check,
+        completed again without raising the POI, is evidence of that.
+        """
+        return None
+
     def run(self) -> "CheckResult":
         result = self._run()
         if not isinstance(result, CheckResult):
@@ -89,8 +99,8 @@ class Situation(LiteRecord):
 
 
 # tarav.breadcrumb 0fbb6aeabe9a6b2dfb9a5f0b09d35e49a271b44f1cce37d88557bf09e452092f
-class CheckPOI(IdentifiedPOI):
-    """A POI explained by the bound Check object that produced it."""
+class CheckPOI(IdentifiedPOI, TrackablePOI):
+    """A POI explained by the bound Check object that produced it; tracked by default."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -155,6 +165,10 @@ class SituationCheck(Check):
     @property
     def situation(self) -> Situation:
         return self._situation
+
+    @property
+    def identity(self) -> str:
+        return fingerprint([str(entity(type(self)).id), self._situation.to_json_value()])
 
     def obj_context(self, builder) -> None:
         builder.add(
@@ -256,6 +270,20 @@ class CheckRun(TaravObject, POIProvider):
 
     def pois(self) -> tuple[POI, ...]:
         return tuple(poi for result in self.results for poi in result.pois())
+
+    def observations(self) -> tuple[CheckObservation, ...]:
+        """Each result as one tracking data point: check, completion and raised POIs."""
+        return tuple(CheckObservation(entity(type(result.check)).name, result.check.identity,
+                                      result.status, result.pois())
+                     for result in self.results)
+
+    def track(self, *, into, whole: bool = False, at=None) -> dict[str, object]:
+        """Hand this run's results to a POI tracker; checks themselves never write to it.
+
+        `whole` states that these results are the provider's entire suite, so a
+        tracked POI whose check is absent from them was not evaluated.
+        """
+        return into.observe(self.observations(), whole=whole, at=at)
 
     def summary(self) -> dict[str, object]:
         statuses: Counter[str] = Counter()

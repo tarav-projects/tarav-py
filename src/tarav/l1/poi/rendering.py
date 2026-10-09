@@ -9,7 +9,7 @@ import string
 from typing import Literal
 
 from .primitives import POI, POICollector
-from .reporting import context_instruction
+from .reporting import REPORTED_POI_VIEW, context_instruction
 
 POILevel = Literal["line", "record", "context"]
 DEFAULT_POI_RENDERER = "Tarav.POI.Default.Renderer"
@@ -33,6 +33,7 @@ class POISelection:
     example_id: str | None = None
     title: str = "POIs"
     summary: Mapping[str, object] | None = None
+    context_view: str = REPORTED_POI_VIEW
 
     @classmethod
     def from_check_report(cls, report: Mapping[str, object]) -> POISelection:
@@ -127,7 +128,8 @@ def _text(selection: POISelection, level: POILevel) -> str:
         lines = [f"{selection.title}: {selection.total} POIs",
                  f"showing: {len(selection.items)} of {selection.matching} matching"]
     if selection.total:
-        lines.extend(("", *context_instruction(selection.example_id), ""))
+        lines.extend(("", *context_instruction(selection.example_id,
+                                               view=selection.context_view), ""))
     for row in selection.items:
         address = _address(row)
         if selection.source == "check":
@@ -138,7 +140,9 @@ def _text(selection: POISelection, level: POILevel) -> str:
             if row.get("id"):
                 line += f" [{str(row['id'])[:12]}]"
         else:
-            standing = (row.get("blessing") or {}).get("status", "unblessed")
+            standing = (" ".join(f"{key}={value}" for key, value in row["axes"].items())
+                        if row.get("axes")
+                        else (row.get("blessing") or {}).get("status", "unblessed"))
             line = (f"  {row['type']}  {_short_address(address)}  {standing}"
                     f"  {row.get('message') or row.get('summary') or ''}")
         lines.append(line)
@@ -148,8 +152,8 @@ def _text(selection: POISelection, level: POILevel) -> str:
         elif level == "context":
             identifier = row.get("id") or selection.example_id
             if identifier:
-                lines.append(f"    tarav context --id {identifier} --view reported-poi")
-    if summary is not None:
+                lines.append(f"    tarav context --id {identifier} --view {selection.context_view}")
+    if summary is not None and selection.source == "check":
         by_check = summary.get("by_check") or {}
         by_type = summary.get("by_type") or {}
         lines.append("Checks by type: " + (", ".join(
@@ -167,7 +171,9 @@ def _json_lines(selection: POISelection, level: POILevel) -> str:
         "kind": "poi-selection", "title": selection.title, "total": selection.total,
         "matching": selection.matching, "shown": len(selection.items),
         "next_offset": selection.next_offset, "level": level,
-        "context_instruction": context_instruction(selection.example_id) if selection.total else [],
+        "context_instruction": (context_instruction(selection.example_id,
+                                                    view=selection.context_view)
+                                if selection.total else []),
     }]
     for item in selection.items:
         row: dict[str, object] = {"kind": "poi", "address": _address(item), **item}
@@ -178,7 +184,8 @@ def _json_lines(selection: POISelection, level: POILevel) -> str:
         elif level == "context":
             identifier = item.get("id") or selection.example_id
             row = {"kind": "poi", "address": _address(item),
-                   "context_command": (f"tarav context --id {identifier} --view reported-poi"
+                   "context_command": (f"tarav context --id {identifier} "
+                                       f"--view {selection.context_view}"
                                        if identifier else None)}
         rows.append(row)
     return "\n".join(json.dumps(row, ensure_ascii=False, default=str) for row in rows)

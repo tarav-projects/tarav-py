@@ -150,6 +150,11 @@ class ContextQueryService(TaravType):
             known = ", ".join(sorted(self.views)) or "none"
             raise KeyError(f"Unknown context view: {query.view} (known: {known})")
         candidates = self.resolve(query)
+        if query.view is not None and len(candidates) > 1:
+            # Several things can share an identifier; the requested view says which is meant.
+            supported = tuple(found for found in candidates
+                              if query.view in self.views_for(found[1].subject))
+            candidates = supported or candidates
         if len(candidates) != 1:
             return ContextAnswer(candidates)
         subject = candidates[0][1].subject
