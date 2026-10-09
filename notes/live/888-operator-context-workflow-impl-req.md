@@ -7,7 +7,9 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design.
-Status: needs-alignment (see Open questions). Depends on request 887.
+Status: superseded in its minimal part by request 891, which builds the
+Operator Context the later discussion converged on (objects per consumer, in
+the central Record Registry). What remains here is unbuilt and needs review.
 
 Create the Operator Context: a workflow of its own that gives whoever is
 acting a place to state its context, so Tarav code can know who is calling
