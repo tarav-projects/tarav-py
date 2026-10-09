@@ -457,12 +457,20 @@ place where an operator puts the typed objects it hands to other workflows.
 `OperatorContext` is the base Record Type and `OperatorContextStore.take()`
 gives a consumer the object with the hash of the record it read. `tarav.l1.actions`
 declares `ActionsWorkflow`: the near-empty `Action` root, `StepAction` (an
-opening test, operations, closing tests, an output), the recorded `ActionRun`
-and `StepRunner`, which takes every input from the Operator Context. Both keep
+opening test, operations, and named exits with their tests, each taken by an
+operator, the loop, or both), the recorded `ActionRun` and `StepRunner`, which
+takes every operator input from the Operator Context and sweeps loop-taken
+exits. Both keep
 their Records in their own Record Registry partitions, outside any Project.
 Action Types are made startable by explicit `register_action()`; the runtime
-registers them. `tarav.l2.actions.blessing` is the bundle that puts blessing
-under an Action. Programs and Actions are not yet related in code.
+registers them. `tarav.l1.actions.pois` holds what follows a POI:
+`ActionablePOI`, the `POIResolutionAction` with exits `gone` and `dismissed`,
+and `POIActions.observe()`, which a caller hands POIs to. The instance of a
+POI's action is derived from the POI's identity; its record holds the current
+state and its history is the registry's Git history. `tarav.l1.checks` gives a
+check a `subject_key` and a `ClearPOI` for a completed check that raised
+nothing; checks do not import Actions. Programs and Actions are not yet
+related in code.
 <!-- tarav.breadcrumb 9ee4d9dcc84f3fe51b675d28058a032060fb73abc4cc794542649b33aec1eb74 -->
 <!-- tarav.breadcrumb 2d9d5a81415b516dd8e6f4906bdb3917d37b71ca15ceb895eef1ff8f02d4ce1f -->
 

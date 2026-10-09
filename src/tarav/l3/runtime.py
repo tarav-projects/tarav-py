@@ -287,11 +287,11 @@ def create_runtime(
     from tarav.l1.python_env import PYTHON_RECORD_TYPES, PythonWorkflow
     from tarav.l1.programs import ProgramsWorkflow, TaravProgram
     from tarav.l1.agent.workflow import AgentsWorkflow
-    from tarav.l1.actions import ACTION_RECORD_TYPES, ActionsWorkflow
+    from tarav.l1.actions import ACTION_RECORD_TYPES, ActionsWorkflow, register_action
     from tarav.l1.operator_context import (
         OPERATOR_CONTEXT_RECORD_TYPES, OperatorContextWorkflow,
     )
-    from tarav.l2.actions.blessing import BLESSING_ACTION_RECORD_TYPES
+    from tarav.l1.actions.pois import POI_ACTION_RECORD_TYPES, POIResolutionAction
     from tarav.l2.project.programs import ProjectProgram
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.l2.models import ModelsWorkflow
@@ -420,7 +420,7 @@ def create_runtime(
                 ProjectProgram,
                 *OPERATOR_CONTEXT_RECORD_TYPES,
                 *ACTION_RECORD_TYPES,
-                *BLESSING_ACTION_RECORD_TYPES,
+                *POI_ACTION_RECORD_TYPES,
                 *POI_RECORD_TYPES,
                 *POI_TRACKING_RECORD_TYPES,
                 *BLESSING_RECORD_TYPES,
@@ -535,6 +535,7 @@ def create_runtime(
         *workflows,
     ):
         registrations.register(workflow)
+    register_action(POIResolutionAction)
     if config is not None:
         config = config.expanduser().resolve()
         settings = json.loads(config.read_text(encoding="utf-8"))

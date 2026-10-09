@@ -82,6 +82,25 @@ class Check(TaravObject):
         """
         return None
 
+    # tarav.breadcrumb 5f23a362758bbde94045c489e192776abf8a6ced6101152c1535845abcd18ccd
+    @property
+    def subject_key(self) -> dict | None:
+        """What this check examines, stable while what it finds changes; None when it cannot say.
+
+        A situation names what was found, so a check that no longer finds it
+        cannot name it. The subject is what a later, clear result has in
+        common with an earlier finding.
+        """
+        return None
+
+    def clear(self, message: str | None = None) -> "ClearPOI":
+        """The POI saying this check completed and found nothing to raise."""
+        name = entity(type(self)).name
+        return ClearPOI(self, message or f"{name} found nothing to raise",
+                        situation={"check": name, "check_identity": self.identity,
+                                   "subject": self.subject_key},
+                        failure=False)
+
     def run(self) -> "CheckResult":
         result = self._run()
         if not isinstance(result, CheckResult):
@@ -138,6 +157,20 @@ class CheckPOI(IdentifiedPOI, TrackablePOI):
 
 # tarav.breadcrumb 17b06b58dc7c456e499067ef1304e2930c95b04b89c82e74b3a378d48ca7789a
 # tarav.breadcrumb 66d8e93f85ee6987e1291238add75e2e188bc27096a12a744560191a7e2a8fdb
+# tarav.breadcrumb eca780f5007209477dc1044b267b52664b05e8a6d3a368c6eb3acc74df3beaf9
+class ClearPOI(CheckPOI):
+    """A check completed and found nothing to raise for its subject.
+
+    A positive event, stated the way a finding is. Whether anyone is shown it
+    is the caller's choice.
+    """
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("2f6d9b1c-7a4e-4c83-9e15-b0d3a8c7e642"),
+                          name="Tarav.Checks.Clear", workflow=CHECKS_WORKFLOW_SHIP)
+
+
 class SituationCheck(Check):
     """A Check whose evaluation and POI identity share one input snapshot."""
 
@@ -203,7 +236,7 @@ class SituationCheck(Check):
     def run(self) -> "CheckResult":
         result = super().run()
         for poi in result.pois():
-            if not isinstance(poi, CheckPOI):
+            if not isinstance(poi, CheckPOI) or isinstance(poi, ClearPOI):
                 continue
             poi_situation = LiteRecord.from_json_value(poi.situation)
             if poi_situation.canonical != self._situation.canonical:
@@ -473,6 +506,7 @@ __all__ = [
     "ChecksWorkflow",
     "Check",
     "CheckPOI",
+    "ClearPOI",
     "CheckProvider",
     "CheckResult",
     "CheckRun",

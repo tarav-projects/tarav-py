@@ -11,7 +11,7 @@ from tarav.l1.operator_context import OperatorContextStore
 from tarav.l1.records import RecordRegistry
 
 from . import (
-    EXIT_OK, RUNNING, ActionError, ActionRun, ActionRunStore, StepAction, StepRunner,
+    CLOSED, RUNNING, ActionError, ActionRun, ActionRunStore, StepAction, StepRunner,
     action_types, resolve_action,
 )
 
@@ -46,6 +46,8 @@ def _cmd_types(args) -> int:
         if issubclass(action_type, StepAction):
             row["input"] = entity(action_type.InputType).name
             row["operations"] = list(action_type.operations)
+            row["exits"] = [{"name": item.name, "by": list(item.by)}
+                            for item in action_type.exits]
         rows.append(row)
     return _output({"status": "ok", "types": rows})
 
@@ -71,6 +73,8 @@ def _cmd_start(args) -> int:
         welcome.append("Operations: " + ", ".join(
             f"tarav action do --run {run.id} --operation {name}"
             for name in action_type.operations))
+    welcome.append("Exits: " + ", ".join(
+        f"{item.name} (by {' or '.join(item.by)})" for item in action_type.exits))
     welcome.append(f"Close it with: tarav action close --run {run.id}")
     return _output({"status": "ok", **result, "skill": skill, "welcome": welcome})
 
@@ -81,13 +85,18 @@ def _cmd_do(args) -> int:
 
 
 def _cmd_close(args) -> int:
-    run = _runner(args).close(args.run, args.context)
+    run = _runner(args).close(args.run, args.context, exit=args.exit)
     attempt = run.data["closings"][-1]
-    result = {**_row(run), "closing": {"passed": attempt["passed"],
+    result = {**_row(run), "closing": {"exit": attempt["exit"], "passed": attempt["passed"],
                                        "pois": _pois(attempt["results"])}}
-    if run.exit != EXIT_OK:
+    if run.state != CLOSED:
         return _output({"status": "still-running", **result}, 1)
     return _output({"status": "ok", **result, "output": run.data["output"]})
+
+
+def _cmd_sweep(args) -> int:
+    closed = _runner(args).sweep()
+    return _output({"status": "ok", "closed": [_row(run) for run in closed]})
 
 
 def _cmd_abort(args) -> int:
@@ -138,10 +147,15 @@ def register_action_commands(subparsers) -> None:
     do.set_defaults(handler=_cli(_cmd_do))
 
     close = commands.add_parser(
-        "close", help="Run the closing tests; the run closes only when they pass.")
+        "close", help="Take one exit; the run closes only when that exit's tests pass.")
     close.add_argument("--run", required=True)
+    close.add_argument("--exit", help="Which exit; needed when the action offers several.")
     close.add_argument("--context", help="Operator Context input; defaults to the run's last one.")
     close.set_defaults(handler=_cli(_cmd_close))
+
+    sweep = commands.add_parser(
+        "sweep", help="Close the running runs whose loop-taken exit is met.")
+    sweep.set_defaults(handler=_cli(_cmd_sweep))
 
     abort = commands.add_parser("abort", help="Close a running run with an error.")
     abort.add_argument("--run", required=True)
@@ -154,9 +168,9 @@ def register_action_commands(subparsers) -> None:
 
     listing = commands.add_parser("list", help="List runs, newest first.")
     listing.add_argument("--state", choices=("running", "closed"))
-    listing.add_argument("--exit", choices=("ok", "error"))
+    listing.add_argument("--exit", help="Only runs closed by this exit, or 'error'.")
     listing.add_argument("--project", help="Only runs whose input names this Project root.")
     listing.set_defaults(handler=_cli(_cmd_list))
 
-    for command in (types, start, do, close, abort, show, listing):
+    for command in (types, start, do, close, sweep, abort, show, listing):
         command.add_argument("--registry", help="Record Registry root; defaults to the standard one.")

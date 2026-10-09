@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design.
-Status: ready.
+Status: implemented.
 
 Rebuild the Actions example of request 891 on the model the discussion
 reached: a POI is only an event, and an actionable POI spins one action, the
@@ -189,3 +189,43 @@ the design discussion.
 ## Impl.Log
 
 - Designed 2026-10-09. Not executed.
+- Start checkpoint: the request commits `f52b741`, `0b6851b`, `f02f396`; the
+  code this request changes was clean at HEAD except `src/tarav/l3/runtime.py`,
+  `pyproject.toml` and `ARCHITECTURE.md`, which hold other agents' edits.
+- Slice 1, exits: `Exit` (name, taken by operator and/or loop),
+  `StepAction.exits`, `exit_checks(name, run, context)` and
+  `output(name, run, context)` replace the single closing test; a run's `exit`
+  is the exit's name or `error`; `StepRunner.close(..., exit=)` and
+  `StepRunner.sweep()`; `ActionRunStore.write/commit/find` for batches.
+- Slice 2, `tarav.l1.actions.pois`: `ActionablePOI`, `POIResolutionAction`
+  (`gone` by the loop, `dismissed` by an operator with `DismissalInput`),
+  `action_id()` from the Action Type and the POI's identity, `POIActions`
+  (`observe`, `of`), the `POIActionClosed` signal. `tarav.l1.checks`:
+  `Check.subject_key`, `Check.clear()`, `ClearPOI`.
+- Naming change: the check's stable key is `subject_key`, not `subject`.
+  Existing checks assign an attribute called `subject`, and the first full
+  suite run failed on that in 10 tests.
+- Slice 3, the test workflow: `TestMarkerPOI` is actionable, `TestMarkerCheck`
+  declares its subject key and reports clear, `observe_workspace()` hands the
+  POIs over. The blessing bundle (`tarav.l2.actions`) and its tests are
+  removed.
+- Commands: `tarav action close --exit`, `tarav action sweep`; `types` and the
+  welcome show exits.
+- Tests: `tests/test_actions_workflow.py` (13: exits, sweep, POI actions with
+  an in-test check: same instance, clear closes and signals, reopen with the
+  Git history asserted, changed situation, dismissal stays closed, a check
+  without a subject key closes nothing) and `tests/test_actions_pois.py` (2,
+  on the test workflow). Full suite 266 passed in the shared worktree; Ruff
+  clean.
+- Live trial through the CLI on a temporary registry: two actions opened; one
+  dismissed with a reason, recorded with this session; the other file fixed,
+  its action closed as `gone` with the signal shown; a sweep found nothing
+  more; three commits in the registry.
+- Agent choices made during execution: `gone` is decided in `observe()` from
+  the handed clear POIs, and `sweep()` covers exits that have tests of their
+  own; a finding for a changed situation does not by itself close the older
+  action, only a clear result does.
+- Commit boundary as in request 891: `src/tarav/l2/tests/actions.py`,
+  `tests/test_actions_pois.py`, its `testpaths` line and the runtime line for
+  `ActionsTestsWorkflow` stay uncommitted until the test workflows package
+  lands.

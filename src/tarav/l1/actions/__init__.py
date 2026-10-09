@@ -3,7 +3,7 @@
 An Action Type is a definition and an ActionRun is one instance of it, as a
 program and a process are. The base Action prescribes almost nothing. A
 StepAction closes a piece of an operator's work into one step: an opening
-test, the work, closing tests.
+test, the work, and one or more exits, each with its own tests.
 """
 
 from __future__ import annotations
@@ -25,7 +25,8 @@ from tarav.l1.records import RecordRegistry
 from .workflow import ACTIONS_WORKFLOW_SHIP, ActionsWorkflow
 
 RUNNING, CLOSED = "running", "closed"
-EXIT_OK, EXIT_ERROR = "ok", "error"
+EXIT_ERROR = "error"
+OPERATOR, LOOP = "operator", "loop"
 RUN_REFERENCE_TYPE = "Tarav.Actions.RunReference"
 
 
@@ -45,6 +46,21 @@ class SkillLink:
 
 
 # tarav.breadcrumb 172bd4f5f4e23e808f5494a5f027e73f698c95cde8cb01634728d6d12ff891df
+# tarav.breadcrumb 617b0622a666a1e907b34944e42378b34d9fdff085f1af740f310d6cbe468309
+@dataclass(frozen=True)
+class Exit:
+    """One way a step can close, and who may take it: an operator, the loop, or both."""
+
+    name: str
+    by: tuple[str, ...] = (OPERATOR,)
+
+    def __post_init__(self) -> None:
+        if not self.name or self.name == EXIT_ERROR:
+            raise ValueError("An exit needs a name other than 'error'")
+        if not self.by or set(self.by) - {OPERATOR, LOOP}:
+            raise ValueError("An exit is taken by an operator, the loop, or both")
+
+
 class Action(TaravType):
     """Root of every Action Type. It prescribes only the link to its instructions."""
 
@@ -59,15 +75,25 @@ class Action(TaravType):
 # tarav.breadcrumb 9653fbc6c09471fe85885cd12a4a103d86fba2aba9efab0ac507c2dd94cd3942
 # tarav.breadcrumb 211a93166d7c38a5177f8e8030e591f12be1bd619048d46bf285556f282d24e1
 class StepAction(Action):
-    """One step of work between an opening test and closing tests.
+    """One step of work between an opening test and its exits.
 
     The input is an Operator Context object of `InputType`. The tests are
     Checks. `operations` name what this step lets the operator do through the
     run while it is running; a domain write placed there is under the action.
+    `exits` are the ways the step can close, as a program has several exit
+    paths; each says who may take it.
     """
 
     InputType: ClassVar[type[OperatorContext]] = OperatorContext
     operations: ClassVar[tuple[str, ...]] = ()
+    exits: ClassVar[tuple[Exit, ...]] = (Exit("done"),)
+
+    @classmethod
+    def exit_named(cls, name: str) -> Exit:
+        for candidate in cls.exits:
+            if candidate.name == name:
+                return candidate
+        raise ActionError(f"{entity(cls).name} has no exit {name!r}")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -77,13 +103,16 @@ class StepAction(Action):
     def opening_checks(self, run: "ActionRun", context: OperatorContext) -> Iterable[Check]:
         return ()
 
-    def closing_checks(self, run: "ActionRun", context: OperatorContext) -> Iterable[Check]:
+    def exit_checks(self, name: str, run: "ActionRun",
+                    context: OperatorContext | None) -> Iterable[Check]:
+        """The tests of one exit. The loop asks without an operator's input."""
         return ()
 
     def operate(self, name: str, run: "ActionRun", context: OperatorContext) -> dict:
         raise ActionError(f"{entity(type(self)).name} has no operation {name!r}")
 
-    def output(self, run: "ActionRun", context: OperatorContext) -> dict:
+    def output(self, name: str, run: "ActionRun", context: OperatorContext | None) -> dict:
+        """What the run keeps about the exit it closed by."""
         return {}
 
 
@@ -105,6 +134,9 @@ class ActionRun(TaravEntity, FileRecord):
         closings: list[dict]
         output: dict | None
         reason: str | None
+        opened_at: str
+        subject: dict | None = None
+        event: dict | None = None
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -145,8 +177,6 @@ class ActionRun(TaravEntity, FileRecord):
                 raise ValueError("Unknown action run state")
             if (data.state == RUNNING) != (data.exit is None):
                 raise ValueError("A running action run has no exit; a closed one has")
-            if data.exit not in (None, EXIT_OK, EXIT_ERROR):
-                raise ValueError("Unknown action run exit")
             return data
 
         def record_example(self) -> dict[str, object]:
@@ -154,7 +184,8 @@ class ActionRun(TaravEntity, FileRecord):
                 "type": entity(self._owner).name,
                 "id": "4a9af366-b093-4ba0-aedd-6d71a3f2bbd0",
                 "action": "Tarav.Actions.Step", "state": RUNNING, "exit": None,
-                "started_at": "2026-10-09T00:00:00+00:00", "closed_at": None,
+                "started_at": "2026-10-09T00:00:00+00:00",
+                "opened_at": "2026-10-09T00:00:00+00:00", "closed_at": None,
                 "project": None, "skill": None, "intakes": [], "sessions": [],
                 "opening": {"passed": True, "results": []}, "operations": [],
                 "closings": [], "output": None, "reason": None,
@@ -167,14 +198,27 @@ class ActionRunStore:
     def __init__(self, registry: RecordRegistry | None = None) -> None:
         self.map = (registry or RecordRegistry()).for_workflow(ActionsWorkflow)
 
-    def save(self, run: ActionRun, message: str) -> None:
+    def write(self, run: ActionRun) -> str:
+        """Write one run without committing; `commit` records a batch of them."""
         self.map.create()
         key = str(run.id)
         if self.map.path(key).is_file():
             self.map.replace(key, run)
         else:
             self.map.insert(key, run)
-        self.map.commit((key,), message)
+        return key
+
+    def commit(self, keys: Iterable[str], message: str) -> None:
+        keys = tuple(dict.fromkeys(keys))
+        if keys:
+            self.map.commit(keys, message)
+
+    def save(self, run: ActionRun, message: str) -> None:
+        self.commit((self.write(run),), message)
+
+    def find(self, key: str) -> ActionRun | None:
+        self.map.create()
+        return self.load(key) if self.map.path(key).is_file() else None
 
     def load(self, key: str) -> ActionRun:
         self.map.create()
@@ -276,6 +320,8 @@ class StepRunner:
     def _take(self, action: StepAction, run: ActionRun, context_id: str | None,
               purpose: str) -> Intake:
         if context_id is None:
+            if not run.data["intakes"]:
+                raise ActionError("This run has no operator input yet; name one with --context")
             context_id = run.data["intakes"][-1]["context"]
         intake = self.contexts.take(context_id, expected=type(action).InputType)
         run.data["intakes"].append({"at": self._now(), "for": purpose, "context": intake.id,
@@ -305,7 +351,7 @@ class StepRunner:
         name = entity(action_type).name
         run = ActionRun(Ship(str(uuid4())), {
             "action": name, "state": RUNNING, "exit": None, "started_at": self._now(),
-            "closed_at": None, "project": None,
+            "opened_at": self._now(), "closed_at": None, "project": None,
             "skill": action_type.skill.to_json() if action_type.skill else None,
             "intakes": [], "sessions": [], "opening": {"passed": False, "results": []},
             "operations": [], "closings": [], "output": None, "reason": None,
@@ -332,17 +378,58 @@ class StepRunner:
         self.runs.save(run, f"Operation {name} in run {run.id}")
         return run, result
 
-    def close(self, run_id: str, context_id: str | None = None) -> ActionRun:
-        """Run the closing tests. The run closes only when they pass."""
+    def close(self, run_id: str, context_id: str | None = None, *,
+              exit: str | None = None) -> ActionRun:
+        """Take one exit as an operator. The run closes only when that exit's tests pass."""
         action, run = self._running(run_id)
-        intake = self._take(action, run, context_id, "close")
-        passed, rows = _results(action.closing_checks(run, intake.context))
-        run.data["closings"].append({"at": self._now(), "passed": passed, "results": rows})
+        offered = [item for item in type(action).exits if OPERATOR in item.by]
+        if exit is None:
+            if len(offered) != 1:
+                raise ActionError("This action has several exits; name one: "
+                                  + ", ".join(item.name for item in offered))
+            exit = offered[0].name
+        if OPERATOR not in type(action).exit_named(exit).by:
+            raise ActionError(f"Exit {exit!r} is not taken by an operator")
+        intake = self._take(action, run, context_id, f"exit {exit}")
+        passed, rows = _results(action.exit_checks(exit, run, intake.context))
+        run.data["closings"].append({"at": self._now(), "exit": exit, "by": OPERATOR,
+                                     "passed": passed, "results": rows})
         if passed:
-            run.data.update(state=CLOSED, exit=EXIT_OK, closed_at=self._now(),
-                            output=action.output(run, intake.context))
-        self.runs.save(run, f"Close attempt on run {run.id}")
+            run.data.update(state=CLOSED, exit=exit, closed_at=self._now(),
+                            output=action.output(exit, run, intake.context))
+        self.runs.save(run, f"Exit {exit} attempted on run {run.id}")
         return run
+
+    # tarav.breadcrumb ba6c7adbc1a559e7a2e2c49ed9032edd4edf4ae1565ab448b5bc9018932e2496
+    def sweep(self) -> list[ActionRun]:
+        """Ask every running run whether an exit the loop may take is met; close those.
+
+        An exit with no tests for the loop cannot close itself and is left.
+        """
+        closed, keys = [], []
+        for run in self.runs.list(state=RUNNING):
+            action_type = resolve_action(run.data["action"])
+            if not issubclass(action_type, StepAction):
+                continue
+            action = action_type()
+            for item in action_type.exits:
+                if LOOP not in item.by:
+                    continue
+                checks = tuple(action.exit_checks(item.name, run, None))
+                if not checks:
+                    continue
+                passed, rows = _results(checks)
+                if not passed:
+                    continue
+                run.data["closings"].append({"at": self._now(), "exit": item.name, "by": LOOP,
+                                             "passed": True, "results": rows})
+                run.data.update(state=CLOSED, exit=item.name, closed_at=self._now(),
+                                output=action.output(item.name, run, None))
+                keys.append(self.runs.write(run))
+                closed.append(run)
+                break
+        self.runs.commit(keys, f"Sweep closed {len(keys)} action run(s)")
+        return closed
 
     def abort(self, run_id: str, reason: str) -> ActionRun:
         """Close a running run with an error, saying why."""
@@ -359,7 +446,7 @@ ACTION_RECORD_TYPES = (ActionRun,)
 
 __all__ = [
     "ACTIONS_WORKFLOW_SHIP", "ACTION_RECORD_TYPES", "Action", "ActionError", "ActionRun",
-    "ActionRunStore", "ActionsWorkflow", "CLOSED", "EXIT_ERROR", "EXIT_OK",
-    "RUNNING", "RUN_REFERENCE_TYPE", "SkillLink", "StepAction", "StepRunner",
+    "ActionRunStore", "ActionsWorkflow", "CLOSED", "EXIT_ERROR", "Exit", "LOOP",
+    "OPERATOR", "RUNNING", "RUN_REFERENCE_TYPE", "SkillLink", "StepAction", "StepRunner",
     "action_types", "register_action", "resolve_action",
 ]
