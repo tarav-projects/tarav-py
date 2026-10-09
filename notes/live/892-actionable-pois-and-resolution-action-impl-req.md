@@ -53,6 +53,33 @@ the Actions workflow asks each running action whether a close path is met and
 closes it if so; that is preferred to hooking into the checks.
 <!-- tarav.breadcrumb 5b89eacbcdb76899c10af83df17e48eb83dfbb0888357fd075a98545341bea31 -->
 
+What the chain from check to action looks like was discussed against the
+current code: raising a POI does nothing by itself, and the caller that ran
+the checks decides what follows (retain, report, track, render).
+<!-- tarav.breadcrumb 88d0d4ca8d432bf86d09beebba243bacde5cc690314f48a1ddc982d7a14da7bc -->
+
+The start of the action attaches to the POI, and the check result can
+interact with the active actions. A POI's action is a single instance: as the
+same POI can be created many times and is the same POI because its identity
+is its situation, the action's instance identity follows the same rule, a name
+plus the situation, hashed. A check that finds nothing says so with a POI of a
+different Type, whose action closes the other; the same machinery is used.
+<!-- tarav.breadcrumb efd828c3ce1ecf1ccc3a0090ab5429d1d70e0fa13413b78e6578c67bd751c0d0 -->
+
+When a POI triggers its action: if it is open it stays open, if it is closed
+it reopens, if it does not exist in the central registry it is created open.
+The history is the Git history of the record; nothing duplicates what Git
+does.
+<!-- tarav.breadcrumb 012d2905a4402bdcdd5a7fce9a738ae856d769695fef853ee52c0a6bed029742 -->
+
+All of this is an example for this first implementation, a design for one use
+case, not a set of general principles. The clear POI is to be built: a POI is
+the general way to declare an event, positive or negative, and what is shown
+is decided afterwards; positive POIs are suppressed by default. A positive POI
+that closes a previously open action is itself a useful signal to the agent
+that the situation is gone.
+<!-- tarav.breadcrumb b9e32ce16ace9f7ece090a1968dbd4b6928f928be0c780dcfefc10b66f469af0 -->
+
 ### Current behavior (after request 891)
 
 - `tarav.l1.actions`: `StepAction` has one set of closing tests; a run ends
@@ -80,19 +107,36 @@ closes it if so; that is preferred to hooking into the checks.
 - **`POIResolutionAction`** (root of the actions that follow a POI). Its input
   is the POI event as raised, kept in the run; no operator is needed to open
   it. Exits:
-  - `gone`: taken by the loop when the POI's check completed and did not
-    raise it. A check without an identity can never show this, as today.
+  - `gone`: taken when a clear POI for the same check and subject is handed
+    over and this action's situation is no longer the current one.
   - `dismissed`: taken by an operator, whose input (a reason) comes from the
     Operator Context. The dismissal is recorded in the run itself; no separate
     blessing record is written.
 - **Opening and the loop.** The Actions workflow is handed a check run's
   results, as the tracker is today: it opens a run for each actionable POI
-  that has no running or dismissed run for its identity, and takes `gone` for
-  running runs whose POI was not raised. A separate `sweep` asks every running
+  under the identity rule below, and takes `gone` for open actions that a
+  clear POI names. A separate `sweep` asks every running
   action for exits the loop may take. `tarav action sweep` exposes it.
-- **Identity and recurrence.** A run is keyed to the POI identity (Type and
-  situation). A dismissed POI that is still raised keeps its closed run. A
-  POI raised again after `gone` opens a new run; the history is the runs.
+- **Identity and recurrence** (the User's rule, with one refinement the User
+  accepted). The action instance is keyed by its Action Type and the POI's
+  situation. Triggered again: created if absent, left open if open, reopened
+  if it was closed as `gone`, left closed if it was `dismissed`. The record
+  holds the current state only; its history is the registry's Git history.
+- **Subject** (Agent proposal, not confirmed by the User). The situation key
+  cannot be named by a check that no longer finds that situation. The check
+  therefore also states what it examined, its subject, which is stable while
+  what is found changes. An action records its subject.
+- **The clear POI.** A check that finds nothing for its subject raises a POI of
+  a distinct Type with `failure=False`, naming the subject. Handed to the
+  Actions workflow, it closes as `gone` the open actions of that check and
+  subject whose situation is not the current one.
+- **The closing signal.** When the Actions workflow closes an action as
+  `gone`, it returns a POI saying so, for the caller to show: the agent sees
+  that its fix worked.
+- **Presentation.** Clear POIs are not shown by default in the example's
+  report. In a real Project run, `CheckRun.clean()` counts every unblessed POI
+  as not clean and ignores `failure`; that is noted for the later integration
+  and not changed here.
 - **Listings show the exit**, so `gone` and `dismissed` are never confused.
 - **The example.** `TestMarkerPOI` becomes an actionable POI; the test
   workflow's check results are handed to the Actions workflow; the blessing
@@ -104,7 +148,10 @@ closes it if so; that is preferred to hooking into the checks.
 
 ### Open questions
 
-- Names: "actionable POI", "resolution action", "dismissed", "gone".
+- Names: "actionable POI", "resolution action", "dismissed", "gone",
+  "clear POI", "subject".
+- Is the subject the right stable key between a raised POI and a later clear
+  one?
 - Does `dismissed` require a reason in this first version, or is the bare
   overrule allowed? Proposed: a reason is required.
 - Should the `provided` kind of exit (the POI asks for data) be in the
@@ -128,10 +175,12 @@ the design discussion.
    request 891's tests adapted.
 2. `ActionablePOI`, `POIResolutionAction`, the hand-off from check results,
    the sweep, `tarav action sweep`; listings show exits; batch commits.
-3. The test workflow on it; tests: a POI opens a run; a second check run opens
-   none; fixing the file closes by `gone`; dismissal closes by `dismissed` and
-   stays closed while raised; a changed file opens a new run; a returning
-   situation opens a new run.
+3. The test workflow on it; tests: a POI opens its action; a second check run
+   lands on the same instance; fixing the file raises a clear POI, closes the
+   action as `gone` and returns the closing signal; dismissal closes as
+   `dismissed` and stays closed while raised; a changed file closes the old
+   action and opens another; a situation that returns reopens the same
+   instance; the registry's Git history shows the transitions.
 4. Remove the blessing bundle; update the skill module, `ARCHITECTURE.md`,
    Breadcrumbs, Wiki; completion commits. The test-workflow part still waits
    for the test workflows package to be committed.
