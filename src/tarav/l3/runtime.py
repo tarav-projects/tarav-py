@@ -213,6 +213,10 @@ class TaravRuntime:
         )
         register_scoring_commands(subparsers)
         register_workspace_commands(subparsers)
+        from tarav.l1.actions.commands import register_action_commands
+        from tarav.l1.operator_context.commands import register_operator_context_commands
+        register_operator_context_commands(subparsers)
+        register_action_commands(subparsers)
         register_skw_commands(subparsers, registry=self.records)
         # tarav.breadcrumb ad568a3bc811a526540d9a6106f706ed2ff8e77d3d823d93cb82d67fcbe98568
         register_usage_commands(
@@ -283,6 +287,11 @@ def create_runtime(
     from tarav.l1.python_env import PYTHON_RECORD_TYPES, PythonWorkflow
     from tarav.l1.programs import ProgramsWorkflow, TaravProgram
     from tarav.l1.agent.workflow import AgentsWorkflow
+    from tarav.l1.actions import ACTION_RECORD_TYPES, ActionsWorkflow
+    from tarav.l1.operator_context import (
+        OPERATOR_CONTEXT_RECORD_TYPES, OperatorContextWorkflow,
+    )
+    from tarav.l2.actions.blessing import BLESSING_ACTION_RECORD_TYPES
     from tarav.l2.project.programs import ProjectProgram
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.l2.models import ModelsWorkflow
@@ -409,6 +418,9 @@ def create_runtime(
                 *PROJECT_RUNNER_RECORD_TYPES,
                 TaravProgram,
                 ProjectProgram,
+                *OPERATOR_CONTEXT_RECORD_TYPES,
+                *ACTION_RECORD_TYPES,
+                *BLESSING_ACTION_RECORD_TYPES,
                 *POI_RECORD_TYPES,
                 *POI_TRACKING_RECORD_TYPES,
                 *BLESSING_RECORD_TYPES,
@@ -482,6 +494,8 @@ def create_runtime(
         PythonWorkflow,
         ProgramsWorkflow,
         AgentsWorkflow,
+        OperatorContextWorkflow,
+        ActionsWorkflow,
         ContextWorkflow,
         ChatlasWorkflow,
         ReferenceWorkflow,

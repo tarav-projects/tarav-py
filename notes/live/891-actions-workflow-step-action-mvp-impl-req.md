@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready.
+Status: implemented.
 
 A minimal viable Actions workflow: a base Action Type, a Step action (an
 opening test, the agent's work, closing tests), the action run as a recorded
@@ -164,7 +164,7 @@ action.
 Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 `operator-context.md`, `programs.md`, `poi-system.md`, `daily/2026-10-09.md`.
 Supporting session: `claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a`.
-Capture status: pending.
+Capture status: done (`operator-context.md` section, daily note).
 
 ## Execution.Plan
 
@@ -180,3 +180,62 @@ Capture status: pending.
    capture of the discussion since the last pass; completion commits.
 
 ## Impl.Log
+
+- Design committed as `b900f88`, also the start checkpoint for this request's
+  files, which are all new except `src/tarav/l3/runtime.py`, `pyproject.toml`
+  and `ARCHITECTURE.md`; those three already held other agents' uncommitted
+  edits and only this request's lines are committed from them.
+- Slice 1, `tarav.l1.operator_context`: `OperatorContextWorkflow`,
+  `OperatorContext` (id, creation time, optional `project` and `session`,
+  open fields for subtypes), `Intake`, `OperatorContextStore` over the
+  workflow's Record Registry partition (`put`, `names`, `load`, `take`).
+  Placing an unchanged object makes no commit.
+- Slice 2, `tarav.l1.actions`: `ActionsWorkflow`, `Action`, `SkillLink`,
+  `StepAction`, `ActionRun`, `ActionRunStore`, explicit `register_action`,
+  and `StepRunner` with `start`, `operate`, `close` and `abort`. Each command
+  takes the input again and records its hash and record in the run; sessions
+  are appended when a new one works on the run.
+- Slice 3, `tarav.l2.actions.blessing` (root `BlessingAction`,
+  `BlessedThroughAction`, the opening and closing checks with one POI Type per
+  finding, `UnharnessedBlessingCheck`) and `tarav.l2.tests.actions`
+  (`ActionsTestsWorkflow`, `TestMarkerCheck`, `TestMarkerPOI`,
+  `TestBlessingInput`, `TestBlessingAction`).
+- Slice 4, commands `tarav operator-context put|show|list` and
+  `tarav action types|start|do|close|abort|show|list`, all with keyed options
+  and `--registry`; workflows, Record Types and the test action registered in
+  `tarav.l3.runtime`.
+- Tests: `tests/test_actions_workflow.py` (6 tests: Operator Context, a
+  generic Step, abort, sessions) and `tests/test_actions_blessing.py` (4
+  tests: the blessing loop on the test workflow), both in `testpaths`. Full
+  suite 261 passed in the shared worktree; Ruff clean.
+- Live trial through the installed CLI against a temporary registry and
+  workspace, in this Claude Code session: input placed with a Project; run
+  started (opening passed, welcome names the skill module); `bless` refused
+  without a rationale; `close` refused with `Tarav.Actions.Blessing.NotMadeInRun`
+  and the run still running; rationale added with `put --id`; `bless` wrote the
+  blessing with the session as actor and the run as support; `close` passed
+  with the output; the run's intakes show two hashes; both registry partitions
+  are Git repositories with one commit per transition. Nothing was written to
+  `~/Documents/tarav/records/`.
+- Defect found in the trial and fixed with a test: placing the same object
+  twice failed on an empty commit.
+- Skill module `tarav-md/skills/tarav-pkg/references/step-actions.md`, listed
+  in the package skill; `ARCHITECTURE.md` paragraph.
+- Product Breadcrumbs: 3 in `l1/operator_context/__init__.py`, 1 in its
+  commands, 5 in `l1/actions/__init__.py`, 1 in its commands, 4 in
+  `l2/actions/blessing.py`, 1 in `l2/tests/actions.py`, 1 in `l3/runtime.py`,
+  5 in the test file, 2 in `ARCHITECTURE.md`, 3 in the skill module; audits
+  clean after refreshing moved labels.
+- Not done, by scope: no Project check for open runs; the skill link is not
+  verified; no blessing action for real Projects; Programs untouched.
+- Commit boundary. `src/tarav/l2/tests/` (the test workflows package) is
+  another agent's uncommitted work; HEAD still has `tarav.l2.test_workflow`.
+  The committed part therefore holds everything that stands on HEAD: the two
+  workflows, the blessing bundle, the commands, their runtime registration,
+  `tests/test_actions_workflow.py`, `ARCHITECTURE.md`. It was verified on a
+  clean export of the commit: its 6 tests, the architecture, checks and agents
+  tests (60) pass and Ruff is clean. Left uncommitted in the worktree until
+  that package lands: `src/tarav/l2/tests/actions.py`,
+  `tests/test_actions_blessing.py`, its `testpaths` line, and the runtime lines
+  that register `ActionsTestsWorkflow`, `TestBlessingInput` and
+  `TestBlessingAction`.

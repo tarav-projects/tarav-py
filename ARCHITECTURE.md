@@ -452,6 +452,20 @@ loading. This bootstrap deliberately leaves Project attachment, runs, lifecycle,
 checks and derivation undefined; package placement does not imply an attachment
 schema or an additional Workflow identity.
 
+`tarav.l1.operator_context` declares `OperatorContextWorkflow`: the standard
+place where an operator puts the typed objects it hands to other workflows.
+`OperatorContext` is the base Record Type and `OperatorContextStore.take()`
+gives a consumer the object with the hash of the record it read. `tarav.l1.actions`
+declares `ActionsWorkflow`: the near-empty `Action` root, `StepAction` (an
+opening test, operations, closing tests, an output), the recorded `ActionRun`
+and `StepRunner`, which takes every input from the Operator Context. Both keep
+their Records in their own Record Registry partitions, outside any Project.
+Action Types are made startable by explicit `register_action()`; the runtime
+registers them. `tarav.l2.actions.blessing` is the bundle that puts blessing
+under an Action. Programs and Actions are not yet related in code.
+<!-- tarav.breadcrumb 9ee4d9dcc84f3fe51b675d28058a032060fb73abc4cc794542649b33aec1eb74 -->
+<!-- tarav.breadcrumb 2d9d5a81415b516dd8e6f4906bdb3917d37b71ca15ceb895eef1ff8f02d4ce1f -->
+
 | Package | Architectural responsibility |
 | --- | --- |
 | `agent` | AgentsWorkflow. Provider-neutral agent, account, session, and monitoring behavior; concrete providers (Claude Code, Codex, Copilot) live below `agent.providers`. `agent.current_session` names the running agent's session through the adapters that inherit `ReportsCurrentSession`. |
