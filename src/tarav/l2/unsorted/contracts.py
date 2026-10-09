@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 5a32dd5b546e0507abdc5dac5302cc2c51a8a31283f247e57d2aabfbaca85d13
+
 from pydantic import ConfigDict
 from tarav.l2.unsorted.primitives import DiagramModelError
 from pydantic import Field
@@ -10,7 +12,7 @@ from pydantic import JsonValue
 from tarav.l0.kernel import TaravAssertion
 from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TaravObject
-from tarav.l1.poi import POI
+from tarav.l2.unsorted.pois import DiagramPOI
 from tarav.l0.kernel import TypeShip
 from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.l2.unsorted.constants import VERBATIM_GATE_TYPE
@@ -29,33 +31,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from collections.abc import Mapping
     from tarav.l2.unsorted.records import TypedAnnotation
-
-@dataclass(frozen=True, slots=True)
-class Finding(POI):
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('d220cb8c-c05f-493c-8190-21117e2d4f7a'),
-            name='Tarav.Diagram.Finding',
-            workflow=UNSORTED_WORKFLOW_SHIP,
-        )
-
-    code: str
-    path: str
-    message: str
-
-    def to_dict(self) -> JsonObject:
-        return {
-            "type": "Tarav.Diagram.Finding",
-            "code": self.code,
-            "path": self.path,
-            "message": self.message,
-        }
-
-    def as_dict(self) -> JsonObject:
-        return self.to_dict()
-
 
 class ChatlasTurnReferenceInterface(TaravObject.RecordInterface):
     model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
@@ -100,7 +75,7 @@ class GateAssessment:
     target_edition_id: str
     gate: VerbatimGate
     scores: JsonObject
-    findings: tuple[Finding, ...]
+    pois: tuple[DiagramPOI, ...]
 
     @property
     def standing(self) -> str:
@@ -118,7 +93,7 @@ class GateAssessment:
             "gate": self.gate.to_dict(),
             "standing": self.standing,
             "scores": dict(self.scores),
-            "findings": [item.to_dict() for item in self.findings],
+            "pois": [item.to_dict() for item in self.pois],
         }
 
 
@@ -127,14 +102,14 @@ class LineReview:
     line_ship: str
     standing: str
     assessments: tuple[GateAssessment, ...]
-    findings: tuple[Finding, ...]
+    pois: tuple[DiagramPOI, ...]
 
     def to_dict(self) -> JsonObject:
         return {
             "line_ship": self.line_ship,
             "standing": self.standing,
             "assessments": [item.to_dict() for item in self.assessments],
-            "findings": [item.to_dict() for item in self.findings],
+            "pois": [item.to_dict() for item in self.pois],
         }
 
 
@@ -144,7 +119,7 @@ class IssueAssessment:
     state: str
     resolution_line_ships: tuple[str, ...]
     gate_assessments: tuple[GateAssessment, ...]
-    findings: tuple[Finding, ...]
+    pois: tuple[DiagramPOI, ...]
 
     def to_dict(self) -> JsonObject:
         return {
@@ -152,7 +127,7 @@ class IssueAssessment:
             "state": self.state,
             "resolution_line_ships": list(self.resolution_line_ships),
             "gate_assessments": [item.to_dict() for item in self.gate_assessments],
-            "findings": [item.to_dict() for item in self.findings],
+            "pois": [item.to_dict() for item in self.pois],
         }
 
 
@@ -279,9 +254,9 @@ def _dedupe_object_assertions(
     return tuple({item.id: item for item in assertions}.values())
 
 
-def _dedupe_findings(findings: Iterable[Finding]) -> tuple[Finding, ...]:
+def _dedupe_pois(pois: Iterable[DiagramPOI]) -> tuple[DiagramPOI, ...]:
     return tuple(
-        {(item.code, item.path, item.message): item for item in findings}.values()
+        {item.identity: item for item in pois}.values()
     )
 
 

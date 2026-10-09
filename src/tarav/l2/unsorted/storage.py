@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb cbe0cddbcaf7ed5b6704d618b99ae2033ab6ca3c52efff29e9a368aa773691da
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from tarav.l2.unsorted.assessment import AssertionEngine
 from tarav.l2.unsorted.constants import CHATLAS_INDEX_ANNOTATION_TYPES
 from tarav.l2.lines.records import CHATLAS_INDEX_EDITION_RECORD_TYPES
@@ -24,7 +28,7 @@ from tarav.l2.unsorted.primitives import DiagramModelError
 from tarav.l2.lines.projection import DiagramProjectionBuilder
 from tarav.l2.unsorted.records import DiagramShip
 from tarav.l2.unsorted.primitives import DiagramShipSpecializationError
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI
 from tarav.l2.unsorted.constants import IMPL_REQ_BLOCK_OBJECT_TYPE
 from tarav.l2.unsorted.constants import IMPL_REQ_COLLECTION_OBJECT_TYPE
 from tarav.l2.unsorted.constants import ISSUE_BLOCK_OBJECT_TYPE
@@ -426,14 +430,14 @@ class DiagramNamespace:
                 f"Annotation {annotation.id} cannot be specialized as {annotation.type}: {exc}"
             ) from exc
 
-    def findings(
+    def pois(
         self,
         annotation: DiagramAnnotation,
         *,
         path: str,
         evidence: ChatlasEvidence | None = None,
-    ) -> tuple[Finding, ...]:
-        findings: list[Finding] = []
+    ) -> tuple[DiagramPOI, ...]:
+        pois: list[DiagramPOI] = []
         built_in_chatlas_types = set(
             (*CHATLAS_INDEX_EDITION_TYPES, *CHATLAS_INDEX_ANNOTATION_TYPES)
         )
@@ -442,63 +446,45 @@ class DiagramNamespace:
             and annotation.type in built_in_chatlas_types
         )
         if self.allowed_annotation_types and not allowed:
-            findings.append(
-                Finding(
-                    "annotation-type-not-allowed",
-                    f"{path}.type",
-                    f"Namespace {self.name} does not allow Annotation type {annotation.type}.",
-                )
+            pois.append(
+                diagram_pois.AnnotationAnnotationTypeNotAllowed(path=f'{path}.type', message=f'Namespace {self.name} does not allow Annotation type {annotation.type}.')
             )
         try:
             typed = self.specialize(annotation)
         except DiagramAnnotationSpecializationError as exc:
-            findings.append(
-                Finding(
-                    "annotation-specialization-unavailable", f"{path}.type", str(exc)
-                )
+            pois.append(
+                diagram_pois.AnnotationAnnotationSpecializationUnavailable(path=f'{path}.type', message=str(exc), evidence={"error": str(exc)})
             )
-            return tuple(findings)
+            return tuple(pois)
         if isinstance(typed, UserTouchedAnnotation):
             if not typed.support:
-                findings.append(
-                    Finding(
-                        "empty-support-set",
-                        f"{path}.support",
-                        "Annotation has no rooted User.Turn support.",
-                    )
+                pois.append(
+                    diagram_pois.AnnotationEmptySupportSet(path=f'{path}.support', message='Annotation has no rooted User.Turn support.')
                 )
             if evidence is not None:
-                findings.extend(evidence.check(typed, path=path))
-            findings.append(
-                Finding(
-                    "archive-grounding-unassessable",
-                    path,
-                    "Chatlas-to-Archive grounding is not yet mechanically assessable.",
-                )
+                pois.extend(evidence.check(typed, path=path))
+            pois.append(
+                diagram_pois.AnnotationArchiveGroundingUnassessable(path=path, message='Chatlas-to-Archive grounding is not yet mechanically assessable.')
             )
-        findings.extend(typed.type_findings(path=path, evidence=evidence))
+        pois.extend(typed.type_pois(path=path, evidence=evidence))
         assessment_path = (
             f"{path}.editions[-1]" if isinstance(typed, LineAnnotationRecord) else path
         )
         assessment = self.assertion_engine(evidence=evidence).assess(
             typed, path=assessment_path
         )
-        findings.extend(assessment.findings)
+        pois.extend(assessment.pois)
         if assessment.standing == "UnAsserted":
-            findings.append(
-                Finding(
-                    "semantic-record-unasserted",
-                    path,
-                    "The semantic record is missing one or more required Assertion scores.",
-                )
+            pois.append(
+                diagram_pois.AnnotationSemanticRecordUnasserted(path=path, message='The semantic record is missing one or more required Assertion scores.')
             )
-        return tuple(findings)
+        return tuple(pois)
 
     def append(
         self,
         drafts: Iterable[ShipDraftInterface | AnnotationDraftInterface],
         *,
-        findings: Iterable[Finding] = (),
+        pois: Iterable[DiagramPOI] = (),
         message: str = "diagram: append annotations",
         commit: bool = True,
     ) -> CaptureReceipt:
@@ -512,7 +498,7 @@ class DiagramNamespace:
         return self._write_records(
             ship_drafts,
             annotation_drafts,
-            findings=findings,
+            pois=pois,
             message=message,
             commit=commit,
         )
@@ -522,7 +508,7 @@ class DiagramNamespace:
         ships: Iterable[ShipDraftInterface],
         annotations: Iterable[AnnotationDraftInterface],
         *,
-        findings: Iterable[Finding] = (),
+        pois: Iterable[DiagramPOI] = (),
         message: str,
         commit: bool,
     ) -> CaptureReceipt:
@@ -621,7 +607,7 @@ class DiagramNamespace:
             self.id,
             tuple(created),
             tuple(existing),
-            tuple(findings),
+            tuple(pois),
             committed,
             base_commit,
             _run_git(self.root, "rev-parse", "HEAD") if committed else None,
@@ -708,7 +694,7 @@ class DiagramNamespace:
         return self._write_records(
             ship_drafts,
             annotation_drafts,
-            findings=manifest.check(self, evidence=evidence),
+            pois=manifest.check(self, evidence=evidence),
             message=f"diagram(capture): apply {count} record(s)",
             commit=commit,
         )
@@ -834,24 +820,20 @@ class DiagramNamespace:
             if isinstance(item, (LineEditionRecord, LineGateAnnotation))
             for gate_assessment in engine.assess(item).gate_assessments
         )
-        findings = tuple(
-            finding for assessment in assessments for finding in assessment.findings
+        pois = tuple(
+            poi for assessment in assessments for poi in assessment.pois
         )
         reviewed = any(item.standing == "Passed" for item in assessments)
         if not reviewed:
-            findings = (
-                *findings,
-                Finding(
-                    "line-unreviewed",
-                    f"line.{ship}",
-                    "Line ship has no Annotation with a passing Verbatim.Gate.",
-                ),
+            pois = (
+                *pois,
+                diagram_pois.LineUnreviewed(path=f'line.{ship}', message='Line ship has no Annotation with a passing Verbatim.Gate.'),
             )
         return LineReview(
             ship,
             "Reviewed" if reviewed else "Unreviewed",
             assessments,
-            findings,
+            pois,
         )
 
 
@@ -982,11 +964,11 @@ class Diagram:
     ) -> AssertionEngine:
         return AssertionEngine(evidence=evidence)
 
-    def object_type_definition_findings(
+    def object_type_definition_pois(
         self, registry: DiagramObjectTypeRegistry | None = None
-    ) -> tuple[Finding, ...]:
+    ) -> tuple[DiagramPOI, ...]:
         active_registry = registry or default_diagram_object_types()
-        return active_registry.definition_findings(self.projected_block)
+        return active_registry.definition_pois(self.projected_block)
 
     def annotation(
         self, annotation_id: str, *, namespace: str | None = None

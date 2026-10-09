@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb df1304bf6669d2268c8ff64c8ac6f14c581cfc3dd90008d74abeb2eabe60ccb1
+
 from collections.abc import Iterable
 from dataclasses import dataclass
 import json
@@ -17,7 +19,7 @@ from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
 
-from tarav.l2.unsorted.contracts import AnnotationDraftInterface, Finding, ShipDraftInterface
+from tarav.l2.unsorted.contracts import AnnotationDraftInterface, DiagramPOI, ShipDraftInterface
 from tarav.l2.unsorted.capture import CaptureManifest, CaptureReceipt
 from tarav.l2.unsorted.evidence import ChatlasEvidence
 from tarav.l2.unsorted.constants import DIAGRAM_DRAFT_TYPE
@@ -25,7 +27,7 @@ from tarav.l2.unsorted.storage import Diagram
 from tarav.l2.unsorted.primitives import DiagramError
 
 
-DRAFT_SCHEMA_VERSION = 1
+DRAFT_SCHEMA_VERSION = 2
 JsonObject = dict[str, Any]
 
 
@@ -64,7 +66,9 @@ class DiagramDraft(TaravObject):
             if self.type != DIAGRAM_DRAFT_TYPE:
                 raise DiagramDraftError("Unsupported Diagram.Draft Type")
             if self.schema_version != DRAFT_SCHEMA_VERSION:
-                raise DiagramDraftError("Unsupported Diagram.Draft schema")
+                raise DiagramDraftError(
+                    "Unsupported Diagram.Draft schema; run tarav diagram draft migrate --to 2"
+                )
             _uuid(self.id, field="Diagram.Draft.id")
             _uuid(self.model_ship, field="Diagram.Draft.model_ship")
             if self.status not in {"Open", "Applied"}:
@@ -145,7 +149,7 @@ class DiagramDraft(TaravObject):
 
     def check(
         self, diagram: Diagram, *, evidence: ChatlasEvidence | None = None
-    ) -> tuple[Finding, ...]:
+    ) -> tuple[DiagramPOI, ...]:
         model = diagram.model(self.model_ship)
         return self.manifest().check(model.namespace, evidence=evidence)
 

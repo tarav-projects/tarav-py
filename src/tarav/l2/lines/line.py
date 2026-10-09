@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 1971b7f26c84defa5ee933ec78260722e70556090baaaee36f33cc564e0cfc7c
+
 from tarav.l2.unsorted.contracts import _object_assertions
 from dataclasses import dataclass
 import re
@@ -10,7 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from tarav.l2.lines.types import DiagramLineType
     from tarav.l2.unsorted.contracts import DiagramObjectAssertion
-    from tarav.l2.unsorted.contracts import Finding
+    from tarav.l2.unsorted.pois import DiagramPOI
     from collections.abc import Iterable
     from tarav.l2.lines.records import LineEditionRecord
     from tarav.l2.unsorted.records import TypedAnnotation
@@ -64,7 +66,7 @@ class DiagramLineShip:
     annotations: tuple[TypedAnnotation, ...]
     editions: tuple[DiagramLineEdition, ...]
     type_ids: tuple[str, ...]
-    findings: tuple[Finding, ...]
+    pois: tuple[DiagramPOI, ...]
 
     @property
     def object_type(self) -> str | None:

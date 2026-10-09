@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 3b8dce4fa0a2b580a9e42b270d0d1e9fb1cf030531a0349754eb288d9fec2da7
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from tarav.l2.unsorted.primitives import DiagramError
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI
 from tarav.l1.chatlas.normal_model import provide_normal_model
 from tarav.l1.chatlas.normal_model import resolve_chat_message_ref
 from tarav.l1.chatlas.normal_model import resolve_chat_turn_ref
@@ -54,42 +58,34 @@ class ChatlasEvidence:
         annotation: UserTouchedAnnotation | LineAnnotationRecord,
         *,
         path: str,
-    ) -> list[Finding]:
-        findings: list[Finding] = []
+    ) -> list[DiagramPOI]:
+        pois: list[DiagramPOI] = []
         producer = self._matched(
             annotation.producer,
             f"{path}.producer",
-            "producer-turn-unresolved",
-            findings,
+            diagram_pois.SupportProducerTurnUnresolved,
+            pois,
         )
         if producer is not None and producer.get("side") != "agent":
-            findings.append(
-                Finding(
-                    "producer-turn-not-agent",
-                    f"{path}.producer",
-                    "Annotation producer is not an Agent turn.",
-                )
+            pois.append(
+                diagram_pois.SupportProducerTurnNotAgent(path=f'{path}.producer', message='Annotation producer is not an Agent turn.')
             )
         for index, member in enumerate(annotation.support):
             member_path = f"{path}.support[{index}]"
             root_path = f"{member_path}.root"
             root = self._matched(
-                member.root, root_path, "support-root-unresolved", findings
+                member.root, root_path, diagram_pois.SupportRootUnresolved, pois
             )
             if root is not None and root.get("side") != "user":
-                findings.append(
-                    Finding(
-                        "support-root-not-user",
-                        root_path,
-                        "Support.Member root is not a User turn.",
-                    )
+                pois.append(
+                    diagram_pois.SupportRootNotUser(path=root_path, message='Support.Member root is not a User turn.')
                 )
             for neighbor_index, reference in enumerate(member.neighborhood):
                 self._matched(
                     reference,
                     f"{member_path}.neighborhood[{neighbor_index}]",
-                    "support-neighborhood-turn-unresolved",
-                    findings,
+                    diagram_pois.SupportNeighborhoodTurnUnresolved,
+                    pois,
                 )
             for reference in (member.root, *member.neighborhood):
                 if producer is None:
@@ -97,23 +93,15 @@ class ChatlasEvidence:
                 try:
                     available = self.was_available(annotation.producer, reference)
                 except (DiagramError, ValueError) as exc:
-                    findings.append(
-                        Finding(
-                            "support-context-unassessable",
-                            member_path,
-                            str(exc),
-                        )
+                    pois.append(
+                        diagram_pois.SupportContextUnassessable(path=member_path, message=str(exc), evidence={"error": str(exc)})
                     )
                     continue
                 if not available:
-                    findings.append(
-                        Finding(
-                            "support-not-in-producer-context",
-                            member_path,
-                            "Selected support content was not present before the Annotation producer turn.",
-                        )
+                    pois.append(
+                        diagram_pois.SupportNotInProducerContext(path=member_path, message='Selected support content was not present before the Annotation producer turn.')
                     )
-        return findings
+        return pois
 
     def was_available(
         self,
@@ -208,29 +196,28 @@ class ChatlasEvidence:
         self,
         ref: ChatlasTurnReferenceInterface,
         path: str,
-        code: str,
-        findings: list[Finding],
+        poi_type: type[DiagramPOI],
+        pois: list[DiagramPOI],
     ) -> JsonObject | None:
         try:
             resolved = self.resolve(ref)
         except Exception as exc:
-            findings.append(Finding(code, path, str(exc)))
+            pois.append(poi_type(path=path, message=str(exc), evidence={"error": str(exc)}))
             return None
         turn = resolved.get("turn")
         if resolved.get("standing") != "MATCHED" or not isinstance(turn, dict):
-            findings.append(
-                Finding(
-                    code,
-                    path,
-                    f"Chatlas Turn reference standing is {resolved.get('standing')}.",
+            pois.append(
+                poi_type(
+                    path=path,
+                    message=f"Chatlas Turn reference standing is {resolved.get('standing')}.",
                 )
             )
             return None
         return turn
 
     def _turn(self, ref: ChatlasTurnReferenceInterface) -> JsonObject:
-        findings: list[Finding] = []
-        turn = self._matched(ref, "reference", "turn-unresolved", findings)
+        pois: list[DiagramPOI] = []
+        turn = self._matched(ref, "reference", diagram_pois.SupportTurnUnresolved, pois)
         if turn is None:
-            raise DiagramError(findings[0].message)
+            raise DiagramError(pois[0].message)
         return turn

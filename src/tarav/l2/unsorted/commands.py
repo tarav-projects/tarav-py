@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 80a3fc11cbf05abab3ddcd94e3a2a11a6f7d5d7af418e0b2853c4dd3b5d40b42
+
 import argparse
 import json
 from pathlib import Path
@@ -23,6 +25,8 @@ from tarav.l2.lines.line import DiagramLineShip
 from tarav.l2.lines.rendering import DiagramRenderError, annotation_render_target, block_render_target, collection_render_target, line_render_target, model_render_target, renderer, renderers
 from .view_commands import register_view_commands
 from .draft_commands import register_draft_commands
+from .poi_cli import add_poi_options, render_pois
+from .pois import DiagramPOI
 
 
 def _diagram_configuration(
@@ -180,9 +184,9 @@ def _model_payload(model, *, diagram=None) -> dict[str, object]:
     object_types = model.namespace.object_types()
     object_types_payload = object_types.to_dict()
     if diagram is not None:
-        object_types_payload["findings"] = [
+        object_types_payload["pois"] = [
             item.to_dict()
-            for item in diagram.object_type_definition_findings(object_types)
+            for item in diagram.object_type_definition_pois(object_types)
         ]
     return {
         "ship": model.ship,
@@ -257,7 +261,7 @@ def _object_annotations(
 
 def _object_payload(
     item: DiagramBlock | DiagramLineShip | DiagramCollection, *, namespace
-) -> tuple[dict[str, object], tuple[dict[str, object], ...]]:
+) -> tuple[dict[str, object], tuple[DiagramPOI, ...]]:
     annotations = _object_annotations(item)
     engine = namespace.assertion_engine(evidence=None)
     assessments = tuple(engine.assess(annotation) for annotation in annotations)
@@ -272,28 +276,28 @@ def _object_payload(
         else (() if isinstance(item, DiagramCollection) else (item,))
     )
     reviews = tuple(namespace.line_review(line.ship, evidence=None) for line in lines)
-    findings = (
-        *item.findings,
+    pois = (
+        *item.pois,
         *(
-            tuple(finding for line in item.lines for finding in line.findings)
+            tuple(poi for line in item.lines for poi in line.pois)
             if isinstance(item, DiagramBlock)
             else ()
         ),
         *(
-            finding
+            poi
             for annotation in annotations
-            for finding in namespace.findings(
+            for poi in namespace.pois(
                 annotation.annotation,
                 path=f"annotation.{annotation.id}",
                 evidence=None,
             )
         ),
-        *(finding for review in reviews for finding in review.findings),
+        *(poi for review in reviews for poi in review.pois),
     )
-    unique_findings = tuple(
+    unique_pois = tuple(
         {
-            (finding.code, finding.path, finding.message): finding
-            for finding in findings
+            poi.identity: poi
+            for poi in pois
         }.values()
     )
     current_edition = item.current_edition
@@ -324,7 +328,7 @@ def _object_payload(
             "unreviewed_lines": sum(
                 review.standing != "Reviewed" for review in reviews
             ),
-            "findings": len(unique_findings),
+            "pois": len(unique_pois),
         },
     }
     if isinstance(item, (DiagramBlock, DiagramCollection)):
@@ -346,7 +350,7 @@ def _object_payload(
                 payload["state"] = item.state
     else:
         payload["block_ship"] = item.block_ship
-    return payload, tuple(finding.to_dict() for finding in unique_findings)
+    return payload, unique_pois
 
 
 def _cmd_diagram_object_list(args: argparse.Namespace) -> int:
@@ -363,18 +367,19 @@ def _cmd_diagram_object_list(args: argparse.Namespace) -> int:
         results = tuple(
             _object_payload(item, namespace=model.namespace) for item in objects
         )
-        object_payloads = tuple(payload for payload, _findings in results)
-        findings = tuple(
-            finding
-            for _payload, object_findings in results
-            for finding in object_findings
+        object_payloads = tuple(payload for payload, _pois in results)
+        pois = tuple(
+            poi
+            for _payload, object_pois in results
+            for poi in object_pois
         )
     except (DiagramError, DiagramModelError, ValueError) as exc:
         raise CliError(str(exc)) from exc
+    poi_text = render_pois(args, pois, title="Diagram object POIs", root=model.namespace.root)
     return _emit(
         args,
         {
-            "status": "poi" if findings else "ok",
+            "status": "poi" if pois else "ok",
             "command": "tarav diagram object list",
             "model": {
                 "ship": model.ship,
@@ -392,7 +397,7 @@ def _cmd_diagram_object_list(args: argparse.Namespace) -> int:
                 ),
             },
             "objects": list(object_payloads),
-            "findings": list(findings),
+            "pois": [poi.to_dict() for poi in pois],
         },
         tuple(
             "  ".join(
@@ -408,7 +413,7 @@ def _cmd_diagram_object_list(args: argparse.Namespace) -> int:
                 )
             )
             for payload in object_payloads
-        ),
+        ) + ((poi_text,) if poi_text else ()),
     )
 
 
@@ -537,22 +542,23 @@ def _cmd_diagram_capture_check(args: argparse.Namespace) -> int:
             .diagram()
             .model(manifest.model_ship)
         )
-        findings = manifest.check(model.namespace, evidence=_diagram_evidence(args))
+        pois = manifest.check(model.namespace, evidence=_diagram_evidence(args))
     except (DiagramError, DiagramModelError, ValueError) as exc:
         raise CliError(str(exc)) from exc
     payload = {
-        "status": "poi" if findings else "ok",
+        "status": "poi" if pois else "ok",
         "command": "tarav diagram capture check",
         "manifest": str(path),
-        "findings": [finding.to_dict() for finding in findings],
+        "pois": [poi.to_dict() for poi in pois],
     }
+    poi_text = render_pois(args, pois, title="Diagram capture POIs", root=model.namespace.root)
     return _emit(
         args,
         payload,
         (
             f"manifest: {path}",
-            f"findings: {len(findings)}",
-        ),
+            f"pois: {len(pois)}",
+        ) + ((poi_text,) if poi_text else ()),
     )
 
 
@@ -569,12 +575,14 @@ def _cmd_diagram_capture_apply(args: argparse.Namespace) -> int:
     except (DiagramError, DiagramModelError, ValueError) as exc:
         raise CliError(str(exc)) from exc
     payload = {
-        "status": "poi" if receipt.findings else "ok",
+        "status": "poi" if receipt.pois else "ok",
         "command": "tarav diagram capture apply",
         "namespace_id": receipt.namespace_id,
         "manifest": str(path),
         "receipt": receipt.records.to_record(),
     }
+    poi_text = render_pois(args, receipt.pois, title="Diagram capture POIs",
+                           root=diagram.namespace(receipt.namespace_id).root)
     return _emit(
         args,
         payload,
@@ -586,10 +594,10 @@ def _cmd_diagram_capture_apply(args: argparse.Namespace) -> int:
             f"existing editions: {len(receipt.existing_editions)}",
             f"created annotations: {len(receipt.created_annotations)}",
             f"existing annotations: {len(receipt.existing_annotations)}",
-            f"findings: {len(receipt.findings)}",
+            f"pois: {len(receipt.pois)}",
             f"committed: {'yes' if receipt.committed else 'no'}",
             f"commit: {receipt.commit or '-'}",
-        ),
+        ) + ((poi_text,) if poi_text else ()),
     )
 
 
@@ -986,6 +994,7 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_diagram_config_option(object_list)
     _add_json_option(object_list)
+    add_poi_options(object_list)
     object_list.set_defaults(handler=_cmd_diagram_object_list)
 
     capture = diagram_commands.add_parser(
@@ -1045,6 +1054,7 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_diagram_config_option(capture_check)
     _add_chatlas_root_option(capture_check)
     _add_json_option(capture_check)
+    add_poi_options(capture_check)
     capture_check.set_defaults(handler=_cmd_diagram_capture_check)
 
     capture_apply = capture_commands.add_parser(
@@ -1060,6 +1070,7 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_diagram_config_option(capture_apply)
     _add_chatlas_root_option(capture_apply)
     _add_json_option(capture_apply)
+    add_poi_options(capture_apply)
     capture_apply.set_defaults(handler=_cmd_diagram_capture_apply)
 
     ship = diagram_commands.add_parser("ship", help="Inspect semantic Ships.")

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb df0b5c99e50e194c37d02e1ffda580202fad44a0f2fa0f0a75c928a8dd7b0a9e
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from tarav.l2.unsorted.contracts import AnnotationDraftInterface
 from tarav.l2.lines.records import BlockShipRecord
 from tarav.l2.unsorted.constants import CAPTURE_AUTHORIZATION_GATE_TYPE
@@ -20,7 +24,7 @@ from tarav.l2.lines.references import DiagramHostReferenceInterface
 from tarav.l2.unsorted.primitives import DiagramModelError
 from tarav.l2.unsorted.records import DiagramShip
 from tarav.l2.unsorted.primitives import DiagramShipSpecializationError
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI, poi_from_dict
 from tarav.l2.unsorted.constants import JsonObject
 from tarav.l2.lines.records import LineAnnotationRecord
 from tarav.l2.lines.records import LineShipRecord
@@ -34,14 +38,13 @@ from tarav.l0.kernel import TypeShip
 from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 from tarav.l2.unsorted.primitives import _array
 from tarav.l2.unsorted.primitives import _authorization_gate_ids
-from tarav.l2.unsorted.contracts import _dedupe_findings
+from tarav.l2.unsorted.contracts import _dedupe_pois
 from tarav.l2.unsorted.primitives import _edition_id
 from tarav.l2.lines.records import _line_annotation_editions
 from tarav.l2.unsorted.primitives import _object
 from tarav.l2.unsorted.io import _read_json
 from tarav.l2.unsorted.primitives import _record_is
 from tarav.l2.unsorted.primitives import _record_is_any
-from tarav.l2.unsorted.primitives import _string
 from tarav.l2.unsorted.primitives import _uuid
 from tarav.l0.kernel import entity
 from pydantic import field_validator
@@ -138,28 +141,20 @@ class CaptureManifest(TaravObject):
 
     def check(
         self, namespace: DiagramNamespace, *, evidence: ChatlasEvidence | None = None
-    ) -> tuple[Finding, ...]:
-        findings: list[Finding] = []
+    ) -> tuple[DiagramPOI, ...]:
+        pois: list[DiagramPOI] = []
         seen: dict[str, JsonObject] = {}
         draft_annotations: list[DiagramAnnotation] = []
         seen_ships: dict[str, JsonObject] = {}
         for index, draft in enumerate(self.ship_drafts):
             path = f"ships[{index}]"
             if draft.id in seen_ships:
-                findings.append(
-                    Finding(
-                        "duplicate-ship-id",
-                        f"{path}.id",
-                        "Capture.Manifest repeats one Ship identity.",
-                    )
+                pois.append(
+                    diagram_pois.ManifestDuplicateShipId(path=f'{path}.id', message='Capture.Manifest repeats one Ship identity.')
                 )
                 if seen_ships[draft.id] != draft.record:
-                    findings.append(
-                        Finding(
-                            "ship-identity-rebound",
-                            f"{path}.id",
-                            "One Ship identity names incompatible content.",
-                        )
+                    pois.append(
+                        diagram_pois.ManifestShipIdentityRebound(path=f'{path}.id', message='One Ship identity names incompatible content.')
                     )
             seen_ships[draft.id] = draft.record
             ship = DiagramShip(draft.id, namespace, draft.record)
@@ -168,37 +163,29 @@ class CaptureManifest(TaravObject):
                 and ship.type in CHATLAS_INDEX_SHIP_TYPES
             )
             if namespace.allowed_ship_types and not allowed_ship:
-                findings.append(
-                    Finding(
-                        "ship-type-not-allowed",
-                        f"{path}.type",
-                        f"Namespace {namespace.name} does not allow Ship type {ship.type}.",
-                    )
+                pois.append(
+                    diagram_pois.ManifestShipTypeNotAllowed(path=f'{path}.type', message=f'Namespace {namespace.name} does not allow Ship type {ship.type}.')
                 )
             try:
                 typed_ship = ship.specialize()
             except DiagramShipSpecializationError as exc:
-                findings.append(
-                    Finding("ship-specialization-unavailable", f"{path}.type", str(exc))
+                pois.append(
+                    diagram_pois.ManifestShipSpecializationUnavailable(path=f'{path}.type', message=str(exc), evidence={"error": str(exc)})
                 )
                 continue
             if isinstance(
                 typed_ship, (BlockShipRecord, LineShipRecord, CollectionShipRecord)
             ):
                 if typed_ship.model_ship != self.model_ship:
-                    findings.append(
-                        Finding(
-                            "capture-model-mismatch",
-                            f"{path}.model_ship",
-                            "Ship is not located in the Capture.Manifest Model.",
-                        )
+                    pois.append(
+                        diagram_pois.ManifestCaptureModelMismatch(path=f'{path}.model_ship', message='Ship is not located in the Capture.Manifest Model.')
                     )
             draft_annotations.extend(typed_ship.edition_annotations())
             for edition_index, annotation in enumerate(
                 typed_ship.edition_annotations()
             ):
-                findings.extend(
-                    namespace.findings(
+                pois.extend(
+                    namespace.pois(
                         annotation,
                         path=f"{path}.editions[{edition_index}]",
                         evidence=evidence,
@@ -207,46 +194,30 @@ class CaptureManifest(TaravObject):
         for index, draft in enumerate(self.annotations):
             path = f"annotations[{index}]"
             if _record_is_any(draft.record, CHATLAS_INDEX_EDITION_RECORD_TYPES):
-                findings.append(
-                    Finding(
-                        "ship-edition-in-annotation-collection",
-                        f"{path}.type",
-                        "Ship editions belong in Capture.Manifest.ships, not annotations.",
-                    )
+                pois.append(
+                    diagram_pois.ManifestShipEditionInAnnotationCollection(path=f'{path}.type', message='Ship editions belong in Capture.Manifest.ships, not annotations.')
                 )
             if draft.id in seen:
-                findings.append(
-                    Finding(
-                        "duplicate-annotation-id",
-                        f"{path}.id",
-                        "Capture.Manifest repeats one Annotation identity.",
-                    )
+                pois.append(
+                    diagram_pois.ManifestDuplicateAnnotationId(path=f'{path}.id', message='Capture.Manifest repeats one Annotation identity.')
                 )
                 if seen[draft.id] != draft.record:
-                    findings.append(
-                        Finding(
-                            "annotation-identity-rebound",
-                            f"{path}.id",
-                            "One Annotation identity names different content.",
-                        )
+                    pois.append(
+                        diagram_pois.ManifestAnnotationIdentityRebound(path=f'{path}.id', message='One Annotation identity names different content.')
                     )
             seen[draft.id] = draft.record
             annotation = DiagramAnnotation(draft.id, namespace, draft.record)
             draft_annotations.append(annotation)
-            findings.extend(
-                namespace.findings(annotation, path=path, evidence=evidence)
+            pois.extend(
+                namespace.pois(annotation, path=path, evidence=evidence)
             )
             try:
                 model_location = annotation.specialize().model_location()
             except (DiagramError, DiagramModelError):
                 model_location = None
             if model_location is not None and model_location[0] != self.model_ship:
-                findings.append(
-                    Finding(
-                        "capture-model-mismatch",
-                        f"{path}.{model_location[1]}",
-                        "Annotation is not located in the Capture.Manifest Model.",
-                    )
+                pois.append(
+                    diagram_pois.ManifestCaptureModelMismatch(path=f'{path}.{model_location[1]}', message='Annotation is not located in the Capture.Manifest Model.')
                 )
         existing_gate_ids = {
             item.id
@@ -279,21 +250,13 @@ class CaptureManifest(TaravObject):
                         reference.kind == "collection"
                         and reference.id not in known_collection_ids
                     ):
-                        findings.append(
-                            Finding(
-                                "edition-host-unresolved",
-                                f"{path}.host",
-                                "Edition host Collection does not resolve.",
-                            )
+                        pois.append(
+                            diagram_pois.ManifestEditionHostUnresolved(path=f'{path}.host', message='Edition host Collection does not resolve.')
                         )
                 for gate_id in _authorization_gate_ids(edition):
                     if gate_id not in known_gate_ids:
-                        findings.append(
-                            Finding(
-                                "capture-authorization-gate-unresolved",
-                                f"{path}.authorization_gates",
-                                f"Capture.Authorization.Gate does not resolve: {gate_id}.",
-                            )
+                        pois.append(
+                            diagram_pois.CaptureAuthorizationGateUnresolved(path=f'{path}.authorization_gates', message=f'Capture.Authorization.Gate does not resolve: {gate_id}.')
                         )
         for index, draft in enumerate(self.annotations):
             records = (
@@ -307,25 +270,18 @@ class CaptureManifest(TaravObject):
                     path += f".editions[{record_index}]"
                 for gate_id in _authorization_gate_ids(record):
                     if gate_id not in known_gate_ids:
-                        findings.append(
-                            Finding(
-                                "capture-authorization-gate-unresolved",
-                                f"{path}.authorization_gates",
-                                (
-                                    "Capture.Authorization.Gate does not resolve: "
-                                    f"{gate_id}."
-                                ),
-                            )
+                        pois.append(
+                            diagram_pois.CaptureAuthorizationGateUnresolved(path=f'{path}.authorization_gates', message=f'Capture.Authorization.Gate does not resolve: {gate_id}.')
                         )
         projection = namespace.project(self.model_ship, extra=draft_annotations)
-        findings.extend(projection.findings)
+        pois.extend(projection.pois)
         assertion_engine = namespace.assertion_engine(evidence=evidence)
-        findings.extend(
-            finding
+        pois.extend(
+            poi
             for block in projection.blocks
-            for finding in block.mechanical_findings(assertion_engine)
+            for poi in block.mechanical_pois(assertion_engine)
         )
-        return _dedupe_findings(findings)
+        return _dedupe_pois(pois)
 
 
 class CaptureReceipt(TaravObject):
@@ -345,7 +301,7 @@ class CaptureReceipt(TaravObject):
         namespace_id: str
         created: list[str]
         existing: list[str]
-        findings: list[JsonObject]
+        pois: list[JsonObject]
         committed: bool
         base_commit: str
         commit: str | None
@@ -369,7 +325,7 @@ class CaptureReceipt(TaravObject):
         namespace_id: str,
         created: Iterable[str],
         existing: Iterable[str],
-        findings: Iterable[Finding],
+        pois: Iterable[DiagramPOI],
         committed: bool,
         base_commit: str,
         commit: str | None,
@@ -394,7 +350,7 @@ class CaptureReceipt(TaravObject):
                 "created_annotations": list(created_annotations),
                 "existing_annotations": list(existing_annotations),
                 "authorizations": [dict(item) for item in authorizations],
-                "findings": [item.to_dict() for item in findings],
+                "pois": [item.to_dict() for item in pois],
                 "committed": committed,
                 "base_commit": base_commit,
                 "commit": commit,
@@ -403,15 +359,8 @@ class CaptureReceipt(TaravObject):
 
     def __getattr__(self, name: str) -> object:
         data = self._data
-        if name == "findings":
-            return tuple(
-                Finding(
-                    _string(item.get("code"), field="Finding.code"),
-                    _string(item.get("path"), field="Finding.path"),
-                    _string(item.get("message"), field="Finding.message"),
-                )
-                for item in data.findings
-            )
+        if name == "pois":
+            return tuple(poi_from_dict(item) for item in data.pois)
         if name in type(data).model_fields:
             value = getattr(data, name)
             return tuple(value) if isinstance(value, list) else value

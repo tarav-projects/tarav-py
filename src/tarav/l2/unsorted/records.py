@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 21ce830ba2e73f3aef9b84d90138346fdeb393d5d01436c1a5c9a56dcbc0bd9f
+
 from tarav.l2.unsorted.constants import BLOCK_EDITION_TYPE
 from tarav.l2.unsorted.constants import BLOCK_SHIP_TYPE
 from tarav.l2.unsorted.constants import BLOCK_TYPE_ANNOTATION_TYPE
@@ -50,7 +52,7 @@ if TYPE_CHECKING:
     from tarav.l2.unsorted.evidence import ChatlasEvidence
     from tarav.l2.unsorted.storage import DiagramNamespace
     from tarav.l2.lines.projection import DiagramProjectionBuilder
-    from tarav.l2.unsorted.contracts import Finding
+    from tarav.l2.unsorted.pois import DiagramPOI
     from collections.abc import Iterable
     from tarav.l2.unsorted.constants import JsonObject
     from collections.abc import Mapping
@@ -372,12 +374,12 @@ class TypedAnnotation(FileRecord):
         value = self._record.get("score_vector", {})
         return value if isinstance(value, dict) else {}
 
-    def type_findings(
+    def type_pois(
         self,
         *,
         path: str,
         evidence: ChatlasEvidence | None,
-    ) -> tuple[Finding, ...]:
+    ) -> tuple[DiagramPOI, ...]:
         return ()
 
     def contribute(self, projector: DiagramProjectionBuilder) -> None:

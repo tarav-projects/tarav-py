@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 7c4699968f14f11ef881b62e25ccbef118f4c2168443dbf3c812ed4b173f4cbf
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from tarav.l2.unsorted.constants import DESIGN_BLOCK_OBJECT_TYPE
 from tarav.l2.unsorted.constants import DESIGN_BLOCK_TYPE_DEFINITION_BLOCK_SHIP
 from tarav.l2.unsorted.constants import DESIGN_LINE_CONSTRAINT_TYPE
@@ -37,7 +41,7 @@ from tarav.l2.lines.collection import DiagramCollection
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l2.lines.line import DiagramLineEdition
 from tarav.l2.lines.line import DiagramLineShip
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI
 from tarav.l2.unsorted.constants import IMPL_REQ_BLOCK_OBJECT_TYPE
 from tarav.l2.unsorted.constants import IMPL_REQ_BLOCK_TYPE_DEFINITION_BLOCK_SHIP
 from tarav.l2.unsorted.constants import IMPL_REQ_COLLECTION_OBJECT_TYPE
@@ -150,35 +154,24 @@ class DiagramObjectTypeRegistry:
             )
         )
 
-    def definition_findings(
+    def definition_pois(
         self, resolve_block: Callable[[str], object]
-    ) -> tuple[Finding, ...]:
-        findings: list[Finding] = []
+    ) -> tuple[DiagramPOI, ...]:
+        pois: list[DiagramPOI] = []
         for object_type in self.types():
             path = f"object_type.{object_type.id}.definition_block_ship"
             if object_type.definition_block_ship is None:
-                findings.append(
-                    Finding(
-                        "object-type-definition-block-missing",
-                        path,
-                        f"Object.Type {object_type.id} has no Definition.Block.",
-                    )
+                pois.append(
+                    diagram_pois.ObjectTypeDefinitionBlockMissing(path=path, message=f'Object.Type {object_type.id} has no Definition.Block.')
                 )
                 continue
             try:
                 resolve_block(object_type.definition_block_ship)
             except DiagramError:
-                findings.append(
-                    Finding(
-                        "object-type-definition-block-unresolved",
-                        path,
-                        (
-                            f"Definition.Block does not resolve for Object.Type "
-                            f"{object_type.id}: {object_type.definition_block_ship}."
-                        ),
-                    )
+                pois.append(
+                    diagram_pois.ObjectTypeDefinitionBlockUnresolved(path=path, message=f'Definition.Block does not resolve for Object.Type {object_type.id}: {object_type.definition_block_ship}.')
                 )
-        return tuple(findings)
+        return tuple(pois)
 
     def to_dict(self) -> JsonObject:
         return {

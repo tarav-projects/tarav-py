@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 34fe781aec928e9ed7597e6e338c9dc21cae3b57d481abbd7d760061c9264a92
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from tarav.l2.lines.records import BlockEditionRecord
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI
 from tarav.l2.unsorted.contracts import IssueAssessment
 from tarav.l2.lines.line import IssueResolveLineShip
 from tarav.l2.lines.records import LineEditionRecord
 from tarav.l2.lines.records import LineGateAnnotation
-from tarav.l2.unsorted.contracts import _dedupe_findings
+from tarav.l2.unsorted.contracts import _dedupe_pois
 from tarav.l2.unsorted.contracts import _dedupe_object_assertions
 from tarav.l2.unsorted.contracts import _object_assertions
 from dataclasses import dataclass
@@ -28,7 +32,7 @@ class DiagramBlock:
     annotations: tuple[TypedAnnotation, ...]
     lines: tuple[DiagramLineShip, ...]
     type_ids: tuple[str, ...]
-    findings: tuple[Finding, ...]
+    pois: tuple[DiagramPOI, ...]
 
     @property
     def object_type(self) -> str | None:
@@ -85,9 +89,9 @@ class DiagramBlock:
 
         return ("collapsed", "lines", "support", "deep-support")
 
-    def mechanical_findings(
+    def mechanical_pois(
         self, assertion_engine: AssertionEngine
-    ) -> tuple[Finding, ...]:
+    ) -> tuple[DiagramPOI, ...]:
         return ()
 
 
@@ -112,27 +116,23 @@ class IssueBlock(DiagramBlock):
             for gate_assessment in assertion_engine.assess(annotation).gate_assessments
         )
         closed = any(item.standing == "Passed" for item in assessments)
-        findings = tuple(
-            finding for assessment in assessments for finding in assessment.findings
+        pois = tuple(
+            poi for assessment in assessments for poi in assessment.pois
         )
         if not closed:
-            findings = (
-                *findings,
-                Finding(
-                    "issue-open",
-                    f"block.{self.ship}",
-                    "Issue.Block has no reviewed Issue.Line.Resolve with a passing Verbatim.Gate.",
-                ),
+            pois = (
+                *pois,
+                diagram_pois.BlockIssueOpen(path=f'block.{self.ship}', message='Issue.Block has no reviewed Issue.Line.Resolve with a passing Verbatim.Gate.'),
             )
         return IssueAssessment(
             self.ship,
             "Closed" if closed else "Open",
             tuple(line.ship for line in resolution_lines),
             assessments,
-            _dedupe_findings(findings),
+            _dedupe_pois(pois),
         )
 
-    def mechanical_findings(
+    def mechanical_pois(
         self, assertion_engine: AssertionEngine
-    ) -> tuple[Finding, ...]:
-        return self.assess(assertion_engine).findings
+    ) -> tuple[DiagramPOI, ...]:
+        return self.assess(assertion_engine).pois

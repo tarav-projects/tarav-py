@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 678644e7831da103fbe470b27b57d13f069b13672e8b84ccd7638031153582ee
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from tarav.l2.lines.records import BlockEditionRecord
 from tarav.l2.lines.records import BlockTypeAnnotation
 from tarav.l2.lines.records import CollectionEditionRecord
@@ -13,11 +17,11 @@ from tarav.l2.lines.collection import DiagramCollection
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l2.lines.collection import DiagramHostedEdition
 from tarav.l2.unsorted.primitives import DiagramModelError
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI
 from tarav.l2.lines.collection import ImplReqCollection
 from tarav.l2.lines.records import LineEditionRecord
 from tarav.l2.lines.records import LineTypeAnnotation
-from tarav.l2.unsorted.contracts import _dedupe_findings
+from tarav.l2.unsorted.contracts import _dedupe_pois
 from tarav.l2.unsorted.primitives import _edition_id
 from tarav.l2.unsorted.primitives import _optional_timestamp
 from tarav.l2.unsorted.records import _sort_typed
@@ -41,7 +45,7 @@ class DiagramProjection:
     namespace_id: str
     blocks: tuple[DiagramBlock, ...]
     collections: tuple[DiagramCollection, ...]
-    findings: tuple[Finding, ...]
+    pois: tuple[DiagramPOI, ...]
 
     def block(self, block_ship: str) -> DiagramBlock:
         matches = tuple(item for item in self.blocks if item.ship == block_ship)
@@ -175,7 +179,7 @@ class DiagramProjection:
                 }
                 for collection in self.collections
             ],
-            "findings": [item.to_dict() for item in self.findings],
+            "pois": [item.to_dict() for item in self.pois],
         }
 
 
@@ -198,7 +202,7 @@ class DiagramProjectionBuilder:
         self.block_annotations: dict[str, list[TypedAnnotation]] = {}
         self.line_annotations: dict[tuple[str, str], list[TypedAnnotation]] = {}
         self.collection_editions: dict[str, list[CollectionEditionRecord]] = {}
-        self.findings: list[Finding] = []
+        self.pois: list[DiagramPOI] = []
 
     def add_collection_edition(self, edition: CollectionEditionRecord) -> None:
         self.collection_editions.setdefault(edition.collection_ship, []).append(edition)
@@ -229,12 +233,8 @@ class DiagramProjectionBuilder:
             except (DiagramError, DiagramModelError):
                 target = None
         if not isinstance(target, LineEditionRecord):
-            self.findings.append(
-                Finding(
-                    "line-gate-target-unresolved",
-                    f"annotation.{annotation.id}.target_edition",
-                    "Line Gate target does not resolve to a Line Edition.",
-                )
+            self.pois.append(
+                diagram_pois.VerbatimGateLineGateTargetUnresolved(path=f'annotation.{annotation.id}.target_edition', message='Line Gate target does not resolve to a Line Edition.')
             )
             return
         location = target.location
@@ -252,29 +252,29 @@ class DiagramProjectionBuilder:
             block for ship in block_ships if (block := self._block(ship)) is not None
         )
         collections = tuple(self._collection(ship) for ship in self.collection_editions)
-        self.findings.extend(self._collection_cycle_findings(collections))
-        findings = _dedupe_findings(
+        self.pois.extend(self._collection_cycle_pois(collections))
+        pois = _dedupe_pois(
             (
-                *self.findings,
-                *(finding for block in blocks for finding in block.findings),
+                *self.pois,
+                *(poi for block in blocks for poi in block.pois),
                 *(
-                    finding
+                    poi
                     for collection in collections
-                    for finding in (
-                        *collection.findings,
-                        *collection.mechanical_findings(),
+                    for poi in (
+                        *collection.pois,
+                        *collection.mechanical_pois(),
                     )
                 ),
                 *(
-                    finding
+                    poi
                     for block in blocks
                     for line in block.lines
-                    for finding in line.findings
+                    for poi in line.pois
                 ),
             )
         )
         return DiagramProjection(
-            self.model_ship, self.namespace.id, blocks, collections, findings
+            self.model_ship, self.namespace.id, blocks, collections, pois
         )
 
     def _ordered_ship_editions(
@@ -316,7 +316,7 @@ class DiagramProjectionBuilder:
         type_annotations = tuple(
             item for item in annotations if isinstance(item, BlockTypeAnnotation)
         )
-        findings: list[Finding] = []
+        pois: list[DiagramPOI] = []
         type_ids = tuple(
             dict.fromkeys(
                 item.block_type
@@ -325,30 +325,18 @@ class DiagramProjectionBuilder:
             )
         )
         if not declarations:
-            findings.append(
-                Finding(
-                    "block-declaration-missing",
-                    f"block.{ship}",
-                    "Lines name a Block Ship with no Block Edition.",
-                )
+            pois.append(
+                diagram_pois.BlockDeclarationMissing(path=f'block.{ship}', message='Lines name a Block Ship with no Block Edition.')
             )
         if declarations and not type_ids and self.namespace.require_block_type:
-            findings.append(
-                Finding(
-                    "block-type-missing",
-                    f"block.{ship}",
-                    "Block Editions do not retain a Block.Type.",
-                )
+            pois.append(
+                diagram_pois.BlockTypeMissing(path=f'block.{ship}', message='Block Editions do not retain a Block.Type.')
             )
         selected_id = type_ids[-1] if type_ids else DIAGRAM_BLOCK_OBJECT_TYPE
         block_type = self.registry.block_type(selected_id)
         if block_type is None:
-            findings.append(
-                Finding(
-                    "block-type-unknown",
-                    f"block.{ship}.block_type",
-                    f"Block.Type is not registered: {selected_id}.",
-                )
+            pois.append(
+                diagram_pois.BlockTypeUnknown(path=f'block.{ship}.block_type', message=f'Block.Type is not registered: {selected_id}.')
             )
             block_type = self.registry.block_type(DIAGRAM_BLOCK_OBJECT_TYPE)
         if (
@@ -356,12 +344,8 @@ class DiagramProjectionBuilder:
             and self.namespace.allowed_block_types
             and selected_id not in self.namespace.allowed_block_types
         ):
-            findings.append(
-                Finding(
-                    "block-type-not-allowed",
-                    f"block.{ship}.block_type",
-                    f"Namespace {self.namespace.name} does not allow Block.Type {selected_id}.",
-                )
+            pois.append(
+                diagram_pois.BlockTypeNotAllowed(path=f'block.{ship}.block_type', message=f'Namespace {self.namespace.name} does not allow Block.Type {selected_id}.')
             )
         assert block_type is not None
         lines = tuple(
@@ -376,7 +360,7 @@ class DiagramProjectionBuilder:
             annotations,
             lines,
             type_ids,
-            tuple(findings),
+            tuple(pois),
         )
 
     def _line(
@@ -394,10 +378,10 @@ class DiagramProjectionBuilder:
         )
         if not wordings:
             if all_wordings and all_wordings[-1].host.kind == "collection":
-                self.findings.append(self._staleness_finding(ship, all_wordings[-1]))
+                self.pois.append(self._staleness_poi(ship, all_wordings[-1]))
             return None
         if all_wordings[-1].id != wordings[-1].id:
-            self.findings.append(self._staleness_finding(ship, all_wordings[-1]))
+            self.pois.append(self._staleness_poi(ship, all_wordings[-1]))
         annotations = (
             *wordings,
             *(item for item in annotations if not isinstance(item, LineEditionRecord)),
@@ -405,7 +389,7 @@ class DiagramProjectionBuilder:
         type_annotations = tuple(
             item for item in annotations if isinstance(item, LineTypeAnnotation)
         )
-        findings: list[Finding] = []
+        pois: list[DiagramPOI] = []
         type_ids = tuple(
             dict.fromkeys(
                 item.line_type
@@ -414,20 +398,12 @@ class DiagramProjectionBuilder:
             )
         )
         if not wordings:
-            findings.append(
-                Finding(
-                    "line-wording-missing",
-                    f"line.{ship}",
-                    "Line records name a Line Ship with no wording Edition.",
-                )
+            pois.append(
+                diagram_pois.LineWordingMissing(path=f'line.{ship}', message='Line records name a Line Ship with no wording Edition.')
             )
         if wordings and not type_ids and block_type.require_line_type:
-            findings.append(
-                Finding(
-                    "line-type-missing",
-                    f"line.{ship}",
-                    "Line Editions do not retain a Line.Type.",
-                )
+            pois.append(
+                diagram_pois.LineTypeMissing(path=f'line.{ship}', message='Line Editions do not retain a Line.Type.')
             )
         line_type = None
         if type_ids:
@@ -435,22 +411,14 @@ class DiagramProjectionBuilder:
             line_type = block_type.line_type(selected_id)
             if line_type is None:
                 known = self.registry.line_type(selected_id)
-                findings.append(
-                    Finding(
-                        (
-                            "line-type-not-allowed-by-block"
-                            if known
-                            else "line-type-unknown"
-                        ),
-                        f"line.{ship}.line_type",
-                        (
-                            f"Block.Type {block_type.id} does not allow "
-                            f"Line.Type {selected_id}."
-                            if known
-                            else f"Line.Type is not registered: {selected_id}."
-                        ),
-                    )
-                )
+                if known:
+                    pois.append(diagram_pois.LineTypeNotAllowedByBlock(
+                        path=f"line.{ship}.line_type",
+                        message=f"Block.Type {block_type.id} does not allow Line.Type {selected_id}."))
+                else:
+                    pois.append(diagram_pois.LineTypeUnknown(
+                        path=f"line.{ship}.line_type",
+                        message=f"Line.Type is not registered: {selected_id}."))
         if line_type is None:
             line_type = self.registry.line_type(DIAGRAM_LINE_OBJECT_TYPE)
         assert line_type is not None
@@ -461,18 +429,11 @@ class DiagramProjectionBuilder:
             annotations,
             editions,
             type_ids,
-            tuple(findings),
+            tuple(pois),
         )
 
-    def _staleness_finding(self, ship: str, latest: LineEditionRecord) -> Finding:
-        return Finding(
-            "model-staleness",
-            f"line.{ship}.edition.{latest.id}",
-            (
-                "Model.Staleness.POI: the newest known Line.Ship edition is "
-                f"hosted outside the Model primary surface by {latest.host.id}."
-            ),
-        )
+    def _staleness_poi(self, ship: str, latest: LineEditionRecord) -> DiagramPOI:
+        return diagram_pois.ModelStaleness(path=f'line.{ship}.edition.{latest.id}', message=f'Model.Staleness.POI: the newest known Line.Ship edition is hosted outside the Model primary surface by {latest.host.id}.')
 
     def _collection(self, ship: str) -> DiagramCollection:
         editions = tuple(
@@ -482,17 +443,13 @@ class DiagramProjectionBuilder:
             )
             if isinstance(item, CollectionEditionRecord)
         )
-        findings: list[Finding] = []
+        pois: list[DiagramPOI] = []
         type_ids = tuple(dict.fromkeys(item.collection_type for item in editions))
         selected_id = type_ids[-1] if type_ids else DIAGRAM_COLLECTION_OBJECT_TYPE
         collection_type = self.registry.collection_type(selected_id)
         if collection_type is None:
-            findings.append(
-                Finding(
-                    "collection-type-unknown",
-                    f"collection.{ship}.collection_type",
-                    f"Collection.Type is not registered: {selected_id}.",
-                )
+            pois.append(
+                diagram_pois.CollectionTypeUnknown(path=f'collection.{ship}.collection_type', message=f'Collection.Type is not registered: {selected_id}.')
             )
             collection_type = self.registry.collection_type(
                 DIAGRAM_COLLECTION_OBJECT_TYPE
@@ -503,33 +460,18 @@ class DiagramProjectionBuilder:
             and self.namespace.allowed_collection_types
             and selected_id not in self.namespace.allowed_collection_types
         ):
-            findings.append(
-                Finding(
-                    "collection-type-not-allowed",
-                    f"collection.{ship}.collection_type",
-                    (
-                        f"Namespace {self.namespace.name} does not allow "
-                        f"Collection.Type {selected_id}."
-                    ),
-                )
+            pois.append(
+                diagram_pois.CollectionTypeNotAllowed(path=f'collection.{ship}.collection_type', message=f'Namespace {self.namespace.name} does not allow Collection.Type {selected_id}.')
             )
         current = editions[-1] if editions else None
         if current is not None and current.host.kind == "model":
             if current.host.id != self.model_ship:
-                findings.append(
-                    Finding(
-                        "collection-host-model-mismatch",
-                        f"collection.{ship}.host",
-                        "Collection host names a different Model.",
-                    )
+                pois.append(
+                    diagram_pois.CollectionHostModelMismatch(path=f'collection.{ship}.host', message='Collection host names a different Model.')
                 )
         elif current is not None and current.host.id not in self.collection_editions:
-            findings.append(
-                Finding(
-                    "collection-host-unresolved",
-                    f"collection.{ship}.host",
-                    "Parent Diagram.Collection does not resolve in this Model.",
-                )
+            pois.append(
+                diagram_pois.CollectionHostUnresolved(path=f'collection.{ship}.host', message='Parent Diagram.Collection does not resolve in this Model.')
             )
         if current is not None:
             for index, reference in enumerate(current.references):
@@ -538,12 +480,8 @@ class DiagramProjectionBuilder:
                     and not self.namespace.resolves_argument(reference)
                     and not self._resolves_projection_reference(reference)
                 ):
-                    findings.append(
-                        Finding(
-                            "collection-reference-unresolved",
-                            f"collection.{ship}.references[{index}]",
-                            "Diagram.Collection reference does not resolve.",
-                        )
+                    pois.append(
+                        diagram_pois.CollectionReferenceUnresolved(path=f'collection.{ship}.references[{index}]', message='Diagram.Collection reference does not resolve.')
                     )
         hosted = self._hosted_editions(ship)
         collection = collection_type.collection_class(
@@ -552,7 +490,7 @@ class DiagramProjectionBuilder:
             editions,
             type_ids,
             hosted,
-            tuple(findings),
+            tuple(pois),
         )
         if isinstance(collection, ImplReqCollection) and collection.state == "Closed":
             current = collection.current_edition
@@ -582,12 +520,8 @@ class DiagramProjectionBuilder:
                     and recorded_at <= closed_at
                 ):
                     continue
-                findings.append(
-                    Finding(
-                        "impl-req-closed-write",
-                        f"collection.{ship}.hosted.{hosted_edition.edition}",
-                        "Normal capture added or revised content in a Closed Impl.Req.Collection.",
-                    )
+                pois.append(
+                    diagram_pois.ImplReqClosedWrite(path=f'collection.{ship}.hosted.{hosted_edition.edition}', message='Normal capture added or revised content in a Closed Impl.Req.Collection.')
                 )
             collection = collection_type.collection_class(
                 ship,
@@ -595,7 +529,7 @@ class DiagramProjectionBuilder:
                 editions,
                 type_ids,
                 hosted,
-                tuple(findings),
+                tuple(pois),
             )
         return collection
 
@@ -639,28 +573,24 @@ class DiagramProjectionBuilder:
             hosted.append(DiagramHostedEdition(kind, ship, typed.id))
         return tuple(hosted)
 
-    def _collection_cycle_findings(
+    def _collection_cycle_pois(
         self, collections: tuple[DiagramCollection, ...]
-    ) -> tuple[Finding, ...]:
+    ) -> tuple[DiagramPOI, ...]:
         parents = {
             item.ship: item.host.id
             for item in collections
             if item.host is not None and item.host.kind == "collection"
         }
-        findings: list[Finding] = []
+        pois: list[DiagramPOI] = []
         for ship in parents:
             visited: set[str] = set()
             cursor = ship
             while cursor in parents:
                 if cursor in visited:
-                    findings.append(
-                        Finding(
-                            "collection-host-cycle",
-                            f"collection.{ship}.host",
-                            "Diagram.Collection hosting contains a cycle.",
-                        )
+                    pois.append(
+                        diagram_pois.CollectionHostCycle(path=f'collection.{ship}.host', message='Diagram.Collection hosting contains a cycle.')
                     )
                     break
                 visited.add(cursor)
                 cursor = parents[cursor]
-        return _dedupe_findings(findings)
+        return _dedupe_pois(pois)

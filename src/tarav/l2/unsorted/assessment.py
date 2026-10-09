@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 9c346fdbce95b58662d8d7b3eb4dbb9bf42ab4f68330dc218e1de4218dfc7344
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from tarav.l2.unsorted.constants import CAPTURE_AUTHORIZATION_ASSERTIONS
 from tarav.l2.unsorted.authorization import CaptureAuthorizationGateRecord
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l2.unsorted.primitives import DiagramModelError
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI
 from tarav.l2.unsorted.contracts import GateAssessment
 from tarav.l2.lines.records import LineAnnotationRecord
 from tarav.l2.lines.records import LineEditionRecord
@@ -33,7 +37,7 @@ class AssertionEvaluation:
 
     evaluator: str
     scores: JsonObject
-    findings: tuple[Finding, ...] = ()
+    pois: tuple[DiagramPOI, ...] = ()
     gate_assessments: tuple[GateAssessment, ...] = ()
 
 
@@ -60,11 +64,11 @@ class AnnotationAssessment:
     evaluations: tuple[AssertionEvaluation, ...]
 
     @property
-    def findings(self) -> tuple[Finding, ...]:
+    def pois(self) -> tuple[DiagramPOI, ...]:
         return tuple(
-            finding
+            poi
             for evaluation in self.evaluations
-            for finding in evaluation.findings
+            for poi in evaluation.pois
         )
 
     @property
@@ -116,7 +120,7 @@ class AnnotationAssessment:
                 }
                 for assertion_type in self.assertion_types
             ],
-            "findings": [item.to_dict() for item in self.findings],
+            "pois": [item.to_dict() for item in self.pois],
         }
 
 
@@ -149,14 +153,10 @@ class VerbatimGateAssertionEvaluator:
         elif isinstance(annotation, LineGateAnnotation):
             try:
                 target = annotation.target
-                target_finding = None
+                target_poi = None
             except (DiagramError, DiagramModelError) as exc:
                 target = None
-                target_finding = Finding(
-                    "line-gate-target-unresolved",
-                    f"{path}.target_edition",
-                    str(exc),
-                )
+                target_poi = diagram_pois.VerbatimGateLineGateTargetUnresolved(path=f'{path}.target_edition', message=str(exc), evidence={"error": str(exc)})
             assessments = _assess_verbatim_gates(
                 annotation_id=annotation.id,
                 target_id=annotation.target_edition_id,
@@ -164,7 +164,7 @@ class VerbatimGateAssertionEvaluator:
                 gates=annotation.gates,
                 evidence=evidence,
                 path=path,
-                target_finding=target_finding,
+                target_poi=target_poi,
             )
         else:
             assessments = ()
@@ -177,7 +177,7 @@ class VerbatimGateAssertionEvaluator:
                 for assertion_type in self.assertion_types
             },
             tuple(
-                finding for assessment in assessments for finding in assessment.findings
+                poi for assessment in assessments for poi in assessment.pois
             ),
             assessments,
         )
@@ -202,14 +202,10 @@ class CaptureAuthorizationAssertionEvaluator:
                 self.name,
                 {kind: None for kind in self.assertion_types},
                 (
-                    Finding(
-                        "capture-authorization-unassessable",
-                        path,
-                        "Capture.Authorization.Gate requires Chatlas evidence.",
-                    ),
+                    diagram_pois.CaptureAuthorizationUnassessable(path=path, message='Capture.Authorization.Gate requires Chatlas evidence.'),
                 ),
             )
-        findings: list[Finding] = []
+        pois: list[DiagramPOI] = []
         try:
             turn = evidence.turn(annotation.permission_turn)
             role_score = turn.get("side") == "user"
@@ -219,12 +215,8 @@ class CaptureAuthorizationAssertionEvaluator:
         except DiagramError as exc:
             role_score = None
             token_score = None
-            findings.append(
-                Finding(
-                    "capture-authorization-permission-unresolved",
-                    f"{path}.permission_turn",
-                    str(exc),
-                )
+            pois.append(
+                diagram_pois.CaptureAuthorizationPermissionUnresolved(path=f'{path}.permission_turn', message=str(exc), evidence={"error": str(exc)})
             )
         local_scope = all(
             reference.namespace_id == annotation.annotation.namespace.id
@@ -239,36 +231,20 @@ class CaptureAuthorizationAssertionEvaluator:
             else None
         )
         if role_score is False:
-            findings.append(
-                Finding(
-                    "capture-authorization-permission-not-user",
-                    f"{path}.permission_turn",
-                    "Capture authorization permission evidence is not a User turn.",
-                )
+            pois.append(
+                diagram_pois.CaptureAuthorizationPermissionNotUser(path=f'{path}.permission_turn', message='Capture authorization permission evidence is not a User turn.')
             )
         if token_score is False:
-            findings.append(
-                Finding(
-                    "capture-authorization-token-missing",
-                    f"{path}.token",
-                    "Authorization token does not occur in its permission evidence.",
-                )
+            pois.append(
+                diagram_pois.CaptureAuthorizationTokenMissing(path=f'{path}.token', message='Authorization token does not occur in its permission evidence.')
             )
         if scope_score is False:
-            findings.append(
-                Finding(
-                    "capture-authorization-scope-unresolved",
-                    f"{path}.target_scope",
-                    "One or more authorization targets do not resolve.",
-                )
+            pois.append(
+                diagram_pois.CaptureAuthorizationScopeUnresolved(path=f'{path}.target_scope', message='One or more authorization targets do not resolve.')
             )
         elif scope_score is None:
-            findings.append(
-                Finding(
-                    "capture-authorization-scope-unassessable",
-                    f"{path}.target_scope",
-                    "Cross-Namespace authorization scope requires Diagram-level resolution.",
-                )
+            pois.append(
+                diagram_pois.CaptureAuthorizationScopeUnassessable(path=f'{path}.target_scope', message='Cross-Namespace authorization scope requires Diagram-level resolution.')
             )
         return AssertionEvaluation(
             self.name,
@@ -277,7 +253,7 @@ class CaptureAuthorizationAssertionEvaluator:
                 self.assertion_types[1]: token_score,
                 self.assertion_types[2]: scope_score,
             },
-            tuple(findings),
+            tuple(pois),
         )
 
 
@@ -388,7 +364,7 @@ def _assess_verbatim_gates(
     gates: tuple[VerbatimGate, ...],
     evidence: ChatlasEvidence | None,
     path: str,
-    target_finding: Finding | None = None,
+    target_poi: DiagramPOI | None = None,
 ) -> tuple[GateAssessment, ...]:
     assessments: list[GateAssessment] = []
     for index, gate in enumerate(gates):
@@ -402,7 +378,7 @@ def _assess_verbatim_gates(
                     target_id,
                     gate,
                     scores,
-                    (target_finding,) if target_finding else (),
+                    (target_poi,) if target_poi else (),
                 )
             )
         elif evidence is None:
@@ -415,11 +391,7 @@ def _assess_verbatim_gates(
                     gate,
                     scores,
                     (
-                        Finding(
-                            "verbatim-gate-unassessable",
-                            gate_path,
-                            "Verbatim.Gate requires Chatlas evidence for assessment.",
-                        ),
+                        diagram_pois.VerbatimGateUnassessable(path=gate_path, message='Verbatim.Gate requires Chatlas evidence for assessment.'),
                     ),
                 )
             )
@@ -446,22 +418,22 @@ def _assess_verbatim_gate(
 ) -> GateAssessment:
     scores: JsonObject = {name: None for name in VERBATIM_GATE_ASSERTIONS}
     scores["Verbatim.Gate.Target.Assertion"] = True
-    findings: list[Finding] = []
+    pois: list[DiagramPOI] = []
     proposal_path = f"{path}.proposal_turn"
     approval_path = f"{path}.approval_turn"
     proposal = _gate_turn(
         evidence,
         gate.proposal_turn,
         proposal_path,
-        "verbatim-gate-proposal-unresolved",
-        findings,
+        diagram_pois.VerbatimGateProposalUnresolved,
+        pois,
     )
     approval = _gate_turn(
         evidence,
         gate.approval_turn,
         approval_path,
-        "verbatim-gate-approval-unresolved",
-        findings,
+        diagram_pois.VerbatimGateApprovalUnresolved,
+        pois,
     )
     proposal_text: str | None = None
     approval_text: str | None = None
@@ -470,24 +442,16 @@ def _assess_verbatim_gate(
         scores["Verbatim.Gate.Proposal.Role.Assertion"] = proposal_role
         proposal_text = evidence.turn_text(gate.proposal_turn)
         if not proposal_role:
-            findings.append(
-                Finding(
-                    "verbatim-gate-proposal-not-agent",
-                    proposal_path,
-                    "Verbatim.Gate proposal is not an Agent turn.",
-                )
+            pois.append(
+                diagram_pois.VerbatimGateProposalNotAgent(path=proposal_path, message='Verbatim.Gate proposal is not an Agent turn.')
             )
     if approval is not None:
         approval_role = approval.get("side") == "user"
         scores["Verbatim.Gate.Approval.Role.Assertion"] = approval_role
         approval_text = evidence.turn_text(gate.approval_turn)
         if not approval_role:
-            findings.append(
-                Finding(
-                    "verbatim-gate-approval-not-user",
-                    approval_path,
-                    "Verbatim.Gate approval is not a User turn.",
-                )
+            pois.append(
+                diagram_pois.VerbatimGateApprovalNotUser(path=approval_path, message='Verbatim.Gate approval is not a User turn.')
             )
 
     if proposal_text is not None and approval_text is not None:
@@ -496,12 +460,8 @@ def _assess_verbatim_gate(
         )
         scores["Verbatim.Gate.Token.Assertion"] = token_matches
         if not token_matches:
-            findings.append(
-                Finding(
-                    "verbatim-gate-token-mismatch",
-                    path,
-                    "Gate token is not present in the proposal and explicitly approved by the User.",
-                )
+            pois.append(
+                diagram_pois.VerbatimGateTokenMismatch(path=path, message='Gate token is not present in the proposal and explicitly approved by the User.')
             )
 
     if proposal is not None and approval is not None:
@@ -518,12 +478,8 @@ def _assess_verbatim_gate(
                 ordered = False
         scores["Verbatim.Gate.Order.Assertion"] = same_session and ordered
         if not same_session or not ordered:
-            findings.append(
-                Finding(
-                    "verbatim-gate-order-mismatch",
-                    path,
-                    "Verbatim.Gate approval does not follow its proposal in one chat.",
-                )
+            pois.append(
+                diagram_pois.VerbatimGateOrderMismatch(path=path, message='Verbatim.Gate approval does not follow its proposal in one chat.')
             )
 
     if proposal_text is not None:
@@ -532,12 +488,8 @@ def _assess_verbatim_gate(
         ) in _canonical_review_content(proposal_text)
         scores["Verbatim.Gate.Content.Assertion"] = content_matches
         if not content_matches:
-            findings.append(
-                Finding(
-                    "verbatim-gate-content-mismatch",
-                    path,
-                    "The proposal turn does not contain materially equivalent Line wording.",
-                )
+            pois.append(
+                diagram_pois.VerbatimGateContentMismatch(path=path, message='The proposal turn does not contain materially equivalent Line wording.')
             )
 
     return GateAssessment(
@@ -545,7 +497,7 @@ def _assess_verbatim_gate(
         _line_target_edition_id(target),
         gate,
         scores,
-        tuple(findings),
+        tuple(pois),
     )
 
 
@@ -553,13 +505,13 @@ def _gate_turn(
     evidence: ChatlasEvidence,
     reference: ChatlasTurnReferenceInterface,
     path: str,
-    code: str,
-    findings: list[Finding],
+    poi_type: type[DiagramPOI],
+    pois: list[DiagramPOI],
 ) -> JsonObject | None:
     try:
         return evidence.turn(reference)
     except (DiagramError, ValueError) as exc:
-        findings.append(Finding(code, path, str(exc)))
+        pois.append(poi_type(path=path, message=str(exc), evidence={"error": str(exc)}))
         return None
 
 

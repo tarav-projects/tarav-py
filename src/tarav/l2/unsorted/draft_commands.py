@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb d25056ebfe9fac6d7ca50a41773de645518ee93e4214d3b91a32bf7f2d4cd74a
+
 import argparse
 import json
 from pathlib import Path
@@ -13,6 +15,9 @@ from tarav.l2.unsorted.evidence import ChatlasEvidence
 from tarav.l2.unsorted.storage import DiagramConfiguration
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l2.unsorted.drafts import DiagramDraft, DiagramDraftRepository, read_draft_delta
+from tarav.l2.unsorted.draft_migration import migrate_drafts
+from tarav.l2.unsorted.drafts import default_diagram_drafts_root
+from tarav.l2.unsorted.poi_cli import add_poi_options, render_pois
 
 
 def _configuration(args: argparse.Namespace) -> DiagramConfiguration:
@@ -63,9 +68,9 @@ def _emit(args: argparse.Namespace, payload: dict[str, object]) -> int:
         receipt = payload.get("receipt")
         if isinstance(receipt, dict) and receipt.get("commit") is not None:
             print(f"commit: {receipt['commit']}")
-        findings = payload.get("findings")
-        if isinstance(findings, list):
-            print(f"findings: {len(findings)}")
+        pois = payload.get("pois")
+        if isinstance(pois, list):
+            print(f"pois: {len(pois)}")
     return 0
 
 
@@ -162,18 +167,22 @@ def _cmd_update(args: argparse.Namespace) -> int:
 def _cmd_check(args: argparse.Namespace) -> int:
     try:
         draft = _repository(args).draft(args.draft)
-        findings = draft.check(_configuration(args).diagram(), evidence=_evidence(args))
+        pois = draft.check(_configuration(args).diagram(), evidence=_evidence(args))
     except (DiagramError, OSError, ValueError) as exc:
         raise CliError(str(exc)) from exc
-    return _emit(
+    poi_text = render_pois(args, pois, title="Diagram Draft POIs", root=draft.path.parent)
+    result = _emit(
         args,
         {
-            "status": "poi" if findings else "ok",
+            "status": "poi" if pois else "ok",
             "command": "tarav diagram draft check",
             "draft": _draft_summary(draft),
-            "findings": [item.to_dict() for item in findings],
+            "pois": [item.to_dict() for item in pois],
         },
     )
+    if poi_text and not args.json:
+        print(poi_text)
+    return result
 
 
 def _cmd_apply(args: argparse.Namespace) -> int:
@@ -189,15 +198,41 @@ def _cmd_apply(args: argparse.Namespace) -> int:
         applied = repository.draft(draft.id)
     except (DiagramError, OSError, ValueError) as exc:
         raise CliError(str(exc)) from exc
-    return _emit(
+    poi_text = render_pois(args, receipt.pois, title="Diagram Draft POIs",
+                           root=draft.path.parent)
+    result = _emit(
         args,
         {
-            "status": "poi" if receipt.findings else "ok",
+            "status": "poi" if receipt.pois else "ok",
             "command": "tarav diagram draft apply",
             "draft": _draft_summary(applied),
             "receipt": receipt.records.to_record(),
         },
     )
+    if poi_text and not args.json:
+        print(poi_text)
+    return result
+
+
+def _cmd_migrate(args: argparse.Namespace) -> int:
+    try:
+        report = migrate_drafts(
+            Path(args.drafts_root) if args.drafts_root else default_diagram_drafts_root(),
+            dry_run=args.dry_run,
+        )
+    except (OSError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print(f"drafts: {report['draft_count']}")
+        print(f"rows: {report['row_count']}")
+        print(f"unmapped: {report['unmapped_count']}")
+        for item in report["drafts"]:
+            print(f"{item['status']}  {item['rows']}  {item['path']}")
+            if item["unmapped"]:
+                print(f"  unmapped: {item['unmapped']}")
+    return 1 if report["unmapped_count"] else 0
 
 
 def _add_repository_options(parser: argparse.ArgumentParser) -> None:
@@ -248,6 +283,7 @@ def register_draft_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_draft_selector(check)
     check.add_argument("--diagram-config")
     check.add_argument("--chatlas-root")
+    add_poi_options(check)
     check.set_defaults(handler=_cmd_check)
 
     apply = commands.add_parser("apply", help="Apply one settled Diagram.Draft.")
@@ -255,7 +291,15 @@ def register_draft_commands(subparsers: argparse._SubParsersAction) -> None:
     apply.add_argument("--diagram-config")
     apply.add_argument("--chatlas-root")
     apply.add_argument("--no-commit", action="store_true")
+    add_poi_options(apply)
     apply.set_defaults(handler=_cmd_apply)
+
+    migrate = commands.add_parser("migrate", help="Migrate retained Drafts to schema 2.")
+    migrate.add_argument("--to", type=int, choices=(2,), required=True)
+    migrate.add_argument("--dry-run", action="store_true")
+    migrate.add_argument("--drafts-root")
+    migrate.add_argument("--json", action="store_true")
+    migrate.set_defaults(handler=_cmd_migrate)
 
 
 __all__ = ["register_draft_commands"]

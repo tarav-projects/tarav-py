@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb c472f76ced36a1f8ab13313966a641f1f1b96d783145a4af9c2b4ac15d7d6dcc
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 import json
@@ -31,7 +35,7 @@ from tarav.l2.lines.block import DiagramBlock
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l2.lines.line import DiagramLineShip
 from tarav.l2.models import Model
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI, poi_from_dict
 from tarav.l2.unsorted.records import UserTouchedAnnotation
 
 
@@ -295,7 +299,7 @@ class DiagramViewMutation:
             "view_ship": self.view.ship,
             "commit": self.commit,
             "changes": [item.to_dict() for item in self.changes],
-            "findings": [item.to_dict() for item in self.view.check()],
+            "pois": [item.to_dict() for item in self.view.check()],
         }
 
 
@@ -382,9 +386,9 @@ class DiagramView:
         diagram: Diagram | None = None,
         *,
         evidence: ChatlasEvidence | None = None,
-    ) -> tuple[Finding, ...]:
+    ) -> tuple[DiagramPOI, ...]:
         del evidence
-        findings: list[Finding] = []
+        pois: list[DiagramPOI] = []
         try:
             _validate_manifest(
                 self.manifest,
@@ -397,7 +401,7 @@ class DiagramView:
             self.configuration
             self.scopes
         except (DiagramError, ValidationError) as exc:
-            return (Finding("diagram-view-invalid", str(self.root), str(exc)),)
+            return (diagram_pois.ViewInvalid(path=str(self.root), message=str(exc), evidence={"error": str(exc)}),)
 
         blocks = _array(state.get("blocks"), field="View.blocks")
         identities: set[tuple[str, str]] = set()
@@ -412,12 +416,8 @@ class DiagramView:
             )
             identity = (namespace_id, block_ship)
             if identity in identities:
-                findings.append(
-                    Finding(
-                        "diagram-view-block-duplicate",
-                        f"view.blocks[{index}]",
-                        f"Block occurs more than once in the View: {block_ship}.",
-                    )
+                pois.append(
+                    diagram_pois.ViewBlockDuplicate(path=f'view.blocks[{index}]', message=f'Block occurs more than once in the View: {block_ship}.')
                 )
             identities.add(identity)
             level = _integer(
@@ -425,12 +425,8 @@ class DiagramView:
                 field=f"View.blocks[{index}].disclosure_level",
             )
             if not 0 <= level < len(DISCLOSURE_LEVELS):
-                findings.append(
-                    Finding(
-                        "diagram-view-disclosure-level-invalid",
-                        f"view.blocks[{index}].disclosure_level",
-                        f"Disclosure level is outside the supported ladder: {level}.",
-                    )
+                pois.append(
+                    diagram_pois.ViewDisclosureLevelInvalid(path=f'view.blocks[{index}].disclosure_level', message=f'Disclosure level is outside the supported ladder: {level}.')
                 )
             selected = [
                 _uuid(item, field=f"View.blocks[{index}].selected_line_ships[]")
@@ -440,12 +436,8 @@ class DiagramView:
                 )
             ]
             if len(selected) != len(set(selected)):
-                findings.append(
-                    Finding(
-                        "diagram-view-line-selection-duplicate",
-                        f"view.blocks[{index}].selected_line_ships",
-                        "A Line ship occurs more than once in one Block selection.",
-                    )
+                pois.append(
+                    diagram_pois.ViewLineSelectionDuplicate(path=f'view.blocks[{index}].selected_line_ships', message='A Line ship occurs more than once in one Block selection.')
                 )
             if level >= 1:
                 rendered = _array(
@@ -464,12 +456,8 @@ class DiagramView:
                     for item in rendered
                 ]
                 if materialized != selected:
-                    findings.append(
-                        Finding(
-                            "diagram-view-line-materialization-mismatch",
-                            f"view.blocks[{index}].disclosure.lines",
-                            "Visible Line material does not match the retained Line selection.",
-                        )
+                    pois.append(
+                        diagram_pois.ViewLineMaterializationMismatch(path=f'view.blocks[{index}].disclosure.lines', message='Visible Line material does not match the retained Line selection.')
                     )
                 for line_index, line_value in enumerate(rendered):
                     line = _object(line_value, field="View.Line")
@@ -484,45 +472,31 @@ class DiagramView:
                                 f".editions[{edition_index}].edition_id"
                             ),
                         )
-                    for raw_finding in _array(
-                        line.get("materialization_findings", []),
-                        field="materialization_findings",
+                    for raw_poi in _array(
+                        line.get("materialization_pois", []),
+                        field="materialization_pois",
                     ):
-                        retained = _object(raw_finding, field="Finding")
-                        findings.append(
-                            Finding(
-                                str(
-                                    retained.get(
-                                        "code", "diagram-view-materialization-poi"
-                                    )
-                                ),
-                                f"view.blocks[{index}].disclosure.lines[{line_index}]",
-                                str(
-                                    retained.get("message", "View materialization POI.")
-                                ),
-                            )
-                        )
+                        retained = _object(raw_poi, field="DiagramPOI")
+                        try:
+                            pois.append(poi_from_dict(retained))
+                        except ValueError:
+                            pois.append(diagram_pois.ViewMaterializationRowUnrecognized(
+                                path=f"view.blocks[{index}].disclosure.lines[{line_index}]",
+                                message="View materialization row has an unrecognized POI Type.",
+                                evidence={"row": retained}))
             for dependency_index, dependency_value in enumerate(
                 _array(block.get("dependencies", []), field="dependencies")
             ):
                 dependency = _object(dependency_value, field="dependency")
                 if dependency.get("status") == "ambiguous":
-                    findings.append(
-                        Finding(
-                            "diagram-view-dependency-ambiguous",
-                            f"view.blocks[{index}].dependencies[{dependency_index}]",
-                            f"Dependency label resolves to several Blocks: {dependency.get('label')}.",
-                        )
+                    pois.append(
+                        diagram_pois.ViewDependencyAmbiguous(path=f'view.blocks[{index}].dependencies[{dependency_index}]', message=f"Dependency label resolves to several Blocks: {dependency.get('label')}.")
                     )
 
         maximum = self.configuration.max_visible_lines
         if visible_lines > maximum:
-            findings.append(
-                Finding(
-                    "diagram-view-visible-line-budget-exceeded",
-                    "view.blocks",
-                    f"View contains {visible_lines} visible Lines; configured maximum is {maximum}.",
-                )
+            pois.append(
+                diagram_pois.ViewVisibleLineBudgetExceeded(path='view.blocks', message=f'View contains {visible_lines} visible Lines; configured maximum is {maximum}.')
             )
 
         if diagram is not None:
@@ -531,23 +505,15 @@ class DiagramView:
                     namespace = diagram.namespace(namespace_id)
                     current = _git(namespace.root, "rev-parse", "HEAD")
                 except DiagramError as exc:
-                    findings.append(
-                        Finding(
-                            "diagram-view-source-unresolved",
-                            f"view.source_editions.{namespace_id}",
-                            str(exc),
-                        )
+                    pois.append(
+                        diagram_pois.ViewSourceUnresolved(path=f'view.source_editions.{namespace_id}', message=str(exc), evidence={"error": str(exc)})
                     )
                     continue
                 if current != edition:
-                    findings.append(
-                        Finding(
-                            "diagram-view-source-stale",
-                            f"view.source_editions.{namespace_id}",
-                            f"View retains {edition}; Namespace HEAD is {current}.",
-                        )
+                    pois.append(
+                        diagram_pois.ViewSourceStale(path=f'view.source_editions.{namespace_id}', message=f'View retains {edition}; Namespace HEAD is {current}.')
                     )
-        return tuple(findings)
+        return tuple(pois)
 
     def render(self) -> str:
         state = self.state
@@ -690,38 +656,26 @@ class SessionDiagramView(DiagramView):
         diagram: Diagram | None = None,
         *,
         evidence: ChatlasEvidence | None = None,
-    ) -> tuple[Finding, ...]:
-        findings = list(DiagramView.check(self, diagram, evidence=evidence))
+    ) -> tuple[DiagramPOI, ...]:
+        pois = list(DiagramView.check(self, diagram, evidence=evidence))
         if self.session_identity is None:
-            findings.append(
-                Finding(
-                    "diagram-view-session-identity-missing",
-                    "about.chatlas_session_identity",
-                    "Session.Diagram.View has no Chatlas session identity.",
-                )
+            pois.append(
+                diagram_pois.ViewSessionIdentityMissing(path='about.chatlas_session_identity', message='Session.Diagram.View has no Chatlas session identity.')
             )
         elif diagram is not None and evidence is not None:
             try:
                 mentions = self.mentions(diagram, evidence)
             except DiagramError as exc:
-                findings.append(
-                    Finding(
-                        "diagram-view-mention-check-unassessable",
-                        "about.chatlas_session_identity",
-                        str(exc),
-                    )
+                pois.append(
+                    diagram_pois.ViewMentionCheckUnassessable(path='about.chatlas_session_identity', message=str(exc), evidence={"error": str(exc)})
                 )
             else:
-                findings.extend(
-                    Finding(
-                        "diagram-view-mentioned-block-absent",
-                        f"mentions.{mention['block_ship']}",
-                        f"Session mentions Block {mention['label'] or mention['block_ship']}, but it is outside this View.",
-                    )
+                pois.extend(
+                    diagram_pois.ViewMentionedBlockAbsent(path=f"mentions.{mention['block_ship']}", message=f"Session mentions Block {mention['label'] or mention['block_ship']}, but it is outside this View.")
                     for mention in mentions
                     if not mention["present_in_view"]
                 )
-        return tuple(findings)
+        return tuple(pois)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1253,8 +1207,8 @@ def _block_entry(
             "selected_line_count": len(selected),
             "reviewed_line_count": reviewed,
             "support_member_count": support_members,
-            "finding_count": len(block.findings)
-            + sum(len(line.findings) for line in block.lines),
+            "poi_count": len(block.pois)
+            + sum(len(line.pois) for line in block.lines),
         },
         "disclosure_level": level,
         "disclosure_name": ladder[level],
@@ -1273,7 +1227,7 @@ def _line_entry(
 ) -> JsonObject:
     editions: list[JsonObject] = []
     support_content: list[JsonObject] = []
-    support_findings: list[JsonObject] = []
+    support_pois: list[JsonObject] = []
     for item in line.editions:
         annotation = item.annotation
         editions.append({"edition_id": annotation.id, "text": item.text})
@@ -1283,12 +1237,8 @@ def _line_entry(
                 try:
                     members = typed.render_support(evidence)
                 except DiagramError as exc:
-                    support_findings.append(
-                        Finding(
-                            "diagram-view-deep-support-unresolved",
-                            f"annotation.{typed.id}.support",
-                            str(exc),
-                        ).to_dict()
+                    support_pois.append(
+                        diagram_pois.ViewDeepSupportUnresolved(path=f'annotation.{typed.id}.support', message=str(exc), evidence={"error": str(exc)}).to_dict()
                     )
                 else:
                     support_content.extend(
@@ -1300,7 +1250,7 @@ def _line_entry(
         "editions": editions,
         "stats": {
             "edition_count": len(editions),
-            "finding_count": len(line.findings),
+            "poi_count": len(line.pois),
         },
     }
     if line_type_code is not None:
@@ -1317,15 +1267,11 @@ def _line_entry(
     if level >= 3:
         result["support_content"] = support_content
         if evidence is None:
-            result["materialization_findings"] = [
-                Finding(
-                    "diagram-view-deep-support-unassessable",
-                    f"line.{line.ship}",
-                    "Deep support disclosure requires Chatlas evidence.",
-                ).to_dict()
+            result["materialization_pois"] = [
+                diagram_pois.ViewDeepSupportUnassessable(path=f'line.{line.ship}', message='Deep support disclosure requires Chatlas evidence.').to_dict()
             ]
         else:
-            result["materialization_findings"] = support_findings
+            result["materialization_pois"] = support_pois
     return result
 
 
@@ -1415,7 +1361,7 @@ def _render_block(
         f"{block.get('disclosure_name', DISCLOSURE_LEVELS[level])} · "
         f"{stats.get('line_count', 0)} lines · "
         f"{stats.get('reviewed_line_count', 0)} reviewed · "
-        f"{stats.get('finding_count', 0)} POIs",
+        f"{stats.get('poi_count', 0)} POIs",
     ]
     dependencies = _array(block.get("dependencies", []), field="dependencies")
     if dependencies:
@@ -1453,14 +1399,14 @@ def _line_stats(line: Mapping[str, Any]) -> str:
     stats = _object(line.get("stats", {}), field="View.Line.stats")
     root_count = int(stats.get("support_root_count", 0))
     turn_count = int(stats.get("support_turn_count", 0))
-    finding_count = int(stats.get("finding_count", 0))
+    poi_count = int(stats.get("poi_count", 0))
     review = "reviewed" if stats.get("reviewed") else "unreviewed"
     return " · ".join(
         (
             review,
             f"{root_count} support root{'s' if root_count != 1 else ''}",
             f"{turn_count} support turn{'s' if turn_count != 1 else ''}",
-            f"{finding_count} POI{'s' if finding_count != 1 else ''}",
+            f"{poi_count} POI{'s' if poi_count != 1 else ''}",
         )
     )
 

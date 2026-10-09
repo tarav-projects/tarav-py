@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 2194949b5dc742bcf4bc8fecbf275557fea82441f5985f9771b6e527747cc35a
+
 import argparse
 import json
 from pathlib import Path
@@ -14,6 +16,7 @@ from tarav.l2.unsorted.evidence import ChatlasEvidence
 from tarav.l2.unsorted.storage import DiagramConfiguration
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l2.unsorted.views import DIAGRAM_VIEW_TYPE, DiagramViewConfiguration, DiagramViewError, DiagramViewMutation, DiagramViewRepository, SessionDiagramView, VIEW_TYPES
+from tarav.l2.unsorted.poi_cli import add_poi_options, render_pois
 
 
 def _configuration(args: argparse.Namespace) -> DiagramConfiguration:
@@ -55,6 +58,8 @@ def _print_json(value: object) -> None:
 
 def _emit_mutation(args: argparse.Namespace, mutation: DiagramViewMutation) -> int:
     payload = mutation.to_dict()
+    pois = mutation.view.check()
+    poi_text = render_pois(args, pois, title="Diagram View POIs", root=mutation.view.root)
     rendered_blocks = mutation.view.render_blocks(
         change.target for change in mutation.changes
     )
@@ -72,9 +77,9 @@ def _emit_mutation(args: argparse.Namespace, mutation: DiagramViewMutation) -> i
         else:
             for change in mutation.changes:
                 print(change.render())
-        findings = mutation.view.check()
-        if findings:
-            print(f"POIs: {len(findings)}")
+        if pois:
+            print(f"POIs: {len(pois)}")
+            print(poi_text)
     return 0
 
 
@@ -151,6 +156,8 @@ def _cmd_show(args: argparse.Namespace) -> int:
         view = _repository(args).view(args.view)
     except DiagramError as exc:
         raise CliError(str(exc)) from exc
+    pois = view.check()
+    poi_text = render_pois(args, pois, title="Diagram View POIs", root=view.root)
     if args.json:
         _print_json(
             {
@@ -159,11 +166,13 @@ def _cmd_show(args: argparse.Namespace) -> int:
                 "config": view.configuration.records.to_record(),
                 "view": view.state,
                 "edition": view.edition(),
-                "findings": [item.to_dict() for item in view.check()],
+                "pois": [item.to_dict() for item in pois],
             }
         )
     else:
         print(view.render(), end="")
+        if poi_text:
+            print(poi_text)
     return 0
 
 
@@ -278,22 +287,23 @@ def _cmd_check(args: argparse.Namespace) -> int:
     try:
         diagram = _configuration(args).diagram()
         view = _repository(args).view(args.view)
-        findings = view.check(diagram, evidence=_evidence(args))
+        pois = view.check(diagram, evidence=_evidence(args))
     except DiagramError as exc:
         raise CliError(str(exc)) from exc
+    poi_text = render_pois(args, pois, title="Diagram View POIs", root=view.root)
     if args.json:
         _print_json(
             {
-                "status": "poi" if findings else "ok",
+                "status": "poi" if pois else "ok",
                 "view_ship": view.ship,
-                "findings": [item.to_dict() for item in findings],
+                "pois": [item.to_dict() for item in pois],
             }
         )
     else:
         print(f"view: {view.ship[:12]}")
-        print(f"POIs: {len(findings)}")
-        for finding in findings:
-            print(f"- {finding.code}: {finding.message}")
+        print(f"POIs: {len(pois)}")
+        if poi_text:
+            print(poi_text)
     return 0
 
 
@@ -370,6 +380,7 @@ def _mutation_options(parser: argparse.ArgumentParser) -> None:
     _diagram(parser)
     _chatlas(parser)
     _json(parser)
+    add_poi_options(parser)
 
 
 def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None:
@@ -412,6 +423,7 @@ def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None
     _diagram(create)
     _chatlas(create)
     _json(create)
+    add_poi_options(create)
     create.set_defaults(handler=_cmd_create)
 
     listing = commands.add_parser("list", help="List retained Views.")
@@ -429,6 +441,7 @@ def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None
     show.add_argument("--view", required=True)
     _root(show)
     _json(show)
+    add_poi_options(show)
     show.set_defaults(handler=_cmd_show)
 
     peers = commands.add_parser(
@@ -485,6 +498,7 @@ def register_view_commands(diagram_commands: argparse._SubParsersAction) -> None
     _diagram(check)
     _chatlas(check)
     _json(check)
+    add_poi_options(check)
     check.set_defaults(handler=_cmd_check)
 
     render = commands.add_parser(

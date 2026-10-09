@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from tarav.l2.unsorted.contracts import Finding
+# tarav.breadcrumb 7400548a19991902eaa09a574b80755acdfb4748ae671a9b450ace848452f1b1
+
+import tarav.l2.unsorted.pois as diagram_pois
+
+from tarav.l2.unsorted.pois import DiagramPOI
 from tarav.l2.unsorted.primitives import _optional_timestamp
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -30,7 +34,7 @@ class DiagramCollection:
     editions: tuple[CollectionEditionRecord, ...]
     type_ids: tuple[str, ...]
     hosted_editions: tuple[DiagramHostedEdition, ...]
-    findings: tuple[Finding, ...]
+    pois: tuple[DiagramPOI, ...]
 
     @property
     def object_type(self) -> str | None:
@@ -59,7 +63,7 @@ class DiagramCollection:
         current = self.current_edition
         return current.references if current is not None else ()
 
-    def mechanical_findings(self) -> tuple[Finding, ...]:
+    def mechanical_pois(self) -> tuple[DiagramPOI, ...]:
         return ()
 
 
@@ -72,18 +76,14 @@ class ImplReqCollection(DiagramCollection):
         value = current.data.get("state")
         return value if isinstance(value, str) else None
 
-    def mechanical_findings(self) -> tuple[Finding, ...]:
-        findings: list[Finding] = []
+    def mechanical_pois(self) -> tuple[DiagramPOI, ...]:
+        pois: list[DiagramPOI] = []
         previous: CollectionEditionRecord | None = None
         for edition in self.editions:
             state = edition.data.get("state")
             if state not in {"Open", "Closed"}:
-                findings.append(
-                    Finding(
-                        "impl-req-state-invalid",
-                        f"collection.{self.ship}.edition.{edition.id}.data.state",
-                        "Impl.Req.Collection state must be Open or Closed.",
-                    )
+                pois.append(
+                    diagram_pois.ImplReqStateInvalid(path=f'collection.{self.ship}.edition.{edition.id}.data.state', message='Impl.Req.Collection state must be Open or Closed.')
                 )
             if (
                 previous is not None
@@ -97,12 +97,8 @@ class ImplReqCollection(DiagramCollection):
                     or reopen_until is None
                     or reopened_at > reopen_until
                 ):
-                    findings.append(
-                        Finding(
-                            "impl-req-reopen-window-invalid",
-                            f"collection.{self.ship}.edition.{edition.id}",
-                            "Impl.Req.Collection reopening is outside its declared window.",
-                        )
+                    pois.append(
+                        diagram_pois.ImplReqReopenWindowInvalid(path=f'collection.{self.ship}.edition.{edition.id}', message='Impl.Req.Collection reopening is outside its declared window.')
                     )
             previous = edition
-        return tuple(findings)
+        return tuple(pois)

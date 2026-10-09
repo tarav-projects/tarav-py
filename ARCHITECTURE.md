@@ -5,6 +5,7 @@
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf0496f867fc656fdad9063980a184f7c3f15c54adf8fcb31f
 64298cbc = claude-code:9da4cef5-68b7-4d17-8a06-1351ca51e82f @64298cbc8db2e7aa971e0828653c07bcb483cfed40931fdf87d5abe7ce1c60b3
+abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c625e3f68354a234a91e4992b67406f075d93ccb20f4d4
 -->
 
 `tarav-py` is Tarav's maintained Python distribution. It is one modular
@@ -726,10 +727,11 @@ under a family parent that is never raised (for example
 `isinstance`. A check that receives a string kind from a non-POI producer,
 such as a Skillware lint finding or a Breadcrumb audit concern, maps it to a
 POI Type through a small table next to the check. Reports group and filter by
-Type, check or identity. Breadcrumb and Reference resolution each use an
-atomic identified POI family. The Diagram's `Finding` remains a coded POI:
-Capture Receipt records retain its coded shape and require a deliberate data
-migration before its many distinct cases can become atomic Types.
+Type, check or identity. Breadcrumb, Reference resolution, and Diagram
+validation use atomic identified POI families. Diagram Draft schema 2 retains
+typed POI rows in Capture Receipts; version-1 Drafts require the explicit
+`tarav diagram draft migrate --to 2` operation before readers open them.
+<!-- tarav.breadcrumb 0158b0cc8222cc39930e1e704ceceb0e1fb70dc4a95f5feebc6f356544fc08ac -->
 <!-- tarav.breadcrumb 0d39e5ec3a25287e419935d916d0a7c9d270b87dfc428775b346dfa162fb7483 -->
 <!-- tarav.breadcrumb c84140acad62e5b48e8b95892c1a749f806863a560f1bfeb08e13596ee2a9286 -->
 <!-- tarav.breadcrumb 4bf190d70e6ffac17923764dc3e93dc2ba5bba11a5de09e38a7fe7fd927af7d3 -->

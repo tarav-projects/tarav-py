@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 8e914a5074394f39389423522894bcc518dcee781d7dd3a84613200afcd0c4c8
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 import json
@@ -17,12 +21,12 @@ from tarav.l2.lines.collection import DiagramCollection, ImplReqCollection
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l2.lines.line import DiagramLineShip
 from tarav.l2.models import Model
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI
 
 JsonObject = dict[str, Any]
 RenderHandler = Callable[
     ["DiagramRenderTarget", "DiagramRenderContext"],
-    tuple[str, tuple[Finding, ...]],
+    tuple[str, tuple[DiagramPOI, ...]],
 ]
 
 
@@ -90,8 +94,8 @@ class DiagramRenderer:
             evidence,
             assertion_engine or AssertionEngine(evidence=evidence),
         )
-        content, findings = self.handler(target, context)
-        return DiagramRenderResult(self, target, content, findings)
+        content, pois = self.handler(target, context)
+        return DiagramRenderResult(self, target, content, pois)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,16 +103,16 @@ class DiagramRenderResult:
     renderer: DiagramRenderer
     target: DiagramRenderTarget
     content: str
-    findings: tuple[Finding, ...] = ()
+    pois: tuple[DiagramPOI, ...] = ()
 
     def to_dict(self) -> JsonObject:
         return {
-            "status": "poi" if self.findings else "ok",
+            "status": "poi" if self.pois else "ok",
             "renderer": self.renderer.name,
             "media_type": self.renderer.media_type,
             "target": self.target.to_dict(),
             "content": self.content,
-            "findings": [item.to_dict() for item in self.findings],
+            "pois": [item.to_dict() for item in self.pois],
         }
 
 
@@ -197,7 +201,7 @@ def _annotation_payload(
 
 def _debug_annotation(
     target: DiagramRenderTarget, context: DiagramRenderContext
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     annotation = target.subject
     if not isinstance(annotation, DiagramAnnotation):
         raise DiagramRenderError("Debug Annotation renderer received another target")
@@ -206,13 +210,13 @@ def _debug_annotation(
         json.dumps(
             _annotation_payload(annotation, assessment), indent=2, ensure_ascii=False
         ),
-        assessment.findings,
+        assessment.pois,
     )
 
 
 def _kernel_line_annotation(
     target: DiagramRenderTarget, context: DiagramRenderContext
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     annotation = target.subject
     if not isinstance(annotation, DiagramAnnotation):
         raise DiagramRenderError("Line.Annotation renderer received another target")
@@ -245,12 +249,12 @@ def _kernel_line_annotation(
         "**Arguments:**",
         *(f"- `{item.namespace_id}:{item.kind}:{item.id}`" for item in typed.arguments),
     ]
-    return "\n".join(sections), assessment.findings
+    return "\n".join(sections), assessment.pois
 
 
 def _debug_line(
     target: DiagramRenderTarget, context: DiagramRenderContext
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     annotations = _typed_annotations(target)
     assessments = {item.id: context.assertions.assess(item) for item in annotations}
     return json.dumps(
@@ -264,21 +268,21 @@ def _debug_line(
         indent=2,
         ensure_ascii=False,
     ), tuple(
-        finding
+        poi
         for assessment in assessments.values()
-        for finding in assessment.findings
+        for poi in assessment.pois
     )
 
 
 def _kernel_line(
     target: DiagramRenderTarget, context: DiagramRenderContext
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     return _render_line(target, with_support=False, context=context)
 
 
 def _kernel_line_with_support(
     target: DiagramRenderTarget, context: DiagramRenderContext
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     if context.evidence is None:
         raise DiagramRenderError(
             "Kernel.Writing.Line.WithSupport requires Chatlas evidence"
@@ -291,7 +295,7 @@ def _render_line(
     *,
     with_support: bool,
     context: DiagramRenderContext,
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     line = target.subject
     if not isinstance(line, DiagramLineShip):
         raise DiagramRenderError("Line renderer received another target")
@@ -300,7 +304,7 @@ def _render_line(
     ]
     if not wordings:
         raise DiagramRenderError(f"Diagram Line has no wording: {target.identity}")
-    findings: list[Finding] = list(line.findings)
+    pois: list[DiagramPOI] = list(line.pois)
     current_wording = _sort_typed(wordings)[-1]
     sections: list[str] = []
     any_reviewed = False
@@ -345,38 +349,34 @@ def _render_line(
             f"[{line_type.short_code}] " if line_type and line_type.short_code else ""
         )
         sections.append(f"- {prefix}{wording.text} {marker}")
-        findings.extend(
-            finding for assessment in assessments for finding in assessment.findings
+        pois.extend(
+            poi for assessment in assessments for poi in assessment.pois
         )
         if with_support and context.evidence is not None:
-            detail, support_findings = _support_details(
+            detail, support_pois = _support_details(
                 wording,
                 target.identity,
                 context.evidence,
                 annotation_assessment,
             )
             sections.append(detail)
-            findings.extend(support_findings)
+            pois.extend(support_pois)
     if not any_reviewed:
-        findings.append(
-            Finding(
-                "line-unreviewed",
-                f"line.{target.identity}",
-                "Line ship has no Annotation with a passing Verbatim.Gate.",
-            )
+        pois.append(
+            diagram_pois.LineUnreviewed(path=f'line.{target.identity}', message='Line ship has no Annotation with a passing Verbatim.Gate.')
         )
-    return "\n\n".join(sections), _dedupe_findings(findings)
+    return "\n\n".join(sections), _dedupe_pois(pois)
 
 
 def _kernel_block(
     target: DiagramRenderTarget, context: DiagramRenderContext
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     return _render_block(target, with_support=False, context=context)
 
 
 def _kernel_block_with_support(
     target: DiagramRenderTarget, context: DiagramRenderContext
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     if context.evidence is None:
         raise DiagramRenderError(
             "Kernel.Writing.Block.WithSupport requires Chatlas evidence"
@@ -390,54 +390,46 @@ def _render_block(
     with_support: bool,
     context: DiagramRenderContext,
     heading_level: int = 2,
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     projection = target.subject
     if not isinstance(projection, DiagramBlock):
         raise DiagramRenderError("Block renderer received another target")
     blocks = [
         item for item in projection.annotations if isinstance(item, BlockEditionRecord)
     ]
-    findings: list[Finding] = list(projection.findings)
+    pois: list[DiagramPOI] = list(projection.pois)
     if blocks:
         label = _sort_typed(blocks)[-1].label
     else:
         label = f"Block.{projection.ship[:8]}"
-        findings.append(
-            Finding(
-                "block-label-selection-unresolved",
-                "target.block",
-                "Block has no label edition.",
-            )
+        pois.append(
+            diagram_pois.BlockLabelSelectionUnresolved(path='target.block', message='Block has no label edition.')
         )
     sections = [f"{'#' * heading_level} {label}"]
     if isinstance(projection, IssueBlock):
         issue = projection.assess(context.assertions)
         sections.append(f"**Issue.State:** `{issue.state}`")
-        findings.extend(issue.findings)
+        pois.extend(issue.pois)
     if not projection.lines:
-        findings.append(
-            Finding(
-                "block-has-no-lines",
-                "target.block",
-                "Block contains no Line editions.",
-            )
+        pois.append(
+            diagram_pois.BlockHasNoLines(path='target.block', message='Block contains no Line editions.')
         )
     rendered_lines: list[str] = []
     for line in projection.lines:
         line_target = DiagramRenderTarget("line", line.ship, target.namespace_id, line)
-        content, line_findings = _render_line(
+        content, line_pois = _render_line(
             line_target, with_support=with_support, context=context
         )
         rendered_lines.append(content)
-        findings.extend(line_findings)
+        pois.extend(line_pois)
     if rendered_lines:
         sections.append(("\n\n" if with_support else "\n").join(rendered_lines))
-    return "\n\n".join(sections), _dedupe_findings(findings)
+    return "\n\n".join(sections), _dedupe_pois(pois)
 
 
 def _kernel_model(
     target: DiagramRenderTarget, context: DiagramRenderContext
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     model = target.subject
     if not isinstance(model, Model):
         raise DiagramRenderError("Model renderer received another target")
@@ -447,7 +439,7 @@ def _kernel_model(
     title = label if isinstance(label, str) and label else f"Model.{model.ship[:8]}"
     projection = model.project()
     sections = [f"# {title}"]
-    findings: list[Finding] = list(projection.findings)
+    pois: list[DiagramPOI] = list(projection.pois)
     for block in projection.blocks:
         block_target = DiagramRenderTarget(
             "block",
@@ -455,11 +447,11 @@ def _kernel_model(
             target.namespace_id,
             block,
         )
-        content, block_findings = _render_block(
+        content, block_pois = _render_block(
             block_target, with_support=False, context=context, heading_level=2
         )
         sections.append(content)
-        findings.extend(block_findings)
+        pois.extend(block_pois)
     if projection.collections:
         sections.extend(
             (
@@ -468,14 +460,10 @@ def _kernel_model(
             )
         )
     if not projection.blocks:
-        findings.append(
-            Finding(
-                "model-has-no-blocks",
-                "target.model",
-                "Model contains no Block Ships.",
-            )
+        pois.append(
+            diagram_pois.ModelHasNoBlocks(path='target.model', message='Model contains no Block Ships.')
         )
-    return "\n\n".join(sections), _dedupe_findings(findings)
+    return "\n\n".join(sections), _dedupe_pois(pois)
 
 
 def _collection_summary(collection: DiagramCollection) -> str:
@@ -494,7 +482,7 @@ def _collection_summary(collection: DiagramCollection) -> str:
 
 def _kernel_collection(
     target: DiagramRenderTarget, context: DiagramRenderContext
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     collection = target.subject
     if not isinstance(collection, DiagramCollection):
         raise DiagramRenderError("Collection renderer received another target")
@@ -530,7 +518,7 @@ def _kernel_collection(
                 ),
             )
         )
-    return "\n".join(sections), collection.findings
+    return "\n".join(sections), collection.pois
 
 
 def _typed_annotations(target: DiagramRenderTarget) -> tuple[TypedAnnotation, ...]:
@@ -558,9 +546,9 @@ def _sort_typed(
     )
 
 
-def _dedupe_findings(findings: Iterable[Finding]) -> tuple[Finding, ...]:
+def _dedupe_pois(pois: Iterable[DiagramPOI]) -> tuple[DiagramPOI, ...]:
     return tuple(
-        {(item.code, item.path, item.message): item for item in findings}.values()
+        {item.identity: item for item in pois}.values()
     )
 
 
@@ -591,21 +579,17 @@ def _support_details(
     ship: str,
     evidence: ChatlasEvidence,
     assessment: AnnotationAssessment,
-) -> tuple[str, tuple[Finding, ...]]:
+) -> tuple[str, tuple[DiagramPOI, ...]]:
     try:
         members = annotation.render_support(evidence)
     except (DiagramError, ValueError) as exc:
-        finding = Finding(
-            "support-render-unavailable",
-            f"annotation.{annotation.id}.support",
-            str(exc),
-        )
+        poi = diagram_pois.SupportRenderUnavailable(path=f'annotation.{annotation.id}.support', message=str(exc), evidence={"error": str(exc)})
         return (
             "<details>\n"
             f"<summary>Support unavailable · {annotation.id[:8]}</summary>\n\n"
             f"{exc}\n\n"
             "</details>",
-            (finding,),
+            (poi,),
         )
     turn_count = sum(len(member["turns"]) for member in members)
     sections = [

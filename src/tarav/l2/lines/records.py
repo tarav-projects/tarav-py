@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+# tarav.breadcrumb 2ff273cf509964f5328f768a4d72aa2825a9c00d8466634a1103929005bab69c
+
+import tarav.l2.unsorted.pois as diagram_pois
+
 from tarav.l2.unsorted.constants import BLOCK_EDITION_TYPE
 from tarav.l2.unsorted.constants import BLOCK_SHIP_TYPE
 from tarav.l2.unsorted.constants import BLOCK_TYPE_ANNOTATION_TYPE
@@ -13,7 +17,7 @@ from tarav.l2.lines.references import DiagramArgumentReferenceInterface
 from tarav.l2.lines.references import DiagramBlockLocationInterface
 from tarav.l2.lines.references import DiagramLocationInterface
 from tarav.l2.unsorted.primitives import DiagramModelError
-from tarav.l2.unsorted.contracts import Finding
+from tarav.l2.unsorted.pois import DiagramPOI
 from tarav.l1.lines.identity import LINES_WORKFLOW_SHIP
 from tarav.l2.unsorted.constants import LINE_ANNOTATION_TYPE
 from tarav.l2.unsorted.constants import LINE_EDITION_TYPE
@@ -328,47 +332,32 @@ class LineAnnotationRecord(TypedAnnotation):
             ),
         )
 
-    def type_findings(
+    def type_pois(
         self,
         *,
         path: str,
         evidence: ChatlasEvidence | None,
-    ) -> tuple[Finding, ...]:
-        findings: list[Finding] = []
+    ) -> tuple[DiagramPOI, ...]:
+        pois: list[DiagramPOI] = []
         namespace = self.namespace
         for index, reference in enumerate(self.arguments):
             if reference.namespace_id != namespace.id:
                 continue
             if not namespace.resolves_argument(reference):
-                findings.append(
-                    Finding(
-                        "line-annotation-argument-unresolved",
-                        f"{path}.editions[-1].arguments[{index}]",
-                        (
-                            "Line.Annotation argument does not resolve in its "
-                            f"Namespace: {reference.kind} {reference.id}."
-                        ),
-                    )
+                pois.append(
+                    diagram_pois.AnnotationLineAnnotationArgumentUnresolved(path=f'{path}.editions[-1].arguments[{index}]', message=f'Line.Annotation argument does not resolve in its Namespace: {reference.kind} {reference.id}.')
                 )
         if self.support:
             if not self.has_producer:
-                findings.append(
-                    Finding(
-                        "line-annotation-producer-missing",
-                        f"{path}.editions[-1].producer",
-                        "Supported Line.Annotation edition has no producer Turn.",
-                    )
+                pois.append(
+                    diagram_pois.AnnotationLineAnnotationProducerMissing(path=f'{path}.editions[-1].producer', message='Supported Line.Annotation edition has no producer Turn.')
                 )
             elif evidence is not None:
-                findings.extend(evidence.check(self, path=f"{path}.editions[-1]"))
-            findings.append(
-                Finding(
-                    "archive-grounding-unassessable",
-                    path,
-                    "Chatlas-to-Archive grounding is not yet mechanically assessable.",
-                )
+                pois.extend(evidence.check(self, path=f"{path}.editions[-1]"))
+            pois.append(
+                diagram_pois.AnnotationArchiveGroundingUnassessable(path=path, message='Chatlas-to-Archive grounding is not yet mechanically assessable.')
             )
-        return tuple(findings)
+        return tuple(pois)
 
 
 class LineEditionRecord(UserTouchedAnnotation):
@@ -447,12 +436,12 @@ class LineEditionRecord(UserTouchedAnnotation):
     def contribute(self, projector: DiagramProjectionBuilder) -> None:
         projector.add_line_annotation(self)
 
-    def type_findings(
+    def type_pois(
         self,
         *,
         path: str,
         evidence: ChatlasEvidence | None,
-    ) -> tuple[Finding, ...]:
+    ) -> tuple[DiagramPOI, ...]:
         return ()
 
 
@@ -788,18 +777,14 @@ class LineGateAnnotation(TypedAnnotation):
     def type_assertions(self) -> tuple[JsonObject, ...]:
         return tuple({"type": kind} for kind in VERBATIM_GATE_ASSERTIONS)
 
-    def type_findings(
+    def type_pois(
         self,
         *,
         path: str,
         evidence: ChatlasEvidence | None,
-    ) -> tuple[Finding, ...]:
+    ) -> tuple[DiagramPOI, ...]:
         return (
-            Finding(
-                "archive-grounding-unassessable",
-                path,
-                "Chatlas-to-Archive grounding is not yet mechanically assessable.",
-            ),
+            diagram_pois.AnnotationArchiveGroundingUnassessable(path=path, message='Chatlas-to-Archive grounding is not yet mechanically assessable.'),
         )
 
     def contribute(self, projector: DiagramProjectionBuilder) -> None:
