@@ -104,7 +104,7 @@ class TrackedPOIContext(ContextFolder):
                  "Opens the POI as last reported on this machine, with what its Type "
                  "asks you to read and what you may do. Absent when it was not in the "
                  "last report."]),
-                description="The command that opens the reported POI and its guidance.")
+                description="The command that opens the reported POI and its notes.")
 
         return cls(subject, populate)
 

@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready. Replaces request 890.
+Status: implemented. Replaces request 890.
 
 Remove the `read_first` and `may_do` fields from POI Types. A POI keeps what
 an error keeps: its Type and an elementary message, with its situation and
@@ -92,3 +92,26 @@ discussion captured; implementation capture pending.
 ## Impl.Log
 
 - Designed 2026-10-09.
+- Start checkpoint: commit `1258100` (request 892); every file this request
+  changes was clean at HEAD except `ARCHITECTURE.md`.
+- `POI.context_notes` (class attribute, empty by default, not in `as_dict`).
+  `reported_record()` keeps them as `notes`; `ReportedPOIContext` shows one
+  entry `notes` in place of `read-first` and `may-do`; `guidance_of()` is
+  removed.
+- `POIGuidanceCheck` and `POIGuidanceMissingPOI` are removed, and their use in
+  `tarav.l2.project.dev`.
+- Texts rewritten as statements in `l1/project/agents.py` (15 Types),
+  `l1/project/skills.py` (6), `l1/checks/poi_contract.py`,
+  `l1/poi_tracking/__init__.py`, `l2/unsorted/pois.py`. "Raise it first." became
+  "Its producer intends it to be raised to the User before anything is
+  changed."; each resolution became "It is no longer raised once ...".
+- Tests adjusted in `tests/cli/test_context_command.py` and
+  `tests/diagram/test_diagram_pois.py`; one new test that notes are not part
+  of the POI's record. Full suite 266 passed in the shared worktree; Ruff
+  clean.
+- Real run, `tarav check --project . --tracking skip` on the root: 364 checks
+  completed, 54 POIs (about 190 before: the guidance reminders are gone).
+  `tarav context --id <id> --view reported-poi --path notes` shows the three
+  notes of an agents-file POI.
+- `ARCHITECTURE.md` and `src/tarav/l1/poi/README.md` updated. No skill or
+  guidance file named the fields.

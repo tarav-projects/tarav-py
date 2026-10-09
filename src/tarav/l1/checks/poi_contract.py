@@ -1,4 +1,4 @@
-"""Checks that keep every POI explainable: declared guidance and a working context path."""
+"""Checks that keep every POI explainable: a rendered line and a working context path."""
 
 from __future__ import annotations
 
@@ -12,15 +12,17 @@ from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.context.query import ContextQueryService, IdentityContextQuery
 from tarav.l1.poi import IdentifiedPOI, POI
 from tarav.l1.poi.reporting import (
-    REPORTED_POI_VIEW, ReportedPOIContext, ReportedPOIResolver, ReportedPOIStore, guidance_of,
+    REPORTED_POI_VIEW, ReportedPOIContext, ReportedPOIResolver, ReportedPOIStore,
 )
 from tarav.l1.poi.rendering import POISelection, renderers
 from tarav.l1.poi.rendering import renderer
 
 from . import CHECKS_WORKFLOW_SHIP, Check, CheckPOI, CheckResult, CheckRun
 
-_READ = ("tarav-md/notes/wiki/poi-system.md, section 'Reported POIs and their context'.",
-         "tarav.l1.poi.reporting: guidance_of() and context_instruction().")
+_READ = ("How reported POIs are opened is described in tarav-md/notes/wiki/poi-system.md, "
+         "section 'Reported POIs and their context'.",
+         "The command shown with a report is built by "
+         "tarav.l1.poi.reporting.context_instruction().")
 
 
 def defined_under(cls: type, root: Path) -> bool:
@@ -41,49 +43,6 @@ def _leaf_poi_types(base: type = IdentifiedPOI) -> list[type]:
         if not children and current is not base:
             found.append(current)
     return sorted(set(found), key=lambda cls: entity(cls).name)
-
-
-class POIGuidanceMissingPOI(CheckPOI):
-    """A POI Type that tells its reader neither what to read nor what may be done."""
-
-    read_first = _READ
-    may_do = ("Set `read_first` and `may_do` on the named POI class.",
-              "Leaving it is acceptable: this is a reminder, not a defect in a run.")
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("2b6d8f40-7a13-4c95-b8e2-5f0a9c3d1e67"),
-                          name="Tarav.Checks.POIGuidanceMissing", workflow=CHECKS_WORKFLOW_SHIP)
-
-
-# tarav.breadcrumb ab1ededded3d322d81192b4aa9c3984d58a6ee91b9eae863171795b5b8e2a5c3
-class POIGuidanceCheck(Check):
-    """Every loaded POI Type defined under a folder declares guidance for its readers."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("9c1e4a72-0d58-4b36-a7f9-3e6b2d8c5a10"),
-                          name="Tarav.Checks.POIGuidance", workflow=CHECKS_WORKFLOW_SHIP)
-
-    def __init__(self, root: Path) -> None:
-        super().__init__()
-        self.root = Path(root)
-
-    def _run(self) -> CheckResult:
-        pois = []
-        for poi_type in _leaf_poi_types():
-            if not defined_under(poi_type, self.root):
-                continue
-            guidance = guidance_of(poi_type)
-            if guidance["read_first"] or guidance["may_do"]:
-                continue
-            name = entity(poi_type).name
-            pois.append(POIGuidanceMissingPOI(
-                self, f"{name} declares nothing to read or do",
-                situation={"poi_type": name},
-                details={"poi_type": name, **{key: poi_type.help().get(key)
-                                               for key in ("class", "source_path", "source_line")}}))
-        return CheckResult(self, status="completed", pois=pois)
 
 
 class POIRenderSummaryMissing(CheckPOI):
@@ -134,9 +93,11 @@ class POIRenderCoverageCheck(Check):
 class POIContextRoundTripPOI(CheckPOI):
     """Family, never raised: a check report's advertised context command does not lead to a POI."""
 
-    read_first = _READ
-    may_do = ("Repair the report header, the reported-POI resolver or its view in tarav-py.",
-              "Raise it to the User: agents are being sent to a command that does not answer.")
+    context_notes = (*_READ,
+                     "It is no longer raised once the report header, the reported-POI "
+                     "resolver and its view agree in tarav-py.",
+                     "Its producer intends it to reach the User: agents are being sent to "
+                     "a command that does not answer.")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -256,8 +217,6 @@ __all__ = [
     "POIContextRoundTripCheck",
     "POIContextRoundTripPOI",
     "POIContextViewEmpty",
-    "POIGuidanceCheck",
-    "POIGuidanceMissingPOI",
     "POIRenderCoverageCheck",
     "POIRenderSummaryMissing",
     "defined_under",

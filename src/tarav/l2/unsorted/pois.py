@@ -13,8 +13,8 @@ from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 
 class DiagramPOI(IdentifiedPOI):
     """A state of a Diagram object that merits inspection."""
-    read_first = ("The reported path and its source Diagram record.",)
-    may_do = ("Inspect the source and decide whether a correction is warranted.",)
+    context_notes = ("It concerns the reported path and its source Diagram record.",
+                     "Whether a correction is warranted is judged from that source.")
 
     @classmethod
     def class_entity(cls) -> TaravClass:

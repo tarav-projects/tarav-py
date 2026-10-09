@@ -13,7 +13,6 @@ from uuid import uuid4
 import pytest
 
 from tarav.l0.kernel import entity
-from tarav.l1.poi.reporting import guidance_of
 from tarav.l2.unsorted.capture import CaptureReceipt
 from tarav.l2.unsorted.draft_migration import migrate_drafts
 from tarav.l2.unsorted.drafts import DiagramDraft, DiagramDraftError
@@ -61,8 +60,7 @@ def test_case_catalog_has_unique_atomic_identity_and_guidance() -> None:
         DiagramPOI(path="p", message="m")
     for cls in CASE_TYPES:
         assert cls.__doc__
-        assert guidance_of(cls)["read_first"]
-        assert guidance_of(cls)["may_do"]
+        assert cls.context_notes
         assert cls(path="p", message="m").summary()
 
 

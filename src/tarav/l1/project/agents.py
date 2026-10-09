@@ -45,6 +45,9 @@ def _prompt_lines() -> list[str]:
 
 
 # tarav.breadcrumb e99f2fd0ced1996742d62afb9de0effa682f21e481ba288061a184e135e99c45
+_AGENTS_READING = "The agents file and its checks are described in tarav-md/notes/wiki/agents-bootstrap.md and in the agents file's own closing section."
+_USER_FIRST = 'Its producer intends it to be raised to the User before anything is changed.'
+
 class TaravSystemPrompt(SkwBlock):
     """Code-produced, identical Tarav bootstrap text."""
 
@@ -180,8 +183,7 @@ class AgentsMd(TaravObject, CheckProvider, SettingsProvider):
 
 class TaravSystemPromptPOI(CheckPOI):
     """Family, never raised: the agents file lacks the current Tarav System Prompt."""
-    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md", "the agents file's own closing section")
-    may_do = ("Add or `produce` the TaravSystemPrompt block in the Skillware source, then compile.", "Raise it first.")
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the Skillware source holds one TaravSystemPrompt block produced from the shipped text and the file is compiled.', _USER_FIRST)
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("715798b8-b431-431e-be0f-15338b7e2ea1"),
@@ -190,8 +192,7 @@ class TaravSystemPromptPOI(CheckPOI):
 
 class ProjectSystemPromptPOI(CheckPOI):
     """Family, never raised: the agents file lacks a Project System Prompt."""
-    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md", "the agents file's own closing section")
-    may_do = ("Author the ProjectSystemPrompt block with the User, then compile.", "Raise it first.")
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the Skillware source holds one ProjectSystemPrompt block with content, authored with the User, and the file is compiled.', _USER_FIRST)
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("64869199-6cbb-4653-808a-4cb03078fd0e"),
@@ -200,8 +201,7 @@ class ProjectSystemPromptPOI(CheckPOI):
 
 class AgentsMdProductPOI(CheckPOI):
     """Family, never raised: the agents file and its source disagree or cannot be compared."""
-    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md", "the agents file's own closing section")
-    may_do = ("Edit the source, never the product, then compile; lint shows the finding.", "Raise it first.")
+    context_notes = (_AGENTS_READING, 'The source is what is edited, never the product; compiling makes them agree, and lint shows the finding.', _USER_FIRST)
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("d8353b6d-e8a7-46a7-ba8b-f21a1bc2b775"),
@@ -210,8 +210,7 @@ class AgentsMdProductPOI(CheckPOI):
 
 class AgentsAliasPOI(CheckPOI):
     """Family, never raised: a declared alias is not a symlink to the main agents file."""
-    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md", "the agents file's own closing section")
-    may_do = ("Replace the alias by a symlink to the main agents file.", "Raise it first.")
+    context_notes = (_AGENTS_READING, 'It is no longer raised once each declared alias is a symlink to the main agents file.', _USER_FIRST)
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("7890040b-6928-430e-876b-a3bf282c2eb1"),
@@ -221,7 +220,7 @@ class AgentsAliasPOI(CheckPOI):
 class TaravSystemPromptSourceUnavailable(TaravSystemPromptPOI):
     """The agents file's Skillware source could not be loaded, so its Tarav System Prompt cannot be checked."""
 
-    may_do = ("Create or repair the Skillware source of the agents file, add the TaravSystemPrompt block, then compile.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, "It is no longer raised once the agents file's Skillware source loads and holds the TaravSystemPrompt block, and the file is compiled.", _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -232,7 +231,7 @@ class TaravSystemPromptSourceUnavailable(TaravSystemPromptPOI):
 class TaravSystemPromptMissing(TaravSystemPromptPOI):
     """The agents file's source has no Tarav System Prompt block."""
 
-    may_do = ("Add the TaravSystemPrompt block to the Skillware source, `produce` it, then compile.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the Skillware source holds the TaravSystemPrompt block, made with `produce`, and the file is compiled.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -243,7 +242,7 @@ class TaravSystemPromptMissing(TaravSystemPromptPOI):
 class TaravSystemPromptDuplicated(TaravSystemPromptPOI):
     """The agents file's source has more than one Tarav System Prompt block."""
 
-    may_do = ("Keep one TaravSystemPrompt block in the Skillware source, then compile.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the Skillware source keeps a single TaravSystemPrompt block and the file is compiled.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -254,7 +253,7 @@ class TaravSystemPromptDuplicated(TaravSystemPromptPOI):
 class TaravSystemPromptStale(TaravSystemPromptPOI):
     """The agents file's Tarav System Prompt differs from the text shipped with Tarav."""
 
-    may_do = ("`produce` the TaravSystemPrompt block again from the shipped text, then compile.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the TaravSystemPrompt block is made again with `produce` from the shipped text and the file is compiled.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -265,7 +264,7 @@ class TaravSystemPromptStale(TaravSystemPromptPOI):
 class ProjectSystemPromptSourceUnavailable(ProjectSystemPromptPOI):
     """The agents file's Skillware source could not be loaded, so its Project System Prompt cannot be checked."""
 
-    may_do = ("Create or repair the Skillware source of the agents file, author the ProjectSystemPrompt block with the User, then compile.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, "It is no longer raised once the agents file's Skillware source loads and holds a ProjectSystemPrompt block authored with the User, and the file is compiled.", _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -276,7 +275,7 @@ class ProjectSystemPromptSourceUnavailable(ProjectSystemPromptPOI):
 class ProjectSystemPromptMissing(ProjectSystemPromptPOI):
     """The agents file's source has no Project System Prompt block."""
 
-    may_do = ("Author the ProjectSystemPrompt block with the User, then compile.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, 'It is no longer raised once a ProjectSystemPrompt block authored with the User is in the source and the file is compiled.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -287,7 +286,7 @@ class ProjectSystemPromptMissing(ProjectSystemPromptPOI):
 class ProjectSystemPromptDuplicated(ProjectSystemPromptPOI):
     """The agents file's source has more than one Project System Prompt block."""
 
-    may_do = ("Merge the ProjectSystemPrompt blocks into one with the User, then compile.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the ProjectSystemPrompt blocks are merged into one with the User and the file is compiled.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -298,7 +297,7 @@ class ProjectSystemPromptDuplicated(ProjectSystemPromptPOI):
 class ProjectSystemPromptEmpty(ProjectSystemPromptPOI):
     """The agents file's Project System Prompt block has no content."""
 
-    may_do = ("Write the Project System Prompt with the User, then compile.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the Project System Prompt has content written with the User and the file is compiled.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -444,7 +443,7 @@ _PRODUCT_POI = {
 class AgentsAliasMissing(AgentsAliasPOI):
     """A declared alias of the agents file does not exist."""
 
-    may_do = ("Create the alias as a symlink to the main agents file.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the alias exists as a symlink to the main agents file.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -455,7 +454,7 @@ class AgentsAliasMissing(AgentsAliasPOI):
 class AgentsAliasNotSymlink(AgentsAliasPOI):
     """A declared alias of the agents file is a regular file, not a symlink."""
 
-    may_do = ("Replace the file by a symlink to the main agents file, after checking it holds nothing unique.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the file is replaced by a symlink to the main agents file. The regular file may hold content found nowhere else.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -466,7 +465,7 @@ class AgentsAliasNotSymlink(AgentsAliasPOI):
 class AgentsAliasWrongTarget(AgentsAliasPOI):
     """A declared alias of the agents file is a symlink to something else."""
 
-    may_do = ("Point the symlink at the main agents file.", "Raise it first.",)
+    context_notes = (_AGENTS_READING, 'It is no longer raised once the symlink points at the main agents file.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:

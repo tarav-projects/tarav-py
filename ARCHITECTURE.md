@@ -727,12 +727,14 @@ A POI exists only during its check run, so `tarav check --project` retains what 
 reported, best effort, in `~/.tarav/check-reports/<project id>.json`
 (`TARAV_CHECK_REPORTS` relocates it). `tarav.l1.poi.reporting` owns that store, the
 `ReportedPOI` subject, its resolver, and the `reported-poi` view with the entries
-`poi-type`, `raised-by`, `occurrence`, `read-first` and `may-do`. A POI Type declares
-`read_first` and `may_do`. `tarav.l1.poi.rendering` owns named renderers for a
+`poi-type`, `raised-by`, `occurrence` and `notes`. A POI is an elementary
+statement that an event happened; a POI Type may add descriptive `context_notes`,
+which are kept with the reported record and are not part of the POI's own record.
+`tarav.l1.poi.rendering` owns named renderers for a
 selected page of POIs; the default and JSON-lines renderers expose `line`,
 `record`, and `context` levels. Commands choose a renderer after selection and
 retain displayed identified POIs so the shared context instruction resolves.
-`tarav.l1.checks.poi_contract` checks guidance, default-renderer coverage, and
+`tarav.l1.checks.poi_contract` checks default-renderer coverage and
 a round trip from each registered renderer's example to the context view.
 <!-- tarav.breadcrumb 0f987fcde26031c37c5760d787340675b644c752fb3410bb7e8b98183f5fd71f -->
 <!-- tarav.breadcrumb 5c2663eff9561ef3a40b8394241107400cd89fa7942dee0a3037aa987699ff79 -->

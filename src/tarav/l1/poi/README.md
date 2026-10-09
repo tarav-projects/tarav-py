@@ -1,6 +1,12 @@
 # POIs and blessings
 
-`POI` is the neutral point-of-interest base. Producing workflows define their
+`POI` is the neutral point-of-interest base: the statement that an event
+happened, with a Type and an elementary message, as an error has. A Type may
+add descriptive `context_notes`; they appear in the POI's context and are not
+part of its record. There are no instruction fields.
+<!-- tarav.breadcrumb e8473b22fc3ee0a455cbc39e008f48b457d5b1486ae3b6b608120a10e8ebbd1f -->
+
+Producing workflows define their
 own concrete subtypes; POI does not prescribe checking, persistence, severity,
 or response mechanics.
 

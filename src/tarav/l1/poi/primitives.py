@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 import hashlib
+from typing import ClassVar
 import json
 import warnings
 
@@ -37,7 +38,17 @@ def fingerprint(value):
 
 # tarav.breadcrumb 0e47f7f09769ba32c37969a636c8480ceef794d03f21b3306cfed321b6c1bdf7
 class POI(TaravObject):
-    """A point of interest. Specialized workflows define its meaning."""
+    """A point of interest: the statement that an event happened.
+
+    Like an error, a POI is an object with a Type and an elementary message.
+    Creating one does nothing; what is done with it is the caller's act.
+    """
+
+    # tarav.breadcrumb fbce893f8a509ccd3120c6f50be4e69a32ff924ed42d9cef1af7857d8dc86efb
+    #: Descriptive sentences this Type adds to its POIs' context: what the POI
+    #: means, where its producer's documentation is, what is known to make it
+    #: stop being raised. They are not part of the POI's record.
+    context_notes: ClassVar[tuple[str, ...]] = ()
 
     @classmethod
     def class_entity(cls) -> TaravClass:

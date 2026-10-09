@@ -20,6 +20,9 @@ TARAV_PACKAGE_SKILL = "tarav-pkg"
 
 
 # tarav.breadcrumb f011d7009f1b32971b3f77364fe0233f55c8d1d9543a658f3fd8105a4db97f6b
+_SKILLS_READING = "Skill availability is described in tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'."
+_USER_FIRST = 'Its producer intends it to be raised to the User before anything is changed.'
+
 class ProjectSkills(TaravObject, CheckProvider):
     """Skills visible to an agent entering this Project."""
 
@@ -72,8 +75,7 @@ class ProjectSkills(TaravObject, CheckProvider):
 class TaravPackageSkillPOI(CheckPOI):
     """The Tarav package skill is not in the Project or home skill folders."""
 
-    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'",)
-    may_do = ("Import it with `tarav project skills import`.", "Raise it first.")
+    context_notes = (_SKILLS_READING, 'It is no longer raised once the skill is imported; `tarav project skills import` does that.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -85,8 +87,7 @@ class TaravPackageSkillPOI(CheckPOI):
 class ProjectPackageSkillPOI(CheckPOI):
     """Family, never raised: the Project's package skill is undeclared or unavailable."""
 
-    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'",)
-    may_do = ("Name it in the marker as agents.package_skill, or import it.", "Raise it first.")
+    context_notes = (_SKILLS_READING, 'It is no longer raised once the marker names the skill as agents.package_skill and the skill is available.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -98,8 +99,7 @@ class ProjectPackageSkillPOI(CheckPOI):
 class SkillFoldersPOI(CheckPOI):
     """Family, never raised: the skill folders an agent would load are missing or disagree."""
 
-    read_first = ("tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'",)
-    may_do = ("Recreate the folders with `tarav project skills import`.", "Raise it first.")
+    context_notes = (_SKILLS_READING, 'It is no longer raised once the skill folders exist and agree; `tarav project skills import` recreates them.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -111,7 +111,7 @@ class SkillFoldersPOI(CheckPOI):
 class ProjectPackageSkillUndeclared(ProjectPackageSkillPOI):
     """The Project marker names no package skill."""
 
-    may_do = ("Name the skill in the marker as agents.package_skill.", "Raise it first.")
+    context_notes = (_SKILLS_READING, 'It is no longer raised once the marker names the skill as agents.package_skill.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -122,7 +122,7 @@ class ProjectPackageSkillUndeclared(ProjectPackageSkillPOI):
 class ProjectPackageSkillMissing(ProjectPackageSkillPOI):
     """The package skill the Project names is in neither the Project nor the home skill folder."""
 
-    may_do = ("Import it with `tarav project skills import`.", "Raise it first.")
+    context_notes = (_SKILLS_READING, 'It is no longer raised once the named skill is imported; `tarav project skills import` does that.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -151,7 +151,7 @@ class ClaudeSkillsFolderAbsent(SkillFoldersPOI):
 class ClaudeSkillsFolderDiverges(SkillFoldersPOI):
     """`.claude/skills` does not resolve to the same directory as `.agents/skills`."""
 
-    may_do = ("Make `.claude/skills` resolve to the `.agents/skills` directory.", "Raise it first.")
+    context_notes = (_SKILLS_READING, 'It is no longer raised once `.claude/skills` resolves to the `.agents/skills` directory.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:

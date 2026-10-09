@@ -257,9 +257,12 @@ class TrackRecord(TaravEntity, FileRecord):
 class TrackRecordUnreadable(NotificationPOI):
     """A file in a tracking store could not be read as a track record; it was skipped."""
 
-    read_first = ("tarav.l1.poi_tracking: TrackRecord.Records.validate_record().",)
-    may_do = ("Inspect the named file; the tracker never repairs or deletes it.",
-              "Raise it to the User when the file is under Git and was edited by hand.")
+    context_notes = (
+        "Track records are validated by "
+        "tarav.l1.poi_tracking: TrackRecord.Records.validate_record().",
+        "The tracker skips the named file and never repairs or deletes it.",
+        "A file under Git that was edited by hand is the case its producer intends to "
+        "reach the User.")
 
     @classmethod
     def class_entity(cls) -> TaravClass:

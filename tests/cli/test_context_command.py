@@ -10,14 +10,14 @@ import pytest
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckRun
 from tarav.l1.checks.poi_contract import (
-    POIContextRoundTripCheck, POIGuidanceCheck, POIGuidanceMissingPOI,
+    POIContextRoundTripCheck,
 )
 from tarav.l1.context.query import (
     ContextCandidate, ContextQuery, ContextQueryService, IdentityContextQuery,
 )
 from tarav.l1.poi.reporting import (
     REPORTED_POI_VIEW, ReportedPOI, ReportedPOIContext, ReportedPOIResolver,
-    ReportedPOIStore, context_instruction, guidance_of,
+    ReportedPOIStore, context_instruction, reported_record,
 )
 from tarav.l1.poi.rendering import POISelection, renderer
 from tarav.l1.search import SearchEngine, SearchHit
@@ -41,10 +41,10 @@ class SampleCheck(Check):
 
 
 class GuidedPOI(CheckPOI):
-    """A sample POI that tells its reader what to do."""
+    """A sample POI whose Type adds notes to its context."""
 
-    read_first = ("the sample note",)
-    may_do = ("fix the sample", "Raise it first.")
+    context_notes = ("It is described in the sample note.",
+                     "It is no longer raised once the sample is fixed.")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -74,7 +74,7 @@ def test_an_identity_query_opens_the_requested_view(reported: list[str]) -> None
 
     assert isinstance(answer.subject, ReportedPOI)
     assert [entry.name for entry in answer.target.ls()] == [
-        "poi-type", "raised-by", "occurrence", "read-first", "may-do", "track-record"]
+        "poi-type", "raised-by", "occurrence", "notes", "track-record"]
     assert answer.views == (REPORTED_POI_VIEW,)
 
 
@@ -87,10 +87,11 @@ def test_the_general_view_is_the_default_and_names_other_views(reported: list[st
 
 def test_a_path_is_followed_to_a_value(reported: list[str]) -> None:
     answer = _service().open(
-        IdentityContextQuery(reported[0], view=REPORTED_POI_VIEW, path=["may-do"]))
+        IdentityContextQuery(reported[0], view=REPORTED_POI_VIEW, path=["notes"]))
 
-    assert answer.location == ("may-do",)
-    assert answer.target.records.to_record()["value"] == ["fix the sample", "Raise it first."]
+    assert answer.location == ("notes",)
+    assert answer.target.records.to_record()["value"] == [
+        "It is described in the sample note.", "It is no longer raised once the sample is fixed."]
 
 
 def test_several_matches_are_candidates_and_none_is_empty(reported: list[str]) -> None:
@@ -125,10 +126,12 @@ def test_queries_validate_their_parts() -> None:
         ContextQueryService().open(IdentityContextQuery("x", view="missing"))
 
 
-def test_guidance_is_read_from_the_poi_type() -> None:
-    assert guidance_of(GuidedPOI) == {"read_first": ["the sample note"],
-                                      "may_do": ["fix the sample", "Raise it first."]}
-    assert guidance_of(CheckPOI) == {"read_first": [], "may_do": []}
+def test_notes_belong_to_the_poi_type_and_not_to_the_poi_record() -> None:
+    poi = GuidedPOI(SampleCheck(), "Something was found", situation={"where": "a"})
+    assert CheckPOI.context_notes == ()
+    assert "notes" not in poi.as_dict(detail=True) and "context_notes" not in poi.as_dict(detail=True)
+    assert reported_record(poi)["notes"] == ["It is described in the sample note.",
+                                             "It is no longer raised once the sample is fixed."]
 
 
 # tarav.breadcrumb 74712dcf68e97f58fe0e4ee967aac259d1ae2d412c8eb34f0fb4864be1b10b9a
@@ -152,7 +155,7 @@ def test_a_report_with_pois_opens_with_one_instruction() -> None:
 def test_the_command_lists_opens_and_reports_misses(reported: list[str], capsys) -> None:
     assert main(["context", "--id", reported[0][:12], "--view", REPORTED_POI_VIEW]) == 0
     listing = capsys.readouterr().out
-    assert "occurrence" in listing and "may-do" in listing
+    assert "occurrence" in listing and "notes" in listing
 
     assert main(["context", "--id", reported[0], "--view", REPORTED_POI_VIEW,
                  "--path", "occurrence", "--json"]) == 0
@@ -169,8 +172,3 @@ def test_the_command_lists_opens_and_reports_misses(reported: list[str], capsys)
 def test_the_contract_checks_report_through_the_check_system(tmp_path: Path) -> None:
     assert POIContextRoundTripCheck().run().pois() == ()
 
-    here = Path(__file__).resolve().parent
-    assert POIGuidanceCheck(here).run().pois() == ()
-    source = Path(GuidedPOI.help()["source_path"]).parents[1]
-    reminders = POIGuidanceCheck(source / "missing").run().pois()
-    assert all(isinstance(poi, POIGuidanceMissingPOI) for poi in reminders)

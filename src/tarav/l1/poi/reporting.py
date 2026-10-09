@@ -29,17 +29,6 @@ EXAMPLE_ID_LENGTH = 12
 _LOG = logging.getLogger(__name__)
 
 
-def guidance_of(poi_type: type[POI]) -> dict[str, list[str]]:
-    """What a POI Type declares for its readers.
-
-    A Type sets `read_first` (what to read before acting) and `may_do` (the
-    responses open to the reader, including whether to raise it to the User)
-    as tuples of sentences. Both default to nothing declared.
-    """
-    return {"read_first": [str(item) for item in getattr(poi_type, "read_first", ())],
-            "may_do": [str(item) for item in getattr(poi_type, "may_do", ())]}
-
-
 # tarav.breadcrumb d473114f4ea9f30435e91f06d6f8d4428f199fca20c04a03a96256fd57c646a3
 def context_instruction(example_id: str | None = None, *,
                         view: str = REPORTED_POI_VIEW) -> list[str]:
@@ -103,7 +92,7 @@ def reported_record(poi: IdentifiedPOI) -> dict[str, object]:
         "details": deepcopy(getattr(poi, "details", {})),
         "poi_type": _class_record(type(poi)),
         "raised_by": _class_record(type(check)) if check is not None else None,
-        "guidance": guidance_of(type(poi)),
+        "notes": [str(item) for item in type(poi).context_notes],
     }
 
 
@@ -198,7 +187,7 @@ class ReportedPOIContext(ContextFolder):
     def for_subject(cls, subject):
         if not isinstance(subject, ReportedPOI):
             raise TypeError(f"{REPORTED_POI_VIEW} supports only reported POIs")
-        record, guidance = subject.record, subject.record.get("guidance") or {}
+        record = subject.record
 
         def populate(builder: ContextBuilder) -> None:
             builder.add("poi-type", opener=lambda: _value(record.get("poi_type")),
@@ -211,15 +200,13 @@ class ReportedPOIContext(ContextFolder):
                 "details": record.get("details"), "project": subject.project,
                 "reported_at": subject.reported_at,
             }), description="The situation reported in this instance.")
-            builder.add("read-first", opener=lambda: _value(
-                guidance.get("read_first") or
-                ["This POI Type declares nothing to read; inspect poi-type and raised-by."]),
-                description="What the POI Type asks you to read before acting.")
-            builder.add("may-do", opener=lambda: _value(
-                guidance.get("may_do") or
-                ["This POI Type declares no response. A POI is a signal, not an "
-                 "instruction: decide with the User whether and how to act."]),
-                description="The responses open to you, and whether to raise it to the User.")
+            # tarav.breadcrumb f3236aaad76ac5534545f16290a5146d0f5fa69b1314c41ed0df2fd158db51f5
+            builder.add("notes", opener=lambda: _value(
+                record.get("notes") or
+                ["This POI Type adds no notes. A POI states an event; poi-type and "
+                 "raised-by say what it is and where it comes from."]),
+                description="What the POI Type's producer says about it: what it means, "
+                            "where it is documented, what is known to end it.")
             builder.add("track-record", opener=lambda: _value(
                 [f"tarav context --id {record.get('id')} --view tracked-poi",
                  "Opens the Project's durable record of this POI: its status on every "
@@ -265,7 +252,6 @@ __all__ = [
     "ReportedPOIResolver",
     "ReportedPOIStore",
     "context_instruction",
-    "guidance_of",
     "reported_record",
     "retain_presented_pois",
     "reports_root",
