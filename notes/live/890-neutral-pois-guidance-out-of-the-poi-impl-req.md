@@ -7,7 +7,8 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design.
-Status: needs-alignment (the destination of guidance is not decided).
+Status: superseded by request 893. The destination was decided: the POI's
+context, and the action's skill when the POI is followed by an action.
 
 A POI states what its producer knows: the check that raised it, the
 situation, the evidence and a descriptive message. What a reader should do is

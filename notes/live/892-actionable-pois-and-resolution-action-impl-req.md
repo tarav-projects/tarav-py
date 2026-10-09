@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design.
-Status: ready for the User's review; not executed.
+Status: ready.
 
 Rebuild the Actions example of request 891 on the model the discussion
 reached: a POI is only an event, and an actionable POI spins one action, the
@@ -122,7 +122,8 @@ that the situation is gone.
   situation. Triggered again: created if absent, left open if open, reopened
   if it was closed as `gone`, left closed if it was `dismissed`. The record
   holds the current state only; its history is the registry's Git history.
-- **Subject** (Agent proposal, not confirmed by the User). The situation key
+- **Subject** (Agent proposal; the User asked for execution without
+  settling it, so it is built as the agent's choice and reported). The situation key
   cannot be named by a check that no longer finds that situation. The check
   therefore also states what it examined, its subject, which is stable while
   what is found changes. An action records its subject.

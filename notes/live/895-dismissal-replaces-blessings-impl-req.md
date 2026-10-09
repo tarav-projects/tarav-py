@@ -1,0 +1,93 @@
+# 895 — Dismissal replaces blessings — Impl.Req
+
+<!-- tarav.sessions
+abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c625e3f68354a234a91e4992b67406f075d93ccb20f4d4
+-->
+
+## Impl.Abstract
+
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
+Status: ready, after request 894.
+
+A blessing becomes the dismissal close path of the POI's action. The separate
+blessing mechanism (store, records, capability, attention schedule, Project
+decisions folder for blessings) is replaced by dismissing the action, with a
+reason and an attributed operator.
+
+Non-goals: graded dismissal with scoring thresholds; other close paths such
+as "provided"; Directives; Tarav Center.
+
+## Design narrative
+
+The User asked for the consequences of the day's design to be turned into
+as many requests as needed and executed.
+<!-- tarav.breadcrumb 54d64105d3d26a63819eb988ee2c42ac8d9aa4771e6a152bd13b25d31c550970 -->
+<!-- tarav.breadcrumb 64a8a02277d1a9429e52acca11da53dbb137ac009fc0ea619edfc79f0aa78148 -->
+
+A blessing answers a specific question about a POI; its general meaning is
+that the POI's claim is attenuated or dismissed, an overrule of the check.
+<!-- tarav.breadcrumb 6cbc87f5a27e88aae97a22f6c6170cc7bb5116443bbe2aca1755a83f2db86ed5 -->
+<!-- tarav.breadcrumb 2988467a6903c75375ecceb2d0733a29d42e3e267e9e57bdc78e86b45b5f18a0 -->
+
+A POI can be resolved in several typed ways and dismissal is the softest; the
+word "blessing" need not survive, and the design is free of earlier inertia.
+<!-- tarav.breadcrumb 860aedf41ce6cbd34319326717e3b2cb1815add9c2324ad153b51fc9cde43b11 -->
+<!-- tarav.breadcrumb fee84f8f2342f2882338c5b891ad0b5da5195ec5383062a96b0deaeb0faed9b5 -->
+
+A blessing is a way to finish the action a POI started.
+<!-- tarav.breadcrumb 179d173b669953b1406b0e4c99bce2eda815dbacd9956a44f8c91a37ea920457 -->
+
+### Current behavior (observed 2026-10-09)
+
+- `tarav.l1.blessings`: `BlessablePOI`, `BlessingRecord` (a `Decision`),
+  `BlessingAssessmentRecord`, `BlessingStore` (`bless`, `assess`, `standing`).
+- `tarav.l2.blessings`: assertions and score vectors for blessings, the
+  attention report, the tracking axis.
+- `tarav.l2.project.decisions.ProjectDecisions.blessings()` keeps a Project's
+  blessings in `<Project>/.tarav/decisions/`. No Project in this workspace
+  holds a blessing record.
+- Users: `l2/skw/pois.py`, `l2/skw/skills.py`, `l1/skw/presentation.py`,
+  `l2/tests/scoring.py`, `CheckRun.clean()` and `_standing()`, and tests under
+  `tests/scoring/`, `tests/decisions/`, `tests/test_poi_*.py`,
+  `tests/test_skw_poi.py`.
+
+### Agent choices (proposals, not User decisions)
+
+- "Can this POI be dismissed?" is a property of its Action Type: the
+  resolution action offers `dismissed` unless the Type says otherwise. The
+  `BlessablePOI` capability becomes `DismissablePOI`, read by the action.
+- A dismissal is recorded in the action's record: who, when, the reason, and
+  the operator's input as taken from the Operator Context.
+- `CheckRun.clean()` and the reports ask the Actions workflow whether a POI's
+  action is dismissed, where they asked the blessing store.
+- Assessment of a dismissal by assertions and scores is kept as a later
+  request; the present assessment and attention code is removed with its
+  tests, and that loss is stated in the Impl.Log.
+- The Decisions workflow keeps its `Decision` Type; only the blessing
+  subtypes leave it.
+
+### Open questions
+
+- Is losing blessing assessment and the attention schedule acceptable until a
+  graded dismissal is designed? If not, this request stops after putting
+  dismissal in place and leaves the blessing code beside it.
+
+## Impl.Req.Wiki
+
+Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
+`poi-system.md`, `decisions.md`, `daily/2026-10-09.md`. Supporting session: `claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a`. Capture status: design
+discussion captured; implementation capture pending.
+
+## Execution.Plan
+
+1. Start checkpoint. `DismissablePOI`; dismissal data in the action record;
+   `tarav action do --operation dismiss` for a Project POI; tests.
+2. `clean()`, reports and Skillware presentation read dismissal.
+3. Remove the blessing workflow, its Project store method and tests, or stop
+   here if the open question says so.
+4. Full suite, Ruff, a live dismissal on this workspace; Breadcrumbs;
+   guidance and skill text; Wiki; completion commit.
+
+## Impl.Log
+
+- Designed 2026-10-09.
