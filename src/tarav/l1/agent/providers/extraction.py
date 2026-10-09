@@ -20,26 +20,6 @@ from tarav.l1.agent.providers.codex.extractor import (
     extract_codex_chat_session_from_path,
     is_codex_rollout_path,
 )
-from tarav.l1.agent.providers.gemini_cli.extractor import (
-    extract_gemini_cli_chat_session_from_path,
-    infer_gemini_cli_session_id_from_path,
-    is_gemini_cli_session_path,
-)
-from tarav.l1.agent.providers.opencode.extractor import (
-    extract_opencode_chat_session_from_path,
-    infer_opencode_session_id_from_path,
-    is_opencode_session_path,
-)
-from tarav.l1.agent.providers.pi.extractor import (
-    extract_pi_chat_session_from_path,
-    infer_pi_session_id_from_path,
-    is_pi_session_path,
-)
-from tarav.l1.agent.providers.openclaw.extractor import (
-    extract_openclaw_chat_session_from_path,
-    infer_openclaw_session_id_from_path,
-    is_openclaw_session_path,
-)
 from tarav.l1.agent.session_refs import BackingArtifact
 from tarav.l1.agent.sessions import ProviderSessionRefEntry
 
@@ -81,30 +61,6 @@ _PROVIDER_SESSION_EXTRACTORS: dict[str, ProviderSessionExtractorSpec] = {
         provider="codex",
         probe_artifact_path=is_codex_rollout_path,
         extract_from_path=extract_codex_chat_session_from_path,
-    ),
-    "gemini-cli": ProviderSessionExtractorSpec(
-        provider="gemini-cli",
-        probe_artifact_path=is_gemini_cli_session_path,
-        extract_from_path=extract_gemini_cli_chat_session_from_path,
-        infer_session_id_from_path=infer_gemini_cli_session_id_from_path,
-    ),
-    "opencode": ProviderSessionExtractorSpec(
-        provider="opencode",
-        probe_artifact_path=is_opencode_session_path,
-        extract_from_path=extract_opencode_chat_session_from_path,
-        infer_session_id_from_path=infer_opencode_session_id_from_path,
-    ),
-    "pi": ProviderSessionExtractorSpec(
-        provider="pi",
-        probe_artifact_path=is_pi_session_path,
-        extract_from_path=extract_pi_chat_session_from_path,
-        infer_session_id_from_path=infer_pi_session_id_from_path,
-    ),
-    "openclaw": ProviderSessionExtractorSpec(
-        provider="openclaw",
-        probe_artifact_path=is_openclaw_session_path,
-        extract_from_path=extract_openclaw_chat_session_from_path,
-        infer_session_id_from_path=infer_openclaw_session_id_from_path,
     ),
 }
 
@@ -197,9 +153,6 @@ def _resolve_extract_target_from_backing_artifact(
 
     extractor, inferred_session_id = _infer_extractor_from_backing_artifact_path(path)
     resolved_session_id = session_query or inferred_session_id
-    if extractor.provider == "opencode" and path.name == "opencode.db" and resolved_session_id is None:
-        raise CliError(f"session id is required when extracting from backing artifact: {path}")
-
     return ResolvedProviderSessionExtractTarget(
         extractor=extractor,
         artifact_path=path,

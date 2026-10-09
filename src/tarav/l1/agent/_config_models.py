@@ -36,8 +36,6 @@ def _agent_default_run_args(family_name: str) -> tuple[str, ...]:
         return ("--dangerously-bypass-approvals-and-sandbox",)
     if family_name == "copilot-cli":
         return ("--allow-all-tools", "--no-ask-user")
-    if family_name == "opencode":
-        return ("run",)
     return ()
 
 
@@ -51,8 +49,6 @@ def _agent_default_ping_model(family_name: str) -> str | None:
     if family_name == "codex":
         # tarav.breadcrumb 80e2a23a44697f68e0486de4b348c0db06b8373ca542abe89ad0922f5f556abe
         return "gpt-6-luna"
-    if family_name == "pi":
-        return "gpt-5.4-mini"
     return None
 
 
@@ -84,12 +80,8 @@ def _chat_provider_spec(
 
 _CANONICAL_CHAT_PROVIDER_SPECS = (
     _chat_provider_spec("copilot-cli"),
-    _chat_provider_spec("gemini-cli"),
     _chat_provider_spec("codex"),
     _chat_provider_spec("claude-code"),
-    _chat_provider_spec("opencode"),
-    _chat_provider_spec("pi"),
-    _chat_provider_spec("openclaw"),
 )
 
 

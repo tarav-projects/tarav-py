@@ -9,20 +9,12 @@ from tarav.l1.agent.primitives import SessionSource
 from tarav.l1.agent.providers.claude_code.session import ClaudeSessionRef
 from tarav.l1.agent.providers.codex.session import CodexSessionRef
 from tarav.l1.agent.providers.copilot_cli.session import CopilotSessionRef
-from tarav.l1.agent.providers.gemini_cli.session import GeminiSessionRef
-from tarav.l1.agent.providers.openclaw.session import OpenclawSessionRef
-from tarav.l1.agent.providers.opencode.session import OpencodeSessionRef
-from tarav.l1.agent.providers.pi.session import PiSessionRef
 
 
 ProviderSessionRef = (
     ClaudeSessionRef
     | CodexSessionRef
     | CopilotSessionRef
-    | GeminiSessionRef
-    | OpenclawSessionRef
-    | OpencodeSessionRef
-    | PiSessionRef
 )
 
 

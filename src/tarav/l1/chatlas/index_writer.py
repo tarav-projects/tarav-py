@@ -22,9 +22,6 @@ if TYPE_CHECKING:
 _TRANSCRIPT_EXTRACTABLE_SUFFIXES = {
     "claude-code": {".json", ".jsonl"},
     "copilot-cli": {".jsonl"},
-    "gemini-cli": {".json"},
-    "openclaw": {".jsonl"},
-    "pi": {".jsonl"},
 }
 
 _USE_PROVIDER_INSTANCE_HOME = object()
@@ -124,10 +121,6 @@ def _backing_artifact_is_extractable(provider: str, artifact: BackingArtifact) -
         return artifact.role == "transcript" and artifact.path.name.startswith("rollout-") and artifact.path.suffix == ".jsonl"
     if provider in _TRANSCRIPT_EXTRACTABLE_SUFFIXES:
         return artifact.role == "transcript" and artifact.path.suffix in _TRANSCRIPT_EXTRACTABLE_SUFFIXES[provider]
-    if provider == "opencode":
-        return artifact.role in {"session_diff", "sqlite_session_row"} and (
-            artifact.path.suffix == ".json" or artifact.path.name == "opencode.db"
-        )
     return False
 
 

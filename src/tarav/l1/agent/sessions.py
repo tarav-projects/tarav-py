@@ -218,10 +218,6 @@ SESSION_DISCOVERY_PROVIDER_FAMILIES = {
     "claude-code",
     "codex",
     "copilot-cli",
-    "gemini-cli",
-    "openclaw",
-    "opencode",
-    "pi",
 }
 
 

@@ -247,19 +247,11 @@ def validate_provider_profile(provider: str, profile_json: dict[str, object]) ->
     from tarav.l1.agent.providers.claude_code.agent import validate_profile as _claude
     from tarav.l1.agent.providers.codex.agent import validate_profile as _codex
     from tarav.l1.agent.providers.copilot_cli.agent import validate_profile as _copilot
-    from tarav.l1.agent.providers.pi.agent import validate_profile as _pi
-    from tarav.l1.agent.providers.gemini_cli.agent import validate_profile as _gemini
-    from tarav.l1.agent.providers.openclaw.agent import validate_profile as _openclaw
-    from tarav.l1.agent.providers.opencode.agent import validate_profile as _opencode
 
     _dispatch: dict[str, object] = {
         "claude-code": _claude,
         "codex": _codex,
         "copilot-cli": _copilot,
-        "pi": _pi,
-        "gemini-cli": _gemini,
-        "openclaw": _openclaw,
-        "opencode": _opencode,
     }
     fn = _dispatch.get(provider)
     if fn is not None:

@@ -18,13 +18,10 @@ _PROVIDER_MODEL_FLAG: dict[str, str] = {
     "claude-code": "--model",
     "codex": "--model",
     "copilot-cli": "--model",
-    "opencode": "--model",
-    "pi": "--model",
 }
 _PROVIDER_PROMPT_FLAG: dict[str, str] = {
     "claude-code": "-p",
     "copilot-cli": "-p",
-    "pi": "-p",
 }
 
 
@@ -51,10 +48,6 @@ HARNESS_INJECTED_ENV_ALLOWLIST = {
         {CLAUDE_CONFIG_DIR_ENV_VAR, CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR}
     ),
     "copilot-cli": frozenset({COPILOT_HOME_ENV_VAR}),
-    "pi": frozenset(),
-    "gemini-cli": frozenset(),
-    "opencode": frozenset(),
-    "openclaw": frozenset(),
 }
 
 

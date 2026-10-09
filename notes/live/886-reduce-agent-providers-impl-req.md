@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Design.
-Status: ready.
+Status: implemented.
 
 Remove the agent providers Tarav is not working with: Gemini, OpenCode,
 OpenClaw and Pi. Keep Claude Code, Codex and Copilot. The removed code stays
@@ -78,3 +78,34 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 ## Impl.Log
 
 - Designed 2026-10-09. Not executed.
+- Executed 2026-10-09 at the User's request.
+<!-- tarav.breadcrumb 39a437c8efcc6c9b0b7314a8f440e285005d205cf832531753bbcfbf9ab3f44d -->
+- Start checkpoint `d7cc634` (empty: the scope held no changes of this
+  request). Baseline: 244 tests passed, Ruff clean.
+- Removed `src/tarav/l1/agent/providers/{gemini_cli,openclaw,opencode,pi}`
+  (16 files) and every name of them in `providers/registry.py` (imports,
+  `agent_from_config` branches, `DEFAULT_RUN_PROVIDER_FAMILIES`),
+  `providers/specs.py`, `providers/extraction.py` (also the `opencode.db`
+  session-id rule), `_config_models.py`, `_config_entry.py`,
+  `session_refs.py`, `sessions.py`, `run_runtime.py`,
+  `l1/chatlas/index_writer.py` and the forbidden-name list in
+  `tests/test_architecture.py`. Generic home-spec mechanics that only
+  OpenCode used (SQLite anchors) were left; request 887's inventory can judge
+  them.
+- Checks: 244 tests passed, Ruff clean, no remaining name in `src` or
+  `tests`. `tarav chatlas update` works for a Claude Code session and for
+  Codex; `tarav chatlas current-session` unchanged.
+- Observation, outside the repository and not edited: the User's
+  `~/.tarav/profiles/` holds five profiles of removed providers
+  (`gemini-main.json`, `openclaw-main.json`, `opencode-main.json`,
+  `pi-jp.json`, `pi-mm.json`). With them present every `tarav agent` command
+  that loads profiles fails with "agent.profiles[11].provider must be one of:
+  claude-code, codex, copilot-cli". With a copy of the home without those
+  five files `tarav agent list` lists the eleven remaining profiles. Chatlas
+  is not affected.
+- `tarav-md` names the removed providers only in
+  `notes/wiki/agents-workflow.md`, updated by this request.
+- Product Breadcrumbs: 1 each in `providers/registry.py` and
+  `providers/specs.py`; audits of all ten changed files clean.
+- `tests/test_architecture.py` also holds another agent's uncommitted edits;
+  only this request's lines were committed from it.

@@ -85,16 +85,13 @@ class ProviderFamilySpec:
         return self.provider_family.family
 
 
+# tarav.breadcrumb 85f1bf9a6372fbbfcab103ba4160dd3ca691504f707ddcc39f70fe8c40fec8eb
 _CANONICAL_PROVIDER_FAMILIES = tuple(
     ProviderFamily(family=family_name)
     for family_name in (
         "claude-code",
         "codex",
         "copilot-cli",
-        "gemini-cli",
-        "opencode",
-        "pi",
-        "openclaw",
     )
 )
 _CANONICAL_PROVIDER_FAMILIES_BY_NAME = {
@@ -128,14 +125,6 @@ _CANONICAL_PROVIDER_SPECS = (
         ),
     ),
     ProviderFamilySpec(
-        provider_family=require_canonical_provider_family("gemini-cli"),
-        home_spec=ProviderHomeSpec(
-            default_home="~/.gemini",
-            direct_relpaths=("tmp", "history"),
-            direct_anchor_roles=("tmp_root", "history_root"),
-        ),
-    ),
-    ProviderFamilySpec(
         provider_family=require_canonical_provider_family("codex"),
         home_spec=ProviderHomeSpec(
             default_home="~/.codex",
@@ -150,33 +139,6 @@ _CANONICAL_PROVIDER_SPECS = (
             direct_relpaths=("projects",),
             grep_relpaths=("",),
             direct_anchor_roles=("projects_root",),
-        ),
-    ),
-    ProviderFamilySpec(
-        provider_family=require_canonical_provider_family("opencode"),
-        home_spec=ProviderHomeSpec(
-            default_home="~/.local/share/opencode",
-            direct_relpaths=("storage/session_diff",),
-            grep_relpaths=("storage", "log"),
-            sqlite_db_relpaths=("opencode.db",),
-            direct_anchor_roles=("session_diff_root",),
-            sqlite_db_anchor_roles=("sqlite_db",),
-        ),
-    ),
-    ProviderFamilySpec(
-        provider_family=require_canonical_provider_family("pi"),
-        home_spec=ProviderHomeSpec(
-            default_home="~/.pi/agent",
-            direct_relpaths=("sessions",),
-            direct_anchor_roles=("sessions_root",),
-        ),
-    ),
-    ProviderFamilySpec(
-        provider_family=require_canonical_provider_family("openclaw"),
-        home_spec=ProviderHomeSpec(
-            default_home="~/.openclaw",
-            direct_relpaths=("agents",),
-            direct_anchor_roles=("agents_root",),
         ),
     ),
 )

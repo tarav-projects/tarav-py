@@ -26,13 +26,10 @@ from tarav.l1.agent.config import (
 from tarav.l1.agent.providers.claude_code.agent import ClaudeAgent
 from tarav.l1.agent.providers.codex.agent import CodexAgent
 from tarav.l1.agent.providers.copilot_cli.agent import CopilotAgent
-from tarav.l1.agent.providers.gemini_cli.agent import GeminiAgent
-from tarav.l1.agent.providers.openclaw.agent import OpenclawAgent
-from tarav.l1.agent.providers.opencode.agent import OpencodeAgent
-from tarav.l1.agent.providers.pi.agent import PiAgent
 
 
-DEFAULT_RUN_PROVIDER_FAMILIES = ("claude-code", "codex", "copilot-cli", "pi")
+# tarav.breadcrumb 0fb5b63712994b126870bcc61452540f671b831182e10816f9ca34efd5f1c233
+DEFAULT_RUN_PROVIDER_FAMILIES = ("claude-code", "codex", "copilot-cli")
 
 
 def load_configured_agents(*, start_path: Path | str = ".") -> tuple[AgentConfig, ...]:
@@ -53,14 +50,6 @@ def agent_from_config(config: AgentConfig) -> AgentConfig:
         return ClaudeAgent.from_config(config)
     if config.provider == "copilot-cli":
         return CopilotAgent.from_config(config)
-    if config.provider == "gemini-cli":
-        return GeminiAgent.from_config(config)
-    if config.provider == "openclaw":
-        return OpenclawAgent.from_config(config)
-    if config.provider == "opencode":
-        return OpencodeAgent.from_config(config)
-    if config.provider == "pi":
-        return PiAgent.from_config(config)
     raise CliError(f"unsupported configured agent provider {config.provider}")
 
 
