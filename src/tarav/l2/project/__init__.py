@@ -52,11 +52,12 @@ class Project(TaravProject):
         return ProjectDecisions(self)
 
     # tarav.breadcrumb 99811cb8c39c0f0f8a3111bca58e6e7dfcf146cb5aa168c1f9f6e5a8d643ba87
-    def poi_tracking(self):
-        """Open this Project's POI tracker without creating its store."""
-        from .tracking import open_tracker
+    def poi_actions(self):
+        """This Project's POI actions, newest first, read from the Actions registry."""
+        from tarav.l1.actions import ActionRunStore
 
-        return open_tracker(self)
+        return [run for run in ActionRunStore().list(project_root=str(self.root))
+                if run.data.get("event")]
 
 
 __all__ = [

@@ -74,7 +74,7 @@ def test_an_identity_query_opens_the_requested_view(reported: list[str]) -> None
 
     assert isinstance(answer.subject, ReportedPOI)
     assert [entry.name for entry in answer.target.ls()] == [
-        "poi-type", "raised-by", "occurrence", "notes", "track-record"]
+        "poi-type", "raised-by", "occurrence", "notes", "action"]
     assert answer.views == (REPORTED_POI_VIEW,)
 
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from filelock import FileLock
@@ -34,6 +35,10 @@ def _key(value: str) -> str:
 
 
 def default_records_root() -> Path:
+    """The standard Record Registry. ``TARAV_RECORDS`` relocates it, which test suites use."""
+    override = os.getenv("TARAV_RECORDS")
+    if override:
+        return Path(override).expanduser().resolve()
     return default_tarav_data_root() / "records"
 
 

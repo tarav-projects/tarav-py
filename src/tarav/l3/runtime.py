@@ -301,7 +301,6 @@ def create_runtime(
     from tarav.l2.project.models import ProjectModelsWorkflow
     from tarav.l2.project.wiki import ProjectWikiWorkflow
     from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow
-    from tarav.l1.poi_tracking import POI_TRACKING_RECORD_TYPES, POITrackingWorkflow
     from tarav.l1.settings import SETTINGS_RECORD_TYPES, SettingsWorkflow
     from tarav.l1.blessings import (
         BLESSING_RECORD_TYPES,
@@ -422,7 +421,6 @@ def create_runtime(
                 *ACTION_RECORD_TYPES,
                 *POI_ACTION_RECORD_TYPES,
                 *POI_RECORD_TYPES,
-                *POI_TRACKING_RECORD_TYPES,
                 *BLESSING_RECORD_TYPES,
                 *DECISION_RECORD_TYPES,
                 DecisionReportAssertion,
@@ -511,7 +509,6 @@ def create_runtime(
         ProjectModelsWorkflow,
         ProjectWikiWorkflow,
         POIWorkflow,
-        POITrackingWorkflow,
         BlessingsWorkflow,
         DecisionsWorkflow,
         ChecksWorkflow,

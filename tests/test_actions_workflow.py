@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -13,12 +14,13 @@ from tarav.l1.actions import (
     ActionError, ActionRunStore, Exit, StepAction, StepRunner, register_action,
 )
 from tarav.l1.actions.pois import (
-    DISMISSED, GONE, ActionablePOI, DismissalInput, DismissalWithoutReason, POIActionClosed,
+    DISMISSED, GONE, DismissalInput, DismissalWithoutReason, POIActionClosed,
     POIActions, POIResolutionAction, action_id,
 )
-from tarav.l1.checks import CheckPOI, CheckResult, ClearPOI, SituationCheck
+from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite, ClearPOI, SituationCheck
 from tarav.l1.operator_context import OperatorContext, OperatorContextStore
 from tarav.l1.records import RecordRegistry
+from tarav.l3.check import report_project_checks
 from tarav.l3.runtime import create_runtime
 
 
@@ -110,7 +112,7 @@ class TwoExitStep(StepAction):
         return {"by": name}
 
 
-class LampOn(CheckPOI, ActionablePOI):
+class LampOn(CheckPOI):
     """A lamp was found on."""
 
     @classmethod
@@ -277,7 +279,9 @@ def test_a_poi_opens_its_action_and_raising_it_again_lands_on_the_same_one(store
 
     again = stores.lamps(hall=3)
     assert (again["opened"], again["reopened"], again["actions"]) == (0, 0, 1)
-    assert len(stores.runs.list()) == 1
+    twice = stores.pois.observe([*LampCheck("den", 1).run().pois(), *LampCheck("den", 1).run().pois()])
+    assert (twice["opened"], twice["actions"]) == (1, 1)  # raised twice in one batch: one action
+    assert len(stores.runs.list()) == 2
 
 
 def test_a_clear_check_closes_the_action_and_says_so(stores):
@@ -359,3 +363,137 @@ def test_a_check_without_a_subject_closes_nothing(stores):
     assert [type(item) for item in clear] == [ClearPOI] and clear[0].failure is False
     assert stores.pois.observe(clear)["gone"] == 0
     assert stores.pois.of(poi).state == RUNNING
+
+
+def test_a_poi_action_opens_as_context_by_the_poi_identity(stores):
+    from tarav.l1.actions.views import POI_ACTION_VIEW, POIActionContext, POIActionResolver
+    from tarav.l1.context.query import ContextQueryService, IdentityContextQuery
+
+    poi = LampCheck("hall", 3).run().pois()[0]
+    stores.lamps(hall=3)
+    service = ContextQueryService()
+    service.register_resolver("poi-action", POIActionResolver(lambda: stores.runs))
+    service.register_view(POI_ACTION_VIEW, POIActionContext)
+
+    answer = service.open(IdentityContextQuery(poi.identity[:12], view=POI_ACTION_VIEW))
+    assert answer.subject.id == action_id(poi)
+    assert [entry.name for entry in answer.target.ls()] == [
+        "standing", "poi", "check", "dismissal", "closings", "acting", "history", "reported"]
+    standing = service.open(IdentityContextQuery(
+        str(action_id(poi)), view=POI_ACTION_VIEW, path=["standing"]))
+    assert standing.target.records.to_record()["value"]["standing"] == "open"
+
+
+class _Flags(Check):
+    """Raises one POI when flagged. It cannot say which check it is."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("b21f7c50-6e3a-4d19-8a72-0c5d9e4f1b36"),
+                          name="Tarav.Test.Actions.Flags", workflow=ACTIONS_WORKFLOW_SHIP)
+
+    def __init__(self, flagged: bool) -> None:
+        super().__init__()
+        self.flagged = flagged
+
+    def _run(self) -> CheckResult:
+        if not self.flagged:
+            return CheckResult(self, status="completed")
+        return CheckResult(self, status="completed", pois=[
+            CheckPOI(self, "something is off", situation={"case": "flagged"})])
+
+
+class _Project:
+    def __init__(self, *checks: Check) -> None:
+        self._checks = checks
+
+    @property
+    def checks(self):
+        return CheckSuite(self._checks)
+
+
+class _Lamp(Check):
+    """Raises a POI when a lamp is on. It names the lamp as what it examines."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("91b6e531-2e89-4ccc-98f5-310200850b6e"),
+                          name="Tarav.Test.Actions.Lamp", workflow=ACTIONS_WORKFLOW_SHIP)
+
+    def __init__(self, lamp: str, level: int) -> None:
+        super().__init__()
+        self.lamp, self.level = lamp, level
+
+    @property
+    def subject_key(self):
+        return {"lamp": self.lamp}
+
+    def _run(self) -> CheckResult:
+        if not self.level:
+            return CheckResult(self, status="completed")
+        return CheckResult(self, status="completed", pois=[CheckPOI(
+            self, f"{self.lamp} is on", situation={"lamp": self.lamp, "level": self.level})])
+
+
+class _Home:
+    """A Project-like provider with the identity the check command hands on."""
+
+    def __init__(self, root: Path, *checks: Check) -> None:
+        self.id, self.name, self.root, self._checks = "home", "home", root, checks
+
+    @property
+    def checks(self):
+        return CheckSuite(self._checks)
+
+
+@pytest.fixture
+def registry(tmp_path, monkeypatch):
+    from tarav.l3.runtime import create_runtime, set_runtime
+
+    monkeypatch.setenv("TARAV_RECORDS", str(tmp_path / "records"))
+    set_runtime(create_runtime())
+    yield tmp_path / "records"
+    set_runtime(None)
+
+
+# tarav.breadcrumb 44282e11e5c1d9d9198c44b17465611161f7dc5d0d810bf6be4f99f62e029e89
+def test_the_check_command_hands_its_run_to_the_actions_workflow(
+        tmp_path, registry, capsys):
+    from tarav.l1.actions import ActionRunStore
+
+    assert report_project_checks(_Home(tmp_path, _Lamp("hall", 3), _Flags(True))) == 1
+    assert "POI actions: 2 raised now; 2 opened, 0 reopened, 0 closed as gone." in \
+        capsys.readouterr().out
+    runs = ActionRunStore().list(project_root=str(tmp_path))
+    assert {run.state for run in runs} == {"running"} and len(runs) == 2
+
+    # the lamp is off and the unnamed check finds nothing: both situations are gone
+    assert report_project_checks(_Home(tmp_path, _Lamp("hall", 0), _Flags(False)),
+                                 json_output=True) == 0
+    acted = json.loads(capsys.readouterr().out)["actions"]
+    assert (acted["opened"], acted["gone"]) == (0, 2)
+    assert sorted(signal["type"] for signal in acted["closed"]) == [
+        "Tarav.Actions.POI.Closed", "Tarav.Actions.POI.Closed"]
+    assert {run.exit for run in ActionRunStore().list(project_root=str(tmp_path))} == {"gone"}
+
+    # another Project's run does not touch these actions, and skipping leaves them alone
+    other = tmp_path / "other"
+    assert report_project_checks(_Home(other, _Lamp("hall", 0)), json_output=True) == 0
+    capsys.readouterr()
+    assert report_project_checks(_Home(tmp_path, _Lamp("hall", 3)), actions="skip") == 1
+    assert "POI actions" not in capsys.readouterr().out
+    assert {run.exit for run in ActionRunStore().list(project_root=str(tmp_path))} == {"gone"}
+
+
+def test_a_poi_that_is_not_a_failure_does_not_make_the_run_unclean(registry, capsys):
+    class Clear(Check):
+        @classmethod
+        def class_entity(cls) -> TaravClass:
+            return TaravClass(target=cls, id=TypeShip("9e484d4c-8c0d-46fe-ba05-8d6c6e7ec7ef"),
+                              name="Tarav.Test.Actions.ClearOnly", workflow=ACTIONS_WORKFLOW_SHIP)
+
+        def _run(self) -> CheckResult:
+            return CheckResult(self, status="completed", pois=[self.clear()])
+
+    assert report_project_checks(_Project(Clear()), actions="skip") == 0
+    assert "1 checks, 0 incomplete, 1 POIs" in capsys.readouterr().out

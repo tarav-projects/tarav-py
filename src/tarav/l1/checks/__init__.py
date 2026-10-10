@@ -17,7 +17,7 @@ from tarav.l0.kernel import (
     entity,
 )
 from tarav.l1.poi import IdentifiedPOI, POI, POIDetails, POIProvider, fingerprint
-from tarav.l1.poi_tracking import CheckObservation, TrackablePOI
+from tarav.l1.poi.actionable import ActionablePOI
 
 CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
 
@@ -118,8 +118,8 @@ class Situation(LiteRecord):
 
 
 # tarav.breadcrumb 0fbb6aeabe9a6b2dfb9a5f0b09d35e49a271b44f1cce37d88557bf09e452092f
-class CheckPOI(IdentifiedPOI, TrackablePOI):
-    """A POI explained by the bound Check object that produced it; tracked by default."""
+class CheckPOI(IdentifiedPOI, ActionablePOI):
+    """A POI explained by the bound Check object that produced it; it spins an action by default."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -164,6 +164,8 @@ class ClearPOI(CheckPOI):
     A positive event, stated the way a finding is. Whether anyone is shown it
     is the caller's choice.
     """
+
+    action = None  # a clear result closes actions; it does not spin one
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -301,19 +303,15 @@ class CheckRun(TaravObject, POIProvider):
     def pois(self) -> tuple[POI, ...]:
         return tuple(poi for result in self.results for poi in result.pois())
 
-    def observations(self) -> tuple[CheckObservation, ...]:
-        """Each result as one tracking data point: check, completion and raised POIs."""
-        return tuple(CheckObservation(entity(type(result.check)).name, result.check.identity,
-                                      result.status, result.pois())
-                     for result in self.results)
+    # tarav.breadcrumb 339d6902b8d8570a80d3d41413e996c3e00aada7e072f2f0e28f3ee5a2d03959
+    def completed(self) -> tuple[Check, ...]:
+        """The checks that ran to completion: each may say what it did not raise."""
+        return tuple(result.check for result in self.results if result.status == "completed")
 
-    def track(self, *, into, whole: bool = False, at=None) -> dict[str, object]:
-        """Hand this run's results to a POI tracker; checks themselves never write to it.
-
-        `whole` states that these results are the provider's entire suite, so a
-        tracked POI whose check is absent from them was not evaluated.
-        """
-        return into.observe(self.observations(), whole=whole, at=at)
+    def findings(self) -> tuple[POI, ...]:
+        """The POIs that stand as findings: every POI but those marked as not a failure."""
+        return tuple(poi for poi in self.pois()
+                     if not (isinstance(poi, CheckPOI) and not poi.failure))
 
     def summary(self) -> dict[str, object]:
         statuses: Counter[str] = Counter()
@@ -347,7 +345,7 @@ class CheckRun(TaravObject, POIProvider):
         if any(result.status != "completed" for result in self.results):
             return False
         snapshot = store.snapshot() if store is not None else None
-        return all(self._standing(poi, store, snapshot) == "blessed" for poi in self.pois())
+        return all(self._standing(poi, store, snapshot) == "blessed" for poi in self.findings())
 
     # tarav.breadcrumb cb1a5772a23d17b22aa60b8bb37e1a3015cff629e44c47640e8886c7fe49d6e0
     def report(

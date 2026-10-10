@@ -12,7 +12,6 @@ from tarav.l1.checks import CheckResult
 from tarav.l1.poi.rendering import (
     DEFAULT_POI_RENDERER, POISelection, renderer, renderers,
 )
-import tarav.l1.poi_tracking.views  # noqa: F401  registers the tracking renderer
 
 
 # tarav.breadcrumb a671fcec806bcecf6adccaf70a7f2c991f04b2685ea24f7056aa3cf53f820f8e
@@ -21,7 +20,7 @@ def report_project_checks(
     project, *, json_output: bool = False, by: str = "type", sort: str = "run",
     limit: int = 20, offset: int = 0, poi_type: str | None = None,
     check: str | None = None, renderer_name: str = DEFAULT_POI_RENDERER,
-    level: str = "line", tracking: str = "write",
+    level: str = "line", actions: str = "write",
 ) -> int:
     """Run a Project's suite and show a bounded grouped report."""
     def progress(result: CheckResult) -> None:
@@ -37,13 +36,13 @@ def report_project_checks(
         return 2
     report = run.report(by=by, sort=sort, limit=limit, offset=offset,
                         type=poi_type, check=check, detail=level == "record")
-    tracked = _tracked(project, run) if tracking == "write" else None
+    acted = _acted(project, run) if actions == "write" else None
     if json_output:
-        print(json.dumps({**report, "tracking": tracked}, indent=2, default=str))
+        print(json.dumps({**report, "actions": acted}, indent=2, default=str))
     else:
         print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
-        if tracked is not None:
-            print(_tracking_line(tracked))
+        if acted is not None:
+            print(_actions_text(acted))
     return 0 if run.clean() else 1
 
 
@@ -52,7 +51,7 @@ def _code(args: argparse.Namespace) -> str:
         "json_output": args.json, "by": args.by, "sort": args.sort,
         "limit": args.limit, "offset": args.offset, "poi_type": args.poi_type,
         "check": args.check_type, "renderer_name": args.renderer, "level": args.level,
-        "tracking": args.tracking,
+        "actions": args.actions,
     }
     return (
         "from tarav.l3.check import report_project_checks\n"
@@ -101,9 +100,10 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
                         default=DEFAULT_POI_RENDERER, help="Named POI renderer.")
     parser.add_argument("--level", choices=("line", "record", "context"), default="line",
                         help="POI detail level for rendered output.")
-    parser.add_argument("--tracking", choices=("write", "skip"), default="write",
-                        help="Record this run in the Project's POI tracking store "
-                             "(.tarav/poi-tracking/), or leave the store untouched.")
+    parser.add_argument("--actions", choices=("write", "skip"), default="write",
+                        help="Hand this run to the Actions workflow, which opens the action "
+                             "of each new POI and closes those whose situation is gone, "
+                             "or leave the actions untouched.")
     parser.set_defaults(handler=_check)
 
 
@@ -119,25 +119,32 @@ def _retained(project, run):
     return run
 
 
-# tarav.breadcrumb 0f714414fe0b5d467f093c13dbbacee44f95cc9708e21ee07ae0a693c81dc5e6
-def _tracked(project, run) -> dict[str, object] | None:
-    """Hand the whole run to the Project's tracker; a tracking failure never fails the check."""
-    try:
-        from tarav.l2.project.tracking import open_tracker
+# tarav.breadcrumb 34c9e2e74fe85182ac56b7d7c1f9d8c1c2ec324bd808ac782fe4a82d6c6e4478
+def _acted(project, run) -> dict[str, object] | None:
+    """Hand the whole run to the Actions workflow; a failure there never fails the check.
 
-        return run.track(into=open_tracker(project), whole=True)
+    The checks only produced POIs. It is this caller that decides they also
+    open and close actions, as it decides to show and retain them.
+    """
+    try:
+        from tarav.l1.actions.pois import POIActions
+
+        identity = {"id": str(project.id), "name": project.name, "root": str(project.root)}
+        result = POIActions().observe(run.pois(), completed=run.completed(), whole=True,
+                                      project=identity)
+        return {**{key: value for key, value in result.items() if key != "signals"},
+                "closed": [signal.as_dict(detail=True) for signal in result["signals"]]}
     except Exception as exc:
-        print(f"POI tracking was not written: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"POI actions were not updated: {type(exc).__name__}: {exc}", file=sys.stderr)
         return None
 
 
-def _tracking_line(tracked: dict[str, object]) -> str:
-    axes = "; ".join(
-        f"{key}: " + ", ".join(f"{value} {count}" for value, count in values.items())
-        for key, values in tracked["by_axis"].items())
-    return (f"POI tracking: {tracked['records']} records ({axes}); "
-            f"{tracked['created']} new, {tracked['written']} written. "
-            "List them with `tarav poi tracking list --project`.")
+def _actions_text(acted: dict[str, object]) -> str:
+    lines = [f"POI actions: {acted['actions']} raised now; {acted['opened']} opened, "
+             f"{acted['reopened']} reopened, {acted['gone']} closed as gone. "
+             "List them with `tarav action list --project`."]
+    lines.extend(f"  gone: {signal['message']}" for signal in acted["closed"])
+    return "\n".join(lines)
 
 
 __all__ = ["register_check_command", "report_project_checks"]

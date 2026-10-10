@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready, after request 892.
+Status: implemented.
 
 Replace the Project POI tracking store by the POI resolution action of
 request 892, for real Projects: a check POI is an actionable POI, its action
@@ -107,3 +107,52 @@ discussion captured; implementation capture pending.
 ## Impl.Log
 
 - Designed 2026-10-09.
+- Start checkpoint: commit `8fceeb7` (request 893). Files with other agents'
+  uncommitted edits that this request also changes: `src/tarav/l3/check.py`,
+  `src/tarav/l3/runtime.py`, `tests/kernel/test_object_record_contract.py`,
+  `ARCHITECTURE.md`; only this request's hunks are committed from them.
+- `ActionablePOI` moved to `tarav.l1.poi.actionable` (it names its Action Type
+  as a string, so Checks do not import Actions); `CheckPOI` extends it in
+  place of `TrackablePOI`; `ClearPOI` spins nothing.
+- `POIActions.observe(pois, completed=, whole=, project=)`: an open action
+  closes as `gone` when its check completed in the batch without raising it,
+  matched by `subject_key`, else by `Check.identity`; with `whole`, a check
+  Type that names neither closes its absent actions. Actions of another
+  Project are never touched. A POI raised twice in one batch is one action.
+- Agent choice, differing from the request text: completed checks are passed
+  to `observe()` by the caller (`CheckRun.completed()`) and no clear POI is
+  synthesized for every check. A check still raises `ClearPOI` when it has
+  something to say. `CheckRun.findings()` leaves out POIs marked as not a
+  failure, and `clean()` uses it.
+- `tarav check --project --actions write|skip` replaces `--tracking`; the
+  report prints the actions line and each `gone` signal; JSON carries
+  `actions`. `TARAV_RECORDS` relocates the Record Registry, set by the test
+  suite's `conftest.py`.
+- `tarav.l1.actions.views`: `POIActionContext` and `POIActionResolver`
+  (`tarav context --id <poi id or action id> --view poi-action`); the reported
+  view's `track-record` entry is now `action`. `tarav action list --project`
+  finds the nearest Project and shows each action's POI.
+- Removed: `tarav.l1.poi_tracking`, `tarav.l2.project.tracking`,
+  `tarav.l2.blessings.tracking`, `tarav.l3.poi_commands` (`tarav poi`),
+  `tests/test_poi_tracking.py`, `CheckRun.track()` and `observations()`,
+  `Project.poi_tracking()` (now `poi_actions()`).
+- Tests: `tests/test_actions_workflow.py` has 16 (three new: the check
+  command's hand-off across two Projects and with `skip`; a non-failure POI
+  leaves the run clean; the action view). Full suite 259 passed in the shared
+  worktree; Ruff clean. `tests/cli/test_check.py` is not in `testpaths` and
+  already had three failures at HEAD.
+- Real run on the root Project: 364 checks, 54 POIs with 52 identities; 52
+  actions opened in `~/Documents/tarav/records/8f3394a6-.../`, one commit; a
+  second run changed nothing; `tarav action list --project --state running`
+  lists them and `tarav context --id <poi id> --view poi-action` opens one.
+  Defect found there and fixed with a test: two POIs of one identity in a
+  batch were counted as two openings.
+- `AGENTS.md` updated through its Skillware source and compiled;
+  `ARCHITECTURE.md` updated.
+- Left on disk, not deleted by code: `.tarav/poi-tracking/` in the root and in
+  `tarav-py`. Tarav Center's scripts import the removed tracker and are broken
+  until its request 004.
+- No real check declares a `subject_key` yet, so an action whose check
+  identity includes what it found closes only when that check Type has none
+  of its POIs left in a whole run, or never. That is the next thing to add
+  per check.

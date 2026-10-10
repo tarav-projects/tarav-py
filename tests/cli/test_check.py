@@ -149,7 +149,7 @@ def test_many_project_pois_render_as_one_type_group(capsys) -> None:
 def test_type_filter_includes_subtypes_and_preserves_full_run_status(capsys) -> None:
     project = _Project(_Mixed())
     assert report_project_checks(project, poi_type="Tarav.Checks.POI", json_output=True,
-                                 tracking="skip") == 1
+                                 actions="skip") == 1
     report = json.loads(capsys.readouterr().out)
     assert report["summary"]["pois"] == 2
     assert report["matching_pois"] == 2
@@ -157,18 +157,18 @@ def test_type_filter_includes_subtypes_and_preserves_full_run_status(capsys) -> 
     assert report["matching"] == 2
 
     assert report_project_checks(project, poi_type="Test.Checks.SpecialPOI",
-                                 json_output=True, tracking="skip") == 1
+                                 json_output=True, actions="skip") == 1
     exact = json.loads(capsys.readouterr().out)
     assert exact["matching_pois"] == 1
     assert exact["context_example"] == exact["items"][0]["id"]
 
     assert report_project_checks(project, poi_type="Test.Checks.SpecialPOI",
-                                 tracking="skip") == 1
+                                 actions="skip") == 1
     output = capsys.readouterr().out
     assert "1 checks, 0 incomplete, 2 POIs" in output
     assert "Showing 1 of 2 POIs matching type=Test.Checks.SpecialPOI" in output
     assert "POIs by type:" not in output
 
     assert report_project_checks(project, poi_type="Tarav.POI", json_output=True,
-                                 tracking="skip") == 1
+                                 actions="skip") == 1
     assert json.loads(capsys.readouterr().out)["matching_pois"] == 2

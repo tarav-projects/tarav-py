@@ -49,9 +49,6 @@ def build_parser(
     from tarav.l3.context.commands import register_context_command
 
     register_context_command(subparsers, service=context_queries(composed))
-    from tarav.l3.poi_commands import register_poi_command
-
-    register_poi_command(subparsers)
     for command in commands_from_parser(parser):
         command.parser.set_defaults(_tarav_command=command)
         command.parser.live_help = (
@@ -107,13 +104,12 @@ def context_queries(runtime: TaravRuntime):
         REPORTED_POI_VIEW, ReportedPOIContext, ReportedPOIResolver,
     )
 
-    from tarav.l1.poi_tracking import TRACKED_POI_VIEW
-    from tarav.l1.poi_tracking.views import TrackRecordResolver, TrackedPOIContext
+    from tarav.l1.actions.views import POI_ACTION_VIEW, POIActionContext, POIActionResolver
 
     service = ContextQueryService(opener=runtime.context)
     service.register_resolver("reported-poi", ReportedPOIResolver())
-    service.register_resolver("tracked-poi", TrackRecordResolver())
-    service.register_view(TRACKED_POI_VIEW, TrackedPOIContext)
+    service.register_resolver("poi-action", POIActionResolver())
+    service.register_view(POI_ACTION_VIEW, POIActionContext)
     service.register_resolver("type", TypeResolver(runtime.records.types))
     service.register_view(REPORTED_POI_VIEW, ReportedPOIContext)
     return service

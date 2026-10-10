@@ -33,9 +33,22 @@ def _pois(rows: list[dict]) -> list[dict]:
 
 def _row(run: ActionRun) -> dict:
     data = run.data
-    return {"run": str(run.id), "action": data["action"], "state": run.state, "exit": run.exit,
-            "started_at": data["started_at"], "closed_at": data["closed_at"],
-            "project": data["project"], "sessions": len(data["sessions"])}
+    row = {"run": str(run.id), "action": data["action"], "state": run.state, "exit": run.exit,
+           "started_at": data["started_at"], "closed_at": data["closed_at"],
+           "project": data["project"], "sessions": len(data["sessions"])}
+    poi = (data.get("event") or {}).get("poi")
+    if poi:
+        row["poi"] = {"id": poi.get("id"), "type": poi.get("type"), "message": poi.get("message")}
+    return row
+
+
+def _project_root(start: str) -> str:
+    """The nearest folder at or above `start` that holds a Project marker."""
+    origin = Path(start).expanduser().resolve()
+    for folder in (origin, *origin.parents):
+        if (folder / ".tarav" / "project.json").is_file():
+            return str(folder)
+    raise CliError(f"No Tarav Project at or above {origin}")
 
 
 def _cmd_types(args) -> int:
@@ -110,7 +123,7 @@ def _cmd_show(args) -> int:
 
 
 def _cmd_list(args) -> int:
-    project = str(Path(args.project).resolve()) if args.project else None
+    project = _project_root(args.project) if args.project else None
     runner = _runner(args)
     runs = runner.runs.list(state=args.state, exit=args.exit, project_root=project)
     return _output({"status": "ok", "store": str(runner.runs.map.root),
@@ -169,7 +182,8 @@ def register_action_commands(subparsers) -> None:
     listing = commands.add_parser("list", help="List runs, newest first.")
     listing.add_argument("--state", choices=("running", "closed"))
     listing.add_argument("--exit", help="Only runs closed by this exit, or 'error'.")
-    listing.add_argument("--project", help="Only runs whose input names this Project root.")
+    listing.add_argument("--project", nargs="?", const=".",
+                         help="Only runs of the Project at or above this folder.")
     listing.set_defaults(handler=_cli(_cmd_list))
 
     for command in (types, start, do, close, sweep, abort, show, listing):

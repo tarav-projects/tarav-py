@@ -4,7 +4,6 @@
 1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 64298cbc = claude-code:9da4cef5-68b7-4d17-8a06-1351ca51e82f @64298cbc8db2e7aa971e0828653c07bcb483cfed40931fdf87d5abe7ce1c60b3
-abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c625e3f68354a234a91e4992b67406f075d93ccb20f4d4
 -->
 
 ## Read first
@@ -47,14 +46,6 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
   context hooks have no runtime Context dependency.
 - Provider-neutral orchestration belongs in `tarav.l1.agent`; concrete adapters
   belong in `tarav.l1.agent.providers.<provider>`.
-- `tarav.l1.agent` is the Agents workflow (`AgentsWorkflow`). Supported
-  providers are Claude Code, Codex and Copilot. A provider adapter states what
-  its harness can do by subtyping: one that reports the running session
-  inherits `ReportsCurrentSession`. Ask
-  `tarav.l1.agent.current_session.current_session()` which session the running
-  agent is in; Chatlas commands do. It never guesses between providers.
-  <!-- tarav.breadcrumb c40e968e628610ad590863ebc8b39ffb40ff9d55bdb5353004c66c0f96976ed9 -->
-  <!-- tarav.breadcrumb bf11e82d28dbd62d821653cb98d77a5f415acdb7918de04dc8ca8703c1b84e12 -->
 - Shared infrastructure enters `tarav.l0._core` only after multiple consumers have
   demonstrated the same semantics. Callers retain policy, schema validation,
   locking, and error translation.
@@ -278,14 +269,14 @@ Importing `tarav` alone initializes no services or layered modules.
   `settings_include`. See ARCHITECTURE.md, Settings capability.
 - POI Types are atomic: a POI has no `code`, and each Type states one situation.
   Give related situations one class each under a family parent that is never raised.
-- `tarav.l1.poi_tracking` keeps one durable record per POI identity in the Project's
-  `.tarav/poi-tracking/`. `tarav check --project` writes it (`--tracking skip` to leave
-  it alone); read it with `tarav poi tracking list --project [--axis KEY=VALUE]` and
-  `tarav context --id <poi-id> --view tracked-poi`. A record's status is a set of
-  independent axes, never one value. Checks only emit; `CheckRun.track(into=)` hands
-  results to the tracker. A POI can read `passed` only when its check states an
-  `identity`, as every `SituationCheck` does. A workflow adds a status by subtyping
-  `TrackAxis`. See ARCHITECTURE.md, `poi_tracking`.
+- A POI is an event. A `CheckPOI` is actionable: it spins one action,
+  `Tarav.Actions.POI.Resolution` (`tarav.l1.actions.pois`), kept in the central Record
+  Registry and not in the Project. `tarav check --project` hands its run to the Actions
+  workflow (`--actions skip` to leave them alone); read them with
+  `tarav action list --project` and `tarav context --id <poi-id> --view poi-action`.
+  An action is open, or closed by a named exit: `gone` or `dismissed`. Checks only
+  emit. An action closes as `gone` when its check, recognized by `subject_key` or
+  `identity`, completed without raising it. See ARCHITECTURE.md, `actions`.
 
 # Tarav System Prompt
 

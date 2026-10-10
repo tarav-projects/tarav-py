@@ -207,11 +207,12 @@ class ReportedPOIContext(ContextFolder):
                  "raised-by say what it is and where it comes from."]),
                 description="What the POI Type's producer says about it: what it means, "
                             "where it is documented, what is known to end it.")
-            builder.add("track-record", opener=lambda: _value(
-                [f"tarav context --id {record.get('id')} --view tracked-poi",
-                 "Opens the Project's durable record of this POI: its status on every "
-                 "axis and how each changed. Absent when the POI is not tracked."]),
-                description="The command that opens this POI's history across check runs.")
+            builder.add("action", opener=lambda: _value(
+                [f"tarav context --id {record.get('id')} --view poi-action",
+                 "Opens the action this POI spun: whether it is open, gone or dismissed, "
+                 "and the commands that act on it. Absent when the POI spins no action "
+                 "or the run was not handed to the Actions workflow."]),
+                description="The command that opens the action that follows this POI.")
 
         return cls(subject, populate)
 

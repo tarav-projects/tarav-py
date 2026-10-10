@@ -17,10 +17,11 @@ from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.checks import Check, CheckPOI, CheckResult, ClearPOI, SituationCheck
 from tarav.l1.operator_context import OPERATOR_CONTEXT_WORKFLOW_SHIP, OperatorContext
 from tarav.l1.poi import POI, IdentifiedPOI, fingerprint
+from tarav.l1.poi.actionable import ActionablePOI
 
 from . import (
     ACTIONS_WORKFLOW_SHIP, CLOSED, LOOP, OPERATOR, RUNNING, ActionRun, ActionRunStore, Exit,
-    StepAction,
+    StepAction, resolve_action,
 )
 
 GONE, DISMISSED = "gone", "dismissed"
@@ -105,21 +106,6 @@ class POIResolutionAction(StepAction):
         return {}
 
 
-# tarav.breadcrumb c4433c75718b03a7721c2022292c88f7a9ccdf86b86038ad4c284bbdb6462500
-class ActionablePOI(POI):
-    """Capability: a POI of an extending Type also spins an action.
-
-    `action_type` names it; by default it is the POI resolution action.
-    """
-
-    action_type: ClassVar[type[POIResolutionAction]] = POIResolutionAction
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("a9d4e6c2-8f15-4b73-9e0a-5c7b3d1f6e84"),
-                          name="Tarav.Actions.POI.Actionable", workflow=ACTIONS_WORKFLOW_SHIP)
-
-
 class POIActionClosed(IdentifiedPOI):
     """An open POI action closed because its situation is gone."""
 
@@ -132,8 +118,22 @@ class POIActionClosed(IdentifiedPOI):
 # tarav.breadcrumb 41d2f8ae4aa84337dc50a80be7140b1e8cda502096313cd5a5cc002c0d5ecb0f
 def action_id(poi: IdentifiedPOI) -> Ship:
     """The action instance of a POI: its Action Type and the POI's identity, hashed."""
-    action_type = type(poi).action_type
+    action_type = resolve_action(type(poi).action)
     return Ship(str(UUID(fingerprint([str(entity(action_type).id), poi.identity])[:32])))
+
+
+def _matches(run: ActionRun, check: Check) -> bool:
+    """Is this the check that owns the run's POI, examining the same thing?
+
+    The subject key decides when the check declares one; otherwise the check's
+    identity across runs does.
+    """
+    event_check = (run.data.get("event") or {}).get("check") or {}
+    if event_check.get("type") != entity(type(check)).name:
+        return False
+    if check.subject_key is not None or run.data.get("subject") is not None:
+        return run.data.get("subject") == check.subject_key
+    return check.identity is not None and event_check.get("identity") == check.identity
 
 
 def _now() -> str:
@@ -160,7 +160,7 @@ class POIActions:
         run = self.runs.find(str(key))
         if run is None:
             check = getattr(poi, "check", None)
-            action_type = type(poi).action_type
+            action_type = resolve_action(type(poi).action)
             run = ActionRun(key, {
                 "action": entity(action_type).name, "state": RUNNING, "exit": None,
                 "started_at": self._now(), "opened_at": self._now(), "closed_at": None,
@@ -180,45 +180,59 @@ class POIActions:
             return run, "reopened"
         return run, None
 
-    def observe(self, pois: Iterable[POI], *, project: dict | None = None) -> dict:
-        """Take one batch of POIs. Returns what changed and the POIs that say so."""
+    def observe(self, pois: Iterable[POI], *, completed: Iterable[Check] = (),
+                whole: bool = False, project: dict | None = None) -> dict:
+        """Take one batch of POIs. Returns what changed and the POIs that say so.
+
+        A finding opens its action. An open action closes as gone when its
+        check completed in this batch, examining the same thing, and did not
+        raise it: a clear POI says so, and so does a check named in
+        `completed`. `whole` states that the batch is the provider's entire
+        suite; then a check Type that cannot say which check it is closes its
+        absent actions too, since every check of that Type has run.
+        """
         pois = tuple(pois)
         present, changed, summary = set(), {}, {"opened": 0, "reopened": 0, "gone": 0}
         for poi in pois:
-            if not isinstance(poi, ActionablePOI) or not isinstance(poi, IdentifiedPOI):
+            if (not isinstance(poi, ActionablePOI) or not isinstance(poi, IdentifiedPOI)
+                    or type(poi).action is None):
                 continue
+            if str(action_id(poi)) in present:
+                continue  # the same POI raised again in this batch is the same action
             run, change = self._trigger(poi, project)
             present.add(str(run.id))
             if change is not None:
                 changed[str(run.id)] = run
                 summary[change] += 1
+        checks = [*completed, *(poi.check for poi in pois if isinstance(poi, ClearPOI))]
+        keyless = {entity(type(check)).name for check in checks
+                   if check.subject_key is None and check.identity is None} if whole else set()
         signals: list[POI] = []
-        clear = [poi for poi in pois if isinstance(poi, ClearPOI)]
-        if clear:
-            running = self.runs.list(state=RUNNING)
-            for poi in clear:
-                subject = poi.check.subject_key
-                if subject is None:
-                    continue  # nothing stable to match an earlier finding by
-                name = entity(type(poi.check)).name
-                for run in running:
-                    key = str(run.id)
-                    event = run.data.get("event") or {}
-                    if (key in present or key in changed and changed[key].state == CLOSED
-                            or (event.get("check") or {}).get("type") != name
-                            or run.data.get("subject") != subject):
-                        continue
-                    run.data["closings"].append({"at": self._now(), "exit": GONE, "by": LOOP,
-                                                 "passed": True, "results": []})
-                    run.data.update(state=CLOSED, exit=GONE, closed_at=self._now(), output={})
-                    changed[key] = run
-                    summary["gone"] += 1
-                    signals.append(POIActionClosed(
-                        f"The situation of {(event.get('poi') or {}).get('type')} "
-                        f"is gone: {(event.get('poi') or {}).get('message')}",
-                        situation={"action": key, "closed_at": run.data["closed_at"]},
-                        subject=subject or {},
-                        evidence={"action": key, "exit": GONE, "poi": (event.get("poi") or {}).get("id")}))
+        if checks:
+            root = (project or {}).get("root")
+            for run in self.runs.list(state=RUNNING):
+                key = str(run.id)
+                event = run.data.get("event") or {}
+                if key in present or (run.data.get("project") or {}).get("root") != root:
+                    continue
+                event_check = event.get("check") or {}
+                unnamed = (run.data.get("subject") is None
+                           and event_check.get("identity") is None
+                           and event_check.get("type") in keyless)
+                if not unnamed and not any(_matches(run, check) for check in checks):
+                    continue
+                run.data["closings"].append({"at": self._now(), "exit": GONE, "by": LOOP,
+                                             "passed": True, "results": []})
+                run.data.update(state=CLOSED, exit=GONE, closed_at=self._now(), output={})
+                changed[key] = run
+                summary["gone"] += 1
+                poi_record = event.get("poi") or {}
+                signals.append(POIActionClosed(
+                    f"The situation of {poi_record.get('type')} is gone: "
+                    f"{poi_record.get('message')}",
+                    situation={"action": key, "closed_at": run.data["closed_at"]},
+                    subject=run.data.get("subject") or {},
+                    evidence={"action": key, "exit": GONE, "poi": poi_record.get("id")}))
         keys = [self.runs.write(run) for run in changed.values()]
         self.runs.commit(keys, "POI actions: " + ", ".join(
             f"{count} {name}" for name, count in summary.items() if count))
