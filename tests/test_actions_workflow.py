@@ -14,11 +14,13 @@ from tarav.l1.actions import (
     ActionError, ActionRunStore, Exit, StepAction, StepRunner, register_action,
 )
 from tarav.l1.actions.pois import (
-    DISMISSED, GONE, DismissalInput, DismissalWithoutReason, POIActionClosed,
+    DISMISSED, GONE, DismissalInput, DismissalNotPermitted, DismissalWithoutReason,
+    POIActionClosed,
     POIActions, POIResolutionAction, action_id,
 )
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite, ClearPOI, SituationCheck
 from tarav.l1.operator_context import OperatorContext, OperatorContextStore
+from tarav.l1.poi.actionable import DismissablePOI
 from tarav.l1.records import RecordRegistry
 from tarav.l3.check import report_project_checks
 from tarav.l3.runtime import create_runtime
@@ -112,7 +114,7 @@ class TwoExitStep(StepAction):
         return {"by": name}
 
 
-class LampOn(CheckPOI):
+class LampOn(CheckPOI, DismissablePOI):
     """A lamp was found on."""
 
     @classmethod
@@ -497,3 +499,29 @@ def test_a_poi_that_is_not_a_failure_does_not_make_the_run_unclean(registry, cap
 
     assert report_project_checks(_Project(Clear()), actions="skip") == 0
     assert "1 checks, 0 incomplete, 1 POIs" in capsys.readouterr().out
+
+
+def test_a_poi_that_does_not_allow_dismissal_is_not_dismissed(tmp_path, registry, capsys):
+    # tarav.breadcrumb d5f905bd09bfb1b361caa0a2bcb681d8695d155576ca37d7e5466a33c4555cad
+    from tarav.l1.actions import ActionRunStore
+    from tarav.l1.operator_context import OperatorContextStore as Contexts
+
+    flags = _Flags(True).run().pois()[0]  # a plain CheckPOI
+    lamp = LampCheck("hall", 3).run().pois()[0]  # a dismissable one
+    home = _Home(tmp_path, _Flags(True), LampCheck("hall", 3))
+    assert report_project_checks(home) == 1
+    capsys.readouterr()
+    runner = StepRunner(runs=ActionRunStore(), contexts=Contexts(), session=lambda: None)
+    reason = Contexts().put(DismissalInput.new(reason="Known and accepted."))
+
+    refused = runner.close(str(action_id(flags)), reason, exit=DISMISSED)
+    assert refused.state == RUNNING
+    assert refused.data["closings"][-1]["results"][0]["pois"][0]["type"] == entity(DismissalNotPermitted).name
+
+    assert runner.close(str(action_id(lamp)), reason, exit=DISMISSED).exit == DISMISSED
+    assert report_project_checks(home) == 1  # the plain finding is still open
+    assert "(0 open, 0 blessed, 1 dismissed)" in capsys.readouterr().out
+
+    assert report_project_checks(_Home(tmp_path, LampCheck("hall", 3))) == 0  # all that is raised is dismissed
+    # the check that did not run this time says nothing: its action stays open
+    assert ActionRunStore().load(str(action_id(flags))).state == RUNNING

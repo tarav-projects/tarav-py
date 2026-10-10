@@ -17,7 +17,7 @@ from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.checks import Check, CheckPOI, CheckResult, ClearPOI, SituationCheck
 from tarav.l1.operator_context import OPERATOR_CONTEXT_WORKFLOW_SHIP, OperatorContext
 from tarav.l1.poi import POI, IdentifiedPOI, fingerprint
-from tarav.l1.poi.actionable import ActionablePOI
+from tarav.l1.poi.actionable import ActionablePOI, DismissablePOI
 
 from . import (
     ACTIONS_WORKFLOW_SHIP, CLOSED, LOOP, OPERATOR, RUNNING, ActionRun, ActionRunStore, Exit,
@@ -54,8 +54,18 @@ class DismissalWithoutReason(CheckPOI):
                           workflow=ACTIONS_WORKFLOW_SHIP)
 
 
+class DismissalNotPermitted(CheckPOI):
+    """A dismissal was attempted on the action of a POI whose Type does not allow it."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("f4c81d27-6b39-4e05-a7d2-9c1e5b8f3a64"),
+                          name="Tarav.Actions.POI.DismissalNotPermitted",
+                          workflow=ACTIONS_WORKFLOW_SHIP)
+
+
 class DismissalReasonCheck(SituationCheck):
-    """Does the operator's input give a reason?"""
+    """Does the POI's Type allow dismissal, and does the operator's input give a reason?"""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -66,12 +76,18 @@ class DismissalReasonCheck(SituationCheck):
     def __init__(self, run: ActionRun, context: OperatorContext) -> None:
         super().__init__(situation={"run": str(run.id), "context": str(context.id)})
         self._reason = context.fields.get("reason")
+        self._event = run.data.get("event") or {}
 
     def _run(self) -> CheckResult:
-        if isinstance(self._reason, str) and self._reason.strip():
-            return CheckResult(self, status="completed")
-        return CheckResult(self, status="completed", pois=(self.poi(
-            DismissalWithoutReason, message="The dismissal input gives no reason"),))
+        pois = []
+        if not self._event.get("dismissable"):
+            pois.append(self.poi(
+                DismissalNotPermitted,
+                message=f"{(self._event.get('poi') or {}).get('type')} does not allow dismissal"))
+        if not (isinstance(self._reason, str) and self._reason.strip()):
+            pois.append(self.poi(DismissalWithoutReason,
+                                 message="The dismissal input gives no reason"))
+        return CheckResult(self, status="completed", pois=pois)
 
 
 # tarav.breadcrumb 66447b514cbe8113e679498308f85202d9091297afcc05a728d1cdffa9ff3b19
@@ -169,11 +185,17 @@ class POIActions:
                 "intakes": [], "sessions": [], "opening": {"passed": True, "results": []},
                 "operations": [], "closings": [], "output": None, "reason": None,
                 "subject": check.subject_key if check is not None else None,
-                "event": {"poi": poi.as_dict(detail=True),
+                "event": {"dismissable": isinstance(poi, DismissablePOI),
+                          "poi": poi.as_dict(detail=True),
                           "check": {"type": entity(type(check)).name,
                                     "identity": check.identity} if check is not None else None},
             })
             return run, "opened"
+        event = run.data.get("event") or {}
+        if "dismissable" not in event:  # opened before the capability was recorded
+            run.data["event"] = {**event, "dismissable": isinstance(poi, DismissablePOI)}
+            if not (run.state == CLOSED and run.exit == GONE):
+                return run, "updated"
         if run.state == CLOSED and run.exit == GONE:
             run.data.update(state=RUNNING, exit=None, opened_at=self._now(), closed_at=None,
                             output=None)
@@ -192,7 +214,8 @@ class POIActions:
         absent actions too, since every check of that Type has run.
         """
         pois = tuple(pois)
-        present, changed, summary = set(), {}, {"opened": 0, "reopened": 0, "gone": 0}
+        present, changed = set(), {}
+        summary = {"opened": 0, "reopened": 0, "gone": 0, "updated": 0}
         for poi in pois:
             if (not isinstance(poi, ActionablePOI) or not isinstance(poi, IdentifiedPOI)
                     or type(poi).action is None):
@@ -240,13 +263,21 @@ class POIActions:
 
     def of(self, poi: IdentifiedPOI) -> ActionRun | None:
         """The action of one POI, when it has one."""
+        if not isinstance(poi, ActionablePOI) or type(poi).action is None:
+            return None
         return self.runs.find(str(action_id(poi)))
+
+    # tarav.breadcrumb 8f939b3150b542c2209f9343f1af08edebc857e9eb4f18d1ccbc5d446e3b27cd
+    def standing(self, poi: POI) -> str:
+        """How a POI's action stands: `open`, or the exit it closed by. `open` when it has none."""
+        run = self.of(poi) if isinstance(poi, IdentifiedPOI) else None
+        return run.exit if run is not None and run.state == CLOSED else "open"
 
 
 POI_ACTION_RECORD_TYPES = (DismissalInput,)
 
 __all__ = [
     "ActionablePOI", "DISMISSED", "DismissalInput", "DismissalReasonCheck",
-    "DismissalWithoutReason", "GONE", "POIActionClosed", "POIActions",
+    "DismissalNotPermitted", "DismissalWithoutReason", "GONE", "POIActionClosed", "POIActions",
     "POIResolutionAction", "POI_ACTION_RECORD_TYPES", "action_id",
 ]

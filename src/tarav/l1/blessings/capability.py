@@ -3,14 +3,20 @@
 from copy import deepcopy
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.poi import IdentifiedPOI, POI
+from tarav.l1.poi import IdentifiedPOI
+from tarav.l1.poi.actionable import DismissablePOI
 
 from .workflow import BLESSINGS_WORKFLOW_SHIP
 
 
 # tarav.breadcrumb 55f9796bac28bfd6786d615eea8b77fad9bd2686d8af652ee50392e01d5cddad
-class BlessablePOI(POI):
-    """A POI whose identified situation can receive an attributed blessing."""
+class BlessablePOI(DismissablePOI):
+    """A POI whose identified situation can receive an attributed blessing.
+
+    What may be blessed may be dismissed: a blessing is the earlier form of
+    dismissing the POI's action, and this capability carries both until the
+    blessing records are retired.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:

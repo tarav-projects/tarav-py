@@ -26,4 +26,18 @@ class ActionablePOI(POI):
                           name="Tarav.POI.Actionable", workflow=POI_WORKFLOW_SHIP)
 
 
-__all__ = ["ActionablePOI"]
+# tarav.breadcrumb 51eb2b0b1a45b063a05bc60031c6c07ba2b6e50c2d22dba73b69f138821a1c21
+class DismissablePOI(ActionablePOI):
+    """Capability: the action of a POI of an extending Type may be dismissed.
+
+    Dismissing overrules the check for one exact situation, with a reason. It
+    is the softest way an action closes, so a Type has to allow it.
+    """
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("b21f7c50-0a4d-4e63-9c18-5d7e3f2a6b90"),
+                          name="Tarav.POI.Dismissable", workflow=POI_WORKFLOW_SHIP)
+
+
+__all__ = ["ActionablePOI", "DismissablePOI"]

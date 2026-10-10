@@ -335,23 +335,33 @@ class CheckRun(TaravObject, POIProvider):
             "by_type": dict(by_type),
         }
 
-    def _standing(self, poi: POI, store, snapshot) -> str:
+    def _standing(self, poi: POI, store, snapshot, actions=None) -> str:
         if store is not None and store.accepts(poi):
             if store.standing(poi, snapshot=snapshot)["status"] == "blessed":
                 return "blessed"
+        if actions is not None and actions.standing(poi) == "dismissed":
+            return "dismissed"
         return "open"
 
-    def clean(self, *, store=None) -> bool:
+    # tarav.breadcrumb d96e22c81cc727200ea256c3e9af4d895e1d1842e4d7ac7861e3279bee041f3b
+    def clean(self, *, store=None, actions=None) -> bool:
+        """No check failed to complete, and every finding is settled.
+
+        A finding is settled when it is blessed in `store` or its action in
+        `actions` was dismissed. Both are given by the caller; without them
+        every finding is open.
+        """
         if any(result.status != "completed" for result in self.results):
             return False
         snapshot = store.snapshot() if store is not None else None
-        return all(self._standing(poi, store, snapshot) == "blessed" for poi in self.findings())
+        return all(self._standing(poi, store, snapshot, actions) in ("blessed", "dismissed")
+                   for poi in self.findings())
 
     # tarav.breadcrumb cb1a5772a23d17b22aa60b8bb37e1a3015cff629e44c47640e8886c7fe49d6e0
     def report(
         self, *, by: str = "type", sort: str = "run", offset: int = 0, limit: int = 20,
         type: str | None = None, check: str | None = None,
-        store=None, detail: bool = False,
+        store=None, detail: bool = False, actions=None,
     ) -> dict[str, object]:
         if by not in ("type", "check", "identity"):
             raise ValueError("Unknown CheckRun grouping")
@@ -385,12 +395,12 @@ class CheckRun(TaravObject, POIProvider):
                 }[by]
                 row = groups.setdefault(key, {
                     "key": key, "by": by, "pois": 0, "checks": 0,
-                    "open": 0, "blessed": 0, "example": poi.summary(),
+                    "open": 0, "blessed": 0, "dismissed": 0, "example": poi.summary(),
                     "id": getattr(poi, "identity", None),
                     "types": [], "_results": set(),
                 })
                 row["pois"] += 1
-                row[self._standing(poi, store, snapshot)] += 1
+                row[self._standing(poi, store, snapshot, actions)] += 1
                 if result_index not in row["_results"]:
                     row["_results"].add(result_index)
                     row["checks"] += 1

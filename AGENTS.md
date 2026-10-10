@@ -276,7 +276,9 @@ Importing `tarav` alone initializes no services or layered modules.
   `tarav action list --project` and `tarav context --id <poi-id> --view poi-action`.
   An action is open, or closed by a named exit: `gone` or `dismissed`. Checks only
   emit. An action closes as `gone` when its check, recognized by `subject_key` or
-  `identity`, completed without raising it. See ARCHITECTURE.md, `actions`.
+  `identity`, completed without raising it. `dismissed` is an operator's exit, with a
+  reason, for a POI whose Type extends `DismissablePOI`; `tarav check` counts a
+  dismissed finding as settled. See ARCHITECTURE.md, `actions`.
 
 # Tarav System Prompt
 

@@ -7,7 +7,8 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready, after request 894.
+Status: partly implemented. Dismissal is in place for Project POIs; the
+blessing code is not removed (see Impl.Log).
 
 A blessing becomes the dismissal close path of the POI's action. The separate
 blessing mechanism (store, records, capability, attention schedule, Project
@@ -91,3 +92,35 @@ discussion captured; implementation capture pending.
 ## Impl.Log
 
 - Designed 2026-10-09.
+- Start checkpoint: commit `1c1fc53` (request 894).
+- Done, steps 1 and 2:
+  - `DismissablePOI` in `tarav.l1.poi.actionable`; `BlessablePOI` extends it,
+    so every Type that could be blessed can have its action dismissed.
+  - The action's record keeps whether its POI allows dismissal;
+    `DismissalReasonCheck` raises `DismissalNotPermitted` otherwise. Records
+    opened before this get the field on their next trigger.
+  - `POIActions.standing(poi)`; `CheckRun.clean(actions=)` and
+    `report(actions=)` treat a dismissed finding as settled, and rows carry a
+    `dismissed` count that the text renderer shows when it is not zero.
+  - `tarav check --project` reads dismissals for its report and its exit
+    code, also with `--actions skip`. Reading never creates the registry
+    (`ActionRunStore.exists()`).
+- Tests: one new in `tests/test_actions_workflow.py` (a plain `CheckPOI` is
+  refused, a dismissable one is dismissed, the report shows it, and a run
+  whose only finding is dismissed exits 0). Full suite 260 passed in the
+  shared worktree; Ruff clean.
+- Real run on the root after compiling `AGENTS.md` from its source in request
+  894: the action of `Tarav.Project.Agents.Product.Drift` closed as `gone` and
+  the report printed the signal. No real POI was dismissed, by the standing
+  rule not to settle existing POIs.
+- Not done, step 3, and why. The blessing workflow is not only the Project's:
+  Skillware packages have their own blessing store (`.skw/blessings`) and
+  commands (`tarav skw skills ... bless`, `assess-blessing`, POI listings by
+  blessing status), and blessings carry assessments with assertions and
+  scores and an attention schedule. Removing them now would delete scored
+  assessment with nothing to replace it, since graded dismissal is not
+  designed. That is the case the request's open question set aside. What
+  remains for a later request: Skillware packages on POI actions, a scored
+  grade of dismissal, then removal of `tarav.l1.blessings`,
+  `tarav.l2.blessings` and `ProjectDecisions.blessings()`.
+- No blessing record exists in this workspace, so nothing needs migrating.

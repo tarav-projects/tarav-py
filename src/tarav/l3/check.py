@@ -34,16 +34,17 @@ def report_project_checks(
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    report = run.report(by=by, sort=sort, limit=limit, offset=offset,
-                        type=poi_type, check=check, detail=level == "record")
     acted = _acted(project, run) if actions == "write" else None
+    settled = _poi_actions()
+    report = run.report(by=by, sort=sort, limit=limit, offset=offset, type=poi_type,
+                        check=check, detail=level == "record", actions=settled)
     if json_output:
         print(json.dumps({**report, "actions": acted}, indent=2, default=str))
     else:
         print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
         if acted is not None:
             print(_actions_text(acted))
-    return 0 if run.clean() else 1
+    return 0 if run.clean(actions=settled) else 1
 
 
 def _code(args: argparse.Namespace) -> str:
@@ -117,6 +118,16 @@ def _retained(project, run):
         return run
     ReportedPOIStore().retain(run.pois(), project=identity)
     return run
+
+
+def _poi_actions():
+    """The Actions workflow as a reader of dismissals. None when it cannot be read."""
+    try:
+        from tarav.l1.actions.pois import POIActions
+
+        return POIActions()
+    except Exception:
+        return None
 
 
 # tarav.breadcrumb 34c9e2e74fe85182ac56b7d7c1f9d8c1c2ec324bd808ac782fe4a82d6c6e4478

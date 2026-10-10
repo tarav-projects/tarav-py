@@ -216,8 +216,13 @@ class ActionRunStore:
     def save(self, run: ActionRun, message: str) -> None:
         self.commit((self.write(run),), message)
 
+    def exists(self) -> bool:
+        """Has anything ever been written here? Reading never creates the registry."""
+        return self.map.marker.is_file()
+
     def find(self, key: str) -> ActionRun | None:
-        self.map.create()
+        if not self.exists():
+            return None
         return self.load(key) if self.map.path(key).is_file() else None
 
     def load(self, key: str) -> ActionRun:
@@ -231,7 +236,8 @@ class ActionRunStore:
     def list(self, *, state: str | None = None, exit: str | None = None,
              project_root: str | None = None) -> list[ActionRun]:
         """Runs, newest first, optionally by state, exit or the Project they name."""
-        self.map.create()
+        if not self.exists():
+            return []
         runs = [self.load(name) for name in self.map.names()]
         selected = [
             run for run in runs
