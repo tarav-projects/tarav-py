@@ -82,8 +82,7 @@ claims that a continuing POI situation can be accepted for now. An optional
 retained POI and grounds; unresolved source references yield incomplete scope.
 `blessing.score_vector(repository)` reads named tribunal assessments from
 ScoringRepository by Assertion reference, without copying scores into the
-blessing or merging legacy BlessingAssessmentRecords. Detection and the old
-binary standing view remain unchanged.
+Blessing. Detection remains unchanged.
 <!-- tarav.breadcrumb 5a29a5247ba8f886c1f9c8d31820023fc0f323edee9e15bd073f06aa96c8ecee -->
 
 `tarav.l2.blessings.attention_report` reads current POIs, their exact-situation

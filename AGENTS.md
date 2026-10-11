@@ -271,14 +271,18 @@ Importing `tarav` alone initializes no services or layered modules.
   Give related situations one class each under a family parent that is never raised.
 - A POI is an event. A `CheckPOI` is actionable: it spins one action,
   `Tarav.Actions.POI.Resolution` (`tarav.l1.actions.pois`), kept in the central Record
-  Registry and not in the Project. `tarav check --project` hands its run to the Actions
-  workflow (`--actions skip` to leave them alone); read them with
+  Registry and not in the Project. Checks only emit and know nothing of suites: the
+  caller names the suite a run belongs to. `tarav check --project` settles the Projects
+  suite with its run (`--actions skip` to leave actions alone); read them with
   `tarav action list --project` and `tarav context --id <poi-id> --view poi-action`.
-  An action is open, or closed by a named exit: `gone` or `dismissed`. Checks only
-  emit. An action closes as `gone` when its check, recognized by `subject_key` or
-  `identity`, completed without raising it. `dismissed` is an operator's exit, with a
-  reason, for a POI whose Type extends `DismissablePOI`; `tarav check` counts a
-  dismissed finding as settled. See ARCHITECTURE.md, `actions`.
+  A suite manages the actions it opened and closes as `gone` those it no longer
+  produces on the same target. `blessed` is an operator's exit: the action closes
+  although the situation still exists, with a reason, for a POI whose Type extends
+  `BlessablePOI`; `tarav check` counts a blessed finding as settled. Every closing
+  leaves a typed record on the action (`Tarav.Actions.POI.Gone`,
+  `Tarav.Blessings.Blessing`), and that Type decides whether the POI raised again
+  reopens it. Status is three axes: situation, action, closing. See ARCHITECTURE.md,
+  `actions` and `blessings`.
 
 # Tarav System Prompt
 

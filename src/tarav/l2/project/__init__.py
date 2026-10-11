@@ -46,7 +46,7 @@ class Project(TaravProject):
 
     # tarav.breadcrumb 060a215350155cc5aae758df05ae3113dc6967b15fd4cda50852d9327456335b
     def decisions(self):
-        """This Project's Decisions: every subtype, blessings included."""
+        """This Project's Decisions, every subtype."""
         from .decisions import ProjectDecisions
 
         return ProjectDecisions(self)

@@ -8,7 +8,7 @@ from copy import deepcopy
 
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TypeShip
-from tarav.l1.blessings import BlessablePOI
+from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.checks import Check, CheckPOI, CheckResult, SituationCheck
 from tarav.l1.poi import POICollector
 from tarav.l1.references import Reference

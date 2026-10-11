@@ -1,17 +1,9 @@
-"""Blessings workflow public surface."""
+"""Blessings workflow public surface.
 
-from .capability import BlessablePOI
-from .store import BlessingAssessmentRecord, BlessingRecord, BlessingStore
+The Blessing itself, the closing record of a POI's action, is defined in
+`tarav.l1.actions.blessing`; its assertions are in `tarav.l2.blessings`.
+"""
+
 from .workflow import BLESSINGS_WORKFLOW_SHIP, BlessingsWorkflow
 
-BLESSING_RECORD_TYPES = (BlessingRecord, BlessingAssessmentRecord)
-
-__all__ = [
-    "BLESSINGS_WORKFLOW_SHIP",
-    "BLESSING_RECORD_TYPES",
-    "BlessablePOI",
-    "BlessingAssessmentRecord",
-    "BlessingRecord",
-    "BlessingStore",
-    "BlessingsWorkflow",
-]
+__all__ = ["BLESSINGS_WORKFLOW_SHIP", "BlessingsWorkflow"]

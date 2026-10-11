@@ -1,107 +1,75 @@
 """Actions that follow a POI.
 
 A POI is an event. An actionable POI also spins one action, and that action
-is what persists: it stays open until one of its exits is met. The instance
-follows the POI's identity, so raising the same POI again lands on the same
-action.
+is what persists: it stays open until one of its closing paths is taken. The
+instance follows the POI's identity, so raising the same POI again lands on
+the same action. A suite opens these actions and settles them; see
+`tarav.l1.actions.suites`.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
-from datetime import datetime, timezone
+from collections.abc import Iterable
 from typing import ClassVar
 from uuid import UUID
 
 from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
-from tarav.l1.checks import Check, CheckPOI, CheckResult, ClearPOI, SituationCheck
-from tarav.l1.operator_context import OPERATOR_CONTEXT_WORKFLOW_SHIP, OperatorContext
+from tarav.l1.checks import Check
+from tarav.l1.operator_context import OperatorContext
 from tarav.l1.poi import POI, IdentifiedPOI, fingerprint
-from tarav.l1.poi.actionable import ActionablePOI, DismissablePOI
+from tarav.l1.poi.actionable import ActionablePOI, BlessablePOI
 
+from .blessing import BLESSED, Blessing, BlessingInput, BlessingInputCheck
 from . import (
-    ACTIONS_WORKFLOW_SHIP, CLOSED, LOOP, OPERATOR, RUNNING, ActionRun, ActionRunStore, Exit,
-    StepAction, resolve_action,
+    ACTIONS_WORKFLOW_SHIP, OPERATOR, SUITE, ActionRun, ActionRunStore, Closing, Exit,
+    StepAction, axes, resolve_action,
 )
 
-GONE, DISMISSED = "gone", "dismissed"
+GONE = "gone"
+PRESENT, ABSENT = "present", "absent"
 
 
-class DismissalInput(OperatorContext):
-    """An operator's reason for dismissing a POI's action."""
+# tarav.breadcrumb 7025ef0587c66a6d14f2ea5252a2442b77d086f0c0875f3031a32b72650786f5
+class GoneClosing(Closing):
+    """The record of an action closed because its suite no longer detects the situation."""
 
-    class RecordInterface(OperatorContext.RecordInterface):
-        reason: str
+    class RecordInterface(Closing.RecordInterface):
+        suite: dict
 
     @classmethod
     def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("6f4a2d7e-1c39-4b85-a0d6-3e9b7c5f1a28"),
-                          name="Tarav.Actions.POI.DismissalInput",
-                          workflow=OPERATOR_CONTEXT_WORKFLOW_SHIP)
+        return TaravClass(target=cls, id=TypeShip("a14a7bc9-9483-4380-934a-324c53426fc1"),
+                          name="Tarav.Actions.POI.Gone", workflow=ACTIONS_WORKFLOW_SHIP)
 
-    class Records(OperatorContext.Records):
+    @classmethod
+    def reopens(cls, record: dict | None, poi: object) -> bool:
+        return True  # the situation is back
+
+    class Records(Closing.Records):
         def record_example(self) -> dict[str, object]:
-            return {**super().record_example(), "reason": "Accepted as it is."}
-
-
-class DismissalWithoutReason(CheckPOI):
-    """A dismissal was attempted and its input gives no reason."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("b3e8c1f5-9d27-4a60-8c4b-7f2e5a9d0c13"),
-                          name="Tarav.Actions.POI.DismissalWithoutReason",
-                          workflow=ACTIONS_WORKFLOW_SHIP)
-
-
-class DismissalNotPermitted(CheckPOI):
-    """A dismissal was attempted on the action of a POI whose Type does not allow it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("f4c81d27-6b39-4e05-a7d2-9c1e5b8f3a64"),
-                          name="Tarav.Actions.POI.DismissalNotPermitted",
-                          workflow=ACTIONS_WORKFLOW_SHIP)
-
-
-class DismissalReasonCheck(SituationCheck):
-    """Does the POI's Type allow dismissal, and does the operator's input give a reason?"""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("d7a5f3b9-2e61-4c08-9b7d-1a4c8e6f2d35"),
-                          name="Tarav.Actions.POI.DismissalReasonCheck",
-                          workflow=ACTIONS_WORKFLOW_SHIP)
-
-    def __init__(self, run: ActionRun, context: OperatorContext) -> None:
-        super().__init__(situation={"run": str(run.id), "context": str(context.id)})
-        self._reason = context.fields.get("reason")
-        self._event = run.data.get("event") or {}
-
-    def _run(self) -> CheckResult:
-        pois = []
-        if not self._event.get("dismissable"):
-            pois.append(self.poi(
-                DismissalNotPermitted,
-                message=f"{(self._event.get('poi') or {}).get('type')} does not allow dismissal"))
-        if not (isinstance(self._reason, str) and self._reason.strip()):
-            pois.append(self.poi(DismissalWithoutReason,
-                                 message="The dismissal input gives no reason"))
-        return CheckResult(self, status="completed", pois=pois)
+            return {**super().record_example(), "exit": GONE, "by": SUITE,
+                    "suite": {"id": "6f3373d8-5897-49e4-9e92-7cf2102397bc",
+                              "name": "Tarav.Actions.Suite"}}
 
 
 # tarav.breadcrumb 66447b514cbe8113e679498308f85202d9091297afcc05a728d1cdffa9ff3b19
 # tarav.breadcrumb e2ef906ba9d261e12b8eb7df9f7387f374e995076befb02acc3a8b599844b624
+# tarav.breadcrumb fcc647ba041a791d3ee820ca5920cbc53a53235822a446126b369e6f5313fa1f
 class POIResolutionAction(StepAction):
-    """The action a POI spins: open while the POI stands, closed when it is gone or dismissed.
+    """The action a POI spins: open while the POI stands, closed when it is gone or blessed.
 
-    `gone` is taken when the POI's check reports clear for the same subject.
-    `dismissed` is taken by an operator who gives a reason; the dismissal is
-    kept in this action's record.
+    `gone` is taken by the suite that manages the action, when a run of that
+    suite no longer produces the POI. `blessed` is taken by an operator who
+    gives a reason: the action closes although the situation still exists.
+    Each path leaves its own record, and that record decides whether the POI
+    raised again reopens the action.
     """
 
-    InputType: ClassVar[type[OperatorContext]] = DismissalInput
-    exits: ClassVar[tuple[Exit, ...]] = (Exit(GONE, by=(LOOP,)), Exit(DISMISSED, by=(OPERATOR,)))
+    InputType: ClassVar[type[OperatorContext]] = BlessingInput
+    exits: ClassVar[tuple[Exit, ...]] = (
+        Exit(GONE, by=(SUITE,), closing=GoneClosing),
+        Exit(BLESSED, by=(OPERATOR,), closing=Blessing),
+    )
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -110,16 +78,9 @@ class POIResolutionAction(StepAction):
 
     def exit_checks(self, name: str, run: ActionRun,
                     context: OperatorContext | None) -> Iterable[Check]:
-        if name == DISMISSED and context is not None:
-            return (DismissalReasonCheck(run, context),)
+        if name == BLESSED and context is not None:
+            return (BlessingInputCheck(run, context),)
         return ()
-
-    def output(self, name: str, run: ActionRun, context: OperatorContext | None) -> dict:
-        if name == DISMISSED and context is not None:
-            return {"reason": context.fields["reason"].strip(),
-                    "by": (run.data["sessions"] or [None])[-1],
-                    "context": str(context.id)}
-        return {}
 
 
 class POIActionClosed(IdentifiedPOI):
@@ -138,146 +99,53 @@ def action_id(poi: IdentifiedPOI) -> Ship:
     return Ship(str(UUID(fingerprint([str(entity(action_type).id), poi.identity])[:32])))
 
 
-def _matches(run: ActionRun, check: Check) -> bool:
-    """Is this the check that owns the run's POI, examining the same thing?
-
-    The subject key decides when the check declares one; otherwise the check's
-    identity across runs does.
-    """
-    event_check = (run.data.get("event") or {}).get("check") or {}
-    if event_check.get("type") != entity(type(check)).name:
-        return False
-    if check.subject_key is not None or run.data.get("subject") is not None:
-        return run.data.get("subject") == check.subject_key
-    return check.identity is not None and event_check.get("identity") == check.identity
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 class POIActions:
-    """Hand POIs to the Actions workflow: findings open their action, clear results close.
+    """Read the actions that follow POIs: which action, how it stands, its blessing."""
 
-    The checks know nothing of this. Whoever ran them decides to hand the
-    POIs over, as it decides to show them.
-    """
-
-    def __init__(self, runs: ActionRunStore | None = None, *,
-                 now: Callable[[], str] = _now) -> None:
+    def __init__(self, runs: ActionRunStore | None = None) -> None:
         self.runs = runs if runs is not None else ActionRunStore()
-        self._now = now
 
-    # tarav.breadcrumb 0c49d730280e32ff0260c0b1563cbb89a7a4b05d11ff8167fa3750af08fae38c
-    # tarav.breadcrumb f41eaa73e7dd28ec2987cd7fa86257b23cd4c1e599a27ebf403472b803565397
-    def _trigger(self, poi: IdentifiedPOI, project: dict | None) -> tuple[ActionRun, str | None]:
-        """Open the POI's action: created if absent, reopened if it was gone, else left as it is."""
-        key = action_id(poi)
-        run = self.runs.find(str(key))
-        if run is None:
-            check = getattr(poi, "check", None)
-            action_type = resolve_action(type(poi).action)
-            run = ActionRun(key, {
-                "action": entity(action_type).name, "state": RUNNING, "exit": None,
-                "started_at": self._now(), "opened_at": self._now(), "closed_at": None,
-                "project": project,
-                "skill": action_type.skill.to_json() if action_type.skill else None,
-                "intakes": [], "sessions": [], "opening": {"passed": True, "results": []},
-                "operations": [], "closings": [], "output": None, "reason": None,
-                "subject": check.subject_key if check is not None else None,
-                "event": {"dismissable": isinstance(poi, DismissablePOI),
-                          "poi": poi.as_dict(detail=True),
-                          "check": {"type": entity(type(check)).name,
-                                    "identity": check.identity} if check is not None else None},
-            })
-            return run, "opened"
-        event = run.data.get("event") or {}
-        if "dismissable" not in event:  # opened before the capability was recorded
-            run.data["event"] = {**event, "dismissable": isinstance(poi, DismissablePOI)}
-            if not (run.state == CLOSED and run.exit == GONE):
-                return run, "updated"
-        if run.state == CLOSED and run.exit == GONE:
-            run.data.update(state=RUNNING, exit=None, opened_at=self._now(), closed_at=None,
-                            output=None)
-            return run, "reopened"
-        return run, None
-
-    def observe(self, pois: Iterable[POI], *, completed: Iterable[Check] = (),
-                whole: bool = False, project: dict | None = None) -> dict:
-        """Take one batch of POIs. Returns what changed and the POIs that say so.
-
-        A finding opens its action. An open action closes as gone when its
-        check completed in this batch, examining the same thing, and did not
-        raise it: a clear POI says so, and so does a check named in
-        `completed`. `whole` states that the batch is the provider's entire
-        suite; then a check Type that cannot say which check it is closes its
-        absent actions too, since every check of that Type has run.
-        """
-        pois = tuple(pois)
-        present, changed = set(), {}
-        summary = {"opened": 0, "reopened": 0, "gone": 0, "updated": 0}
-        for poi in pois:
-            if (not isinstance(poi, ActionablePOI) or not isinstance(poi, IdentifiedPOI)
-                    or type(poi).action is None):
-                continue
-            if str(action_id(poi)) in present:
-                continue  # the same POI raised again in this batch is the same action
-            run, change = self._trigger(poi, project)
-            present.add(str(run.id))
-            if change is not None:
-                changed[str(run.id)] = run
-                summary[change] += 1
-        checks = [*completed, *(poi.check for poi in pois if isinstance(poi, ClearPOI))]
-        keyless = {entity(type(check)).name for check in checks
-                   if check.subject_key is None and check.identity is None} if whole else set()
-        signals: list[POI] = []
-        if checks:
-            root = (project or {}).get("root")
-            for run in self.runs.list(state=RUNNING):
-                key = str(run.id)
-                event = run.data.get("event") or {}
-                if key in present or (run.data.get("project") or {}).get("root") != root:
-                    continue
-                event_check = event.get("check") or {}
-                unnamed = (run.data.get("subject") is None
-                           and event_check.get("identity") is None
-                           and event_check.get("type") in keyless)
-                if not unnamed and not any(_matches(run, check) for check in checks):
-                    continue
-                run.data["closings"].append({"at": self._now(), "exit": GONE, "by": LOOP,
-                                             "passed": True, "results": []})
-                run.data.update(state=CLOSED, exit=GONE, closed_at=self._now(), output={})
-                changed[key] = run
-                summary["gone"] += 1
-                poi_record = event.get("poi") or {}
-                signals.append(POIActionClosed(
-                    f"The situation of {poi_record.get('type')} is gone: "
-                    f"{poi_record.get('message')}",
-                    situation={"action": key, "closed_at": run.data["closed_at"]},
-                    subject=run.data.get("subject") or {},
-                    evidence={"action": key, "exit": GONE, "poi": poi_record.get("id")}))
-        keys = [self.runs.write(run) for run in changed.values()]
-        self.runs.commit(keys, "POI actions: " + ", ".join(
-            f"{count} {name}" for name, count in summary.items() if count))
-        return {**summary, "actions": len(present), "signals": signals}
-
-    def of(self, poi: IdentifiedPOI) -> ActionRun | None:
+    def of(self, poi: POI) -> ActionRun | None:
         """The action of one POI, when it has one."""
-        if not isinstance(poi, ActionablePOI) or type(poi).action is None:
+        if (not isinstance(poi, ActionablePOI) or not isinstance(poi, IdentifiedPOI)
+                or type(poi).action is None):
             return None
         return self.runs.find(str(action_id(poi)))
 
     # tarav.breadcrumb 8f939b3150b542c2209f9343f1af08edebc857e9eb4f18d1ccbc5d446e3b27cd
     def standing(self, poi: POI) -> str:
-        """How a POI's action stands: `open`, or the exit it closed by. `open` when it has none."""
-        run = self.of(poi) if isinstance(poi, IdentifiedPOI) else None
-        return run.exit if run is not None and run.state == CLOSED else "open"
+        """`blessed` when the POI's action is closed by a blessing, otherwise `open`.
+
+        A POI that is being raised has an open situation whatever an earlier
+        `gone` closing says, so only a blessing settles it.
+        """
+        run = self.of(poi)
+        return BLESSED if run is not None and run.exit == BLESSED else "open"
+
+    def axes(self, poi: POI) -> dict[str, str | None] | None:
+        """The status axes of the POI's action; None when it has no action yet."""
+        run = self.of(poi)
+        return axes(run) if run is not None else None
+
+    def blessing(self, poi: POI) -> Blessing | None:
+        """The Blessing that closed the POI's action, when one did."""
+        run = self.of(poi)
+        closing = run.closing() if run is not None else None
+        return closing if isinstance(closing, Blessing) else None
+
+    def blessing_standing(self, poi: POI) -> dict | None:
+        """For reports: whether a blessable POI is blessed, and by which Blessing."""
+        if not isinstance(poi, BlessablePOI):
+            return None
+        blessing = self.blessing(poi)
+        return {"status": "blessed" if blessing is not None else "unblessed",
+                "blessing": str(blessing.id) if blessing is not None else None}
 
 
-POI_ACTION_RECORD_TYPES = (DismissalInput,)
+POI_ACTION_RECORD_TYPES = (GoneClosing,)
 
 __all__ = [
-    "ActionablePOI", "DISMISSED", "DismissalInput", "DismissalReasonCheck",
-    "DismissalNotPermitted", "DismissalWithoutReason", "GONE", "POIActionClosed", "POIActions",
-    "POIResolutionAction", "POI_ACTION_RECORD_TYPES", "action_id",
+    "ABSENT", "ActionablePOI", "BLESSED", "BlessablePOI", "GONE", "GoneClosing",
+    "POIActionClosed", "POIActions", "POIResolutionAction", "POI_ACTION_RECORD_TYPES",
+    "PRESENT", "action_id",
 ]

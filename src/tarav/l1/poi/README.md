@@ -33,10 +33,10 @@ class StaleOutput(CheckPOI, BlessablePOI):
 ```
 
 `CheckPOI` binds an occurrence to the `Check` that explains it.
-`BlessablePOI` marks, by inheritance, an identified situation that may
-receive an attributed blessing. A POI is not blessable unless its concrete
-type inherits that capability. `BlessingStore` retains acceptance and
-assessment Records without suppressing the POI.
+`BlessablePOI` marks, by inheritance, a POI whose action may be closed by a
+blessing: closed although the situation still exists, with a reason. A POI
+is not blessable unless its concrete type inherits that capability. The
+`Blessing` is the closing record of the action; the POI is still raised.
 
 `tarav.l2.blessings.attention_report` is a separate, pageable view of a
 `POICollector` evaluation. It selects currently due POIs for an agent while

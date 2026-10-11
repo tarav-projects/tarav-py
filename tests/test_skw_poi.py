@@ -159,11 +159,11 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
     generation = next(poi for poi in pois if isinstance(poi, StaleGeneration))
     assert not any(isinstance(poi, StaleContext) for poi in pois)
 
-    skill.blessings.bless(
-        generation,
-        actor={"type": "Example.Agent", "locator": {"session": "fixture"}},
-        rationale="The output remains valid for input revision two.",
-    )
+    from blessing_bench import Bench
+
+    bench = Bench(tmp_path / "records", create_runtime().records)
+    bench.bless(generation, reason="The output remains valid for input revision two.")
+    assert bench.pois.blessing_standing(generation)["status"] == "blessed"
     data["blocks"][1]["annotations"][0]["instructions"] = [
         "Explain the final program."
     ]
@@ -174,5 +174,5 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
         poi for poi in changed if isinstance(poi, StaleGeneration)
     )
     assert changed_generation.identity != generation.identity
-    assert skill.blessings.standing(changed_generation)["status"] == "unblessed"
+    assert bench.pois.blessing_standing(changed_generation)["status"] == "unblessed"
     assert any(isinstance(poi, StaleContext) for poi in changed)

@@ -139,8 +139,7 @@ def _text(selection: POISelection, level: POILevel) -> str:
         address = _address(row)
         if selection.source == "check":
             line = (f"  {row['key']}: {row['pois']} POIs from {row['checks']} checks "
-                    f"({row['open']} open, {row['blessed']} blessed"
-                    + (f", {row['dismissed']} dismissed" if row.get("dismissed") else "") + ")")
+                    f"({row['open']} open, {row['blessed']} blessed)")
             if row.get("example"):
                 line += f" — {row['example']}"
             if row.get("id"):

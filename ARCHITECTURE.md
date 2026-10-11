@@ -458,19 +458,24 @@ place where an operator puts the typed objects it hands to other workflows.
 gives a consumer the object with the hash of the record it read. `tarav.l1.actions`
 declares `ActionsWorkflow`: the near-empty `Action` root, `StepAction` (an
 opening test, operations, and named exits with their tests, each taken by an
-operator, the loop, or both), the recorded `ActionRun` and `StepRunner`, which
+operator, the loop or a suite), the recorded `ActionRun` and `StepRunner`, which
 takes every operator input from the Operator Context and sweeps loop-taken
-exits. Both keep
+exits. Closing a run leaves a typed `Closing` record on it, of the Type its
+exit names. Both keep
 their Records in their own Record Registry partitions, outside any Project.
 Action Types are made startable by explicit `register_action()`; the runtime
 registers them. `tarav.l1.actions.pois` holds what follows a POI:
-`ActionablePOI`, the `POIResolutionAction` with exits `gone` and `dismissed`,
-and `POIActions.observe()`, which a caller hands POIs to. The instance of a
-POI's action is derived from the POI's identity; its record holds the current
-state and its history is the registry's Git history. `tarav.l1.checks` gives a
-check a `subject_key` and a `ClearPOI` for a completed check that raised
-nothing; checks do not import Actions. Programs and Actions are not yet
-related in code.
+`ActionablePOI` and the `POIResolutionAction` with the closing paths `gone`
+and `blessed`. `tarav.l1.actions.suites` holds `Suite`: the caller of a check
+run names the suite the run belongs to, and the suite opens the action of each
+POI, manages those actions, and closes as `gone` the ones it no longer
+produces. The instance of a POI's action is derived from the POI's identity,
+not from the suite; its record holds the current state and its history is the
+registry's Git history. Checks do not import Actions and know nothing of
+suites. Programs and Actions are not yet related in code.
+<!-- tarav.breadcrumb 929afad70096e02099ff49b90d972f977d4fe6d461aad33cb206b91490e8c905 -->
+<!-- tarav.breadcrumb 8f83b152a5ae963ef35445d9aa3bc877077e7d780b5658434fe7343fc77815ca -->
+<!-- tarav.breadcrumb 79c4b2ba1ae60b9c354194f6019851a30bd082d3f144adac272728093277e5df -->
 <!-- tarav.breadcrumb 9ee4d9dcc84f3fe51b675d28058a032060fb73abc4cc794542649b33aec1eb74 -->
 <!-- tarav.breadcrumb 2d9d5a81415b516dd8e6f4906bdb3917d37b71ca15ceb895eef1ff8f02d4ce1f -->
 
@@ -496,9 +501,9 @@ related in code.
 | `scoring` | ScoringWorkflow owns the identified, case-producing Assertion subtype, closed AssessmentCase contract, shallow Score root, and retained evaluation mechanics. Scoring Records are entities with explicit Context reference edges. |
 | `scoring.ranking` | RankingWorkflow is a Scoring subtype and child workflow. It owns pairwise cases, singleton Tribunal entities, pairwise operations and Checks, and ephemeral RankingScore results. |
 | `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. |
-| `actions` | ActionsWorkflow keeps typed Actions and one record per action in its Record Registry partition, outside any Project. `StepAction` has named exits taken by an operator or the loop. `tarav.l1.actions.pois` is what follows a POI: an `ActionablePOI` (the capability lives in `tarav.l1.poi.actionable` and is extended by `CheckPOI`) spins the `POIResolutionAction`, whose instance is derived from the POI's identity. `POIActions.observe()` takes a batch of POIs and the checks that completed: a finding opens its action or reopens one that was gone; an open action whose check, recognized by `subject_key` or `identity`, completed without raising it closes as `gone`; in a whole run a check Type that names neither closes its absent actions too. `dismissed` is an operator's exit with a reason from the Operator Context, allowed for a `DismissablePOI` (which `BlessablePOI` now extends); `CheckRun.clean(actions=)` and `report(actions=)` count a dismissed finding as settled. Checks never write to it: the caller of the checks hands the run over. The record holds the current state; its history is the registry's Git history. The `poi-action` Context view and its resolver live in `actions.views`. |
-| `decisions` | DecisionsWorkflow owns the shared attributed Decision contract and prescribes no concrete subtype of its own; consuming workflows define theirs. It owns no storage. The common actor field is exposed as `decider`; subtype schemas keep their own fields and optional POI links. l2 builds an inspectable main Assertion for generic Decisions; assessment cases and attention policy are not yet prescribed. Existing Blessing Records subtype Decision without changing their Type Ship or schema. |
-| `blessings` | BlessingsWorkflow owns the BlessablePOI capability and attributed blessing and assessment Records. BlessingRecord is Assertable through Decision; its established Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. Blessings match situation identity directly and never suppress a POI. BlessingStore remains independently usable without tracking. |
+| `actions` | ActionsWorkflow keeps typed Actions and one record per action in its Record Registry partition, outside any Project. `StepAction` has named exits taken by an operator, the loop or a suite; each exit names the `Closing` record Type it leaves on the run, and that Type decides whether the POI raised again reopens the action. `tarav.l1.actions.pois` is what follows a POI: an `ActionablePOI` (the capability lives in `tarav.l1.poi.actionable` and is extended by `CheckPOI`) spins the `POIResolutionAction`, whose instance is derived from the POI's identity. A `Suite` (`actions.suites`) is named by the caller of a check run and has a fixed Type identity meaning "running me on this target tests the same thing": `settle(pois, target=, incomplete=, complete=)` opens or reopens actions, stamps itself as their manager, and closes as `gone` those it manages for the target and no longer produces. A check that did not complete leaves its actions as they are, and a run that is not the whole suite closes nothing. `ProjectsSuite` (`l1.project.suite`) and `SkillwareSuite` (`l2.skw.suite`) are the two suites. Status is three axes, `axes(run)`: the situation the suite last saw, the action, and the closing. `blessed` is an operator's exit with a reason from the Operator Context, allowed for a `BlessablePOI`; `CheckRun.clean(actions=)` and `report(actions=)` count a blessed finding as settled. Checks never write to it. The `poi-action` Context view and its resolver live in `actions.views`. |
+| `decisions` | DecisionsWorkflow owns the shared attributed Decision contract and prescribes no concrete subtype of its own; consuming workflows define theirs. It owns no storage. The common actor field is exposed as `decider`; subtype schemas keep their own fields and optional POI links. l2 builds an inspectable main Assertion for generic Decisions; assessment cases and attention policy are not yet prescribed. A Blessing is not a Decision: it is the closing record of an action. |
+| `blessings` | BlessingsWorkflow owns the `Blessing`: the closing record of a POI action closed although its situation still exists, with the actor, the reason, the offered support and the POI as it stood. The Type is defined in `l1.actions.blessing`, beside the Actions code it is built from, with `BlessingInput` and the test of that exit; the `BlessablePOI` capability is in `l1.poi.actionable`. A Blessing is Assertable; its Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. A blessed POI is still raised and reported; its action stays closed. There is no separate blessing store. |
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. SituationChecks evaluate a detached Situation and use that same snapshot as the POI acceptance scope. Execution completion and a POI's failure signal are separate. |
 <!-- tarav.breadcrumb b750afdefcc38c23df01af9ca67d4f9d81f2795c8e12860d22ddc28782038a74 -->
 <!-- tarav.breadcrumb 28df20317b527872af6eb271a0ede8e2a1c30d0b8fc98201f63e8cb564ec6183 -->
@@ -583,39 +588,37 @@ falsity verdict. No consumer workflow is imported by this shared module.
 <!-- tarav.breadcrumb afa385a96aeaf2ae558a4214fba859e9208c161d50405f1aa658112468efafa7 -->
 
 The `Assertable` capability lives in `l1.assertions`, so
-`l1.blessings.BlessingRecord` can declare it without an `l1 → l2` import.
+`l1.actions.blessing.Blessing` can declare it without an `l1 → l2` import.
 Scoring's Workflow Ship remains in `l1.scoring`; `l2.scoring.assertions`
 retains the identified Assertion and closed
 case mechanics; `l2.blessings.assertions` supplies Blessing-owned producers.
-Runtime composition binds the pure provider functions to existing Blessing
-Records. A primary `main` Assertion addresses the exact blessing and POI
+Runtime composition binds the pure provider functions to the Blessing
+Type. A primary `main` Assertion addresses the exact blessing and POI
 situation; a `grounds` Assertion appears only when support is offered. Cases
-include the retained POI snapshot, rationale, actor, and resolved source
+include the retained POI snapshot, reason, actor, and resolved source
 passages. A blessing can still be recorded with no support; unresolved offered
 references make a case incomplete rather than inviting the scorer to research.
 The read-only score vector queries scorer-owned tribunal results by Assertion
-reference, while historical BlessingAssessmentRecords keep their separate
-standing behavior and storage location.
+reference. Scores are never kept on the Blessing.
 
-Decision records share attributed fields without imposing a new Blessing schema:
-`BlessingRecord.actor` remains stored unchanged, while `Decision.decider` reads
-that role. A Decision subtype can refer to tracked POIs but does not require
+Decision records share attributed fields; `Decision.decider` reads the actor
+role. A Decision subtype can refer to tracked POIs but does not require
 one. The generic `main` Assertion identifies the retained intervention; no
 scoring case is claimed yet. A Project's featured `poi_actions()` reads its POI
-actions from the central Actions registry. `tarav check --project` hands the
-whole run to the Actions workflow unless `--actions skip` is given. Actions
-open and close as `gone` only from check results. The
+actions from the central Actions registry. `tarav check --project` settles the
+Projects suite with its run unless `--actions skip` is given. The
 machine-local check-report cache stays separate: it holds what a surface last
 showed, so that a printed identifier can be opened.
 <!-- tarav.breadcrumb 903d50edc16c9a21d196b1271302c63a2574659e7adb9bda716b62a9314de7a3 -->
 <!-- tarav.breadcrumb b6bdfb5131dd4eb553fce00b71dc1f8557188d614541a26666481bc6853125c0 -->
 
-`l2.blessings.attention` composes the current POI collector, l1 BlessingStore,
+`l2.blessings.attention` composes the current POI collector, the POI actions
 and l2 ScoringRepository into a separate, pageable due/deferred view. It does
-not change check output, l1 binary standing, or retained Record schemas. A
-changed situation has a new POI identity; a mechanically absent POI is never
-scheduled. Source independence is explicit and conservative, and the derived
-score remains relative rather than a truth scalar.
+not change check output or any record. A POI whose action is blessed is
+deferred from the time of its Blessing, longer when the Blessing offers
+support and its acceptance is well scored. A changed situation has a new POI
+identity; a mechanically absent POI is never scheduled. The derived score
+remains relative rather than a truth scalar.
 <!-- tarav.breadcrumb d6e3d0827437513471422c2b746bb86ae468ccd2ebeb05292beb44d65d785dee -->
 <!-- tarav.breadcrumb dc5c60cd5793d3b5adfee34f6fc6c811c17b005ca1313178cb0b23f13306175a -->
 

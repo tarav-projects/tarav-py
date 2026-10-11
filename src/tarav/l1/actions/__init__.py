@@ -3,7 +3,8 @@
 An Action Type is a definition and an ActionRun is one instance of it, as a
 program and a process are. The base Action prescribes almost nothing. A
 StepAction closes a piece of an operator's work into one step: an opening
-test, the work, and one or more exits, each with its own tests.
+test, the work, and one or more exits, each with its own tests. Closing a
+run leaves a record whose Type the exit names.
 """
 
 from __future__ import annotations
@@ -26,7 +27,8 @@ from .workflow import ACTIONS_WORKFLOW_SHIP, ActionsWorkflow
 
 RUNNING, CLOSED = "running", "closed"
 EXIT_ERROR = "error"
-OPERATOR, LOOP = "operator", "loop"
+OPERATOR, LOOP, SUITE = "operator", "loop", "suite"
+OPEN = "open"
 RUN_REFERENCE_TYPE = "Tarav.Actions.RunReference"
 
 
@@ -45,20 +47,79 @@ class SkillLink:
         return {"skill": self.skill, "path": self.path}
 
 
+# tarav.breadcrumb b8628a0e0a514433769345b9a4179f65f995d09f4057318e3af577edafd1bfbd
+class Closing(TaravEntity, FileRecord):
+    """The record a closing path leaves on its run: which exit, when, and taken by whom.
+
+    A subtype adds what its path knows. The run keeps the record of its
+    current closing; earlier ones are in the registry's Git history.
+    """
+
+    class RecordInterface(TaravEntity.RecordInterface):
+        run: str
+        exit: str
+        at: str
+        by: str
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("3c1e8a54-7b2d-4f96-a0c5-e9d6b4f17a23"),
+                          name="Tarav.Actions.Closing", workflow=ACTIONS_WORKFLOW_SHIP)
+
+    def __init__(self, id: Ship, data: dict) -> None:
+        super().__init__(id)
+        self.data = data
+
+    @classmethod
+    def _from_record(cls, data):
+        values = data.model_dump(mode="json", exclude_unset=True)
+        values.pop("type", None)
+        values.pop("id")
+        return cls(data.id, values)
+
+    def _to_record(self):
+        return {**super()._to_record(), **self.data}
+
+    @classmethod
+    def fields(cls, action: "StepAction", run: "ActionRun",
+               context: OperatorContext | None) -> dict:
+        """What this Type adds to the base record when its path is taken."""
+        return {}
+
+    @classmethod
+    def reopens(cls, record: dict | None, poi: object) -> bool:
+        """Does raising the action's POI again reopen an action closed this way?"""
+        return False
+
+    class Records(TaravEntity.Records):
+        def record_example(self) -> dict[str, object]:
+            return {"type": entity(self._owner).name,
+                    "id": "8d5b2f70-4e19-4c3a-b6a8-1f7c9e0d3b52",
+                    "run": "4a9af366-b093-4ba0-aedd-6d71a3f2bbd0", "exit": "done",
+                    "at": "2026-10-11T00:00:00+00:00", "by": OPERATOR}
+
+
 # tarav.breadcrumb 172bd4f5f4e23e808f5494a5f027e73f698c95cde8cb01634728d6d12ff891df
 # tarav.breadcrumb 617b0622a666a1e907b34944e42378b34d9fdff085f1af740f310d6cbe468309
 @dataclass(frozen=True)
 class Exit:
-    """One way a step can close, and who may take it: an operator, the loop, or both."""
+    """One way a step can close: who may take it, and the Type of the record it leaves.
+
+    An operator takes an exit with a command, the loop when the exit's tests
+    pass, and a suite when it settles the actions it manages.
+    """
 
     name: str
     by: tuple[str, ...] = (OPERATOR,)
+    closing: type[Closing] = Closing
 
     def __post_init__(self) -> None:
         if not self.name or self.name == EXIT_ERROR:
             raise ValueError("An exit needs a name other than 'error'")
-        if not self.by or set(self.by) - {OPERATOR, LOOP}:
-            raise ValueError("An exit is taken by an operator, the loop, or both")
+        if not self.by or set(self.by) - {OPERATOR, LOOP, SUITE}:
+            raise ValueError("An exit is taken by an operator, the loop or a suite")
+        if not isinstance(self.closing, type) or not issubclass(self.closing, Closing):
+            raise TypeError("An exit names a Closing Type")
 
 
 class Action(TaravType):
@@ -135,8 +196,10 @@ class ActionRun(TaravEntity, FileRecord):
         output: dict | None
         reason: str | None
         opened_at: str
-        subject: dict | None = None
         event: dict | None = None
+        closing: dict | None = None
+        situation: dict | None = None
+        suite: dict | None = None
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -164,6 +227,14 @@ class ActionRun(TaravEntity, FileRecord):
     @property
     def exit(self) -> str | None:
         return self.data["exit"]
+
+    def closing(self) -> Closing | None:
+        """The record of how this run closed, as an object of its Type."""
+        record = self.data.get("closing")
+        if record is None:
+            return None
+        action_type = resolve_action(self.data["action"])
+        return action_type.exit_named(record["exit"]).closing.records.from_record(record)
 
     def reference(self) -> dict:
         """A typed reference to this run, for records made under it."""
@@ -288,6 +359,31 @@ def _session() -> dict | None:
     return {"provider": found.provider, "session_id": found.session_id}
 
 
+def close_run(action: StepAction, run: ActionRun, exit: str, *, by: str, at: str,
+              context: OperatorContext | None = None, extra: dict | None = None) -> dict:
+    """Close a run through one exit and leave that exit's closing record on it."""
+    closing_type = type(action).exit_named(exit).closing
+    record = {"type": entity(closing_type).name, "id": str(uuid4()), "run": str(run.id),
+              "exit": exit, "at": at, "by": by,
+              **closing_type.fields(action, run, context), **(extra or {})}
+    closing_type.records.from_record(record)
+    run.data.update(state=CLOSED, exit=exit, closed_at=at,
+                    output=action.output(exit, run, context), closing=record)
+    return record
+
+
+# tarav.breadcrumb 62e07db35eaffe474b99d33dde9b515e77434163e739c5cd378ad6848eca3465
+def axes(run: ActionRun) -> dict[str, str | None]:
+    """The status of a run as separate axes: the situation, the action, the closing.
+
+    `situation` is what the managing suite last saw, when one manages the
+    run. `closing` is the exit the run closed by; its record has the detail.
+    """
+    return {"situation": (run.data.get("situation") or {}).get("state"),
+            "action": OPEN if run.state == RUNNING else CLOSED,
+            "closing": run.exit}
+
+
 def _results(checks: Iterable[Check]) -> tuple[bool, list[dict]]:
     """Run tests; they pass when every one completed and none raised a failure."""
     passed, rows = True, []
@@ -401,8 +497,7 @@ class StepRunner:
         run.data["closings"].append({"at": self._now(), "exit": exit, "by": OPERATOR,
                                      "passed": passed, "results": rows})
         if passed:
-            run.data.update(state=CLOSED, exit=exit, closed_at=self._now(),
-                            output=action.output(exit, run, intake.context))
+            close_run(action, run, exit, by=OPERATOR, at=self._now(), context=intake.context)
         self.runs.save(run, f"Exit {exit} attempted on run {run.id}")
         return run
 
@@ -429,8 +524,7 @@ class StepRunner:
                     continue
                 run.data["closings"].append({"at": self._now(), "exit": item.name, "by": LOOP,
                                              "passed": True, "results": rows})
-                run.data.update(state=CLOSED, exit=item.name, closed_at=self._now(),
-                                output=action.output(item.name, run, None))
+                close_run(action, run, item.name, by=LOOP, at=self._now())
                 keys.append(self.runs.write(run))
                 closed.append(run)
                 break
@@ -448,11 +542,11 @@ class StepRunner:
         return run
 
 
-ACTION_RECORD_TYPES = (ActionRun,)
+ACTION_RECORD_TYPES = (ActionRun, Closing)
 
 __all__ = [
     "ACTIONS_WORKFLOW_SHIP", "ACTION_RECORD_TYPES", "Action", "ActionError", "ActionRun",
-    "ActionRunStore", "ActionsWorkflow", "CLOSED", "EXIT_ERROR", "Exit", "LOOP",
-    "OPERATOR", "RUNNING", "RUN_REFERENCE_TYPE", "SkillLink", "StepAction", "StepRunner",
-    "action_types", "register_action", "resolve_action",
+    "ActionRunStore", "ActionsWorkflow", "CLOSED", "Closing", "EXIT_ERROR", "Exit", "LOOP",
+    "OPEN", "OPERATOR", "RUNNING", "RUN_REFERENCE_TYPE", "SUITE", "SkillLink", "StepAction",
+    "StepRunner", "action_types", "axes", "close_run", "register_action", "resolve_action",
 ]

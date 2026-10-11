@@ -201,20 +201,14 @@ def test_run_pages_groups_and_blessings_do_not_hide_other_pois():
         ExamplePOI(check, "First", situation={"case": 1}),
     )))
 
-    class Store:
-        def snapshot(self):
-            return {"records": []}
+    class Actions:
+        def standing(self, poi):
+            return "blessed" if isinstance(poi, ExamplePOI) else "open"
 
-        def accepts(self, poi):
-            return isinstance(poi, ExamplePOI)
-
-        def standing(self, poi, *, snapshot=None):
-            return {"status": "blessed"}
-
-    store = Store()
-    assert run.clean(store=store)
+    actions = Actions()
+    assert run.clean(actions=actions)
     assert not run.clean()
-    report = run.report(store=store, limit=1)
+    report = run.report(actions=actions, limit=1)
     assert (report["items"][0]["blessed"], report["items"][0]["open"]) == (1, 0)
     assert report["next_offset"] is None
     with pytest.raises(ValueError, match="positive limit"):

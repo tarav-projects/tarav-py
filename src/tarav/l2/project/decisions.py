@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from tarav.l0.kernel import current_records, entity
-from tarav.l1.blessings import BlessingAssessmentRecord, BlessingRecord, BlessingStore
 from tarav.l1.decisions import Decision
 
 
@@ -84,16 +83,3 @@ class ProjectDecisions:
             if record["id"] == str(identity):
                 return types[record["type"]].records.from_record(record)
         raise KeyError(identity)
-
-    def blessings(self):
-        """The Project's blessings: a BlessingStore over this same directory."""
-        types = tuple(self._types().values())
-        return BlessingStore(
-            self.root,
-            record_types=tuple(cls for cls in types
-                               if issubclass(cls, (BlessingRecord, BlessingAssessmentRecord))
-                               and cls not in (BlessingRecord, BlessingAssessmentRecord)),
-            other_decision_types=tuple(cls for cls in types
-                                       if issubclass(cls, Decision)
-                                       and not issubclass(cls, BlessingRecord)),
-        )

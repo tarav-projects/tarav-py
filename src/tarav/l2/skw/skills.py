@@ -1,5 +1,6 @@
 """Explicit skill-package compilation and consumer deployment."""
 import re
+import sys
 import shutil
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -11,11 +12,11 @@ from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.skw.code import CodeWorkflow
 from tarav.l1.skw.depot import SkwDepot
-from tarav.l1.skw.document import Document, project_document, project_root, read
+from tarav.l1.skw.document import Document, project_document, project_root
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
 from tarav.l1.skw.loading import LoadingRecord, SkillDocument, SkillReadingGraph
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
-from tarav.l1.blessings import BlessingAssessmentRecord, BlessingRecord, BlessingStore
+from tarav.l1.actions.pois import POIActions
 from tarav.l1.checks import CheckProvider, CheckSuite, run_checks
 from tarav.l1.poi.rendering import DEFAULT_POI_RENDERER, renderers
 from tarav.l1.poi.reporting import retain_presented_pois
@@ -36,7 +37,6 @@ from .reading_checks import READING_CHECK_TYPES, reading_checks
 from tarav.l1.skw.presentation import (
     add_output_mode,
     emit,
-    render_blessing_record,
     render_loading_context,
     render_poi,
     render_skill_block,
@@ -156,10 +156,6 @@ class SkwSkill(SkwDepot, CheckProvider):
         # tarav.breadcrumb 59cbf4641ecead3861c7589cc4925175b947f7cbb3c2df4adbb1eabef3901e5e
         return SkillReadingGraph(self, self.documents())
 
-    @property
-    def blessings(self):
-        return BlessingStore(self.root / '.skw/blessings')
-
     # tarav.breadcrumb 2ceb31c9cf7073c74811cdb0fa857cc9cf09d51c80b4c776c5785c49bd3e1691
     # tarav.breadcrumb a751a7e31ab0fa605fefa90ae5d354f9c70250be88ab4a7024eefb094f29d08e
     # tarav.breadcrumb 923a65026ef70a0de363e3265111f35eaf46390daf1e42c4d75888a117aeffb3
@@ -180,6 +176,10 @@ class SkwSkill(SkwDepot, CheckProvider):
         )
 
     def evaluate(self):
+        return self._evaluation()[0]
+
+    def _evaluation(self):
+        """The package's POIs, and whether every one of its checks could run."""
         raw_findings = self._check_without_reading()
         findings = [finding for finding in raw_findings
                     if finding.get('kind') not in FRESHNESS_KINDS]
@@ -190,10 +190,11 @@ class SkwSkill(SkwDepot, CheckProvider):
             for result in run_checks(self._checks(skip_unresolved_freshness=True)):
                 for poi in result.pois():
                     collector.emit(poi)
-        return collector
+            return collector, True
+        return collector, False
 
-    def report(self, **selection):
-        return self.evaluate().report(store=self.blessings, **selection)
+    def report(self, *, actions=None, **selection):
+        return self.evaluate().report(actions=actions, **selection)
 
     def publications(self):
         return [ModelPublication(self.path(p), root=self.root)
@@ -311,8 +312,6 @@ SKILLS_RECORD_TYPES = (
     PublicationLockRecord,
     LoadingRecord,
     *SKILL_COMPONENT_TYPES,
-    BlessingRecord,
-    BlessingAssessmentRecord,
     *CLASSES.values(),
     *READING_CHECK_TYPES,
     SkwAnalysisCheck,
@@ -375,7 +374,7 @@ def skill_document(source, *, project=None, depot=".skw",
 def register_commands(subparsers, *, registry: TypeRegistry[TaravObject]):
     parser = subparsers.add_parser("skills", help="Build and deploy skill packages")
     commands = parser.add_subparsers(dest="skills_action", required=True)
-    for action in ("check", "build", "deploy", "context", "poi", "bless", "assess-blessing", "ls", "read"):
+    for action in ("check", "build", "deploy", "context", "poi", "ls", "read"):
         command = commands.add_parser(action)
         command.add_argument("--project")
         if action == 'ls':
@@ -398,17 +397,9 @@ def register_commands(subparsers, *, registry: TypeRegistry[TaravObject]):
                                  default=DEFAULT_POI_RENDERER)
             command.add_argument('--level', choices=('line', 'record', 'context'),
                                  default='record' if action == 'poi' else 'line')
-        if action in ('poi', 'bless'):
+        if action == 'poi':
             command.add_argument('--id', required=True, help='Full finding ID or unique prefix')
             command.add_argument('--index', type=int, help='Emission index when an ID repeats')
-        if action in ('bless', 'assess-blessing'):
-            command.add_argument('--actor-file', required=True, help='JSON typed actor reference')
-            command.add_argument('--rationale-file', required=True, help='Authored rationale text')
-            command.add_argument('--support-file', help='JSON array of typed evidence references')
-        if action == 'assess-blessing':
-            command.add_argument('--blessing-id', required=True)
-            command.add_argument('--assertion', required=True)
-            command.add_argument('--score', type=float, required=True)
         if action == "deploy":
             command.add_argument("--destination", required=True)
         if action == 'context':
@@ -423,6 +414,24 @@ def _retain_skill_pois(package, collector) -> None:
     """Keep the presented Skill POIs reachable by the common context command."""
     root = Path(package.root).resolve()
     retain_presented_pois(collector.pois, kind="skill", name=root.name, root=root)
+
+
+# tarav.breadcrumb 95d4de1b83ac56c3f5132e946188a999764798693865190be5b665d2b70dea45
+def _settle_skill_suite(package, collector, complete: bool) -> None:
+    """Settle the Skillware suite with this evaluation; a failure there never fails the command.
+
+    This command is what says the evaluation is a run of the Skillware suite
+    on this package. An evaluation whose checks could not all run opens
+    actions and closes none.
+    """
+    from .suite import SkillwareSuite
+
+    root = Path(package.root).resolve()
+    try:
+        SkillwareSuite().settle(collector.pois, target={"name": root.name, "root": str(root)},
+                                complete=complete)
+    except Exception as exc:
+        print(f"POI actions were not updated: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
 def _command(args):
@@ -457,19 +466,6 @@ def _command(args):
         result = package.loading().inspect(args.block, limit=args.limit)
         emit(args, result, render_loading_context)
         return 0
-    if args.skills_action in ('bless', 'assess-blessing'):
-        options = {'actor': read(Path(args.actor_file)),
-                   'rationale': Path(args.rationale_file).read_text(),
-                   'support': read(Path(args.support_file)) if args.support_file else []}
-        if args.skills_action == 'bless':
-            result = package.blessings.bless(
-                package.evaluate().get(args.id, index=args.index), **options
-            )
-        else:
-            result = package.blessings.assess(args.blessing_id, assertion=args.assertion,
-                                             score=args.score, **options)
-        emit(args, result, render_blessing_record)
-        return 0
     if args.skills_action == 'poi':
         collector = package.evaluate()
         _retain_skill_pois(package, collector)
@@ -477,23 +473,24 @@ def _command(args):
         result = poi.as_dict(detail=True)
         if args.index is not None:
             result['index'] = args.index
-        if package.blessings.accepts(poi):
-            result['blessing'] = package.blessings.standing(poi)
-            result['blessing_records'] = [
-                record for record in package.blessings.snapshot()['records']
-                if record['id'] in result['blessing']['records']
-                or record.get('blessing') in result['blessing']['records']
-            ]
+        actions = POIActions()
+        standing = actions.blessing_standing(poi)
+        if standing is not None:
+            result['blessing'] = standing
+            blessing = actions.blessing(poi)
+            result['blessing_record'] = (blessing.records.to_record()
+                                         if blessing is not None else None)
         emit(args, result, lambda value: render_poi(
             value, renderer_name=args.renderer, level=args.level))
         return 0
     result = (package.deploy(args.destination) if args.skills_action == "deploy"
               else getattr(package, args.skills_action)())
     findings = result.get("findings", []) if isinstance(result, dict) else result
-    collector = package.evaluate()
+    collector, complete = package._evaluation()
     _retain_skill_pois(package, collector)
+    _settle_skill_suite(package, collector, complete)
     report = collector.report(
-        store=package.blessings, offset=args.offset, limit=args.limit,
+        actions=POIActions(), offset=args.offset, limit=args.limit,
         class_name=args.class_name, blessing=args.blessing_status)
     if isinstance(result, dict):
         result['findings'] = report
@@ -507,4 +504,4 @@ def _command(args):
     )
     # Blessing does not turn the detector result into a pass. Callers decide
     # which findings matter to their workflow independently of presentation.
-    return 1 if findings or report['store_findings'] else 0
+    return 1 if findings else 0

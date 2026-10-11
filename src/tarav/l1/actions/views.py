@@ -12,7 +12,7 @@ from tarav.l1.poi import POIDetails
 from tarav.l1.poi.reporting import REPORTED_POI_VIEW
 from tarav.l1.search import SearchEngine, SearchHit, SearchQuery
 
-from . import ACTIONS_WORKFLOW_SHIP, CLOSED, ActionRun, ActionRunStore
+from . import ACTIONS_WORKFLOW_SHIP, CLOSED, ActionRun, ActionRunStore, axes
 
 POI_ACTION_VIEW = "poi-action"
 
@@ -45,29 +45,34 @@ class POIActionContext(ContextFolder):
 
         def populate(builder: ContextBuilder) -> None:
             builder.add("standing", opener=lambda: _value({
-                "standing": standing(subject), "state": data["state"], "exit": data["exit"],
+                "standing": standing(subject), "axes": axes(subject),
                 "opened_at": data["opened_at"], "closed_at": data["closed_at"],
                 "first_opened_at": data["started_at"]}),
-                description="Open, or the exit it closed by. `gone` and `dismissed` are "
-                            "different endings: read which one.")
+                description="Three separate axes: whether the suite last saw the situation, "
+                            "whether the action is open, and the exit it closed by. A "
+                            "blessed action can have its situation present.")
             builder.add("poi", opener=lambda: _value(event.get("poi")),
-                        description="The POI as it was raised when this action opened.")
-            builder.add("check", opener=lambda: _value({
-                **(event.get("check") or {}), "subject": data.get("subject")}),
-                description="The check that raised it and what that check examines. A "
-                            "check that names neither closes this action only in a whole run.")
-            builder.add("dismissal", opener=lambda: _value(
-                data["output"] if data["exit"] == "dismissed" else
-                "Not dismissed. A dismissal records who dismissed it and why."),
-                description="The reason and the operator, when it was dismissed.")
+                        description="The POI as it was raised when this action last opened.")
+            builder.add("managed-by", opener=lambda: _value({
+                "suite": data.get("suite"), "target": data.get("project"),
+                "situation": data.get("situation"), "check": event.get("check")}),
+                description="The suite that manages this action and what it last saw. The "
+                            "suite closes the action as gone when a run of it on the same "
+                            "target no longer produces the POI.")
+            builder.add("closing", opener=lambda: _value(
+                data.get("closing") or "Not closed. A closing leaves a record of its own "
+                "Type here: a blessing keeps who blessed, why, and the evidence offered."),
+                description="The record of how it closed. Its Type decides whether the POI "
+                            "raised again reopens the action: gone does, a blessing does not.")
             builder.add("closings", opener=lambda: _value(data["closings"]),
-                        description="Each attempt to take an exit, by whom, and its tests.")
+                        description="Each attempt by an operator to take an exit, and its tests.")
             builder.add("acting", opener=lambda: _value([
-                "tarav operator-context put --type Tarav.Actions.POI.DismissalInput "
-                "--data '{\"reason\": \"<why>\"}'",
-                f"tarav action close --run {run_id} --exit dismissed --context <input id>",
-                "Dismissing overrules the check for this exact situation; it needs a reason. "
-                "The exit `gone` is taken when the check no longer raises the POI.",
+                "tarav operator-context put --type Tarav.Blessings.Input "
+                "--data '{\"reason\": \"<why>\", \"support\": []}'",
+                f"tarav action close --run {run_id} --exit blessed --context <input id>",
+                "Blessing closes the action although the situation still exists; it needs a "
+                "reason, and the POI's Type has to allow it. `support` lists typed evidence "
+                "references. The exit `gone` belongs to the suite.",
                 "The skill module tarav-pkg/references/step-actions.md describes the loop."]),
                 description="The commands that act on this action.")
             builder.add("history", opener=lambda: _value(

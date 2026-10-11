@@ -123,7 +123,8 @@ def test_record_namespace_binds_inherited_class_loading() -> None:
 # tarav.breadcrumb f4ec8f4bcffb99b7116dd27486141b249dbfb1a4151c3d635fc3961c56204184
 def test_record_namespace_preserves_specialized_validation_and_examples() -> None:
     # tarav.breadcrumb a3b9281034cb89b3ee020c4e3ac2e95717556d214885396afd08c48a7c81dabf
-    from tarav.l1.blessings.store import BlessingRecord
+    from tarav.l1.actions import Closing
+    from tarav.l1.actions.blessing import Blessing
     from tarav.l1.decisions.records import Decision
 
     assert Combined.records.record_example() == {"type": "Test.Combined"}
@@ -138,7 +139,9 @@ def test_record_namespace_preserves_specialized_validation_and_examples() -> Non
     with pytest.raises(ValueError, match="timezone"):
         Decision.records.from_record(without_timezone)
 
-    blessing = BlessingRecord.records.record_example()
-    assert blessing["type"] == "Tarav.Blessings.Record"
-    assert issubclass(BlessingRecord.Records, Decision.Records)
-    assert type(BlessingRecord.records.from_record(blessing)) is BlessingRecord
+    blessing = Blessing.records.record_example()
+    assert blessing["type"] == "Tarav.Blessings.Blessing"
+    assert issubclass(Blessing.Records, Closing.Records)
+    assert type(Blessing.records.from_record(blessing)) is Blessing
+    with pytest.raises(ValueError, match="reason"):
+        Blessing.records.validate_record({**blessing, "reason": " "})

@@ -196,7 +196,9 @@ def test_assertion_foundation_and_line_specialization_are_separate():
 
 def test_blessing_assertions_compose_without_reverse_layer_imports():
     # tarav.breadcrumb 1fd36ba300aee30852e066b39cfe3bde2c2dd89a285d41e3ca14f9fbb69f9574
-    from tarav.l1.blessings import BlessingRecord, BlessingsWorkflow
+    from tarav.l1.actions import Closing
+    from tarav.l1.actions.blessing import Blessing
+    from tarav.l1.blessings import BlessingsWorkflow
     from tarav.l2.blessings import (
         BlessingAcceptanceAssertion, BlessingAcceptanceCase,
         BlessingGroundsAssertion, BlessingGroundsCase,
@@ -206,10 +208,10 @@ def test_blessing_assertions_compose_without_reverse_layer_imports():
     from tarav.l2.decisions import DecisionReportAssertion
     from tarav.l3.runtime import create_runtime
 
-    assert issubclass(BlessingRecord, Assertable)
-    assert issubclass(BlessingRecord, Decision)
-    assert entity(BlessingRecord).workflow is BlessingsWorkflow()
-    assert entity(Decision).id in {base.id for base in entity(BlessingRecord).bases()}
+    assert issubclass(Blessing, Assertable)
+    assert issubclass(Blessing, Closing) and not issubclass(Blessing, Decision)
+    assert entity(Blessing).workflow is BlessingsWorkflow()
+    assert entity(Closing).id in {base.id for base in entity(Blessing).bases()}
     assert entity(Decision).workflow is DecisionsWorkflow()
     assert entity(DecisionReportAssertion).workflow is DecisionsWorkflow()
     runtime = create_runtime()
@@ -221,7 +223,7 @@ def test_blessing_assertions_compose_without_reverse_layer_imports():
         assert runtime.records.resolve_ship(entity(record_type).id) is record_type
         example = record_type.records.record_example()
         assert runtime.records.from_record(example).records.to_record() == example
-    for path in (*PACKAGE_ROOT.glob('l1/scoring/*.py'), PACKAGE_ROOT / 'l1/blessings/store.py'):
+    for path in (*PACKAGE_ROOT.glob('l1/scoring/*.py'), PACKAGE_ROOT / 'l1/actions/blessing.py'):
         tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
         assert not any(
             isinstance(node, ast.ImportFrom) and (node.module or '').startswith('tarav.l2')
@@ -236,7 +238,7 @@ def test_attention_composition_stays_above_poi_and_blessing_foundations():
     assert BlessingAttentionPolicy.__module__ == 'tarav.l2.blessings.attention'
     assert attention_report.__module__ == 'tarav.l2.blessings.attention'
     for path in (PACKAGE_ROOT / 'l1/poi/primitives.py',
-                 PACKAGE_ROOT / 'l1/blessings/store.py'):
+                 PACKAGE_ROOT / 'l1/actions/blessing.py'):
         tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
         assert not any(
             isinstance(node, ast.ImportFrom) and (node.module or '').startswith('tarav.l2')

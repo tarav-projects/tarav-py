@@ -197,9 +197,6 @@ def render_poi_report(result: dict[str, Any], *, operation: str,
                       level: str = "line") -> str:
     selection = POISelection.from_collector_report(result, title=operation)
     rendered = renderer(renderer_name).render(selection, level=level)
-    store_observations = result.get("store_findings") or []
-    if store_observations and renderer_name == DEFAULT_POI_RENDERER:
-        rendered += f"\nblessing-store observations: {len(store_observations)}"
     return rendered
 
 
@@ -238,28 +235,10 @@ def render_poi(result: dict[str, Any], *,
     return renderer(renderer_name).render(selection, level=level)
 
 
-def render_blessing_record(result: dict[str, Any]) -> str:
-    if result["type"] == "Tarav.Blessings.Record":
-        return "\n".join((
-            f"Blessing recorded: {result['id']}",
-            f"POI: {result['poi']['id']}",
-            f"created: {result['created_at']}",
-            f"support: {len(result.get('support') or [])} records",
-        ))
-    return "\n".join((
-        f"Blessing assessment recorded: {result['id']}",
-        f"blessing: {result['blessing']}",
-        f"assertion: {result['assertion']}",
-        f"score: {result['score']}",
-        f"created: {result['created_at']}",
-    ))
-
-
 __all__ = [
     "add_output_mode",
     "emit",
     "emit_error",
-    "render_blessing_record",
     "render_document_context",
     "render_document_findings",
     "render_document_result",

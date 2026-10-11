@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.blessings import BlessablePOI, BlessingStore
+from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.poi import IdentifiedPOI, POICollector
 
 
@@ -82,43 +82,38 @@ def test_app_subclass_snapshot_and_source():
 
 
 def test_blessing_remains_visible_and_matches_situation(tmp_path):
-    store = BlessingStore(tmp_path / ".tarav/acceptances")
+    from blessing_bench import Bench
+    from tarav.l3.runtime import create_runtime
+
+    bench = Bench(tmp_path / "records", create_runtime(archive_root=tmp_path / "archive").records)
     collector = POICollector()
     occurrence = collector.emit(
         AppReview.finding({"file": "a"}, evidence={"value": 1})
     )
-    record = store.bless(
-        occurrence,
-        actor=ACTOR,
-        rationale="Reviewed against the test contract.",
-    )
-    report = collector.report(store=store)
+    blessing = bench.bless(occurrence, reason="Reviewed against the test contract.")
+    report = collector.report(actions=bench.pois)
     assert report["total"] == 1 and report["by_blessing"] == {"blessed": 1}
-    assert report["items"][0]["blessing"]["assessment"] == "unassessed"
+    assert report["items"][0]["blessing"] == {"status": "blessed", "blessing": str(blessing.id)}
     changed_evidence = AppReview.finding({"file": "a"}, evidence={"value": 2})
-    assert store.standing(changed_evidence)["status"] == "blessed"
+    assert bench.pois.blessing_standing(changed_evidence)["status"] == "blessed"
     changed_situation = AppReview.finding(
         {"file": "a", "revision": 2}, evidence={"value": 2}
     )
-    assert store.standing(changed_situation)["status"] == "unblessed"
-    store.assess(
-        record["id"],
-        actor=ACTOR,
-        assertion="acceptance-justified",
-        score=0.2,
-        rationale="The stated justification covers only part of the evidence.",
-    )
-    assert store.standing(occurrence)["scores"][0]["score"] == 0.2
-    assert len(list(store.root.glob("*.json"))) == 2
+    assert bench.pois.blessing_standing(changed_situation)["status"] == "unblessed"
+    assert collector.report(actions=bench.pois, blessing="unblessed")["matching"] == 0
 
 
-def test_refusal_and_invalid_actor_do_not_write(tmp_path):
-    store = BlessingStore(tmp_path / "records")
-    with pytest.raises(ValueError, match="does not permit"):
-        store.bless(AppError.finding({}), actor=ACTOR, rationale="test")
-    with pytest.raises(ValueError, match="reference"):
-        store.bless(AppReview.finding({}), actor={}, rationale="test")
-    assert not store.root.exists()
+def test_a_poi_that_is_not_blessable_reports_no_blessing(tmp_path):
+    from blessing_bench import Bench
+    from tarav.l3.runtime import create_runtime
+
+    bench = Bench(tmp_path / "records", create_runtime(archive_root=tmp_path / "archive").records)
+    collector = POICollector()
+    error = collector.emit(AppError.finding({}))
+    assert bench.pois.blessing_standing(error) is None and bench.pois.of(error) is None
+    report = collector.report(actions=bench.pois)
+    assert report["by_blessing"] == {} and "blessing" not in report["items"][0]
+    assert not bench.runs.exists()  # reading never creates the registry
 
 
 def test_bounded_report_counts_all_and_retains_evidence():
@@ -132,16 +127,6 @@ def test_bounded_report_counts_all_and_retains_evidence():
     assert report["next_offset"] == 2
     assert "evidence" not in report["items"][0]
     assert len(collector.get(report["items"][0]["id"]).evidence["payload"]) == 500
-
-
-def test_corrupt_record_does_not_hide_pois(tmp_path):
-    store = BlessingStore(tmp_path)
-    (tmp_path / "bad.json").write_text("{}")
-    (tmp_path / "not-an-object.json").write_text("[]")
-    collector = POICollector()
-    collector.emit(AppError.finding({}))
-    report = collector.report(store=store)
-    assert report["total"] == 1 and len(report["store_findings"]) == 2
 
 
 # tarav.breadcrumb 60ad34642493726fbf971cf722a95e7eaeda0049c5dd3660a97ca55f7692c6e2

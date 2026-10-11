@@ -1,13 +1,12 @@
 """Decisions and optional tracking keep detection separate from review."""
 
 import json
-from copy import deepcopy
 from uuid import uuid4
 
 import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.blessings import BlessablePOI, BlessingRecord, BlessingStore
+from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.decisions import Decision
 from tarav.l1.poi import IdentifiedPOI
 from tarav.l2.project import Project
@@ -45,7 +44,7 @@ def poi(path="one.md"):
 
 
 # tarav.breadcrumb f7a0423ffc8b7ace60117c25dced069fe711e2984aeca2b13a54b39fe369cb00
-def test_decision_types_and_unchanged_blessing_schema(tmp_path):
+def test_decision_types(tmp_path):
     runtime = create_runtime(archive_root=tmp_path / "archive",
                              record_types=(ExamplePOI, ExampleDecision))
     record = ExampleDecision.records.record_example()
@@ -56,28 +55,17 @@ def test_decision_types_and_unchanged_blessing_schema(tmp_path):
     assert decision.decider == record["actor"]
     assert decision.poi_ids == ()
     assert tuple(decision.assertions) == ("main",)
-    old_record = deepcopy(BlessingRecord.records.record_example())
-    blessing = runtime.records.from_record(old_record)
-    assert isinstance(blessing, Decision)
-    assert blessing.records.to_record() == old_record
-    assert "decider" not in blessing.records.to_record()
-    assert "subjects" not in blessing.records.to_record()
-    assert blessing.decider == old_record["actor"]
-    assert blessing.poi_ids == (old_record["poi"]["id"],)
 
 
-def test_blessing_still_works_without_tracking(tmp_path):
-    create_runtime(archive_root=tmp_path / "archive")
-    store = BlessingStore(tmp_path / "blessings")
+def test_a_blessing_is_a_closing_record_not_a_decision(tmp_path):
+    from blessing_bench import Bench
+
+    bench = Bench(tmp_path / "records", create_runtime(archive_root=tmp_path / "archive").records)
     occurrence = poi()
-    record = store.bless(
-        occurrence,
-        actor={"type": "Example.Actor", "locator": {"name": "reviewer"}},
-        rationale="Reviewed independently of a board",
-    )
-    assert store.standing(occurrence)["status"] == "blessed"
-    assert store.load(record["id"]).poi_ids == (occurrence.identity,)
-    assert not (tmp_path / "tracked").exists()
+    blessing = bench.bless(occurrence, reason="Reviewed independently of a board")
+    assert bench.pois.standing(occurrence) == "blessed"
+    assert not isinstance(blessing, Decision)
+    assert blessing.records.to_record()["poi"]["id"] == occurrence.identity
 
 
 def _project(tmp_path):
@@ -106,31 +94,18 @@ def test_project_store_holds_every_decision_type_and_filters_by_subtype(tmp_path
     with pytest.raises(TypeError):
         store.add(object())
 
-    occurrence = poi()
-    blessing = store.blessings().bless(
-        occurrence,
-        actor={"type": "Example.Actor", "locator": {"name": "reviewer"}},
-        rationale="Reviewed for now",
-    )
     everything = store.snapshot()
-    assert {row["id"] for row in everything["records"]} == {record["id"], blessing["id"]}
+    assert {row["id"] for row in everything["records"]} == {record["id"]}
     assert everything["findings"] == []
-    assert [row["id"] for row in store.snapshot(decision_type=BlessingRecord)["records"]] == [
-        blessing["id"]]
     assert [row["id"] for row in store.snapshot(decision_type=ExampleDecision)["records"]] == [
         record["id"]]
     assert store.load(record["id"]).records.to_record() == record
     with pytest.raises(TypeError):
         store.snapshot(decision_type=dict)
-
-    # tarav.breadcrumb f34b06cac58de0d8085404d8c0e31d487f5e132a44f75e470e3184f2ee1f104c
-    blessings = store.blessings()
-    assert blessings.standing(occurrence)["status"] == "blessed"
-    assert blessings.snapshot()["findings"] == []
-    assert [row["id"] for row in blessings.snapshot()["records"]] == [blessing["id"]]
+    assert not hasattr(store, "blessings")  # blessings are closing records of actions
 
     unknown = {**record, "id": str(uuid4()), "type": "Example.Unregistered"}
     (store.root / f"{unknown['id']}.json").write_text(json.dumps(unknown), encoding="utf-8")
     findings = store.snapshot()["findings"]
     assert [row["kind"] for row in findings] == ["unknown-decision-type"]
-    assert len(store.snapshot()["records"]) == 2
+    assert len(store.snapshot()["records"]) == 1

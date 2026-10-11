@@ -6,7 +6,8 @@ from uuid import uuid4
 import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
-from tarav.l1.blessings import BlessablePOI, BlessingRecord, BlessingStore
+from tarav.l1.actions.blessing import Blessing
+from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.checks import Check, CheckPOI, CheckResult
 from tarav.l1.poi import fingerprint
 from tarav.l2.blessings import (
@@ -43,11 +44,11 @@ class ExamplePOI(CheckPOI, BlessablePOI):
 
 
 def _blessing(*, support=()):
-    record = deepcopy(BlessingRecord.records.record_example())
+    record = deepcopy(Blessing.records.record_example())
     record['id'] = str(uuid4())
-    record['rationale'] = 'The unusual formatting is faithful to the source.'
+    record['reason'] = 'The unusual formatting is faithful to the source.'
     record['support'] = list(support)
-    return BlessingRecord.records.from_record(record)
+    return Blessing.records.from_record(record)
 
 
 def test_blessing_is_assertable_and_main_case_has_exact_poi_context(tmp_path):
@@ -61,11 +62,12 @@ def test_blessing_is_assertable_and_main_case_has_exact_poi_context(tmp_path):
     assertion = blessing.assertions['main']
     assert isinstance(assertion, BlessingAcceptanceAssertion)
     assert runtime.records.from_record(blessing.records.to_record()).assertions['main'].id == assertion.id
+    assert assertion.records.to_record()['subject_ref']['type'] == 'Tarav.Blessings.Blessing.Reference' 
     case = assertion.assessment_case(BlessingAcceptanceCase, blessing=blessing)
     record = case.records.to_record()
     assert record['poi'] == blessing.records.to_record()['poi']
     assert record['actor'] == blessing.records.to_record()['actor']
-    assert record['rationale'] == blessing.records.to_record()['rationale']
+    assert record['rationale'] == blessing.records.to_record()['reason']
     assert '(none supplied)' in record['presentation']
     assert runtime.records.from_record(record).records.to_record() == record
     assert blessing.score_vector(ScoringRepository.initialize(tmp_path / 'scoring'))['main']['status'] == 'unassessed'
@@ -130,28 +132,25 @@ def test_case_rejects_a_changed_poi_situation_under_same_blessing_id(tmp_path):
     changed['poi']['id'] = fingerprint([
         changed['poi']['class_id'], changed['poi']['situation'],
     ])
-    changed_blessing = BlessingRecord.records.from_record(changed)
+    changed_blessing = Blessing.records.from_record(changed)
     assert changed_blessing.assertions['main'].id != assertion.id
     with pytest.raises(ValueError, match='another blessing or POI situation'):
         assertion.assessment_case(BlessingAcceptanceCase, blessing=changed_blessing)
 
 
-def test_old_standing_and_detection_remain_visible_after_blessing(tmp_path):
-    create_runtime(archive_root=tmp_path / 'archive')
+def test_detection_remains_visible_after_blessing(tmp_path):
+    from blessing_bench import Bench
+
+    runtime = create_runtime(archive_root=tmp_path / 'archive')
+    bench = Bench(tmp_path / 'records', runtime.records)
     check = ExampleCheck()
-    first_result = check.run()
-    poi = first_result.pois()[0]
-    store = BlessingStore(tmp_path / 'blessings')
-    record = store.bless(poi, actor={'type': 'Example.Actor', 'locator': {'name': 'agent'}},
-                         rationale='Reviewed against source')
-    assert store.standing(poi)['status'] == 'blessed'
-    assert check.run().pois()[0].identity == poi.identity
-    loaded = store.load(record['id'])
-    assert isinstance(loaded, Assertable)
-    assert loaded.assertions['main'].subject_ref['poi_id'] == poi.identity
-    legacy = store.assess(record['id'], actor={'type': 'Example.Actor', 'locator': {'name': 'agent'}},
-                          assertion='acceptance-justified', score=0.2,
-                          rationale='Weak prior review')
-    assert store.standing(poi)['scores'][0]['id'] == legacy['id']
-    assert loaded.score_vector(ScoringRepository.initialize(tmp_path / 'scoring'))['main']['status'] == 'unassessed'
-    assert entity(type(loaded)).name == 'Tarav.Blessings.Record'
+    poi = check.run().pois()[0]
+    blessing = bench.bless(poi, reason='Reviewed against source')
+    assert bench.pois.standing(poi) == 'blessed'
+    assert check.run().pois()[0].identity == poi.identity  # the POI is still raised
+    assert isinstance(blessing, Assertable)
+    assert blessing.assertions['main'].subject_ref['poi_id'] == poi.identity
+    assert blessing.score_vector(ScoringRepository.initialize(tmp_path / 'scoring'))['main']['status'] == 'unassessed'
+    assert entity(type(blessing)).name == 'Tarav.Blessings.Blessing'
+    changed = ExamplePOI(check, 'Review this situation', situation={'path': 'example.md', 'edition': 2})
+    assert bench.pois.standing(changed) == 'open'  # another situation is another action

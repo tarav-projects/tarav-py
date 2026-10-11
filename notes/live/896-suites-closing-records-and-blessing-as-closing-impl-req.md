@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: designed.
+Status: implemented.
 
 Reimplement blessings with the Actions primitives, and give "the situation
 is gone" a clear meaning.
@@ -172,7 +172,8 @@ The User asked to run this as a Develop pass.
 Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 `poi-system.md`, `operator-context.md`, `daily/`. Skill module:
 `tarav-md/skills/tarav-pkg/references/step-actions.md`. Supporting session:
-`claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a`. Capture status: pending.
+`claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a`. Capture status: done
+(`poi-system.md`, daily note 2026-10-11).
 
 ## Execution.Plan
 
@@ -192,3 +193,81 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 ## Impl.Log
 
 - Designed 2026-10-11.
+- Start checkpoint: commit `9b30df3` (this note). 10 Breadcrumbs on it, audit
+  clean.
+- Closing records: `Closing` (`Tarav.Actions.Closing`) with `fields()` and
+  `reopens()`; `Exit.closing`; `close_run()` builds and validates the record
+  and keeps it on the run as `closing`; `ActionRun.closing()` returns it as an
+  object; `axes(run)`. A third taker, `suite`, joins `operator` and `loop`.
+- Suites: `tarav.l1.actions.suites.Suite` with `settle`, `managed`,
+  `manages`, `reference`. `ProjectsSuite` (`tarav.l1.project.suite`),
+  `SkillwareSuite` (`tarav.l2.skw.suite`). `tarav check --project` settles
+  the Projects suite, passing `CheckRun.incomplete()`.
+- Removed: `Check.subject_key`, `Check.clear()`, `ClearPOI`,
+  `CheckRun.completed()`, `POIActions.observe()`, the matching by check
+  identity and the `whole` flag.
+- Blessing: `tarav.l1.actions.blessing` holds `Blessing`, `BlessingInput`,
+  `BlessingInputCheck` and its two POIs, all in the Blessings workflow.
+  `BlessablePOI` is in `tarav.l1.poi.actionable`. `POIResolutionAction` has
+  the paths `gone` (`GoneClosing`, by the suite) and `blessed` (`Blessing`, by
+  an operator). `POIActions` reads: `of`, `standing`, `axes`, `blessing`,
+  `blessing_standing`.
+- Deviation from the design: the Blessing Types are defined in the Actions
+  package, not in `tarav.l1.blessings`. Defining them there made the two
+  packages import each other, which the architecture test forbids. They
+  still belong to the Blessings workflow by their Type entity.
+- Deviation: a Blessing is `Assertable` and not a `Decision`. The earlier
+  record was a Decision subtype; a closing record is not an attributed
+  Decision record in the Project's decisions folder.
+- Assertions: `tarav.l2.blessings.assertions` takes a `Blessing`; the subject
+  reference is `Tarav.Blessings.Blessing.Reference`. A Blessing validates the
+  POI it keeps (identity matches Type and situation).
+- Attention: `attention_report(collector, actions, repository)` reads the
+  Blessing of each POI's action. Loss, stated: an action has one current
+  Blessing, so counting several independent reviews of the same POI is gone
+  (`review_count`, `independent_reviews`,
+  `maximum_independent_reviews`). A supported and well scored Blessing defers
+  three times longer, as one supported review did before.
+- Removed: `BlessingStore`, `BlessingRecord`, `BlessingAssessmentRecord`,
+  `ProjectDecisions.blessings()`, the runtime's `blessings` store, `tarav skw
+  skills bless` and `assess-blessing`, a package's `.skw/blessings` store.
+  `tarav skw skills check | build | deploy` settle the Skillware suite; an
+  evaluation whose checks could not all run opens actions and closes none.
+- `CheckRun.clean()` and `report()` take only `actions`; rows count `open` and
+  `blessed`. `POICollector.report(actions=, blessing=)`.
+- Commands: `tarav action types` shows each exit's closing Type; `list` rows
+  carry `axes` and `suite`; `close` prints the closing record. The
+  `poi-action` view has the entries `standing`, `poi`, `managed-by`,
+  `closing`, `closings`, `acting`, `history`, `reported`.
+- Tests: 259 passed in the shared worktree; Ruff clean. New
+  `tests/blessing_bench.py` blesses a POI through the Actions workflow for the
+  tests that used the store. `tests/test_actions_workflow.py` has 18 tests,
+  among them: a suite closes only what it manages and only after a whole run;
+  a blessed action stays closed and its situation axis moves; a Blessing
+  declares assertions and no score is kept on it.
+- Real run on the root Project (`tarav check --project .`): 51 POIs; the 51
+  actions opened before this request were taken over by `Tarav.Project.Suite`
+  and show `situation: present, action: open`. One action closed as gone by
+  request 894 has no suite and stays as it is.
+- Smoke run with a throwaway registry: `tarav skw skills check` on
+  `tarav-md/skills/tarav-hugentics` opened 21 actions under `Tarav.SKW.Suite`.
+- Known limit found: the Project's checks include the checks of its skill
+  packages, so in a real Project a Skillware POI's action is managed by the
+  Projects suite, and the Skillware suite leaves it alone. This is the "two
+  suites raise the same POI" case of the open questions.
+- Not committed with this request, as before: the actions test workflow
+  (`src/tarav/l2/tests/actions.py`, `tests/test_actions_pois.py`), which is
+  adapted in the worktree and waits for another agent's `l2/tests` package.
+  In the worktree only, two entries naming the removed record Types were
+  taken out of `RECORD_STATE_DEBT` in
+  `tests/kernel/test_object_record_contract.py`, a list another agent added
+  and has not committed.
+- Product Breadcrumbs: 24 new on 15 surfaces (`actions/__init__.py` 2,
+  `actions/blessing.py` 2, `actions/suites.py` 4, `actions/pois.py` 2,
+  `project/suite.py` 1, `skw/suite.py` 1, `skw/skills.py` 1, `l3/check.py` 1,
+  `blessings/assertions.py` 1, `checks/__init__.py` 1, `poi/actionable.py` 1,
+  `tests/test_actions_workflow.py` 4, `tests/blessing_bench.py` 1,
+  `l2/tests/actions.py` 1, `ARCHITECTURE.md` 3). Moved labels refreshed with
+  `--refresh-positions`. `AGENTS.skw.json` has no Breadcrumb convention.
+- `AGENTS.md` recompiled from its Skillware source; `ARCHITECTURE.md`,
+  `l1/poi/README.md`, `l2/scoring/README.md` updated.

@@ -12,7 +12,7 @@ from tarav.l1.records import RecordRegistry
 
 from . import (
     CLOSED, RUNNING, ActionError, ActionRun, ActionRunStore, StepAction, StepRunner,
-    action_types, resolve_action,
+    action_types, axes, resolve_action,
 )
 
 
@@ -35,7 +35,8 @@ def _row(run: ActionRun) -> dict:
     data = run.data
     row = {"run": str(run.id), "action": data["action"], "state": run.state, "exit": run.exit,
            "started_at": data["started_at"], "closed_at": data["closed_at"],
-           "project": data["project"], "sessions": len(data["sessions"])}
+           "project": data["project"], "sessions": len(data["sessions"]),
+           "axes": axes(run), "suite": (data.get("suite") or {}).get("name")}
     poi = (data.get("event") or {}).get("poi")
     if poi:
         row["poi"] = {"id": poi.get("id"), "type": poi.get("type"), "message": poi.get("message")}
@@ -59,7 +60,8 @@ def _cmd_types(args) -> int:
         if issubclass(action_type, StepAction):
             row["input"] = entity(action_type.InputType).name
             row["operations"] = list(action_type.operations)
-            row["exits"] = [{"name": item.name, "by": list(item.by)}
+            row["exits"] = [{"name": item.name, "by": list(item.by),
+                             "closing": entity(item.closing).name}
                             for item in action_type.exits]
         rows.append(row)
     return _output({"status": "ok", "types": rows})
@@ -104,7 +106,8 @@ def _cmd_close(args) -> int:
                                        "pois": _pois(attempt["results"])}}
     if run.state != CLOSED:
         return _output({"status": "still-running", **result}, 1)
-    return _output({"status": "ok", **result, "output": run.data["output"]})
+    return _output({"status": "ok", **result, "output": run.data["output"],
+                    "record": run.data["closing"]})
 
 
 def _cmd_sweep(args) -> int:

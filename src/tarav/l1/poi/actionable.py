@@ -27,17 +27,19 @@ class ActionablePOI(POI):
 
 
 # tarav.breadcrumb 51eb2b0b1a45b063a05bc60031c6c07ba2b6e50c2d22dba73b69f138821a1c21
-class DismissablePOI(ActionablePOI):
-    """Capability: the action of a POI of an extending Type may be dismissed.
+# tarav.breadcrumb bb495f3ee057fc5f0d07777f28ca5bf13f04120072de1d10e4623a6301550776
+class BlessablePOI(ActionablePOI):
+    """Capability: the action of a POI of an extending Type may be blessed.
 
-    Dismissing overrules the check for one exact situation, with a reason. It
-    is the softest way an action closes, so a Type has to allow it.
+    Blessing closes the action although the situation still exists, with a
+    reason. It overrules the check for one exact situation, so a Type has to
+    allow it.
     """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("b21f7c50-0a4d-4e63-9c18-5d7e3f2a6b90"),
-                          name="Tarav.POI.Dismissable", workflow=POI_WORKFLOW_SHIP)
+                          name="Tarav.POI.Blessable", workflow=POI_WORKFLOW_SHIP)
 
 
-__all__ = ["ActionablePOI", "DismissablePOI"]
+__all__ = ["ActionablePOI", "BlessablePOI"]

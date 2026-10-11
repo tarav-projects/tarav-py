@@ -237,7 +237,7 @@ class POICollector:
     def report(
         self,
         *,
-        store=None,
+        actions=None,
         offset=0,
         limit=20,
         class_name=None,
@@ -248,7 +248,6 @@ class POICollector:
             raise ValueError("Expected nonnegative offset and positive limit")
         if blessing not in (None, "unblessed", "blessed"):
             raise ValueError("Unknown blessing filter")
-        snapshot = store.snapshot() if store else None
         identity_counts = Counter(
             poi.identity for poi in self.pois if isinstance(poi, IdentifiedPOI)
         )
@@ -259,11 +258,7 @@ class POICollector:
             if isinstance(poi, IdentifiedPOI):
                 emission_index = next_index[poi.identity]
                 next_index[poi.identity] += 1
-            standing = (
-                store.standing(poi, snapshot=snapshot)
-                if store is not None and store.accepts(poi)
-                else None
-            )
+            standing = actions.blessing_standing(poi) if actions is not None else None
             rows.append((poi, standing, emission_index))
         rows.sort(
             key=lambda row: (
@@ -307,14 +302,6 @@ class POICollector:
                     if standing is not None
                 )
             ),
-            "by_assessment_finding": dict(
-                Counter(
-                    finding["kind"]
-                    for _, standing, _ in rows
-                    for finding in (standing or {}).get("assessment_findings", [])
-                )
-            ),
-            "store_findings": snapshot["findings"] if snapshot else [],
             "items": page,
         }
 

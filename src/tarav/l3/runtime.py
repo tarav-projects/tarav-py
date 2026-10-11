@@ -59,7 +59,6 @@ if TYPE_CHECKING:
 
     from tarav.l1.breadcrumbs.integrations import BreadcrumbIntegration
     from tarav.l2.scoring.workflow import ScoringWorkflow
-    from tarav.l1.blessings import BlessingStore
     from tarav.l1.poi import POICollector
 
 
@@ -84,7 +83,6 @@ class TaravRuntime:
     usage: UsageRegistry
     breadcrumb_integrations: tuple[BreadcrumbIntegration, ...]
     pois: POICollector
-    blessings: BlessingStore
 
     @property
     def scoring(self) -> type[ScoringWorkflow]:
@@ -302,24 +300,19 @@ def create_runtime(
     from tarav.l2.project.wiki import ProjectWikiWorkflow
     from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow
     from tarav.l1.settings import SETTINGS_RECORD_TYPES, SettingsWorkflow
-    from tarav.l1.blessings import (
-        BLESSING_RECORD_TYPES,
-        BlessablePOI,
-        BlessingAssessmentRecord,
-        BlessingRecord,
-        BlessingStore,
-        BlessingsWorkflow,
+    from tarav.l1.actions.blessing import (
+        BLESSING_RECORD_TYPES, bind_blessing_assertion_services,
     )
+    from tarav.l1.blessings import BlessingsWorkflow
+    from tarav.l1.poi.actionable import BlessablePOI
     from tarav.l1.decisions import (
         DECISION_RECORD_TYPES, DecisionsWorkflow, bind_decision_assertions,
     )
     from tarav.l2.decisions import DecisionReportAssertion, assertions_for_decision
-    from tarav.l1.blessings.store import bind_blessing_assertion_services
     from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow
     from tarav.l1.breadcrumbs.auditing import (
         BreadcrumbAuditCheck, BreadcrumbAuditPOI, BreadcrumbPositionUpdated,
     )
-    from tarav.l1.poi.workflow import POI_WORKFLOW_SHIP
     from tarav.l1.surfaces import SurfacesWorkflow
     from tarav.l1.surfaces.markdown import LineMarkdownModel, MarkdownNormalModel
     from tarav.l1.surfaces.python import PythonNormalModel
@@ -579,11 +572,6 @@ def create_runtime(
         search=search,
         breadcrumb_integrations=composed_breadcrumb_integrations,
         pois=POICollector(),
-        blessings=BlessingStore(
-            contexts.archive_root / str(POI_WORKFLOW_SHIP) / 'blessings',
-            record_types=tuple(t for t in registered_types
-                               if issubclass(t, (BlessingRecord, BlessingAssessmentRecord))),
-        ),
     )
 
 

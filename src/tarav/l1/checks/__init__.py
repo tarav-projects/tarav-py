@@ -75,31 +75,8 @@ class Check(TaravObject):
 
     @property
     def identity(self) -> str | None:
-        """Which check this is across runs; None when it cannot say.
-
-        Tracking needs it to conclude that a POI passed: only the same check,
-        completed again without raising the POI, is evidence of that.
-        """
+        """Which check this is across runs; None when it cannot say."""
         return None
-
-    # tarav.breadcrumb 5f23a362758bbde94045c489e192776abf8a6ced6101152c1535845abcd18ccd
-    @property
-    def subject_key(self) -> dict | None:
-        """What this check examines, stable while what it finds changes; None when it cannot say.
-
-        A situation names what was found, so a check that no longer finds it
-        cannot name it. The subject is what a later, clear result has in
-        common with an earlier finding.
-        """
-        return None
-
-    def clear(self, message: str | None = None) -> "ClearPOI":
-        """The POI saying this check completed and found nothing to raise."""
-        name = entity(type(self)).name
-        return ClearPOI(self, message or f"{name} found nothing to raise",
-                        situation={"check": name, "check_identity": self.identity,
-                                   "subject": self.subject_key},
-                        failure=False)
 
     def run(self) -> "CheckResult":
         result = self._run()
@@ -153,24 +130,6 @@ class CheckPOI(IdentifiedPOI, ActionablePOI):
         builder.add("check", opener=lambda: self.check)
         builder.add("details", opener=lambda: POIDetails.records.from_record(
             {"type": entity(POIDetails).name, "value": deepcopy(self.details)}))
-
-
-# tarav.breadcrumb 17b06b58dc7c456e499067ef1304e2930c95b04b89c82e74b3a378d48ca7789a
-# tarav.breadcrumb 66d8e93f85ee6987e1291238add75e2e188bc27096a12a744560191a7e2a8fdb
-# tarav.breadcrumb eca780f5007209477dc1044b267b52664b05e8a6d3a368c6eb3acc74df3beaf9
-class ClearPOI(CheckPOI):
-    """A check completed and found nothing to raise for its subject.
-
-    A positive event, stated the way a finding is. Whether anyone is shown it
-    is the caller's choice.
-    """
-
-    action = None  # a clear result closes actions; it does not spin one
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("2f6d9b1c-7a4e-4c83-9e15-b0d3a8c7e642"),
-                          name="Tarav.Checks.Clear", workflow=CHECKS_WORKFLOW_SHIP)
 
 
 class SituationCheck(Check):
@@ -238,7 +197,7 @@ class SituationCheck(Check):
     def run(self) -> "CheckResult":
         result = super().run()
         for poi in result.pois():
-            if not isinstance(poi, CheckPOI) or isinstance(poi, ClearPOI):
+            if not isinstance(poi, CheckPOI):
                 continue
             poi_situation = LiteRecord.from_json_value(poi.situation)
             if poi_situation.canonical != self._situation.canonical:
@@ -303,10 +262,14 @@ class CheckRun(TaravObject, POIProvider):
     def pois(self) -> tuple[POI, ...]:
         return tuple(poi for result in self.results for poi in result.pois())
 
-    # tarav.breadcrumb 339d6902b8d8570a80d3d41413e996c3e00aada7e072f2f0e28f3ee5a2d03959
-    def completed(self) -> tuple[Check, ...]:
-        """The checks that ran to completion: each may say what it did not raise."""
-        return tuple(result.check for result in self.results if result.status == "completed")
+# tarav.breadcrumb bca999d59f43a1bc5f8b0ebe247088e84742d9b07d7201cc54cb5bc150030b67
+    def incomplete(self) -> tuple[str, ...]:
+        """The Type names of the checks that did not run to completion.
+
+        Such a check says nothing about what it would have raised.
+        """
+        return tuple(dict.fromkeys(entity(type(result.check)).name for result in self.results
+                                   if result.status != "completed"))
 
     def findings(self) -> tuple[POI, ...]:
         """The POIs that stand as findings: every POI but those marked as not a failure."""
@@ -335,33 +298,27 @@ class CheckRun(TaravObject, POIProvider):
             "by_type": dict(by_type),
         }
 
-    def _standing(self, poi: POI, store, snapshot, actions=None) -> str:
-        if store is not None and store.accepts(poi):
-            if store.standing(poi, snapshot=snapshot)["status"] == "blessed":
-                return "blessed"
-        if actions is not None and actions.standing(poi) == "dismissed":
-            return "dismissed"
+    def _standing(self, poi: POI, actions=None) -> str:
+        if actions is not None and actions.standing(poi) == "blessed":
+            return "blessed"
         return "open"
 
     # tarav.breadcrumb d96e22c81cc727200ea256c3e9af4d895e1d1842e4d7ac7861e3279bee041f3b
-    def clean(self, *, store=None, actions=None) -> bool:
+    def clean(self, *, actions=None) -> bool:
         """No check failed to complete, and every finding is settled.
 
-        A finding is settled when it is blessed in `store` or its action in
-        `actions` was dismissed. Both are given by the caller; without them
-        every finding is open.
+        A finding is settled when its action in `actions` was blessed. The
+        caller gives `actions`; without it every finding is open.
         """
         if any(result.status != "completed" for result in self.results):
             return False
-        snapshot = store.snapshot() if store is not None else None
-        return all(self._standing(poi, store, snapshot, actions) in ("blessed", "dismissed")
-                   for poi in self.findings())
+        return all(self._standing(poi, actions) == "blessed" for poi in self.findings())
 
     # tarav.breadcrumb cb1a5772a23d17b22aa60b8bb37e1a3015cff629e44c47640e8886c7fe49d6e0
     def report(
         self, *, by: str = "type", sort: str = "run", offset: int = 0, limit: int = 20,
         type: str | None = None, check: str | None = None,
-        store=None, detail: bool = False, actions=None,
+        detail: bool = False, actions=None,
     ) -> dict[str, object]:
         if by not in ("type", "check", "identity"):
             raise ValueError("Unknown CheckRun grouping")
@@ -369,7 +326,6 @@ class CheckRun(TaravObject, POIProvider):
             raise ValueError("Unknown CheckRun sort order")
         if offset < 0 or limit < 1:
             raise ValueError("Expected nonnegative offset and positive limit")
-        snapshot = store.snapshot() if store is not None else None
         groups: dict[str, dict[str, object]] = {}
         emission_index = 0
         matching_pois = 0
@@ -395,12 +351,12 @@ class CheckRun(TaravObject, POIProvider):
                 }[by]
                 row = groups.setdefault(key, {
                     "key": key, "by": by, "pois": 0, "checks": 0,
-                    "open": 0, "blessed": 0, "dismissed": 0, "example": poi.summary(),
+                    "open": 0, "blessed": 0, "example": poi.summary(),
                     "id": getattr(poi, "identity", None),
                     "types": [], "_results": set(),
                 })
                 row["pois"] += 1
-                row[self._standing(poi, store, snapshot, actions)] += 1
+                row[self._standing(poi, actions)] += 1
                 if result_index not in row["_results"]:
                     row["_results"].add(result_index)
                     row["checks"] += 1
@@ -514,7 +470,6 @@ __all__ = [
     "ChecksWorkflow",
     "Check",
     "CheckPOI",
-    "ClearPOI",
     "CheckProvider",
     "CheckResult",
     "CheckRun",

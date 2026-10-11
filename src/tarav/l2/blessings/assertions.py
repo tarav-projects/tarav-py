@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
-from tarav.l1.blessings import BlessingRecord
+from tarav.l1.actions.blessing import Blessing
 from tarav.l1.blessings.workflow import BLESSINGS_WORKFLOW_SHIP
 from tarav.l2.scoring import (
     Assertion, AssertionNamespace, AssessmentCase, IncompleteCaseScope,
@@ -57,7 +57,7 @@ class BlessingAcceptanceCase(PairwiseRankingCase):
     class RecordInterface(PairwiseRankingCase.RecordInterface):
         blessing_id: str
         poi: dict
-        actor: dict
+        actor: dict | None
         rationale: str
         support: list[dict]
         source_passages: list[dict]
@@ -65,7 +65,7 @@ class BlessingAcceptanceCase(PairwiseRankingCase):
     class Records(PairwiseRankingCase.Records):
         def record_example(self):
             cls = self._owner
-            blessing = BlessingRecord.records.from_record(BlessingRecord.records.record_example())
+            blessing = Blessing.records.from_record(Blessing.records.record_example())
             return BlessingAcceptanceAssertion.from_blessing(blessing).assessment_case(
                 cls, blessing=blessing,
             ).records.to_record()
@@ -93,10 +93,10 @@ class BlessingGroundsCase(AssessmentCase):
     class Records(AssessmentCase.Records):
         def record_example(self):
             cls = self._owner
-            record = BlessingRecord.records.record_example()
+            record = Blessing.records.record_example()
             support = {'type': 'Example.Source.Reference', 'locator': {'path': 'example.txt'}}
             record['support'] = [support]
-            blessing = BlessingRecord.records.from_record(record)
+            blessing = Blessing.records.from_record(record)
             return BlessingGroundsAssertion.from_blessing(blessing).assessment_case(
                 cls, blessing=blessing,
                 source_passages=[{'reference': support, 'text': 'Example passage.'}],
@@ -104,8 +104,9 @@ class BlessingGroundsCase(AssessmentCase):
 
 
 
+# tarav.breadcrumb 91366f34b009b85172f86bd59fab0a34e84658851653c39b331340e0a314e17f
 class _BlessingAssertion(Assertion):
-    """A claim tied to an attributed blessing and its exact POI situation."""
+    """A claim tied to one Blessing, the closing record of a POI's action, and its POI situation."""
 
     @classmethod
     def class_entity(cls):
@@ -119,8 +120,8 @@ class _BlessingAssertion(Assertion):
     @classmethod
     def validate_subject(cls, subject):
         value = super().validate_subject(subject)
-        if value.get('type') != 'Tarav.Blessings.Record.Reference':
-            raise ValueError('Blessing Assertion requires a blessing Record reference')
+        if value.get('type') != 'Tarav.Blessings.Blessing.Reference':
+            raise ValueError('Blessing Assertion requires a Blessing reference')
         try:
             UUID(str(value['blessing_id']))
             TypeShip(value['poi_class_id'])
@@ -135,18 +136,18 @@ class _BlessingAssertion(Assertion):
     class Records(Assertion.Records):
         def record_example(self):
             cls = self._owner
-            blessing = BlessingRecord.records.from_record(BlessingRecord.records.record_example())
+            blessing = Blessing.records.from_record(Blessing.records.record_example())
             return cls.from_blessing(blessing).records.to_record()
 
 
     @classmethod
-    def from_blessing(cls, blessing: BlessingRecord):
-        if not isinstance(blessing, BlessingRecord):
-            raise TypeError('Expected a BlessingRecord')
+    def from_blessing(cls, blessing: Blessing):
+        if not isinstance(blessing, Blessing):
+            raise TypeError('Expected a Blessing')
         record = blessing.records.to_record()
         poi = record['poi']
         return cls({
-            'type': 'Tarav.Blessings.Record.Reference',
+            'type': 'Tarav.Blessings.Blessing.Reference',
             'blessing_id': str(blessing.id),
             'blessing_type': record['type'],
             'poi_class_id': poi['class_id'],
@@ -154,9 +155,9 @@ class _BlessingAssertion(Assertion):
             'poi_situation': poi['situation'],
         })
 
-    def _blessing_record(self, blessing: BlessingRecord) -> dict:
-        if not isinstance(blessing, BlessingRecord):
-            raise IncompleteCaseScope('Blessing case needs the retained blessing Record')
+    def _blessing_record(self, blessing: Blessing) -> dict:
+        if not isinstance(blessing, Blessing):
+            raise IncompleteCaseScope('Blessing case needs the Blessing')
         if type(self).from_blessing(blessing).id != self.id:
             raise ValueError('Blessing case belongs to another blessing or POI situation')
         return blessing.records.to_record()
@@ -186,7 +187,7 @@ class BlessingAcceptanceAssertion(_BlessingAssertion):
             'Acceptance claim: this still-detected POI needs no immediate action.',
             f'POI: {json.dumps(record["poi"], sort_keys=True, ensure_ascii=False)}',
             f'Actor: {json.dumps(record["actor"], sort_keys=True, ensure_ascii=False)}',
-            f'Rationale: {record["rationale"]}',
+            f'Rationale: {record["reason"]}',
             'Offered support: ' + (
                 json.dumps(passages, sort_keys=True, ensure_ascii=False)
                 if passages else '(none supplied)'
@@ -198,7 +199,7 @@ class BlessingAcceptanceAssertion(_BlessingAssertion):
             question='How justified is accepting this POI without immediate action?',
             presentation=presentation,
             blessing_id=str(blessing.id), poi=record['poi'], actor=record['actor'],
-            rationale=record['rationale'], support=record['support'],
+            rationale=record['reason'], support=record['support'],
             source_passages=passages,
         )
 
@@ -228,10 +229,10 @@ class BlessingGroundsAssertion(_BlessingAssertion):
             assertion_ref=self.reference(),
             question='Do the supplied source passages substantiate this rationale?',
             presentation='\n'.join((
-                f'Rationale: {record["rationale"]}',
+                f'Rationale: {record["reason"]}',
                 json.dumps(passages, sort_keys=True, ensure_ascii=False),
             )),
-            blessing_id=str(blessing.id), rationale=record['rationale'],
+            blessing_id=str(blessing.id), rationale=record['reason'],
             support=record['support'], source_passages=passages,
         )
 
@@ -252,7 +253,7 @@ def _closed_passages(support: Sequence[dict], passages: Sequence[dict]) -> list[
     return values
 
 
-def assertions_for_blessing(blessing: BlessingRecord) -> AssertionNamespace:
+def assertions_for_blessing(blessing: Blessing) -> AssertionNamespace:
     """Expose stable labels without turning an optional factual ground into fact."""
 
     assertions = {'main': BlessingAcceptanceAssertion.from_blessing(blessing)}
@@ -262,9 +263,9 @@ def assertions_for_blessing(blessing: BlessingRecord) -> AssertionNamespace:
 
 
 def score_vector_for_blessing(
-    blessing: BlessingRecord, repository: ScoringRepository,
+    blessing: Blessing, repository: ScoringRepository,
 ) -> dict[str, dict]:
-    """Read named assessments from scorer storage; legacy assessments stay separate."""
+    """Read named assessments from scorer storage."""
     # tarav.breadcrumb 899cfa53b02f35e7a436d35d3b60f2b1e544ddbd150d682d41901b7985474eca
 
     if not isinstance(repository, ScoringRepository):
