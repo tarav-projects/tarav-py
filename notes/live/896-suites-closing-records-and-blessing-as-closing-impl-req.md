@@ -1,0 +1,194 @@
+# 896 — Suites, closing records and the blessing as a closing — Impl.Req
+
+<!-- tarav.sessions
+abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c625e3f68354a234a91e4992b67406f075d93ccb20f4d4
+-->
+
+## Impl.Abstract
+
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
+Status: designed.
+
+Reimplement blessings with the Actions primitives, and give "the situation
+is gone" a clear meaning.
+
+1. A **suite** is named by the caller of a check run. It manages the actions
+   it opened and settles them after each run: an action whose POI the suite
+   no longer produces closes as gone.
+2. **Every closing produces a typed record.** An Action Type declares its
+   closing paths; each path names the Type of the record it leaves.
+3. A **Blessing** is the record of the path "closed although the situation
+   still exists". It carries a reason and evidence and declares assertions.
+4. **Reopening is decided by how the action was closed**, and the status of
+   an action is a small vector: situation, action, closing.
+5. The earlier blessing store, its records and its commands are removed.
+
+Non-goals: Directives; hooks and chains; new suites beyond Projects and
+Skillware packages; changes to the scoring system itself; migrating earlier
+blessing records.
+
+Follow-up request in another repository:
+`vscode-tarav-center/notes/live/005-action-axes-and-blessing-impl-req.md`.
+
+## Design narrative
+
+### User decisions
+
+The blessing code left beside dismissal by request 895 has to be
+reimplemented with the new primitives.
+<!-- tarav.breadcrumb aa735b651678bbacf23ab7ed428ae1c07c607be5096e6580d7ce873ef093299a -->
+
+An action is running and a blessing is just one way of closing it; it is not
+different in kind from other closings. The action defines how it can be
+closed. The POI can still appear: a blessed action is a suppressed one. The
+blessing is a record, it can carry evidence or a reason, and so it can be
+scored; that is why it hooks into the assertion system. A Blessing is a type
+of closing constructor for a POI action.
+<!-- tarav.breadcrumb de1fe4ddd2b4bccab78f7030b9d1d29683c8806560027988246622cf0a084682 -->
+
+The scoring system is independent: it assigns scores to declared
+assertions. Scores attach to assertions, and the Blessing, like any object,
+declares assertions. The chain Situation, SituationCheck, SituationPOI,
+SituationAction, SituationBlessing is one particular implementation; others
+can come later. The word Blessing stays, defined mechanically: the action is
+closed even though the situation still exists.
+<!-- tarav.breadcrumb 266084a945ad25757f20aab6f5ef212015ff181fe879deba139bd5eab75fc4ba -->
+
+Closing an action produces a record of some Type; it is not a plain status.
+An action can close automatically (a check passes) and can have several
+closing paths, for instance the situation disappears, or it is blessed. An
+action can be reopened, and that can depend on how it was closed. Status is
+a vector with several axes, not one value.
+<!-- tarav.breadcrumb bf16774289a7bb66417a8b686e97735b6230c1046a95b8da82008e16ef0d264d -->
+
+The User asked what the "subject" was. The agent had added a per-check
+subject key in request 894 without approval, to tell "the check looked again
+and found nothing" from "the check did not look".
+<!-- tarav.breadcrumb 34185fabaa018e012518a60f1121d0b5ceb0a5c2fbaffcabc3b13c077079749e -->
+
+A suite replaces that. A suite targets checks run on targets and has a
+hardcoded UUID. Its meaning: if you run me, you are testing the same thing.
+A situation has disappeared when the suite no longer detects it.
+<!-- tarav.breadcrumb d01e90ba46ae0febcb29e173293add94c93e49d868118cc0e25b812e81746dc7 -->
+
+A suite can be very general, for instance one Projects suite. If it did not
+produce the POI, the action is closed. No finer scoping is needed.
+<!-- tarav.breadcrumb d8ce414098de54a5ee77dfa6a6eb3fc58ae2c9075c85eefa3a7e0944e8129d77 -->
+
+A check does not carry a suite. The caller names it: `tarav check` says
+which suite the run is, and attaches it where documentation needs it. The
+suite is like the operating system: it knows all the actions that belong to
+it, and after a run it closes those that the results allow.
+<!-- tarav.breadcrumb 9438d401c2cb9056e87a00e9df96c6a491b07de20d7127c6211f92e03a5fb1f4 -->
+
+Identity is apart: an action's identity comes from its Type and its POI. The
+suite is who manages the action.
+<!-- tarav.breadcrumb 0a4700743d346b3b117d618d6af8e268da7d1a36925cfce57c6cb67cedab8b79 -->
+
+The User asked to run this as a Develop pass.
+<!-- tarav.breadcrumb 500491ddd147288efab29dda7b19fb19c8f162fb9dc504b2f183936ef3bf91fc -->
+
+### Current behavior (observed 2026-10-11, `tarav-py` at `1688419`)
+
+- `tarav.l1.actions`: `Exit(name, by)`; a run keeps `state`, `exit`,
+  `output`, `closings` (attempts). `StepRunner.close` and `sweep` close runs.
+- `tarav.l1.actions.pois`: `POIResolutionAction` with exits `gone` (loop)
+  and `dismissed` (operator, `DismissalInput` with a reason). `POIActions
+  .observe(pois, completed=, whole=, project=)` opens actions and closes
+  them as gone by matching the owning check: `Check.subject_key`, else
+  `Check.identity`, else "the whole suite ran". The reopen rule is two
+  hard-coded lines.
+- `tarav.l1.checks`: `Check.subject_key`, `Check.clear()`, `ClearPOI`,
+  `CheckRun.completed()`; `clean()` and `report()` take both a blessing
+  `store` and `actions`. A `CheckSuite` Type exists there already; it is a
+  source of checks that can nest, with no identity of its own and no
+  knowledge of actions.
+- `tarav.l1.blessings`: `BlessablePOI`, `BlessingRecord` (a Decision),
+  `BlessingAssessmentRecord` (a manually given score), `BlessingStore`.
+  `tarav.l2.blessings`: two assertions on a blessing record, their cases and
+  tribunal, the score vector read from the scoring repository, and an
+  attention report used only by tests.
+- Users of the store: Skillware packages (`.skw/blessings`, `tarav skw
+  skills bless | assess-blessing`, `--blessing-status`), `ProjectDecisions
+  .blessings()`, a `blessings` store in the runtime.
+- Records accept unknown fields (`extra="allow"`), so existing action
+  records load after fields are dropped.
+
+### Agent choices (proposals, not User decisions)
+
+- **Name.** The managing suite is `tarav.l1.actions.suites.Suite`
+  (`Tarav.Actions.Suite`), separate from `CheckSuite`, which keeps composing
+  checks. A suite Type carries the hardcoded UUID as its Type identity.
+  `ProjectsSuite` and `SkillwareSuite` are the two first ones.
+- **`Suite.settle(pois, target=, incomplete=(), complete=True)`.** It opens
+  or reopens the action of each actionable POI, stamps `suite` and the
+  target on the action, and records the situation as present. Then, among
+  the actions it manages for that target and did not see: the situation
+  becomes absent, and an open one closes as gone. Two guards: an action
+  whose raising check Type is in `incomplete` (it crashed) is left as it
+  is; with `complete=False` (not a run of the whole suite) nothing closes.
+- **An unmanaged action is taken over** by the suite that next raises its
+  POI. Actions opened before this request have no suite and are taken over
+  on the next run when their POI is still raised; the others stay open.
+- **Target** is the dictionary the caller gives (`id`, `name`, `root`); it
+  is matched on `root`, as before.
+- **Closing records.** `Closing` is a record Type (`id`, `run`, `exit`,
+  `at`, `by`). `Exit` gains `closing`, the record Type its path leaves, and
+  the record is kept on the run as `closing` (current state; earlier ones
+  are in the registry's Git history). `Closing.reopens` says whether a POI
+  raised again reopens the action: true for `GoneClosing`, false for a
+  `Blessing`.
+- **Axes** are plain fields on the run, each with one writer: `situation`
+  (`present`, `absent`, set by the suite), `state` (the action, set by the
+  closing paths), and `closing` (the record). `axes(run)` returns the three.
+- **Blessing vocabulary replaces dismissal vocabulary**: exit `blessed`,
+  `BlessingInput` (reason, support), `BlessablePOI` in the POI workflow (the
+  one capability; `DismissablePOI` and the earlier `BlessablePOI` merge
+  into it), `BlessingInputCheck`.
+- **`Blessing`** (`Tarav.Blessings.Blessing`, in `tarav.l1.blessings`) keeps
+  the actor (the session), the reason, the support and a snapshot of the
+  POI. Its `assertions` and `score_vector` are composed from `l2` as today.
+  The two assertions keep their logic; their subject is a reference to the
+  Blessing.
+- **Removed without replacement**: `BlessingAssessmentRecord` and `tarav skw
+  skills assess-blessing` (a score typed by hand; the scoring system is
+  where scores come from), `Check.subject_key`, `Check.clear()`, `ClearPOI`
+  and `CheckRun.completed()` (nothing reads them once the suite closes
+  actions).
+- **Skillware.** `tarav skw skills check | build | deploy` settle the
+  Skillware suite on the package. `bless` is removed: a Skillware POI is
+  blessed like any other, with `tarav action close --exit blessed`.
+- **Earlier blessing records are not migrated.** None exists in this
+  workspace.
+
+### Open questions
+
+- When a blessed action's situation goes away and returns, the blessing
+  still holds. The situation axis records that it was absent in between.
+- Two suites raising the same POI share one action; the first manages it.
+
+## Impl.Req.Wiki
+
+Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
+`poi-system.md`, `operator-context.md`, `daily/`. Skill module:
+`tarav-md/skills/tarav-pkg/references/step-actions.md`. Supporting session:
+`claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a`. Capture status: pending.
+
+## Execution.Plan
+
+1. Start checkpoint. Closing records, `Exit.closing`, axes; the runner and
+   the sweep build closings. Tests.
+2. `Suite`, `ProjectsSuite`; `tarav check --project` settles it. Remove
+   `subject_key`, `clear()`, `ClearPOI`, `completed()`, identity matching.
+   Tests; a real run on the root Project.
+3. Blessing vocabulary and the `Blessing` record; `clean()` and reports read
+   only actions; the action view and commands.
+4. Assertions and attention on the `Blessing`; remove the store, its
+   records, `ProjectDecisions.blessings()` and the runtime store; Skillware
+   on its suite.
+5. Full suite, Ruff, reinstall the CLI, Breadcrumbs, `ARCHITECTURE.md`,
+   skill module, Wiki, completion commit.
+
+## Impl.Log
+
+- Designed 2026-10-11.
