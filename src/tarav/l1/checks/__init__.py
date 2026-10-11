@@ -1,5 +1,6 @@
 """Independently runnable, bound checks and their execution snapshots."""
 
+import json
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
@@ -244,11 +245,15 @@ class CheckRun(TaravObject, POIProvider):
     def __init__(self) -> None:
         super().__init__()
         self.results: list[CheckResult] = []
+        self.owners: list[dict | None] = []
+        self.suites: list[dict] = []  # the owners of the owned suites that ran, in order
 
-    def add(self, result: CheckResult) -> CheckResult:
+    def add(self, result: CheckResult, *, owner: dict | None = None) -> CheckResult:
+        """Keep one result, and whose suite it came from when a suite said so."""
         if not isinstance(result, CheckResult):
             raise TypeError("CheckRun accepts CheckResults")
         self.results.append(result)
+        self.owners.append(deepcopy(owner))
         return result
 
     def results_of(self, check_type: type[Check] | str) -> tuple[CheckResult, ...]:
@@ -262,14 +267,23 @@ class CheckRun(TaravObject, POIProvider):
     def pois(self) -> tuple[POI, ...]:
         return tuple(poi for result in self.results for poi in result.pois())
 
-# tarav.breadcrumb bca999d59f43a1bc5f8b0ebe247088e84742d9b07d7201cc54cb5bc150030b67
-    def incomplete(self) -> tuple[str, ...]:
-        """The Type names of the checks that did not run to completion.
+    def ran(self, owner: dict) -> None:
+        """Note that an owned suite ran, even when it holds no check now."""
+        if owner not in self.suites:
+            self.suites.append(deepcopy(owner))
 
-        Such a check says nothing about what it would have raised.
+# tarav.breadcrumb ad13f97a53d796a38c01b0eab94b1f7671b481d7ec946f901fbb236939da1c43
+    def groups(self) -> list[tuple[dict, tuple[CheckResult, ...]]]:
+        """The results of each owned suite that ran, in the order the suites ran.
+
+        A suite that ran and produced no result has an empty group. Results
+        that no owned suite produced are in no group.
         """
-        return tuple(dict.fromkeys(entity(type(result.check)).name for result in self.results
-                                   if result.status != "completed"))
+        found = {json.dumps(owner, sort_keys=True): (owner, []) for owner in self.suites}
+        for result, owner in zip(self.results, self.owners):
+            if owner is not None:
+                found.setdefault(json.dumps(owner, sort_keys=True), (owner, []))[1].append(result)
+        return [(owner, tuple(results)) for owner, results in found.values()]
 
     def findings(self) -> tuple[POI, ...]:
         """The POIs that stand as findings: every POI but those marked as not a failure."""
@@ -387,18 +401,28 @@ class CheckRun(TaravObject, POIProvider):
         }
 
 
+# tarav.breadcrumb bd06b988e162e226589d99af66360d1d8cabff4416e3467793331678eff4cc98
+# tarav.breadcrumb a99d78902f0b314cddb487a06fe912eb513c6d03a7b5da3a3a8b21534ac68802
 class CheckSuite(TaravObject):
-    """A source of checks or ready results; run() is its only full traversal."""
+    """A set of checks: a source of checks, nested suites or ready results.
+
+    `owner` says whose suite this is, as a plain description; a Project gives
+    its identity. This code gives it no meaning: a run only keeps, for each
+    result, the owner of the suite it came from. A nested suite without an
+    owner belongs to the suite that contains it.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("dc589b3c-9a16-4c3d-8338-50ab6304b2f3"),
                           name="Tarav.Checks.Suite", workflow=CHECKS_WORKFLOW_SHIP)
 
-    def __init__(self, source=(), *, name: str | None = None) -> None:
+    def __init__(self, source=(), *, name: str | None = None,
+                 owner: dict | None = None) -> None:
         super().__init__()
         self.source = source
         self.name = name
+        self.owner = owner
 
     @classmethod
     def of(cls, value) -> "CheckSuite":
@@ -418,11 +442,14 @@ class CheckSuite(TaravObject):
         if on_result is not None and not callable(on_result):
             raise TypeError("on_result must be callable")
 
-        def consume(suite: CheckSuite) -> None:
+        def consume(suite: CheckSuite, enclosing: dict | None) -> None:
+            owner = suite.owner if suite.owner is not None else enclosing
+            if suite.owner is not None:
+                run.ran(suite.owner)
             items = suite.source(run) if callable(suite.source) else suite.source
             for item in items:
                 if isinstance(item, CheckSuite):
-                    consume(item)
+                    consume(item, owner)
                     continue
                 if isinstance(item, CheckResult):
                     result = item
@@ -433,11 +460,11 @@ class CheckSuite(TaravObject):
                         result = CheckResult(item, status="failed", reason=f"{type(exc).__name__}: {exc}")
                 else:
                     raise TypeError("CheckSuite items must be Checks, suites or CheckResults")
-                run.add(result)
+                run.add(result, owner=owner)
                 if on_result is not None:
                     on_result(result)
 
-        consume(self)
+        consume(self, None)
         return run
 
 

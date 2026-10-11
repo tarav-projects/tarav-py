@@ -1,4 +1,8 @@
-"""CLI adapter for the Operator Context store."""
+"""CLI adapter for the Operator Context store.
+
+Each command builds one result. It is printed as a short readable text by
+default and in full with `--json`; both come from that same result.
+"""
 
 from __future__ import annotations
 
@@ -18,8 +22,14 @@ def _store(args) -> OperatorContextStore:
     return OperatorContextStore(registry)
 
 
-def _output(value) -> int:
-    print(json.dumps(value, indent=2, ensure_ascii=False))
+# tarav.breadcrumb d327cf8f91136c724a21dc15d37c17556f83668dae155e184dc1c9bf68f65ea6
+# tarav.breadcrumb 0836d4ab13e43fc8c9b6a13fafded10e3e9d49aa325c99038cfb557c10333a00
+def _emit(args, value: dict, render) -> int:
+    """Present one result: in full as JSON, or as the command's readable summary."""
+    if args.json:
+        print(json.dumps(value, indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(render(value)))
     return 0
 
 
@@ -79,13 +89,29 @@ def _cmd_put(args) -> int:
             raise CliError(f"{args.type} is not an Operator Context Type")
         context = context_type.new(project=_project(args.project), session=_session(), **fields)
     key = store.put(context)
-    return _output({"status": "ok", "id": key, "type": entity(type(context)).name,
-                    "store": str(store.map.root)})
+    return _emit(args, {"status": "ok", "id": key, "type": entity(type(context)).name,
+                        "store": str(store.map.root)},
+                 lambda value: [f"Placed {value['type']} {value['id']}"])
 
 
 def _cmd_show(args) -> int:
     intake = _store(args).take(args.id)
-    return _output({"status": "ok", "hash": intake.hash, "record": intake.record})
+
+    def render(value: dict) -> list[str]:
+        record = value["record"]
+        base = ("type", "id", "created_at", "project", "session")
+        lines = [f"{record['type']} {record['id']}", f"  placed {record['created_at']}"]
+        if record.get("project"):
+            lines.append(f"  project: {record['project'].get('root')}")
+        if record.get("session"):
+            lines.append(f"  session: {record['session'].get('provider')} "
+                         f"{record['session'].get('session_id')}")
+        lines.extend(f"  {key}: {json.dumps(item, ensure_ascii=False)}"
+                     for key, item in record.items() if key not in base)
+        lines.append(f"  hash of this record: {value['hash']}")
+        return lines
+
+    return _emit(args, {"status": "ok", "hash": intake.hash, "record": intake.record}, render)
 
 
 def _cmd_list(args) -> int:
@@ -98,7 +124,15 @@ def _cmd_list(args) -> int:
         rows.append({"id": name, "type": entity(type(context)).name,
                      "created_at": context.created_at, "project": context.project,
                      "session": context.session})
-    return _output({"status": "ok", "store": str(store.map.root), "objects": rows})
+
+    def render(value: dict) -> list[str]:
+        lines = [f"{len(value['objects'])} object(s) in {value['store']}"]
+        lines.extend(f"  {row['id']}  {row['type']}  {row['created_at']}"
+                     + (f"  session {row['session'].get('session_id')}" if row["session"] else "")
+                     for row in value["objects"])
+        return lines
+
+    return _emit(args, {"status": "ok", "store": str(store.map.root), "objects": rows}, render)
 
 
 def _cli(handler):
@@ -134,3 +168,5 @@ def register_operator_context_commands(subparsers) -> None:
 
     for command in (put, show, listing):
         command.add_argument("--registry", help="Record Registry root; defaults to the standard one.")
+        command.add_argument("--json", action="store_true",
+                             help="Print the full result as JSON instead of the summary.")

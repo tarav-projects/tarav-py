@@ -1,4 +1,4 @@
-"""A bench for tests: raise POIs under a suite and bless them through the Actions workflow."""
+"""A bench for tests: raise POIs in the run of an owned suite and bless them through Actions."""
 
 from __future__ import annotations
 
@@ -7,19 +7,21 @@ from datetime import datetime, timezone
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.actions import ACTIONS_WORKFLOW_SHIP, ActionRunStore, StepRunner
 from tarav.l1.actions.pois import POIActions, action_id
-from tarav.l1.actions.suites import Suite
 from tarav.l1.actions.blessing import BLESSED, Blessing, BlessingInput
+from tarav.l1.checks import Check, CheckResult, CheckRun
 from tarav.l1.operator_context import OperatorContextStore
 from tarav.l1.records import RecordRegistry
 
 TARGET = {"id": "bench", "name": "bench", "root": "/bench"}
 
 
-class BenchSuite(Suite):
+class BenchCheck(Check):
+    """Stands for whatever check raised the POIs handed to the bench."""
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("e4a90c1b-6f27-4d58-9b03-2c8d7e5f1a46"),
-                          name="Tarav.Test.Bench.Suite", workflow=ACTIONS_WORKFLOW_SHIP)
+                          name="Tarav.Test.Bench.Check", workflow=ACTIONS_WORKFLOW_SHIP)
 
 
 # tarav.breadcrumb 37944529d175a9df0e9a7957c4208bdf869bd89efc72c8d22bc61a40768392e0
@@ -32,17 +34,26 @@ class Bench:
         self.at = datetime.now(timezone.utc)
         self.runner = StepRunner(runs=self.runs, contexts=self.contexts,
                                  session=lambda: self.actor, now=lambda: self.at.isoformat())
-        self.suite = BenchSuite(self.runs, now=lambda: self.at.isoformat())
-        self.pois = POIActions(self.runs)
+        self.pois = POIActions(self.runs, now=lambda: self.at.isoformat())
+        self.raised: list = []
+
+    def produce(self, *pois) -> dict:
+        """One run of the bench suite that produces every POI raised so far, and these."""
+        self.raised.extend(pois)
+        run = CheckRun()
+        for poi in self.raised:
+            check = getattr(poi, "check", None) or BenchCheck()
+            run.add(CheckResult(check, status="completed", pois=[poi]), owner=TARGET)
+        return self.pois.resolve(run)
 
     def bless(self, poi, *, reason: str = "Reviewed.", support=(), at=None,
               actor: str | None = None) -> Blessing:
-        """Raise the POI under the bench suite and close its action with a blessing."""
+        """Produce the POI in a run of the bench suite and close its action with a blessing."""
         if at is not None:
             self.at = at
         if actor is not None:
             self.actor = {"provider": "example", "session_id": actor}
-        self.suite.settle([poi], target=TARGET, complete=False)
+        self.produce(poi)
         key = self.contexts.put(BlessingInput.new(reason=reason, support=list(support)))
         run = self.runner.close(str(action_id(poi)), key, exit=BLESSED)
         assert run.exit == BLESSED, run.data["closings"][-1]

@@ -81,7 +81,8 @@ class RootProject(Project):
             launch = ProjectLaunchConfiguration.from_path(path)
             if launch.environment != Path(sys.prefix).resolve():
                 return check
-            return CheckSuite.of(self.child(relative).checks.suite())
+            # tarav.breadcrumb cb92d76e1f46320d091af8cfedeebf7bf6b328d732e6b388968cd44459a3bd4f
+            return self.child(relative).suite  # the child's own suite, owned by the child
         except NotImplementedError as exc:
             return CheckResult(check, status="incomplete", reason=str(exc))
         except (CliError, TypeError, ValueError, LookupError) as exc:

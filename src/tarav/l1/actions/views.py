@@ -48,17 +48,19 @@ class POIActionContext(ContextFolder):
                 "standing": standing(subject), "axes": axes(subject),
                 "opened_at": data["opened_at"], "closed_at": data["closed_at"],
                 "first_opened_at": data["started_at"]}),
-                description="Three separate axes: whether the suite last saw the situation, "
-                            "whether the action is open, and the exit it closed by. A "
-                            "blessed action can have its situation present.")
+                description="Three separate axes: what the last run of the Project's suite "
+                            "says of the situation (present, absent, check failed), whether "
+                            "the action is open, and the exit it closed by. A blessed action "
+                            "can have its situation present.")
             builder.add("poi", opener=lambda: _value(event.get("poi")),
                         description="The POI as it was raised when this action last opened.")
-            builder.add("managed-by", opener=lambda: _value({
-                "suite": data.get("suite"), "target": data.get("project"),
-                "situation": data.get("situation"), "check": event.get("check")}),
-                description="The suite that manages this action and what it last saw. The "
-                            "suite closes the action as gone when a run of it on the same "
-                            "target no longer produces the POI.")
+            builder.add("project", opener=lambda: _value({
+                "project": data.get("project"), "situation": data.get("situation"),
+                "check": event.get("check")}),
+                description="The Project whose suite produces this POI, and what its last "
+                            "run says. The action closes as gone when a run of that "
+                            "Project's suite no longer produces the POI; a check that is "
+                            "present and failed leaves it as it is.")
             builder.add("closing", opener=lambda: _value(
                 data.get("closing") or "Not closed. A closing leaves a record of its own "
                 "Type here: a blessing keeps who blessed, why, and the evidence offered."),
@@ -72,7 +74,7 @@ class POIActionContext(ContextFolder):
                 f"tarav action close --run {run_id} --exit blessed --context <input id>",
                 "Blessing closes the action although the situation still exists; it needs a "
                 "reason, and the POI's Type has to allow it. `support` lists typed evidence "
-                "references. The exit `gone` belongs to the suite.",
+                "references. The exit `gone` is taken from a run of the Project's suite.",
                 "The skill module tarav-pkg/references/step-actions.md describes the loop."]),
                 description="The commands that act on this action.")
             builder.add("history", opener=lambda: _value(

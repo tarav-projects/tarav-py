@@ -1,4 +1,8 @@
-"""CLI adapter for Step actions and their runs."""
+"""CLI adapter for Step actions and their runs.
+
+Each command builds one result. It is printed as a short readable text by
+default and in full with `--json`; both come from that same result.
+"""
 
 from __future__ import annotations
 
@@ -21,9 +25,48 @@ def _runner(args) -> StepRunner:
     return StepRunner(runs=ActionRunStore(registry), contexts=OperatorContextStore(registry))
 
 
-def _output(value, code: int = 0) -> int:
-    print(json.dumps(value, indent=2, ensure_ascii=False))
+# tarav.breadcrumb 1ea07b83144bcb2238da113334351069a288c230af6885369e4962cf32e1d84d
+# tarav.breadcrumb a2d9d5a4e505423b4010ff8dff501c7d59a97ab5d3a53f21b6739a860dbf8f37
+def _emit(args, value: dict, render, code: int = 0) -> int:
+    """Present one result: in full as JSON, or as the command's readable summary."""
+    if args.json:
+        print(json.dumps(value, indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(render(value)))
     return code
+
+
+def _stands(row: dict) -> str:
+    axes = row["axes"]
+    stands = "open" if axes["action"] == "open" else f"closed ({axes['closing']})"
+    return stands + (f", situation {axes['situation']}" if axes["situation"] else "")
+
+
+def _about(row: dict) -> str:
+    poi = row.get("poi")
+    return f"{poi['type']}: {poi['message']}" if poi else row["action"]
+
+
+def _line(row: dict) -> str:
+    """One run in one line: its id, how it stands, and what it is about."""
+    return f"  {row['run']}  {_stands(row)}  {_about(row)}"
+
+
+def _poi_lines(pois: list[dict]) -> list[str]:
+    return [f"  {poi['type']}: {poi['message']}" for poi in pois]
+
+
+def _closing_lines(record: dict | None) -> list[str]:
+    if not record:
+        return []
+    lines = [f"Closing record: {record['type']} {record['id']}, by {record['by']} at {record['at']}"]
+    if record.get("reason"):
+        lines.append(f"  reason: {record['reason']}")
+    if record.get("support"):
+        lines.append(f"  support: {len(record['support'])} reference(s)")
+    if record.get("project"):
+        lines.append(f"  project: {record['project'].get('name')}")
+    return lines
 
 
 def _pois(rows: list[dict]) -> list[dict]:
@@ -36,7 +79,7 @@ def _row(run: ActionRun) -> dict:
     row = {"run": str(run.id), "action": data["action"], "state": run.state, "exit": run.exit,
            "started_at": data["started_at"], "closed_at": data["closed_at"],
            "project": data["project"], "sessions": len(data["sessions"]),
-           "axes": axes(run), "suite": (data.get("suite") or {}).get("name")}
+           "axes": axes(run)}
     poi = (data.get("event") or {}).get("poi")
     if poi:
         row["poi"] = {"id": poi.get("id"), "type": poi.get("type"), "message": poi.get("message")}
@@ -64,7 +107,20 @@ def _cmd_types(args) -> int:
                              "closing": entity(item.closing).name}
                             for item in action_type.exits]
         rows.append(row)
-    return _output({"status": "ok", "types": rows})
+
+    def render(value: dict) -> list[str]:
+        lines = []
+        for row in value["types"]:
+            lines.append(f"{row['type']}: {row['summary']}")
+            if "input" in row:
+                lines.append(f"  input: {row['input']}")
+                if row["operations"]:
+                    lines.append("  operations: " + ", ".join(row["operations"]))
+                lines.extend(f"  exit {item['name']}: by {' or '.join(item['by'])}, "
+                             f"leaves {item['closing']}" for item in row["exits"])
+        return lines or ["No Action Type is registered."]
+
+    return _emit(args, {"status": "ok", "types": rows}, render)
 
 
 # tarav.breadcrumb 250f9a54c802d27f7c66d23affbb1120a16fa5c1c22e97034c20edd4b54af5d7
@@ -77,7 +133,9 @@ def _cmd_start(args) -> int:
     result = {**_row(run), "opening": {"passed": run.data["opening"]["passed"],
                                        "pois": _pois(run.data["opening"]["results"])}}
     if run.state != RUNNING:
-        return _output({"status": "not-started", **result, "reason": run.data["reason"]}, 1)
+        return _emit(args, {"status": "not-started", **result, "reason": run.data["reason"]},
+                     lambda value: [f"Run {value['run']} did not start: {value['reason']}",
+                                    *_poi_lines(value["opening"]["pois"])], 1)
     skill = run.data["skill"]
     welcome = [f"Run {run.id} of {args.type} is running."]
     if skill:
@@ -91,12 +149,16 @@ def _cmd_start(args) -> int:
     welcome.append("Exits: " + ", ".join(
         f"{item.name} (by {' or '.join(item.by)})" for item in action_type.exits))
     welcome.append(f"Close it with: tarav action close --run {run.id}")
-    return _output({"status": "ok", **result, "skill": skill, "welcome": welcome})
+    return _emit(args, {"status": "ok", **result, "skill": skill, "welcome": welcome},
+                 lambda value: value["welcome"])
 
 
 def _cmd_do(args) -> int:
     run, result = _runner(args).operate(args.run, args.operation, args.context)
-    return _output({"status": "ok", **_row(run), "operation": args.operation, "result": result})
+    return _emit(args, {"status": "ok", **_row(run), "operation": args.operation,
+                        "result": result},
+                 lambda value: [f"Operation {value['operation']} done in run {value['run']}.",
+                                "  " + json.dumps(value["result"], ensure_ascii=False)])
 
 
 def _cmd_close(args) -> int:
@@ -105,32 +167,75 @@ def _cmd_close(args) -> int:
     result = {**_row(run), "closing": {"exit": attempt["exit"], "passed": attempt["passed"],
                                        "pois": _pois(attempt["results"])}}
     if run.state != CLOSED:
-        return _output({"status": "still-running", **result}, 1)
-    return _output({"status": "ok", **result, "output": run.data["output"],
-                    "record": run.data["closing"]})
+        return _emit(args, {"status": "still-running", **result},
+                     lambda value: [f"Run {value['run']} is still running: the exit "
+                                    f"{value['closing']['exit']} was refused.",
+                                    *_poi_lines(value["closing"]["pois"])], 1)
+    return _emit(args, {"status": "ok", **result, "output": run.data["output"],
+                        "record": run.data["closing"]},
+                 lambda value: [f"Run {value['run']} closed by the exit {value['exit']}.",
+                                *_closing_lines(value["record"])])
 
 
 def _cmd_sweep(args) -> int:
     closed = _runner(args).sweep()
-    return _output({"status": "ok", "closed": [_row(run) for run in closed]})
+    return _emit(args, {"status": "ok", "closed": [_row(run) for run in closed]},
+                 lambda value: [f"The sweep closed {len(value['closed'])} run(s).",
+                                *map(_line, value["closed"])])
 
 
 def _cmd_abort(args) -> int:
     run = _runner(args).abort(args.run, args.reason)
-    return _output({"status": "ok", **_row(run), "reason": run.data["reason"]})
+    return _emit(args, {"status": "ok", **_row(run), "reason": run.data["reason"]},
+                 lambda value: [f"Run {value['run']} aborted: {value['reason']}"])
 
 
 def _cmd_show(args) -> int:
     run = _runner(args).runs.load(args.run)
-    return _output({"status": "ok", "record": run.records.to_record()})
+
+    def render(value: dict) -> list[str]:
+        record, row = value["record"], value["summary"]
+        lines = [f"Run {row['run']} of {row['action']}", f"{_stands(row)}: {_about(row)}"]
+        if record["project"]:
+            lines.append(f"Project: {record['project'].get('name') or ''} "
+                         f"{record['project'].get('root')}".replace("  ", " "))
+        lines.append(f"First opened {record['started_at']}; opened {record['opened_at']}"
+                     + (f"; closed {record['closed_at']}" if record["closed_at"] else ""))
+        if record["reason"]:
+            lines.append(f"Reason: {record['reason']}")
+        lines.extend(_closing_lines(record.get("closing")))
+        lines.append(f"{len(record['intakes'])} input(s) taken, {len(record['sessions'])} "
+                     f"session(s), {len(record['operations'])} operation(s), "
+                     f"{len(record['closings'])} attempt(s) to close.")
+        lines.append(f"The full record: tarav action show --run {row['run']} --json")
+        return lines
+
+    return _emit(args, {"status": "ok", "summary": _row(run),
+                        "record": run.records.to_record()}, render)
 
 
 def _cmd_list(args) -> int:
     project = _project_root(args.project) if args.project else None
     runner = _runner(args)
     runs = runner.runs.list(state=args.state, exit=args.exit, project_root=project)
-    return _output({"status": "ok", "store": str(runner.runs.map.root),
-                    "runs": [_row(run) for run in runs]})
+
+    def render(value: dict) -> list[str]:
+        rows = value["runs"]
+        stands: dict[str, int] = {}
+        for row in rows:
+            key = "open" if row["axes"]["action"] == "open" else row["axes"]["closing"]
+            stands[key] = stands.get(key, 0) + 1
+        lines = [f"{len(rows)} run(s) in {value['store']}"
+                 + (": " + ", ".join(f"{count} {name}" for name, count in stands.items())
+                    if rows else "")]
+        lines.extend(map(_line, rows[:args.limit]))
+        if len(rows) > args.limit:
+            lines.append(f"  … {len(rows) - args.limit} more; raise --limit, or use --json "
+                         "for all of them in full.")
+        return lines
+
+    return _emit(args, {"status": "ok", "store": str(runner.runs.map.root),
+                        "runs": [_row(run) for run in runs]}, render)
 
 
 def _cli(handler):
@@ -187,7 +292,11 @@ def register_action_commands(subparsers) -> None:
     listing.add_argument("--exit", help="Only runs closed by this exit, or 'error'.")
     listing.add_argument("--project", nargs="?", const=".",
                          help="Only runs of the Project at or above this folder.")
+    listing.add_argument("--limit", type=int, default=20,
+                         help="How many runs the readable listing shows (default 20).")
     listing.set_defaults(handler=_cli(_cmd_list))
 
     for command in (types, start, do, close, sweep, abort, show, listing):
         command.add_argument("--registry", help="Record Registry root; defaults to the standard one.")
+        command.add_argument("--json", action="store_true",
+                             help="Print the full result as JSON instead of the summary.")

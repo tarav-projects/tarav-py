@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: designed.
+Status: implemented.
 
 Request 896 added a separate suite Type that manages POI actions, stamped
 with the Project a command started from. This request replaces it:
@@ -127,7 +127,8 @@ the command decides what to present.
 Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 `poi-system.md`, `daily/2026-10-11.md`. Skill module:
 `tarav-md/skills/tarav-pkg/references/step-actions.md`. Supporting session:
-`claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a`. Capture status: pending.
+`claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a`. Capture status: done
+(`poi-system.md`, daily note 2026-10-11).
 
 ## Execution.Plan
 
@@ -142,3 +143,53 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 ## Impl.Log
 
 - Designed 2026-10-11.
+- Start checkpoint: commit `0a2155f` (this note). 8 Breadcrumbs on it.
+- Checks: `CheckSuite(owner=)`; a nested suite without an owner belongs to
+  the suite that contains it. `CheckRun.add(result, owner=)`, `ran(owner)`,
+  `groups()`. An owned suite that ran with no result still has a group, so
+  a Project whose suite is now empty closes what it had. `CheckRun
+  .incomplete()` is removed.
+- Projects: `TaravProject.suite` (owner: `id`, `name`, `root`);
+  `project.checks.run()` runs it; the root nests `child.suite`.
+- Actions: `POIActions.resolve(check_run)` in two passes, first every
+  Project's produced POIs, then every Project's actions that no suite of the
+  run produced. `CHECK_FAILED` is the third situation. `GoneClosing` records
+  `project`. `ActionRunStore.write()` skips a record that already says the
+  same.
+- Removed: `tarav.l1.actions.suites`, `tarav.l1.project.suite`,
+  `tarav.l2.skw.suite`, the settling in the Skillware commands, the `suite`
+  field of an action.
+- Commands: `tarav check` prints "N raised now in M Project(s)". `tarav
+  action` rows no longer carry `suite`; the `poi-action` view has `project`
+  in place of `managed-by`.
+- Also in this commit, implemented just before the request: `tarav action`
+  and `tarav operator-context` print a readable summary by default and the
+  full result with `--json`, both from one result; `tarav action list` has
+  `--limit` for the summary.
+- Error found by the real run and fixed: I had the run drop the old `suite`
+  key from existing records. A record keeps unknown keys it was loaded
+  with, so nothing changed on disk and the commit of "no changes" failed,
+  which made a child's run print no actions line. The cleanup is removed;
+  records opened under request 896 keep a `suite` key that nothing reads.
+- Tests: 263 passed in the shared worktree; Ruff clean. New in
+  `tests/test_actions_workflow.py`: a check that is present and failed
+  leaves its action and says so; each Project resolves its own actions from
+  its own suite (container run, child alone, container without the child);
+  an action moves to the Project whose suite produces its POI; a run with no
+  owned suite resolves nothing; the commands in both output modes.
+- Real runs: `tarav check --project .` reported 51 POIs in 3 Projects and
+  moved the 51 open actions from the root to `tarav-md`, the Project whose
+  suite produces them. `tarav check --project tarav-md` alone then reported
+  the same 51 with no change, and `tarav action list --project tarav-md`
+  lists them. `tarav skw skills check` with a throwaway registry wrote
+  nothing.
+- Not verified on real data: a child-alone run closing an action, since no
+  real situation was fixed (existing POIs are left as they are). The tests
+  cover it.
+- Not committed with this request, as before: `src/tarav/l2/tests/actions.py`
+  and `tests/test_actions_pois.py`, adapted in the worktree.
+- Product Breadcrumbs: 9 new in code (`checks/__init__.py` 3,
+  `project/base.py` 1, `project/root.py` 1, `actions/pois.py` 3,
+  `l3/check.py` 1), 4 in `tests/test_actions_workflow.py`, 3 in
+  `ARCHITECTURE.md`; earlier in the day 2 each on the two command modules.
+  Moved labels refreshed.

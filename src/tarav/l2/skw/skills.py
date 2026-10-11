@@ -1,6 +1,5 @@
 """Explicit skill-package compilation and consumer deployment."""
 import re
-import sys
 import shutil
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -176,10 +175,6 @@ class SkwSkill(SkwDepot, CheckProvider):
         )
 
     def evaluate(self):
-        return self._evaluation()[0]
-
-    def _evaluation(self):
-        """The package's POIs, and whether every one of its checks could run."""
         raw_findings = self._check_without_reading()
         findings = [finding for finding in raw_findings
                     if finding.get('kind') not in FRESHNESS_KINDS]
@@ -190,8 +185,7 @@ class SkwSkill(SkwDepot, CheckProvider):
             for result in run_checks(self._checks(skip_unresolved_freshness=True)):
                 for poi in result.pois():
                     collector.emit(poi)
-            return collector, True
-        return collector, False
+        return collector
 
     def report(self, *, actions=None, **selection):
         return self.evaluate().report(actions=actions, **selection)
@@ -416,24 +410,6 @@ def _retain_skill_pois(package, collector) -> None:
     retain_presented_pois(collector.pois, kind="skill", name=root.name, root=root)
 
 
-# tarav.breadcrumb 95d4de1b83ac56c3f5132e946188a999764798693865190be5b665d2b70dea45
-def _settle_skill_suite(package, collector, complete: bool) -> None:
-    """Settle the Skillware suite with this evaluation; a failure there never fails the command.
-
-    This command is what says the evaluation is a run of the Skillware suite
-    on this package. An evaluation whose checks could not all run opens
-    actions and closes none.
-    """
-    from .suite import SkillwareSuite
-
-    root = Path(package.root).resolve()
-    try:
-        SkillwareSuite().settle(collector.pois, target={"name": root.name, "root": str(root)},
-                                complete=complete)
-    except Exception as exc:
-        print(f"POI actions were not updated: {type(exc).__name__}: {exc}", file=sys.stderr)
-
-
 def _command(args):
     try:
         root = project_root(args.project)
@@ -486,9 +462,8 @@ def _command(args):
     result = (package.deploy(args.destination) if args.skills_action == "deploy"
               else getattr(package, args.skills_action)())
     findings = result.get("findings", []) if isinstance(result, dict) else result
-    collector, complete = package._evaluation()
+    collector = package.evaluate()
     _retain_skill_pois(package, collector)
-    _settle_skill_suite(package, collector, complete)
     report = collector.report(
         actions=POIActions(), offset=args.offset, limit=args.limit,
         class_name=args.class_name, blessing=args.blessing_status)

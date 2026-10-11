@@ -106,7 +106,7 @@ class Exit:
     """One way a step can close: who may take it, and the Type of the record it leaves.
 
     An operator takes an exit with a command, the loop when the exit's tests
-    pass, and a suite when it settles the actions it manages.
+    pass, and a suite's run when it no longer produces what the action follows.
     """
 
     name: str
@@ -199,7 +199,6 @@ class ActionRun(TaravEntity, FileRecord):
         event: dict | None = None
         closing: dict | None = None
         situation: dict | None = None
-        suite: dict | None = None
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -269,18 +268,23 @@ class ActionRunStore:
     def __init__(self, registry: RecordRegistry | None = None) -> None:
         self.map = (registry or RecordRegistry()).for_workflow(ActionsWorkflow)
 
-    def write(self, run: ActionRun) -> str:
-        """Write one run without committing; `commit` records a batch of them."""
+    def write(self, run: ActionRun) -> str | None:
+        """Write one run without committing; `commit` records a batch of them.
+
+        Returns None when the stored record already says the same.
+        """
         self.map.create()
         key = str(run.id)
         if self.map.path(key).is_file():
+            if self.map.load(key).records.to_record() == run.records.to_record():
+                return None
             self.map.replace(key, run)
         else:
             self.map.insert(key, run)
         return key
 
-    def commit(self, keys: Iterable[str], message: str) -> None:
-        keys = tuple(dict.fromkeys(keys))
+    def commit(self, keys: Iterable[str | None], message: str) -> None:
+        keys = tuple(dict.fromkeys(key for key in keys if key is not None))
         if keys:
             self.map.commit(keys, message)
 
@@ -376,8 +380,9 @@ def close_run(action: StepAction, run: ActionRun, exit: str, *, by: str, at: str
 def axes(run: ActionRun) -> dict[str, str | None]:
     """The status of a run as separate axes: the situation, the action, the closing.
 
-    `situation` is what the managing suite last saw, when one manages the
-    run. `closing` is the exit the run closed by; its record has the detail.
+    `situation` is what the last run of the Project's suite says, for a run
+    that follows a POI. `closing` is the exit the run closed by; its record
+    has the detail.
     """
     return {"situation": (run.data.get("situation") or {}).get("state"),
             "action": OPEN if run.state == RUNNING else CLOSED,

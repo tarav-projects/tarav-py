@@ -43,6 +43,22 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
                                self.obj.agents.skills.checks.suite()],
                               name=self.obj.name)
 
+        def run(self, *, into=None, on_result=None):
+            """Run the Project's suite, so each result is known as this Project's."""
+            return self.obj.suite.run(into=into, on_result=on_result)
+
+    # tarav.breadcrumb 05bbd0b3c6138a816b20336bb8716198873b18650cc868710d9f2677d8857e80
+    @property
+    def suite(self) -> CheckSuite:
+        """This Project's suite: its current set of checks, identified by the Project.
+
+        It is where a Project's actions go to resolve their status: what a
+        run of it produces is what is happening now in this Project.
+        """
+        return CheckSuite([self.checks.suite()], name=self.name,
+                          owner={"id": str(self.id), "name": self.name,
+                                 "root": str(self.root)})
+
     @classmethod
     def loading_paths(cls) -> tuple[str, ...]:
         return (".tarav/project.json", "project.json")

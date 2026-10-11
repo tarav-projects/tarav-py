@@ -102,9 +102,9 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--level", choices=("line", "record", "context"), default="line",
                         help="POI detail level for rendered output.")
     parser.add_argument("--actions", choices=("write", "skip"), default="write",
-                        help="Settle the Projects suite with this run: open the action of "
-                             "each new POI and close those the suite no longer detects, "
-                             "or leave the actions untouched.")
+                        help="Resolve each Project's actions from this run of its suite: "
+                             "open the action of each new POI and close those no longer "
+                             "produced, or leave the actions untouched.")
     parser.set_defaults(handler=_check)
 
 
@@ -132,20 +132,19 @@ def _poi_actions():
 
 # tarav.breadcrumb 34c9e2e74fe85182ac56b7d7c1f9d8c1c2ec324bd808ac782fe4a82d6c6e4478
 # tarav.breadcrumb a5d57389a476154c5cd14d1c4942ff6d44660890e394ffada41543e0dfe9ce22
+# tarav.breadcrumb ed537ee28f417d13c7f74cb132e59c85d763dd12e9fb52fc5b6e835e0250b24e
 def _acted(project, run) -> dict[str, object] | None:
-    """Settle the Projects suite with this run; a failure there never fails the check.
+    """Resolve the Projects' actions from this run; a failure there never fails the check.
 
-    The checks only produced POIs. It is this caller that says the run is a
-    run of the Projects suite on this Project, as it decides to show and
-    retain the POIs.
+    The checks only produced POIs. The run knows which Project's suite each
+    result came from, and each Project's actions are resolved from its own
+    results.
     """
     try:
-        from tarav.l1.project.suite import ProjectsSuite
+        from tarav.l1.actions.pois import POIActions
 
-        target = {"id": str(project.id), "name": project.name, "root": str(project.root)}
-        result = ProjectsSuite().settle(run.pois(), target=target, incomplete=run.incomplete())
+        result = POIActions().resolve(run)
         return {**{key: value for key, value in result.items() if key != "signals"},
-                "suite": ProjectsSuite.reference(),
                 "closed": [signal.as_dict(detail=True) for signal in result["signals"]]}
     except Exception as exc:
         print(f"POI actions were not updated: {type(exc).__name__}: {exc}", file=sys.stderr)
@@ -153,7 +152,8 @@ def _acted(project, run) -> dict[str, object] | None:
 
 
 def _actions_text(acted: dict[str, object]) -> str:
-    lines = [f"POI actions: {acted['actions']} raised now; {acted['opened']} opened, "
+    lines = [f"POI actions: {acted['actions']} raised now in {len(acted['projects'])} "
+             f"Project(s); {acted['opened']} opened, "
              f"{acted['reopened']} reopened, {acted['gone']} closed as gone. "
              "List them with `tarav action list --project`."]
     lines.extend(f"  gone: {signal['message']}" for signal in acted["closed"])
