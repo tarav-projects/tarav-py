@@ -30,19 +30,39 @@ class SkwPOI(CheckPOI):
 
     @classmethod
     # tarav.breadcrumb 358f9776a4d31e8930d727fec6ccb95407790af6d2893c204b16cb9cb572cde9
-    def poi(cls, check, *, situation, details=None):
-        """Build one SKW POI. `details` holds what the analysis observed, the raw finding in it."""
+    def poi(cls, check, *, situation, details=None, where=None):
+        """Build one SKW POI. `details` holds what the analysis observed, the raw finding in it.
+
+        `where` names the place for a reader, when the finding itself only
+        has an internal id for it.
+        """
         details = details or {}
-        raw = details.get("finding", {})
-        # The class already states the kind; the lint key only supplies a fallback message.
-        message = (raw.get("detail") or raw.get("message") or raw.get("kind")
-                   or entity(cls).name.rsplit(".", 1)[-1])
         return cls(
             check,
-            str(message),
+            finding_message(details.get("finding", {}), entity(cls).name.rsplit(".", 1)[-1],
+                            where=where),
             situation=situation,
             details=details,
         )
+
+
+def finding_message(raw, fallback, *, where=None, lead=None):
+    """One line a reader can recognise: what was found, where, and what it points at.
+
+    The Type already states the kind; this says which one of that kind it is.
+    """
+    lead = lead or raw.get("kind") or fallback
+    if where is None:
+        where = ": ".join(str(raw[key]) for key in ("path", "block") if raw.get(key))
+    parts = [str(lead)]
+    if where:
+        parts.append(f"in {where}")
+    if raw.get("target"):
+        parts.append(f"to {raw['target']}")
+    detail = raw.get("detail") or raw.get("message")
+    if detail:
+        parts.append(f"({detail})")
+    return " ".join(parts)
 
 
 class SkwAnalysisCheck(Check):
@@ -103,7 +123,7 @@ class MissingContext(SkwPOI):
 
 
 class PathDependentContext(SkwPOI):
-    """path-dependent-context: inspect the retained evidence and owning check before acting."""
+    """path-dependent-context: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -116,7 +136,9 @@ class PathDependentContext(SkwPOI):
 
 
 class UnreachableBlock(SkwPOI):
-    """unreachable-block: inspect the retained evidence and owning check before acting."""
+    """A declared block that no reading path from the package's root reaches. It does not say
+    the block is wrong, only that a reader following the declared reading is never led to it.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -129,7 +151,7 @@ class UnreachableBlock(SkwPOI):
 
 
 class AttachmentCycle(SkwPOI):
-    """attachment-cycle: inspect the retained evidence and owning check before acting."""
+    """attachment-cycle: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -142,7 +164,7 @@ class AttachmentCycle(SkwPOI):
 
 
 class InclusionCycle(SkwPOI):
-    """inclusion-cycle: inspect the retained evidence and owning check before acting."""
+    """inclusion-cycle: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -155,7 +177,7 @@ class InclusionCycle(SkwPOI):
 
 
 class InvalidBlockReference(SkwPOI):
-    """invalid-block-reference: inspect the retained evidence and owning check before acting."""
+    """invalid-block-reference: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -168,7 +190,7 @@ class InvalidBlockReference(SkwPOI):
 
 
 class UndeclaredBlock(SkwPOI):
-    """undeclared-block: inspect the retained evidence and owning check before acting."""
+    """undeclared-block: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -181,7 +203,7 @@ class UndeclaredBlock(SkwPOI):
 
 
 class InvalidParent(SkwPOI):
-    """invalid-parent: inspect the retained evidence and owning check before acting."""
+    """invalid-parent: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -194,7 +216,7 @@ class InvalidParent(SkwPOI):
 
 
 class InvalidContextTarget(SkwPOI):
-    """invalid-context-target: inspect the retained evidence and owning check before acting."""
+    """invalid-context-target: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -207,7 +229,7 @@ class InvalidContextTarget(SkwPOI):
 
 
 class InvalidLoadingRoot(SkwPOI):
-    """invalid-loading-root: inspect the retained evidence and owning check before acting."""
+    """invalid-loading-root: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -220,7 +242,7 @@ class InvalidLoadingRoot(SkwPOI):
 
 
 class RootHasParent(SkwPOI):
-    """root-has-parent: inspect the retained evidence and owning check before acting."""
+    """root-has-parent: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -233,7 +255,7 @@ class RootHasParent(SkwPOI):
 
 
 class LoadingAnalysisIncomplete(SkwPOI):
-    """loading-analysis-incomplete: inspect the retained evidence and owning check before acting."""
+    """loading-analysis-incomplete: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -246,7 +268,7 @@ class LoadingAnalysisIncomplete(SkwPOI):
 
 
 class LoadingDeclarationStale(SkwPOI):
-    """loading-declaration-stale: inspect the retained evidence and owning check before acting."""
+    """loading-declaration-stale: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -259,7 +281,7 @@ class LoadingDeclarationStale(SkwPOI):
 
 
 class LoadingRenderError(SkwPOI):
-    """loading-render-error: inspect the retained evidence and owning check before acting."""
+    """loading-render-error: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -272,7 +294,7 @@ class LoadingRenderError(SkwPOI):
 
 
 class InvalidLoadingModel(SkwPOI):
-    """invalid-loading-model: inspect the retained evidence and owning check before acting."""
+    """invalid-loading-model: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -285,7 +307,7 @@ class InvalidLoadingModel(SkwPOI):
 
 
 class InvalidPublication(SkwPOI):
-    """invalid-publication: inspect the retained evidence and owning check before acting."""
+    """invalid-publication: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -298,7 +320,7 @@ class InvalidPublication(SkwPOI):
 
 
 class DuplicateOutput(SkwPOI):
-    """duplicate-output: inspect the retained evidence and owning check before acting."""
+    """duplicate-output: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -311,7 +333,7 @@ class DuplicateOutput(SkwPOI):
 
 
 class OutputNotDeployed(SkwPOI):
-    """output-not-deployed: inspect the retained evidence and owning check before acting."""
+    """output-not-deployed: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -324,7 +346,7 @@ class OutputNotDeployed(SkwPOI):
 
 
 class InvalidSource(SkwPOI):
-    """invalid-source: inspect the retained evidence and owning check before acting."""
+    """invalid-source: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -337,7 +359,7 @@ class InvalidSource(SkwPOI):
 
 
 class MissingConsumerFile(SkwPOI):
-    """missing-consumer-file: inspect the retained evidence and owning check before acting."""
+    """missing-consumer-file: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -350,7 +372,9 @@ class MissingConsumerFile(SkwPOI):
 
 
 class UnbundledLink(SkwPOI):
-    """unbundled-link: inspect the retained evidence and owning check before acting."""
+    """A file the package delivers links to a file inside the package that the package does not
+    list among its files.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -363,7 +387,7 @@ class UnbundledLink(SkwPOI):
 
 
 class UndeclaredConsumerLink(SkwPOI):
-    """undeclared-consumer-link: inspect the retained evidence and owning check before acting."""
+    """undeclared-consumer-link: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -376,7 +400,7 @@ class UndeclaredConsumerLink(SkwPOI):
 
 
 class MissingLinkTarget(SkwPOI):
-    """missing-link-target: inspect the retained evidence and owning check before acting."""
+    """missing-link-target: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -389,7 +413,7 @@ class MissingLinkTarget(SkwPOI):
 
 
 class MissingDependency(SkwPOI):
-    """missing-dependency: inspect the retained evidence and owning check before acting."""
+    """missing-dependency: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -402,7 +426,7 @@ class MissingDependency(SkwPOI):
 
 
 class PublicationUnresolvable(SkwPOI):
-    """publication-unresolvable: inspect the retained evidence and owning check before acting."""
+    """publication-unresolvable: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -415,7 +439,7 @@ class PublicationUnresolvable(SkwPOI):
 
 
 class PublicationStale(SkwPOI):
-    """publication-stale: inspect the retained evidence and owning check before acting."""
+    """publication-stale: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -428,7 +452,7 @@ class PublicationStale(SkwPOI):
 
 
 class PublicationDrift(SkwPOI):
-    """publication-drift: inspect the retained evidence and owning check before acting."""
+    """publication-drift: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -441,7 +465,7 @@ class PublicationDrift(SkwPOI):
 
 
 class ContextUnresolvable(SkwPOI):
-    """context-unresolvable: inspect the retained evidence and owning check before acting."""
+    """context-unresolvable: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -537,7 +561,7 @@ def generation_context_resolution_checks(package, *, documents=None):
 
 
 class ContextUnobserved(SkwPOI):
-    """context-unobserved: inspect the retained evidence and owning check before acting."""
+    """context-unobserved: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -567,7 +591,7 @@ class StaleContext(SkwPOI, BlessablePOI):
 
 
 class MissingOutput(SkwPOI):
-    """missing-output: inspect the retained evidence and owning check before acting."""
+    """missing-output: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -580,7 +604,7 @@ class MissingOutput(SkwPOI):
 
 
 class InvalidInput(SkwPOI):
-    """invalid-input: inspect the retained evidence and owning check before acting."""
+    """invalid-input: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -611,7 +635,9 @@ class StaleGeneration(SkwPOI, BlessablePOI):
 
 
 class OutputChanged(SkwPOI):
-    """output-changed: inspect the retained evidence and owning check before acting."""
+    """A block's content no longer matches the output recorded for its generation: it was edited
+    after that generation was recorded.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -624,7 +650,7 @@ class OutputChanged(SkwPOI):
 
 
 class InvalidAnnotation(SkwPOI):
-    """invalid-annotation: inspect the retained evidence and owning check before acting."""
+    """invalid-annotation: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -637,7 +663,7 @@ class InvalidAnnotation(SkwPOI):
 
 
 class SourceUncompiled(SkwPOI):
-    """source-uncompiled: inspect the retained evidence and owning check before acting."""
+    """source-uncompiled: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -650,7 +676,7 @@ class SourceUncompiled(SkwPOI):
 
 
 class ProductUnavailable(SkwPOI):
-    """product-unavailable: inspect the retained evidence and owning check before acting."""
+    """product-unavailable: open its action to see the finding and the check that raised it."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -663,7 +689,9 @@ class ProductUnavailable(SkwPOI):
 
 
 class ProductDrift(SkwPOI):
-    """product-drift: inspect the retained evidence and owning check before acting."""
+    """A compiled file no longer matches what its source produces: the file was edited by hand,
+    or the source changed without a build.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -706,7 +734,7 @@ def _freshness_result(check, *, poi_type, kind, message, baseline_key, current_k
     }
     poi = check.poi(
         poi_type,
-        message=message,
+        message=finding_message(finding, kind, lead=message.rstrip(".")),
         details=evidence,
     )
     return CheckResult(check, status="completed", pois=(poi,))

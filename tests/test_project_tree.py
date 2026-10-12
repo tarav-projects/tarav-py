@@ -250,10 +250,10 @@ def test_a_root_sees_the_actions_of_the_projects_it_lists(tree: Path, in_root_en
     args = parser.parse_args(["action", "list", "--project", str(tree), "--json"])
     args.handler(args)
     listed = json.loads(capsys.readouterr().out)
-    assert len(listed["runs"]) == len(seen) and set(listed["projects"]) == roots(".", "a", "b")
+    assert len(listed["actions"]) == len(seen) and set(listed["projects"]) == roots(".", "a", "b")
     args = parser.parse_args(["action", "list", "--project", str(tree), "--own", "--json"])
     args.handler(args)
-    assert len(json.loads(capsys.readouterr().out)["runs"]) == len(root.actions.list(own=True))
+    assert len(json.loads(capsys.readouterr().out)["actions"]) == len(root.actions.list(own=True))
     args = parser.parse_args(["action", "list", "--project", str(tree)])
     args.handler(args)
     out = capsys.readouterr().out

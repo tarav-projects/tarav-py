@@ -837,7 +837,7 @@ def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry,
     assert runner.close(str(action_id(lamp)), reason, exit=BLESSED).exit == BLESSED
     assert report_project_status(home) == 1  # the plain finding is still open
     out = capsys.readouterr().out
-    assert f"{tmp_path.name}: 1 open actions" in out and "Changed in this run: nothing" in out
+    assert f"{tmp_path.name}: 1 open action" in out and "Changed in this run: nothing" in out
     assert "  1  POI 1  (1 blessed)" in out  # the open one by Type, the blessed one counted
 
     # all that is raised is blessed; the checks no longer produce the flags POI, so it is gone
@@ -873,12 +873,12 @@ def test_commands_print_a_summary_by_default_and_the_full_result_as_json(
     assert code == 0 and text.splitlines()[0].endswith(": 1 open")
     assert f"  {key}  open, situation present  Tarav.Test.Actions.LampOn: hall is on at 3" in text
     code, dumped = run("action", "list", "--json")
-    row = json.loads(dumped)["runs"][0]  # the same result, in full
-    assert (row["run"], row["axes"]["action"], row["poi"]["id"]) == (key, "open", lamp.identity)
+    row = json.loads(dumped)["actions"][0]  # the same result, in full
+    assert (row["id"], row["axes"]["action"], row["poi"]["id"]) == (key, "open", lamp.identity)
 
     _, placed = run("operator-context", "put", "--type", "Tarav.Blessings.Input",
                     "--data", '{"reason": " "}', "--json")
-    code, text = run("action", "close", "--run", key, "--exit", "blessed",
+    code, text = run("action", "close", "--id", key, "--exit", "blessed",
                      "--context", json.loads(placed)["id"])
     assert code == 1 and "is still running: the exit blessed was refused." in text
     assert "Tarav.Blessings.WithoutReason: The blessing input gives no reason" in text
@@ -888,13 +888,44 @@ def test_commands_print_a_summary_by_default_and_the_full_result_as_json(
     assert text.startswith("Placed Tarav.Blessings.Input ")
     context = text.split()[-1]
     assert '  reason: "Stays on at night."' in run("operator-context", "show", "--id", context)[1]
-    code, text = run("action", "close", "--run", key, "--exit", "blessed", "--context", context)
-    assert code == 0 and f"Run {key} closed by the exit blessed." in text
+    code, text = run("action", "close", "--id", key, "--exit", "blessed", "--context", context)
+    assert code == 0 and f"Action {key} closed by the exit blessed." in text
     assert "Closing record: Tarav.Blessings.Blessing" in text and "reason: Stays on at night." in text
 
-    _, text = run("action", "show", "--run", key)
+    _, text = run("action", "show", "--id", key)
     assert "closed (blessed), situation present: Tarav.Test.Actions.LampOn" in text
-    shown = json.loads(run("action", "show", "--run", key, "--json")[1])
+    shown = json.loads(run("action", "show", "--id", key, "--json")[1])
     assert shown["record"]["closing"]["reason"] == "Stays on at night."
     assert shown["summary"]["axes"]["closing"] == "blessed"
     assert "exit blessed: by operator, leaves Tarav.Blessings.Blessing" in run("action", "types")[1]
+
+
+def test_an_action_shows_its_poi_as_it_is_raised_now(stores):
+    class Counted(LampCheck):
+        """The same lamp, seen with a detail that is not part of its situation."""
+
+        def __init__(self, lamp, level, seen):
+            super().__init__(lamp, level)
+            self.seen = seen
+
+        @classmethod
+        def class_entity(cls) -> TaravClass:
+            return TaravClass(target=cls, id=TypeShip("d9a5c3e0-7fb4-4128-8c6d-3e8a1f0b9275"),
+                              name="Tarav.Test.Actions.Counted", workflow=ACTIONS_WORKFLOW_SHIP)
+
+        def _run(self) -> CheckResult:
+            return CheckResult(self, status="completed", pois=(LampOn(
+                self, f"{self.lamp} is on, seen {self.seen} times",
+                situation=self.situation.to_json_value(), details={"seen": self.seen}),))
+
+    def raised(seen):
+        return stores.update(HOME, CheckSuite([Counted("hall", 3, seen)]).run())
+
+    first = raised(1)
+    key = next(iter(run.id for run in stores.runs.list()))
+    assert first["opened"] == 1
+    again = raised(2)  # the same situation, other words and details
+    assert (again["opened"], again["updated"], again["changes"]) == (0, 1, [])
+    shown = stores.runs.load(str(key)).data["event"]["poi"]
+    assert shown["message"] == "hall is on, seen 2 times" and shown["details"] == {"seen": 2}
+    assert raised(2)["updated"] == 0  # nothing new to say

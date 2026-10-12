@@ -47,6 +47,8 @@ class ReadingGraphCheck(Check):
                     "check": {"type": entity(type(self)).name},
                     "loading": str(self.graph.source),
                     "surface_state": surface_state(self.graph.package)}
+        # a reader knows a block by its document and label, not by its node id
+        where = f"{binding[0].key}: {binding[1].label}" if binding else None
         return cls.poi(
             self,
             situation={
@@ -54,6 +56,7 @@ class ReadingGraphCheck(Check):
                 "surface_state": evidence["surface_state"],
             },
             details=evidence,
+            where=where,
         )
 
     def _result(self, analysis, findings):

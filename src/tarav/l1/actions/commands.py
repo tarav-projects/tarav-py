@@ -1,4 +1,4 @@
-"""CLI adapter for Step actions and their runs.
+"""CLI adapter for Step actions: start, work, close and list them.
 
 Each command builds one result. It is printed as a short readable text by
 default and in full with `--json`; both come from that same result.
@@ -48,9 +48,9 @@ def _about(row: dict) -> str:
 
 
 def _line(row: dict, project: bool = False) -> str:
-    """One run in one line: its id, its Project when several are listed, how it stands, what it is about."""
+    """One action in one line: its id, its Project when several are listed, how it stands, what it is about."""
     where = f"{(row.get('project') or {}).get('name') or '-'}  " if project else ""
-    return f"  {row['run']}  {where}{_stands(row)}  {_about(row)}"
+    return f"  {row['id']}  {where}{_stands(row)}  {_about(row)}"
 
 
 def _poi_lines(pois: list[dict]) -> list[str]:
@@ -77,7 +77,7 @@ def _pois(rows: list[dict]) -> list[dict]:
 
 def _row(run: ActionRun) -> dict:
     data = run.data
-    row = {"run": str(run.id), "action": data["action"], "state": run.state, "exit": run.exit,
+    row = {"id": str(run.id), "action": data["action"], "state": run.state, "exit": run.exit,
            "started_at": data["started_at"], "closed_at": data["closed_at"],
            "project": data["project"], "sessions": len(data["sessions"]),
            "axes": axes(run)}
@@ -126,7 +126,7 @@ def _cmd_types(args) -> int:
 
 # tarav.breadcrumb 250f9a54c802d27f7c66d23affbb1120a16fa5c1c22e97034c20edd4b54af5d7
 def _cmd_start(args) -> int:
-    """Start a run and tell the operator where its instructions are."""
+    """Start an action and tell the operator where its instructions are."""
     action_type = resolve_action(args.type)
     if not issubclass(action_type, StepAction):
         raise CliError(f"{args.type} is not a Step action")
@@ -135,68 +135,68 @@ def _cmd_start(args) -> int:
                                        "pois": _pois(run.data["opening"]["results"])}}
     if run.state != RUNNING:
         return _emit(args, {"status": "not-started", **result, "reason": run.data["reason"]},
-                     lambda value: [f"Run {value['run']} did not start: {value['reason']}",
+                     lambda value: [f"Action {value['id']} did not start: {value['reason']}",
                                     *_poi_lines(value["opening"]["pois"])], 1)
     skill = run.data["skill"]
-    welcome = [f"Run {run.id} of {args.type} is running."]
+    welcome = [f"Action {run.id} of {args.type} is running."]
     if skill:
         welcome.append(f"Load the skill {skill['skill']!r}"
                        + (f", module {skill['path']!r}" if skill["path"] else "")
                        + " for what this step asks of you.")
     if action_type.operations:
         welcome.append("Operations: " + ", ".join(
-            f"tarav action do --run {run.id} --operation {name}"
+            f"tarav action do --id {run.id} --operation {name}"
             for name in action_type.operations))
     welcome.append("Exits: " + ", ".join(
         f"{item.name} (by {' or '.join(item.by)})" for item in action_type.exits))
-    welcome.append(f"Close it with: tarav action close --run {run.id}")
+    welcome.append(f"Close it with: tarav action close --id {run.id}")
     return _emit(args, {"status": "ok", **result, "skill": skill, "welcome": welcome},
                  lambda value: value["welcome"])
 
 
 def _cmd_do(args) -> int:
-    run, result = _runner(args).operate(args.run, args.operation, args.context)
+    run, result = _runner(args).operate(args.id, args.operation, args.context)
     return _emit(args, {"status": "ok", **_row(run), "operation": args.operation,
                         "result": result},
-                 lambda value: [f"Operation {value['operation']} done in run {value['run']}.",
+                 lambda value: [f"Operation {value['operation']} done in action {value['id']}.",
                                 "  " + json.dumps(value["result"], ensure_ascii=False)])
 
 
 def _cmd_close(args) -> int:
-    run = _runner(args).close(args.run, args.context, exit=args.exit)
+    run = _runner(args).close(args.id, args.context, exit=args.exit)
     attempt = run.data["closings"][-1]
     result = {**_row(run), "closing": {"exit": attempt["exit"], "passed": attempt["passed"],
                                        "pois": _pois(attempt["results"])}}
     if run.state != CLOSED:
         return _emit(args, {"status": "still-running", **result},
-                     lambda value: [f"Run {value['run']} is still running: the exit "
+                     lambda value: [f"Action {value['id']} is still running: the exit "
                                     f"{value['closing']['exit']} was refused.",
                                     *_poi_lines(value["closing"]["pois"])], 1)
     return _emit(args, {"status": "ok", **result, "output": run.data["output"],
                         "record": run.data["closing"]},
-                 lambda value: [f"Run {value['run']} closed by the exit {value['exit']}.",
+                 lambda value: [f"Action {value['id']} closed by the exit {value['exit']}.",
                                 *_closing_lines(value["record"])])
 
 
 def _cmd_sweep(args) -> int:
     closed = _runner(args).sweep()
     return _emit(args, {"status": "ok", "closed": [_row(run) for run in closed]},
-                 lambda value: [f"The sweep closed {len(value['closed'])} run(s).",
+                 lambda value: [f"The sweep closed {len(value['closed'])} action(s).",
                                 *map(_line, value["closed"])])
 
 
 def _cmd_abort(args) -> int:
-    run = _runner(args).abort(args.run, args.reason)
+    run = _runner(args).abort(args.id, args.reason)
     return _emit(args, {"status": "ok", **_row(run), "reason": run.data["reason"]},
-                 lambda value: [f"Run {value['run']} aborted: {value['reason']}"])
+                 lambda value: [f"Action {value['id']} aborted: {value['reason']}"])
 
 
 def _cmd_show(args) -> int:
-    run = _runner(args).runs.load(args.run)
+    run = _runner(args).runs.load(args.id)
 
     def render(value: dict) -> list[str]:
         record, row = value["record"], value["summary"]
-        lines = [f"Run {row['run']} of {row['action']}", f"{_stands(row)}: {_about(row)}"]
+        lines = [f"Action {row['id']} of {row['action']}", f"{_stands(row)}: {_about(row)}"]
         if record["project"]:
             lines.append(f"Project: {record['project'].get('name') or ''} "
                          f"{record['project'].get('root')}".replace("  ", " "))
@@ -208,7 +208,7 @@ def _cmd_show(args) -> int:
         lines.append(f"{len(record['intakes'])} input(s) taken, {len(record['sessions'])} "
                      f"session(s), {len(record['operations'])} operation(s), "
                      f"{len(record['closings'])} attempt(s) to close.")
-        lines.append(f"The full record: tarav action show --run {row['run']} --json")
+        lines.append(f"The full record: tarav action show --id {row['id']} --json")
         return lines
 
     return _emit(args, {"status": "ok", "summary": _row(run),
@@ -226,12 +226,12 @@ def _cmd_list(args) -> int:
     runs = runner.runs.list(state=args.state, exit=args.exit, project_root=roots)
 
     def render(value: dict) -> list[str]:
-        rows = value["runs"]
+        rows = value["actions"]
         stands: dict[str, int] = {}
         for row in rows:
             key = "open" if row["axes"]["action"] == "open" else row["axes"]["closing"]
             stands[key] = stands.get(key, 0) + 1
-        lines = [f"{len(rows)} run(s) in {value['store']}"
+        lines = [f"{len(rows)} action(s) in {value['store']}"
                  + (": " + ", ".join(f"{count} {name}" for name, count in stands.items())
                     if rows else "")]
         several = len(value["projects"] or ()) > 1
@@ -251,7 +251,7 @@ def _cmd_list(args) -> int:
 
     return _emit(args, {"status": "ok", "store": str(runner.runs.map.root),
                         "projects": list(roots) if roots is not None else None,
-                        "runs": [_row(run) for run in runs]}, render)
+                        "actions": [_row(run) for run in runs]}, render)
 
 
 def _cli(handler):
@@ -265,7 +265,7 @@ def _cli(handler):
 
 def register_action_commands(subparsers) -> None:
     parser = subparsers.add_parser(
-        "action", help="Start, work and close typed Actions; list their runs.")
+        "action", help="Start, work and close typed Actions; list them.")
     commands = parser.add_subparsers(dest="action_command", required=True)
 
     types = commands.add_parser("types", help="List the Action Types that can be started.")
@@ -278,41 +278,41 @@ def register_action_commands(subparsers) -> None:
     start.set_defaults(handler=_cli(_cmd_start))
 
     do = commands.add_parser("do", help="Do one operation of a running Step action.")
-    do.add_argument("--run", required=True)
+    do.add_argument("--id", required=True, help="The action's id.")
     do.add_argument("--operation", required=True)
-    do.add_argument("--context", help="Operator Context input; defaults to the run's last one.")
+    do.add_argument("--context", help="Operator Context input; defaults to the action's last one.")
     do.set_defaults(handler=_cli(_cmd_do))
 
     close = commands.add_parser(
-        "close", help="Take one exit; the run closes only when that exit's tests pass.")
-    close.add_argument("--run", required=True)
+        "close", help="Take one exit; the action closes only when that exit's tests pass.")
+    close.add_argument("--id", required=True, help="The action's id.")
     close.add_argument("--exit", help="Which exit; needed when the action offers several.")
-    close.add_argument("--context", help="Operator Context input; defaults to the run's last one.")
+    close.add_argument("--context", help="Operator Context input; defaults to the action's last one.")
     close.set_defaults(handler=_cli(_cmd_close))
 
     sweep = commands.add_parser(
-        "sweep", help="Close the running runs whose loop-taken exit is met.")
+        "sweep", help="Close the running actions whose loop-taken exit is met.")
     sweep.set_defaults(handler=_cli(_cmd_sweep))
 
-    abort = commands.add_parser("abort", help="Close a running run with an error.")
-    abort.add_argument("--run", required=True)
+    abort = commands.add_parser("abort", help="Close a running action with an error.")
+    abort.add_argument("--id", required=True, help="The action's id.")
     abort.add_argument("--reason", required=True)
     abort.set_defaults(handler=_cli(_cmd_abort))
 
-    show = commands.add_parser("show", help="Show one run's full record.")
-    show.add_argument("--run", required=True)
+    show = commands.add_parser("show", help="Show one action's full record.")
+    show.add_argument("--id", required=True, help="The action's id.")
     show.set_defaults(handler=_cli(_cmd_show))
 
-    listing = commands.add_parser("list", help="List runs, newest first.")
+    listing = commands.add_parser("list", help="List actions, newest first.")
     listing.add_argument("--state", choices=("running", "closed"))
-    listing.add_argument("--exit", help="Only runs closed by this exit, or 'error'.")
+    listing.add_argument("--exit", help="Only actions closed by this exit, or 'error'.")
     listing.add_argument("--project", nargs="?", const=".",
-                         help="Only runs of the Project at or above this folder and of the "
+                         help="Only actions of the Project at or above this folder and of the "
                               "Projects it lists as children.")
     listing.add_argument("--own", action="store_true",
-                         help="With --project: leave the children's runs out.")
+                         help="With --project: leave the children's actions out.")
     listing.add_argument("--limit", type=int, default=20,
-                         help="How many runs the readable listing shows (default 20).")
+                         help="How many actions the readable listing shows (default 20).")
     listing.set_defaults(handler=_cli(_cmd_list))
 
     for command in (types, start, do, close, sweep, abort, show, listing):

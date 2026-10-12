@@ -92,7 +92,8 @@ def status_text(result: dict, *, limit: int = 20) -> str:
     """The readable form: what is open first, then what changed, then where to look."""
     projects = result["projects"]
     many = len(projects) > 1
-    lines = [f"{result['project']['name']}: {result['open']} open actions"
+    lines = [f"{result['project']['name']}: {result['open']} open "
+             f"action{'' if result['open'] == 1 else 's'}"
              + (f" in {len(projects)} Projects" if many else "")]
     lines.extend(check_header(result["checks"], pois=False))
     lines.append("")

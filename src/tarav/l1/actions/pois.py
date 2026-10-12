@@ -114,7 +114,7 @@ class POIResolutionAction(StepAction):
         event, key = run.data["event"], str(run.id)
         source = event["source"]
         builder.add("poi", opener=lambda: _detail(event["poi"]),
-                    description="The POI as it was raised when this action last opened.")
+                    description="The POI as it was last raised.")
         builder.add("poi-type", opener=lambda: _detail(source["poi_type"]),
                     description="What this kind of POI is, and where its class is defined.")
         builder.add("raised-by", opener=lambda: _detail(source["raised_by"]),
@@ -134,7 +134,7 @@ class POIResolutionAction(StepAction):
         builder.add("acting", opener=lambda: _detail([
             "tarav operator-context put --type Tarav.Blessings.Input "
             "--data '{\"reason\": \"<why>\", \"support\": []}'",
-            f"tarav action close --run {key} --exit blessed --context <input id>",
+            f"tarav action close --id {key} --exit blessed --context <input id>",
             "Blessing closes the action although the situation still exists; it needs a "
             "reason, and the POI's Type has to allow it. `support` lists typed evidence "
             "references. The exit `gone` is taken from a run of the Project's checks.",
@@ -175,10 +175,10 @@ class POIResolutionAction(StepAction):
             poi, chain = found
             change = None
             fresh = _event(poi, chain)
-            if (event.get("blessable"), event.get("suites")) != (
-                    fresh["blessable"], fresh["suites"]):
-                run.data["event"] = {**event, "blessable": fresh["blessable"],
-                                     "suites": fresh["suites"]}
+            if _shown(event) != _shown(fresh):
+                # the same POI, raised again with other words or other details:
+                # the action shows the POI as it is raised now
+                run.data["event"] = event = fresh
                 change = "updated"
             if situation != PRESENT:
                 run.data["situation"] = {"state": PRESENT, "at": update.at}
@@ -257,6 +257,15 @@ def _event(poi: SituationPOI, suites: tuple[dict, ...] = ()) -> dict:
             "suites": [dict(suite) for suite in suites],
             # what the POI's Type says, kept here because the POI itself is momentary
             "source": {key: described[key] for key in ("poi_type", "raised_by", "notes")}}
+
+
+def _shown(event: dict) -> dict:
+    """An event without where its Types are defined in the code, which is not about the POI."""
+    poi = {key: value for key, value in (event.get("poi") or {}).items() if key != "help"}
+    source = {key: ({k: v for k, v in value.items() if k not in ("source_path", "source_line")}
+                    if isinstance(value, dict) else value)
+              for key, value in (event.get("source") or {}).items()}
+    return {**event, "poi": poi, "source": source}
 
 
 def _suite_key(identity: dict) -> tuple:
