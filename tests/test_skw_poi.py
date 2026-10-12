@@ -176,3 +176,34 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
     assert changed_generation.identity != generation.identity
     assert bench.pois.standing(changed_generation) == "open"
     assert any(isinstance(poi, StaleContext) for poi in changed)
+
+
+# tarav.breadcrumb 7f528a5c259b365f5e59cb23ce3be218a54766baf7d0e473f2d2379ef58c5d8f
+def test_the_package_suite_detects_what_the_skill_command_shows(tmp_path):
+    from tarav.l2.skw.pois import ProductDrift, UnbundledLink
+
+    source, data = _document_source(tmp_path)
+    data["blocks"][1]["content"] = ["The program prints one."]
+    source.write_text(json.dumps(data))
+    (tmp_path / "context.txt").write_text("available")
+    assert Document(source).compile()["written"]
+    skill = _skill(tmp_path)
+
+    def kinds(pois):
+        return sorted(type(poi).__name__ for poi in pois)
+
+    before = skill.checks.run().pois()
+    assert not any(isinstance(poi, (ProductDrift, UnbundledLink)) for poi in before)
+
+    # a hand edit of the compiled file: a line the source does not have, and a
+    # link to a file the package does not bundle
+    product = tmp_path / "explanation.md"
+    (tmp_path / "extra.md").write_text("# Extra\n")
+    product.write_text(product.read_text() + "\nSee [extra](extra.md).\n")
+
+    found = skill.checks.run().pois()
+    assert any(isinstance(poi, ProductDrift) for poi in found)
+    assert any(isinstance(poi, UnbundledLink) for poi in found)
+    # the suite a Project runs and the skill command agree on what they find
+    assert kinds(found) == kinds(skill.evaluate().pois)
+    assert skill.checks.suite().identity == {"type": "Tarav.Checks.Suite", "key": tmp_path.name}

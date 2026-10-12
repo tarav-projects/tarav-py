@@ -45,7 +45,7 @@ def status_result(status) -> dict:
     acted = status.acted()
     projects = []
     for found in status.each():
-        runs = found.project.actions.list()
+        runs = found.project.actions.list(own=True)
         kinds = Counter(((run.data.get("event") or {}).get("poi") or {}).get("type")
                         or run.data["action"] for run in runs if run.state == RUNNING)
         projects.append({

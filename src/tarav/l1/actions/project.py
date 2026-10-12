@@ -41,9 +41,18 @@ class ProjectActions:
     def for_project(cls, project, runs: ActionRunStore | None = None) -> "ProjectActions":
         return cls({"id": project.id, "name": project.name, "root": project.root}, runs)
 
-    def list(self, *, state: str | None = None) -> list[ActionRun]:
-        """The actions registered under this Project, newest first."""
-        return self.runs.list(state=state, project_root=self.project["root"])
+    # tarav.breadcrumb 336868a1e89c9f58f6cdf9c7c60fbfef6e13cd94e8afa3ac093a31bbbb18c0f2
+    def list(self, *, state: str | None = None, own: bool = False) -> list[ActionRun]:
+        """The actions this Project can see, newest first.
+
+        A Project sees its own actions and those of the Projects it lists as
+        children; each action still belongs to the Project it is registered
+        under, which its record names. `own` leaves the children out.
+        """
+        from tarav.l1.project.scope import project_scope
+
+        roots = (self.project["root"],) if own else project_scope(self.project["root"])
+        return self.runs.list(state=state, project_root=roots)
 
     # tarav.breadcrumb cedddeb57d590fc2537bbcc49eb1fe8dc4b2772b6db38749ef34405862beea65
     def of(self, poi: POI) -> ActionRun | None:
@@ -79,7 +88,7 @@ class ProjectActions:
         """
         at = at if at is not None else self._now()
         changed: dict[str, ActionRun] = {}
-        known = {str(run.id) for run in self.list()}
+        known = {str(run.id) for run in self.list(own=True)}
         for chain, result in checks.walk():
             for poi in raised(result.pois()):
                 key = str(action_id(poi))
@@ -97,14 +106,14 @@ class ProjectActions:
 
     def refresh(self, checks: CheckSuite, *, at: str | None = None,
                 registered: dict[str, ActionRun] | None = None) -> tuple[dict, ChecksUpdate]:
-        """Pass the results to every action registered here, open or closed.
+        """Pass the results to every action registered under this Project, open or closed.
 
         `registered` are actions `start` just registered and did not write.
         Returns what each changed action says it did, by id, and the update
         with the signals the actions raised.
         """
         update = ChecksUpdate(checks, self.project, at if at is not None else self._now())
-        runs = {**{str(run.id): run for run in self.list()}, **(registered or {})}
+        runs = {**{str(run.id): run for run in self.list(own=True)}, **(registered or {})}
         changes: dict[str, tuple[ActionRun, str]] = {}
         for key, run in runs.items():
             try:

@@ -47,9 +47,10 @@ def _about(row: dict) -> str:
     return f"{poi['type']}: {poi['message']}" if poi else row["action"]
 
 
-def _line(row: dict) -> str:
-    """One run in one line: its id, how it stands, and what it is about."""
-    return f"  {row['run']}  {_stands(row)}  {_about(row)}"
+def _line(row: dict, project: bool = False) -> str:
+    """One run in one line: its id, its Project when several are listed, how it stands, what it is about."""
+    where = f"{(row.get('project') or {}).get('name') or '-'}  " if project else ""
+    return f"  {row['run']}  {where}{_stands(row)}  {_about(row)}"
 
 
 def _poi_lines(pois: list[dict]) -> list[str]:
@@ -215,9 +216,14 @@ def _cmd_show(args) -> int:
 
 
 def _cmd_list(args) -> int:
+    from tarav.l1.project.scope import project_scope
+
+    # a Project sees the actions of the Projects it lists as children; --own leaves them out
     project = _project_root(args.project) if args.project else None
+    roots = None if project is None else (
+        (project,) if args.own else project_scope(project))
     runner = _runner(args)
-    runs = runner.runs.list(state=args.state, exit=args.exit, project_root=project)
+    runs = runner.runs.list(state=args.state, exit=args.exit, project_root=roots)
 
     def render(value: dict) -> list[str]:
         rows = value["runs"]
@@ -228,13 +234,23 @@ def _cmd_list(args) -> int:
         lines = [f"{len(rows)} run(s) in {value['store']}"
                  + (": " + ", ".join(f"{count} {name}" for name, count in stands.items())
                     if rows else "")]
-        lines.extend(map(_line, rows[:args.limit]))
+        several = len(value["projects"] or ()) > 1
+        if several:
+            per = {}
+            for row in rows:
+                name = (row.get("project") or {}).get("name") or "-"
+                per[name] = per.get(name, 0) + 1
+            lines.append("Projects: " + ", ".join(
+                f"{Path(root).name} {per.get(Path(root).name, 0)}"
+                for root in value["projects"]) + ". --own lists only the first.")
+        lines.extend(_line(row, several) for row in rows[:args.limit])
         if len(rows) > args.limit:
             lines.append(f"  … {len(rows) - args.limit} more; raise --limit, or use --json "
                          "for all of them in full.")
         return lines
 
     return _emit(args, {"status": "ok", "store": str(runner.runs.map.root),
+                        "projects": list(roots) if roots is not None else None,
                         "runs": [_row(run) for run in runs]}, render)
 
 
@@ -291,7 +307,10 @@ def register_action_commands(subparsers) -> None:
     listing.add_argument("--state", choices=("running", "closed"))
     listing.add_argument("--exit", help="Only runs closed by this exit, or 'error'.")
     listing.add_argument("--project", nargs="?", const=".",
-                         help="Only runs of the Project at or above this folder.")
+                         help="Only runs of the Project at or above this folder and of the "
+                              "Projects it lists as children.")
+    listing.add_argument("--own", action="store_true",
+                         help="With --project: leave the children's runs out.")
     listing.add_argument("--limit", type=int, default=20,
                          help="How many runs the readable listing shows (default 20).")
     listing.set_defaults(handler=_cli(_cmd_list))

@@ -16,6 +16,7 @@ from .publication import ModelPublication, ModelPublicationRecord, PublicationLo
 from tarav.l1.skw.loading import LoadingRecord, SkillDocument, SkillReadingGraph
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
 from tarav.l1.checks import CheckProvider, CheckSuite, run_checks
+from tarav.l1.poi import POICollector
 from tarav.l1.poi.rendering import DEFAULT_POI_RENDERER, renderers
 from tarav.l0._core.errors import CliError
 from .pois import (
@@ -26,7 +27,6 @@ from .pois import (
     GenerationContextResolutionCheck,
     GenerationFreshnessCheck,
     SkwAnalysisCheck,
-    collect,
     freshness_checks,
     generation_context_resolution_checks,
 )
@@ -159,7 +159,7 @@ class SkwSkill(SkwDepot, CheckProvider):
     class Checks(CheckProvider.Checks):
         def suite(self) -> CheckSuite:
             # keyed, so that an action knows which skill package detected it
-            return CheckSuite(self.obj._checks(), name=self.obj.root.name,
+            return CheckSuite(lambda suite: self.obj._all_checks(), name=self.obj.root.name,
                               key=self.obj.root.name)
 
     def _checks(self, *, skip_unresolved_freshness=True):
@@ -174,21 +174,33 @@ class SkwSkill(SkwDepot, CheckProvider):
             *reading_checks(self.loading()),
         )
 
-    def evaluate(self):
+    # tarav.breadcrumb b0bae46a04141e9db359a62ff88f12ccf785d462c83a64a33be8cb7f0610913c
+    def _all_checks(self):
+        """Every check of this package, the same for its suite and for `evaluate()`.
+
+        The analysis of the package as it is on disk comes first: a product
+        that no longer matches its source, a consumer file that links to
+        something the package does not bundle, a source that does not load.
+        Whoever runs the package's suite, a Project among them, then sees
+        what the skill command sees.
+        """
         raw_findings = self._check_without_reading()
-        findings = [finding for finding in raw_findings
-                    if finding.get('kind') not in FRESHNESS_KINDS]
-        collector = collect(self, findings)
+        yield SkwAnalysisCheck(self, [finding for finding in raw_findings
+                                      if finding.get('kind') not in FRESHNESS_KINDS])
         if not any(finding['kind'] == 'invalid-loading-model' for finding in raw_findings):
             # Raw document analysis already retains explicit resolution failures;
             # other successfully captured Situations remain independently runnable.
-            for result in run_checks(self._checks(skip_unresolved_freshness=True)):
-                for poi in result.pois():
-                    collector.emit(poi)
+            yield from self._checks(skip_unresolved_freshness=True)
+
+    def evaluate(self):
+        collector = POICollector()
+        for result in run_checks(self._all_checks()):
+            for poi in result.pois():
+                collector.emit(poi)
         return collector
 
-    def report(self, *, actions=None, **selection):
-        return self.evaluate().report(actions=actions, **selection)
+    def report(self, **selection):
+        return self.evaluate().report(**selection)
 
     def publications(self):
         return [ModelPublication(self.path(p), root=self.root)

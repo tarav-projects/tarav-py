@@ -369,17 +369,21 @@ class ActionRunStore:
 
     # tarav.breadcrumb 83a58759d5febdca43d99b02dbd6392dd01a85053c7fe4f266a7af3bce768c5b
     def list(self, *, state: str | None = None, exit: str | None = None,
-             project_root: str | None = None) -> list[ActionRun]:
-        """Runs, newest first, optionally by state, exit or the Project they name."""
+             project_root: str | Iterable[str] | None = None) -> list[ActionRun]:
+        """Runs, newest first, optionally by state, exit or the Projects they name.
+
+        `project_root` is one root or several.
+        """
         if not self.exists():
             return []
+        roots = None if project_root is None else (
+            {project_root} if isinstance(project_root, str) else set(project_root))
         runs = [self.load(name) for name in self.map.names()]
         selected = [
             run for run in runs
             if (state is None or run.state == state)
             and (exit is None or run.exit == exit)
-            and (project_root is None
-                 or (run.data["project"] or {}).get("root") == project_root)
+            and (roots is None or (run.data["project"] or {}).get("root") in roots)
         ]
         return sorted(selected, key=lambda run: run.data["started_at"], reverse=True)
 

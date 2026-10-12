@@ -211,7 +211,7 @@ def test_a_root_status_lets_each_project_update_its_own_actions(tree: Path,
     assert acted["opened"] == acted["actions"] == len(status.suite().pois())
 
     def found(project) -> list:
-        return [run.data["event"]["poi"]["situation"] for run in project.actions.list()
+        return [run.data["event"]["poi"]["situation"] for run in project.actions.list(own=True)
                 if run.data["event"]["check"]["type"] == "Test.Tree.Found"]
 
     a, b = root.members()
@@ -220,3 +220,41 @@ def test_a_root_status_lets_each_project_update_its_own_actions(tree: Path,
     # the child alone sees the same actions
     again = a.status()
     assert again.actions["opened"] == 0 and found(a) == [{"where": "a"}]
+
+
+# tarav.breadcrumb 088a6a09cea670f4d80324c13057d6f3d26c811a8fedd1ca0e85622303f0f27c
+def test_a_root_sees_the_actions_of_the_projects_it_lists(tree: Path, in_root_environment,
+                                                          capsys) -> None:
+    from tarav.l1.actions.commands import register_action_commands
+    from tarav.l1.project.scope import project_scope
+    import argparse
+
+    root = in_root_environment
+    root.status()
+    a, b = root.members()
+    def roots(*parts: str) -> set[str]:
+        return {str((tree / part).resolve()) for part in parts}
+
+    assert set(project_scope(tree)) == roots(".", "a", "b")
+    assert set(project_scope(tree / "a")) == roots("a")
+    assert set(project_scope(tree / "unlisted")) == roots("unlisted")  # below, but not listed
+
+    # the root sees what its children hold; each action still names its own Project
+    seen = root.actions.list()
+    assert len(seen) == len(root.actions.list(own=True)) + len(a.actions.list()) + len(b.actions.list())
+    assert {run.data["project"]["name"] for run in seen} >= {"a", "b"}
+    assert all(run.data["project"]["name"] == "a" for run in a.actions.list())
+
+    parser = argparse.ArgumentParser()
+    register_action_commands(parser.add_subparsers())
+    args = parser.parse_args(["action", "list", "--project", str(tree), "--json"])
+    args.handler(args)
+    listed = json.loads(capsys.readouterr().out)
+    assert len(listed["runs"]) == len(seen) and set(listed["projects"]) == roots(".", "a", "b")
+    args = parser.parse_args(["action", "list", "--project", str(tree), "--own", "--json"])
+    args.handler(args)
+    assert len(json.loads(capsys.readouterr().out)["runs"]) == len(root.actions.list(own=True))
+    args = parser.parse_args(["action", "list", "--project", str(tree)])
+    args.handler(args)
+    out = capsys.readouterr().out
+    assert "Projects: root " in out and "--own lists only the first." in out
