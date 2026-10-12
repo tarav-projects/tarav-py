@@ -466,12 +466,13 @@ their Records in their own Record Registry partitions, outside any Project.
 Action Types are made startable by explicit `register_action()`; the runtime
 registers them. `tarav.l1.actions.pois` holds what follows a POI:
 `ActionablePOI`, the `POIResolutionAction` with the closing paths `gone`
-and `blessed`, and `POIActions.resolve(check_run)`. A Project's suite is its
-current set of checks, `project.suite`, identified by the Project: a
-`CheckSuite` with the Project as `owner`. A run keeps the owner of each
-result, and a container Project's run goes through its children's suites.
-Each Project's actions are resolved from its own results: a POI its suite no
-longer produces closes its action as `gone`. The instance of a POI's action
+and `blessed`, and what that Type does with a run of its Project's checks
+(`on_checks`). `tarav.l1.actions.project` holds `ProjectActions`, reached as
+`project.actions`: the actions registered under one Project. The Project
+composes the two in `project.status()`: it runs its own checks and hands the
+results to its actions, and a container asks each member Project to do the
+same for itself. A POI a Project's checks no longer produce closes its
+action as `gone`. The instance of a POI's action
 is derived from the POI's identity; its record holds the current state and
 its history is the registry's Git history. Checks do not import Actions and
 give the owner no meaning; a run that no owned suite produced is momentary
@@ -507,7 +508,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `scoring` | ScoringWorkflow owns the identified, case-producing Assertion subtype, closed AssessmentCase contract, shallow Score root, and retained evaluation mechanics. Scoring Records are entities with explicit Context reference edges. |
 | `scoring.ranking` | RankingWorkflow is a Scoring subtype and child workflow. It owns pairwise cases, singleton Tribunal entities, pairwise operations and Checks, and ephemeral RankingScore results. |
 | `poi` | POIWorkflow owns neutral, identified, and notification POI foundations plus shared collection and notification delivery. Identified POIs derive identity from their concrete Type Ship and explicit producer-supplied situation; collector-local indexes address repeated emissions. Producing workflows own their concrete POI types. |
-| `actions` | ActionsWorkflow keeps typed Actions and one record per action in its Record Registry partition, outside any Project. `StepAction` has named exits taken by an operator, the loop or a suite; each exit names the `Closing` record Type it leaves on the run, and that Type decides whether the POI raised again reopens the action. `tarav.l1.actions.pois` is what follows a POI: an `ActionablePOI` (the capability lives in `tarav.l1.poi.actionable` and is extended by `CheckPOI`) spins the `POIResolutionAction`, whose instance is derived from the POI's identity. The suite is the Project's own `CheckSuite` (`project.suite`, owner: the Project's `id`, `name`, `root`); `CheckRun.groups()` gives the results per owned suite. `POIActions.resolve(check_run)` opens or reopens the action of each POI a Project's suite produced, moves an action to the Project whose suite produces its POI, and among that Project's actions whose POI no suite of the run produced, marks the situation absent and closes the open ones as `gone`. A check that is present and did not complete leaves the actions checks of its Type raised, with the situation `check failed`. A removed check and a check that no longer raises anything are the same case: not in the suite now. Only Projects have suites; `tarav skw skills check` records no action. Status is three axes, `axes(run)`: the situation (`present`, `absent`, `check failed`), the action, and the closing. `blessed` is an operator's exit with a reason from the Operator Context, allowed for a `BlessablePOI`; `CheckRun.clean(actions=)` and `report(actions=)` count a blessed finding as settled. Checks never write to it. The `poi-action` Context view and its resolver live in `actions.views`. |
+| `actions` | ActionsWorkflow keeps typed Actions and one record per action in its Record Registry partition, outside any Project. `StepAction` has named exits taken by an operator, the loop or a Project; each exit names the `Closing` record Type it leaves on the run, and that Type decides whether the POI raised again reopens the action. `tarav.l1.actions.pois` is what follows a POI: an `ActionablePOI` (the capability lives in `tarav.l1.poi.actionable` and is extended by `CheckPOI`) spins the `POIResolutionAction`, whose instance is derived from the POI's identity. Check code carries no Project: `project.checks` only runs checks. `ProjectActions` (`project.actions`, `tarav.l1.actions.project`) never runs one: `start(run)` registers under the Project the action of each POI not registered there (a new one is built by its Type, one of another Project moves), `refresh(run)` hands the results to every registered action, open or closed, and `update(run)` does both and records them. `Action.on_checks(run, update)` is what a Type does with them; the base ignores them. `POIResolutionAction.on_checks` marks the situation present and reopens when the closing says so, or marks it absent and closes an open action as `gone`. A check that is present and did not complete leaves the actions checks of its Type raised, with the situation `check failed`. A removed check and a check that no longer raises anything are the same case. `project.status()` (`ProjectStatus`) composes checks and actions; `tarav project status` runs it. A run that no Project hands over is momentary; `tarav skw skills check` records no action. Status is three axes, `axes(run)`: the situation (`present`, `absent`, `check failed`), the action, and the closing. `blessed` is an operator's exit with a reason from the Operator Context, allowed for a `BlessablePOI`; `CheckRun.clean(actions=)` and `report(actions=)` count a blessed finding as settled. Checks never write to it. The `poi-action` Context view and its resolver live in `actions.views`. |
 | `decisions` | DecisionsWorkflow owns the shared attributed Decision contract and prescribes no concrete subtype of its own; consuming workflows define theirs. It owns no storage. The common actor field is exposed as `decider`; subtype schemas keep their own fields and optional POI links. l2 builds an inspectable main Assertion for generic Decisions; assessment cases and attention policy are not yet prescribed. A Blessing is not a Decision: it is the closing record of an action. |
 | `blessings` | BlessingsWorkflow owns the `Blessing`: the closing record of a POI action closed although its situation still exists, with the actor, the reason, the offered support and the POI as it stood. The Type is defined in `l1.actions.blessing`, beside the Actions code it is built from, with `BlessingInput` and the test of that exit; the `BlessablePOI` capability is in `l1.poi.actionable`. A Blessing is Assertable; its Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. A blessed POI is still raised and reported; its action stays closed. There is no separate blessing store. |
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. SituationChecks evaluate a detached Situation and use that same snapshot as the POI acceptance scope. Execution completion and a POI's failure signal are separate. |
@@ -610,9 +611,10 @@ reference. Scores are never kept on the Blessing.
 Decision records share attributed fields; `Decision.decider` reads the actor
 role. A Decision subtype can refer to tracked POIs but does not require
 one. The generic `main` Assertion identifies the retained intervention; no
-scoring case is claimed yet. A Project's featured `poi_actions()` reads its POI
-actions from the central Actions registry. `tarav check --project` resolves each
-Project's actions from its run unless `--actions skip` is given. The
+scoring case is claimed yet. `project.actions.list()` reads a Project's
+actions from the central Actions registry. `tarav project status --project`
+updates them from a run of the Project's checks; `tarav check --project` only
+runs the checks. The
 machine-local check-report cache stays separate: it holds what a surface last
 showed, so that a printed identifier can be opened.
 <!-- tarav.breadcrumb 903d50edc16c9a21d196b1271302c63a2574659e7adb9bda716b62a9314de7a3 -->

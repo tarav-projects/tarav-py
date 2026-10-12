@@ -171,7 +171,7 @@ def test_a_child_with_its_own_environment_reports_its_counts(tree: Path, in_root
     (tree / "b/env/pyvenv.cfg").write_text("")
     (tree / "b/env/bin/python").write_text("")
     report = {"summary": {"incomplete": 0, "checks": 1, "pois": 2},
-              "items": [{"key": "Test.Tree.Found", "pois": 2, "open": 2, "checks": 1}]}
+              "items": [{"key": "Test.Tree.Found", "pois": 2, "checks": 1}]}
     calls = []
 
     def fake_run(command, **kwargs):
@@ -192,3 +192,31 @@ def test_listed_children_must_lie_below_the_root(tree: Path, in_root_environment
         in_root_environment.child_paths()
     with pytest.raises(CliError):
         in_root_environment.child("link")
+
+
+# tarav.breadcrumb 31b79ffae1aafbd075e9ea96757d902a9b7cb0cb485f88ec9e127d26bf691988
+def test_a_root_status_lets_each_project_update_its_own_actions(tree: Path,
+                                                                in_root_environment) -> None:
+    root = in_root_environment
+    assert [type(member) for member in root.members()] == [_ChildA, _ChildB]
+    assert [result.check.where for result in root.checks.run().results_of(_Found)] == ["a", "b"]
+    assert root.checks.own().run().results_of(_Found) == ()
+
+    status = root.status()
+    assert [found.project.name for found in status.each()] == ["root", "a", "b"]
+    assert [len(found.checks.results_of(_Found)) for found in status.each()] == [0, 1, 1]
+    assert len(status.run().results_of(_Found)) == 2
+    acted = status.acted()
+    assert [project["name"] for project in acted["projects"]] == ["root", "a", "b"]
+    assert acted["opened"] == acted["actions"] == len(status.run().pois())
+
+    def found(project) -> list:
+        return [run.data["event"]["poi"]["situation"] for run in project.actions.list()
+                if run.data["event"]["check"]["type"] == "Test.Tree.Found"]
+
+    a, b = root.members()
+    assert (found(root), found(a), found(b)) == ([], [{"where": "a"}], [{"where": "b"}])
+
+    # the child alone sees the same actions
+    again = a.status()
+    assert again.actions["opened"] == 0 and found(a) == [{"where": "a"}]

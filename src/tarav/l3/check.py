@@ -1,4 +1,4 @@
-"""Project checks CLI: run a Project's checks namespace in its harness."""
+"""Project checks and status CLI: run a Project's checks, alone or with its actions."""
 
 from __future__ import annotations
 
@@ -14,72 +14,101 @@ from tarav.l1.poi.rendering import (
 )
 
 
+def _progress(result: CheckResult) -> None:
+    if sys.stderr.isatty():
+        print(f"{type(result.check).__name__}: {result.status}", file=sys.stderr, flush=True)
+
+
 # tarav.breadcrumb a671fcec806bcecf6adccaf70a7f2c991f04b2685ea24f7056aa3cf53f820f8e
 # tarav.breadcrumb 31d6a87727d93d79dc92f3804e9916b37f4a8d7639862d3ef2fe9144dc778ee1
 def report_project_checks(
     project, *, json_output: bool = False, by: str = "type", sort: str = "run",
     limit: int = 20, offset: int = 0, poi_type: str | None = None,
     check: str | None = None, renderer_name: str = DEFAULT_POI_RENDERER,
-    level: str = "line", actions: str = "write",
+    level: str = "line",
 ) -> int:
-    """Run a Project's suite and show a bounded grouped report."""
-    def progress(result: CheckResult) -> None:
-        if sys.stderr.isatty():
-            print(f"{type(result.check).__name__}: {result.status}", file=sys.stderr,
-                  flush=True)
-
+    """Run a Project's checks and show a bounded grouped report. Nothing else happens."""
     try:
-        run = _retained(project, project.checks.run(on_result=progress))
+        run = _retained(project, project.checks.run(on_result=_progress))
         # tarav.breadcrumb ad61e17278a7f87bdbe6bba00b7195dd5389a8f9423618314b32ae8fa446c9e2
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    acted = _acted(project, run) if actions == "write" else None
-    settled = _poi_actions()
     report = run.report(by=by, sort=sort, limit=limit, offset=offset, type=poi_type,
-                        check=check, detail=level == "record", actions=settled)
+                        check=check, detail=level == "record")
+    if json_output:
+        print(json.dumps(report, indent=2, default=str))
+    else:
+        print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
+    return 0 if run.clean() else 1
+
+
+# tarav.breadcrumb 7231b58f634d9c6ef60ff8b772ffec1f46a707b47b9e3fc130252f6d89fec78e
+def report_project_status(
+    project, *, json_output: bool = False, by: str = "type", sort: str = "run",
+    limit: int = 20, offset: int = 0, poi_type: str | None = None,
+    check: str | None = None, renderer_name: str = DEFAULT_POI_RENDERER,
+    level: str = "line",
+) -> int:
+    """Run a Project's checks, hand the results to its actions, and show both.
+
+    The Project does the work; this only presents it. Exit 0 says every check
+    completed and every finding left is blessed.
+    """
+    from tarav.l1.actions.pois import POIActions
+
+    try:
+        status = project.status(on_result=_progress)
+    except NotImplementedError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    run = _retained(project, status.run())
+    standing = POIActions().standing
+    report = run.report(by=by, sort=sort, limit=limit, offset=offset, type=poi_type,
+                        check=check, detail=level == "record", label=standing)
+    acted = status.acted()
+    acted = {**{key: value for key, value in acted.items() if key != "signals"},
+             "closed": [signal.as_dict(detail=True) for signal in acted["signals"]]}
     if json_output:
         print(json.dumps({**report, "actions": acted}, indent=2, default=str))
     else:
         print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
-        if acted is not None:
-            print(_actions_text(acted))
-    return 0 if run.clean(actions=settled) else 1
+        print(_actions_text(acted))
+    settled = (all(result.status == "completed" for result in run.results)
+               and all(standing(poi) == "blessed" for poi in run.findings()))
+    return 0 if settled else 1
 
 
-def _code(args: argparse.Namespace) -> str:
+def _code(args: argparse.Namespace, function: str) -> str:
     options = {
         "json_output": args.json, "by": args.by, "sort": args.sort,
         "limit": args.limit, "offset": args.offset, "poi_type": args.poi_type,
         "check": args.check_type, "renderer_name": args.renderer, "level": args.level,
-        "actions": args.actions,
     }
     return (
-        "from tarav.l3.check import report_project_checks\n"
-        f"raise SystemExit(report_project_checks(project, **{options!r}))\n"
+        f"from tarav.l3.check import {function}\n"
+        f"raise SystemExit({function}(project, **{options!r}))\n"
     )
+
+
+def _in_harness(args: argparse.Namespace, function: str, command: str) -> int:
+    if args.project is None:
+        raise CliError(f"{command} needs --project [PATH]")
+    from tarav.l3.project.harness import run
+
+    return run(path=args.project, code=_code(args, function))
 
 
 # tarav.breadcrumb 1778a37c1707becb0bed583cc5d2ee8f8a4b3047975fb3b90d1c61a0a8065481
 def _check(args: argparse.Namespace) -> int:
-    if args.project is None:
-        raise CliError("tarav check needs --project [PATH]")
-    from tarav.l3.project.harness import run
-
-    return run(path=args.project, code=_code(args))
+    return _in_harness(args, "report_project_checks", "tarav check")
 
 
-def register_check_command(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "check",
-        help="Run a Project's checks (its checks() method) in its harness.",
-        epilog=(
-            "examples:\n"
-            "  tarav check --project\n"
-            "  tarav check --project /path/to/project --json"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
+def _status(args: argparse.Namespace) -> int:
+    return _in_harness(args, "report_project_status", "tarav project status")
+
+
+def _report_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--project",
         type=Path,
@@ -101,11 +130,40 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
                         default=DEFAULT_POI_RENDERER, help="Named POI renderer.")
     parser.add_argument("--level", choices=("line", "record", "context"), default="line",
                         help="POI detail level for rendered output.")
-    parser.add_argument("--actions", choices=("write", "skip"), default="write",
-                        help="Resolve each Project's actions from this run of its suite: "
-                             "open the action of each new POI and close those no longer "
-                             "produced, or leave the actions untouched.")
+
+
+def register_check_command(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "check",
+        help="Run a Project's checks in its harness and report the POIs. "
+             "It does not touch the Project's actions; `tarav project status` does.",
+        epilog=(
+            "examples:\n"
+            "  tarav check --project\n"
+            "  tarav check --project /path/to/project --json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _report_arguments(parser)
     parser.set_defaults(handler=_check)
+
+
+# tarav.breadcrumb 09b54769f85d6baa3ad93af7baa6fa6cb7c4442748b47ca9f757c89892aa7322
+def register_status_command(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "status",
+        help="Run a Project's checks and update its actions from the results: open the "
+             "action of each new POI, close those whose POI is gone. Run it as often "
+             "as needed.",
+        epilog=(
+            "examples:\n"
+            "  tarav project status --project\n"
+            "  tarav project status --project /path/to/project --json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _report_arguments(parser)
+    parser.set_defaults(handler=_status)
 
 
 def _retained(project, run):
@@ -120,37 +178,6 @@ def _retained(project, run):
     return run
 
 
-def _poi_actions():
-    """The Actions workflow as a reader of blessings. None when it cannot be read."""
-    try:
-        from tarav.l1.actions.pois import POIActions
-
-        return POIActions()
-    except Exception:
-        return None
-
-
-# tarav.breadcrumb 34c9e2e74fe85182ac56b7d7c1f9d8c1c2ec324bd808ac782fe4a82d6c6e4478
-# tarav.breadcrumb a5d57389a476154c5cd14d1c4942ff6d44660890e394ffada41543e0dfe9ce22
-# tarav.breadcrumb ed537ee28f417d13c7f74cb132e59c85d763dd12e9fb52fc5b6e835e0250b24e
-def _acted(project, run) -> dict[str, object] | None:
-    """Resolve the Projects' actions from this run; a failure there never fails the check.
-
-    The checks only produced POIs. The run knows which Project's suite each
-    result came from, and each Project's actions are resolved from its own
-    results.
-    """
-    try:
-        from tarav.l1.actions.pois import POIActions
-
-        result = POIActions().resolve(run)
-        return {**{key: value for key, value in result.items() if key != "signals"},
-                "closed": [signal.as_dict(detail=True) for signal in result["signals"]]}
-    except Exception as exc:
-        print(f"POI actions were not updated: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return None
-
-
 def _actions_text(acted: dict[str, object]) -> str:
     lines = [f"POI actions: {acted['actions']} raised now in {len(acted['projects'])} "
              f"Project(s); {acted['opened']} opened, "
@@ -160,4 +187,5 @@ def _actions_text(acted: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["register_check_command", "report_project_checks"]
+__all__ = ["register_check_command", "register_status_command", "report_project_checks",
+           "report_project_status"]

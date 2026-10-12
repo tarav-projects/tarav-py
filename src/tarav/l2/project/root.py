@@ -63,15 +63,33 @@ class RootProject(Project):
     # tarav.breadcrumb 2b6fe56e6a9feeb5ea9ac5ce7cd3d4036cda1f0c9e630e4cd823cfc6af0e3a1f
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
+            """The root's checks and, in the listed order, those of every child."""
             return CheckSuite(
                 [super().suite(),
-                 CheckSuite(lambda run: map(self.obj._child_checks,
-                                            self.obj.child_paths()))],
+                 CheckSuite(lambda run: (
+                     found.checks.suite() if isinstance(found, TaravProject) else found
+                     for found in map(self.obj._child, self.obj.child_paths())))],
                 name=self.obj.name,
             )
 
-    def _child_checks(self, relative: str) -> CheckSuite | Check | CheckResult:
-        """A child sharing this environment runs in place; others in their own."""
+        # tarav.breadcrumb 4b1c6c97e9897f50cef03fe30204629ef05594185c36dc0c472ac32a121f2e99
+        def own(self) -> CheckSuite:
+            """The root's checks: its own, and one for each child that does not load here."""
+            return CheckSuite(
+                [super().suite(),
+                 CheckSuite(lambda run: (found for found in map(
+                     self.obj._child, self.obj.child_paths())
+                     if not isinstance(found, TaravProject)))],
+                name=self.obj.name,
+            )
+
+    def members(self) -> tuple[TaravProject, ...]:
+        """The children that load in this process; each has its own checks and actions."""
+        return tuple(found for found in map(self._child, self.child_paths())
+                     if isinstance(found, TaravProject))
+
+    def _child(self, relative: str) -> TaravProject | Check | CheckResult:
+        """A child sharing this environment loads here; another is one check of the root."""
         check = ChildProjectCheck(self, relative)
         path = (self.root / relative).resolve()
         try:
@@ -82,7 +100,7 @@ class RootProject(Project):
             if launch.environment != Path(sys.prefix).resolve():
                 return check
             # tarav.breadcrumb cb92d76e1f46320d091af8cfedeebf7bf6b328d732e6b388968cd44459a3bd4f
-            return self.child(relative).suite  # the child's own suite, owned by the child
+            return self.child(relative)
         except NotImplementedError as exc:
             return CheckResult(check, status="incomplete", reason=str(exc))
         except (CliError, TypeError, ValueError, LookupError) as exc:
@@ -139,8 +157,7 @@ class ChildProjectCheck(Check):
             ChildProjectPOI(self,
                             f"{row['pois']} {row['key']} POIs in {self.child}",
                             situation={"child": self.child, "type": row["key"]},
-                            details={"pois": row["pois"], "open": row["open"],
-                                     "checks": row["checks"]})
+                            details={"pois": row["pois"], "checks": row["checks"]})
             for row in report["items"]
         ]
         incomplete = report["summary"]["incomplete"]

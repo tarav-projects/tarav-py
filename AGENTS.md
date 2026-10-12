@@ -115,7 +115,7 @@
   `CheckRun`; suites are not iterable because sources can depend on earlier
   results. `tarav check --project [PATH] [--json]` runs the suite in the
   Project harness and reports grouped POIs (20 groups by default). It exits
-  0 only when all Checks completed without open POIs.
+  0 only when all Checks completed without findings. It knows nothing of actions.
   <!-- tarav.breadcrumb 1b6aa81a76ec0d6ff43faa8d080ab26dd80ab3a9098cf814f141182b5e2ff406 -->
 - Environment variables and machine-state paths retain the names encoded by
   their current storage contracts until an explicit migration changes them.
@@ -271,18 +271,22 @@ Importing `tarav` alone initializes no services or layered modules.
   Give related situations one class each under a family parent that is never raised.
 - A POI is an event. A `CheckPOI` is actionable: it spins one action,
   `Tarav.Actions.POI.Resolution` (`tarav.l1.actions.pois`), kept in the central Record
-  Registry and not in the Project. A Project's suite is its current set of checks,
-  `project.suite`; a container Project's run goes through its children's suites, and
-  each Project's actions are resolved from its own results. `tarav check --project`
-  does that (`--actions skip` to leave actions alone); read them with
+  Registry and not in the Project. Three pieces stay apart: `project.checks` only
+  runs checks; `project.actions` (`tarav.l1.actions.project`) only handles the
+  actions registered under the Project and never runs a check; `project.status()`
+  composes them, and a container asks each member Project to do the same for itself.
+  The actions register the action of each new POI and hand the results to every
+  registered action; the Action Type decides what they mean (`Action.on_checks`).
+  `tarav project status --project` runs that and is the command to repeat;
+  `tarav check --project` only runs the checks. Read actions with
   `tarav action list --project` and `tarav context --id <poi-id> --view poi-action`.
-  An action closes as `gone` when its Project's suite no longer produces its POI; a
+  An action closes as `gone` when its Project's checks no longer produce its POI; a
   check that is present and failed leaves it, with the situation `check failed`. Checks
-  only emit, and a run outside a Project's suite records nothing. `tarav action` and
+  only emit, and a run that no Project hands over records nothing. `tarav action` and
   `tarav operator-context` print a summary by default and the full result with
   `--json`. `blessed` is an operator's exit: the action closes
   although the situation still exists, with a reason, for a POI whose Type extends
-  `BlessablePOI`; `tarav check` counts a blessed finding as settled. Every closing
+  `BlessablePOI`; `tarav project status` counts a blessed finding as settled. Every closing
   leaves a typed record on the action (`Tarav.Actions.POI.Gone`,
   `Tarav.Blessings.Blessing`), and that Type decides whether the POI raised again
   reopens it. Status is three axes: situation, action, closing. See ARCHITECTURE.md,
@@ -307,7 +311,9 @@ maintained design surfaces. Consult the Project's Wiki and live notes when
 present, then inspect code and tests for current mechanics.
 
 Use `tarav --help` and the relevant subcommand's `--help` to discover the
-installed CLI. `tarav check --project [PATH]` runs the Project's checks. A
+installed CLI. `tarav project status --project [PATH]` runs the Project's checks
+and updates its actions from the results; run it as often as needed.
+`tarav check --project [PATH]` only runs the checks. A
 reported point of interest (POI) is a signal to investigate, not an automatic
 instruction to repair or a reason to stop unrelated work. A check may report
 missing context, stale generated output, or a problem that needs user judgment.

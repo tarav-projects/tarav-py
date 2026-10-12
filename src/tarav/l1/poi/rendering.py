@@ -138,8 +138,10 @@ def _text(selection: POISelection, level: POILevel) -> str:
     for row in selection.items:
         address = _address(row)
         if selection.source == "check":
-            line = (f"  {row['key']}: {row['pois']} POIs from {row['checks']} checks "
-                    f"({row['open']} open, {row['blessed']} blessed)")
+            line = f"  {row['key']}: {row['pois']} POIs from {row['checks']} checks"
+            if row.get("standing"):
+                line += " (" + ", ".join(f"{count} {name}"
+                                         for name, count in row["standing"].items()) + ")"
             if row.get("example"):
                 line += f" — {row['example']}"
             if row.get("id"):

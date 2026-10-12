@@ -16,6 +16,7 @@ from tarav.l1.actions import (
 from tarav.l1.actions.pois import (
     GONE, GoneClosing, POIActionClosed, POIActions, POIResolutionAction, action_id,
 )
+from tarav.l1.actions.project import ProjectActions
 from tarav.l1.actions.blessing import (
     BLESSED, Blessing, BlessingInput, BlessingNotPermitted, BlessingWithoutReason,
 )
@@ -23,7 +24,8 @@ from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite, SituationC
 from tarav.l1.operator_context import OperatorContext, OperatorContextStore
 from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.records import RecordRegistry
-from tarav.l3.check import report_project_checks
+from tarav.l1.project import TaravProject
+from tarav.l3.check import report_project_checks, report_project_status
 from tarav.l3.runtime import create_runtime
 
 
@@ -149,10 +151,10 @@ HOME = {"id": "home", "name": "home", "root": "/home"}
 SHED = {"id": "shed", "name": "shed", "root": "/shed"}
 
 
-def lamp_suite(owner=HOME, crash=(), **levels) -> CheckSuite:
-    """A suite owned as a Project's is: one lamp check per lamp, some of them crashing."""
+def lamp_suite(crash=(), **levels) -> CheckSuite:
+    """One lamp check per lamp, some of them crashing."""
     return CheckSuite([*(LampCheck(lamp, level) for lamp, level in levels.items()),
-                       *(LampCheck(lamp, 0, crash=True) for lamp in crash)], owner=owner)
+                       *(LampCheck(lamp, 0, crash=True) for lamp in crash)])
 
 
 for _action in (FlagStep, TwoExitStep):
@@ -170,9 +172,13 @@ class Stores:
                                  session=lambda: self.sessions[-1])
         self.pois = POIActions(self.runs)
 
+    def update(self, owner, checks):
+        """Hand a Project's actions one run of its checks."""
+        return ProjectActions(owner, self.runs).update(checks)
+
     def lamps(self, owner=HOME, crash=(), **levels):
-        """Run the home's suite, one check per lamp, and resolve its actions from the run."""
-        return self.pois.resolve(lamp_suite(owner, crash, **levels).run())
+        """One run of a Project's checks, one check per lamp, handed to its actions."""
+        return self.update(owner, lamp_suite(crash, **levels).run())
 
 
 @pytest.fixture
@@ -288,19 +294,21 @@ def test_a_poi_opens_its_action_and_raising_it_again_lands_on_the_same_one(store
     run = stores.pois.of(poi)
     assert run.id == action_id(poi) and run.state == RUNNING
     assert run.data["action"] == "Tarav.Actions.POI.Resolution"
-    assert run.data["project"] == HOME and "suite" not in run.data
+    assert run.data["project"] == HOME
     assert run.data["event"]["poi"]["id"] == poi.identity
     assert axes(run) == {"situation": "present", "action": "open", "closing": None}
 
     again = stores.lamps(hall=3)
     assert (again["opened"], again["reopened"], again["actions"]) == (0, 0, 1)
-    twice = stores.pois.resolve(CheckSuite(
-        [LampCheck("hall", 3), LampCheck("den", 1), LampCheck("den", 1)], owner=HOME).run())
+    twice = stores.update(HOME, CheckSuite(
+        [LampCheck("hall", 3), LampCheck("den", 1), LampCheck("den", 1)]).run())
     assert (twice["opened"], twice["actions"]) == (1, 2)  # raised twice in one run: one action
-    assert twice["projects"] == [HOME] and len(stores.runs.list()) == 2
+    assert twice["project"] == HOME and len(stores.runs.list()) == 2
+    assert len(ProjectActions(HOME, stores.runs).list()) == 2
+    assert ProjectActions(SHED, stores.runs).list() == []
 
 
-def test_a_suite_that_no_longer_produces_a_poi_closes_its_action(stores):
+def test_checks_that_no_longer_produce_a_poi_close_its_action(stores):
     # tarav.breadcrumb 05f443cee465f2b2678f7b9e493826763320279641a49bdd4c29fe0c5da458be
     poi = LampCheck("hall", 3).run().pois()[0]
     stores.lamps(hall=3, porch=2)
@@ -310,7 +318,7 @@ def test_a_suite_that_no_longer_produces_a_poi_closes_its_action(stores):
     assert (run.state, run.exit) == (CLOSED, GONE)
     record = run.data["closing"]
     assert (record["type"], record["by"], record["project"]) == (
-        "Tarav.Actions.POI.Gone", "suite", HOME)
+        "Tarav.Actions.POI.Gone", "project", HOME)
     assert isinstance(run.closing(), GoneClosing)
     assert axes(run) == {"situation": "absent", "action": "closed", "closing": "gone"}
     assert [type(signal) for signal in result["signals"]] == [POIActionClosed]
@@ -332,7 +340,7 @@ def test_a_situation_that_returns_reopens_the_same_action(stores):
     history = subprocess.run(
         ["git", "log", "--format=%s", "--", f"records/{run.id}.json"],
         cwd=stores.runs.map.root, capture_output=True, text=True, check=True).stdout.splitlines()
-    name = "Resolve POI actions"
+    name = "Update the actions of home"
     assert history == [f"{name}: 1 reopened", f"{name}: 1 gone", f"{name}: 1 opened"]
 
 
@@ -341,7 +349,7 @@ def test_a_changed_situation_closes_the_old_action_and_opens_another(stores):
     new = LampCheck("hall", 7).run().pois()[0]
     stores.lamps(hall=3)
     result = stores.lamps(hall=7)
-    assert (result["opened"], result["gone"]) == (1, 1)  # the suite no longer produces the old POI
+    assert (result["opened"], result["gone"]) == (1, 1)  # the checks no longer produce the old POI
     assert stores.pois.of(old).exit == GONE and stores.pois.of(new).state == RUNNING
 
 
@@ -350,54 +358,80 @@ def test_a_check_that_is_present_and_failed_leaves_its_action_and_says_so(stores
     poi = LampCheck("hall", 3).run().pois()[0]
     stores.lamps(hall=3)
 
-    crashed = stores.lamps(crash=("hall",))  # the check is in the suite; it did not complete
+    crashed = stores.lamps(crash=("hall",))  # the check is there; it did not complete
     assert (crashed["gone"], crashed["updated"]) == (0, 1)
     assert axes(stores.pois.of(poi)) == {
         "situation": "check failed", "action": "open", "closing": None}
     assert stores.lamps(crash=("hall",))["updated"] == 0  # nothing new to say
 
-    gone = stores.lamps()  # no check of that kind is in the suite any more: it is gone
+    gone = stores.lamps()  # no check of that kind is there any more: it is gone
     assert gone["gone"] == 1 and stores.pois.of(poi).exit == GONE
 
 
-def test_each_project_resolves_its_own_actions_from_its_own_suite(stores):
+def test_each_project_updates_its_own_actions_from_its_own_checks(stores):
     # tarav.breadcrumb 7835dc20420dc97f0dd9fa997369c442a4159213f4af5f122da6524645e5c2ad
     hall = LampCheck("hall", 3).run().pois()[0]
     bench = LampCheck("bench", 2).run().pois()[0]
-    # the home contains the shed: its run goes through the shed's own suite
-    whole = CheckSuite([LampCheck("hall", 3), lamp_suite(SHED, bench=2)], owner=HOME)
-    first = stores.pois.resolve(whole.run())
-    assert (first["opened"], first["projects"]) == (2, [HOME, SHED])
+    stores.lamps(HOME, hall=3)
+    stores.lamps(SHED, bench=2)
     assert stores.pois.of(hall).data["project"] == HOME
     assert stores.pois.of(bench).data["project"] == SHED
 
-    # a run of the shed alone resolves the shed's action and leaves the home's alone
+    # the shed's run closes the shed's action and leaves the home's alone
     alone = stores.lamps(SHED, bench=0)
-    assert (alone["gone"], alone["projects"]) == (1, [SHED])
+    assert (alone["gone"], alone["project"]) == (1, SHED)
     assert stores.pois.of(bench).exit == GONE and stores.pois.of(hall).state == RUNNING
 
-    # the home's run without the shed in it says nothing about the shed
+    # the home's run says nothing about the shed
     stores.lamps(SHED, bench=2)
     assert stores.lamps(HOME, hall=3)["gone"] == 0
     assert stores.pois.of(bench).state == RUNNING
 
 
-def test_an_action_belongs_to_the_project_whose_suite_produces_its_poi(stores):
+def test_an_action_belongs_to_the_project_whose_checks_produce_its_poi(stores):
     # tarav.breadcrumb 78e2e229759dc12c3e71d4acfaf20ae34a96162e375611f5c9da8c67499bfe3a
     bench = LampCheck("bench", 2).run().pois()[0]
-    stores.lamps(HOME, bench=2)  # first produced by the home's suite
+    stores.lamps(HOME, bench=2)  # first produced by the home's checks
     assert stores.pois.of(bench).data["project"] == HOME
-    moved = stores.pois.resolve(CheckSuite([lamp_suite(SHED, bench=2)], owner=HOME).run())
+    moved = stores.lamps(SHED, bench=2)
     assert (moved["opened"], moved["gone"], moved["updated"]) == (0, 0, 1)
     assert stores.pois.of(bench).data["project"] == SHED and stores.pois.of(bench).state == RUNNING
+    assert stores.lamps(HOME)["gone"] == 0  # it is not the home's any more
 
 
-def test_a_run_that_no_owned_suite_produced_resolves_nothing(stores):
+def test_starting_and_refreshing_are_separate_and_write_nothing_by_themselves(stores):
+    # tarav.breadcrumb 1b3481cce255b8f95a689e7bde070e4096294c2e4b75bb56c31e1c7e48739d31
+    home = ProjectActions(HOME, stores.runs)
+    checks = lamp_suite(hall=3).run()
+    started = home.start(checks)
+    assert [run.state for run in started.values()] == [RUNNING] and not stores.runs.exists()
+    changes, update = home.refresh(checks, registered=started)
+    assert changes == {} and update.signals == []  # a new action has nothing to add
+
+    home.update(checks)
+    assert home.start(checks) == {}  # already registered here
+    changes, update = home.refresh(lamp_suite(hall=0).run())
+    assert [change for _, change in changes.values()] == [GONE]
+    assert [type(signal) for signal in update.signals] == [POIActionClosed]
+    assert home.list()[0].state == RUNNING  # nothing was written
+
+
+def test_an_action_type_without_a_rule_ignores_the_checks(stores):
+    # tarav.breadcrumb 749768306516532bc94e843bf68abce0b89dc8589bbcc8273f29359d683aed0d
+    context = stores.contexts.put(OperatorContext.new(ready=True))
+    run = stores.runner.start(FlagStep, context)
+    run.data["project"] = HOME
+    stores.runs.save(run, "Register the step under the home")
+    result = stores.lamps(HOME, hall=3)
+    assert (result["opened"], result["updated"], result["gone"]) == (1, 0, 0)
+    assert stores.runs.load(str(run.id)).state == RUNNING
+    assert len(ProjectActions(HOME, stores.runs).list()) == 2
+
+
+def test_a_run_that_nobody_hands_over_changes_nothing(stores):
     # tarav.breadcrumb 43eea1c8000377f3432ab8923433bdb1df71868ded9e8edca4399f9764b46079
     momentary = CheckSuite([LampCheck("hall", 3)]).run()
-    assert [type(poi) for poi in momentary.pois()] == [LampOn] and momentary.groups() == []
-    result = stores.pois.resolve(momentary)
-    assert (result["opened"], result["actions"], result["projects"]) == (0, 0, [])
+    assert [type(poi) for poi in momentary.pois()] == [LampOn]
     assert not stores.runs.exists()
 
 
@@ -513,7 +547,7 @@ class _Flags(Check):
 
 
 class _Project:
-    """A provider of checks that is not a Project: its suite has no owner."""
+    """A provider of checks that is not a Project."""
 
     def __init__(self, *checks: Check) -> None:
         self._checks = checks
@@ -524,19 +558,35 @@ class _Project:
 
 
 class _Home:
-    """A Project-like provider: its suite is owned by it, as a Project's is."""
+    """A Project as far as checks and actions go: it composes them as a Project does."""
 
-    def __init__(self, root: Path, *checks) -> None:
-        self.id, self.name, self.root, self._checks = root.name, root.name, root, checks
+    def __init__(self, root: Path, *checks, members=()) -> None:
+        self.id, self.name, self.root = root.name, root.name, root
+        self._checks, self._members = checks, tuple(members)
 
-    @property
-    def suite(self):
-        return CheckSuite(self._checks, owner={"id": self.id, "name": self.name,
-                                               "root": str(self.root)})
+    class _Checks:
+        def __init__(self, home) -> None:
+            self.home = home
+
+        def own(self):
+            return CheckSuite(self.home._checks)
+
+        def suite(self):
+            return CheckSuite([self.own(), *(member.checks.suite()
+                                             for member in self.home.members())])
+
+        def run(self, **options):
+            return self.suite().run(**options)
 
     @property
     def checks(self):
-        return self.suite
+        return self._Checks(self)
+
+    def members(self):
+        return self._members
+
+    actions = TaravProject.actions
+    status = TaravProject.status
 
 
 @pytest.fixture
@@ -550,10 +600,10 @@ def registry(tmp_path, monkeypatch):
 
 
 # tarav.breadcrumb 44282e11e5c1d9d9198c44b17465611161f7dc5d0d810bf6be4f99f62e029e89
-def test_the_check_command_resolves_each_projects_actions(tmp_path, registry, capsys):
+def test_the_status_command_updates_each_projects_actions(tmp_path, registry, capsys):
     from tarav.l1.actions import ActionRunStore
 
-    assert report_project_checks(_Home(tmp_path, LampCheck("hall", 3), _Flags(True))) == 1
+    assert report_project_status(_Home(tmp_path, LampCheck("hall", 3), _Flags(True))) == 1
     assert "POI actions: 2 raised now in 1 Project(s); 2 opened, 0 reopened, 0 closed as gone." in \
         capsys.readouterr().out
     runs = ActionRunStore().list(project_root=str(tmp_path))
@@ -561,37 +611,46 @@ def test_the_check_command_resolves_each_projects_actions(tmp_path, registry, ca
     assert {run.data["project"]["root"] for run in runs} == {str(tmp_path)}
 
     # a check that crashes says nothing about what it raised: only the lamp's action closes
-    assert report_project_checks(
+    assert report_project_status(
         _Home(tmp_path, LampCheck("hall", 0), _Flags(True, crash=True)), json_output=True) == 1
     acted = json.loads(capsys.readouterr().out)["actions"]
     assert (acted["opened"], acted["gone"]) == (0, 1)
     assert [project["root"] for project in acted["projects"]] == [str(tmp_path)]
     assert [signal["type"] for signal in acted["closed"]] == ["Tarav.Actions.POI.Closed"]
 
-    # the flags are fine now: the suite no longer produces that POI either
-    assert report_project_checks(_Home(tmp_path, LampCheck("hall", 0), _Flags(False)),
+    # the flags are fine now: the checks no longer produce that POI either
+    assert report_project_status(_Home(tmp_path, LampCheck("hall", 0), _Flags(False)),
                                  json_output=True) == 0
     assert json.loads(capsys.readouterr().out)["actions"]["gone"] == 1
     assert {run.exit for run in ActionRunStore().list(project_root=str(tmp_path))} == {"gone"}
 
-    # a container's run goes through its child's suite: the child's action is the child's
+    # a container asks its member to do the same for itself: the member's action is its own
     child = _Home(tmp_path / "child", LampCheck("bench", 2))
-    assert report_project_checks(_Home(tmp_path, LampCheck("hall", 0), child.suite),
+    assert report_project_status(_Home(tmp_path, LampCheck("hall", 0), members=(child,)),
                                  json_output=True) == 1
-    acted = json.loads(capsys.readouterr().out)["actions"]
-    assert [project["name"] for project in acted["projects"]] == [tmp_path.name, "child"]
+    report = json.loads(capsys.readouterr().out)
+    assert report["summary"]["checks"] == 2  # one report over both Projects
+    assert [project["name"] for project in report["actions"]["projects"]] == [
+        tmp_path.name, "child"]
     assert len(ActionRunStore().list(project_root=str(child.root), state="running")) == 1
-    # a run on the child alone resolves that same action
-    assert report_project_checks(_Home(child.root, LampCheck("bench", 0)), json_output=True) == 0
+    # a run on the child alone updates that same action
+    assert report_project_status(_Home(child.root, LampCheck("bench", 0)), json_output=True) == 0
     assert json.loads(capsys.readouterr().out)["actions"]["gone"] == 1
 
-    # another Project's run does not touch these actions, and skipping leaves them alone
-    other = tmp_path / "other"
-    assert report_project_checks(_Home(other, LampCheck("hall", 0)), json_output=True) == 0
-    capsys.readouterr()
-    assert report_project_checks(_Home(tmp_path, LampCheck("hall", 3)), actions="skip") == 1
+
+# tarav.breadcrumb 6f3eab2f58651c0c5a35842be50959fb11b8a9305bbd276f386ed8e5f870bba3
+def test_the_check_command_only_runs_the_checks(tmp_path, registry, capsys):
+    from tarav.l1.actions import ActionRunStore
+
+    home = _Home(tmp_path, LampCheck("hall", 3), members=(
+        _Home(tmp_path / "child", LampCheck("bench", 2)),))
+    assert report_project_checks(home, json_output=True) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["summary"]["pois"] == 2 and "actions" not in report
+    assert "standing" not in report["items"][0]
+    assert report_project_checks(home) == 1
     assert "POI actions" not in capsys.readouterr().out
-    assert {run.exit for run in ActionRunStore().list(project_root=str(tmp_path))} == {"gone"}
+    assert not ActionRunStore().exists()
 
 
 def test_a_poi_that_is_not_a_failure_does_not_make_the_run_unclean(registry, capsys):
@@ -605,9 +664,8 @@ def test_a_poi_that_is_not_a_failure_does_not_make_the_run_unclean(registry, cap
             return CheckResult(self, status="completed", pois=[
                 CheckPOI(self, "all is fine", situation={"case": "fine"}, failure=False)])
 
-    assert report_project_checks(_Project(Fine())) == 0  # no owned suite: nothing is recorded
-    out = capsys.readouterr().out
-    assert "1 checks, 0 incomplete, 1 POIs" in out and "0 raised now in 0 Project(s)" in out
+    assert report_project_checks(_Project(Fine())) == 0
+    assert "1 checks, 0 incomplete, 1 POIs" in capsys.readouterr().out
 
 
 def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry, capsys):
@@ -618,7 +676,7 @@ def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry,
     flags = _Flags(True).run().pois()[0]  # a plain CheckPOI
     lamp = LampCheck("hall", 3).run().pois()[0]  # a blessable one
     home = _Home(tmp_path, _Flags(True), LampCheck("hall", 3))
-    assert report_project_checks(home) == 1
+    assert report_project_status(home) == 1
     capsys.readouterr()
     runner = StepRunner(runs=ActionRunStore(), contexts=Contexts(), session=lambda: None)
     reason = Contexts().put(BlessingInput.new(reason="Known and accepted."))
@@ -628,11 +686,12 @@ def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry,
     assert refused.data["closings"][-1]["results"][0]["pois"][0]["type"] == entity(BlessingNotPermitted).name
 
     assert runner.close(str(action_id(lamp)), reason, exit=BLESSED).exit == BLESSED
-    assert report_project_checks(home) == 1  # the plain finding is still open
-    assert "(0 open, 1 blessed)" in capsys.readouterr().out
+    assert report_project_status(home) == 1  # the plain finding is still open
+    out = capsys.readouterr().out
+    assert "(1 blessed)" in out and "(1 open)" in out
 
-    # all that is raised is blessed; the suite no longer produces the flags POI, so it is gone
-    assert report_project_checks(_Home(tmp_path, LampCheck("hall", 3))) == 0
+    # all that is raised is blessed; the checks no longer produce the flags POI, so it is gone
+    assert report_project_status(_Home(tmp_path, LampCheck("hall", 3))) == 0
     assert ActionRunStore().load(str(action_id(flags))).exit == GONE
     assert ActionRunStore().load(str(action_id(lamp))).exit == BLESSED
 
@@ -656,7 +715,7 @@ def test_commands_print_a_summary_by_default_and_the_full_result_as_json(
         return code, capsys.readouterr().out
 
     lamp = LampCheck("hall", 3).run().pois()[0]
-    assert report_project_checks(_Home(tmp_path, LampCheck("hall", 3))) == 1
+    assert report_project_status(_Home(tmp_path, LampCheck("hall", 3))) == 1
     capsys.readouterr()
     key = str(action_id(lamp))
 

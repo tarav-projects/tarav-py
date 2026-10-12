@@ -154,7 +154,7 @@ class TaravRuntime:
         from tarav.l3.project.commands import register_harness_commands
         from tarav.l1.python_env import register_python_commands
         from tarav.l3.run import register_run_command
-        from tarav.l3.check import register_check_command
+        from tarav.l3.check import register_check_command, register_status_command
         from tarav.l3.git.commands import (
             register_breadcrumb_git_commands,
             register_commands as register_git_commands,
@@ -191,7 +191,8 @@ class TaravRuntime:
         register_project_commands(
             subparsers,
             skills_registrar=register_skills_commands,
-            harness_registrar=register_harness_commands,
+            harness_registrar=lambda found: (register_harness_commands(found),
+                                             register_status_command(found)),
         )
         register_reading_club_commands(subparsers)
         register_system_commands(subparsers)

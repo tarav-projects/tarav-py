@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready.
+Status: implemented.
 
 Request 897 made the check code carry the Project: a suite had an owner, a
 run grouped its results by owner, and one function of the Actions code read
@@ -175,7 +175,8 @@ Agent instructions that say `tarav check` change to the new command.
 Product project: `tarav-py`. Wiki owner: `tarav-md`, root
 `tarav-md/notes/wiki/`. Relevant notes: `poi-system.md`,
 `daily/2026-10-11.md`. Supporting chat: session `abd0372d` above.
-Capture status: pending.
+Capture status: done (`poi-system.md`, section "The Project composes its checks
+and its actions"; daily 2026-10-11).
 
 ## Execution.Plan
 
@@ -192,3 +193,27 @@ Capture status: pending.
 ## Impl.Log
 
 - Design written from the discussion of 2026-10-11.
+- Implemented as planned. One change to the plan: the root's full set of
+  checks keeps the children in their listed order; only `own()` leaves the
+  loadable ones out.
+- `Project.poi_actions()` removed; `project.actions.list()` replaces it.
+- Checks: Ruff clean; `uv run pytest` 266 passed (the configured test paths).
+  `tests/cli/test_check.py` is outside those paths: three of its tests
+  already fail on the previous commit and a fourth fails with another
+  agent's uncommitted change; none is caused by this request.
+- Real run: `tarav project status --project .` reported 51 actions raised in
+  3 Projects, nothing opened, reopened or closed; the same for `tarav-md`
+  alone. `tarav check --project .` printed no actions line.
+- Instructions: `AGENTS.skw.json` of the root, `tarav-md` and `tarav-py`
+  name `tarav project status`; `ARCHITECTURE.md` and the skill module
+  `step-actions.md` updated.
+- Breadcrumbs: submitted on `l1/actions/__init__.py`, `pois.py`,
+  `project.py`, `l1/project/base.py`, `status.py`, `l2/project/root.py`,
+  `l3/check.py`, `tests/test_actions_workflow.py`,
+  `tests/test_project_tree.py`; positions refreshed on the moved code.
+  Breadcrumbs of removed code (`resolve`, `groups`, `poi_actions`) went
+  with it.
+- Not committed with this request: `src/tarav/l2/tests/actions.py` and
+  `tests/test_actions_pois.py`, updated to the new calls, still wait for
+  another agent's `l2/tests` package.
+

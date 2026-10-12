@@ -10,7 +10,7 @@ run leaves a record whose Type the exit names.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import ClassVar
 from uuid import uuid4
@@ -18,7 +18,7 @@ from uuid import uuid4
 from tarav.l0.kernel import (
     FileRecord, Ship, TaravClass, TaravEntity, TaravType, TypeShip, entity,
 )
-from tarav.l1.checks import Check, CheckPOI, CheckResult
+from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckRun
 from tarav.l1.poi import IdentifiedPOI
 from tarav.l1.operator_context import Intake, OperatorContext, OperatorContextStore
 from tarav.l1.records import RecordRegistry
@@ -27,7 +27,7 @@ from .workflow import ACTIONS_WORKFLOW_SHIP, ActionsWorkflow
 
 RUNNING, CLOSED = "running", "closed"
 EXIT_ERROR = "error"
-OPERATOR, LOOP, SUITE = "operator", "loop", "suite"
+OPERATOR, LOOP, PROJECT = "operator", "loop", "project"
 OPEN = "open"
 RUN_REFERENCE_TYPE = "Tarav.Actions.RunReference"
 
@@ -106,7 +106,8 @@ class Exit:
     """One way a step can close: who may take it, and the Type of the record it leaves.
 
     An operator takes an exit with a command, the loop when the exit's tests
-    pass, and a suite's run when it no longer produces what the action follows.
+    pass, and the action's Project when its checks no longer produce what the
+    action follows.
     """
 
     name: str
@@ -116,12 +117,29 @@ class Exit:
     def __post_init__(self) -> None:
         if not self.name or self.name == EXIT_ERROR:
             raise ValueError("An exit needs a name other than 'error'")
-        if not self.by or set(self.by) - {OPERATOR, LOOP, SUITE}:
-            raise ValueError("An exit is taken by an operator, the loop or a suite")
+        if not self.by or set(self.by) - {OPERATOR, LOOP, PROJECT}:
+            raise ValueError("An exit is taken by an operator, the loop or a Project")
         if not isinstance(self.closing, type) or not issubclass(self.closing, Closing):
             raise TypeError("An exit names a Closing Type")
 
 
+@dataclass
+class ChecksUpdate:
+    """One run of a Project's checks, as it is handed to that Project's actions.
+
+    `memo` is for an Action Type to keep what it worked out from the results,
+    so it does that once for all its actions. `signals` collects the POIs an
+    action raises about what it did.
+    """
+
+    checks: CheckRun
+    project: dict
+    at: str
+    signals: list = field(default_factory=list)
+    memo: dict = field(default_factory=dict)
+
+
+# tarav.breadcrumb 6d5ab498c22e8990eeb3104cce5e7dca21024f8aa62fc4e951e0c9f14056ff20
 class Action(TaravType):
     """Root of every Action Type. It prescribes only the link to its instructions."""
 
@@ -131,6 +149,15 @@ class Action(TaravType):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("5b7deb17-f328-4470-87ea-a17ef370e92f"),
                           name="Tarav.Actions.Action", workflow=ACTIONS_WORKFLOW_SHIP)
+
+    @classmethod
+    def on_checks(cls, run: "ActionRun", update: ChecksUpdate) -> str | None:
+        """What one registered action does with a run of its Project's checks.
+
+        It may ignore the results, change its status or close itself. It
+        changes `run` in place and names the change; None says nothing changed.
+        """
+        return None
 
 
 # tarav.breadcrumb 9653fbc6c09471fe85885cd12a4a103d86fba2aba9efab0ac507c2dd94cd3942
@@ -380,7 +407,7 @@ def close_run(action: StepAction, run: ActionRun, exit: str, *, by: str, at: str
 def axes(run: ActionRun) -> dict[str, str | None]:
     """The status of a run as separate axes: the situation, the action, the closing.
 
-    `situation` is what the last run of the Project's suite says, for a run
+    `situation` is what the last run of the Project's checks says, for a run
     that follows a POI. `closing` is the exit the run closed by; its record
     has the detail.
     """
@@ -551,7 +578,7 @@ ACTION_RECORD_TYPES = (ActionRun, Closing)
 
 __all__ = [
     "ACTIONS_WORKFLOW_SHIP", "ACTION_RECORD_TYPES", "Action", "ActionError", "ActionRun",
-    "ActionRunStore", "ActionsWorkflow", "CLOSED", "Closing", "EXIT_ERROR", "Exit", "LOOP",
-    "OPEN", "OPERATOR", "RUNNING", "RUN_REFERENCE_TYPE", "SUITE", "SkillLink", "StepAction",
+    "ActionRunStore", "ActionsWorkflow", "CLOSED", "ChecksUpdate", "Closing", "EXIT_ERROR",
+    "Exit", "LOOP", "OPEN", "OPERATOR", "PROJECT", "RUNNING", "RUN_REFERENCE_TYPE", "SkillLink", "StepAction",
     "StepRunner", "action_types", "axes", "close_run", "register_action", "resolve_action",
 ]

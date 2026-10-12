@@ -43,21 +43,37 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
                                self.obj.agents.skills.checks.suite()],
                               name=self.obj.name)
 
-        def run(self, *, into=None, on_result=None):
-            """Run the Project's suite, so each result is known as this Project's."""
-            return self.obj.suite.run(into=into, on_result=on_result)
+        # tarav.breadcrumb 47c83896e2f3b52b8445023094aea20efa16beb513be9c96d448cf803024086a
+        def own(self) -> CheckSuite:
+            """The checks of this Project alone, without those of its member Projects."""
+            return self.suite()
 
-    # tarav.breadcrumb 05bbd0b3c6138a816b20336bb8716198873b18650cc868710d9f2677d8857e80
+    def members(self) -> tuple["TaravProject", ...]:
+        """The Projects this one contains and can load here. None for a plain Project."""
+        return ()
+
+    # tarav.breadcrumb 023d66755f096ecc913a16d886cbe2725017dbda9b4e3b368e0214517b04eb23
     @property
-    def suite(self) -> CheckSuite:
-        """This Project's suite: its current set of checks, identified by the Project.
+    def actions(self):
+        """The actions registered under this Project."""
+        from tarav.l1.actions.project import ProjectActions
 
-        It is where a Project's actions go to resolve their status: what a
-        run of it produces is what is happening now in this Project.
+        return ProjectActions.of(self)
+
+    # tarav.breadcrumb c480857f3a5c1669df7d3f312f134b4771e05dc92cfcc7f954c10e7c2caa87b4
+    def status(self, *, on_result=None):
+        """Run this Project's checks and hand the results to its actions.
+
+        The checks only run and the actions never run a check; this is where
+        the two meet. A Project with members does this for its own checks and
+        asks each member to do the same for itself.
         """
-        return CheckSuite([self.checks.suite()], name=self.name,
-                          owner={"id": str(self.id), "name": self.name,
-                                 "root": str(self.root)})
+        from .status import ProjectStatus
+
+        checks = self.checks.own().run(on_result=on_result)
+        return ProjectStatus(self, checks, self.actions.update(checks),
+                             tuple(member.status(on_result=on_result)
+                                   for member in self.members()))
 
     @classmethod
     def loading_paths(cls) -> tuple[str, ...]:
