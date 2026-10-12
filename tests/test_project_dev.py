@@ -11,9 +11,11 @@ from tarav.l2.project.dev import (
     DocsProject,
     ProvisionalMarkersCheck,
     PythonPackageProject,
+    PyTestCheck,
+    PyTestFileSuite,
+    PyTestSuite,
     SkillLoadCheck,
     TestFailurePOI,
-    TestSuiteCheck,
 )
 from tarav.l2.project import Project
 from tarav.l2.project.models import ProjectModels
@@ -43,25 +45,55 @@ def test_a_failing_test_is_a_poi_named_by_its_test(tmp_path: Path) -> None:
         "def test_fails():\n    assert 1 == 2, 'one is not two'\n")
     project = _project(tmp_path, PythonPackageProject)
     run = project.checks.run()
-    result = next(item for item in run.results if isinstance(item.check, TestSuiteCheck))
+    result = next(item for item in run.results if isinstance(item.check, PyTestCheck))
     assert result.status == "completed"
     assert [poi.situation["test"] for poi in result.pois()] == ["test_sample.py::test_fails"]
     assert isinstance(result.pois()[0], TestFailurePOI)
     assert "1 failed, 1 passed" in result.data["summary"]
 
 
+# tarav.breadcrumb 84c55d0bb2d42dbe612d0a92ddc8785ca6e6f03f6b4b7b1d1dc462831cc1149b
+def test_pytest_runs_once_and_each_test_file_is_a_suite_of_its_own(tmp_path: Path) -> None:
+    (tmp_path / "test_one.py").write_text(
+        "def test_passes():\n    assert True\n\n"
+        "def test_fails():\n    assert 1 == 2\n")
+    (tmp_path / "test_two.py").write_text("def test_fine():\n    assert True\n")
+    suite = PyTestSuite(tmp_path).run()
+    assert suite.identity == {"type": "Tarav.Project.Dev.PyTest.Suite", "key": None}
+    assert not PyTestSuite.routine
+    files = suite.suites()
+    assert [type(found) for found in files] == [PyTestFileSuite, PyTestFileSuite]
+    assert [found.key for found in files] == ["test_one.py", "test_two.py"]
+    assert [len(found.pois()) for found in files] == [1, 0]
+    assert suite.complete and "1 failed, 2 passed" in suite.summary_line
+    chain, result = next(iter(suite.walk()))
+    assert [item["key"] for item in chain] == [None, "test_one.py"]
+    assert result.pois()[0].situation == {"project": tmp_path.name,
+                                         "test": "test_one.py::test_fails"}
+
+    # a file that is gone is no longer yielded by a run that went to its end
+    (tmp_path / "test_one.py").unlink()
+    again = PyTestSuite(tmp_path).run()
+    assert [found.key for found in again.suites()] == ["test_two.py"] and again.conclusive
+
+    # the check of one file can also run by itself
+    alone = PyTestCheck(tmp_path, "test_two.py").run()
+    assert (alone.status, alone.pois()) == ("completed", ())
+
+
 def test_a_test_file_that_cannot_be_collected_is_a_poi(tmp_path: Path) -> None:
     (tmp_path / "test_broken.py").write_text("import no_such_module_anywhere\n")
     (tmp_path / "test_fine.py").write_text("def test_fine():\n    assert True\n")
-    result = TestSuiteCheck(tmp_path).run()
-    assert result.status == "completed"
-    assert [poi.situation["test"] for poi in result.pois()] == ["test_broken.py"]
-    assert "1 passed" in result.data["summary"]
+    suite = PyTestSuite(tmp_path).run()
+    assert [found.key for found in suite.suites()] == ["test_broken.py", "test_fine.py"]
+    assert [poi.situation["test"] for poi in suite.pois()] == ["test_broken.py"]
+    assert "1 passed" in suite.summary_line
 
 
 def test_a_suite_that_cannot_run_is_a_failed_result(tmp_path: Path) -> None:
-    result = TestSuiteCheck(tmp_path, arguments=("--no-such-option",)).run()
-    assert result.status == "failed"
+    suite = PyTestSuite(tmp_path, arguments=("--no-such-option",)).run()
+    assert [result.status for result in suite.results] == ["failed"]
+    assert not suite.conclusive and suite.suites() == []
 
 
 def test_docs_report_unsubmitted_markers_and_skills_that_do_not_load(tmp_path: Path) -> None:

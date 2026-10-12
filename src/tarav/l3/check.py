@@ -8,10 +8,18 @@ import sys
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.l1.checks import CheckResult
+from tarav.l1.checks import CheckResult, routine
 from tarav.l1.poi.rendering import (
     DEFAULT_POI_RENDERER, POISelection, renderer, renderers,
 )
+
+
+def _not_run_text(suite) -> str | None:
+    skipped = suite.summary()["not_run"]
+    if not skipped:
+        return None
+    names = ", ".join(sorted({item.get("type") or item.get("name") or "?" for item in skipped}))
+    return f"Not run: {names}. Run everything with --all."
 
 
 def _progress(result: CheckResult) -> None:
@@ -25,11 +33,15 @@ def report_project_checks(
     project, *, json_output: bool = False, by: str = "type", sort: str = "run",
     limit: int = 20, offset: int = 0, poi_type: str | None = None,
     check: str | None = None, renderer_name: str = DEFAULT_POI_RENDERER,
-    level: str = "line",
+    level: str = "line", everything: bool = False,
 ) -> int:
-    """Run a Project's checks and show a bounded grouped report. Nothing else happens."""
+    """Run a Project's checks and show a bounded grouped report. Nothing else happens.
+
+    Suites that are not routine are left out unless `everything` is set.
+    """
     try:
-        run = _retained(project, project.checks.run(on_result=_progress))
+        run = _retained(project, project.checks.run(
+            select=None if everything else routine, on_result=_progress))
         # tarav.breadcrumb ad61e17278a7f87bdbe6bba00b7195dd5389a8f9423618314b32ae8fa446c9e2
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -40,6 +52,8 @@ def report_project_checks(
         print(json.dumps(report, indent=2, default=str))
     else:
         print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
+        if _not_run_text(run):
+            print(_not_run_text(run))
     return 0 if run.clean() else 1
 
 
@@ -48,21 +62,23 @@ def report_project_status(
     project, *, json_output: bool = False, by: str = "type", sort: str = "run",
     limit: int = 20, offset: int = 0, poi_type: str | None = None,
     check: str | None = None, renderer_name: str = DEFAULT_POI_RENDERER,
-    level: str = "line",
+    level: str = "line", everything: bool = False,
 ) -> int:
     """Run a Project's checks, hand the results to its actions, and show both.
 
-    The Project does the work; this only presents it. Exit 0 says every check
-    completed and every finding left is blessed.
+    The Project does the work; this only presents it. Suites that are not
+    routine are left out unless `everything` is set; their actions stay as
+    they are. Exit 0 says every check that ran completed and every finding
+    left is blessed.
     """
     from tarav.l1.actions.pois import POIActions
 
     try:
-        status = project.status(on_result=_progress)
+        status = project.status(select=None if everything else routine, on_result=_progress)
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    run = _retained(project, status.run())
+    run = _retained(project, status.suite())
     standing = POIActions().standing
     report = run.report(by=by, sort=sort, limit=limit, offset=offset, type=poi_type,
                         check=check, detail=level == "record", label=standing)
@@ -74,6 +90,8 @@ def report_project_status(
     else:
         print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
         print(_actions_text(acted))
+        if _not_run_text(run):
+            print(_not_run_text(run))
     settled = (all(result.status == "completed" for result in run.results)
                and all(standing(poi) == "blessed" for poi in run.findings()))
     return 0 if settled else 1
@@ -84,6 +102,7 @@ def _code(args: argparse.Namespace, function: str) -> str:
         "json_output": args.json, "by": args.by, "sort": args.sort,
         "limit": args.limit, "offset": args.offset, "poi_type": args.poi_type,
         "check": args.check_type, "renderer_name": args.renderer, "level": args.level,
+        "everything": args.all,
     }
     return (
         f"from tarav.l3.check import {function}\n"
@@ -130,6 +149,9 @@ def _report_arguments(parser: argparse.ArgumentParser) -> None:
                         default=DEFAULT_POI_RENDERER, help="Named POI renderer.")
     parser.add_argument("--level", choices=("line", "record", "context"), default="line",
                         help="POI detail level for rendered output.")
+    parser.add_argument("--all", action="store_true",
+                        help="Run every suite. Without it, suites that are not part of the "
+                             "routine run are left out, such as a Project's pytest tests.")
 
 
 def register_check_command(subparsers: argparse._SubParsersAction) -> None:
@@ -154,10 +176,11 @@ def register_status_command(subparsers: argparse._SubParsersAction) -> None:
         "status",
         help="Run a Project's checks and update its actions from the results: open the "
              "action of each new POI, close those whose POI is gone. Run it as often "
-             "as needed.",
+             "as needed; --all also runs the slow suites.",
         epilog=(
             "examples:\n"
             "  tarav project status --project\n"
+            "  tarav project status --project --all\n"
             "  tarav project status --project /path/to/project --json"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

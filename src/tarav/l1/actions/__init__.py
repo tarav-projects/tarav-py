@@ -18,7 +18,7 @@ from uuid import uuid4
 from tarav.l0.kernel import (
     FileRecord, Ship, TaravClass, TaravEntity, TaravType, TypeShip, entity,
 )
-from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckRun
+from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.poi import IdentifiedPOI
 from tarav.l1.operator_context import Intake, OperatorContext, OperatorContextStore
 from tarav.l1.records import RecordRegistry
@@ -125,14 +125,14 @@ class Exit:
 
 @dataclass
 class ChecksUpdate:
-    """One run of a Project's checks, as it is handed to that Project's actions.
+    """A suite of a Project's checks that ran, as it is handed to that Project's actions.
 
     `memo` is for an Action Type to keep what it worked out from the results,
     so it does that once for all its actions. `signals` collects the POIs an
     action raises about what it did.
     """
 
-    checks: CheckRun
+    checks: CheckSuite
     project: dict
     at: str
     signals: list = field(default_factory=list)
@@ -408,7 +408,8 @@ def axes(run: ActionRun) -> dict[str, str | None]:
     """The status of a run as separate axes: the situation, the action, the closing.
 
     `situation` is what the last run of the Project's checks says, for a run
-    that follows a POI. `closing` is the exit the run closed by; its record
+    that follows a POI: present, absent, or unknown because the suite above
+    it did not run or a check under it failed. `closing` is the exit the run closed by; its record
     has the detail.
     """
     return {"situation": (run.data.get("situation") or {}).get("state"),

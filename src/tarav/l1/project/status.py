@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tarav.l1.checks import CheckRun
+from tarav.l1.checks import CheckSuite
 
 
 # tarav.breadcrumb 9ea03b213fa06c650029b7c469cf4605672c9ddf1415140f3013f3a7c4a61e6f
 @dataclass(frozen=True)
 class ProjectStatus:
-    """One Project's check run, what its actions did with it, and the same for its members."""
+    """One Project's suite that ran, what its actions did with it, and the same for its members."""
 
     project: object
-    checks: CheckRun
+    checks: CheckSuite
     actions: dict
     members: tuple["ProjectStatus", ...] = ()
 
@@ -21,13 +21,10 @@ class ProjectStatus:
         """This status and those of the members below it, in the order they ran."""
         return (self, *(found for member in self.members for found in member.each()))
 
-    def run(self) -> CheckRun:
-        """Every result, of this Project and its members, as one run for a report."""
-        whole = CheckRun()
-        for status in self.each():
-            for result in status.checks.results:
-                whole.add(result)
-        return whole
+    def suite(self) -> CheckSuite:
+        """The suites of this Project and its members, gathered for one report."""
+        return CheckSuite.gathered((status.checks for status in self.each()),
+                                   name=getattr(self.project, "name", None))
 
     def acted(self) -> dict:
         """What the actions of all these Projects did, added up."""

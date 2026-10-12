@@ -428,6 +428,81 @@ def test_an_action_type_without_a_rule_ignores_the_checks(stores):
     assert len(ProjectActions(HOME, stores.runs).list()) == 2
 
 
+class RoomSuite(CheckSuite):
+    """The lamps of one room: a suite with an identity, bound to the room by its key."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("b7e3a1c8-5d92-4f06-8a4b-1c6e9d2f7053"),
+                          name="Tarav.Test.Actions.RoomSuite", workflow=ACTIONS_WORKFLOW_SHIP)
+
+
+class AtticSuite(RoomSuite):
+    """A room that is slow to check, so it is not part of the routine run."""
+
+    routine = False
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("c8f4b2d9-6ea3-4017-9b5c-2d7f0e3a8164"),
+                          name="Tarav.Test.Actions.AtticSuite", workflow=ACTIONS_WORKFLOW_SHIP)
+
+
+def house(hall: int, attic: int | None, crash=()) -> CheckSuite:
+    """A hall lamp checked by the house itself, and an attic with a suite of its own."""
+    rooms = [] if attic is None else [
+        RoomSuite([LampCheck("attic", attic, crash="attic" in crash)], key="attic")]
+    return CheckSuite([LampCheck("hall", hall), CheckSuite(rooms)])
+
+
+def without_rooms(item) -> bool:
+    return not isinstance(item, RoomSuite)
+
+
+# tarav.breadcrumb 79d19e4065cd76291571203a11a2e5860be817c4e3652107a2b73bd068130c5f
+def test_only_a_detector_that_ran_can_say_a_situation_is_gone(stores):
+    hall = LampCheck("hall", 3).run().pois()[0]
+    attic = LampCheck("attic", 2).run().pois()[0]
+    stores.update(HOME, house(3, 2).run())
+    room = {"type": "Tarav.Test.Actions.RoomSuite", "key": "attic"}
+    assert stores.pois.of(hall).data["event"]["suites"] == []  # the house itself detected it
+    assert stores.pois.of(attic).data["event"]["suites"] == [room]
+
+    # both lamps are off, but the attic was left out: only the hall's detector ran
+    partial = stores.update(HOME, house(0, 0).run(select=without_rooms))
+    assert (partial["gone"], partial["updated"]) == (1, 1)
+    assert stores.pois.of(hall).exit == GONE
+    assert axes(stores.pois.of(attic)) == {
+        "situation": "not run", "action": "open", "closing": None}
+    assert stores.update(HOME, house(0, 0).run(select=without_rooms))["updated"] == 0
+
+    # the attic's check crashed: its suite ran and still cannot say
+    crashed = stores.update(HOME, house(0, 0, crash=("attic",)).run())
+    assert crashed["gone"] == 0
+    assert axes(stores.pois.of(attic))["situation"] == "check failed"
+
+    # the attic ran to its end without the POI: gone
+    assert stores.update(HOME, house(0, 0).run())["gone"] == 1
+    assert stores.pois.of(attic).exit == GONE
+
+
+# tarav.breadcrumb d7307e455da5c2d85ebecefa75a9fda470be82b430a88a823f9cba349bcb5cea
+def test_a_suite_that_is_no_longer_yielded_closes_its_actions(stores):
+    attic = LampCheck("attic", 2).run().pois()[0]
+    stores.update(HOME, house(0, 2).run())
+    assert stores.pois.of(attic).state == RUNNING
+
+    # the house ran to its end and has no attic any more: the nearest detector that ran says so
+    removed = stores.update(HOME, house(0, None).run())
+    assert removed["gone"] == 1 and stores.pois.of(attic).exit == GONE
+
+    # a POI that moves under another suite takes its new chain with it
+    stores.update(HOME, house(0, 2).run())
+    moved = stores.update(HOME, CheckSuite([RoomSuite([LampCheck("attic", 2)], key="loft")]).run())
+    assert (moved["opened"], moved["gone"], moved["updated"]) == (0, 0, 1)
+    assert stores.pois.of(attic).data["event"]["suites"][0]["key"] == "loft"
+
+
 def test_a_run_that_nobody_hands_over_changes_nothing(stores):
     # tarav.breadcrumb 43eea1c8000377f3432ab8923433bdb1df71868ded9e8edca4399f9764b46079
     momentary = CheckSuite([LampCheck("hall", 3)]).run()
@@ -636,6 +711,45 @@ def test_the_status_command_updates_each_projects_actions(tmp_path, registry, ca
     # a run on the child alone updates that same action
     assert report_project_status(_Home(child.root, LampCheck("bench", 0)), json_output=True) == 0
     assert json.loads(capsys.readouterr().out)["actions"]["gone"] == 1
+
+
+# tarav.breadcrumb 168d36cc70f0a264902c387c83087156504d2f1664bf259d740ca732597b0f28
+def test_the_routine_run_leaves_slow_suites_out_and_all_runs_them(tmp_path, registry, capsys):
+    from tarav.l1.actions import ActionRunStore
+
+    def home(hall: int, attic: int):
+        return _Home(tmp_path, LampCheck("hall", hall),
+                     AtticSuite([LampCheck("attic", attic)], key="attic"))
+
+    attic = str(action_id(LampCheck("attic", 2).run().pois()[0]))
+    assert report_project_status(home(3, 2)) == 1
+    out = capsys.readouterr().out
+    assert "1 checks, 0 incomplete, 1 POIs" in out
+    assert "Not run: Tarav.Test.Actions.AtticSuite. Run everything with --all." in out
+    assert ActionRunStore().find(attic) is None  # nothing is known about the attic yet
+
+    assert report_project_status(home(3, 2), everything=True, json_output=True) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert (report["summary"]["checks"], report["summary"]["not_run"]) == (2, [])
+    assert ActionRunStore().load(attic).state == "running"
+
+    # the lamp is off, but a routine run does not look: the action stays open
+    assert report_project_status(home(0, 0), json_output=True) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["summary"]["not_run"] == [
+        {"type": "Tarav.Test.Actions.AtticSuite", "key": "attic"}]
+    assert (report["actions"]["gone"], ActionRunStore().load(attic).state) == (1, "running")
+    assert ActionRunStore().load(attic).data["situation"]["state"] == "not run"
+
+    assert report_project_status(home(0, 0), everything=True, json_output=True) == 0
+    assert json.loads(capsys.readouterr().out)["actions"]["gone"] == 1
+    assert ActionRunStore().load(attic).exit == "gone"
+
+    # the check command filters the same way and touches no action
+    assert report_project_checks(home(3, 2)) == 1
+    assert "Not run: Tarav.Test.Actions.AtticSuite." in capsys.readouterr().out
+    assert report_project_checks(home(3, 2), everything=True, json_output=True) == 1
+    assert json.loads(capsys.readouterr().out)["summary"]["pois"] == 2
 
 
 # tarav.breadcrumb 6f3eab2f58651c0c5a35842be50959fb11b8a9305bbd276f386ed8e5f870bba3

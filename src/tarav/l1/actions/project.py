@@ -1,6 +1,6 @@
 """The actions registered under one Project.
 
-A Project hands each run of its checks to this place. It registers the
+A Project hands each suite of its checks that ran to this place. It registers the
 actions of the POIs it sees for the first time, and passes the results to
 every action registered under the Project; each Action Type decides what
 they mean for it. Nothing here runs a check, and nothing here knows what a
@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-from tarav.l1.checks import CheckRun
+from tarav.l1.checks import CheckSuite
 
 from . import ActionError, ActionRun, ActionRunStore, ChecksUpdate, resolve_action
 from .pois import action_id, raised
@@ -42,7 +42,7 @@ class ProjectActions:
         """The actions registered under this Project, newest first."""
         return self.runs.list(state=state, project_root=self.project["root"])
 
-    def start(self, checks: CheckRun, *, at: str | None = None) -> dict[str, ActionRun]:
+    def start(self, checks: CheckSuite, *, at: str | None = None) -> dict[str, ActionRun]:
         """Register here the action of each POI in the results that is not registered here.
 
         A new action is built by its Type. One registered under another
@@ -52,20 +52,22 @@ class ProjectActions:
         at = at if at is not None else self._now()
         changed: dict[str, ActionRun] = {}
         known = {str(run.id) for run in self.list()}
-        for poi in raised(checks.pois()):
-            key = str(action_id(poi))
-            if key in known:
-                continue
-            known.add(key)
-            run = self.runs.find(key)
-            if run is None:
-                run = resolve_action(type(poi).action).opened(poi, project=self.project, at=at)
-            else:
-                run.data["project"] = self.project
-            changed[key] = run
+        for chain, result in checks.walk():
+            for poi in raised(result.pois()):
+                key = str(action_id(poi))
+                if key in known:
+                    continue
+                known.add(key)
+                run = self.runs.find(key)
+                if run is None:
+                    run = resolve_action(type(poi).action).opened(
+                        poi, project=self.project, at=at, suites=chain)
+                else:
+                    run.data["project"] = self.project
+                changed[key] = run
         return changed
 
-    def refresh(self, checks: CheckRun, *, at: str | None = None,
+    def refresh(self, checks: CheckSuite, *, at: str | None = None,
                 registered: dict[str, ActionRun] | None = None) -> tuple[dict, ChecksUpdate]:
         """Pass the results to every action registered here, open or closed.
 
@@ -86,7 +88,7 @@ class ProjectActions:
                 changes[key] = (run, change)
         return changes, update
 
-    def update(self, checks: CheckRun) -> dict:
+    def update(self, checks: CheckSuite) -> dict:
         """Start and refresh this Project's actions from one run of its checks, and record it."""
         at = self._now()
         started = self.start(checks, at=at)

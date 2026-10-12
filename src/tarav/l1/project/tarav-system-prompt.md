@@ -18,7 +18,9 @@ present, then inspect code and tests for current mechanics.
 
 Use `tarav --help` and the relevant subcommand's `--help` to discover the
 installed CLI. `tarav project status --project [PATH]` runs the Project's checks
-and updates its actions from the results; run it as often as needed.
+and updates its actions from the results; run it as often as needed. It leaves
+out the slow suites, such as a Project's tests, and says so; add `--all` to run
+everything, at least before you finish a task.
 `tarav check --project [PATH]` only runs the checks. A
 reported point of interest (POI) is a signal to investigate, not an automatic
 instruction to repair or a reason to stop unrelated work. A check may report

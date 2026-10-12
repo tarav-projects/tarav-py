@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready.
+Status: implemented.
 
 `tarav project status` is the command agents repeat, and it ran the whole
 pytest suite of `tarav-py` every time, about a minute. Running only part of
@@ -122,13 +122,13 @@ Write the request and build it; delete the existing records and reopen.
 **Closing rule.** The action keeps the chain in `event.suites`. When its POI
 is not raised, `on_checks` looks for the innermost suite of the chain that
 is in this run; when none is, the suite handed over stands for it. That
-suite ran completely: the situation is absent and an open action closes as
-gone. It did not: the action stays, with the situation `check failed` when
-a check under it did not complete, and `not run` otherwise.
+suite is conclusive: the situation is absent and an open action closes as
+gone. It is not: the action stays, with the situation `check failed` when
+a check failed and `not run` when something was left out.
 
-This is coarser than before: one check that does not complete keeps every
-action under the same identified suite. Small suites keep it small; the
-suite of each skill package gets a key for that reason.
+Changed while building, see the log: a suite answers for its own code and
+not for nested suites that have an identity, and it answers per Type of
+check.
 
 **Tests.** `PyTestSuite` (`l1/checks/pytest_suite.py`), not routine, runs
 pytest once with a JUnit report to learn which files ran, and yields one
@@ -155,7 +155,8 @@ deleted once, by hand, and the deletion committed in that registry.
 Product project: `tarav-py`. Wiki owner: `tarav-md`, root
 `tarav-md/notes/wiki/`. Relevant notes: `poi-system.md`,
 `checks-workflow.md`, `daily/2026-10-12.md`. Supporting chat: session
-`abd0372d` above. Capture status: pending.
+`abd0372d` above. Capture status: done (`poi-system.md`, section "Suites are detectors that hold
+their run"; `checks-workflow.md`; daily 2026-10-12).
 
 ## Execution.Plan
 
@@ -171,3 +172,28 @@ Product project: `tarav-py`. Wiki owner: `tarav-md`, root
 ## Impl.Log
 
 - Design written from the discussion of 2026-10-12.
+- Implemented. Two changes to the plan, both found by the tests:
+  - With "ran completely" meaning everything below a suite, leaving the
+    pytest suite out made the Project's top suite incomplete, so a routine
+    run could close nothing at all. A suite now answers for its own code
+    (`exhausted`); a nested suite with an identity answers for itself.
+  - One failed check kept every action under the same suite. A suite now
+    answers per Type of check (`conclusive_for`), as the rule did before.
+- The suite of each skill package has a key, so its actions name it.
+- `routine()` in `tarav.l1.checks` is the filter both commands and the
+  extension use.
+- Checks: Ruff clean; `uv run pytest` 292 passed.
+- Data: the 52 records of the Actions partition were deleted and the
+  deletion committed there. The empty `records` folder had to be recreated,
+  because the registry refuses a partition without it.
+- Real runs on the root: the routine status took about 4 seconds, opened 51
+  actions and named the pytest suite as not run. `--all` ran 394 checks in
+  1 minute 38 and changed nothing. A routine run after it changed nothing.
+- Not exercised on real data: a failing test opening and closing its
+  action. The pieces are tested separately.
+- Instructions: the canonical Tarav System Prompt names `--all`; the three
+  agents files were regenerated; `ARCHITECTURE.md` and `step-actions.md`
+  updated.
+- Not committed with this request: `src/tarav/l2/tests/actions.py` and
+  `tests/test_actions_pois.py` still wait for another agent's package.
+

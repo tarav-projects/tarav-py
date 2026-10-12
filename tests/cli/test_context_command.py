@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckRun
+from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.checks.poi_contract import (
     POIContextRoundTripCheck,
 )
@@ -55,7 +55,7 @@ class GuidedPOI(CheckPOI):
 @pytest.fixture
 def reported(tmp_path: Path, monkeypatch) -> list[str]:
     monkeypatch.setenv("TARAV_CHECK_REPORTS", str(tmp_path / "reports"))
-    run = CheckRun()
+    run = CheckSuite()
     run.add(SampleCheck().run())
     ReportedPOIStore().retain(run.pois(), project={"id": "p1", "name": "sample"})
     return [poi.identity for poi in run.pois()]
@@ -137,7 +137,7 @@ def test_notes_belong_to_the_poi_type_and_not_to_the_poi_record() -> None:
 # tarav.breadcrumb 74712dcf68e97f58fe0e4ee967aac259d1ae2d412c8eb34f0fb4864be1b10b9a
 # tarav.breadcrumb 9b5c21419a84b555a93bf7f45e6d5cc16156f43c1f4406d7cf135057a48e3318
 def test_a_report_with_pois_opens_with_one_instruction() -> None:
-    run = CheckRun()
+    run = CheckSuite()
     run.add(SampleCheck().run())
     rendered = renderer().render(POISelection.from_check_report(
         run.report(by="identity"))).splitlines()
@@ -147,7 +147,7 @@ def test_a_report_with_pois_opens_with_one_instruction() -> None:
     assert f"tarav context --id {first[:12]} --view {REPORTED_POI_VIEW}" in rendered[4]
     assert sum("Before acting on any POI" in line for line in rendered) == 1
 
-    empty = CheckRun()
+    empty = CheckSuite()
     assert "tarav context" not in renderer().render(
         POISelection.from_check_report(empty.report()))
 

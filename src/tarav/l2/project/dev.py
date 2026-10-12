@@ -10,6 +10,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
+from xml.etree import ElementTree
 
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
@@ -54,44 +56,122 @@ class TestErrored(TestFailurePOI):
                           name="Tarav.Project.Dev.TestFailure.Errored", workflow=PROJECT_WORKFLOW_SHIP)
 
 
-class TestSuiteCheck(Check):
-    """Run the Project's pytest suite with the running interpreter."""
+def _pytest(root: Path, arguments: tuple[str, ...] = ()) -> dict:
+    """Run pytest once under `root`; say whether it ran, which files ran, and what failed."""
+    with tempfile.TemporaryDirectory(prefix="tarav-pytest-") as folder:
+        report = Path(folder) / "junit.xml"
+        completed = subprocess.run(
+            # A test file that cannot be collected is reported, not a reason to
+            # skip the rest of the suite.
+            [sys.executable, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider",
+             "--continue-on-collection-errors", f"--junit-xml={report}",
+             "-o", "junit_family=xunit1", *arguments],
+            cwd=root, capture_output=True, text=True, check=False,
+        )
+        lines = completed.stdout.splitlines()
+        if completed.returncode not in (0, 1, 5):
+            return {"ran": False,
+                    "reason": "\n".join((lines or completed.stderr.splitlines())[-5:])}
+        files = set()
+        if report.is_file():
+            files = {case.get("file") for case in ElementTree.parse(report).iter("testcase")
+                     if case.get("file")}
+    failures: dict[str, list[tuple[str, str, str]]] = {}
+    for line in lines:
+        match = _FAILURE.match(line)
+        if match:
+            outcome, test, message = match.groups()
+            failures.setdefault(test.split("::")[0], []).append((outcome, test, message))
+    return {"ran": True, "files": sorted(files | set(failures)), "failures": failures,
+            "summary": lines[-1] if lines else ""}
+
+
+# tarav.breadcrumb 10a6704ec38a59d5b0c7192e4d0759df90e57d0356f0f31db97b4f29d286c53e
+class PyTestCheck(Check):
+    """The tests of one file as pytest ran them: one POI per test that did not pass.
+
+    Without a file it stands for pytest itself, for a run that could not start.
+    """
 
     __test__ = False
 
     @classmethod
     def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("21f16812-bbbe-4de8-b254-889b9ff4863a"),
-                          name="Tarav.Project.Dev.TestSuite", workflow=PROJECT_WORKFLOW_SHIP)
+        return TaravClass(target=cls, id=TypeShip("3b0f6a2c-91d4-4e7b-a6c5-8f2d1e9b7a40"),
+                          name="Tarav.Project.Dev.PyTest", workflow=PROJECT_WORKFLOW_SHIP)
 
-    def __init__(self, root: Path, *, arguments: tuple[str, ...] = ()) -> None:
+    def __init__(self, root: Path, file: str | None = None, *,
+                 arguments: tuple[str, ...] = ()) -> None:
         super().__init__()
         self.root = Path(root)
+        self.file = file
         self.arguments = tuple(arguments)
 
-    def _run(self) -> CheckResult:
-        completed = subprocess.run(
-            # A test file that cannot be collected is reported, not a reason to
-            # skip the rest of the suite.
-            [sys.executable, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider",
-             "--continue-on-collection-errors", *self.arguments],
-            cwd=self.root, capture_output=True, text=True, check=False,
-        )
-        lines = completed.stdout.splitlines()
-        if completed.returncode not in (0, 1, 5):
-            return CheckResult(self, status="failed",
-                               reason="\n".join((lines or completed.stderr.splitlines())[-5:]))
-        pois = []
-        for line in lines:
-            match = _FAILURE.match(line)
-            if match:
-                outcome, test, message = match.groups()
-                case = TestFailed if outcome == "FAILED" else TestErrored
-                pois.append(case(
-                    self, f"{test}: {message or outcome.lower()}",
-                    situation={"project": self.root.name, "test": test}))
+    def result(self, outcome: dict) -> CheckResult:
+        """This file's result, read from one pytest run."""
+        if not outcome["ran"]:
+            return CheckResult(self, status="failed", reason=outcome["reason"])
+        pois = [
+            (TestFailed if kind == "FAILED" else TestErrored)(
+                self, f"{test}: {message or kind.lower()}",
+                situation={"project": self.root.name, "test": test})
+            for file, found in outcome["failures"].items()
+            if self.file is None or file == self.file
+            for kind, test, message in found
+        ]
         return CheckResult(self, status="completed", pois=pois,
-                           data={"summary": lines[-1] if lines else ""})
+                           data={"file": self.file, "summary": outcome["summary"]})
+
+    def _run(self) -> CheckResult:
+        return self.result(_pytest(
+            self.root, (*self.arguments, *((self.file,) if self.file else ()))))
+
+
+class PyTestFileSuite(CheckSuite):
+    """The tests of one file. Its key is the file, so its actions know where they belong."""
+
+    __test__ = False
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("6d8e2f41-0c37-4a95-b1e8-4f7a9c3d5b62"),
+                          name="Tarav.Project.Dev.PyTest.File", workflow=PROJECT_WORKFLOW_SHIP)
+
+
+# tarav.breadcrumb 39431af614faa314ce80d70ea47cb8ee80bdb2bc2c9a11add96468927082a80b
+class PyTestSuite(CheckSuite):
+    """A folder's pytest tests: pytest runs once, and each test file is a suite of its own.
+
+    It is not part of the routine run: it is as slow as the tests are. A run
+    that leaves it out says nothing about the tests, so their actions stay.
+    A test file that is gone is known from a complete run that no longer
+    yields its suite.
+    """
+
+    __test__ = False
+    routine = False
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("f1a47c95-3e60-4b28-9d7f-2c5b8e0a6d13"),
+                          name="Tarav.Project.Dev.PyTest.Suite", workflow=PROJECT_WORKFLOW_SHIP)
+
+    def __init__(self, root: Path, *, arguments: tuple[str, ...] = (),
+                 key: str | None = None) -> None:
+        super().__init__(name="pytest", key=key)
+        self.root = Path(root)
+        self.arguments = tuple(arguments)
+        self.summary_line = ""
+
+    def produce(self):
+        outcome = _pytest(self.root, self.arguments)
+        if not outcome["ran"]:
+            yield PyTestCheck(self.root).result(outcome)
+            return
+        self.summary_line = outcome["summary"]
+        for file in outcome["files"]:
+            yield PyTestFileSuite([PyTestCheck(self.root, file).result(outcome)],
+                                  name=file, key=file)
 
 
 class ProvisionalMarkerPOI(CheckPOI):
@@ -158,7 +238,7 @@ class PythonPackageProject(Project):
     # tarav.breadcrumb deb8671fb2a6493d1541d891423fd388109ce31d67e9811515cc80828f5b4660
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
-            return CheckSuite([super().suite(), TestSuiteCheck(self.obj.root),
+            return CheckSuite([super().suite(), PyTestSuite(self.obj.root),
                                *self.obj._poi_contract_checks()], name=self.obj.name)
 
 # tarav.breadcrumb d72b348467b8de83b8b8de698550a5382b36011821f0192de499492b38bb2e7d
@@ -191,7 +271,7 @@ class DocsProject(Project):
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
             return CheckSuite([super().suite(),
-                               CheckSuite(lambda run: self.obj._checks())],
+                               CheckSuite(lambda suite: self.obj._checks())],
                               name=self.obj.name)
 
     def _checks(self):
@@ -212,6 +292,8 @@ __all__ = [
     "ProvisionalMarkersCheck",
     "PythonPackageProject",
     "SkillLoadCheck",
+    "PyTestCheck",
+    "PyTestFileSuite",
+    "PyTestSuite",
     "TestFailurePOI",
-    "TestSuiteCheck",
 ]

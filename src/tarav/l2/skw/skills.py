@@ -160,7 +160,9 @@ class SkwSkill(SkwDepot, CheckProvider):
     # tarav.breadcrumb 923a65026ef70a0de363e3265111f35eaf46390daf1e42c4d75888a117aeffb3
     class Checks(CheckProvider.Checks):
         def suite(self) -> CheckSuite:
-            return CheckSuite(self.obj._checks())
+            # keyed, so that an action knows which skill package detected it
+            return CheckSuite(self.obj._checks(), name=self.obj.root.name,
+                              key=self.obj.root.name)
 
     def _checks(self, *, skip_unresolved_freshness=True):
         documents = self.documents()

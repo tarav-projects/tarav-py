@@ -61,18 +61,20 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
         return ProjectActions.of(self)
 
     # tarav.breadcrumb c480857f3a5c1669df7d3f312f134b4771e05dc92cfcc7f954c10e7c2caa87b4
-    def status(self, *, on_result=None):
-        """Run this Project's checks and hand the results to its actions.
+    def status(self, *, select=None, on_result=None):
+        """Run this Project's checks and hand the suite that ran to its actions.
 
         The checks only run and the actions never run a check; this is where
         the two meet. A Project with members does this for its own checks and
-        asks each member to do the same for itself.
+        asks each member to do the same for itself. `select` filters what
+        runs; what it leaves out is known as not run, so no action closes
+        for it.
         """
         from .status import ProjectStatus
 
-        checks = self.checks.own().run(on_result=on_result)
+        checks = self.checks.own().run(select=select, on_result=on_result)
         return ProjectStatus(self, checks, self.actions.update(checks),
-                             tuple(member.status(on_result=on_result)
+                             tuple(member.status(select=select, on_result=on_result)
                                    for member in self.members()))
 
     @classmethod

@@ -5,7 +5,7 @@ import json
 import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckRun
+from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.poi import POICollector
 from tarav.l1.poi.rendering import (
     DEFAULT_POI_RENDERER, JSON_LINES_POI_RENDERER, POIRenderError,
@@ -33,7 +33,7 @@ class SamplePOI(CheckPOI):
 
 # tarav.breadcrumb 7f3e537008bba2d8b00cca281777ea6643149f0b16f3dbf4c11e2e27c384cf13
 def test_every_named_renderer_keeps_a_resolvable_poi_and_context_route():
-    run = CheckRun()
+    run = CheckSuite()
     run.add(SampleCheck().run())
     poi = run.pois()[0]
     selection = POISelection.from_check_report(run.report(by="identity", detail=True))

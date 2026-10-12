@@ -9,7 +9,7 @@ from tarav.l1.actions import ACTIONS_WORKFLOW_SHIP, ActionRunStore, StepRunner
 from tarav.l1.actions.pois import POIActions, action_id
 from tarav.l1.actions.project import ProjectActions
 from tarav.l1.actions.blessing import BLESSED, Blessing, BlessingInput
-from tarav.l1.checks import Check, CheckResult, CheckRun
+from tarav.l1.checks import Check, CheckResult, CheckSuite
 from tarav.l1.operator_context import OperatorContextStore
 from tarav.l1.records import RecordRegistry
 
@@ -42,7 +42,7 @@ class Bench:
     def produce(self, *pois) -> dict:
         """One run of the bench checks that produces every POI raised so far, and these."""
         self.raised.extend(pois)
-        run = CheckRun()
+        run = CheckSuite()
         for poi in self.raised:
             check = getattr(poi, "check", None) or BenchCheck()
             run.add(CheckResult(check, status="completed", pois=[poi]))

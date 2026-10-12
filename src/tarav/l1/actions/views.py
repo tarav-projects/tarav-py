@@ -49,18 +49,19 @@ class POIActionContext(ContextFolder):
                 "opened_at": data["opened_at"], "closed_at": data["closed_at"],
                 "first_opened_at": data["started_at"]}),
                 description="Three separate axes: what the last run of the Project's checks "
-                            "says of the situation (present, absent, check failed), whether "
+                            "says of the situation (present, absent, check failed, not run), whether "
                             "the action is open, and the exit it closed by. A blessed action "
                             "can have its situation present.")
             builder.add("poi", opener=lambda: _value(event.get("poi")),
                         description="The POI as it was raised when this action last opened.")
             builder.add("project", opener=lambda: _value({
                 "project": data.get("project"), "situation": data.get("situation"),
-                "check": event.get("check")}),
-                description="The Project whose checks produce this POI, and what its last "
-                            "run says. The action closes as gone when a run of that "
-                            "Project's checks no longer produces the POI; a check that is "
-                            "present and failed leaves it as it is.")
+                "check": event.get("check"), "suites": event.get("suites")}),
+                description="The Project whose checks produce this POI, the suites above "
+                            "the check that raised it, and what the last run says. The "
+                            "action closes as gone when the nearest of those suites that "
+                            "ran did not report the POI; a suite that was left out "
+                            "(run with --all) or a failed check leaves it as it is.")
             builder.add("closing", opener=lambda: _value(
                 data.get("closing") or "Not closed. A closing leaves a record of its own "
                 "Type here: a blessing keeps who blessed, why, and the evidence offered."),

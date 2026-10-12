@@ -17,7 +17,7 @@ from tarav.l1.poi.reporting import (
 from tarav.l1.poi.rendering import POISelection, renderers
 from tarav.l1.poi.rendering import renderer
 
-from . import CHECKS_WORKFLOW_SHIP, Check, CheckPOI, CheckResult, CheckRun
+from . import CHECKS_WORKFLOW_SHIP, Check, CheckPOI, CheckResult, CheckSuite
 
 _READ = ("How reported POIs are opened is described in tarav-md/notes/wiki/poi-system.md, "
          "section 'Reported POIs and their context'.",
@@ -158,7 +158,7 @@ class POIContextRoundTripCheck(Check):
     def _run(self) -> CheckResult:
         sample = CheckPOI(self, "Round-trip sample",
                           situation={"sample": "poi-context-round-trip"})
-        run = CheckRun()
+        run = CheckSuite()
         run.add(CheckResult(self, status="completed", pois=[sample]))
         with tempfile.TemporaryDirectory(prefix="tarav-poi-round-trip-") as folder:
             store = ReportedPOIStore(Path(folder))

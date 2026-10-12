@@ -3,7 +3,7 @@
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
-from typing import Literal
+from typing import ClassVar, Literal
 
 from tarav.l0.kernel import (
     LiteRecord,
@@ -55,9 +55,9 @@ class CheckProvider(TaravType):
                 f"{entity(type(self.obj)).name} declares no checks"
             )
 
-        def run(self, *, into=None, on_result=None) -> "CheckRun":
-            """Run this provider's bound suite."""
-            return self.suite().run(into=into, on_result=on_result)
+        def run(self, *, select=None, on_result=None) -> "CheckSuite":
+            """Run this provider's suite, whole or filtered, and return it with its results."""
+            return self.suite().run(select=select, on_result=on_result)
 
     @property
     def checks(self) -> Checks:
@@ -233,25 +233,196 @@ class CheckResult(TaravObject, POIProvider):
         return self._pois
 
 
-class CheckRun(TaravObject, POIProvider):
-    """Results of one suite execution, in execution order."""
+# tarav.breadcrumb bd06b988e162e226589d99af66360d1d8cabff4416e3467793331678eff4cc98
+# tarav.breadcrumb a99d78902f0b314cddb487a06fe912eb513c6d03a7b5da3a3a8b21534ac68802
+# tarav.breadcrumb 187a0de2c6388a20c78433829fe87d2a0dc9c8df4c93515e846b813724854891
+# tarav.breadcrumb e8a9613020d9d01c514464079be745e2211a69b633b56f6ea5005e23991749ff
+class CheckSuite(TaravObject, POIProvider):
+    """A detector: the code that runs checks, and the results of its one run.
+
+    A suite does not contain checks. Which checks exist is only known while
+    it runs, because many are made from situations found on the way, and
+    situations cannot be listed beforehand. `produce()` is that code: it
+    yields checks, nested suites or ready results.
+
+    One instance holds one run. It can run whole or filtered, and it says
+    whether what it ran is conclusive; that is what lets someone conclude
+    that a situation it did not report is gone. A subclass is a suite with an
+    identity of its own, and a `key` binds one instance to a subject.
+    """
+
+    routine: ClassVar[bool] = True  # part of the run that is repeated often
 
     @classmethod
     def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("b4ad5cfd-c3bc-41d0-acf9-de7fe1de8118"),
-                          name="Tarav.Checks.Run", workflow=CHECKS_WORKFLOW_SHIP)
+        return TaravClass(target=cls, id=TypeShip("dc589b3c-9a16-4c3d-8338-50ab6304b2f3"),
+                          name="Tarav.Checks.Suite", workflow=CHECKS_WORKFLOW_SHIP)
 
-    def __init__(self) -> None:
+    def __init__(self, source=(), *, name: str | None = None, key: str | None = None) -> None:
         super().__init__()
-        self.results: list[CheckResult] = []
+        self.source = source
+        self.name = name
+        self.key = key
+        self.reset()
 
-    def add(self, result: CheckResult) -> CheckResult:
+    @classmethod
+    def of(cls, value) -> "CheckSuite":
+        if isinstance(value, CheckSuite):
+            return value
+        if not isinstance(value, Iterable):
+            raise TypeError("CheckSuite source must be a suite or iterable")
+        return cls(value)
+
+    @classmethod
+    def gathered(cls, suites: Iterable["CheckSuite"], *, name: str | None = None) -> "CheckSuite":
+        """One suite over suites that already ran, to read them together."""
+        whole = cls(name=name)
+        whole.items = list(suites)
+        whole.ran = True
+        return whole
+
+    # tarav.breadcrumb 292068630e668cebc44b4c49570344d5f1a1263cf5b1b7c9fdb057652d47d92d
+    @property
+    def identity(self) -> dict | None:
+        """What this suite is: its Type and its key. A plain grouping has none.
+
+        A grouping without identity counts as part of the suite above it.
+        """
+        if type(self) is CheckSuite and self.key is None:
+            return None
+        return {"type": entity(type(self)).name, "key": self.key}
+
+    def reset(self) -> None:
+        """Forget the run this suite holds."""
+        self.items: list[CheckResult | CheckSuite] = []
+        self.ran = False
+        self._refused = 0
+
+    def produce(self) -> Iterable:
+        """Yield what to run: checks, nested suites or ready results.
+
+        A function given as the source receives this suite, to read what ran
+        before it.
+        """
+        return self.source(self) if callable(self.source) else self.source
+
+    # tarav.breadcrumb 0957344ced509d1d0237945f09a405e985bdc7222b4f01f51043cc531db4262f
+    def run(
+        self, *, select: Callable[[object], bool] | None = None,
+        on_result: Callable[[CheckResult], object] | None = None,
+    ) -> "CheckSuite":
+        """Run what `produce()` yields and keep the results on this suite.
+
+        `select` is asked for each check and nested suite before it runs. One
+        it refuses does not run, and this suite then did not run completely.
+        """
+        if select is not None and not callable(select):
+            raise TypeError("select must be callable")
+        if on_result is not None and not callable(on_result):
+            raise TypeError("on_result must be callable")
+        self.reset()
+        self.ran = True
+        for item in self.produce():
+            if isinstance(item, CheckSuite):
+                if select is not None and not select(item):
+                    item.reset()  # kept, so that it is known as not run
+                else:
+                    item.run(select=select, on_result=on_result)
+                self.items.append(item)
+                continue
+            if isinstance(item, CheckResult):
+                result = item
+            elif isinstance(item, Check):
+                if select is not None and not select(item):
+                    self._refused += 1
+                    continue
+                try:
+                    result = item.run()
+                except Exception as exc:
+                    result = CheckResult(item, status="failed", reason=f"{type(exc).__name__}: {exc}")
+            else:
+                raise TypeError("A suite yields Checks, suites or CheckResults")
+            self.items.append(result)
+            if on_result is not None:
+                on_result(result)
+        return self
+
+    def add(self, result: "CheckResult") -> "CheckResult":
+        """Keep one ready result, for a suite put together by hand."""
         if not isinstance(result, CheckResult):
-            raise TypeError("CheckRun accepts CheckResults")
-        self.results.append(result)
+            raise TypeError("A suite keeps CheckResults")
+        self.items.append(result)
+        self.ran = True
         return result
 
-    def results_of(self, check_type: type[Check] | str) -> tuple[CheckResult, ...]:
+    # tarav.breadcrumb 5815e018a2d0dccc212f073206d962cc8ea7f9f109dc60f9882b330ea67e76c1
+    @property
+    def complete(self) -> bool:
+        """It ran, nothing was refused, and every check and nested suite completed."""
+        return (self.ran and not self._refused
+                and all(item.complete if isinstance(item, CheckSuite)
+                        else item.status == "completed" for item in self.items))
+
+    def own_results(self) -> Iterable["CheckResult"]:
+        """The results of this suite itself: its own and those of plain groupings in it."""
+        for item in self.items:
+            if not isinstance(item, CheckSuite):
+                yield item
+            elif item.identity is None:
+                yield from item.own_results()
+
+    # tarav.breadcrumb b4ea07ac1bcf4e22778f334dd461c4fca0e352d44d3c1864f73b373ec328f46c
+    @property
+    def exhausted(self) -> bool:
+        """This suite's own code ran to its end and nothing in it was refused.
+
+        A nested suite with an identity answers for itself, so one that was
+        left out does not count here.
+        """
+        return (self.ran and not self._refused
+                and all(item.exhausted for item in self.items
+                        if isinstance(item, CheckSuite) and item.identity is None))
+
+    def conclusive_for(self, check_type: str | None = None) -> bool:
+        """Can this suite say that what it did not report is not there?
+
+        It can when it is exhausted and its own checks completed: those of
+        one Type when `check_type` names it, otherwise all of them. Then a
+        situation they did not report is gone, and so is a nested suite this
+        one did not yield.
+        """
+        return self.exhausted and all(
+            result.status == "completed" for result in self.own_results()
+            if check_type is None or entity(type(result.check)).name == check_type)
+
+    @property
+    def conclusive(self) -> bool:
+        return self.conclusive_for()
+
+    @property
+    def results(self) -> list["CheckResult"]:
+        """Every result of this suite and of the suites it ran, in execution order."""
+        return [result for _, result in self.walk()]
+
+    def suites(self) -> list["CheckSuite"]:
+        """The nested suites, at any depth, that were run or refused."""
+        found: list[CheckSuite] = []
+        for item in self.items:
+            if isinstance(item, CheckSuite):
+                found.append(item)
+                found.extend(item.suites())
+        return found
+
+    def walk(self, above: tuple[dict, ...] = ()) -> Iterable[tuple[tuple[dict, ...], "CheckResult"]]:
+        """Each result with the identified suites above it, outermost first."""
+        chain = above if self.identity is None else (*above, self.identity)
+        for item in self.items:
+            if isinstance(item, CheckSuite):
+                yield from item.walk(chain)
+            else:
+                yield chain, item
+
+    def results_of(self, check_type: type[Check] | str) -> tuple["CheckResult", ...]:
         if isinstance(check_type, str):
             return tuple(result for result in self.results
                          if entity(type(result.check)).name == check_type)
@@ -271,7 +442,8 @@ class CheckRun(TaravObject, POIProvider):
         statuses: Counter[str] = Counter()
         by_type: Counter[str] = Counter()
         by_check: dict[str, dict[str, object]] = {}
-        for result in self.results:
+        results = self.results
+        for result in results:
             check_name = entity(type(result.check)).name
             statuses[result.status] += 1
             check_row = by_check.setdefault(check_name, {"runs": 0, "by_status": {}, "pois": 0})
@@ -281,9 +453,11 @@ class CheckRun(TaravObject, POIProvider):
             for poi in result.pois():
                 by_type[entity(type(poi)).name] += 1
         return {
-            "checks": len(self.results),
+            "checks": len(results),
             "by_status": dict(statuses),
-            "incomplete": len(self.results) - statuses["completed"],
+            "incomplete": len(results) - statuses["completed"],
+            "not_run": [suite.identity or {"name": suite.name}
+                        for suite in self.suites() if not suite.ran],
             "pois": sum(by_type.values()),
             "by_check": by_check,
             "by_type": dict(by_type),
@@ -311,9 +485,9 @@ class CheckRun(TaravObject, POIProvider):
         POIs under those names in `standing`. The names mean nothing here.
         """
         if by not in ("type", "check", "identity"):
-            raise ValueError("Unknown CheckRun grouping")
+            raise ValueError("Unknown report grouping")
         if sort not in ("run", "count"):
-            raise ValueError("Unknown CheckRun sort order")
+            raise ValueError("Unknown report sort order")
         if offset < 0 or limit < 1:
             raise ValueError("Expected nonnegative offset and positive limit")
         groups: dict[str, dict[str, object]] = {}
@@ -380,60 +554,10 @@ class CheckRun(TaravObject, POIProvider):
         }
 
 
-# tarav.breadcrumb bd06b988e162e226589d99af66360d1d8cabff4416e3467793331678eff4cc98
-# tarav.breadcrumb a99d78902f0b314cddb487a06fe912eb513c6d03a7b5da3a3a8b21534ac68802
-class CheckSuite(TaravObject):
-    """A set of checks: a source of checks, nested suites or ready results."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("dc589b3c-9a16-4c3d-8338-50ab6304b2f3"),
-                          name="Tarav.Checks.Suite", workflow=CHECKS_WORKFLOW_SHIP)
-
-    def __init__(self, source=(), *, name: str | None = None) -> None:
-        super().__init__()
-        self.source = source
-        self.name = name
-
-    @classmethod
-    def of(cls, value) -> "CheckSuite":
-        if isinstance(value, CheckSuite):
-            return value
-        if not isinstance(value, Iterable):
-            raise TypeError("CheckSuite source must be a suite or iterable")
-        return cls(value)
-
-    def run(
-        self, *, into: CheckRun | None = None,
-        on_result: Callable[[CheckResult], object] | None = None,
-    ) -> CheckRun:
-        run = into if into is not None else CheckRun()
-        if not isinstance(run, CheckRun):
-            raise TypeError("into must be a CheckRun")
-        if on_result is not None and not callable(on_result):
-            raise TypeError("on_result must be callable")
-
-        def consume(suite: CheckSuite) -> None:
-            items = suite.source(run) if callable(suite.source) else suite.source
-            for item in items:
-                if isinstance(item, CheckSuite):
-                    consume(item)
-                    continue
-                if isinstance(item, CheckResult):
-                    result = item
-                elif isinstance(item, Check):
-                    try:
-                        result = item.run()
-                    except Exception as exc:
-                        result = CheckResult(item, status="failed", reason=f"{type(exc).__name__}: {exc}")
-                else:
-                    raise TypeError("CheckSuite items must be Checks, suites or CheckResults")
-                run.add(result)
-                if on_result is not None:
-                    on_result(result)
-
-        consume(self)
-        return run
+# tarav.breadcrumb f1a2ea68b964b6f2337f39c07640ed590bab9deea67d99884bc6b8d99b4e1901
+def routine(item: object) -> bool:
+    """A filter for the run that is repeated often: leave out suites that are not routine."""
+    return not (isinstance(item, CheckSuite) and not item.routine)
 
 
 def run_checks(checks: Iterable[Check]) -> tuple[CheckResult, ...]:
@@ -467,10 +591,10 @@ __all__ = [
     "CheckPOI",
     "CheckProvider",
     "CheckResult",
-    "CheckRun",
     "CheckSuite",
     "Situation",
     "SituationCheck",
     "check_report",
+    "routine",
     "run_checks",
 ]

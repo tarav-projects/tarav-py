@@ -30,7 +30,7 @@ from . import (
 )
 
 GONE = "gone"
-PRESENT, ABSENT, CHECK_FAILED = "present", "absent", "check failed"
+PRESENT, ABSENT, CHECK_FAILED, NOT_RUN = "present", "absent", "check failed", "not run"
 
 
 # tarav.breadcrumb 7025ef0587c66a6d14f2ea5252a2442b77d086f0c0875f3031a32b72650786f5
@@ -62,8 +62,9 @@ class GoneClosing(Closing):
 class POIResolutionAction(StepAction):
     """The action a POI spins: open while the POI stands, closed when it is gone or blessed.
 
-    `gone` is taken by the action's Project when a run of its checks no longer
-    produces the POI. `blessed` is taken by an operator who
+    `gone` is taken by the action's Project when a suite above the POI's check
+    ran completely and did not produce the POI. `blessed` is taken by an
+    operator who
     gives a reason: the action closes although the situation still exists.
     Each path leaves its own record, and that record decides whether the POI
     raised again reopens the action.
@@ -88,46 +89,60 @@ class POIResolutionAction(StepAction):
 
     # tarav.breadcrumb c5db1b346c8b5ff563c654bb294079f0d167cfcdabea9a4e04cf10d35bceed8d
     @classmethod
-    def opened(cls, poi: IdentifiedPOI, *, project: dict, at: str) -> ActionRun:
-        """Build the action of a POI, open and not yet registered anywhere."""
+    def opened(cls, poi: IdentifiedPOI, *, project: dict, at: str,
+               suites: tuple[dict, ...] = ()) -> ActionRun:
+        """Build the action of a POI, open and not yet registered anywhere.
+
+        `suites` are the identified suites above the check that raised it.
+        """
         return ActionRun(action_id(poi), {
             "action": entity(cls).name, "state": RUNNING, "exit": None,
             "started_at": at, "opened_at": at, "closed_at": None, "project": project,
             "skill": cls.skill.to_json() if cls.skill else None,
             "intakes": [], "sessions": [], "opening": {"passed": True, "results": []},
             "operations": [], "closings": [], "output": None, "reason": None,
-            "event": _event(poi), "closing": None,
+            "event": _event(poi, suites), "closing": None,
             "situation": {"state": PRESENT, "at": at},
         })
 
-    # tarav.breadcrumb 3379190a2340530d84b3e29c0a244d0687187b475d890292047e1f8a3f1ef4eb
+    # tarav.breadcrumb 5aeb4d2196d479937f983178eac99642a65b42c34a2354a1900172f2c8ae2961
     @classmethod
     def on_checks(cls, run: ActionRun, update: ChecksUpdate) -> str | None:
-        """Follow the POI through a run of the Project's checks.
+        """Follow the POI through a suite of the Project's checks that ran.
 
         The POI is among the results: the situation is present, and a closed
-        action reopens when the way it was closed says so. The POI's check is
-        there and did not complete: that is a result too, and it says nothing
-        about the situation, so the action stays as it is. Otherwise the
-        situation is absent, and an open action closes as gone.
+        action reopens when the way it was closed says so. It is not: the
+        suites above its check are the detectors, and only one whose own
+        code ran to its end can say the situation is gone. The nearest of
+        them that is in this run decides; when none is, the suite handed
+        over does. A suite that did not run, or in which a check of the
+        POI's Type of check failed, says nothing, and the action stays.
         """
         event = run.data.get("event") or {}
         if not event:
             return None
         seen = update.memo.get(cls)
         if seen is None:
+            raised_now = {}
+            for chain, result in update.checks.walk():
+                for poi in raised(result.pois()):
+                    raised_now.setdefault(str(action_id(poi)), (poi, chain))
             seen = update.memo[cls] = {
-                "raised": {str(action_id(poi)): poi for poi in raised(update.checks.pois())},
-                "failed": {entity(type(result.check)).name
-                           for result in update.checks.results
-                           if result.status != "completed"},
+                "raised": raised_now,
+                "suites": {_suite_key(suite.identity): suite
+                           for suite in reversed(update.checks.suites())
+                           if suite.identity is not None},
             }
-        poi = seen["raised"].get(str(run.id))
+        found = seen["raised"].get(str(run.id))
         situation = (run.data.get("situation") or {}).get("state")
-        if poi is not None:
+        if found is not None:
+            poi, chain = found
             change = None
-            if event.get("blessable") != isinstance(poi, BlessablePOI):
-                run.data["event"] = {**event, "blessable": isinstance(poi, BlessablePOI)}
+            fresh = _event(poi, chain)
+            if (event.get("blessable"), event.get("suites")) != (
+                    fresh["blessable"], fresh["suites"]):
+                run.data["event"] = {**event, "blessable": fresh["blessable"],
+                                     "suites": fresh["suites"]}
                 change = "updated"
             if situation != PRESENT:
                 run.data["situation"] = {"state": PRESENT, "at": update.at}
@@ -135,15 +150,22 @@ class POIResolutionAction(StepAction):
             if run.state == CLOSED and run.exit != EXIT_ERROR:
                 if cls.exit_named(run.exit).closing.reopens(run.data.get("closing"), poi):
                     run.data.update(state=RUNNING, exit=None, opened_at=update.at,
-                                    closed_at=None, output=None, closing=None,
-                                    event=_event(poi))
+                                    closed_at=None, output=None, closing=None, event=fresh)
                     change = "reopened"
             return change
-        state = CHECK_FAILED if (event.get("check") or {}).get("type") in seen["failed"] else ABSENT
+        detector = next((seen["suites"][key] for key in map(_suite_key, reversed(event["suites"]))
+                         if key in seen["suites"]), update.checks)
+        check_type = (event.get("check") or {}).get("type")
+        if detector.conclusive_for(check_type):
+            state = ABSENT
+        elif detector.exhausted:
+            state = CHECK_FAILED
+        else:
+            state = NOT_RUN
         if situation == state:
             return None
         run.data["situation"] = {"state": state, "at": update.at}
-        if state == CHECK_FAILED or run.state != RUNNING:
+        if state != ABSENT or run.state != RUNNING:
             return "updated"
         close_run(cls(), run, GONE, by=PROJECT, at=update.at, extra={"project": update.project})
         poi_record = event.get("poi") or {}
@@ -178,10 +200,15 @@ def raised(pois: Iterable[POI]) -> Iterable[IdentifiedPOI]:
             and type(poi).action is not None)
 
 
-def _event(poi: IdentifiedPOI) -> dict:
+def _event(poi: IdentifiedPOI, suites: tuple[dict, ...] = ()) -> dict:
     check = getattr(poi, "check", None)
     return {"blessable": isinstance(poi, BlessablePOI), "poi": poi.as_dict(detail=True),
-            "check": {"type": entity(type(check)).name} if check is not None else None}
+            "check": {"type": entity(type(check)).name} if check is not None else None,
+            "suites": [dict(suite) for suite in suites]}
+
+
+def _suite_key(identity: dict) -> tuple:
+    return identity["type"], identity["key"]
 
 
 class POIActions:
@@ -230,6 +257,7 @@ POI_ACTION_RECORD_TYPES = (GoneClosing,)
 
 __all__ = [
     "ABSENT", "ActionablePOI", "BLESSED", "BlessablePOI", "CHECK_FAILED", "GONE", "GoneClosing",
+    "NOT_RUN",
     "POIActionClosed", "POIActions", "POIResolutionAction", "POI_ACTION_RECORD_TYPES",
     "PRESENT", "action_id", "raised",
 ]

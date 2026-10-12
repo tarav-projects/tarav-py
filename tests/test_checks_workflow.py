@@ -5,7 +5,6 @@ from tarav.l1.checks import (
     CheckPOI,
     CheckProvider,
     CheckResult,
-    CheckRun,
     CheckSuite,
     Situation,
     SituationCheck,
@@ -137,9 +136,9 @@ def test_suite_runs_nested_and_run_dependent_sources_without_iteration():
     first = ExampleCheck("first", runs)
     skipped = ExampleCheck("skipped", runs)
 
-    def dependent(run):
+    def dependent(suite):
         yield first
-        assert len(run.results) == 1
+        assert len(suite.results) == 1  # the source reads what ran before it
         yield CheckResult(skipped, status="incomplete", reason="not ready")
         yield CheckSuite.of((ExampleCheck("last", runs),))
 
@@ -178,7 +177,7 @@ def test_run_groups_pois_by_type_and_identity_without_codes():
     first = ExamplePOI(check, "First", situation={"subject": "one"})
     second = ExamplePOI(check, "Second", situation={"subject": "one"})
     notice = NotificationPOI("An event")
-    run = CheckRun()
+    run = CheckSuite()
     run.add(CheckResult(check, status="completed", pois=(first, second, notice)))
     assert first.identity == second.identity
     assert run.summary()["pois"] == 3
@@ -196,7 +195,7 @@ def test_run_groups_pois_by_type_and_identity_without_codes():
 
 def test_run_pages_groups_and_blessings_do_not_hide_other_pois():
     check = ExampleCheck("one", [])
-    run = CheckRun()
+    run = CheckSuite()
     run.add(CheckResult(check, status="completed", pois=(
         ExamplePOI(check, "First", situation={"case": 1}),
     )))
@@ -282,3 +281,86 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
     assert failure.context().open("details").records.to_record()["value"] == {"line": 3}
     with pytest.raises(ValueError, match="another Check"):
         CheckResult(ExampleCheck("two", []), status="completed", pois=(failure,))
+
+
+class KeptSuite(CheckSuite):
+    """A suite with an identity of its own."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip("2a6c9e14-7b3d-4f80-a5e1-9d0c4b8f7a36"),
+                          name="Test.Checks.KeptSuite")
+
+
+class SlowSuite(KeptSuite):
+    routine = False
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip("5e1b7d92-0f4a-4c63-8a2e-6b9d3c1f0e57"),
+                          name="Test.Checks.SlowSuite")
+
+
+# tarav.breadcrumb 70319c686e0b870849756c043ded64102d407771a8c2dbf716e1c4e478c8d499
+def test_a_suite_holds_its_one_run_and_a_new_run_replaces_it():
+    runs = []
+    suite = CheckSuite([ExampleCheck("one", runs)])
+    assert (suite.ran, suite.complete, suite.results) == (False, False, [])
+    assert suite.run() is suite
+    assert (suite.ran, suite.complete, len(suite.results), len(suite.pois())) == (True, True, 1, 1)
+    suite.run()
+    assert len(suite.results) == 1 and runs == ["one", "one"]
+    suite.reset()
+    assert (suite.ran, suite.results) == (False, [])
+
+
+# tarav.breadcrumb fc1800cb2561bc56815b9e1a33aabdf7f03242145276bed14fc6b2197fc8654d
+def test_a_suite_has_an_identity_from_its_type_and_key_and_a_grouping_has_none():
+    assert CheckSuite([]).identity is None
+    assert CheckSuite([], key="docs").identity == {"type": "Tarav.Checks.Suite", "key": "docs"}
+    assert KeptSuite([]).identity == {"type": "Test.Checks.KeptSuite", "key": None}
+
+    inner = KeptSuite([ExampleCheck("deep", [])], key="a")
+    outer = KeptSuite([ExampleCheck("top", []), CheckSuite([inner])])
+    chains = [[item["key"] for item in chain] for chain, _ in outer.run().walk()]
+    assert chains == [[None], [None, "a"]]  # the grouping in between is not in the chain
+    assert outer.suites()[-1] is inner
+
+
+# tarav.breadcrumb c251c964c8d8bd667e4dbc6d75de2488d88efca85294cf02dba64444084c49ab
+def test_a_filtered_run_is_not_complete_and_keeps_what_it_refused_as_not_run():
+    runs = []
+    slow = SlowSuite([ExampleCheck("slow", runs)], key="slow")
+    kept = KeptSuite([ExampleCheck("quick", runs)], key="quick")
+    whole = CheckSuite([kept, slow])
+
+    def routine(item):
+        return not (isinstance(item, CheckSuite) and not item.routine)
+
+    whole.run(select=routine)
+    assert runs == ["quick"]
+    assert (kept.complete, slow.ran, slow.complete, whole.complete) == (True, False, False, False)
+    # what the suite itself ran is conclusive; what a nested suite did not run is its own matter
+    assert (whole.conclusive, kept.conclusive, slow.conclusive) == (True, True, False)
+    assert whole.summary()["not_run"] == [{"type": "Test.Checks.SlowSuite", "key": "slow"}]
+    assert slow in whole.suites()
+
+    whole.run()
+    assert runs == ["quick", "quick", "slow"] and whole.complete
+    assert whole.summary()["not_run"] == []
+
+    # a refused check also leaves the suite incomplete, and a failed one does too
+    partial = CheckSuite([ExampleCheck("a", []), ExampleCheck("b", [])]).run(
+        select=lambda item: item.subject != "b")
+    assert (len(partial.results), partial.complete, partial.conclusive) == (1, False, False)
+    failed = CheckSuite([CheckResult(ExampleCheck("c", []), status="failed", reason="x")]).run()
+    assert not failed.complete and not failed.conclusive
+
+
+def test_suites_that_ran_can_be_gathered_to_read_them_together():
+    first = KeptSuite([ExampleCheck("one", [])], key="one").run()
+    second = KeptSuite([ExampleCheck("two", [])], key="two").run()
+    whole = CheckSuite.gathered([first, second], name="both")
+    assert (len(whole.results), whole.complete, whole.summary()["checks"]) == (2, True, 2)
+    assert whole.report()["summary"]["pois"] == 2
+

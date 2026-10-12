@@ -205,10 +205,10 @@ def test_a_root_status_lets_each_project_update_its_own_actions(tree: Path,
     status = root.status()
     assert [found.project.name for found in status.each()] == ["root", "a", "b"]
     assert [len(found.checks.results_of(_Found)) for found in status.each()] == [0, 1, 1]
-    assert len(status.run().results_of(_Found)) == 2
+    assert len(status.suite().results_of(_Found)) == 2
     acted = status.acted()
     assert [project["name"] for project in acted["projects"]] == ["root", "a", "b"]
-    assert acted["opened"] == acted["actions"] == len(status.run().pois())
+    assert acted["opened"] == acted["actions"] == len(status.suite().pois())
 
     def found(project) -> list:
         return [run.data["event"]["poi"]["situation"] for run in project.actions.list()

@@ -70,8 +70,9 @@
 
 - This folder is a `Tarav.Project.PythonPackage` child of the Taravangian
   root (`../.tarav/project.json`) and uses the root's environment
-  (`harness.project`). `tarav check --project` runs the test suite as one
-  Check; each failing test is a POI. Development still uses this folder's own
+  (`harness.project`). `tarav project status --project --all` runs the pytest
+  tests as a `PyTestSuite`, one suite per test file; each failing test is a POI.
+  Without `--all` the tests are left out. Development still uses this folder's own
   `.venv` through `uv run`.
   <!-- tarav.breadcrumb 2407cd94597e19dd391e332b269374527b2c4be897c48078f7d31ae1d691c845 -->
 - A harness manifest may list several trusted Project Types
@@ -111,9 +112,14 @@
   and `.claude/skills` resolving to the same directory. Checks report
   missing skills and folder structure through typed POIs.
   <!-- tarav.breadcrumb cf13f560fbda5e4ee266ba51759419ed3ae8d3bd3e954f8b6b0f3d8b9f33ef7c -->
-- `CheckProvider.checks.suite()` returns a `CheckSuite`. Its `run()` accumulates a
-  `CheckRun`; suites are not iterable because sources can depend on earlier
-  results. `tarav check --project [PATH] [--json]` runs the suite in the
+- `CheckProvider.checks.suite()` returns a `CheckSuite`. A suite does not contain
+  checks: it holds the code that runs them (`produce()`), because which checks
+  exist is only known while it runs. `run(select=...)` runs it whole or filtered
+  and returns the suite itself, which holds the results of that one run, the
+  summary and the report; there is no separate run object. A subclass is a suite
+  with its own Type id, and a `key` binds an instance to a subject. A class with
+  `routine = False` is left out of the commands unless `--all` is given.
+  `tarav check --project [PATH] [--json]` runs the suite in the
   Project harness and reports grouped POIs (20 groups by default). It exits
   0 only when all Checks completed without findings. It knows nothing of actions.
   <!-- tarav.breadcrumb 1b6aa81a76ec0d6ff43faa8d080ab26dd80ab3a9098cf814f141182b5e2ff406 -->
@@ -280,8 +286,11 @@ Importing `tarav` alone initializes no services or layered modules.
   `tarav project status --project` runs that and is the command to repeat;
   `tarav check --project` only runs the checks. Read actions with
   `tarav action list --project` and `tarav context --id <poi-id> --view poi-action`.
-  An action closes as `gone` when its Project's checks no longer produce its POI; a
-  check that is present and failed leaves it, with the situation `check failed`. Checks
+  An action records the suites above the check that raised its POI. It closes as
+  `gone` only when the nearest of them that is in the run ran its own code to the
+  end without reporting the POI: the signal is gone when the detector no longer
+  detects it. A suite that was left out leaves the action, with the situation
+  `not run`; a failed check leaves it with `check failed`. Checks
   only emit, and a run that no Project hands over records nothing. `tarav action` and
   `tarav operator-context` print a summary by default and the full result with
   `--json`. `blessed` is an operator's exit: the action closes
@@ -312,7 +321,9 @@ present, then inspect code and tests for current mechanics.
 
 Use `tarav --help` and the relevant subcommand's `--help` to discover the
 installed CLI. `tarav project status --project [PATH]` runs the Project's checks
-and updates its actions from the results; run it as often as needed.
+and updates its actions from the results; run it as often as needed. It leaves
+out the slow suites, such as a Project's tests, and says so; add `--all` to run
+everything, at least before you finish a task.
 `tarav check --project [PATH]` only runs the checks. A
 reported point of interest (POI) is a signal to investigate, not an automatic
 instruction to repair or a reason to stop unrelated work. A check may report
