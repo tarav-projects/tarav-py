@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 import hashlib
+import inspect
 from typing import ClassVar
 import json
 import warnings
@@ -137,10 +138,35 @@ class IdentifiedPOI(POI):
             result["evidence"] = self.evidence
         return result
 
+    # tarav.breadcrumb b1ec626ad687f990fb926f99fdc0702e21feed60c91b00abfdcd391aa0a0ab67
+    def describe(self) -> dict[str, object]:
+        """Everything known about this POI, as plain data, for whoever takes it further.
+
+        A POI is momentary and owns nothing, so nothing here is stored: a
+        consumer that escalates the POI keeps what it needs of this.
+        """
+        check = getattr(self, "check", None)
+        return {
+            "id": self.identity, "message": self.message,
+            "situation": self.situation, "subject": self.subject, "evidence": self.evidence,
+            "details": deepcopy(getattr(self, "details", {})),
+            "poi_type": _class_record(type(self)),
+            "raised_by": _class_record(type(check)) if check is not None else None,
+            "notes": [str(item) for item in type(self).context_notes],
+        }
+
     def obj_context(self, builder) -> None:
         builder.add("situation", opener=lambda: _details(self.situation))
         builder.add("coordinate", opener=lambda: _details(self.coordinate))
         builder.add("evidence", opener=lambda: _details(self.evidence))
+
+
+def _class_record(cls: type) -> dict[str, object]:
+    help_ = cls.help() if hasattr(cls, "help") else {}
+    return {"type": entity(cls).name,
+            "description": inspect.cleandoc(cls.__dict__.get("__doc__") or ""),
+            "python_class": f"{cls.__module__}.{cls.__qualname__}",
+            "source_path": help_.get("source_path"), "source_line": help_.get("source_line")}
 
 
 class NotificationPOI(POI):
@@ -237,17 +263,13 @@ class POICollector:
     def report(
         self,
         *,
-        actions=None,
         offset=0,
         limit=20,
         class_name=None,
-        blessing=None,
         detail=False,
     ):
         if offset < 0 or limit < 1:
             raise ValueError("Expected nonnegative offset and positive limit")
-        if blessing not in (None, "unblessed", "blessed"):
-            raise ValueError("Unknown blessing filter")
         identity_counts = Counter(
             poi.identity for poi in self.pois if isinstance(poi, IdentifiedPOI)
         )
@@ -258,23 +280,21 @@ class POICollector:
             if isinstance(poi, IdentifiedPOI):
                 emission_index = next_index[poi.identity]
                 next_index[poi.identity] += 1
-            standing = actions.blessing_standing(poi) if actions is not None else None
-            rows.append((poi, standing, emission_index))
+            rows.append((poi, emission_index))
         rows.sort(
             key=lambda row: (
                 getattr(row[0], "identity", ""),
                 entity(type(row[0])).name,
-                row[2] if row[2] is not None else -1,
+                row[1] if row[1] is not None else -1,
             )
         )
         selected = [
-            (poi, standing, emission_index)
-            for poi, standing, emission_index in rows
-            if (class_name is None or entity(type(poi)).name == class_name)
-            and (blessing is None or standing is not None and standing["status"] == blessing)
+            (poi, emission_index)
+            for poi, emission_index in rows
+            if class_name is None or entity(type(poi)).name == class_name
         ]
         page = []
-        for poi, standing, emission_index in selected[offset : offset + limit]:
+        for poi, emission_index in selected[offset : offset + limit]:
             row = (
                 poi.as_dict(detail=detail)
                 if isinstance(poi, IdentifiedPOI)
@@ -285,8 +305,6 @@ class POICollector:
                 and identity_counts[poi.identity] > 1
             ):
                 row["index"] = emission_index
-            if standing is not None:
-                row["blessing"] = standing
             page.append(row)
         return {
             "total": len(rows),
@@ -294,14 +312,7 @@ class POICollector:
             "offset": offset,
             "shown": len(page),
             "next_offset": offset + limit if offset + limit < len(selected) else None,
-            "by_class": dict(Counter(entity(type(poi)).name for poi, _, _ in rows)),
-            "by_blessing": dict(
-                Counter(
-                    standing["status"]
-                    for _, standing, _ in rows
-                    if standing is not None
-                )
-            ),
+            "by_class": dict(Counter(entity(type(poi)).name for poi, _ in rows)),
             "items": page,
         }
 

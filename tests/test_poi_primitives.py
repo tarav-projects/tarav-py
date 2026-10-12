@@ -91,16 +91,17 @@ def test_blessing_remains_visible_and_matches_situation(tmp_path):
         AppReview.finding({"file": "a"}, evidence={"value": 1})
     )
     blessing = bench.bless(occurrence, reason="Reviewed against the test contract.")
-    report = collector.report(actions=bench.pois)
-    assert report["total"] == 1 and report["by_blessing"] == {"blessed": 1}
-    assert report["items"][0]["blessing"] == {"status": "blessed", "blessing": str(blessing.id)}
+    # the POI is still collected and listed; whether it is blessed is asked of the Project
+    report = collector.report()
+    assert report["total"] == 1 and "blessing" not in report["items"][0]
+    assert "by_blessing" not in report
+    assert bench.pois.blessing(occurrence).id == blessing.id
     changed_evidence = AppReview.finding({"file": "a"}, evidence={"value": 2})
-    assert bench.pois.blessing_standing(changed_evidence)["status"] == "blessed"
+    assert bench.pois.standing(changed_evidence) == "blessed"
     changed_situation = AppReview.finding(
         {"file": "a", "revision": 2}, evidence={"value": 2}
     )
-    assert bench.pois.blessing_standing(changed_situation)["status"] == "unblessed"
-    assert collector.report(actions=bench.pois, blessing="unblessed")["matching"] == 0
+    assert bench.pois.standing(changed_situation) == "open"
 
 
 def test_a_poi_that_is_not_blessable_reports_no_blessing(tmp_path):
@@ -110,9 +111,8 @@ def test_a_poi_that_is_not_blessable_reports_no_blessing(tmp_path):
     bench = Bench(tmp_path / "records", create_runtime(archive_root=tmp_path / "archive").records)
     collector = POICollector()
     error = collector.emit(AppError.finding({}))
-    assert bench.pois.blessing_standing(error) is None and bench.pois.of(error) is None
-    report = collector.report(actions=bench.pois)
-    assert report["by_blessing"] == {} and "blessing" not in report["items"][0]
+    assert bench.pois.blessing(error) is None and bench.pois.of(error) is None
+    assert bench.pois.standing(error) == "open"
     assert not bench.runs.exists()  # reading never creates the registry
 
 

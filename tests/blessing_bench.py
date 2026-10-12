@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.actions import ACTIONS_WORKFLOW_SHIP, ActionRunStore, StepRunner
-from tarav.l1.actions.pois import POIActions, action_id
+from tarav.l1.actions.pois import action_id
 from tarav.l1.actions.project import ProjectActions
 from tarav.l1.actions.blessing import BLESSED, Blessing, BlessingInput
 from tarav.l1.checks import Check, CheckResult, CheckSuite
@@ -35,8 +35,8 @@ class Bench:
         self.at = datetime.now(timezone.utc)
         self.runner = StepRunner(runs=self.runs, contexts=self.contexts,
                                  session=lambda: self.actor, now=lambda: self.at.isoformat())
-        self.pois = POIActions(self.runs)
         self.actions = ProjectActions(TARGET, self.runs, now=lambda: self.at.isoformat())
+        self.pois = self.actions  # how the bench Project's actions stand for a POI
         self.raised: list = []
 
     def produce(self, *pois) -> dict:

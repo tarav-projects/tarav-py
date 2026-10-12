@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready.
+Status: implemented.
 
 A POI used to be the thing that persisted, and machinery grew around it: a
 store of every printed POI, blessing asked through POI listings, a reader of
@@ -140,7 +140,8 @@ Diagram commands only print.
 Product project: `tarav-py`. Wiki owner: `tarav-md`, root
 `tarav-md/notes/wiki/`. Relevant notes: `poi-system.md`,
 `daily/2026-10-12.md`. Supporting chat: session `abd0372d` above.
-Capture status: pending.
+Capture status: done (`poi-system.md`, section "The POI is a flag; the Project
+integrates"; daily 2026-10-12).
 
 ## Execution.Plan
 
@@ -156,3 +157,24 @@ Capture status: pending.
 ## Impl.Log
 
 - Design written from the discussion of 2026-10-12.
+- Implemented as planned, with these additions:
+  - The check report lost its `label` option and its `context_example`
+    key: nothing used them once the status stopped labelling POIs.
+  - `ProjectActions.of(project)` became `for_project(project)`, because
+    `of(poi)` is now the lookup of a POI's action.
+  - The view `poi-action` is removed and not renamed: the action's own
+    Context does its work.
+- Checks: Ruff clean; `uv run pytest` 289 passed. `tests/scoring/
+  test_blessing_attention.py` and one architecture test went with the
+  attention report.
+- Data: the action records were deleted and the deletion committed in the
+  registry; the 250 files of `~/.tarav/check-reports/` were deleted.
+- Real runs on the root: `tarav status --project .` opened 51 actions and
+  listed the first 20 with their ids; a second run changed nothing;
+  `tarav context --id 4e3b5daa-6888` opened the action with its entries.
+- Instructions: the canonical Tarav System Prompt now points at the action;
+  the three agents files were regenerated; `ARCHITECTURE.md`, the POI and
+  scoring READMEs and `step-actions.md` updated.
+- Not committed with this request: `src/tarav/l2/tests/actions.py` and
+  `tests/test_actions_pois.py` still wait for another agent's package.
+

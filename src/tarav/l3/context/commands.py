@@ -8,8 +8,6 @@ import json
 from tarav.l0._core.errors import CliError
 from tarav.l1.context.query import ContextQueryService, IdentityContextQuery
 
-REPORTED_POI_VIEW = "reported-poi"  # named here only for the help text
-
 
 def _record(value) -> object:
     try:
@@ -32,8 +30,9 @@ def _context(args: argparse.Namespace, *, service: ContextQueryService) -> int:
     if answer.subject is None:
         if not answer.candidates:
             raise CliError(
-                f"Nothing is known by the identifier {args.id!r}. A POI is known after "
-                "`tarav check --project` reported it; list ids with `--by identity`.")
+                f"Nothing is known by the identifier {args.id!r}. Actions are found by "
+                "their id or by the id of the POI they follow (`tarav action list "
+                "--project`), and Tarav Types by name or Ship.")
         rows = [{"identifier": candidate.identifier, "resolver": name,
                  "label": candidate.label} for name, candidate in answer.candidates]
         if args.json:
@@ -85,15 +84,15 @@ def register_context_command(
         help="Open the navigable Context of whatever an identifier identifies.",
         epilog=(
             "examples:\n"
-            f"  tarav context --id <poi-id> --view {REPORTED_POI_VIEW}\n"
-            f"  tarav context --id <poi-id> --view {REPORTED_POI_VIEW} --path finding\n"
+            "  tarav context --id <action-id>\n"
+            "  tarav context --id <action-id> --path notes\n"
             "  tarav context --id <poi-id>\n"
             "  tarav context --id Tarav.POI\n\n"
             "Without --view the general Context opens and the other views that\n"
             "support the subject are listed. --path follows entries, separated by\n"
-            "'/'. Identifiers resolve today for POIs reported by `tarav check\n"
-            "--project` (a unique prefix is enough) and for Tarav Types by name\n"
-            "or Ship. Scripts reach the same Context through `.context`."
+            "'/'. Identifiers resolve today for actions, by their id or by the id\n"
+            "of the POI they follow (a unique prefix is enough), and for Tarav\n"
+            "Types by name or Ship. Scripts reach the same Context through `.context`."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

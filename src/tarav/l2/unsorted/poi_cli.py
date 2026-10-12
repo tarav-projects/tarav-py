@@ -15,7 +15,6 @@ from tarav.l1.poi import (
     POISelection,
     renderer,
 )
-from tarav.l1.poi.reporting import retain_presented_pois
 
 
 def add_poi_options(parser: argparse.ArgumentParser) -> None:
@@ -24,7 +23,7 @@ def add_poi_options(parser: argparse.ArgumentParser) -> None:
         help="Registered POI renderer name.",
     )
     parser.add_argument(
-        "--level", choices=("line", "record", "context"), default="line",
+        "--level", choices=("line", "record"), default="line",
         help="Detail level of the POI presentation.",
     )
 
@@ -45,7 +44,6 @@ def render_pois(
         level = getattr(args, "level", "line")
         if level not in selected.levels:
             raise POIRenderError(f"{selected.name} does not support level {level}")
-        retain_presented_pois(pois, kind="diagram", name=title, root=root)
         return selected.render(selection, level=level)
     except (POIRenderError, ValueError) as exc:
         raise CliError(str(exc)) from exc

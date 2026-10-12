@@ -14,7 +14,10 @@ from datetime import datetime, timezone
 
 from tarav.l1.checks import CheckSuite
 
+from tarav.l1.poi import POI
+
 from . import ActionError, ActionRun, ActionRunStore, ChecksUpdate, resolve_action
+from .blessing import BLESSED, Blessing
 from .pois import action_id, raised
 
 
@@ -35,12 +38,37 @@ class ProjectActions:
         self._now = now
 
     @classmethod
-    def of(cls, project, runs: ActionRunStore | None = None) -> "ProjectActions":
+    def for_project(cls, project, runs: ActionRunStore | None = None) -> "ProjectActions":
         return cls({"id": project.id, "name": project.name, "root": project.root}, runs)
 
     def list(self, *, state: str | None = None) -> list[ActionRun]:
         """The actions registered under this Project, newest first."""
         return self.runs.list(state=state, project_root=self.project["root"])
+
+    # tarav.breadcrumb cedddeb57d590fc2537bbcc49eb1fe8dc4b2772b6db38749ef34405862beea65
+    def of(self, poi: POI) -> ActionRun | None:
+        """The action of one POI, when it has one registered under this Project."""
+        if next(iter(raised((poi,))), None) is None:
+            return None
+        run = self.runs.find(str(action_id(poi)))
+        if run is None or (run.data.get("project") or {}).get("root") != self.project["root"]:
+            return None
+        return run
+
+    def standing(self, poi: POI) -> str:
+        """`blessed` when the POI's action is closed by a blessing, otherwise `open`.
+
+        A POI that is being raised has an open situation whatever an earlier
+        `gone` closing says, so only a blessing settles it.
+        """
+        run = self.of(poi)
+        return BLESSED if run is not None and run.exit == BLESSED else "open"
+
+    def blessing(self, poi: POI) -> Blessing | None:
+        """The Blessing that closed the POI's action, when one did."""
+        run = self.of(poi)
+        closing = run.closing() if run is not None else None
+        return closing if isinstance(closing, Blessing) else None
 
     def start(self, checks: CheckSuite, *, at: str | None = None) -> dict[str, ActionRun]:
         """Register here the action of each POI in the results that is not registered here.

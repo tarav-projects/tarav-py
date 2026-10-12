@@ -151,6 +151,10 @@ class Action(TaravType):
                           name="Tarav.Actions.Action", workflow=ACTIONS_WORKFLOW_SHIP)
 
     @classmethod
+    def context_entries(cls, run: "ActionRun", builder: object) -> None:
+        """Add to an action's Context what only this Type knows about it."""
+
+    @classmethod
     def on_checks(cls, run: "ActionRun", update: ChecksUpdate) -> str | None:
         """What one registered action does with a run of its Project's checks.
 
@@ -253,6 +257,35 @@ class ActionRun(TaravEntity, FileRecord):
     @property
     def exit(self) -> str | None:
         return self.data["exit"]
+
+    # tarav.breadcrumb 76f10b0bd9f63cb39ee38b2f5602ec2ca0ea4a701ab09b838bb53a4befd197a9
+    def obj_context(self, builder) -> None:
+        """What every action has, and then what its Type adds."""
+        data, key = self.data, str(self.id)
+        builder.add("standing", opener=lambda: _detail({
+            "action": data["action"], "axes": axes(self),
+            "opened_at": data["opened_at"], "closed_at": data["closed_at"],
+            "first_opened_at": data["started_at"]}),
+            description="The Action Type and three separate axes: the situation as the "
+                        "last run of the Project's checks says it, whether the action is "
+                        "open, and the exit it closed by.")
+        try:
+            resolve_action(data["action"]).context_entries(self, builder)
+        except ActionError:
+            pass  # a Type this runtime does not have adds nothing
+        builder.add("project", opener=lambda: _detail(data.get("project")),
+                    description="The Project this action is registered under.")
+        builder.add("closing", opener=lambda: _detail(
+            data.get("closing") or "Not closed. A closing leaves a record of its own Type here."),
+            description="The record of how it closed.")
+        builder.add("closings", opener=lambda: _detail(data["closings"]),
+                    description="Each attempt by an operator to take an exit, and its tests.")
+        builder.add("history", opener=lambda: _detail(
+            [f"git -C <actions registry> log -p -- records/{key}.json",
+             "The record holds the current state. Its past states are the Git history "
+             "of its file in the Actions registry; `tarav action list` prints the "
+             "registry's location."]),
+            description="Where the earlier states of this action are.")
 
     def closing(self) -> Closing | None:
         """The record of how this run closed, as an object of its Type."""
@@ -374,6 +407,15 @@ def resolve_action(name: str) -> type[Action]:
         return _ACTION_TYPES[name]
     except KeyError:
         raise ActionError(f"No Action Type is registered as {name!r}") from None
+
+
+def _detail(content: object) -> object:
+    from copy import deepcopy
+
+    from tarav.l1.poi import POIDetails
+
+    return POIDetails.records.from_record(
+        {"type": entity(POIDetails).name, "value": deepcopy(content)})
 
 
 def _now() -> str:

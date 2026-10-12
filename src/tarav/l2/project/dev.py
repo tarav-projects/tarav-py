@@ -244,16 +244,12 @@ class PythonPackageProject(Project):
 # tarav.breadcrumb d72b348467b8de83b8b8de698550a5382b36011821f0192de499492b38bb2e7d
     def _poi_contract_checks(self) -> list[Check]:
         """Where the POI base Type itself is developed, check the POI contract."""
-        from tarav.l1.checks.poi_contract import (
-            POIContextRoundTripCheck, POIRenderCoverageCheck,
-            defined_under,
-        )
+        from tarav.l1.checks.poi_contract import POIRenderCoverageCheck, defined_under
         from tarav.l1.poi import POI
 
         if not defined_under(POI, self.root):
             return []
-        return [POIRenderCoverageCheck(self.root),
-                POIContextRoundTripCheck()]
+        return [POIRenderCoverageCheck(self.root)]
 
 
 class DocsProject(Project):

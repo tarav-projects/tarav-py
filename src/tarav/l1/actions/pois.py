@@ -5,10 +5,12 @@ is what persists: it stays open until one of its closing paths is taken. The
 instance follows the POI's identity, so raising the same POI again lands on
 the same action.
 
-An action is registered under a Project. That Project hands each run of its
+A POI is a flag between detecting and working: momentary, owning nothing. An
+action is registered under a Project. That Project hands each run of its
 checks to its actions, and the Action Type here says what the run means for
 one of them. Checks and POIs know nothing of this; a run that no Project
-handed over is momentary and changes nothing.
+handed over is momentary and changes nothing. How an action stands for a POI
+is asked of the Project (`project.actions`).
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from tarav.l1.poi.actionable import ActionablePOI, BlessablePOI
 from .blessing import BLESSED, Blessing, BlessingInput, BlessingInputCheck
 from . import (
     ACTIONS_WORKFLOW_SHIP, CLOSED, EXIT_ERROR, OPERATOR, PROJECT, RUNNING, ActionRun,
-    ActionRunStore, ChecksUpdate, Closing, Exit, StepAction, axes, close_run, resolve_action,
+    ChecksUpdate, Closing, Exit, StepAction, _detail, close_run, resolve_action,
 )
 
 GONE = "gone"
@@ -104,6 +106,40 @@ class POIResolutionAction(StepAction):
             "event": _event(poi, suites), "closing": None,
             "situation": {"state": PRESENT, "at": at},
         })
+
+    # tarav.breadcrumb bdbf97d4ffaec3498e78e81b386648e11d61ddaf21765f99d1b29f6d6f0b9783
+    @classmethod
+    def context_entries(cls, run: ActionRun, builder: object) -> None:
+        """The flag behind this action: the POI, what its Type says, and who detects it."""
+        event, key = run.data["event"], str(run.id)
+        source = event["source"]
+        builder.add("poi", opener=lambda: _detail(event["poi"]),
+                    description="The POI as it was raised when this action last opened.")
+        builder.add("poi-type", opener=lambda: _detail(source["poi_type"]),
+                    description="What this kind of POI is, and where its class is defined.")
+        builder.add("raised-by", opener=lambda: _detail(source["raised_by"]),
+                    description="The check that raised it, and where that check is defined.")
+        builder.add("notes", opener=lambda: _detail(
+            source["notes"] or ["This POI Type adds no notes. A POI states an event; poi-type "
+                                "and raised-by say what it is and where it comes from."]),
+            description="What the POI Type's producer says about it: what it means, "
+                        "where it is documented, what is known to end it.")
+        builder.add("detection", opener=lambda: _detail({
+            "situation": run.data.get("situation"), "check": event.get("check"),
+            "suites": event["suites"]}),
+            description="The suites above the check that raised the POI, and what the last "
+                        "run says. The action closes as gone when the nearest of those "
+                        "suites that ran did not report the POI; a suite that was left out "
+                        "(run with --all) or a failed check leaves it as it is.")
+        builder.add("acting", opener=lambda: _detail([
+            "tarav operator-context put --type Tarav.Blessings.Input "
+            "--data '{\"reason\": \"<why>\", \"support\": []}'",
+            f"tarav action close --run {key} --exit blessed --context <input id>",
+            "Blessing closes the action although the situation still exists; it needs a "
+            "reason, and the POI's Type has to allow it. `support` lists typed evidence "
+            "references. The exit `gone` is taken from a run of the Project's checks.",
+            "The skill module tarav-pkg/references/step-actions.md describes the loop."]),
+            description="The commands that act on this action.")
 
     # tarav.breadcrumb 5aeb4d2196d479937f983178eac99642a65b42c34a2354a1900172f2c8ae2961
     @classmethod
@@ -202,55 +238,16 @@ def raised(pois: Iterable[POI]) -> Iterable[IdentifiedPOI]:
 
 def _event(poi: IdentifiedPOI, suites: tuple[dict, ...] = ()) -> dict:
     check = getattr(poi, "check", None)
+    described = poi.describe()
     return {"blessable": isinstance(poi, BlessablePOI), "poi": poi.as_dict(detail=True),
             "check": {"type": entity(type(check)).name} if check is not None else None,
-            "suites": [dict(suite) for suite in suites]}
+            "suites": [dict(suite) for suite in suites],
+            # what the POI's Type says, kept here because the POI itself is momentary
+            "source": {key: described[key] for key in ("poi_type", "raised_by", "notes")}}
 
 
 def _suite_key(identity: dict) -> tuple:
     return identity["type"], identity["key"]
-
-
-class POIActions:
-    """Read how the actions that follow POIs stand."""
-
-    def __init__(self, runs: ActionRunStore | None = None) -> None:
-        self.runs = runs if runs is not None else ActionRunStore()
-
-    def of(self, poi: POI) -> ActionRun | None:
-        """The action of one POI, when it has one."""
-        if next(iter(raised((poi,))), None) is None:
-            return None
-        return self.runs.find(str(action_id(poi)))
-
-    # tarav.breadcrumb 8f939b3150b542c2209f9343f1af08edebc857e9eb4f18d1ccbc5d446e3b27cd
-    def standing(self, poi: POI) -> str:
-        """`blessed` when the POI's action is closed by a blessing, otherwise `open`.
-
-        A POI that is being raised has an open situation whatever an earlier
-        `gone` closing says, so only a blessing settles it.
-        """
-        run = self.of(poi)
-        return BLESSED if run is not None and run.exit == BLESSED else "open"
-
-    def axes(self, poi: POI) -> dict[str, str | None] | None:
-        """The status axes of the POI's action; None when it has no action yet."""
-        run = self.of(poi)
-        return axes(run) if run is not None else None
-
-    def blessing(self, poi: POI) -> Blessing | None:
-        """The Blessing that closed the POI's action, when one did."""
-        run = self.of(poi)
-        closing = run.closing() if run is not None else None
-        return closing if isinstance(closing, Blessing) else None
-
-    def blessing_standing(self, poi: POI) -> dict | None:
-        """For reports: whether a blessable POI is blessed, and by which Blessing."""
-        if not isinstance(poi, BlessablePOI):
-            return None
-        blessing = self.blessing(poi)
-        return {"status": "blessed" if blessing is not None else "unblessed",
-                "blessing": str(blessing.id) if blessing is not None else None}
 
 
 POI_ACTION_RECORD_TYPES = (GoneClosing,)
@@ -258,6 +255,6 @@ POI_ACTION_RECORD_TYPES = (GoneClosing,)
 __all__ = [
     "ABSENT", "ActionablePOI", "BLESSED", "BlessablePOI", "CHECK_FAILED", "GONE", "GoneClosing",
     "NOT_RUN",
-    "POIActionClosed", "POIActions", "POIResolutionAction", "POI_ACTION_RECORD_TYPES",
+    "POIActionClosed", "POIResolutionAction", "POI_ACTION_RECORD_TYPES",
     "PRESENT", "action_id", "raised",
 ]

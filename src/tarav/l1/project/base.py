@@ -58,7 +58,7 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
         """The actions registered under this Project."""
         from tarav.l1.actions.project import ProjectActions
 
-        return ProjectActions.of(self)
+        return ProjectActions.for_project(self)
 
     # tarav.breadcrumb c480857f3a5c1669df7d3f312f134b4771e05dc92cfcc7f954c10e7c2caa87b4
     def status(self, *, select=None, on_result=None):

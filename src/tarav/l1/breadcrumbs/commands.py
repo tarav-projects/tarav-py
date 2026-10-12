@@ -11,7 +11,6 @@ from tarav.l0._core.errors import CliError
 from tarav.l1.poi.rendering import (
     DEFAULT_POI_RENDERER, POIRenderError, POISelection, renderer,
 )
-from tarav.l1.poi.reporting import retain_presented_pois
 
 from .auditing import audit_annotations
 from .integrations import BreadcrumbIntegration
@@ -106,8 +105,6 @@ def _audit_file(args: argparse.Namespace, surface: Path) -> tuple[dict[str, obje
     payload = result.to_json()
     payload["command"] = f"tarav breadcrumbs audit {workflow.name}"
     payload["store"] = str(_store(args).root)
-    retain_presented_pois(result.pois, kind="breadcrumbs", name=workflow.name,
-                          root=result.context.surface.path)
     return payload, result.pois, result.ok
 
 
@@ -223,8 +220,6 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
     if resolution.position is not None:
         lines.append(f"position: {resolution.position.path}:{resolution.position.line}")
     if resolution.pois:
-        retain_presented_pois(resolution.pois, kind="breadcrumbs", name="resolve",
-                              root=_store(args).root)
         lines.append(_render_pois(resolution.pois, args))
     _print(args, payload, tuple(lines))
     return 0 if resolution.ok else 1
@@ -237,7 +232,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
 
 def _add_poi_render_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--renderer", default=DEFAULT_POI_RENDERER)
-    parser.add_argument("--level", choices=("line", "record", "context"), default="line")
+    parser.add_argument("--level", choices=("line", "record"), default="line")
 
 
 def register_submission_command(

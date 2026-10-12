@@ -477,13 +477,9 @@ class CheckSuite(TaravObject, POIProvider):
     def report(
         self, *, by: str = "type", sort: str = "run", offset: int = 0, limit: int = 20,
         type: str | None = None, check: str | None = None,
-        detail: bool = False, label: Callable[[POI], str] | None = None,
+        detail: bool = False,
     ) -> dict[str, object]:
-        """A bounded grouped report of the run's POIs.
-
-        `label` names each POI as the caller sees it; a row then counts its
-        POIs under those names in `standing`. The names mean nothing here.
-        """
+        """A bounded grouped report of the run's POIs. It says nothing about actions."""
         if by not in ("type", "check", "identity"):
             raise ValueError("Unknown report grouping")
         if sort not in ("run", "count"):
@@ -493,7 +489,6 @@ class CheckSuite(TaravObject, POIProvider):
         groups: dict[str, dict[str, object]] = {}
         emission_index = 0
         matching_pois = 0
-        context_example = None
         for result_index, result in enumerate(self.results):
             check_name = entity(result.check.__class__).name
             for poi in result.pois():
@@ -505,8 +500,6 @@ class CheckSuite(TaravObject, POIProvider):
                         or check is not None and check != check_name):
                     continue
                 matching_pois += 1
-                if context_example is None and isinstance(poi, IdentifiedPOI):
-                    context_example = poi.identity
                 emission_index += 1
                 key = {
                     "type": type_name,
@@ -520,10 +513,6 @@ class CheckSuite(TaravObject, POIProvider):
                     "types": [], "_results": set(),
                 })
                 row["pois"] += 1
-                if label is not None:
-                    standing = row.setdefault("standing", {})
-                    name = label(poi)
-                    standing[name] = standing.get(name, 0) + 1
                 if result_index not in row["_results"]:
                     row["_results"].add(result_index)
                     row["checks"] += 1
@@ -543,7 +532,6 @@ class CheckSuite(TaravObject, POIProvider):
             "matching_pois": matching_pois,
             "filters": {key: value for key, value in (("type", type), ("check", check))
                         if value is not None},
-            "context_example": context_example,
             "by": by,
             "sort": sort,
             "matching": len(rows),

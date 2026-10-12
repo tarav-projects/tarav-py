@@ -45,8 +45,7 @@ def report_project_checks(
     """
     progress = Progress()
     try:
-        run = _retained(project, project.checks.run(
-            select=None if everything else routine, on_result=progress))
+        run = project.checks.run(select=None if everything else routine, on_result=progress)
         # tarav.breadcrumb ad61e17278a7f87bdbe6bba00b7195dd5389a8f9423618314b32ae8fa446c9e2
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -105,7 +104,7 @@ def _report_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--check", dest="check_type", help="Filter by exact Check Type name.")
     parser.add_argument("--renderer", choices=tuple(item.name for item in renderers()),
                         default=DEFAULT_POI_RENDERER, help="Named POI renderer.")
-    parser.add_argument("--level", choices=("line", "record", "context"), default="line",
+    parser.add_argument("--level", choices=("line", "record"), default="line",
                         help="POI detail level for rendered output.")
     parser.add_argument("--all", action="store_true",
                         help="Run every suite. Without it, suites that are not part of the "
@@ -126,18 +125,6 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
     )
     _report_arguments(parser)
     parser.set_defaults(handler=_check)
-
-
-def _retained(project, run):
-    """Keep the reported POIs so `tarav context --id` can open them afterwards."""
-    from tarav.l1.poi.reporting import ReportedPOIStore
-
-    try:
-        identity = {"id": str(project.id), "name": project.name, "root": str(project.root)}
-    except Exception:
-        return run
-    ReportedPOIStore().retain(run.pois(), project=identity)
-    return run
 
 
 __all__ = ["Progress", "in_harness", "register_check_command", "report_project_checks"]

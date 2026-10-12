@@ -38,8 +38,9 @@ blessing: closed although the situation still exists, with a reason. A POI
 is not blessable unless its concrete type inherits that capability. The
 `Blessing` is the closing record of the action; the POI is still raised.
 
-`tarav.l2.blessings.attention_report` is a separate, pageable view of a
-`POICollector` evaluation. It selects currently due POIs for an agent while
-`POICollector.report()` continues to show all emissions. A missing POI has no
-attention schedule, and `show_all` or `force_review` can expose deferred POIs.
+A POI is a flag between detecting and working. It is momentary and owns
+nothing: whether it is blessed, and how its action stands, is asked of the
+Project that registered the action (`project.actions`), never of a POI
+listing. `POICollector.report()` shows all emissions and says nothing about
+actions.
 <!-- tarav.breadcrumb 919ad0356a7b415abc1cb46bd0a15ef2478b17c468675dc3e5ed2c6440496cb1 -->

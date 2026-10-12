@@ -15,10 +15,8 @@ from tarav.l1.skw.document import Document, project_document, project_root
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
 from tarav.l1.skw.loading import LoadingRecord, SkillDocument, SkillReadingGraph
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
-from tarav.l1.actions.pois import POIActions
 from tarav.l1.checks import CheckProvider, CheckSuite, run_checks
 from tarav.l1.poi.rendering import DEFAULT_POI_RENDERER, renderers
-from tarav.l1.poi.reporting import retain_presented_pois
 from tarav.l0._core.errors import CliError
 from .pois import (
     CLASSES,
@@ -384,14 +382,11 @@ def register_commands(subparsers, *, registry: TypeRegistry[TaravObject]):
             command.add_argument('--offset', type=int, default=0)
             command.add_argument('--limit', type=int, default=20)
             command.add_argument('--class-name')
-            command.add_argument(
-                '--blessing-status', choices=['unblessed', 'blessed']
-            )
         if action in ('check', 'build', 'deploy', 'poi'):
             command.add_argument('--renderer',
                                  choices=tuple(item.name for item in renderers()),
                                  default=DEFAULT_POI_RENDERER)
-            command.add_argument('--level', choices=('line', 'record', 'context'),
+            command.add_argument('--level', choices=('line', 'record'),
                                  default='record' if action == 'poi' else 'line')
         if action == 'poi':
             command.add_argument('--id', required=True, help='Full finding ID or unique prefix')
@@ -403,13 +398,6 @@ def register_commands(subparsers, *, registry: TypeRegistry[TaravObject]):
             command.add_argument('--limit', type=int, default=5)
         add_output_mode(command)
         command.set_defaults(handler=_command, skw_registry=registry)
-
-
-# tarav.breadcrumb 5ac7d1590065905e4efa42aac692e4d763efcdeb8f52d59bdf46be46beca46df
-def _retain_skill_pois(package, collector) -> None:
-    """Keep the presented Skill POIs reachable by the common context command."""
-    root = Path(package.root).resolve()
-    retain_presented_pois(collector.pois, kind="skill", name=root.name, root=root)
 
 
 def _command(args):
@@ -446,18 +434,10 @@ def _command(args):
         return 0
     if args.skills_action == 'poi':
         collector = package.evaluate()
-        _retain_skill_pois(package, collector)
         poi = collector.get(args.id, index=args.index)
         result = poi.as_dict(detail=True)
         if args.index is not None:
             result['index'] = args.index
-        actions = POIActions()
-        standing = actions.blessing_standing(poi)
-        if standing is not None:
-            result['blessing'] = standing
-            blessing = actions.blessing(poi)
-            result['blessing_record'] = (blessing.records.to_record()
-                                         if blessing is not None else None)
         emit(args, result, lambda value: render_poi(
             value, renderer_name=args.renderer, level=args.level))
         return 0
@@ -465,10 +445,10 @@ def _command(args):
               else getattr(package, args.skills_action)())
     findings = result.get("findings", []) if isinstance(result, dict) else result
     collector = package.evaluate()
-    _retain_skill_pois(package, collector)
-    report = collector.report(
-        actions=POIActions(), offset=args.offset, limit=args.limit,
-        class_name=args.class_name, blessing=args.blessing_status)
+    # a skill package is not a Project: its POIs are only shown here. They get
+    # actions when the Project that holds the package runs its status.
+    report = collector.report(offset=args.offset, limit=args.limit,
+                              class_name=args.class_name)
     if isinstance(result, dict):
         result['findings'] = report
     else:

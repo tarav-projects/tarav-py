@@ -14,7 +14,7 @@ from tarav.l1.actions import (
     ActionError, ActionRunStore, Closing, Exit, StepAction, StepRunner, axes, register_action,
 )
 from tarav.l1.actions.pois import (
-    GONE, GoneClosing, POIActionClosed, POIActions, POIResolutionAction, action_id,
+    GONE, GoneClosing, POIActionClosed, POIResolutionAction, action_id,
 )
 from tarav.l1.actions.project import ProjectActions
 from tarav.l1.actions.blessing import (
@@ -162,6 +162,16 @@ for _action in (FlagStep, TwoExitStep):
     register_action(_action)
 
 
+class _ByPOI:
+    """Find the action of a POI in the registry, whichever Project it is registered under."""
+
+    def __init__(self, runs) -> None:
+        self.runs = runs
+
+    def of(self, poi):
+        return self.runs.find(str(action_id(poi)))
+
+
 class Stores:
     def __init__(self, root, records):
         self.root = root
@@ -171,7 +181,7 @@ class Stores:
         self.sessions = [None]
         self.runner = StepRunner(runs=self.runs, contexts=self.contexts,
                                  session=lambda: self.sessions[-1])
-        self.pois = POIActions(self.runs)
+        self.pois = _ByPOI(self.runs)
 
     def update(self, owner, checks):
         """Hand a Project's actions one run of its checks."""
@@ -538,9 +548,11 @@ def test_a_blessed_action_stays_closed_while_its_poi_is_still_raised(stores):
     assert (record["type"], record["reason"], record["support"]) == (
         "Tarav.Blessings.Blessing", "The hall lamp stays on at night.", support)
     assert record["actor"]["session_id"] == "one" and record["poi"]["id"] == poi.identity
-    blessing = stores.pois.blessing(poi)
+    home = ProjectActions(HOME, stores.runs)  # how it stands is asked of the Project
+    blessing = home.blessing(poi)
     assert isinstance(blessing, Blessing) and str(blessing.id) == record["id"]
-    assert stores.pois.blessing_standing(poi) == {"status": "blessed", "blessing": record["id"]}
+    assert (home.standing(poi), home.of(poi).id) == ("blessed", action_id(poi))
+    assert ProjectActions(SHED, stores.runs).of(poi) is None  # not the shed's
 
     again = stores.lamps(hall=3)  # the situation still exists: the blessing holds
     assert (again["opened"], again["reopened"]) == (0, 0)
@@ -568,7 +580,8 @@ def test_a_blessing_declares_assertions_and_scores_stay_with_the_scorer(stores, 
     stores.runner.close(str(action_id(backed)), stores.contexts.put(
         BlessingInput.new(reason="The rules allow it.", support=support)), exit=BLESSED)
 
-    first, second = stores.pois.blessing(plain), stores.pois.blessing(backed)
+    home = ProjectActions(HOME, stores.runs)
+    first, second = home.blessing(plain), home.blessing(backed)
     assert list(first.assertions) == ["main"] and list(second.assertions) == ["main", "grounds"]
     main = second.assertions["main"]
     assert isinstance(main, BlessingAcceptanceAssertion)
@@ -581,24 +594,24 @@ def test_a_blessing_declares_assertions_and_scores_stay_with_the_scorer(stores, 
     assert "score" not in second.records.to_record()
 
 
-def test_a_poi_action_opens_as_context_by_the_poi_identity(stores):
-    from tarav.l1.actions.views import POI_ACTION_VIEW, POIActionContext, POIActionResolver
+def test_an_action_keeps_what_its_pois_type_says(stores):
+    # tarav.breadcrumb 312c3b09cec0df8a66862ce78f1ef41f245d6192129da92c441553c428de3905
+    from tarav.l1.actions.views import ActionResolver
     from tarav.l1.context.query import ContextQueryService, IdentityContextQuery
 
     poi = LampCheck("hall", 3).run().pois()[0]
     stores.lamps(hall=3)
-    service = ContextQueryService()
-    service.register_resolver("poi-action", POIActionResolver(lambda: stores.runs))
-    service.register_view(POI_ACTION_VIEW, POIActionContext)
+    source = stores.pois.of(poi).data["event"]["source"]
+    assert source["poi_type"]["type"] == "Tarav.Test.Actions.LampOn"
+    assert source["raised_by"]["type"] == entity(LampCheck).name and source["notes"] == []
 
-    answer = service.open(IdentityContextQuery(poi.identity[:12], view=POI_ACTION_VIEW))
+    service = ContextQueryService()
+    service.register_resolver("action", ActionResolver(lambda: stores.runs))
+    answer = service.open(IdentityContextQuery(poi.identity[:12], path=["standing"]))
     assert answer.subject.id == action_id(poi)
-    assert [entry.name for entry in answer.target.ls()] == [
-        "standing", "poi", "project", "closing", "closings", "acting", "history", "reported"]
-    standing = service.open(IdentityContextQuery(
-        str(action_id(poi)), view=POI_ACTION_VIEW, path=["standing"]))
-    value = standing.target.records.to_record()["value"]
-    assert value["standing"] == "open" and value["axes"]["situation"] == "present"
+    value = answer.target.records.to_record()["value"]
+    assert value["action"] == "Tarav.Actions.POI.Resolution"
+    assert value["axes"] == {"situation": "present", "action": "open", "closing": None}
 
 
 class _Flags(Check):
@@ -686,7 +699,8 @@ def test_the_status_command_updates_each_projects_actions(tmp_path, registry, ca
     assert out[1] == "2 checks ran, all completed."
     assert "Changed in this run: 2 opened" in out
     lamp = LampCheck("hall", 3).run().pois()[0]
-    assert f"  opened    LampOn  hall is on at 3  [{lamp.identity[:12]}]" in out
+    assert f"  opened    LampOn  hall is on at 3  [{str(action_id(lamp))[:13]}]" in out
+    assert out[-1] == "Open one:   tarav context --id <action-id>"
     assert any(line.startswith(f"  {tmp_path.name}  2  ") and "LampOn 1" in line for line in out)
     assert out[-2] == f"List them:  tarav action list --project {tmp_path}"
     assert "Checks by type" not in "\n".join(out)
@@ -720,7 +734,9 @@ def test_the_status_command_updates_each_projects_actions(tmp_path, registry, ca
         (tmp_path.name, 0), ("child", 1)]
     assert [(change["change"], change["project"]) for change in report["changes"]] == [
         ("opened", "child")]
-    assert report["report"]["items"][0]["standing"] == {"open": 1}  # the check report, in full
+    # the check report is there in full, and says nothing about actions
+    assert report["report"]["items"][0]["pois"] == 1
+    assert "standing" not in report["report"]["items"][0]
     assert len(ActionRunStore().list(project_root=str(child.root), state="running")) == 1
     # a run on the child alone updates that same action
     assert report_project_status(_Home(child.root, LampCheck("bench", 0)), json_output=True) == 0
@@ -747,8 +763,9 @@ def test_the_routine_run_leaves_slow_suites_out_and_all_runs_them(tmp_path, regi
     assert (report["checks"]["checks"], report["checks"]["not_run"]) == (2, [])
     assert ActionRunStore().load(attic).state == "running"
 
-    # the lamp is off, but a routine run does not look: the action stays open
-    assert report_project_status(home(0, 0), json_output=True) == 0
+    # the lamp is off, but a routine run does not look: the action stays open,
+    # and an open action is what keeps the status from being settled
+    assert report_project_status(home(0, 0), json_output=True) == 1
     report = json.loads(capsys.readouterr().out)
     assert [(item["type"], item["key"], item["project"]) for item in
             report["checks"]["not_run"]] == [

@@ -100,18 +100,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 def context_queries(runtime: TaravRuntime):
     """Compose the installed identifier resolvers and named Context views."""
     from tarav.l1.context.query import ContextQueryService, TypeResolver
-    from tarav.l1.poi.reporting import (
-        REPORTED_POI_VIEW, ReportedPOIContext, ReportedPOIResolver,
-    )
-
-    from tarav.l1.actions.views import POI_ACTION_VIEW, POIActionContext, POIActionResolver
+    from tarav.l1.actions.views import ActionResolver
 
     service = ContextQueryService(opener=runtime.context)
-    service.register_resolver("reported-poi", ReportedPOIResolver())
-    service.register_resolver("poi-action", POIActionResolver())
-    service.register_view(POI_ACTION_VIEW, POIActionContext)
+    service.register_resolver("action", ActionResolver())
     service.register_resolver("type", TypeResolver(runtime.records.types))
-    service.register_view(REPORTED_POI_VIEW, ReportedPOIContext)
     return service
 
 

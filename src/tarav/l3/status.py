@@ -18,7 +18,7 @@ from tarav.l0.kernel import entity
 from tarav.l1.checks import routine
 from tarav.l1.poi.rendering import check_header
 
-from .check import Progress, _retained, in_harness
+from .check import Progress, in_harness
 
 LISTED = {"opened": "opened", "reopened": "reopened", "gone": "gone"}
 COUNTED = (("opened", "opened"), ("reopened", "reopened"), ("gone", "closed as gone"))
@@ -35,16 +35,14 @@ def _kinds(names: Counter) -> dict[str, int]:
             for name, count in names.most_common()}
 
 
-# tarav.context abd0372d:0c49207898a3b796
+# tarav.breadcrumb 3446182e512cb14d72e0d0723c61f422cf477188941e37f8a33ee995f2f3b66a
 def status_result(status) -> dict:
     """One result for both presentations: the open actions, the changes, the checks."""
     from tarav.l1.actions import RUNNING
     from tarav.l1.actions.blessing import BLESSED
-    from tarav.l1.actions.pois import POIActions
 
     suite = status.suite()
     acted = status.acted()
-    standing = POIActions().standing
     projects = []
     for found in status.each():
         runs = found.project.actions.list()
@@ -74,9 +72,10 @@ def status_result(status) -> dict:
             {"check": entity(type(result.check)).name, "status": result.status,
              "reason": result.reason} for result in suite.results
             if result.status != "completed"]},
-        "report": suite.report(limit=10**6, label=standing),
+        "report": suite.report(limit=10**6),
+        # the status reads only actions: whatever should count here has become one
         "settled": (all(result.status == "completed" for result in suite.results)
-                    and all(standing(poi) == BLESSED for poi in suite.findings())),
+                    and not any(project["open"] for project in projects)),
     }
 
 
@@ -88,7 +87,7 @@ def _relative(root: str) -> str:
     return root if path.startswith("..") else path
 
 
-# tarav.context abd0372d:0c49207898a3b796
+# tarav.breadcrumb f471278512c23b2ee3730f222ab7c06977752fce1caef397a397df18ab39f5e8
 def status_text(result: dict, *, limit: int = 20) -> str:
     """The readable form: what is open first, then what changed, then where to look."""
     projects = result["projects"]
@@ -105,7 +104,7 @@ def status_text(result: dict, *, limit: int = 20) -> str:
     for change in shown:
         where = f"{change['project']:<{width}}  " if many else ""
         lines.append(f"  {LISTED[change['change']]:<8}  {where}{_short(change['type'])}  "
-                     f"{change['message'] or ''}  [{(change['poi'] or change['action'])[:12]}]")
+                     f"{change['message'] or ''}  [{change['action'][:13]}]")
     if len(result["changes"]) > limit:
         lines.append(f"  and {len(result['changes']) - limit} more; --json has them all.")
     lines.append("")
@@ -123,18 +122,18 @@ def status_text(result: dict, *, limit: int = 20) -> str:
                      f"  {kinds}{blessed}".rstrip())
     busiest = max(projects, key=lambda item: item["open"])
     lines.extend(("", f"List them:  tarav action list --project {_relative(busiest['root'])}",
-                  "Open one:   tarav context --id <poi-id> --view poi-action"))
+                  "Open one:   tarav context --id <action-id>"))
     return "\n".join(lines)
 
 
-# tarav.context abd0372d:53a7beaeddd157ad
+# tarav.breadcrumb b77381085b45b5e826e7f08317777064e7312a0df66cae2449e9357aad0d962d
 def report_project_status(project, *, json_output: bool = False, limit: int = 20,
                           everything: bool = False) -> int:
     """Run a Project's checks, hand the results to its actions, and say how it stands.
 
     Suites that are not routine are left out unless `everything` is set; their
     actions stay as they are. Exit 0 says every check that ran completed and
-    every finding left is blessed.
+    no action is open.
     """
     progress = Progress()
     try:
@@ -144,7 +143,6 @@ def report_project_status(project, *, json_output: bool = False, limit: int = 20
         return 2
     finally:
         progress.done()
-    _retained(project, status.suite())
     result = status_result(status)
     print(json.dumps(result, indent=2, default=str) if json_output
           else status_text(result, limit=limit))
@@ -158,7 +156,7 @@ def _status(args: argparse.Namespace) -> int:
                           "everything": args.all})
 
 
-# tarav.context abd0372d:b3a1625d099be644
+# tarav.breadcrumb 57673eca9d40366b9e6e700ef34c8f5c2d56c082afc220e89f4751b6702cb66c
 def register_status_command(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "status",

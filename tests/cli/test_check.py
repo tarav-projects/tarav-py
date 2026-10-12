@@ -167,7 +167,6 @@ def test_type_filter_includes_subtypes_and_preserves_full_run_status(capsys) -> 
                                  json_output=True) == 1
     exact = json.loads(capsys.readouterr().out)
     assert exact["matching_pois"] == 1
-    assert exact["context_example"] == exact["items"][0]["id"]
 
     assert report_project_checks(project, poi_type="Test.Checks.SpecialPOI") == 1
     output = capsys.readouterr().out

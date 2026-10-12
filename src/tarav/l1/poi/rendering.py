@@ -9,9 +9,8 @@ import string
 from typing import Literal
 
 from .primitives import POI, POICollector
-from .reporting import REPORTED_POI_VIEW, context_instruction
 
-POILevel = Literal["line", "record", "context"]
+POILevel = Literal["line", "record"]
 DEFAULT_POI_RENDERER = "Tarav.POI.Default.Renderer"
 JSON_LINES_POI_RENDERER = "Tarav.POI.JsonLines.Renderer"
 
@@ -30,10 +29,8 @@ class POISelection:
     total: int
     matching: int
     next_offset: int | None = None
-    example_id: str | None = None
     title: str = "POIs"
     summary: Mapping[str, object] | None = None
-    context_view: str = REPORTED_POI_VIEW
     matching_pois: int | None = None
     filters: Mapping[str, str] = field(default_factory=dict)
 
@@ -45,8 +42,7 @@ class POISelection:
             raise TypeError("Check report summary must be a mapping")
         return cls(
             "check", tuple(report["items"]), int(summary["pois"]),
-            int(report["matching"]), report.get("next_offset"),
-            report.get("context_example"), "Check POIs", summary,
+            int(report["matching"]), report.get("next_offset"), "Check POIs", summary,
             matching_pois=int(report["matching_pois"]),
             filters=report.get("filters") or {},
         )
@@ -58,8 +54,7 @@ class POISelection:
         items = tuple(report.get("items") or ())
         return cls(
             "collector", items, int(report["total"]), int(report["matching"]),
-            report.get("next_offset"),
-            next((str(row["id"]) for row in items if row.get("id")), None), title,
+            report.get("next_offset"), title,
         )
 
     @classmethod
@@ -150,34 +145,23 @@ def _text(selection: POISelection, level: POILevel) -> str:
     else:
         lines = [f"{selection.title}: {selection.total} POIs",
                  f"showing: {len(selection.items)} of {selection.matching} matching"]
-    if selection.total:
-        lines.extend(("", *context_instruction(selection.example_id,
-                                               view=selection.context_view), ""))
+    if selection.items:
+        lines.append("")
     for row in selection.items:
         address = _address(row)
         if selection.source == "check":
             line = f"  {row['key']}: {row['pois']} POIs from {row['checks']} checks"
-            if row.get("standing"):
-                line += " (" + ", ".join(f"{count} {name}"
-                                         for name, count in row["standing"].items()) + ")"
             if row.get("example"):
                 line += f" — {row['example']}"
             if row.get("id"):
                 line += f" [{str(row['id'])[:12]}]"
         else:
-            standing = (" ".join(f"{key}={value}" for key, value in row["axes"].items())
-                        if row.get("axes")
-                        else (row.get("blessing") or {}).get("status", "unblessed"))
-            line = (f"  {row['type']}  {_short_address(address)}  {standing}"
+            line = (f"  {row['type']}  {_short_address(address)}"
                     f"  {row.get('message') or row.get('summary') or ''}")
         lines.append(line)
         if level == "record":
             detail = row.get("example_poi") if selection.source == "check" else row
             lines.append("    " + json.dumps(detail or row, ensure_ascii=False, default=str))
-        elif level == "context":
-            identifier = row.get("id") or selection.example_id
-            if identifier:
-                lines.append(f"    tarav context --id {identifier} --view {selection.context_view}")
     if summary is not None and selection.source == "check":
         if selection.filters:
             criteria = ", ".join(f"{key}={value}" for key, value in selection.filters.items())
@@ -192,9 +176,6 @@ def _json_lines(selection: POISelection, level: POILevel) -> str:
         "kind": "poi-selection", "title": selection.title, "total": selection.total,
         "matching": selection.matching, "shown": len(selection.items),
         "next_offset": selection.next_offset, "level": level,
-        "context_instruction": (context_instruction(selection.example_id,
-                                                    view=selection.context_view)
-                                if selection.total else []),
     }]
     if selection.source == "check":
         rows[0]["matching_pois"] = selection.matching_pois
@@ -205,21 +186,15 @@ def _json_lines(selection: POISelection, level: POILevel) -> str:
             row["summary"] = item.get("message") or item.get("summary") or item.get("example")
             row = {key: row[key] for key in ("kind", "address", "id", "type", "summary")
                    if key in row}
-        elif level == "context":
-            identifier = item.get("id") or selection.example_id
-            row = {"kind": "poi", "address": _address(item),
-                   "context_command": (f"tarav context --id {identifier} "
-                                       f"--view {selection.context_view}"
-                                       if identifier else None)}
         rows.append(row)
     return "\n".join(json.dumps(row, ensure_ascii=False, default=str) for row in rows)
 
 
 _REGISTRY = POIRendererRegistry()
 _REGISTRY.register(POIRenderer(DEFAULT_POI_RENDERER, "text/plain",
-                               frozenset(("line", "record", "context")), _text))
+                               frozenset(("line", "record")), _text))
 _REGISTRY.register(POIRenderer(JSON_LINES_POI_RENDERER, "application/x-ndjson",
-                               frozenset(("line", "record", "context")), _json_lines))
+                               frozenset(("line", "record")), _json_lines))
 
 
 def renderer(name: str = DEFAULT_POI_RENDERER) -> POIRenderer:

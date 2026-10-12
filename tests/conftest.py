@@ -9,5 +9,4 @@ import tempfile
 # Code run by the suite, in process or in spawned commands, stays out of the
 # machine's run registry.
 os.environ["TARAV_RUN_REGISTRY"] = tempfile.mkdtemp(prefix="tarav-run-registry-")
-os.environ["TARAV_CHECK_REPORTS"] = tempfile.mkdtemp(prefix="tarav-check-reports-")
 os.environ["TARAV_RECORDS"] = tempfile.mkdtemp(prefix="tarav-records-")

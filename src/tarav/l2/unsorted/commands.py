@@ -1184,7 +1184,7 @@ def register_diagram_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     render.add_argument("--renderer", required=True, help="Registered Renderer name.")
     render.add_argument("--poi-renderer", help="Registered POI renderer name.")
-    render.add_argument("--level", choices=("line", "record", "context"),
+    render.add_argument("--level", choices=("line", "record"),
                         default="line", help="Detail level of POI presentation.")
     target = render.add_mutually_exclusive_group(required=True)
     target.add_argument("--annotation", help="Annotation UUID.")

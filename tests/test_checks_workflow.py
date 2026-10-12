@@ -202,13 +202,9 @@ def test_run_pages_groups_and_blessings_do_not_hide_other_pois():
         ExamplePOI(check, "First", situation={"case": 1}),
     )))
 
-    def label(poi):
-        return "blessed" if isinstance(poi, ExamplePOI) else "open"
-
     assert not run.clean()  # a finding is a finding here; who settles it is not known
-    assert "standing" not in run.report(limit=1)["items"][0]
-    report = run.report(label=label, limit=1)
-    assert report["items"][0]["standing"] == {"blessed": 1}
+    report = run.report(limit=1)
+    assert "standing" not in report["items"][0]  # a POI report says nothing about actions
     assert report["next_offset"] is None
     with pytest.raises(ValueError, match="positive limit"):
         run.report(limit=0)
@@ -272,7 +268,6 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
         collector.emit(poi)
     report = collector.report()
     assert report["total"] == 4
-    assert report["by_blessing"] == {}
     assert all("blessing" not in item for item in report["items"])
     assert [entry.name for entry in notice.context().ls()] == ["class", "details"]
     assert notice.context().open("details").records.to_record()["value"] == {}

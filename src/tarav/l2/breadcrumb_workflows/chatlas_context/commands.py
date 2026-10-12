@@ -15,7 +15,6 @@ from tarav.l1.breadcrumbs.commands import (
 from tarav.l1.breadcrumbs import BreadcrumbError, BreadcrumbStore
 from tarav.l1.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow
 from tarav.l1.poi.rendering import POIRenderError, POISelection, renderer
-from tarav.l1.poi.reporting import retain_presented_pois
 
 from .workflow import ChatlasContextRequest
 
@@ -114,8 +113,6 @@ def _audit_dispatch(args: argparse.Namespace) -> int:
     payload["command"] = "tarav breadcrumbs audit chatlas-context"
     payload["repository"] = str(Path(args.repo).expanduser().resolve())
     payload["commit"] = args.commit
-    retain_presented_pois(result.pois, kind="breadcrumbs-commit",
-                          name="chatlas-context", root=args.repo)
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:

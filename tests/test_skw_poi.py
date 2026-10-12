@@ -163,7 +163,7 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
 
     bench = Bench(tmp_path / "records", create_runtime().records)
     bench.bless(generation, reason="The output remains valid for input revision two.")
-    assert bench.pois.blessing_standing(generation)["status"] == "blessed"
+    assert bench.pois.standing(generation) == "blessed"
     data["blocks"][1]["annotations"][0]["instructions"] = [
         "Explain the final program."
     ]
@@ -174,5 +174,5 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
         poi for poi in changed if isinstance(poi, StaleGeneration)
     )
     assert changed_generation.identity != generation.identity
-    assert bench.pois.blessing_standing(changed_generation)["status"] == "unblessed"
+    assert bench.pois.standing(changed_generation) == "open"
     assert any(isinstance(poi, StaleContext) for poi in changed)

@@ -9,17 +9,16 @@ import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
-from tarav.l1.checks.poi_contract import (
-    POIContextRoundTripCheck,
-)
+from tarav.l1.actions.project import ProjectActions
+from tarav.l1.actions.pois import action_id
+from tarav.l1.actions.views import ActionResolver
 from tarav.l1.context.query import (
     ContextCandidate, ContextQuery, ContextQueryService, IdentityContextQuery,
 )
-from tarav.l1.poi.reporting import (
-    REPORTED_POI_VIEW, ReportedPOI, ReportedPOIContext, ReportedPOIResolver,
-    ReportedPOIStore, context_instruction, reported_record,
-)
 from tarav.l1.poi.rendering import POISelection, renderer
+from tarav.l1.actions import ActionRunStore
+from tarav.l1.records import RecordRegistry
+from tarav.l3.runtime import create_runtime, set_runtime
 from tarav.l1.search import SearchEngine, SearchHit
 from tarav.l3.cli.cli import main
 
@@ -53,48 +52,47 @@ class GuidedPOI(CheckPOI):
 
 
 @pytest.fixture
-def reported(tmp_path: Path, monkeypatch) -> list[str]:
-    monkeypatch.setenv("TARAV_CHECK_REPORTS", str(tmp_path / "reports"))
-    run = CheckSuite()
-    run.add(SampleCheck().run())
-    ReportedPOIStore().retain(run.pois(), project={"id": "p1", "name": "sample"})
-    return [poi.identity for poi in run.pois()]
+def opened(tmp_path: Path, monkeypatch):
+    """Two sample POIs escalated to actions of one Project, in a registry of their own."""
+    monkeypatch.setenv("TARAV_RECORDS", str(tmp_path / "records"))
+    set_runtime(create_runtime())
+    suite = CheckSuite([SampleCheck()]).run()
+    ProjectActions({"id": "p1", "name": "sample", "root": str(tmp_path)}).update(suite)
+    yield list(suite.pois())
+    set_runtime(None)
 
 
-def _service(store: ReportedPOIStore | None = None) -> ContextQueryService:
+def _service(opened) -> ContextQueryService:
     service = ContextQueryService()
-    service.register_resolver("reported-poi", ReportedPOIResolver(store))
-    service.register_view(REPORTED_POI_VIEW, ReportedPOIContext)
+    service.register_resolver("action", ActionResolver())
     return service
 
 
 # tarav.breadcrumb 818a901104c6130a1a3802829620962e62f290ac7b7202ba84b1465c834e9825
-def test_an_identity_query_opens_the_requested_view(reported: list[str]) -> None:
-    answer = _service().open(IdentityContextQuery(reported[0][:12], view=REPORTED_POI_VIEW))
+# tarav.breadcrumb 7d1ed0ce36ce5a6522313fae4015436f8bbe952d270165c1a37f05d158db2018
+def test_an_action_is_found_by_its_id_and_by_the_id_of_its_poi(opened) -> None:
+    poi = opened[0]
+    by_action = _service(opened).open(IdentityContextQuery(str(action_id(poi))[:13]))
+    by_poi = _service(opened).open(IdentityContextQuery(poi.identity[:12]))
 
-    assert isinstance(answer.subject, ReportedPOI)
-    assert [entry.name for entry in answer.target.ls()] == [
-        "poi-type", "raised-by", "occurrence", "notes", "action"]
-    assert answer.views == (REPORTED_POI_VIEW,)
-
-
-def test_the_general_view_is_the_default_and_names_other_views(reported: list[str]) -> None:
-    answer = _service().open(IdentityContextQuery(reported[0]))
-
-    assert "summary" in [entry.name for entry in answer.target.ls()]
-    assert answer.views == (REPORTED_POI_VIEW,)
+    assert by_action.subject.id == by_poi.subject.id == action_id(poi)
+    # no view is named: the action contributes its own entries, and its Type adds the POI's
+    assert [entry.name for entry in by_action.target.ls() if entry.name != "class"] == [
+        "standing", "poi", "poi-type", "raised-by", "notes", "detection", "acting",
+        "project", "closing", "closings", "history"]
 
 
-def test_a_path_is_followed_to_a_value(reported: list[str]) -> None:
-    answer = _service().open(
-        IdentityContextQuery(reported[0], view=REPORTED_POI_VIEW, path=["notes"]))
+def test_a_path_is_followed_to_a_value(opened) -> None:
+    answer = _service(opened).open(IdentityContextQuery(opened[0].identity, path=["notes"]))
 
     assert answer.location == ("notes",)
     assert answer.target.records.to_record()["value"] == [
         "It is described in the sample note.", "It is no longer raised once the sample is fixed."]
+    kind = _service(opened).open(IdentityContextQuery(opened[0].identity, path=["poi-type"]))
+    assert kind.target.records.to_record()["value"]["type"] == "Tarav.Test.GuidedPOI"
 
 
-def test_several_matches_are_candidates_and_none_is_empty(reported: list[str]) -> None:
+def test_several_matches_are_candidates_and_none_is_empty(opened) -> None:
     class Both(SearchEngine):
         @classmethod
         def class_entity(cls) -> TaravClass:
@@ -114,7 +112,7 @@ def test_several_matches_are_candidates_and_none_is_empty(reported: list[str]) -
 
     answer = service.open(IdentityContextQuery("anything"))
     assert answer.subject is None and len(answer.candidates) == 2
-    assert _service().open(IdentityContextQuery("ffffffffffff")).candidates == ()
+    assert _service(opened).open(IdentityContextQuery("ffffffffffff")).candidates == ()
 
 
 def test_queries_validate_their_parts() -> None:
@@ -126,39 +124,37 @@ def test_queries_validate_their_parts() -> None:
         ContextQueryService().open(IdentityContextQuery("x", view="missing"))
 
 
-def test_notes_belong_to_the_poi_type_and_not_to_the_poi_record() -> None:
+# tarav.breadcrumb fae0e168d36f1e4818647e0f437ee4772014d06bb618074c67240e5ef86bf888
+def test_a_poi_describes_itself_and_owns_nothing(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TARAV_RECORDS", str(tmp_path / "records"))
     poi = GuidedPOI(SampleCheck(), "Something was found", situation={"where": "a"})
     assert CheckPOI.context_notes == ()
     assert "notes" not in poi.as_dict(detail=True) and "context_notes" not in poi.as_dict(detail=True)
-    assert reported_record(poi)["notes"] == ["It is described in the sample note.",
-                                             "It is no longer raised once the sample is fixed."]
+    described = poi.describe()
+    assert described["notes"] == ["It is described in the sample note.",
+                                  "It is no longer raised once the sample is fixed."]
+    assert described["poi_type"]["type"] == "Tarav.Test.GuidedPOI"
+    assert described["raised_by"]["type"] == "Tarav.Test.ContextSampleCheck"
+    assert not ActionRunStore(RecordRegistry()).exists()  # describing stores nothing
 
 
-# tarav.breadcrumb 74712dcf68e97f58fe0e4ee967aac259d1ae2d412c8eb34f0fb4864be1b10b9a
-# tarav.breadcrumb 9b5c21419a84b555a93bf7f45e6d5cc16156f43c1f4406d7cf135057a48e3318
-def test_a_report_with_pois_opens_with_one_instruction() -> None:
+def test_a_printed_report_points_at_no_stored_context() -> None:
     run = CheckSuite()
     run.add(SampleCheck().run())
-    rendered = renderer().render(POISelection.from_check_report(
-        run.report(by="identity"))).splitlines()
-
-    first = run.pois()[0].identity
-    assert rendered[2:4] == context_instruction(first)  # two lines, before the list
-    assert f"e.g. tarav context --id {first[:12]} --view {REPORTED_POI_VIEW}" in rendered[3]
-    assert sum("Before acting on any POI" in line for line in rendered) == 1
-
-    empty = CheckSuite()
-    assert "tarav context" not in renderer().render(
-        POISelection.from_check_report(empty.report()))
+    rendered = renderer().render(POISelection.from_check_report(run.report(by="identity")))
+    assert "tarav context" not in rendered and "Before acting" not in rendered
+    assert rendered.splitlines()[0] == "1 checks ran, all completed. 2 POIs."
 
 
-def test_the_command_lists_opens_and_reports_misses(reported: list[str], capsys) -> None:
-    assert main(["context", "--id", reported[0][:12], "--view", REPORTED_POI_VIEW]) == 0
+def test_the_command_opens_an_action_and_reports_misses(opened, capsys) -> None:
+    poi = opened[0]
+    key = str(action_id(poi))
+    assert main(["context", "--id", key[:13]]) == 0
     listing = capsys.readouterr().out
-    assert "occurrence" in listing and "notes" in listing
+    assert listing.splitlines()[0].startswith(key) and "view: general" in listing
+    assert "notes" in listing and "detection" in listing
 
-    assert main(["context", "--id", reported[0], "--view", REPORTED_POI_VIEW,
-                 "--path", "occurrence", "--json"]) == 0
+    assert main(["context", "--id", poi.identity[:12], "--path", "poi", "--json"]) == 0
     value = json.loads(capsys.readouterr().out)["value"]["value"]
     assert value["situation"] == {"where": "a"}
 
@@ -167,8 +163,3 @@ def test_the_command_lists_opens_and_reports_misses(reported: list[str], capsys)
 
     assert main(["context", "--id", "0000000000"]) != 0
     capsys.readouterr()
-
-
-def test_the_contract_checks_report_through_the_check_system(tmp_path: Path) -> None:
-    assert POIContextRoundTripCheck().run().pois() == ()
-
