@@ -191,14 +191,14 @@ class TaravRuntime:
         register_project_commands(
             subparsers,
             skills_registrar=register_skills_commands,
-            harness_registrar=lambda found: (register_harness_commands(found),
-                                             register_status_command(found)),
+            harness_registrar=register_harness_commands,
         )
         register_reading_club_commands(subparsers)
         register_system_commands(subparsers)
         register_python_commands(subparsers)
         register_run_command(subparsers)
         register_check_command(subparsers)
+        register_status_command(subparsers)
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
         _register_stdlib_commands(

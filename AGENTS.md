@@ -70,7 +70,7 @@
 
 - This folder is a `Tarav.Project.PythonPackage` child of the Taravangian
   root (`../.tarav/project.json`) and uses the root's environment
-  (`harness.project`). `tarav project status --project --all` runs the pytest
+  (`harness.project`). `tarav status --project --all` runs the pytest
   tests as a `PyTestSuite`, one suite per test file; each failing test is a POI.
   Without `--all` the tests are left out. Development still uses this folder's own
   `.venv` through `uv run`.
@@ -283,7 +283,7 @@ Importing `tarav` alone initializes no services or layered modules.
   composes them, and a container asks each member Project to do the same for itself.
   The actions register the action of each new POI and hand the results to every
   registered action; the Action Type decides what they mean (`Action.on_checks`).
-  `tarav project status --project` runs that and is the command to repeat;
+  `tarav status --project` runs that and is the command to repeat;
   `tarav check --project` only runs the checks. Read actions with
   `tarav action list --project` and `tarav context --id <poi-id> --view poi-action`.
   An action records the suites above the check that raised its POI. It closes as
@@ -295,7 +295,7 @@ Importing `tarav` alone initializes no services or layered modules.
   `tarav operator-context` print a summary by default and the full result with
   `--json`. `blessed` is an operator's exit: the action closes
   although the situation still exists, with a reason, for a POI whose Type extends
-  `BlessablePOI`; `tarav project status` counts a blessed finding as settled. Every closing
+  `BlessablePOI`; `tarav status` counts a blessed finding as settled. Every closing
   leaves a typed record on the action (`Tarav.Actions.POI.Gone`,
   `Tarav.Blessings.Blessing`), and that Type decides whether the POI raised again
   reopens it. Status is three axes: situation, action, closing. See ARCHITECTURE.md,
@@ -320,7 +320,7 @@ maintained design surfaces. Consult the Project's Wiki and live notes when
 present, then inspect code and tests for current mechanics.
 
 Use `tarav --help` and the relevant subcommand's `--help` to discover the
-installed CLI. `tarav project status --project [PATH]` runs the Project's checks
+installed CLI. `tarav status --project [PATH]` runs the Project's checks
 and updates its actions from the results; run it as often as needed. It leaves
 out the slow suites, such as a Project's tests, and says so; add `--all` to run
 everything, at least before you finish a task.

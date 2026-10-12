@@ -124,7 +124,7 @@ def _check(args: argparse.Namespace) -> int:
 
 
 def _status(args: argparse.Namespace) -> int:
-    return _in_harness(args, "report_project_status", "tarav project status")
+    return _in_harness(args, "report_project_status", "tarav status")
 
 
 def _report_arguments(parser: argparse.ArgumentParser) -> None:
@@ -158,7 +158,7 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "check",
         help="Run a Project's checks in its harness and report the POIs. "
-             "It does not touch the Project's actions; `tarav project status` does.",
+             "It does not touch the Project's actions; `tarav status` does.",
         epilog=(
             "examples:\n"
             "  tarav check --project\n"
@@ -179,9 +179,9 @@ def register_status_command(subparsers: argparse._SubParsersAction) -> None:
              "as needed; --all also runs the slow suites.",
         epilog=(
             "examples:\n"
-            "  tarav project status --project\n"
-            "  tarav project status --project --all\n"
-            "  tarav project status --project /path/to/project --json"
+            "  tarav status --project\n"
+            "  tarav status --project --all\n"
+            "  tarav status --project /path/to/project --json"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
