@@ -25,7 +25,8 @@ from tarav.l1.operator_context import OperatorContext, OperatorContextStore
 from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.records import RecordRegistry
 from tarav.l1.project import TaravProject
-from tarav.l3.check import report_project_checks, report_project_status
+from tarav.l3.check import report_project_checks
+from tarav.l3.status import report_project_status
 from tarav.l3.runtime import create_runtime
 
 
@@ -679,8 +680,16 @@ def test_the_status_command_updates_each_projects_actions(tmp_path, registry, ca
     from tarav.l1.actions import ActionRunStore
 
     assert report_project_status(_Home(tmp_path, LampCheck("hall", 3), _Flags(True))) == 1
-    assert "POI actions: 2 raised now in 1 Project(s); 2 opened, 0 reopened, 0 closed as gone." in \
-        capsys.readouterr().out
+    out = capsys.readouterr().out.splitlines()
+    # what is open comes first, then what this run changed, each change with its id
+    assert out[0] == f"{tmp_path.name}: 2 open actions"
+    assert out[1] == "2 checks ran, all completed."
+    assert "Changed in this run: 2 opened" in out
+    lamp = LampCheck("hall", 3).run().pois()[0]
+    assert f"  opened    LampOn  hall is on at 3  [{lamp.identity[:12]}]" in out
+    assert any(line.startswith(f"  {tmp_path.name}  2  ") and "LampOn 1" in line for line in out)
+    assert out[-2] == f"List them:  tarav action list --project {tmp_path}"
+    assert "Checks by type" not in "\n".join(out)
     runs = ActionRunStore().list(project_root=str(tmp_path))
     assert {run.state for run in runs} == {"running"} and len(runs) == 2
     assert {run.data["project"]["root"] for run in runs} == {str(tmp_path)}
@@ -704,9 +713,14 @@ def test_the_status_command_updates_each_projects_actions(tmp_path, registry, ca
     assert report_project_status(_Home(tmp_path, LampCheck("hall", 0), members=(child,)),
                                  json_output=True) == 1
     report = json.loads(capsys.readouterr().out)
-    assert report["summary"]["checks"] == 2  # one report over both Projects
+    assert report["checks"]["checks"] == 2  # one result over both Projects
     assert [project["name"] for project in report["actions"]["projects"]] == [
         tmp_path.name, "child"]
+    assert [(project["name"], project["open"]) for project in report["projects"]] == [
+        (tmp_path.name, 0), ("child", 1)]
+    assert [(change["change"], change["project"]) for change in report["changes"]] == [
+        ("opened", "child")]
+    assert report["report"]["items"][0]["standing"] == {"open": 1}  # the check report, in full
     assert len(ActionRunStore().list(project_root=str(child.root), state="running")) == 1
     # a run on the child alone updates that same action
     assert report_project_status(_Home(child.root, LampCheck("bench", 0)), json_output=True) == 0
@@ -724,20 +738,22 @@ def test_the_routine_run_leaves_slow_suites_out_and_all_runs_them(tmp_path, regi
     attic = str(action_id(LampCheck("attic", 2).run().pois()[0]))
     assert report_project_status(home(3, 2)) == 1
     out = capsys.readouterr().out
-    assert "1 checks, 0 incomplete, 1 POIs" in out
-    assert "Not run: Tarav.Test.Actions.AtticSuite. Run everything with --all." in out
+    assert "1 checks ran, all completed." in out
+    assert f"Not run: AtticSuite ({tmp_path.name}). Run everything with --all." in out
     assert ActionRunStore().find(attic) is None  # nothing is known about the attic yet
 
     assert report_project_status(home(3, 2), everything=True, json_output=True) == 1
     report = json.loads(capsys.readouterr().out)
-    assert (report["summary"]["checks"], report["summary"]["not_run"]) == (2, [])
+    assert (report["checks"]["checks"], report["checks"]["not_run"]) == (2, [])
     assert ActionRunStore().load(attic).state == "running"
 
     # the lamp is off, but a routine run does not look: the action stays open
     assert report_project_status(home(0, 0), json_output=True) == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["summary"]["not_run"] == [
-        {"type": "Tarav.Test.Actions.AtticSuite", "key": "attic"}]
+    assert [(item["type"], item["key"], item["project"]) for item in
+            report["checks"]["not_run"]] == [
+        ("Tarav.Test.Actions.AtticSuite", "attic", tmp_path.name)]
+    assert report["changes"] == [dict(report["changes"][0], change="gone")]  # the hall's
     assert (report["actions"]["gone"], ActionRunStore().load(attic).state) == (1, "running")
     assert ActionRunStore().load(attic).data["situation"]["state"] == "not run"
 
@@ -747,7 +763,7 @@ def test_the_routine_run_leaves_slow_suites_out_and_all_runs_them(tmp_path, regi
 
     # the check command filters the same way and touches no action
     assert report_project_checks(home(3, 2)) == 1
-    assert "Not run: Tarav.Test.Actions.AtticSuite." in capsys.readouterr().out
+    assert "Not run: Tarav.Test.Actions.AtticSuite. Run everything" in capsys.readouterr().out
     assert report_project_checks(home(3, 2), everything=True, json_output=True) == 1
     assert json.loads(capsys.readouterr().out)["summary"]["pois"] == 2
 
@@ -779,7 +795,7 @@ def test_a_poi_that_is_not_a_failure_does_not_make_the_run_unclean(registry, cap
                 CheckPOI(self, "all is fine", situation={"case": "fine"}, failure=False)])
 
     assert report_project_checks(_Project(Fine())) == 0
-    assert "1 checks, 0 incomplete, 1 POIs" in capsys.readouterr().out
+    assert "1 checks ran, all completed. 1 POIs." in capsys.readouterr().out
 
 
 def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry, capsys):
@@ -802,7 +818,8 @@ def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry,
     assert runner.close(str(action_id(lamp)), reason, exit=BLESSED).exit == BLESSED
     assert report_project_status(home) == 1  # the plain finding is still open
     out = capsys.readouterr().out
-    assert "(1 blessed)" in out and "(1 open)" in out
+    assert f"{tmp_path.name}: 1 open actions" in out and "Changed in this run: nothing" in out
+    assert "  1  POI 1  (1 blessed)" in out  # the open one by Type, the blessed one counted
 
     # all that is raised is blessed; the checks no longer produce the flags POI, so it is gone
     assert report_project_status(_Home(tmp_path, LampCheck("hall", 3))) == 0

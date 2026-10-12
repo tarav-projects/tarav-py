@@ -456,7 +456,7 @@ class CheckSuite(TaravObject, POIProvider):
             "checks": len(results),
             "by_status": dict(statuses),
             "incomplete": len(results) - statuses["completed"],
-            "not_run": [suite.identity or {"name": suite.name}
+            "not_run": [{**(suite.identity or {"type": None, "key": None}), "name": suite.name}
                         for suite in self.suites() if not suite.ran],
             "pois": sum(by_type.values()),
             "by_check": by_check,

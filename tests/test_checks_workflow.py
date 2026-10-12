@@ -190,7 +190,9 @@ def test_run_groups_pois_by_type_and_identity_without_codes():
     with pytest.raises(ValueError):
         run.report(by="code")
     assert len(run.report(by="identity", type="Tarav.POI.Notification")["items"]) == 1
-    assert "POIs by type" in renderer().render(POISelection.from_check_report(run.report()))
+    text = renderer().render(POISelection.from_check_report(run.report()))
+    assert text.splitlines()[0].endswith("checks ran, all completed. 3 POIs.")
+    assert "POIs by type" not in text and "Checks by type" not in text
 
 
 def test_run_pages_groups_and_blessings_do_not_hide_other_pois():
@@ -342,7 +344,8 @@ def test_a_filtered_run_is_not_complete_and_keeps_what_it_refused_as_not_run():
     assert (kept.complete, slow.ran, slow.complete, whole.complete) == (True, False, False, False)
     # what the suite itself ran is conclusive; what a nested suite did not run is its own matter
     assert (whole.conclusive, kept.conclusive, slow.conclusive) == (True, True, False)
-    assert whole.summary()["not_run"] == [{"type": "Test.Checks.SlowSuite", "key": "slow"}]
+    assert whole.summary()["not_run"] == [
+        {"type": "Test.Checks.SlowSuite", "key": "slow", "name": None}]
     assert slow in whole.suites()
 
     whole.run()

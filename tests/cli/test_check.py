@@ -87,7 +87,7 @@ def test_the_report_carries_every_result_and_its_pois() -> None:
 
 def test_clean_checks_exit_zero_and_pois_exit_one(capsys) -> None:
     assert report_project_checks(_Project(_Flags(False))) == 0
-    assert "1 checks, 0 incomplete, 0 POIs" in capsys.readouterr().out
+    assert "1 checks ran, all completed. 0 POIs." in capsys.readouterr().out
     assert report_project_checks(_Project(_Flags(True)), json_output=True) == 1
     assert json.loads(capsys.readouterr().out)["summary"]["pois"] == 1
 
@@ -130,8 +130,8 @@ def test_the_cli_needs_a_project() -> None:
 def test_report_is_grouped_and_a_crash_becomes_a_failed_result(capsys) -> None:
     assert report_project_checks(_Project(_Flags(False, crash=True), _Flags(False))) == 1
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == "2 checks, 1 incomplete, 0 POIs"
-    assert "'failed': 1" in lines[1]
+    assert lines[0] == "2 checks ran, 1 did not complete. 0 POIs."
+    assert lines[1] == "  did not complete: Test.Checks.Flags (1 failed)"
     assert not any("RuntimeError: boom" in line for line in lines)
 
 
@@ -143,7 +143,7 @@ def test_many_project_pois_render_as_one_type_group(capsys) -> None:
 
     assert report_project_checks(ManyProject()) == 1
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == "25 checks, 0 incomplete, 25 POIs"
+    assert lines[0] == "25 checks ran, all completed. 25 POIs."
     groups = [line for line in lines if "POIs from" in line]
     assert len(groups) == 1 and "25 POIs from 25 checks" in groups[0]
 
@@ -171,7 +171,7 @@ def test_type_filter_includes_subtypes_and_preserves_full_run_status(capsys) -> 
 
     assert report_project_checks(project, poi_type="Test.Checks.SpecialPOI") == 1
     output = capsys.readouterr().out
-    assert "1 checks, 0 incomplete, 2 POIs" in output
+    assert "1 checks ran, all completed. 2 POIs." in output
     assert "Showing 1 of 2 POIs matching type=Test.Checks.SpecialPOI" in output
     assert "POIs by type:" not in output
 

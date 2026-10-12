@@ -1,4 +1,4 @@
-"""Project checks and status CLI: run a Project's checks, alone or with its actions."""
+"""Project checks CLI: run a Project's checks in its harness and report the POIs."""
 
 from __future__ import annotations
 
@@ -14,17 +14,21 @@ from tarav.l1.poi.rendering import (
 )
 
 
-def _not_run_text(suite) -> str | None:
-    skipped = suite.summary()["not_run"]
-    if not skipped:
-        return None
-    names = ", ".join(sorted({item.get("type") or item.get("name") or "?" for item in skipped}))
-    return f"Not run: {names}. Run everything with --all."
+class Progress:
+    """One line that counts the checks as they finish; nothing when not on a terminal."""
 
+    def __init__(self) -> None:
+        self.count = 0
+        self.live = sys.stderr.isatty()
 
-def _progress(result: CheckResult) -> None:
-    if sys.stderr.isatty():
-        print(f"{type(result.check).__name__}: {result.status}", file=sys.stderr, flush=True)
+    def __call__(self, result: CheckResult) -> None:
+        self.count += 1
+        if self.live:
+            print(f"\r{self.count} checks ran", end="", file=sys.stderr, flush=True)
+
+    def done(self) -> None:
+        if self.live and self.count:
+            print("\r" + " " * 24 + "\r", end="", file=sys.stderr, flush=True)
 
 
 # tarav.breadcrumb a671fcec806bcecf6adccaf70a7f2c991f04b2685ea24f7056aa3cf53f820f8e
@@ -39,92 +43,46 @@ def report_project_checks(
 
     Suites that are not routine are left out unless `everything` is set.
     """
+    progress = Progress()
     try:
         run = _retained(project, project.checks.run(
-            select=None if everything else routine, on_result=_progress))
+            select=None if everything else routine, on_result=progress))
         # tarav.breadcrumb ad61e17278a7f87bdbe6bba00b7195dd5389a8f9423618314b32ae8fa446c9e2
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    finally:
+        progress.done()
     report = run.report(by=by, sort=sort, limit=limit, offset=offset, type=poi_type,
                         check=check, detail=level == "record")
     if json_output:
         print(json.dumps(report, indent=2, default=str))
     else:
         print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
-        if _not_run_text(run):
-            print(_not_run_text(run))
     return 0 if run.clean() else 1
 
 
-# tarav.breadcrumb 7231b58f634d9c6ef60ff8b772ffec1f46a707b47b9e3fc130252f6d89fec78e
-def report_project_status(
-    project, *, json_output: bool = False, by: str = "type", sort: str = "run",
-    limit: int = 20, offset: int = 0, poi_type: str | None = None,
-    check: str | None = None, renderer_name: str = DEFAULT_POI_RENDERER,
-    level: str = "line", everything: bool = False,
-) -> int:
-    """Run a Project's checks, hand the results to its actions, and show both.
-
-    The Project does the work; this only presents it. Suites that are not
-    routine are left out unless `everything` is set; their actions stay as
-    they are. Exit 0 says every check that ran completed and every finding
-    left is blessed.
-    """
-    from tarav.l1.actions.pois import POIActions
-
-    try:
-        status = project.status(select=None if everything else routine, on_result=_progress)
-    except NotImplementedError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    run = _retained(project, status.suite())
-    standing = POIActions().standing
-    report = run.report(by=by, sort=sort, limit=limit, offset=offset, type=poi_type,
-                        check=check, detail=level == "record", label=standing)
-    acted = status.acted()
-    acted = {**{key: value for key, value in acted.items() if key != "signals"},
-             "closed": [signal.as_dict(detail=True) for signal in acted["signals"]]}
-    if json_output:
-        print(json.dumps({**report, "actions": acted}, indent=2, default=str))
-    else:
-        print(renderer(renderer_name).render(POISelection.from_check_report(report), level=level))
-        print(_actions_text(acted))
-        if _not_run_text(run):
-            print(_not_run_text(run))
-    settled = (all(result.status == "completed" for result in run.results)
-               and all(standing(poi) == "blessed" for poi in run.findings()))
-    return 0 if settled else 1
-
-
-def _code(args: argparse.Namespace, function: str) -> str:
-    options = {
-        "json_output": args.json, "by": args.by, "sort": args.sort,
-        "limit": args.limit, "offset": args.offset, "poi_type": args.poi_type,
-        "check": args.check_type, "renderer_name": args.renderer, "level": args.level,
-        "everything": args.all,
-    }
-    return (
-        f"from tarav.l3.check import {function}\n"
-        f"raise SystemExit({function}(project, **{options!r}))\n"
-    )
-
-
-def _in_harness(args: argparse.Namespace, function: str, command: str) -> int:
+def in_harness(args: argparse.Namespace, *, command: str, module: str, function: str,
+               options: dict) -> int:
+    """Run one report function on the Project, inside the Project's harness."""
     if args.project is None:
         raise CliError(f"{command} needs --project [PATH]")
     from tarav.l3.project.harness import run
 
-    return run(path=args.project, code=_code(args, function))
+    return run(path=args.project, code=(
+        f"from {module} import {function}\n"
+        f"raise SystemExit({function}(project, **{options!r}))\n"))
 
 
 # tarav.breadcrumb 1778a37c1707becb0bed583cc5d2ee8f8a4b3047975fb3b90d1c61a0a8065481
 def _check(args: argparse.Namespace) -> int:
-    return _in_harness(args, "report_project_checks", "tarav check")
-
-
-def _status(args: argparse.Namespace) -> int:
-    return _in_harness(args, "report_project_status", "tarav status")
+    return in_harness(args, command="tarav check", module="tarav.l3.check",
+                      function="report_project_checks", options={
+                          "json_output": args.json, "by": args.by, "sort": args.sort,
+                          "limit": args.limit, "offset": args.offset,
+                          "poi_type": args.poi_type, "check": args.check_type,
+                          "renderer_name": args.renderer, "level": args.level,
+                          "everything": args.all})
 
 
 def _report_arguments(parser: argparse.ArgumentParser) -> None:
@@ -170,25 +128,6 @@ def register_check_command(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(handler=_check)
 
 
-# tarav.breadcrumb 09b54769f85d6baa3ad93af7baa6fa6cb7c4442748b47ca9f757c89892aa7322
-def register_status_command(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "status",
-        help="Run a Project's checks and update its actions from the results: open the "
-             "action of each new POI, close those whose POI is gone. Run it as often "
-             "as needed; --all also runs the slow suites.",
-        epilog=(
-            "examples:\n"
-            "  tarav status --project\n"
-            "  tarav status --project --all\n"
-            "  tarav status --project /path/to/project --json"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    _report_arguments(parser)
-    parser.set_defaults(handler=_status)
-
-
 def _retained(project, run):
     """Keep the reported POIs so `tarav context --id` can open them afterwards."""
     from tarav.l1.poi.reporting import ReportedPOIStore
@@ -201,14 +140,4 @@ def _retained(project, run):
     return run
 
 
-def _actions_text(acted: dict[str, object]) -> str:
-    lines = [f"POI actions: {acted['actions']} raised now in {len(acted['projects'])} "
-             f"Project(s); {acted['opened']} opened, "
-             f"{acted['reopened']} reopened, {acted['gone']} closed as gone. "
-             "List them with `tarav action list --project`."]
-    lines.extend(f"  gone: {signal['message']}" for signal in acted["closed"])
-    return "\n".join(lines)
-
-
-__all__ = ["register_check_command", "register_status_command", "report_project_checks",
-           "report_project_status"]
+__all__ = ["Progress", "in_harness", "register_check_command", "report_project_checks"]

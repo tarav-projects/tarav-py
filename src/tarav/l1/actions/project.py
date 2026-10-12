@@ -95,17 +95,24 @@ class ProjectActions:
         changes, update = self.refresh(checks, at=at, registered=started)
         summary = {"opened": 0, "reopened": 0, "gone": 0, "updated": 0}
         written = {**started, **{key: run for key, (run, _) in changes.items()}}
+        listed = []  # what an operator wants to hear about: opened, reopened, gone
         for key, run in written.items():
             if key in started and run.data["started_at"] == at:
                 name = "opened"
             else:
                 name = changes[key][1] if key in changes else "updated"
-            summary[name if name in summary else "updated"] += 1
+            name = name if name in summary else "updated"
+            summary[name] += 1
+            if name != "updated":
+                poi = (run.data.get("event") or {}).get("poi") or {}
+                listed.append({"change": name, "action": key,
+                               "type": poi.get("type") or run.data["action"],
+                               "message": poi.get("message"), "poi": poi.get("id")})
         keys = [self.runs.write(run) for run in written.values()]
         self.runs.commit(keys, f"Update the actions of {self.project['name']}: " + ", ".join(
             f"{count} {name}" for name, count in summary.items() if count))
         return {**summary, "actions": len({str(action_id(poi)) for poi in raised(checks.pois())}),
-                "project": self.project, "signals": update.signals}
+                "project": self.project, "changes": listed, "signals": update.signals}
 
 
 __all__ = ["ProjectActions"]

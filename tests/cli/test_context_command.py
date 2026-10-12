@@ -143,8 +143,8 @@ def test_a_report_with_pois_opens_with_one_instruction() -> None:
         run.report(by="identity"))).splitlines()
 
     first = run.pois()[0].identity
-    assert rendered[2:5] == context_instruction(first)[:3]
-    assert f"tarav context --id {first[:12]} --view {REPORTED_POI_VIEW}" in rendered[4]
+    assert rendered[2:4] == context_instruction(first)  # two lines, before the list
+    assert f"e.g. tarav context --id {first[:12]} --view {REPORTED_POI_VIEW}" in rendered[3]
     assert sum("Before acting on any POI" in line for line in rendered) == 1
 
     empty = CheckSuite()

@@ -431,7 +431,12 @@ each result with the identified suites above it. A class with
 per test file. `tarav check --project` (`tarav.l3.check`) launches the
 Project harness, binds the Project's Type, and prints the report rather than
 every result; it and `tarav status` leave non-routine suites out
-unless `--all` is given.
+unless `--all` is given. `tarav status --project` (`tarav.l3.status`) is
+about actions: `status_result()` builds one result from the Project's
+status, and `status_text()` shows the open actions per Project, what the run
+opened, reopened or closed, and one line about the checks; `--json` prints
+the whole result, the check report included. The check report's text names
+only what needs saying: checks that did not complete and suites left out.
 
 The generated package keeps its code-owned Project TypeShip and package
 bootstrap metadata in `.tarav/pyproject.toml`, while the marker retains its

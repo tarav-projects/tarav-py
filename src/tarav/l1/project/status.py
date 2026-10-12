@@ -32,6 +32,8 @@ class ProjectStatus:
         return {**{name: sum(part[name] for part in parts)
                    for name in ("opened", "reopened", "gone", "updated", "actions")},
                 "projects": [part["project"] for part in parts],
+                "changes": [{**change, "project": part["project"]["name"]}
+                            for part in parts for change in part["changes"]],
                 "signals": [signal for part in parts for signal in part["signals"]]}
 
 

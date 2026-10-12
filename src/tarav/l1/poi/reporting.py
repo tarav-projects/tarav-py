@@ -33,10 +33,7 @@ _LOG = logging.getLogger(__name__)
 def context_instruction(example_id: str | None = None, *,
                         view: str = REPORTED_POI_VIEW) -> list[str]:
     """The one instruction a surface prints before listing POIs."""
-    lines = [
-        "Before acting on any POI, open its context:",
-        f"  tarav context --id <poi-id> --view {view}",
-    ]
+    lines = ["Before acting on any POI, open its context (full ids are in --json):"]
     if example_id:
         is_poi_id = (len(example_id) == 64
                      and all(char in "0123456789abcdef" for char in example_id))
@@ -45,8 +42,8 @@ def context_instruction(example_id: str | None = None, *,
         if is_poi_id:
             command += f" --view {view}"
         lines.append(f"  e.g. {command}")
-    lines.append("Use the reporting command's `--json` output for full POI ids; "
-                 "see `tarav context --help` for navigation and other views.")
+    else:
+        lines.append(f"  tarav context --id <poi-id> --view {view}")
     return lines
 
 

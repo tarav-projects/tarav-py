@@ -124,11 +124,29 @@ def _short_address(address: str) -> str:
     ) else address
 
 
+def check_header(summary: Mapping[str, object], *, pois: bool = True) -> list[str]:
+    """What ran, in a line; then only what needs saying: checks that did not complete, suites left out."""
+    ran, incomplete = summary["checks"], summary["incomplete"]
+    lines = [f"{ran} checks ran, " + ("all completed" if not incomplete
+                                      else f"{incomplete} did not complete")
+             + (f". {summary['pois']} POIs." if pois else ".")]
+    for name, data in (summary.get("by_check") or {}).items():
+        unfinished = {status: count for status, count in data["by_status"].items()
+                      if status != "completed"}
+        if unfinished:
+            lines.append(f"  did not complete: {name} (" + ", ".join(
+                f"{count} {status}" for status, count in unfinished.items()) + ")")
+    not_run = sorted({item.get("name") or item.get("type") or "?"
+                      for item in summary.get("not_run") or ()})
+    if not_run:
+        lines.append(f"Not run: {', '.join(not_run)}. Run everything with --all.")
+    return lines
+
+
 def _text(selection: POISelection, level: POILevel) -> str:
     summary = selection.summary
     if selection.source == "check" and summary is not None:
-        lines = [f"{summary['checks']} checks, {summary['incomplete']} incomplete, "
-                 f"{summary['pois']} POIs"]
+        lines = check_header(summary)
     else:
         lines = [f"{selection.title}: {selection.total} POIs",
                  f"showing: {len(selection.items)} of {selection.matching} matching"]
@@ -164,14 +182,6 @@ def _text(selection: POISelection, level: POILevel) -> str:
         if selection.filters:
             criteria = ", ".join(f"{key}={value}" for key, value in selection.filters.items())
             lines.append(f"Showing {selection.matching_pois} of {selection.total} POIs matching {criteria}")
-        else:
-            by_check = summary.get("by_check") or {}
-            by_type = summary.get("by_type") or {}
-            lines.append("Checks by type: " + (", ".join(
-                f"{name} {data['runs']} ({data['by_status']})"
-                for name, data in by_check.items()) or "none"))
-            lines.append("POIs by type: " + (", ".join(
-                f"{name} {count}" for name, count in by_type.items()) or "none"))
     if selection.next_offset is not None:
         lines.append(f"Next offset: {selection.next_offset}")
     return "\n".join(lines)
