@@ -29,7 +29,7 @@ from tarav.l1.skills.catalog import (
     parse_skill_frontmatter,
 )
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.poi import IdentifiedPOI, NotificationPOI
+from tarav.l1.poi import SituationPOI, NotificationPOI
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
 DEFAULT_SKILLS_DEPOTS = (
@@ -57,8 +57,19 @@ class SkillsSelectionNotification(NotificationPOI):
         )
 
 
-class SkillsStatusPOI(IdentifiedPOI):
-    """Family, never raised: a skill depot entry differs from the selected skills."""
+class SkillsStatusPOI(SituationPOI):
+    """Family, never raised: a skill depot entry differs from the selected skills.
+
+    `entry` is what was seen of that depot entry: where it comes from, where
+    it was expected to point, and what is actually there.
+    """
+
+    def __init__(self, message: str, *, situation, entry: dict | None = None) -> None:
+        super().__init__(message, situation=situation)
+        self.entry = dict(entry or {})
+
+    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
+        return {**super().as_dict(detail=detail), "entry": dict(self.entry)}
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -84,7 +95,7 @@ class SkillsStatusPOI(IdentifiedPOI):
         }
         return _STATUS_POI[category](
             f"Skill depot entry is {category}: {entry.name}",
-            situation=subject, subject=subject, evidence=evidence)
+            situation=subject, entry=evidence)
 
 
 class SkillDepotEntryMissing(SkillsStatusPOI):

@@ -397,8 +397,7 @@ class TribunalScoreCheck(Check):
                     situation={'tribunal_type_id': self.tribunal_type_id,
                                'assertion_ref': row['assertion_ref'],
                                'comparisons': row['comparisons']},
-                    subject={'assertion_ref': row['assertion_ref']},
-                    evidence=row.as_row(), details=row.as_row(),
+                    details=row.as_row(),
                 ))
         return CheckResult(self, status='completed', pois=pois,
                            data=tuple(row.as_row() for row in rows))

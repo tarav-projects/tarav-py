@@ -41,8 +41,10 @@ def fingerprint(value):
 class POI(TaravObject):
     """A point of interest: the statement that an event happened.
 
-    Like an error, a POI is an object with a Type and an elementary message.
-    Creating one does nothing; what is done with it is the caller's act.
+    Like an error, a POI is an object with a Type and an elementary message,
+    and that is all the base holds. Creating one does nothing; what is done
+    with it is the caller's act. A specialization adds what it needs as
+    fields of its own Type.
     """
 
     # tarav.breadcrumb fbce893f8a509ccd3120c6f50be4e69a32ff924ed42d9cef1af7857d8dc86efb
@@ -60,14 +62,20 @@ class POI(TaravObject):
             workflow=POI_WORKFLOW_SHIP,
         )
 
+    # tarav.breadcrumb 17627641c140831a58058d274ae60618c5ddcfb654b3f2d8b748518b3d76c0bd
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        if not isinstance(message, str):
+            raise TypeError("A POI's message must be text")
+        self.message = message
+
     def as_dict(self) -> dict[str, object]:
-        return {"type": entity(type(self)).name}
+        return {"type": entity(type(self)).name, "message": self.message}
 
     def summary(self) -> str:
         """One POI's meaning; layout belongs to a renderer."""
-        message = getattr(self, "message", None)
-        if isinstance(message, str) and message.strip():
-            return message.strip()
+        if self.message.strip():
+            return self.message.strip()
         return (type(self).__doc__ or "").strip() or entity(type(self)).name
 
     # tarav.breadcrumb 0216682f0099c00e834aa725e6214609154e74337b7c0ea50bf53d32d5b6948e
@@ -77,33 +85,27 @@ class POI(TaravObject):
         raise POIError(self)
 
 
-class IdentifiedPOI(POI):
-    """A workflow-owned POI with identity defined by its Type and situation."""
+# tarav.breadcrumb f79017e17d4716cf2da6b9734b2c2a6737ed9facccf0ad524505fda4a9d8cc10
+class SituationPOI(POI):
+    """A POI about a situation: an object that describes what was found, and where.
+
+    The situation is a `LiteRecord`; what goes into it is for each line of
+    POIs to decide. The same Type with the same situation is the same POI:
+    that is its identity. Nothing else is required or offered here.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
             target=cls,
             id=TypeShip("d341dcd8-6155-4588-b881-bdfb4ba0bc4e"),
-            name="Tarav.POI.Identified",
+            name="Tarav.POI.Situation",
             workflow=POI_WORKFLOW_SHIP,
         )
 
-    def __init__(
-        self,
-        message: str,
-        *,
-        situation: Mapping[str, object] | LiteRecord,
-        subject: dict | None = None,
-        evidence: dict | None = None,
-    ) -> None:
-        super().__init__()
+    def __init__(self, message: str, *, situation: Mapping[str, object] | LiteRecord) -> None:
+        super().__init__(message)
         # The Type states which situation was found; there is no case label.
-        if not isinstance(message, str):
-            raise TypeError("IdentifiedPOI message must be text")
-        self.message = message
-        self._subject = canonical(subject or {})
-        self._evidence = canonical(evidence or {})
         self._situation = LiteRecord(situation)
         self.class_id = str(entity(type(self)).id)
         self.identity = fingerprint([self.class_id, self.situation])
@@ -112,31 +114,16 @@ class IdentifiedPOI(POI):
     def situation(self) -> dict[str, object]:
         return self._situation.to_json_value()
 
-    @property
-    def subject(self) -> dict:
-        return json.loads(self._subject)
-
-    @property
-    def evidence(self) -> dict:
-        return json.loads(self._evidence)
-
-    @property
-    def coordinate(self) -> dict:
-        return self.subject
-
     def as_dict(self, *, detail: bool = False) -> dict[str, object]:
-        result = {
+        """The POI as plain data. `detail` asks a specialization for its bulky fields too."""
+        return {
             "type": entity(type(self)).name,
             "class_id": self.class_id,
             "id": self.identity,
             "message": self.message,
             "situation": self.situation,
-            "subject": self.subject,
             "help": deepcopy(type(self).help()),
         }
-        if detail:
-            result["evidence"] = self.evidence
-        return result
 
     # tarav.breadcrumb b1ec626ad687f990fb926f99fdc0702e21feed60c91b00abfdcd391aa0a0ab67
     def describe(self) -> dict[str, object]:
@@ -147,9 +134,7 @@ class IdentifiedPOI(POI):
         """
         check = getattr(self, "check", None)
         return {
-            "id": self.identity, "message": self.message,
-            "situation": self.situation, "subject": self.subject, "evidence": self.evidence,
-            "details": deepcopy(getattr(self, "details", {})),
+            **{key: value for key, value in self.as_dict(detail=True).items() if key != "help"},
             "poi_type": _class_record(type(self)),
             "raised_by": _class_record(type(check)) if check is not None else None,
             "notes": [str(item) for item in type(self).context_notes],
@@ -157,8 +142,6 @@ class IdentifiedPOI(POI):
 
     def obj_context(self, builder) -> None:
         builder.add("situation", opener=lambda: _details(self.situation))
-        builder.add("coordinate", opener=lambda: _details(self.coordinate))
-        builder.add("evidence", opener=lambda: _details(self.evidence))
 
 
 def _class_record(cls: type) -> dict[str, object]:
@@ -182,8 +165,7 @@ class NotificationPOI(POI):
         )
 
     def __init__(self, message: str, *, details: dict | None = None):
-        super().__init__()
-        self.message = message
+        super().__init__(message)
         self.details = deepcopy(details or {})
 
     def as_dict(self) -> dict[str, object]:
@@ -198,7 +180,7 @@ class NotificationPOI(POI):
 
 
 class POIDetails(FileRecord):
-    """JSON coordinates or evidence exposed as an ordinary Context value."""
+    """Plain JSON data of a POI exposed as an ordinary Context value."""
 
     @classmethod
     def class_entity(cls):
@@ -238,7 +220,7 @@ class POICollector:
         return poi
 
     # tarav.breadcrumb 5eb40a749da9400fa0e6bc5526e6fb65f0e3004d7cf6193ba742b4ff9a4bac8f
-    def get(self, identity: str, *, index: int | None = None) -> IdentifiedPOI:
+    def get(self, identity: str, *, index: int | None = None) -> SituationPOI:
         if not isinstance(identity, str) or not identity:
             raise ValueError("Expected a nonempty POI ID or prefix")
         if index is not None and (type(index) is not int or index < 0):
@@ -246,7 +228,7 @@ class POICollector:
         matches = [
             poi
             for poi in self.pois
-            if isinstance(poi, IdentifiedPOI) and poi.identity.startswith(identity)
+            if isinstance(poi, SituationPOI) and poi.identity.startswith(identity)
         ]
         if not matches:
             raise ValueError("POI does not exist in this evaluation")
@@ -271,13 +253,13 @@ class POICollector:
         if offset < 0 or limit < 1:
             raise ValueError("Expected nonnegative offset and positive limit")
         identity_counts = Counter(
-            poi.identity for poi in self.pois if isinstance(poi, IdentifiedPOI)
+            poi.identity for poi in self.pois if isinstance(poi, SituationPOI)
         )
         next_index: Counter[str] = Counter()
         rows = []
         for poi in self.pois:
             emission_index = None
-            if isinstance(poi, IdentifiedPOI):
+            if isinstance(poi, SituationPOI):
                 emission_index = next_index[poi.identity]
                 next_index[poi.identity] += 1
             rows.append((poi, emission_index))
@@ -297,11 +279,11 @@ class POICollector:
         for poi, emission_index in selected[offset : offset + limit]:
             row = (
                 poi.as_dict(detail=detail)
-                if isinstance(poi, IdentifiedPOI)
+                if isinstance(poi, SituationPOI)
                 else poi.as_dict()
             )
             if (
-                isinstance(poi, IdentifiedPOI)
+                isinstance(poi, SituationPOI)
                 and identity_counts[poi.identity] > 1
             ):
                 row["index"] = emission_index

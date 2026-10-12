@@ -10,9 +10,13 @@ Producing workflows define their
 own concrete subtypes; POI does not prescribe checking, persistence, severity,
 or response mechanics.
 
-`IdentifiedPOI` adds a stable identity derived from its concrete Type and an
-explicit producer-supplied situation. Evidence and presentation do not create a
-second identity axis. `POICollector` retains every emission and addresses
+`SituationPOI` adds a situation: an object that describes what was found, as
+a `LiteRecord`. What goes into it is for each line of POIs to decide; no
+structure is common to all of them. The same Type with the same situation is
+the same POI, and that is its identity. The base holds nothing else. A
+specialization adds what it needs as fields of its own Type, named for what
+they hold: a `CheckPOI` adds its `check`, `details` and `failure`. Such
+fields are never part of the identity. `POICollector` retains every emission and addresses
 repeated observations through a collector-local emission index.
 
 `NotificationPOI` is non-blocking. `emit_notification()` makes it visible as a

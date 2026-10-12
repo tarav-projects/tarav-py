@@ -22,7 +22,7 @@ from uuid import UUID
 from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.checks import Check
 from tarav.l1.operator_context import OperatorContext
-from tarav.l1.poi import POI, IdentifiedPOI, fingerprint
+from tarav.l1.poi import POI, SituationPOI, fingerprint
 from tarav.l1.poi.actionable import ActionablePOI, BlessablePOI
 
 from .blessing import BLESSED, Blessing, BlessingInput, BlessingInputCheck
@@ -91,7 +91,7 @@ class POIResolutionAction(StepAction):
 
     # tarav.breadcrumb c5db1b346c8b5ff563c654bb294079f0d167cfcdabea9a4e04cf10d35bceed8d
     @classmethod
-    def opened(cls, poi: IdentifiedPOI, *, project: dict, at: str,
+    def opened(cls, poi: SituationPOI, *, project: dict, at: str,
                suites: tuple[dict, ...] = ()) -> ActionRun:
         """Build the action of a POI, open and not yet registered anywhere.
 
@@ -208,13 +208,26 @@ class POIResolutionAction(StepAction):
         update.signals.append(POIActionClosed(
             f"The situation of {poi_record.get('type')} is gone: {poi_record.get('message')}",
             situation={"action": str(run.id), "closed_at": update.at},
-            subject={"project": update.project},
-            evidence={"action": str(run.id), "exit": GONE, "poi": poi_record.get("id")}))
+            project=update.project,
+            closed={"action": str(run.id), "exit": GONE, "poi": poi_record.get("id")}))
         return GONE
 
 
-class POIActionClosed(IdentifiedPOI):
-    """An open POI action closed because its situation is gone."""
+class POIActionClosed(SituationPOI):
+    """An open POI action closed because its situation is gone.
+
+    `project` is the Project the action belongs to, and `closed` says which
+    action closed, by which exit, and the id of the POI it followed.
+    """
+
+    def __init__(self, message: str, *, situation, project: dict, closed: dict) -> None:
+        super().__init__(message, situation=situation)
+        self.project = dict(project)
+        self.closed = dict(closed)
+
+    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
+        return {**super().as_dict(detail=detail), "project": dict(self.project),
+                "closed": dict(self.closed)}
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -223,20 +236,20 @@ class POIActionClosed(IdentifiedPOI):
 
 
 # tarav.breadcrumb 41d2f8ae4aa84337dc50a80be7140b1e8cda502096313cd5a5cc002c0d5ecb0f
-def action_id(poi: IdentifiedPOI) -> Ship:
+def action_id(poi: SituationPOI) -> Ship:
     """The action instance of a POI: its Action Type and the POI's identity, hashed."""
     action_type = resolve_action(type(poi).action)
     return Ship(str(UUID(fingerprint([str(entity(action_type).id), poi.identity])[:32])))
 
 
-def raised(pois: Iterable[POI]) -> Iterable[IdentifiedPOI]:
+def raised(pois: Iterable[POI]) -> Iterable[SituationPOI]:
     """The POIs among these that name the Type of the action they spin."""
     return (poi for poi in pois
-            if isinstance(poi, ActionablePOI) and isinstance(poi, IdentifiedPOI)
+            if isinstance(poi, ActionablePOI) and isinstance(poi, SituationPOI)
             and type(poi).action is not None)
 
 
-def _event(poi: IdentifiedPOI, suites: tuple[dict, ...] = ()) -> dict:
+def _event(poi: SituationPOI, suites: tuple[dict, ...] = ()) -> dict:
     check = getattr(poi, "check", None)
     described = poi.describe()
     return {"blessable": isinstance(poi, BlessablePOI), "poi": poi.as_dict(detail=True),

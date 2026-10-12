@@ -49,12 +49,11 @@ class ReadingGraphCheck(Check):
                     "surface_state": surface_state(self.graph.package)}
         return cls.poi(
             self,
-            subject,
             situation={
                 "subject": subject,
                 "surface_state": evidence["surface_state"],
             },
-            evidence=evidence,
+            details=evidence,
         )
 
     def _result(self, analysis, findings):

@@ -752,10 +752,17 @@ unique prefix is enough.
 A POI is a flag between detecting and working: what a check returns. It is
 momentary and owns nothing; nothing stores a POI that was printed. It gives
 an action its identity, it keeps detection apart from work, and inside a
-step it is the reason the step could not close. `IdentifiedPOI.describe()`
-gives everything known about one POI as plain data: its message, situation
-and evidence, its Type and the Type of its check with where each is
-defined, and the Type's descriptive `context_notes`. A consumer decides what
+step it is the reason the step could not close. The model is three classes
+deep and has no optional parts. `POI` has a Type and a message.
+`SituationPOI` adds a situation, an object describing what was found, whose
+content each line of POIs decides; the Type plus the situation is the
+identity. A specialization adds fields of its own Type, named for what they
+hold: `CheckPOI` adds `check`, `details` and `failure`, and other lines
+declare theirs, such as `hints` on a reference resolution POI or `entry` on
+a skills status POI. `SituationPOI.describe()` gives everything known about
+one POI as plain data: what the POI holds, its Type and the Type of its
+check with where each is defined, and the Type's descriptive
+`context_notes`. A consumer decides what
 happens to a POI. Printing (`tarav check`, `tarav skw skills`, the
 breadcrumbs and Diagram commands) is how a person looks at checks directly.
 The Project status escalates: each POI its checks raise becomes an action

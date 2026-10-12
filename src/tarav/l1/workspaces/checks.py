@@ -153,7 +153,6 @@ class WorkspaceCheck(Check):
         return case(
             self, message,
             situation={"workspace": str(self.workspace.id), "path": path},
-            subject={"workspace": str(self.workspace.id), "path": path},
             details=details,
         )
 

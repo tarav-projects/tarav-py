@@ -30,9 +30,10 @@ class SkwPOI(CheckPOI):
 
     @classmethod
     # tarav.breadcrumb 358f9776a4d31e8930d727fec6ccb95407790af6d2893c204b16cb9cb572cde9
-    def poi(cls, check, subject, *, situation, evidence=None):
-        evidence = evidence or {}
-        raw = evidence.get("finding", {})
+    def poi(cls, check, *, situation, details=None):
+        """Build one SKW POI. `details` holds what the analysis observed, the raw finding in it."""
+        details = details or {}
+        raw = details.get("finding", {})
         # The class already states the kind; the lint key only supplies a fallback message.
         message = (raw.get("detail") or raw.get("message") or raw.get("kind")
                    or entity(cls).name.rsplit(".", 1)[-1])
@@ -40,9 +41,7 @@ class SkwPOI(CheckPOI):
             check,
             str(message),
             situation=situation,
-            details=evidence,
-            subject=subject,
-            evidence=evidence,
+            details=details,
         )
 
 
@@ -498,12 +497,11 @@ class GenerationContextResolutionCheck(Check):
             }
             poi = ContextUnresolvable.poi(
                 self,
-                self.subject,
                 situation={
                     "subject": self.subject,
                     "declaration": deepcopy(self.declaration),
                 },
-                evidence=evidence,
+                details=evidence,
             )
             return CheckResult(self, status="completed", pois=(poi,))
         return CheckResult(
@@ -709,9 +707,7 @@ def _freshness_result(check, *, poi_type, kind, message, baseline_key, current_k
     poi = check.poi(
         poi_type,
         message=message,
-        subject=subject,
         details=evidence,
-        evidence=evidence,
     )
     return CheckResult(check, status="completed", pois=(poi,))
 
@@ -894,9 +890,8 @@ def _analysis_pois(check):
         evidence = {'finding': raw, 'surface_state': state}
         yield cls.poi(
             check,
-            subject,
             situation={"subject": subject, "surface_state": state},
-            evidence=evidence,
+            details=evidence,
         )
 
 

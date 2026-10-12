@@ -7,12 +7,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
-from tarav.l1.poi import IdentifiedPOI
+from tarav.l1.poi import SituationPOI
 from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 
 
-class DiagramPOI(IdentifiedPOI):
-    """A state of a Diagram object that merits inspection."""
+class DiagramPOI(SituationPOI):
+    """A state of a Diagram object that merits inspection.
+
+    Its situation is the `path` of the object inside the Diagram. `evidence`
+    is a field of this line: free data the raising code observed, such as
+    the error it met. It is not part of the identity.
+    """
     context_notes = ("It concerns the reported path and its source Diagram record.",
                      "Whether a correction is warranted is judged from that source.")
 
@@ -24,8 +29,8 @@ class DiagramPOI(IdentifiedPOI):
     def __init__(self, *, path: str, message: str, evidence: Mapping[str, object] | None = None):
         if type(self) not in CASE_TYPES:
             raise TypeError("Diagram POI families cannot be raised")
-        super().__init__(message, situation={"path": path},
-                         evidence=dict(evidence or {}))
+        super().__init__(message, situation={"path": path})
+        self.evidence = dict(evidence or {})
 
     @property
     def path(self) -> str:

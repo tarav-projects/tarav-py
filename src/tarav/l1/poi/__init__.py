@@ -1,5 +1,5 @@
 from .primitives import (
-    IdentifiedPOI,
+    SituationPOI,
     NotificationPOI,
     POI,
     POICollector,
@@ -19,10 +19,10 @@ from .rendering import (
     renderer, renderers,
 )
 
-POI_RECORD_TYPES = (POI, IdentifiedPOI, NotificationPOI, POIDetails)
+POI_RECORD_TYPES = (POI, SituationPOI, NotificationPOI, POIDetails)
 
 __all__ = [
-    "POI", "IdentifiedPOI", "NotificationPOI", "POICollector", "POIDetails",
+    "POI", "SituationPOI", "NotificationPOI", "POICollector", "POIDetails",
     "POIError", "POINotificationWarning", "collect_notifications", "emit_notification",
     "fingerprint", "POIWorkflow", "POIProvider",
     "POI_RECORD_TYPES",

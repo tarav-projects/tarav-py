@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready.
+Status: implemented.
 
 The base class of POIs that have an identity carried three things beside the
 situation: `subject`, `evidence` and a second name for the subject,
@@ -124,7 +124,8 @@ before; that no longer has `subject` or `evidence`.
 Product project: `tarav-py`. Wiki owner: `tarav-md`, root
 `tarav-md/notes/wiki/`. Relevant notes: `poi-system.md`,
 `daily/2026-10-12.md`. Supporting chat: session `abd0372d` above.
-Capture status: pending.
+Capture status: done (`poi-system.md`, section "A SituationPOI has only its
+situation"; daily 2026-10-12).
 
 ## Execution.Plan
 
@@ -138,3 +139,21 @@ Capture status: pending.
 ## Impl.Log
 
 - Design written from the discussion of 2026-10-12.
+- Implemented as sorted in the design. No line turned out different from
+  what was read beforehand.
+- `describe()` now returns what `as_dict(detail=True)` holds plus what the
+  Types say; it no longer names fields the base does not have.
+- Test example Types were rewritten as specializations that declare their
+  own field, and one test states the reduced base directly.
+- Checks: Ruff clean; `uv run pytest` 292 passed.
+- Data: the action records were deleted and the deletion committed in the
+  registry. `tarav status --project .` opened 58 actions with the same ids
+  as before; a second run changed nothing.
+- Real runs: `tarav skw skills check` on `tarav-pkg`, a Breadcrumb audit of
+  one file, `tarav context` on a stored action, and the extension's scripts.
+  No Diagram command was run for real; that line is covered by its tests.
+- Instructions: `AGENTS.skw.json` of `tarav-py`, `ARCHITECTURE.md` and the
+  POI README state the three-level model.
+- Not committed with this request: `src/tarav/l2/tests/actions.py` and
+  `tests/test_actions_pois.py` still wait for another agent's package.
+

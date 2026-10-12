@@ -96,7 +96,7 @@ def test_generation_context_resolution_is_independent_and_repairable(tmp_path):
     pois = tuple(poi for result in run_checks(checks) for poi in result.pois())
     assert len(pois) == 1
     assert isinstance(pois[0], ContextUnresolvable)
-    assert pois[0].subject["context_index"] == 1
+    assert pois[0].situation["subject"]["context_index"] == 1
     assert not any(isinstance(poi, InvalidLoadingModel) for poi in skill.evaluate().pois)
 
     (tmp_path / "context.txt").write_text("available")

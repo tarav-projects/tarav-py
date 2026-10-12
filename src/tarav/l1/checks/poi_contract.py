@@ -6,7 +6,7 @@ import inspect
 from pathlib import Path
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
-from tarav.l1.poi import IdentifiedPOI, POI
+from tarav.l1.poi import SituationPOI, POI
 from tarav.l1.poi.rendering import POISelection, renderer
 
 from . import CHECKS_WORKFLOW_SHIP, Check, CheckPOI, CheckResult
@@ -20,7 +20,7 @@ def defined_under(cls: type, root: Path) -> bool:
     return path.is_relative_to(Path(root).resolve()) and "tests" not in path.parts
 
 
-def _leaf_poi_types(base: type = IdentifiedPOI) -> list[type]:
+def _leaf_poi_types(base: type = SituationPOI) -> list[type]:
     found, pending = [], [base]
     while pending:
         current = pending.pop()

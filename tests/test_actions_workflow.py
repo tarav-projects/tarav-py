@@ -333,7 +333,9 @@ def test_checks_that_no_longer_produce_a_poi_close_its_action(stores):
     assert isinstance(run.closing(), GoneClosing)
     assert axes(run) == {"situation": "absent", "action": "closed", "closing": "gone"}
     assert [type(signal) for signal in result["signals"]] == [POIActionClosed]
-    assert result["signals"][0].evidence == {"action": str(run.id), "exit": GONE, "poi": poi.identity}
+    signal = result["signals"][0]
+    assert signal.closed == {"action": str(run.id), "exit": GONE, "poi": poi.identity}
+    assert signal.project == HOME and signal.as_dict()["closed"] == signal.closed
     assert len(stores.runs.list(state=RUNNING)) == 1  # the porch lamp's
 
 

@@ -214,7 +214,7 @@ class SkwSkill(SkwDepot, CheckProvider):
             finding['kind'] == 'invalid-loading-model' for finding in raw_findings
         ):
             for result in run_checks(self._checks(skip_unresolved_freshness=True)):
-                findings.extend(poi.evidence['finding'] for poi in result.pois())
+                findings.extend(poi.details['finding'] for poi in result.pois())
         return findings
 
     def _check_without_reading(self):

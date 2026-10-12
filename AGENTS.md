@@ -275,6 +275,10 @@ Importing `tarav` alone initializes no services or layered modules.
   `settings_include`. See ARCHITECTURE.md, Settings capability.
 - POI Types are atomic: a POI has no `code`, and each Type states one situation.
   Give related situations one class each under a family parent that is never raised.
+  The model is `POI` (Type, message), `SituationPOI` (adds `situation`; Type plus
+  situation is the identity) and specializations. There is no `subject` or
+  `evidence`: what a line needs beside the situation it declares as a field of its
+  own Type, named for what it holds. `CheckPOI` adds `check`, `details`, `failure`.
 - A POI is an event. A `CheckPOI` is actionable: it spins one action,
   `Tarav.Actions.POI.Resolution` (`tarav.l1.actions.pois`), kept in the central Record
   Registry and not in the Project. Three pieces stay apart: `project.checks` only

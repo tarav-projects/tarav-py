@@ -30,7 +30,7 @@ class ExampleBlessablePOI(CheckPOI, BlessablePOI):
         )
 
 
-def poi(*, evidence=None, situation=None):
+def poi(*, details=None, situation=None):
     check = ExampleCheck()
     return ExampleBlessablePOI(
         check,
@@ -40,8 +40,7 @@ def poi(*, evidence=None, situation=None):
             if situation is None
             else situation
         ),
-        subject={"path": "sample.md", "line": 12},
-        evidence=evidence or {"text": "x"},
+        details=details or {"text": "x"},
     )
 
 
@@ -49,11 +48,12 @@ def test_blessable_check_poi_composes_by_type_and_context():
     occurrence = poi()
     assert isinstance(occurrence, (CheckPOI, BlessablePOI))
     assert occurrence.context().open("check") is occurrence.check
-    assert occurrence.context().open("coordinate").records.to_record()["value"] == occurrence.subject
-    assert occurrence.context().open("evidence").records.to_record()["value"] == {"text": "x"}
-    changed = poi(evidence={"text": "y"})
+    assert occurrence.context().open("situation").records.to_record()["value"] == occurrence.situation
+    assert occurrence.context().open("details").records.to_record()["value"] == {"text": "x"}
+    # what a check observed is not part of the identity: the Type and the situation are
+    changed = poi(details={"text": "y"})
     assert changed.identity == occurrence.identity
-    assert changed.evidence != occurrence.evidence
+    assert changed.details != occurrence.details
 
 
 @pytest.mark.parametrize(
@@ -99,5 +99,5 @@ def test_a_blessing_roundtrips_as_the_closing_record_of_its_action(tmp_path):
     assert (record["exit"], record["by"], record["reason"]) == ("blessed", "operator", "Fixture review")
     assert record["actor"] == {"provider": "example", "session_id": "reviewer", "since": record["at"]}
     assert record["poi"]["id"] == occurrence.identity
-    assert bench.pois.standing(poi(evidence={"text": "changed"})) == "blessed"
+    assert bench.pois.standing(poi(details={"text": "changed"})) == "blessed"
     assert bench.pois.standing(poi(situation={"path": "other.md"})) == "open"

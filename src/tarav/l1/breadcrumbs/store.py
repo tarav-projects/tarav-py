@@ -18,7 +18,7 @@ from tarav.l0.kernel import (
     TypeShip,
     locate_record_type,
 )
-from tarav.l1.poi import IdentifiedPOI
+from tarav.l1.poi import SituationPOI
 from tarav.l1.references import FilePositionReference, FilePositionTarget
 from tarav.l1.references.git import (
     GitCommitMessagePositionReference,
@@ -38,7 +38,7 @@ class BreadcrumbError(ValueError):
 
 
 # tarav.breadcrumb 85e87dcfa1700c3a8b9826302e8eac01b86075ec63efc6d71e022edc31542f3c
-class BreadcrumbResolutionPOI(IdentifiedPOI):
+class BreadcrumbResolutionPOI(SituationPOI):
     """Family of failures to locate a Breadcrumb's canonical label."""
 
     @classmethod
@@ -62,7 +62,17 @@ class BreadcrumbPositionMissing(BreadcrumbResolutionPOI):
 
 
 class BreadcrumbPositionAmbiguous(BreadcrumbResolutionPOI):
-    """Several recorded positions contain the same Breadcrumb label."""
+    """Several recorded positions contain the same Breadcrumb label.
+
+    `positions` is how many of them do.
+    """
+
+    def __init__(self, message: str, *, situation, positions: int) -> None:
+        super().__init__(message, situation=situation)
+        self.positions = positions
+
+    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
+        return {**super().as_dict(detail=detail), "positions": self.positions}
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -335,7 +345,7 @@ class BreadcrumbStore:
         poi = BreadcrumbPositionAmbiguous(
             f"{len(positions)} recorded file positions contain the Breadcrumb's canonical label.",
             situation={"breadcrumb_id": breadcrumb.records.to_record()["id"]},
-            evidence={"position_count": len(positions)},
+            positions=len(positions),
         )
         return BreadcrumbResolution(breadcrumb, "ambiguous", pois=(poi,))
 

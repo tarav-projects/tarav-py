@@ -7,11 +7,22 @@ from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.l0.kernel.space import Entry, RecordProvider
 from tarav.l0.kernel.workflows import TaravWorkflow
 from .identity import RECORDS_WORKFLOW_SHIP
-from tarav.l1.poi import IdentifiedPOI
+from tarav.l1.poi import SituationPOI
 
 
-class ProviderError(IdentifiedPOI):
-    """A provider operation could not produce a valid navigation result."""
+class ProviderError(SituationPOI):
+    """A provider operation could not produce a valid navigation result.
+
+    `error` is what the provider raised: the exception's name and its text.
+    """
+
+    # tarav.breadcrumb eed2a0b9b7d67e1cfde3cc88d674ea28580a7ecc6a13c96de7f2835b44359cc1
+    def __init__(self, message: str, *, situation, error: dict | None = None) -> None:
+        super().__init__(message, situation=situation)
+        self.error = dict(error or {})
+
+    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
+        return {**super().as_dict(detail=detail), "error": dict(self.error)}
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -158,8 +169,7 @@ class RecordsService:
                     ProviderError(
                         str(exc),
                         situation={"path": path, "operation": operation},
-                        subject={"path": path, "operation": operation},
-                        evidence={"error": type(exc).__name__, "message": str(exc)},
+                        error={"type": type(exc).__name__, "message": str(exc)},
                     ),
                 )
             )

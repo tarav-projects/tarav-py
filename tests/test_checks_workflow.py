@@ -35,8 +35,7 @@ class ExampleCheck(Check):
         self.runs.append(self.subject)
         return CheckResult(self, status="completed",
                            pois=(ExamplePOI(self, "Example POI",
-                                            situation={"subject": self.subject},
-                                            subject={"subject": self.subject}),))
+                                            situation={"subject": self.subject}),))
 
 
 class ExampleProvider(CheckProvider):
@@ -128,7 +127,7 @@ def test_provider_and_explicit_pool_use_the_same_runner():
     provider = ExampleProvider(("one", "two"), runs)
     results = CheckSuite((provider.checks.suite(), ExampleCheck("cross-subject", runs))).run().results
     assert runs == ["one", "two", "cross-subject"]
-    assert [result.pois()[0].subject["subject"] for result in results] == runs
+    assert [result.pois()[0].situation["subject"] for result in results] == runs
 
 
 def test_suite_runs_nested_and_run_dependent_sources_without_iteration():
@@ -250,7 +249,7 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
 
     get_runtime()
     check = ExampleCheck("one", [])
-    plain = POI()
+    plain = POI("Something happened.")
     notice = NotificationPOI("Position recorded.")
     failure = CheckPOI(check, "Position needs attention.",
                        situation={"state": "stale", "line": 3},
@@ -272,7 +271,7 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
     assert [entry.name for entry in notice.context().ls()] == ["class", "details"]
     assert notice.context().open("details").records.to_record()["value"] == {}
     assert [entry.name for entry in failure.context().ls()] == [
-        "class", "situation", "coordinate", "evidence", "check", "details",
+        "class", "situation", "check", "details",
     ]
     assert failure.context().open("check") is check
     assert failure.context().open("details").records.to_record()["value"] == {"line": 3}

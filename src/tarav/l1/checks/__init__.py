@@ -16,7 +16,7 @@ from tarav.l0.kernel import (
     WorkflowShip,
     entity,
 )
-from tarav.l1.poi import IdentifiedPOI, POI, POIDetails, POIProvider, fingerprint
+from tarav.l1.poi import SituationPOI, POI, POIDetails, POIProvider, fingerprint
 from tarav.l1.poi.actionable import ActionablePOI
 
 CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
@@ -95,8 +95,13 @@ class Situation(LiteRecord):
 
 
 # tarav.breadcrumb 0fbb6aeabe9a6b2dfb9a5f0b09d35e49a271b44f1cce37d88557bf09e452092f
-class CheckPOI(IdentifiedPOI, ActionablePOI):
-    """A POI explained by the bound Check object that produced it; it spins an action by default."""
+class CheckPOI(SituationPOI, ActionablePOI):
+    """A POI explained by the bound Check object that produced it; it spins an action by default.
+
+    It adds three fields to its situation: the `check` that raised it,
+    `details`, free data the check observed that is not part of the
+    identity, and `failure`, whether it counts as a finding.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -105,8 +110,7 @@ class CheckPOI(IdentifiedPOI, ActionablePOI):
 
     def __init__(self, check: Check, message: str, *,
                  situation,
-                 details: dict | None = None, failure: bool = True,
-                 subject: dict | None = None, evidence: dict | None = None) -> None:
+                 details: dict | None = None, failure: bool = True) -> None:
         if not isinstance(check, Check):
             raise TypeError("CheckPOI requires a bound Check object")
         self.check = check
@@ -114,10 +118,7 @@ class CheckPOI(IdentifiedPOI, ActionablePOI):
         if not isinstance(failure, bool):
             raise TypeError("CheckPOI failure must be a boolean")
         self.failure = failure
-        super().__init__(message,
-                         situation=situation,
-                         subject=deepcopy(subject if subject is not None else self.details),
-                         evidence=deepcopy(evidence if evidence is not None else self.details))
+        super().__init__(message, situation=situation)
 
     def as_dict(self, *, detail: bool = False) -> dict[str, object]:
         return {**super().as_dict(detail=detail),
@@ -177,8 +178,6 @@ class SituationCheck(Check):
         message: str,
         details: dict | None = None,
         failure: bool = True,
-        subject: dict | None = None,
-        evidence: dict | None = None,
     ) -> CheckPOI:
         """Construct a bound POI using exactly this Check's Situation."""
 
@@ -190,8 +189,6 @@ class SituationCheck(Check):
             situation=self._situation,
             details=details,
             failure=failure,
-            subject=subject,
-            evidence=evidence,
         )
 
     def run(self) -> "CheckResult":
@@ -520,7 +517,7 @@ class CheckSuite(TaravObject, POIProvider):
                     row["types"].append(type_name)
                 if detail and "example_poi" not in row:
                     row["example_poi"] = (poi.as_dict(detail=True)
-                                          if isinstance(poi, IdentifiedPOI) else poi.as_dict())
+                                          if isinstance(poi, SituationPOI) else poi.as_dict())
         rows = list(groups.values())
         if sort == "count":
             rows.sort(key=lambda row: -row["pois"])
