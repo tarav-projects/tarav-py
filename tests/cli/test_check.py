@@ -67,11 +67,12 @@ class _Mixed(Check):
 
 
 # tarav.breadcrumb 1c3211e4813cc9462c4d94f77ac404645ccf0c232bc8b4e184bccb4426600fa9
-def test_the_base_project_is_a_check_provider_with_no_checks() -> None:
-    project = TaravProject.__new__(TaravProject)
-    assert isinstance(project, CheckProvider)
-    with pytest.raises(NotImplementedError, match="declares no checks"):
-        project.checks.suite()
+def test_a_project_is_a_check_provider_and_a_bare_provider_has_no_checks() -> None:
+    # the base Project has its shared bootstrap checks; only a bare provider has none
+    assert issubclass(TaravProject, CheckProvider)
+    assert "suite" in TaravProject.Checks.__dict__
+    with pytest.raises(NotImplementedError, match="Tarav.Checks.Provider declares no checks"):
+        CheckProvider().checks.suite()
 
 
 def test_the_report_carries_every_result_and_its_pois() -> None:
@@ -91,14 +92,21 @@ def test_clean_checks_exit_zero_and_pois_exit_one(capsys) -> None:
     assert json.loads(capsys.readouterr().out)["summary"]["pois"] == 1
 
 
-def test_a_project_without_checks_is_reported_not_raised(capsys) -> None:
-    assert report_project_checks(TaravProject.__new__(TaravProject)) == 2
+def test_a_provider_without_checks_is_reported_not_raised(capsys) -> None:
+    assert report_project_checks(CheckProvider()) == 2
     assert "declares no checks" in capsys.readouterr().err
 
 
 def test_the_cli_runs_check_in_the_project_harness(tmp_path: Path, monkeypatch) -> None:
+    from tarav.l3 import check as check_module
     from tarav.l3.project import harness
 
+    # the command also tells the machine's Project index; keep the test out of it
+    (tmp_path / ".tarav").mkdir()
+    (tmp_path / ".tarav/project.json").write_text(json.dumps({
+        "class": "agentos.project", "schema_version": 1,
+        "project_id": "5d0c8a3e-2b17-4f69-8e4a-9c1d7b6f3a20"}))
+    monkeypatch.setattr(check_module, "observe_project", lambda root: None, raising=False)
     launched = []
 
     def run(*, path, code):
@@ -136,8 +144,8 @@ def test_many_project_pois_render_as_one_type_group(capsys) -> None:
     assert report_project_checks(ManyProject()) == 1
     lines = capsys.readouterr().out.splitlines()
     assert lines[0] == "25 checks, 0 incomplete, 25 POIs"
-    assert len([line for line in lines if "POIs from" in line]) == 1
-    assert "25 POIs from 25 checks" in lines[1]
+    groups = [line for line in lines if "POIs from" in line]
+    assert len(groups) == 1 and "25 POIs from 25 checks" in groups[0]
 
     assert report_project_checks(ManyProject(), by="identity", limit=1, json_output=True) == 1
     report = json.loads(capsys.readouterr().out)

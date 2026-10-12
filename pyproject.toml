@@ -39,6 +39,8 @@ testpaths = [
     "tests/cli/test_run_registry.py",
     "tests/test_settings.py",
     "tests/cli/test_context_command.py",
+    "tests/cli/test_check.py",
+    "tests/test_project_tree.py",
     "tests/test_architecture.py",
     "tests/kernel/test_ships.py",
     "tests/kernel/test_entity.py",
