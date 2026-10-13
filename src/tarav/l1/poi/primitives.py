@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 import hashlib
-import inspect
 from typing import ClassVar
 import json
 import warnings
@@ -35,6 +34,22 @@ def canonical(value):
 
 def fingerprint(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def type_named(base: type, name: str) -> type | None:
+    """The Type of this name among `base` and its subclasses defined in the running code."""
+    pending = [base]
+    while pending:
+        candidate = pending.pop()
+        if entity(candidate).name == name:
+            return candidate
+        pending.extend(candidate.__subclasses__())
+    return None
+
+
+def plain(value):
+    """Free data of a POI as JSON data, for its record: a tuple becomes a list."""
+    return json.loads(json.dumps(value, allow_nan=False))
 
 
 # tarav.breadcrumb 0e47f7f09769ba32c37969a636c8480ceef794d03f21b3306cfed321b6c1bdf7
@@ -69,8 +84,22 @@ class POI(TaravObject):
             raise TypeError("A POI's message must be text")
         self.message = message
 
-    def as_dict(self) -> dict[str, object]:
+    class RecordInterface(TaravObject.RecordInterface):
+        type: str
+        message: str
+
+    def _to_record(self) -> dict[str, object]:
         return {"type": entity(type(self)).name, "message": self.message}
+
+    @classmethod
+    def _from_record(cls, record_data):
+        result = super()._from_record(record_data)
+        result.message = record_data.message
+        return result
+
+    class Records(TaravObject.Records):
+        def record_example(self) -> dict[str, object]:
+            return {**super().record_example(), "message": "Synthetic POI"}
 
     def summary(self) -> str:
         """One POI's meaning; layout belongs to a renderer."""
@@ -114,42 +143,34 @@ class SituationPOI(POI):
     def situation(self) -> dict[str, object]:
         return self._situation.to_json_value()
 
-    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
-        """The POI as plain data. `detail` asks a specialization for its bulky fields too."""
-        return {
-            "type": entity(type(self)).name,
-            "class_id": self.class_id,
-            "id": self.identity,
-            "message": self.message,
-            "situation": self.situation,
-            "help": deepcopy(type(self).help()),
-        }
+    class RecordInterface(POI.RecordInterface):
+        class_id: str
+        id: str
+        situation: dict
 
-    # tarav.breadcrumb b1ec626ad687f990fb926f99fdc0702e21feed60c91b00abfdcd391aa0a0ab67
-    def describe(self) -> dict[str, object]:
-        """Everything known about this POI, as plain data, for whoever takes it further.
+    def _to_record(self) -> dict[str, object]:
+        """The Type, the message, the situation, and the identity those give."""
+        return {**super()._to_record(), "class_id": self.class_id, "id": self.identity,
+                "situation": self.situation}
 
-        A POI is momentary and owns nothing, so nothing here is stored: a
-        consumer that escalates the POI keeps what it needs of this.
-        """
-        check = getattr(self, "check", None)
-        return {
-            **{key: value for key, value in self.as_dict(detail=True).items() if key != "help"},
-            "poi_type": _class_record(type(self)),
-            "raised_by": _class_record(type(check)) if check is not None else None,
-            "notes": [str(item) for item in type(self).context_notes],
-        }
+    @classmethod
+    def _from_record(cls, record_data):
+        result = super()._from_record(record_data)
+        result._situation = LiteRecord(record_data.situation)
+        result.class_id = str(entity(cls).id)
+        result.identity = fingerprint([result.class_id, result.situation])
+        if (record_data.class_id, record_data.id) != (result.class_id, result.identity):
+            raise ValueError("A POI record's identity does not match its Type and situation")
+        return result
+
+    class Records(POI.Records):
+        def record_example(self) -> dict[str, object]:
+            class_id, situation = str(entity(self._owner).id), {"example": "situation"}
+            return {**super().record_example(), "class_id": class_id,
+                    "id": fingerprint([class_id, situation]), "situation": situation}
 
     def obj_context(self, builder) -> None:
         builder.add("situation", opener=lambda: _details(self.situation))
-
-
-def _class_record(cls: type) -> dict[str, object]:
-    help_ = cls.help() if hasattr(cls, "help") else {}
-    return {"type": entity(cls).name,
-            "description": inspect.cleandoc(cls.__dict__.get("__doc__") or ""),
-            "python_class": f"{cls.__module__}.{cls.__qualname__}",
-            "source_path": help_.get("source_path"), "source_line": help_.get("source_line")}
 
 
 class NotificationPOI(POI):
@@ -168,12 +189,21 @@ class NotificationPOI(POI):
         super().__init__(message)
         self.details = deepcopy(details or {})
 
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "type": entity(type(self)).name,
-            "message": self.message,
-            "details": deepcopy(self.details),
-        }
+    class RecordInterface(POI.RecordInterface):
+        details: dict
+
+    def _to_record(self) -> dict[str, object]:
+        return {**super()._to_record(), "details": plain(self.details)}
+
+    @classmethod
+    def _from_record(cls, record_data):
+        result = super()._from_record(record_data)
+        result.details = deepcopy(record_data.details)
+        return result
+
+    class Records(POI.Records):
+        def record_example(self) -> dict[str, object]:
+            return {**super().record_example(), "details": {}}
 
     def obj_context(self, builder):
         builder.add("details", opener=lambda: _details(self.details))
@@ -248,7 +278,6 @@ class POICollector:
         offset=0,
         limit=20,
         class_name=None,
-        detail=False,
     ):
         if offset < 0 or limit < 1:
             raise ValueError("Expected nonnegative offset and positive limit")
@@ -278,9 +307,7 @@ class POICollector:
         page = []
         for poi, emission_index in selected[offset : offset + limit]:
             row = (
-                poi.as_dict(detail=detail)
-                if isinstance(poi, SituationPOI)
-                else poi.as_dict()
+                poi.records.to_record()
             )
             if (
                 isinstance(poi, SituationPOI)

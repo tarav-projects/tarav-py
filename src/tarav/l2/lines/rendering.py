@@ -112,7 +112,7 @@ class DiagramRenderResult:
             "media_type": self.renderer.media_type,
             "target": self.target.to_dict(),
             "content": self.content,
-            "pois": [item.to_dict() for item in self.pois],
+            "pois": [item.records.to_record() for item in self.pois],
         }
 
 

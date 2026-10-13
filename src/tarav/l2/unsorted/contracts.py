@@ -93,7 +93,7 @@ class GateAssessment:
             "gate": self.gate.to_dict(),
             "standing": self.standing,
             "scores": dict(self.scores),
-            "pois": [item.to_dict() for item in self.pois],
+            "pois": [item.records.to_record() for item in self.pois],
         }
 
 
@@ -109,7 +109,7 @@ class LineReview:
             "line_ship": self.line_ship,
             "standing": self.standing,
             "assessments": [item.to_dict() for item in self.assessments],
-            "pois": [item.to_dict() for item in self.pois],
+            "pois": [item.records.to_record() for item in self.pois],
         }
 
 
@@ -127,7 +127,7 @@ class IssueAssessment:
             "state": self.state,
             "resolution_line_ships": list(self.resolution_line_ships),
             "gate_assessments": [item.to_dict() for item in self.gate_assessments],
-            "pois": [item.to_dict() for item in self.pois],
+            "pois": [item.records.to_record() for item in self.pois],
         }
 
 

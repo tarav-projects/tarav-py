@@ -16,7 +16,7 @@ from tarav.l0.kernel import (
     WorkflowShip,
     entity,
 )
-from tarav.l1.poi import SituationPOI, POI, POIDetails, POIProvider, fingerprint
+from tarav.l1.poi import SituationPOI, POI, POIDetails, POIProvider, fingerprint, plain
 from tarav.l1.poi.actionable import ActionablePOI
 
 CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
@@ -114,16 +114,34 @@ class CheckPOI(SituationPOI, ActionablePOI):
         if not isinstance(check, Check):
             raise TypeError("CheckPOI requires a bound Check object")
         self.check = check
+        self.raised_by = entity(type(check)).name
         self.details = deepcopy(details or {})
         if not isinstance(failure, bool):
             raise TypeError("CheckPOI failure must be a boolean")
         self.failure = failure
         super().__init__(message, situation=situation)
 
-    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
-        return {**super().as_dict(detail=detail),
-                "check": entity(type(self.check)).records.to_record(),
-                "details": deepcopy(self.details), "failure": self.failure}
+    class RecordInterface(SituationPOI.RecordInterface):
+        check: str
+        details: dict
+        failure: bool
+
+    def _to_record(self) -> dict[str, object]:
+        return {**super()._to_record(), "check": self.raised_by,
+                "details": plain(self.details), "failure": self.failure}
+
+    @classmethod
+    def _from_record(cls, record_data):
+        """A loaded check POI has no bound check: `raised_by` still names its Type."""
+        result = super()._from_record(record_data)
+        result.check, result.raised_by = None, record_data.check
+        result.details, result.failure = deepcopy(record_data.details), record_data.failure
+        return result
+
+    class Records(SituationPOI.Records):
+        def record_example(self) -> dict[str, object]:
+            return {**super().record_example(), "check": "Tarav.Checks.Check", "details": {},
+                    "failure": True}
 
     # tarav.breadcrumb 98efb14446fdafc5cbb4a98e2d0d162e31638150e69ea0198d0c4c6c3e0f7cd9
     def obj_context(self, builder) -> None:
@@ -516,8 +534,7 @@ class CheckSuite(TaravObject, POIProvider):
                 if type_name not in row["types"]:
                     row["types"].append(type_name)
                 if detail and "example_poi" not in row:
-                    row["example_poi"] = (poi.as_dict(detail=True)
-                                          if isinstance(poi, SituationPOI) else poi.as_dict())
+                    row["example_poi"] = poi.records.to_record()
         rows = list(groups.values())
         if sort == "count":
             rows.sort(key=lambda row: -row["pois"])
@@ -560,7 +577,7 @@ def check_report(results: Iterable[CheckResult]) -> dict[str, object]:
             "check": entity(type(result.check)).name,
             "status": result.status,
             "reason": result.reason,
-            "pois": [poi.as_dict() for poi in result.pois()],
+            "pois": [poi.records.to_record() for poi in result.pois()],
         })
     return {
         "checks": len(rows),

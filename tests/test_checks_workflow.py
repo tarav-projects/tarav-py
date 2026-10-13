@@ -1,4 +1,4 @@
-from tarav.l0.kernel import TaravClass, TypeShip
+from tarav.l0.kernel import TaravClass, TypeShip, entity
 import pytest
 from tarav.l1.checks import (
     Check,
@@ -185,7 +185,7 @@ def test_run_groups_pois_by_type_and_identity_without_codes():
     assert by_identity["matching"] == 2
     assert by_identity["items"][0]["pois"] == 2
     assert "codes" not in by_identity["items"][0] and "by_code" not in run.summary()
-    assert "code" not in first.as_dict() and "code" not in notice.as_dict()
+    assert "code" not in first.records.to_record() and "code" not in notice.records.to_record()
     with pytest.raises(ValueError):
         run.report(by="code")
     assert len(run.report(by="identity", type="Tarav.POI.Notification")["items"]) == 1
@@ -261,7 +261,11 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
                          pois=(plain, notice, failure, positive))
     assert result.status == "completed"
     assert result.pois()[2].check is check
-    assert failure.as_dict()["details"] == {"line": 3}
+    record = failure.records.to_record()
+    assert record["details"] == {"line": 3} and record["check"] == entity(type(check)).name
+    loaded = type(failure).records.from_record(record)
+    assert (loaded.identity, loaded.details, loaded.raised_by, loaded.check) == (
+        failure.identity, {"line": 3}, record["check"], None)
     collector = POICollector()
     for poi in result.pois():
         collector.emit(poi)

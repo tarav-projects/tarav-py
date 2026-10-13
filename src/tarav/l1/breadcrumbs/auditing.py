@@ -375,7 +375,7 @@ class BreadcrumbAuditResult:
             "surface": str(self.context.surface.path),
             "language": self.context.surface.language,
             "breadcrumbs": [item.to_json() for item in self.context.breadcrumbs],
-            "pois": [item.as_dict() for item in self.pois],
+            "pois": [item.records.to_record() for item in self.pois],
         }
 
 

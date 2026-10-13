@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
-from tarav.l1.poi import SituationPOI
+from tarav.l1.poi import SituationPOI, fingerprint, plain
 from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
 
 
@@ -36,8 +36,23 @@ class DiagramPOI(SituationPOI):
     def path(self) -> str:
         return str(self.situation["path"])
 
-    def to_dict(self) -> dict[str, str]:
-        return {"type": entity(type(self)).name, "path": self.path, "message": self.message}
+    class RecordInterface(SituationPOI.RecordInterface):
+        evidence: dict
+
+    def _to_record(self) -> dict[str, object]:
+        return {**super()._to_record(), "evidence": plain(self.evidence)}
+
+    @classmethod
+    def _from_record(cls, record_data):
+        result = super()._from_record(record_data)
+        result.evidence = dict(record_data.evidence)
+        return result
+
+    class Records(SituationPOI.Records):
+        def record_example(self) -> dict[str, object]:
+            class_id, situation = str(entity(self._owner).id), {"path": "example"}
+            return {**super().record_example(), "id": fingerprint([class_id, situation]),
+                    "situation": situation, "evidence": {}}
 
 
 class AnnotationPOI(DiagramPOI):
@@ -870,16 +885,10 @@ CASE_TYPES: tuple[type[DiagramPOI], ...] = (
 POI_BY_NAME: dict[str, type[DiagramPOI]] = {entity(cls).name: cls for cls in CASE_TYPES}
 
 
-def poi_from_dict(row: Mapping[str, object]) -> DiagramPOI:
-    """Rehydrate one version-2 Diagram POI row without repairing malformed data."""
-    name = row.get("type")
+def load_poi(record: Mapping[str, object]) -> DiagramPOI:
+    """Load one retained Diagram POI from its record, through the Type the record names."""
     try:
-        cls = POI_BY_NAME[name]  # type: ignore[index]
+        cls = POI_BY_NAME[record.get("type")]  # type: ignore[index]
     except (KeyError, TypeError) as exc:
-        raise ValueError(f"Unrecognized Diagram POI Type in row: {row!r}") from exc
-    if set(row) != {"type", "path", "message"}:
-        raise ValueError(f"Invalid Diagram POI row: {row!r}")
-    path, message = row["path"], row["message"]
-    if not isinstance(path, str) or not isinstance(message, str):
-        raise ValueError(f"Invalid Diagram POI path or message: {row!r}")
-    return cls(path=path, message=message)
+        raise ValueError(f"Unrecognized Diagram POI Type in record: {record!r}") from exc
+    return cls.records.from_record(record)

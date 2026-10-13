@@ -330,7 +330,6 @@ class WorkspaceReferenceCheck(Check):
             self, "Stable surface refers into a Workspace",
             situation={"workspace": str(workspace.id), "source": str(self.source),
                        "target": str(self.target)},
-            subject={"source": str(self.source), "target": str(self.target)},
         )
         return CheckResult(self, status="completed", pois=(poi,))
 

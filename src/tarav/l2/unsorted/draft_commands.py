@@ -15,8 +15,6 @@ from tarav.l2.unsorted.evidence import ChatlasEvidence
 from tarav.l2.unsorted.storage import DiagramConfiguration
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l2.unsorted.drafts import DiagramDraft, DiagramDraftRepository, read_draft_delta
-from tarav.l2.unsorted.draft_migration import migrate_drafts
-from tarav.l2.unsorted.drafts import default_diagram_drafts_root
 from tarav.l2.unsorted.poi_cli import add_poi_options, render_pois
 
 
@@ -177,7 +175,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
             "status": "poi" if pois else "ok",
             "command": "tarav diagram draft check",
             "draft": _draft_summary(draft),
-            "pois": [item.to_dict() for item in pois],
+            "pois": [item.records.to_record() for item in pois],
         },
     )
     if poi_text and not args.json:
@@ -212,27 +210,6 @@ def _cmd_apply(args: argparse.Namespace) -> int:
     if poi_text and not args.json:
         print(poi_text)
     return result
-
-
-def _cmd_migrate(args: argparse.Namespace) -> int:
-    try:
-        report = migrate_drafts(
-            Path(args.drafts_root) if args.drafts_root else default_diagram_drafts_root(),
-            dry_run=args.dry_run,
-        )
-    except (OSError, ValueError) as exc:
-        raise CliError(str(exc)) from exc
-    if args.json:
-        print(json.dumps(report, indent=2, ensure_ascii=False))
-    else:
-        print(f"drafts: {report['draft_count']}")
-        print(f"rows: {report['row_count']}")
-        print(f"unmapped: {report['unmapped_count']}")
-        for item in report["drafts"]:
-            print(f"{item['status']}  {item['rows']}  {item['path']}")
-            if item["unmapped"]:
-                print(f"  unmapped: {item['unmapped']}")
-    return 1 if report["unmapped_count"] else 0
 
 
 def _add_repository_options(parser: argparse.ArgumentParser) -> None:
@@ -294,12 +271,6 @@ def register_draft_commands(subparsers: argparse._SubParsersAction) -> None:
     add_poi_options(apply)
     apply.set_defaults(handler=_cmd_apply)
 
-    migrate = commands.add_parser("migrate", help="Migrate retained Drafts to schema 2.")
-    migrate.add_argument("--to", type=int, choices=(2,), required=True)
-    migrate.add_argument("--dry-run", action="store_true")
-    migrate.add_argument("--drafts-root")
-    migrate.add_argument("--json", action="store_true")
-    migrate.set_defaults(handler=_cmd_migrate)
 
 
 __all__ = ["register_draft_commands"]

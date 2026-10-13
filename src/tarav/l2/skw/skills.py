@@ -447,7 +447,7 @@ def _command(args):
     if args.skills_action == 'poi':
         collector = package.evaluate()
         poi = collector.get(args.id, index=args.index)
-        result = poi.as_dict(detail=True)
+        result = poi.records.to_record()
         if args.index is not None:
             result['index'] = args.index
         emit(args, result, lambda value: render_poi(

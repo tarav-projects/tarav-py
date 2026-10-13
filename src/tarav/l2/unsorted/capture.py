@@ -24,7 +24,7 @@ from tarav.l2.lines.references import DiagramHostReferenceInterface
 from tarav.l2.unsorted.primitives import DiagramModelError
 from tarav.l2.unsorted.records import DiagramShip
 from tarav.l2.unsorted.primitives import DiagramShipSpecializationError
-from tarav.l2.unsorted.pois import DiagramPOI, poi_from_dict
+from tarav.l2.unsorted.pois import DiagramPOI, load_poi
 from tarav.l2.unsorted.constants import JsonObject
 from tarav.l2.lines.records import LineAnnotationRecord
 from tarav.l2.lines.records import LineShipRecord
@@ -350,7 +350,7 @@ class CaptureReceipt(TaravObject):
                 "created_annotations": list(created_annotations),
                 "existing_annotations": list(existing_annotations),
                 "authorizations": [dict(item) for item in authorizations],
-                "pois": [item.to_dict() for item in pois],
+                "pois": [item.records.to_record() for item in pois],
                 "committed": committed,
                 "base_commit": base_commit,
                 "commit": commit,
@@ -360,7 +360,7 @@ class CaptureReceipt(TaravObject):
     def __getattr__(self, name: str) -> object:
         data = self._data
         if name == "pois":
-            return tuple(poi_from_dict(item) for item in data.pois)
+            return tuple(load_poi(item) for item in data.pois)
         if name in type(data).model_fields:
             value = getattr(data, name)
             return tuple(value) if isinstance(value, list) else value

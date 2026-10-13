@@ -166,7 +166,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
                 "config": view.configuration.records.to_record(),
                 "view": view.state,
                 "edition": view.edition(),
-                "pois": [item.to_dict() for item in pois],
+                "pois": [item.records.to_record() for item in pois],
             }
         )
     else:
@@ -296,7 +296,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
             {
                 "status": "poi" if pois else "ok",
                 "view_ship": view.ship,
-                "pois": [item.to_dict() for item in pois],
+                "pois": [item.records.to_record() for item in pois],
             }
         )
     else:

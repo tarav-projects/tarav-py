@@ -29,7 +29,7 @@ from tarav.l1.skills.catalog import (
     parse_skill_frontmatter,
 )
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.poi import SituationPOI, NotificationPOI
+from tarav.l1.poi import SituationPOI, NotificationPOI, plain
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
 DEFAULT_SKILLS_DEPOTS = (
@@ -68,8 +68,21 @@ class SkillsStatusPOI(SituationPOI):
         super().__init__(message, situation=situation)
         self.entry = dict(entry or {})
 
-    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
-        return {**super().as_dict(detail=detail), "entry": dict(self.entry)}
+    class RecordInterface(SituationPOI.RecordInterface):
+        entry: dict
+
+    def _to_record(self) -> dict[str, object]:
+        return {**super()._to_record(), "entry": plain(self.entry)}
+
+    @classmethod
+    def _from_record(cls, record_data):
+        result = super()._from_record(record_data)
+        result.entry = record_data.entry
+        return result
+
+    class Records(SituationPOI.Records):
+        def record_example(self) -> dict[str, object]:
+            return {**super().record_example(), "entry": {}}
 
     @classmethod
     def class_entity(cls) -> TaravClass:

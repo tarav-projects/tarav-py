@@ -35,7 +35,7 @@ from tarav.l2.lines.block import DiagramBlock
 from tarav.l2.unsorted.primitives import DiagramError
 from tarav.l2.lines.line import DiagramLineShip
 from tarav.l2.models import Model
-from tarav.l2.unsorted.pois import DiagramPOI, poi_from_dict
+from tarav.l2.unsorted.pois import DiagramPOI, load_poi
 from tarav.l2.unsorted.records import UserTouchedAnnotation
 
 
@@ -299,7 +299,7 @@ class DiagramViewMutation:
             "view_ship": self.view.ship,
             "commit": self.commit,
             "changes": [item.to_dict() for item in self.changes],
-            "pois": [item.to_dict() for item in self.view.check()],
+            "pois": [item.records.to_record() for item in self.view.check()],
         }
 
 
@@ -478,7 +478,7 @@ class DiagramView:
                     ):
                         retained = _object(raw_poi, field="DiagramPOI")
                         try:
-                            pois.append(poi_from_dict(retained))
+                            pois.append(load_poi(retained))
                         except ValueError:
                             pois.append(diagram_pois.ViewMaterializationRowUnrecognized(
                                 path=f"view.blocks[{index}].disclosure.lines[{line_index}]",

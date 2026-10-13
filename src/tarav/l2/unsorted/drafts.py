@@ -66,9 +66,7 @@ class DiagramDraft(TaravObject):
             if self.type != DIAGRAM_DRAFT_TYPE:
                 raise DiagramDraftError("Unsupported Diagram.Draft Type")
             if self.schema_version != DRAFT_SCHEMA_VERSION:
-                raise DiagramDraftError(
-                    "Unsupported Diagram.Draft schema; run tarav diagram draft migrate --to 2"
-                )
+                raise DiagramDraftError("Unsupported Diagram.Draft schema")
             _uuid(self.id, field="Diagram.Draft.id")
             _uuid(self.model_ship, field="Diagram.Draft.model_ship")
             if self.status not in {"Open", "Applied"}:

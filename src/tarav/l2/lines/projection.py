@@ -179,7 +179,7 @@ class DiagramProjection:
                 }
                 for collection in self.collections
             ],
-            "pois": [item.to_dict() for item in self.pois],
+            "pois": [item.records.to_record() for item in self.pois],
         }
 
 

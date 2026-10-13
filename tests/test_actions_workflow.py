@@ -335,7 +335,7 @@ def test_checks_that_no_longer_produce_a_poi_close_its_action(stores):
     assert [type(signal) for signal in result["signals"]] == [POIActionClosed]
     signal = result["signals"][0]
     assert signal.closed == {"action": str(run.id), "exit": GONE, "poi": poi.identity}
-    assert signal.project == HOME and signal.as_dict()["closed"] == signal.closed
+    assert signal.project == HOME and signal.records.to_record()["closed"] == signal.closed
     assert len(stores.runs.list(state=RUNNING)) == 1  # the porch lamp's
 
 
@@ -596,16 +596,16 @@ def test_a_blessing_declares_assertions_and_scores_stay_with_the_scorer(stores, 
     assert "score" not in second.records.to_record()
 
 
-def test_an_action_keeps_what_its_pois_type_says(stores):
+def test_an_action_keeps_the_record_of_its_poi_and_reads_its_types_from_the_code(stores):
     # tarav.breadcrumb 312c3b09cec0df8a66862ce78f1ef41f245d6192129da92c441553c428de3905
     from tarav.l1.actions.views import ActionResolver
     from tarav.l1.context.query import ContextQueryService, IdentityContextQuery
 
     poi = LampCheck("hall", 3).run().pois()[0]
     stores.lamps(hall=3)
-    source = stores.pois.of(poi).data["event"]["source"]
-    assert source["poi_type"]["type"] == "Tarav.Test.Actions.LampOn"
-    assert source["raised_by"]["type"] == entity(LampCheck).name and source["notes"] == []
+    event = stores.pois.of(poi).data["event"]
+    assert event["poi"] == poi.records.to_record() and "source" not in event
+    assert event["poi"]["check"] == entity(LampCheck).name
 
     service = ContextQueryService()
     service.register_resolver("action", ActionResolver(lambda: stores.runs))

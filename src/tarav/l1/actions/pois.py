@@ -22,7 +22,7 @@ from uuid import UUID
 from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.checks import Check
 from tarav.l1.operator_context import OperatorContext
-from tarav.l1.poi import POI, SituationPOI, fingerprint
+from tarav.l1.poi import POI, SituationPOI, fingerprint, plain, type_named
 from tarav.l1.poi.actionable import ActionablePOI, BlessablePOI
 
 from .blessing import BLESSED, Blessing, BlessingInput, BlessingInputCheck
@@ -112,16 +112,20 @@ class POIResolutionAction(StepAction):
     def context_entries(cls, run: ActionRun, builder: object) -> None:
         """The flag behind this action: the POI, what its Type says, and who detects it."""
         event, key = run.data["event"], str(run.id)
-        source = event["source"]
-        builder.add("poi", opener=lambda: _detail(event["poi"]),
-                    description="The POI as it was last raised.")
-        builder.add("poi-type", opener=lambda: _detail(source["poi_type"]),
+        record = event["poi"]
+        # what the Types say is read from the classes, not kept in the action
+        poi_type = type_named(POI, record["type"])
+        check_type = type_named(Check, record["check"]) if record.get("check") else None
+        builder.add("poi", opener=lambda: _detail(record),
+                    description="The record of the POI as it was last raised.")
+        builder.add("poi-type", opener=lambda: _type_entry(poi_type, record["type"]),
                     description="What this kind of POI is, and where its class is defined.")
-        builder.add("raised-by", opener=lambda: _detail(source["raised_by"]),
+        builder.add("raised-by", opener=lambda: _type_entry(check_type, record.get("check")),
                     description="The check that raised it, and where that check is defined.")
         builder.add("notes", opener=lambda: _detail(
-            source["notes"] or ["This POI Type adds no notes. A POI states an event; poi-type "
-                                "and raised-by say what it is and where it comes from."]),
+            [str(item) for item in getattr(poi_type, "context_notes", ())]
+            or ["This POI Type adds no notes. A POI states an event; poi-type "
+                "and raised-by say what it is and where it comes from."]),
             description="What the POI Type's producer says about it: what it means, "
                         "where it is documented, what is known to end it.")
         builder.add("detection", opener=lambda: _detail({
@@ -225,9 +229,25 @@ class POIActionClosed(SituationPOI):
         self.project = dict(project)
         self.closed = dict(closed)
 
-    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
-        return {**super().as_dict(detail=detail), "project": dict(self.project),
-                "closed": dict(self.closed)}
+    class RecordInterface(SituationPOI.RecordInterface):
+        project: dict
+        closed: dict
+
+    def _to_record(self) -> dict[str, object]:
+        return {**super()._to_record(), "project": plain(self.project),
+                "closed": plain(self.closed)}
+
+    @classmethod
+    def _from_record(cls, record_data):
+        result = super()._from_record(record_data)
+        result.project, result.closed = record_data.project, record_data.closed
+        return result
+
+    class Records(SituationPOI.Records):
+        def record_example(self) -> dict[str, object]:
+            return {**super().record_example(), "project": {"id": "0f9d2c6a-7b14-4e85-a3c1-5d8e6f2b9a70", "name": "example",
+                                "root": "/example"},
+                    "closed": {"action": "example", "exit": GONE, "poi": "example"}}
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -250,22 +270,25 @@ def raised(pois: Iterable[POI]) -> Iterable[SituationPOI]:
 
 
 def _event(poi: SituationPOI, suites: tuple[dict, ...] = ()) -> dict:
+    """What an action keeps of the POI it follows: the POI's record, and its detectors."""
     check = getattr(poi, "check", None)
-    described = poi.describe()
-    return {"blessable": isinstance(poi, BlessablePOI), "poi": poi.as_dict(detail=True),
+    return {"blessable": isinstance(poi, BlessablePOI), "poi": poi.records.to_record(),
             "check": {"type": entity(type(check)).name} if check is not None else None,
-            "suites": [dict(suite) for suite in suites],
-            # what the POI's Type says, kept here because the POI itself is momentary
-            "source": {key: described[key] for key in ("poi_type", "raised_by", "notes")}}
+            "suites": [dict(suite) for suite in suites]}
 
 
 def _shown(event: dict) -> dict:
-    """An event without where its Types are defined in the code, which is not about the POI."""
-    poi = {key: value for key, value in (event.get("poi") or {}).items() if key != "help"}
-    source = {key: ({k: v for k, v in value.items() if k not in ("source_path", "source_line")}
-                    if isinstance(value, dict) else value)
-              for key, value in (event.get("source") or {}).items()}
-    return {**event, "poi": poi, "source": source}
+    """An event without the POI's details: they are a courtesy and decide nothing."""
+    poi = {key: value for key, value in (event.get("poi") or {}).items() if key != "details"}
+    return {**event, "poi": poi}
+
+
+def _type_entry(cls: type | None, name: str | None) -> object:
+    """A Type as a Context entry: the class itself, or a word when the code no longer has it."""
+    if cls is not None:
+        return entity(cls)
+    return _detail({"type": name, "note": "This Type is not defined in the running code."}
+                   if name else "This POI was not raised by a check.")
 
 
 def _suite_key(identity: dict) -> tuple:

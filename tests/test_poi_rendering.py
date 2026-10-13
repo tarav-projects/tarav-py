@@ -32,7 +32,7 @@ class SamplePOI(CheckPOI):
 
 
 # tarav.breadcrumb 7f3e537008bba2d8b00cca281777ea6643149f0b16f3dbf4c11e2e27c384cf13
-def test_every_named_renderer_keeps_a_resolvable_poi_and_context_route():
+def test_every_named_renderer_shows_the_poi_and_points_at_no_stored_context():
     run = CheckSuite()
     run.add(SampleCheck().run())
     poi = run.pois()[0]
@@ -43,7 +43,7 @@ def test_every_named_renderer_keeps_a_resolvable_poi_and_context_route():
         for level in named.levels:
             content = named.render(selection, level=level)
             assert poi.identity[:12] in content
-            assert "tarav context --id" in content
+            assert "tarav context" not in content
     lines = renderer(JSON_LINES_POI_RENDERER).render(selection, level="record").splitlines()
     assert [json.loads(line)["kind"] for line in lines] == ["poi-selection", "poi"]
 

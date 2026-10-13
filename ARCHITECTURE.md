@@ -759,10 +759,11 @@ content each line of POIs decides; the Type plus the situation is the
 identity. A specialization adds fields of its own Type, named for what they
 hold: `CheckPOI` adds `check`, `details` and `failure`, and other lines
 declare theirs, such as `hints` on a reference resolution POI or `entry` on
-a skills status POI. `SituationPOI.describe()` gives everything known about
-one POI as plain data: what the POI holds, its Type and the Type of its
-check with where each is defined, and the Type's descriptive
-`context_notes`. A consumer decides what
+a skills status POI. A POI becomes data in one way, the Record system:
+`poi.records.to_record()` gives its Type, message, situation and the fields
+its Type adds, and `from_record()` loads it back. The record holds the
+occurrence only; what the Type says (its description, its `context_notes`,
+where it is defined) is read from the class. A consumer decides what
 happens to a POI. Printing (`tarav check`, `tarav skw skills`, the
 breadcrumbs and Diagram commands) is how a person looks at checks directly.
 The Project status escalates: each POI its checks raise becomes an action
@@ -796,8 +797,7 @@ such as a Skillware lint finding or a Breadcrumb audit concern, maps it to a
 POI Type through a small table next to the check. Reports group and filter by
 Type, check or identity. Breadcrumb, Reference resolution, and Diagram
 validation use atomic identified POI families. Diagram Draft schema 2 retains
-typed POI rows in Capture Receipts; version-1 Drafts require the explicit
-`tarav diagram draft migrate --to 2` operation before readers open them.
+POI records in Capture Receipts; a Draft of another schema is refused.
 <!-- tarav.breadcrumb 0158b0cc8222cc39930e1e704ceceb0e1fb70dc4a95f5feebc6f356544fc08ac -->
 <!-- tarav.breadcrumb 0d39e5ec3a25287e419935d916d0a7c9d270b87dfc428775b346dfa162fb7483 -->
 <!-- tarav.breadcrumb c84140acad62e5b48e8b95892c1a749f806863a560f1bfeb08e13596ee2a9286 -->

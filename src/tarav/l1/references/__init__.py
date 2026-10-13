@@ -12,7 +12,7 @@ from pydantic import ConfigDict, Field, JsonValue, model_validator
 
 from tarav.l0.kernel.identity import TypeShip
 from tarav.l0.kernel.records import FileRecord, TaravObject, _json_object
-from tarav.l1.poi import SituationPOI
+from tarav.l1.poi import SituationPOI, plain
 from tarav.l1.references.identity import REFERENCES_WORKFLOW_SHIP
 
 
@@ -29,8 +29,21 @@ class ReferenceResolutionPOI(SituationPOI):
         super().__init__(message, situation=situation)
         self.hints = hints
 
-    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
-        return {**super().as_dict(detail=detail), "hints": self.hints}
+    class RecordInterface(SituationPOI.RecordInterface):
+        hints: object
+
+    def _to_record(self) -> dict[str, object]:
+        return {**super()._to_record(), "hints": plain(self.hints)}
+
+    @classmethod
+    def _from_record(cls, record_data):
+        result = super()._from_record(record_data)
+        result.hints = record_data.hints
+        return result
+
+    class Records(SituationPOI.Records):
+        def record_example(self) -> dict[str, object]:
+            return {**super().record_example(), "hints": None}
 
     @classmethod
     def class_entity(cls) -> TaravClass:

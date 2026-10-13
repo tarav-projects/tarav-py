@@ -19,7 +19,6 @@ from tarav.l0.kernel import (
     FileRecord, Ship, TaravClass, TaravEntity, TaravType, TypeShip, entity,
 )
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
-from tarav.l1.poi import SituationPOI
 from tarav.l1.operator_context import Intake, OperatorContext, OperatorContextStore
 from tarav.l1.records import RecordRegistry
 
@@ -476,8 +475,7 @@ def _results(checks: Iterable[Check]) -> tuple[bool, list[dict]]:
             passed = False
         rows.append({"check": entity(type(check)).name, "status": result.status,
                      "reason": result.reason,
-                     "pois": [poi.as_dict(detail=True) if isinstance(poi, SituationPOI)
-                              else poi.as_dict() for poi in pois]})
+                     "pois": [poi.records.to_record() for poi in pois]})
     return passed, rows
 
 

@@ -7,7 +7,7 @@ from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.l0.kernel.space import Entry, RecordProvider
 from tarav.l0.kernel.workflows import TaravWorkflow
 from .identity import RECORDS_WORKFLOW_SHIP
-from tarav.l1.poi import SituationPOI
+from tarav.l1.poi import SituationPOI, plain
 
 
 class ProviderError(SituationPOI):
@@ -21,8 +21,21 @@ class ProviderError(SituationPOI):
         super().__init__(message, situation=situation)
         self.error = dict(error or {})
 
-    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
-        return {**super().as_dict(detail=detail), "error": dict(self.error)}
+    class RecordInterface(SituationPOI.RecordInterface):
+        error: dict
+
+    def _to_record(self) -> dict[str, object]:
+        return {**super()._to_record(), "error": plain(self.error)}
+
+    @classmethod
+    def _from_record(cls, record_data):
+        result = super()._from_record(record_data)
+        result.error = record_data.error
+        return result
+
+    class Records(SituationPOI.Records):
+        def record_example(self) -> dict[str, object]:
+            return {**super().record_example(), "error": {}}
 
     @classmethod
     def class_entity(cls) -> TaravClass:

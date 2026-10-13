@@ -71,8 +71,21 @@ class BreadcrumbPositionAmbiguous(BreadcrumbResolutionPOI):
         super().__init__(message, situation=situation)
         self.positions = positions
 
-    def as_dict(self, *, detail: bool = False) -> dict[str, object]:
-        return {**super().as_dict(detail=detail), "positions": self.positions}
+    class RecordInterface(BreadcrumbResolutionPOI.RecordInterface):
+        positions: int
+
+    def _to_record(self) -> dict[str, object]:
+        return {**super()._to_record(), "positions": self.positions}
+
+    @classmethod
+    def _from_record(cls, record_data):
+        result = super()._from_record(record_data)
+        result.positions = record_data.positions
+        return result
+
+    class Records(BreadcrumbResolutionPOI.Records):
+        def record_example(self) -> dict[str, object]:
+            return {**super().record_example(), "positions": 2}
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -109,7 +122,7 @@ class BreadcrumbResolution:
             "breadcrumb": self.breadcrumb.records.to_record(),
             "position": _position_json(self.position),
             "pois": [
-                item.as_dict()
+                item.records.to_record()
                 for item in self.pois
             ],
         }

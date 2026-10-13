@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tarav.l0.kernel import TaravClass, TypeShip
+from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.actions.project import ProjectActions
 from tarav.l1.actions.pois import action_id
@@ -89,7 +89,9 @@ def test_a_path_is_followed_to_a_value(opened) -> None:
     assert answer.target.records.to_record()["value"] == [
         "It is described in the sample note.", "It is no longer raised once the sample is fixed."]
     kind = _service(opened).open(IdentityContextQuery(opened[0].identity, path=["poi-type"]))
-    assert kind.target.records.to_record()["value"]["type"] == "Tarav.Test.GuidedPOI"
+    assert kind.target.id == entity(GuidedPOI).id  # the Type itself, read from the code
+    by = _service(opened).open(IdentityContextQuery(opened[0].identity, path=["raised-by"]))
+    assert by.target.id == entity(SampleCheck).id
 
 
 def test_several_matches_are_candidates_and_none_is_empty(opened) -> None:
@@ -125,17 +127,15 @@ def test_queries_validate_their_parts() -> None:
 
 
 # tarav.breadcrumb fae0e168d36f1e4818647e0f437ee4772014d06bb618074c67240e5ef86bf888
-def test_a_poi_describes_itself_and_owns_nothing(tmp_path: Path, monkeypatch) -> None:
+def test_a_pois_record_holds_the_occurrence_and_nothing_of_its_type(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("TARAV_RECORDS", str(tmp_path / "records"))
     poi = GuidedPOI(SampleCheck(), "Something was found", situation={"where": "a"})
     assert CheckPOI.context_notes == ()
-    assert "notes" not in poi.as_dict(detail=True) and "context_notes" not in poi.as_dict(detail=True)
-    described = poi.describe()
-    assert described["notes"] == ["It is described in the sample note.",
-                                  "It is no longer raised once the sample is fixed."]
-    assert described["poi_type"]["type"] == "Tarav.Test.GuidedPOI"
-    assert described["raised_by"]["type"] == "Tarav.Test.ContextSampleCheck"
-    assert not ActionRunStore(RecordRegistry()).exists()  # describing stores nothing
+    record = poi.records.to_record()
+    assert set(record) == {"type", "class_id", "id", "message", "situation", "check",
+                           "details", "failure"}
+    assert record["check"] == "Tarav.Test.ContextSampleCheck"
+    assert not ActionRunStore(RecordRegistry()).exists()  # a record is a form, not a store
 
 
 def test_a_printed_report_points_at_no_stored_context() -> None:

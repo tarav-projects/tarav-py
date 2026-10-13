@@ -397,7 +397,7 @@ def _cmd_diagram_object_list(args: argparse.Namespace) -> int:
                 ),
             },
             "objects": list(object_payloads),
-            "pois": [poi.to_dict() for poi in pois],
+            "pois": [poi.records.to_record() for poi in pois],
         },
         tuple(
             "  ".join(
@@ -549,7 +549,7 @@ def _cmd_diagram_capture_check(args: argparse.Namespace) -> int:
         "status": "poi" if pois else "ok",
         "command": "tarav diagram capture check",
         "manifest": str(path),
-        "pois": [poi.to_dict() for poi in pois],
+        "pois": [poi.records.to_record() for poi in pois],
     }
     poi_text = render_pois(args, pois, title="Diagram capture POIs", root=model.namespace.root)
     return _emit(

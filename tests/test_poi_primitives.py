@@ -74,7 +74,7 @@ def test_app_subclass_snapshot_and_source():
     second = AppReview.finding({"file": "a"}, observed=data)
     assert first.identity == second.identity
     assert first.observed["value"] == 1
-    assert Path(first.as_dict()["help"]["source_path"]) == Path(__file__).resolve()
+    assert Path(type(first).help()["source_path"]) == Path(__file__).resolve()
 
 
 def test_blessing_remains_visible_and_matches_situation(tmp_path):
@@ -132,9 +132,9 @@ def test_pois_are_atomic_and_carry_no_code():
     from tarav.l1.poi import NotificationPOI
 
     poi = AppError.finding({"path": "a"})
-    assert not hasattr(poi, "code") and "code" not in poi.as_dict(detail=True)
+    assert not hasattr(poi, "code") and "code" not in poi.records.to_record()
     notice = NotificationPOI("Something happened")
-    assert not hasattr(notice, "code") and "code" not in notice.as_dict()
+    assert not hasattr(notice, "code") and "code" not in notice.records.to_record()
 
     def subclasses(cls):
         for item in cls.__subclasses__():
@@ -164,7 +164,17 @@ def test_any_poi_can_be_thrown_and_the_error_carries_it():
 def test_a_situation_poi_has_a_type_a_message_and_a_situation_and_nothing_else():
     poi = AppError.finding({"file": "a"})
     assert (poi.message, poi.situation) == ("Application error", {"file": "a"})
-    assert set(poi.as_dict()) == {"type", "class_id", "id", "message", "situation", "help"}
+    record = poi.records.to_record()
+    assert set(record) == {"type", "class_id", "id", "message", "situation"}
+    # the record is the one serialization: it loads back as the same POI
+    loaded = AppError.records.from_record(record)
+    assert (loaded.identity, loaded.message, loaded.situation) == (
+        poi.identity, poi.message, poi.situation)
+    assert loaded.records.to_record() == record
+    with pytest.raises(ValueError):
+        AppError.records.from_record({**record, "situation": {"file": "b"}})
+    for fake in ("as_dict", "describe", "to_dict"):
+        assert not hasattr(poi, fake)
     for gone in ("subject", "evidence", "coordinate"):
         assert not hasattr(poi, gone)
     with pytest.raises(TypeError):

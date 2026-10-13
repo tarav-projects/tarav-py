@@ -67,7 +67,7 @@ def status_result(status) -> dict:
         "changes": acted["changes"],
         "actions": {**{key: value for key, value in acted.items()
                        if key not in ("signals", "changes")},
-                    "closed": [signal.as_dict(detail=True) for signal in acted["signals"]]},
+                    "closed": [signal.records.to_record() for signal in acted["signals"]]},
         "checks": {**summary, "unfinished": [
             {"check": entity(type(result.check)).name, "status": result.status,
              "reason": result.reason} for result in suite.results

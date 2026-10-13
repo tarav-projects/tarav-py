@@ -334,8 +334,7 @@ def _cmd_skills_status(args: argparse.Namespace) -> int:
                         }
                         for depot_status in status.depot_statuses
                     ],
-                    "pois": [poi.as_dict(detail=True) if hasattr(poi, "identity")
-                              else poi.as_dict() for poi in status.pois],
+                    "pois": [poi.records.to_record() for poi in status.pois],
                 }
             )
         )

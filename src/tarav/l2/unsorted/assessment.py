@@ -120,7 +120,7 @@ class AnnotationAssessment:
                 }
                 for assertion_type in self.assertion_types
             ],
-            "pois": [item.to_dict() for item in self.pois],
+            "pois": [item.records.to_record() for item in self.pois],
         }
 
 

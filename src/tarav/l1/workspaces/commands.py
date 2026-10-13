@@ -47,7 +47,7 @@ def _cmd_show(args) -> int:
 
 def _cmd_check(args) -> int:
     workspace = _depot(args).open(args.id)
-    findings = [poi.as_dict(detail=True) for poi in workspace.checks.run().pois()]
+    findings = [poi.records.to_record() for poi in workspace.checks.run().pois()]
     # tarav.breadcrumb 8206fc5f20434c003d9aa84010e6d890c9b517734fdcb02549be007b7fdf4bd6
     return _output({"status": "ok", "pois": findings})
 
@@ -59,7 +59,7 @@ def _cmd_reset(args) -> int:
         setup = depot.reset(workspace)
     except WorkspaceError as error:
         if error.pois:
-            _output({"status": "refused", "pois": [poi.as_dict(detail=True)
+            _output({"status": "refused", "pois": [poi.records.to_record()
                                                     for poi in error.pois]})
             return 1
         raise CliError(str(error)) from error
@@ -87,7 +87,7 @@ def _cmd_remove(args) -> int:
         depot.remove(workspace)
     except WorkspaceError as error:
         if error.pois:
-            _output({"status": "refused", "pois": [poi.as_dict(detail=True)
+            _output({"status": "refused", "pois": [poi.records.to_record()
                                                     for poi in error.pois]})
             return 1
         raise CliError(str(error)) from error

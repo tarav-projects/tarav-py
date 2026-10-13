@@ -291,7 +291,9 @@ Importing `tarav` alone initializes no services or layered modules.
   `tarav check --project` only runs the checks. Read actions with
   `tarav action list --project` and `tarav context --id <action-id>` (the id of its
   POI finds it too). A POI is a flag between detecting and working: momentary,
-  nothing stores one that was printed; `poi.describe()` is what a consumer keeps.
+  nothing stores one that was printed; a consumer keeps its record
+  (`poi.records.to_record()`). The Record system is the one way a Tarav object
+  becomes data: no `as_dict()`, `to_dict()` or `describe()` beside it.
   Blessing and standing are asked of the Project (`project.actions`), never of a
   POI listing. A Project sees the actions of the Projects it lists as children:
   `project.actions.list()` and `tarav action list --project` include them, and
