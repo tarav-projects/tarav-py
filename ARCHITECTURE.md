@@ -792,9 +792,12 @@ Where one check can find several related situations, each is its own class
 under a family parent that is never raised (for example
 `TaravSystemPromptPOI` over `TaravSystemPromptSourceUnavailable`, `Missing`,
 `Duplicated` and `Stale`), so a family can still be selected with
-`isinstance`. A check that receives a string kind from a non-POI producer,
-such as a Skillware lint finding or a Breadcrumb audit concern, maps it to a
-POI Type through a small table next to the check. Reports group and filter by
+`isinstance`. An analysis that runs outside a check says what it found with
+the POI Type that states it: a Skillware finding (`tarav.l1.skw.pois.Finding`)
+holds the class, and the Skillware POI Types live beside that analysis in
+layer 1. There is no second name for a Type. The Breadcrumb audit still maps
+a string concern to a POI Type through a small table next to its check.
+Reports group and filter by
 Type, check or identity. Breadcrumb, Reference resolution, and Diagram
 validation use atomic identified POI families. Diagram Draft schema 2 retains
 POI records in Capture Receipts; a Draft of another schema is refused.

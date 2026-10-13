@@ -1,84 +1,20 @@
-"""SKW-owned POI classes. Open this source from finding.help for policy.
+"""The checks that raise Skillware POIs. Open a POI's Type from finding.help for policy.
 
-Checks live in skw/loading.py, skw/skills.py, skw/publication.py and
-skw/document.py. Only annotation omissions and semantic freshness
-questions permit attributed acceptance. Structural failures require repair.
+The analysis lives in tarav.l1.skw (document.py, loading.py, skills.py) and
+in skw/skills.py and skw/publication.py here; it reports findings that name
+their POI Type (tarav.l1.skw.pois). The checks here bind a finding to the
+package it was found in and raise its POI.
 """
 from copy import deepcopy
-from pathlib import Path
 
-from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TypeShip
-from tarav.l1.poi.actionable import BlessablePOI
-from tarav.l1.checks import Check, CheckPOI, CheckResult, SituationCheck
+from tarav.l1.checks import Check, CheckResult, SituationCheck
 from tarav.l1.poi import POICollector
 from tarav.l1.references import Reference
 from tarav.l1.skw.annotations import GenerationAnnotation
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
-
-
-class SkwPOI(CheckPOI):
-    """A workflow-owned SKW POI explained by the bound analysis Check."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('6e215eaf-b1d4-4ff9-ae51-9a89e542ffd3'),
-            name='Tarav.SKW.POI',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-    @classmethod
-    # tarav.breadcrumb 358f9776a4d31e8930d727fec6ccb95407790af6d2893c204b16cb9cb572cde9
-    def poi(cls, check, *, situation, details=None, where=None):
-        """Build one SKW POI. `details` holds what the analysis observed, the raw finding in it.
-
-        `where` names the place for a reader, when the finding itself only
-        has an internal id for it.
-        """
-        details = details or {}
-        return cls(
-            check,
-            finding_message(details.get("finding", {}), entity(cls).name.rsplit(".", 1)[-1],
-                            where=where),
-            situation=situation,
-            details=details,
-        )
-
-    @classmethod
-    def from_finding(cls, check, raw, state):
-        """The POI of one analysis finding. `state` is the package's file state.
-
-        This is the general Skillware line: the place of the finding plus the
-        state of the whole package. A Type that can name its own state overrides it.
-        """
-        subject = {'project': str(check.package.root),
-                   **{k: raw[k] for k in ('block', 'path', 'target', 'delivery', 'code') if k in raw}}
-        return cls.poi(
-            check,
-            situation={"subject": subject, "surface_state": state},
-            details={'finding': raw, 'surface_state': state},
-        )
-
-
-def finding_message(raw, fallback, *, where=None, lead=None):
-    """One line a reader can recognise: what was found, where, and what it points at.
-
-    The Type already states the kind; this says which one of that kind it is.
-    """
-    lead = lead or raw.get("kind") or fallback
-    if where is None:
-        where = ": ".join(str(raw[key]) for key in ("path", "block") if raw.get(key))
-    parts = [str(lead)]
-    if where:
-        parts.append(f"in {where}")
-    if raw.get("target"):
-        parts.append(f"to {raw['target']}")
-    detail = raw.get("detail") or raw.get("message")
-    if detail:
-        parts.append(f"({detail})")
-    return " ".join(parts)
+from tarav.l1.skw.pois import ContextUnresolvable, Finding, StaleContext, StaleGeneration
 
 
 class SkwAnalysisCheck(Check):
@@ -100,397 +36,6 @@ class SkwAnalysisCheck(Check):
 
     def _run(self):
         return CheckResult(self, status="completed", pois=_analysis_pois(self))
-
-
-class UnannotatedOutputLink(SkwPOI, BlessablePOI):
-    """An authored Markdown link has no SKW link primitive declaration.
-
-    SkillReadingGraph binds source blocks, then parses their authored output
-    solely for conformance. This link contributes no simulated context edge.
-    Bless only an intentionally unmodeled link after evaluating its consumer
-    effect; an acceptance does not add an edge or satisfy a context requirement.
-    """
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000001'),
-            name='Tarav.SKW.POI.UnannotatedOutputLink',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class MissingContext(SkwPOI):
-    """SkillReadingGraph found a requirement without its requested delivery.
-
-    Evidence identifies the target, delivery and exact incoming path. Correct
-    declarations or delivery primitives; this class does not permit blessing.
-    """
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000002'),
-            name='Tarav.SKW.POI.MissingContext',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class PathDependentContext(SkwPOI):
-    """path-dependent-context: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000003'),
-            name='Tarav.SKW.POI.PathDependentContext',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class UnreachableBlock(SkwPOI):
-    """A declared block that no reading path from the package's root reaches. It does not say
-    the block is wrong, only that a reader following the declared reading is never led to it.
-    """
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000004'),
-            name='Tarav.SKW.POI.UnreachableBlock',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class AttachmentCycle(SkwPOI):
-    """attachment-cycle: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000005'),
-            name='Tarav.SKW.POI.AttachmentCycle',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InclusionCycle(SkwPOI):
-    """inclusion-cycle: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000006'),
-            name='Tarav.SKW.POI.InclusionCycle',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InvalidBlockReference(SkwPOI):
-    """invalid-block-reference: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000007'),
-            name='Tarav.SKW.POI.InvalidBlockReference',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class UndeclaredBlock(SkwPOI):
-    """undeclared-block: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000008'),
-            name='Tarav.SKW.POI.UndeclaredBlock',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InvalidParent(SkwPOI):
-    """invalid-parent: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000009'),
-            name='Tarav.SKW.POI.InvalidParent',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InvalidContextTarget(SkwPOI):
-    """invalid-context-target: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000010'),
-            name='Tarav.SKW.POI.InvalidContextTarget',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InvalidLoadingRoot(SkwPOI):
-    """invalid-loading-root: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000011'),
-            name='Tarav.SKW.POI.InvalidLoadingRoot',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class RootHasParent(SkwPOI):
-    """root-has-parent: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000012'),
-            name='Tarav.SKW.POI.RootHasParent',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class LoadingAnalysisIncomplete(SkwPOI):
-    """loading-analysis-incomplete: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000013'),
-            name='Tarav.SKW.POI.LoadingAnalysisIncomplete',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class LoadingDeclarationStale(SkwPOI):
-    """loading-declaration-stale: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000014'),
-            name='Tarav.SKW.POI.LoadingDeclarationStale',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class LoadingRenderError(SkwPOI):
-    """loading-render-error: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000015'),
-            name='Tarav.SKW.POI.LoadingRenderError',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InvalidLoadingModel(SkwPOI):
-    """invalid-loading-model: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000016'),
-            name='Tarav.SKW.POI.InvalidLoadingModel',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InvalidPublication(SkwPOI):
-    """invalid-publication: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000017'),
-            name='Tarav.SKW.POI.InvalidPublication',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class DuplicateOutput(SkwPOI):
-    """duplicate-output: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000018'),
-            name='Tarav.SKW.POI.DuplicateOutput',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class OutputNotDeployed(SkwPOI):
-    """output-not-deployed: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000019'),
-            name='Tarav.SKW.POI.OutputNotDeployed',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InvalidSource(SkwPOI):
-    """invalid-source: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000020'),
-            name='Tarav.SKW.POI.InvalidSource',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class MissingConsumerFile(SkwPOI):
-    """missing-consumer-file: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000021'),
-            name='Tarav.SKW.POI.MissingConsumerFile',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class UnbundledLink(SkwPOI):
-    """A file the package delivers links to a file inside the package that the package does not
-    list among its files.
-    """
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000022'),
-            name='Tarav.SKW.POI.UnbundledLink',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class UndeclaredConsumerLink(SkwPOI):
-    """undeclared-consumer-link: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000023'),
-            name='Tarav.SKW.POI.UndeclaredConsumerLink',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class MissingLinkTarget(SkwPOI):
-    """missing-link-target: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000024'),
-            name='Tarav.SKW.POI.MissingLinkTarget',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class MissingDependency(SkwPOI):
-    """missing-dependency: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000025'),
-            name='Tarav.SKW.POI.MissingDependency',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class PublicationUnresolvable(SkwPOI):
-    """publication-unresolvable: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000026'),
-            name='Tarav.SKW.POI.PublicationUnresolvable',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class PublicationStale(SkwPOI):
-    """publication-stale: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000027'),
-            name='Tarav.SKW.POI.PublicationStale',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class PublicationDrift(SkwPOI):
-    """publication-drift: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000028'),
-            name='Tarav.SKW.POI.PublicationDrift',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class ContextUnresolvable(SkwPOI):
-    """context-unresolvable: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000029'),
-            name='Tarav.SKW.POI.ContextUnresolvable',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
 
 
 # tarav.breadcrumb 815517b13112101af47d38a935d2224f1a3b870950ba20bb5e375a605704cfa3
@@ -524,24 +69,16 @@ class GenerationContextResolutionCheck(Check):
         try:
             self.document._resolved_context(self.block.label, selected=self.index)
         except (OSError, ValueError, KeyError, TypeError) as exc:
-            finding = {
-                "kind": "context-unresolvable",
-                "path": self.document.key,
-                "block": self.block.label,
-                "context_index": self.index,
-                "detail": str(exc),
-            }
-            evidence = {
-                "finding": finding,
-                "declaration": deepcopy(self.declaration),
-            }
             poi = ContextUnresolvable.poi(
                 self,
                 situation={
                     "subject": self.subject,
                     "declaration": deepcopy(self.declaration),
                 },
-                details=evidence,
+                finding=Finding(ContextUnresolvable, path=self.document.key,
+                                block=self.block.label, context_index=self.index,
+                                detail=str(exc)),
+                details={"declaration": deepcopy(self.declaration)},
             )
             return CheckResult(self, status="completed", pois=(poi,))
         return CheckResult(
@@ -576,185 +113,7 @@ def generation_context_resolution_checks(package, *, documents=None):
     return tuple(checks)
 
 
-class ContextUnobserved(SkwPOI):
-    """context-unobserved: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000030'),
-            name='Tarav.SKW.POI.ContextUnobserved',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class StaleContext(SkwPOI, BlessablePOI):
-    """Document.lint found changed maintenance context since explicit observation.
-
-    An agent may accept the unchanged product after reviewing the new context.
-    Blessing records that assessment; it never advances the document baseline.
-    """
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000031'),
-            name='Tarav.SKW.POI.StaleContext',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class MissingOutput(SkwPOI):
-    """missing-output: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000032'),
-            name='Tarav.SKW.POI.MissingOutput',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InvalidInput(SkwPOI):
-    """invalid-input: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000033'),
-            name='Tarav.SKW.POI.InvalidInput',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-# tarav.breadcrumb 76d1a306cd3cd7ae489248cd3809e96b6bad28beb76e10c3d94c7bebae7a6444
-class StaleGeneration(SkwPOI, BlessablePOI):
-    """Document.lint found changed generation inputs against recorded provenance.
-
-    Bless only after assessing that existing output is acceptable for the
-    changed inputs. Source, output, and generation history are not rewritten.
-    """
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000034'),
-            name='Tarav.SKW.POI.StaleGeneration',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class OutputChanged(SkwPOI):
-    """A block's content no longer matches the output recorded for its generation: it was edited
-    after that generation was recorded.
-    """
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000035'),
-            name='Tarav.SKW.POI.OutputChanged',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class InvalidAnnotation(SkwPOI):
-    """invalid-annotation: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000036'),
-            name='Tarav.SKW.POI.InvalidAnnotation',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class SourceUncompiled(SkwPOI):
-    """source-uncompiled: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000037'),
-            name='Tarav.SKW.POI.SourceUncompiled',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class ProductUnavailable(SkwPOI):
-    """product-unavailable: open its action to see the finding and the check that raised it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000038'),
-            name='Tarav.SKW.POI.ProductUnavailable',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class ProductDrift(SkwPOI):
-    """A compiled file no longer matches what its source produces: the file was edited by hand,
-    or the source changed without a build.
-    """
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000039'),
-            name='Tarav.SKW.POI.ProductDrift',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-    context_notes = (
-        'Either side may be the newer one: read the difference before compiling, since compiling '
-        'replaces the file with what the source produces.',
-        'It is no longer raised once the file and what its source produces are the same text.',
-    )
-
-    @classmethod
-    # tarav.breadcrumb 3eb40ba8c8c58e9e0ce65142bc077c76f435c823ae1a3d357edfcc3c1e7ade5c
-    # tarav.breadcrumb f41a5d6353932a38b2690134f9db371f0f2e6d656baf7b5079d954337e68520f
-    def from_finding(cls, check, raw, state):
-        """The situation is what was compared: the file, its text and the text its source produces."""
-        root = check.package.root
-        product = Path(raw['product'])
-        return cls(
-            check,
-            f"{root.name}: {product.relative_to(root)} differs from what its "
-            f"source produces ({raw['detail']})",
-            situation={'product': str(product), 'actual': raw['actual'],
-                       'expected': raw['expected']},
-            details={'finding': raw},
-        )
-
-
-class DiagramAssessment(SkwPOI):
-    """A Diagram renderer returned an assessment finding; inspect its evidence."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('7e309479-ccae-4780-b2f1-bd3af54f9f42'),
-            name='Tarav.SKW.POI.DiagramAssessment',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-def _freshness_result(check, *, poi_type, kind, message, baseline_key, current_key):
+def _freshness_result(check, *, poi_type, baseline_key, current_key):
     subject = check.situation["subject"]
     if not isinstance(subject, dict):
         raise TypeError("Freshness Situation subject must be an object")
@@ -762,18 +121,13 @@ def _freshness_result(check, *, poi_type, kind, message, baseline_key, current_k
     current = check.situation[current_key]
     if baseline == current:
         return CheckResult(check, status="completed")
-    finding = {"kind": kind, **{
+    finding = Finding(poi_type, **{
         key: subject[key] for key in ("path", "block") if key in subject
-    }}
-    evidence = {
-        "finding": finding,
-        "baseline": baseline,
-        "current": current,
-    }
+    })
     poi = check.poi(
         poi_type,
-        message=finding_message(finding, kind, lead=message.rstrip(".")),
-        details=evidence,
+        message=poi_type.sentence(where=": ".join(str(value) for value in finding.data.values())),
+        details={"finding": finding.to_json(), "baseline": baseline, "current": current},
     )
     return CheckResult(check, status="completed", pois=(poi,))
 
@@ -795,8 +149,6 @@ class GenerationFreshnessCheck(SituationCheck):
         return _freshness_result(
             self,
             poi_type=StaleGeneration,
-            kind="stale-generation",
-            message="Generation inputs differ from the recorded baseline.",
             baseline_key="baseline_inputs",
             current_key="current_inputs",
         )
@@ -818,8 +170,6 @@ class ContextFreshnessCheck(SituationCheck):
         return _freshness_result(
             self,
             poi_type=StaleContext,
-            kind="stale-context",
-            message="Tracked context differs from the recorded baseline.",
             baseline_key="baseline_context",
             current_key="current_context",
         )
@@ -875,50 +225,8 @@ def freshness_checks(package, *, skip_unresolved=False, documents=None):
     return tuple(checks)
 
 
-FRESHNESS_KINDS = frozenset({"stale-context", "stale-generation"})
-
-
-CLASSES = {
-    'unannotated-output-link': UnannotatedOutputLink,
-    'missing-context': MissingContext,
-    'path-dependent-context': PathDependentContext,
-    'unreachable-block': UnreachableBlock,
-    'attachment-cycle': AttachmentCycle,
-    'inclusion-cycle': InclusionCycle,
-    'invalid-block-reference': InvalidBlockReference,
-    'undeclared-block': UndeclaredBlock,
-    'invalid-parent': InvalidParent,
-    'invalid-context-target': InvalidContextTarget,
-    'invalid-loading-root': InvalidLoadingRoot,
-    'root-has-parent': RootHasParent,
-    'loading-analysis-incomplete': LoadingAnalysisIncomplete,
-    'loading-declaration-stale': LoadingDeclarationStale,
-    'loading-render-error': LoadingRenderError,
-    'invalid-loading-model': InvalidLoadingModel,
-    'invalid-publication': InvalidPublication,
-    'duplicate-output': DuplicateOutput,
-    'output-not-deployed': OutputNotDeployed,
-    'invalid-source': InvalidSource,
-    'missing-consumer-file': MissingConsumerFile,
-    'unbundled-link': UnbundledLink,
-    'undeclared-consumer-link': UndeclaredConsumerLink,
-    'missing-link-target': MissingLinkTarget,
-    'missing-dependency': MissingDependency,
-    'publication-unresolvable': PublicationUnresolvable,
-    'publication-stale': PublicationStale,
-    'publication-drift': PublicationDrift,
-    'context-unresolvable': ContextUnresolvable,
-    'context-unobserved': ContextUnobserved,
-    'stale-context': StaleContext,
-    'missing-output': MissingOutput,
-    'invalid-input': InvalidInput,
-    'stale-generation': StaleGeneration,
-    'output-changed': OutputChanged,
-    'invalid-annotation': InvalidAnnotation,
-    'source-uncompiled': SourceUncompiled,
-    'product-unavailable': ProductUnavailable,
-    'product-drift': ProductDrift,
-}
+#: The Types that only the freshness checks raise, each from one bound snapshot.
+FRESHNESS = (StaleContext, StaleGeneration)
 
 
 def surface_state(package):
@@ -941,17 +249,13 @@ def surface_state(package):
     return state
 
 
+# tarav.breadcrumb d778cc4afbface8f928a900a27e39525052bfef9b06d5b3fcddf5282fa1d1c9e
 def _analysis_pois(check):
-    package = check.package
-    state = surface_state(package)
-    for raw in check.findings:
-        kind = raw.get('kind')
-        if kind in FRESHNESS_KINDS:
+    state = surface_state(check.package)
+    for finding in check.findings:
+        if finding.poi in FRESHNESS:
             raise ValueError("Freshness findings must be produced by SituationChecks")
-        if kind is not None and kind not in CLASSES:
-            raise ValueError(f'Unregistered SKW POI kind: {kind}')
-        cls = CLASSES[kind] if kind is not None else DiagramAssessment
-        yield cls.from_finding(check, raw, state)
+        yield finding.poi.from_finding(check, finding, state)
 
 
 def collect(package, findings):

@@ -64,8 +64,8 @@ def render_document_findings(findings: list[dict[str, Any]]) -> str:
         return "No findings."
     rows = [f"Findings: {len(findings)}"]
     for finding in findings:
-        detail = _details(finding, skip=("kind",))
-        rows.append(f"  {finding.get('kind', 'unknown')}" + (f"  {detail}" if detail else ""))
+        detail = _details(finding, skip=("type",))
+        rows.append(f"  {finding.get('type', 'unknown')}" + (f"  {detail}" if detail else ""))
     return "\n".join(rows)
 
 
@@ -184,10 +184,10 @@ def render_loading_context(result: dict[str, Any]) -> str:
         details = [
             f"{key}={value}"
             for key, value in diagnostic.items()
-            if key != "code"
+            if key != "type"
         ]
         suffix = f"  {'  '.join(details)}" if details else ""
-        rows.append(f"  {diagnostic.get('code', 'unknown')}{suffix}")
+        rows.append(f"  {diagnostic.get('type', 'unknown')}{suffix}")
     return "\n".join(rows)
 
 

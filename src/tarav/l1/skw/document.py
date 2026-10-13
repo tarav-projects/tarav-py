@@ -24,6 +24,11 @@ from .annotations import (
     typed_record,
 )
 from .generation import _hash
+from .pois import (
+    ContextUnobserved, ContextUnresolvable, Finding, InvalidAnnotation, MissingContent,
+    OutputChanged, ProductDrift, ProductUnavailable, SourceUncompiled, StaleContext,
+    StaleGeneration,
+)
 from .presentation import (
     add_output_mode,
     emit,
@@ -232,7 +237,7 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
     def produce(self, document: Document) -> list[str]:
         raise ValueError(f"{entity(type(self)).name} has no code producer")
 
-    def output_findings(self, document: Document, lock_entry: dict) -> list[dict]:
+    def output_findings(self, document: Document, lock_entry: dict) -> list[Finding]:
         generation = self.annotation(GenerationAnnotation)
         if generation is None:
             return []
@@ -240,7 +245,7 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
         baseline = lock_entry.get("blocks", {}).get(self.label)
         if baseline is not None:
             if baseline["output_hash"] != _hash(self.get("content")):
-                findings.append({"kind": "output-changed", "block": self.label})
+                findings.append(Finding(OutputChanged, block=self.label))
             try:
                 annotation = read(document.annotation_path(baseline["generation"]))
                 if (annotation.get("source") != document.key or annotation.get("block") != self.label
@@ -249,8 +254,7 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
                         or annotation.get("output_hash") != baseline["output_hash"]):
                     raise ValueError("Annotation disagrees with lock")
             except (OSError, ValueError) as exc:
-                findings.append({"kind": "invalid-annotation", "block": self.label,
-                                 "detail": str(exc)})
+                findings.append(Finding(InvalidAnnotation, block=self.label, detail=str(exc)))
         return findings
 
     def inline_only(self) -> bool:
@@ -558,8 +562,8 @@ class Document:
 
     def lint(self, *, freshness=True):
         findings = []
-        def report(kind, block=None, detail="", **observed):
-            findings.append({"kind": kind, "block": block, "detail": detail, **observed})
+        def report(poi, block=None, detail="", **observed):
+            findings.append(Finding(poi, block=block, detail=detail, **observed))
         entry = self.lock()["documents"].get(self.key, {})
         for identity, block in self.blocks.items():
             generation = block.annotation(GenerationAnnotation)
@@ -567,25 +571,25 @@ class Document:
                 baseline = entry.get("blocks", {}).get(identity)
                 if (isinstance(baseline, dict) and "input_hash" in baseline
                         and baseline["input_hash"] != self.generation_fingerprint(identity)):
-                    report("stale-generation", identity)
+                    report(StaleGeneration, identity)
             if (freshness and generation is not None
                     and (generation._record.get("context") if generation._record else None
                          or identity in entry.get("contexts", {}))):
                 try:
                     context_hash = self._context_hash(self._resolved_context(identity))
                 except (KeyError, ValueError, TypeError, OSError) as exc:
-                    report("context-unresolvable", identity, str(exc))
+                    report(ContextUnresolvable, identity, str(exc))
                 else:
                     observed = entry.get("contexts", {}).get(identity)
                     if observed is None:
-                        report("context-unobserved", identity)
+                        report(ContextUnobserved, identity)
                     elif observed != context_hash:
-                        report("stale-context", identity)
+                        report(StaleContext, identity)
             if block.get("content") is None:
-                report("missing-content", identity)
+                report(MissingContent, identity)
             findings.extend(block.output_findings(self, entry))
         if entry.get("source_hash") != _hash(self.data):
-            report("source-uncompiled")
+            report(SourceUncompiled)
         try:
             expected = self.text()
         except ValueError:
@@ -593,12 +597,12 @@ class Document:
         try:
             actual = self.target.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
-            report("product-unavailable", detail=str(exc))
+            report(ProductUnavailable, detail=str(exc))
         else:
             if expected is not None and actual != expected:
                 # tarav.breadcrumb a999689284b97d615e42359cc326363dff9073a0cafd1d17a9882859f0a50e5c
                 places, lines = _difference(actual, expected)
-                report("product-drift", detail=f"{places} places, {lines} lines",
+                report(ProductDrift, detail=f"{places} places, {lines} lines",
                        product=str(self.target), actual=_hash(actual),
                        expected=_hash(expected), places=places, lines=lines)
         return findings
@@ -669,6 +673,15 @@ def register_commands(subparsers, *, document_factory=project_document):
         command.set_defaults(handler=_command, document_factory=document_factory)
 
 
+def _printable(result):
+    """A command result with its findings as plain data."""
+    if isinstance(result, list):
+        return [item.to_json() if isinstance(item, Finding) else item for item in result]
+    if isinstance(result, dict) and "findings" in result:
+        return {**result, "findings": _printable(result["findings"])}
+    return result
+
+
 def _command(args):
     try:
         factory = getattr(args, 'document_factory', project_document)
@@ -699,7 +712,7 @@ def _command(args):
             result = getattr(document, args.document_command)()
         emit(
             args,
-            result,
+            _printable(result),
             lambda value: render_document_result(args.document_command, value),
         )
         if args.document_command == "lint":

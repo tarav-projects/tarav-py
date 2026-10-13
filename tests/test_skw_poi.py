@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from skw_records import identify_blocks
 
 from tarav.l0.kernel import entity
@@ -8,14 +10,16 @@ from tarav.l1.skw.document import Document, DocumentRecord
 from tarav.l1.skw.annotations import GenerationAnnotation, ObjectIndexReference
 from tarav.l1.skw.document import SkwBlock
 from tarav.l1.references.structured import StructuredFileReference
-from tarav.l2.skw.pois import (
+from tarav.l1.skw.pois import (
     ContextUnresolvable,
-    ContextFreshnessCheck,
-    GenerationContextResolutionCheck,
-    GenerationFreshnessCheck,
     InvalidLoadingModel,
     StaleContext,
     StaleGeneration,
+)
+from tarav.l2.skw.pois import (
+    ContextFreshnessCheck,
+    GenerationContextResolutionCheck,
+    GenerationFreshnessCheck,
 )
 from tarav.l2.skw.skills import SkwSkill
 from tarav.l3.runtime import create_runtime
@@ -180,7 +184,7 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
 
 # tarav.breadcrumb 7f528a5c259b365f5e59cb23ce3be218a54766baf7d0e473f2d2379ef58c5d8f
 def test_the_package_suite_detects_what_the_skill_command_shows(tmp_path):
-    from tarav.l2.skw.pois import ProductDrift, UnbundledLink
+    from tarav.l1.skw.pois import ProductDrift, UnbundledLink
 
     source, data = _document_source(tmp_path)
     data["blocks"][1]["content"] = ["The program prints one."]
@@ -211,7 +215,7 @@ def test_the_package_suite_detects_what_the_skill_command_shows(tmp_path):
 
 # tarav.breadcrumb 82935932a297a50ab9c5849ee8aa5a7723673f80895d916211bab92cff53fbcf
 def test_a_product_drift_declares_what_was_compared(tmp_path):
-    from tarav.l2.skw.pois import ProductDrift
+    from tarav.l1.skw.pois import ProductDrift
 
     source, data = _document_source(tmp_path)
     data["blocks"][1]["content"] = ["The program prints one."]
@@ -248,3 +252,41 @@ def test_a_product_drift_declares_what_was_compared(tmp_path):
 
     product.write_text(compiled)
     assert drift() == []
+
+
+# tarav.breadcrumb f38c67b3208d0992bd9f3fdb72418be0d592ab312e0f8c8a328aa47db2bb4cf4
+def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
+    from tarav.l0.kernel import entity
+    from tarav.l1.skw import pois as skw
+
+    atomic = skw.SkwPOI.__subclasses__()
+    assert len(atomic) == len({cls.statement for cls in atomic}) and all(
+        cls.statement and not cls.statement.endswith(".") for cls in atomic)
+    assert not hasattr(skw, "CLASSES")
+    with pytest.raises(TypeError):
+        skw.Finding("unreachable-block", block="x")
+    with pytest.raises(TypeError):
+        skw.Finding(skw.SkwPOI, block="x")  # the family states nothing
+
+    finding = skw.Finding(skw.UnreachableBlock, block="x")
+    assert finding.poi is skw.UnreachableBlock
+    assert finding.at(path="a.skw.json").to_json() == {
+        "type": "Tarav.SKW.POI.UnreachableBlock", "block": "x", "path": "a.skw.json"}
+
+    # what a package reports is said by Types, and so is what a command prints
+    source, data = _document_source(tmp_path)
+    data["blocks"][1]["content"] = ["The program prints one."]
+    source.write_text(json.dumps(data))
+    (tmp_path / "context.txt").write_text("available")
+    assert Document(source).compile()["written"]
+    product = tmp_path / "explanation.md"
+    product.write_text(product.read_text() + "\nA line written by hand.\n")
+    findings = Document(source).lint()
+    assert [found.poi for found in findings].count(skw.ProductDrift) == 1
+    assert all("kind" not in found.to_json() for found in findings)
+    for poi in _skill(tmp_path).checks.run().pois():
+        if isinstance(poi, skw.SkwPOI):
+            assert poi.details["finding"]["type"] == entity(type(poi)).name
+            assert "kind" not in poi.details["finding"]
+            assert isinstance(poi, skw.ProductDrift) or poi.message.startswith(
+                type(poi).statement)

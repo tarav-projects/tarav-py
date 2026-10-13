@@ -5,6 +5,7 @@ from __future__ import annotations
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.skw.document import SkwBlock
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
+from tarav.l1.skw.pois import Finding, InvalidProducedOutput, StaleProducedOutput
 
 
 # tarav.breadcrumb b7587610e2af5af9ea51dfbddae8571e0b452713dbb757dac8bf38698f7299f3
@@ -47,16 +48,15 @@ class SkillLink(SkwBlock):
             raise ValueError('SkillLink production requires a Skill loading model')
         return [loading.link_output(self, document.target)]
 
-    def output_findings(self, document, lock_entry: dict) -> list[dict]:
+    def output_findings(self, document, lock_entry: dict) -> list[Finding]:
         if self.get('content') is None:
             return []
         try:
             expected = self.produce(document)
         except (KeyError, ValueError, TypeError, OSError) as exc:
-            return [{'kind': 'invalid-produced-output', 'block': self.label,
-                     'detail': str(exc)}]
+            return [Finding(InvalidProducedOutput, block=self.label, detail=str(exc))]
         if self.get('content') != expected:
-            return [{'kind': 'stale-produced-output', 'block': self.label}]
+            return [Finding(StaleProducedOutput, block=self.label)]
         return []
 
 

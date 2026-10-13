@@ -17,6 +17,11 @@ from .skills import SkillLink
 from .code import (BlockEntry, Contains, ExpectedLink, FileEntry,
                    IncludesBlock, ReadingGraph, ReadingLink, ReadingDependency)
 from .generation import _hash
+from .pois import (
+    AttachmentCycle, Finding, InclusionCycle, InvalidBlockReference, InvalidContextTarget,
+    InvalidLoadingRoot, InvalidParent, LoadingAnalysisIncomplete, LoadingDeclarationStale,
+    LoadingRenderError, RootHasParent, UnannotatedOutputLink, UndeclaredBlock, UnreachableBlock,
+)
 
 
 class LoadingRecord(FileRecord):
@@ -40,11 +45,11 @@ class SkillDocument(Document):
         findings = super().lint(freshness=freshness)
         if (self.lock()['documents'].get(self.key, {}).get('loading_hash')
                 != _hash(self.loading.data)):
-            findings.append({'kind': 'loading-declaration-stale', 'path': self.key})
+            findings.append(Finding(LoadingDeclarationStale, path=self.key))
         try:
             self.text()
         except (ValueError, KeyError) as exc:
-            findings.append({'kind': 'loading-render-error', 'detail': str(exc)})
+            findings.append(Finding(LoadingRenderError, detail=str(exc)))
         return findings
 
     def compile(self):
@@ -136,14 +141,14 @@ class SkillReadingGraph(ReadingGraph):
                     for token in MarkdownIt().parse('\n'.join(content)):
                         for child in token.children or []:
                             if child.type == 'link_open':
-                                self.report('unannotated-output-link', identity,
+                                self.report(UnannotatedOutputLink, identity,
                                             target=child.attrGet('href'))
             except (OSError, ValueError, KeyError, TypeError) as exc:
-                self.report('invalid-block-reference', identity, detail=str(exc))
+                self.report(InvalidBlockReference, identity, detail=str(exc))
         for document in documents:
             for block in document.blocks:
                 if (document.source, block) not in self.by_block:
-                    self.report('undeclared-block', str(document.source), detail=block)
+                    self.report(UndeclaredBlock, str(document.source), detail=block)
         self.reading = {}
         self.links = {}
         self.includes = {}
@@ -176,10 +181,10 @@ class SkillReadingGraph(ReadingGraph):
                                        self.resolve_entry_record(declaration.entry))
                         self.links[identity].append((declaration, destination, target))
                 except (ValueError, KeyError, TypeError) as exc:
-                    self.report('invalid-context-target', identity,
+                    self.report(InvalidContextTarget, identity,
                                 target=declaration.target, detail=str(exc))
             if isinstance(block, SkillLink) and block['target'] not in self.bindings:
-                self.report('invalid-context-target', identity, target=block['target'])
+                self.report(InvalidContextTarget, identity, target=block['target'])
         self.parents = {}
         for identity, node in self.nodes.items():
             if 'parents' in node:
@@ -197,7 +202,7 @@ class SkillReadingGraph(ReadingGraph):
             self.parents[identity] = list(dict.fromkeys(parents))
             for parent in parents:
                 if parent not in self.bindings:
-                    self.report('invalid-parent', identity, target=parent)
+                    self.report(InvalidParent, identity, target=parent)
             if any(kind in node for kind in ('links', 'includes', 'requires')):
                 raise ValueError('Reading declarations belong to source blocks')
             slots = set()
@@ -215,9 +220,9 @@ class SkillReadingGraph(ReadingGraph):
                  and b.label == next(iter(d.blocks))]
         self.root = self.data.get('root', roots[0] if len(roots) == 1 else None)
         if self.root not in self.bindings:
-            self.report('invalid-loading-root', str(self.root))
+            self.report(InvalidLoadingRoot, str(self.root))
         elif self.parents[self.root]:
-            self.report('root-has-parent', self.root)
+            self.report(RootHasParent, self.root)
 
     def resolve_target(self, value):
         """Resolve a Ship exactly, or an unambiguous package-local block label."""
@@ -250,8 +255,9 @@ class SkillReadingGraph(ReadingGraph):
             return matches[0]
         raise TypeError('Unsupported reading entry')
 
-    def report(self, kind, block, **extra):
-        self.diagnostics.append({'code': kind, 'block': block, **extra})
+    # tarav.breadcrumb 3345174f24aecf669f77659006724d7a9d999a8760cff229661e7eefb1bbdeb6
+    def report(self, poi, block, **extra):
+        self.diagnostics.append(Finding(poi, block=block, **extra))
 
     # tarav.breadcrumb b51cf1b5125ad0509724463bcb6a572c5c547f04e6c0ccbac83a1f07ce59a4c4
     # tarav.breadcrumb b12c36d82f34814d160e8c847240232341457362536894b8c6d27702938ffe09
@@ -273,7 +279,7 @@ class SkillReadingGraph(ReadingGraph):
         done = set()
         def cycle(node, active):
             if node in active:
-                diagnostics.append({'code': 'attachment-cycle', 'block': node})
+                diagnostics.append(Finding(AttachmentCycle, block=node))
                 return
             if node in done:
                 return
@@ -286,7 +292,7 @@ class SkillReadingGraph(ReadingGraph):
         observations = []
         def supply(node, inline, linked, active, checks, visits):
             if node in active:
-                diagnostics.append({'code': 'inclusion-cycle', 'block': node})
+                diagnostics.append(Finding(InclusionCycle, block=node))
                 return
             if node not in self.bindings:
                 return
@@ -331,11 +337,11 @@ class SkillReadingGraph(ReadingGraph):
                                      'inlined': present, 'referenced': reachable})
             stack.extend((child, path, inline, linked) for child in children[node])
         if stack:
-            diagnostics.append({'code': 'loading-analysis-incomplete', 'limit': limit})
+            diagnostics.append(Finding(LoadingAnalysisIncomplete, limit=limit))
         else:
             for node in self.nodes:
                 if node not in states:
-                    diagnostics.append({'code': 'unreachable-block', 'block': node})
+                    diagnostics.append(Finding(UnreachableBlock, block=node))
         availability = {}
         for node, paths in states.items():
             def sets(key):
@@ -344,10 +350,9 @@ class SkillReadingGraph(ReadingGraph):
                         'union': sorted(set.union(*values))}
             availability[node] = {'inlined': sets('incoming_inlined'),
                                   'referenced': sets('incoming_referenced')}
-        incomplete = any(f['code'] in {'invalid-block-reference', 'invalid-parent',
-                                      'invalid-context-target', 'invalid-loading-root',
-                                      'attachment-cycle', 'inclusion-cycle',
-                                      'loading-analysis-incomplete'} for f in diagnostics)
+        incomplete = any(f.poi in (InvalidBlockReference, InvalidParent, InvalidContextTarget,
+                                   InvalidLoadingRoot, AttachmentCycle, InclusionCycle,
+                                   LoadingAnalysisIncomplete) for f in diagnostics)
         return {'root': start, 'states': dict(states), 'availability': availability,
                 'requirements': observations,
                 'complete': not incomplete, 'diagnostics': diagnostics}
@@ -423,6 +428,6 @@ class SkillReadingGraph(ReadingGraph):
         return {'block': block, 'declaration': self.nodes[block],
                 'parents': self.parents[block], 'path_count': len(states),
                 'paths': states[:limit],
-                'diagnostics': [f for f in analysis['diagnostics']
+                'diagnostics': [f.to_json() for f in analysis['diagnostics']
                                 if f.get('block') == block
-                                or f['code'] == 'loading-analysis-incomplete']}
+                                or f.poi is LoadingAnalysisIncomplete]}

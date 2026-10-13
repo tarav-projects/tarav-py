@@ -10,6 +10,9 @@ from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import FileRecord, TypeShip
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.skw.document import read, write
+from tarav.l1.skw.pois import (
+    DiagramAssessment, Finding, PublicationDrift, PublicationStale, PublicationUnresolvable,
+)
 
 
 class ModelPublicationRecord(FileRecord):
@@ -79,7 +82,8 @@ class ModelPublication:
                 DiagramRenderTarget('block', block.ship, namespace.id, block))
             contents.append(f'<!-- diagram.block {namespace.id}:{block.ship} -->\n'
                             + result.content)
-            findings.extend(item.to_dict() for item in result.findings)
+            findings.extend(Finding(DiagramAssessment, path=item.path, detail=item.message)
+                            for item in result.pois)
         # Conservative model snapshot includes annotations (grounding/scores),
         # not only wording. Changes can request review even if bytes stay equal.
         records = [{'id': ship.id, 'record': ship.record}
@@ -97,12 +101,12 @@ class ModelPublication:
         try:
             content, state, findings = self.render()
         except (OSError, ValueError, KeyError, TypeError, DiagramError) as exc:
-            return [{'kind': 'publication-unresolvable', 'detail': str(exc)}]
+            return [Finding(PublicationUnresolvable, detail=str(exc))]
         lock = self.lock()
         if lock['publications'].get(self.key) != state:
-            findings.append({'kind': 'publication-stale', 'path': self.key})
+            findings.append(Finding(PublicationStale, path=self.key))
         if not self.target.exists() or self.target.read_text() != content:
-            findings.append({'kind': 'publication-drift', 'path': str(self.target)})
+            findings.append(Finding(PublicationDrift, path=str(self.target)))
         return findings
 
     def lock(self):

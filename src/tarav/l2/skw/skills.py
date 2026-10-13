@@ -19,11 +19,14 @@ from tarav.l1.checks import CheckProvider, CheckSuite, run_checks
 from tarav.l1.poi import POICollector
 from tarav.l1.poi.rendering import DEFAULT_POI_RENDERER, renderers
 from tarav.l0._core.errors import CliError
+from tarav.l1.skw.pois import (
+    DuplicateOutput, Finding, InvalidLoadingModel, InvalidSource, MissingConsumerFile,
+    MissingDependency, MissingLinkTarget, OutputNotDeployed, PublicationDisconnected,
+    SkwPOI, UnbundledLink, UndeclaredConsumerLink,
+)
 from .pois import (
-    CLASSES,
-    FRESHNESS_KINDS,
+    FRESHNESS,
     ContextFreshnessCheck,
-    DiagramAssessment,
     GenerationContextResolutionCheck,
     GenerationFreshnessCheck,
     SkwAnalysisCheck,
@@ -184,10 +187,10 @@ class SkwSkill(SkwDepot, CheckProvider):
         Whoever runs the package's suite, a Project among them, then sees
         what the skill command sees.
         """
-        raw_findings = self._check_without_reading()
-        yield SkwAnalysisCheck(self, [finding for finding in raw_findings
-                                      if finding.get('kind') not in FRESHNESS_KINDS])
-        if not any(finding['kind'] == 'invalid-loading-model' for finding in raw_findings):
+        findings = self._check_without_reading()
+        yield SkwAnalysisCheck(self, [finding for finding in findings
+                                      if finding.poi not in FRESHNESS])
+        if not any(finding.poi is InvalidLoadingModel for finding in findings):
             # Raw document analysis already retains explicit resolution failures;
             # other successfully captured Situations remain independently runnable.
             yield from self._checks(skip_unresolved_freshness=True)
@@ -207,29 +210,22 @@ class SkwSkill(SkwDepot, CheckProvider):
                 for p in self.data.get('publications', [])]
 
     def check(self):
-        raw_findings = self._check_without_reading()
-        findings = [finding for finding in raw_findings
-                    if finding.get('kind') not in FRESHNESS_KINDS]
-        if self._record is not None and not any(
-            finding['kind'] == 'invalid-loading-model' for finding in raw_findings
-        ):
-            for result in run_checks(self._checks(skip_unresolved_freshness=True)):
-                findings.extend(poi.details['finding'] for poi in result.pois())
-        return findings
+        """The POIs of this package as it is on disk."""
+        return tuple(self.evaluate().pois)
 
     def _check_without_reading(self):
         findings = []
-        def report(kind, path, detail=""):
-            findings.append({"kind": kind, "path": str(path), "detail": detail})
+        def report(poi, path, detail=""):
+            findings.append(Finding(poi, path=str(path), detail=detail))
         outputs = set()
         try:
             documents = {d.source: d for d in self.documents()}
             self.loading()
         except (OSError, ValueError, KeyError, TypeError) as exc:
-            report('invalid-loading-model', self.root, str(exc))
+            report(InvalidLoadingModel, self.root, str(exc))
             return findings
         for source in self.data.get('publications', []):
-            report('model-publication-disconnected', source,
+            report(PublicationDisconnected, source,
                    'Models publication is disconnected pending redesign.')
         for source in self.data["sources"]:
             try:
@@ -237,17 +233,17 @@ class SkwSkill(SkwDepot, CheckProvider):
                 if isinstance(document, SkillDocument):
                     document.text()
                 if document.target in outputs:
-                    report("duplicate-output", document.target)
+                    report(DuplicateOutput, document.target)
                 outputs.add(document.target)
                 if document.target not in {self.path(p) for p in self.data["files"]}:
-                    report("output-not-deployed", document.target)
+                    report(OutputNotDeployed, document.target)
                 for finding in document.lint(freshness=False):
-                    findings.append({**finding, "path": source})
+                    findings.append(finding.at(path=source))
             except (OSError, ValueError, KeyError, TypeError) as exc:
-                report("invalid-source", source, str(exc))
+                report(InvalidSource, source, str(exc))
         for value in self.data["files"]:
             if not self.path(value).is_file():
-                report("missing-consumer-file", value)
+                report(MissingConsumerFile, value)
             elif value.endswith(".md"):
                 # Output conformance only: never contributes loading edges.
                 for link in re.findall(r"\]\(([^\s)]+)\)", self.path(value).read_text()):
@@ -257,21 +253,21 @@ class SkwSkill(SkwDepot, CheckProvider):
                     target = (self.path(value).parent / unquote(parts.path)).resolve()
                     if target.is_relative_to(self.root):
                         if target not in {self.path(p) for p in self.data["files"]}:
-                            report("unbundled-link", value, link)
+                            report(UnbundledLink, value, link)
                     else:
                         owners = [(self.root / d["path"]).resolve()
                                   for d in self.data.get("dependencies", [])
                                   if d["kind"] == "skill" and "consumer" in d["purposes"]]
                         if not any(target.is_relative_to(owner) for owner in owners):
-                            report("undeclared-consumer-link", value, link)
+                            report(UndeclaredConsumerLink, value, link)
                     if not target.is_file():
-                        report("missing-link-target", value, link)
+                        report(MissingLinkTarget, value, link)
         for dependency in self.data.get("dependencies", []):
             target = (self.root / dependency["path"]).resolve()
             if dependency["kind"] == "skill":
                 target /= "SKILL.md"
             if not target.is_file():
-                report("missing-dependency", target, ",".join(dependency["purposes"]))
+                report(MissingDependency, target, ",".join(dependency["purposes"]))
         return findings
 
     def build(self):
@@ -318,13 +314,12 @@ SKILLS_RECORD_TYPES = (
     PublicationLockRecord,
     LoadingRecord,
     *SKILL_COMPONENT_TYPES,
-    *CLASSES.values(),
+    *SkwPOI.__subclasses__(),  # its atomic cases
     *READING_CHECK_TYPES,
     SkwAnalysisCheck,
     GenerationFreshnessCheck,
     ContextFreshnessCheck,
     GenerationContextResolutionCheck,
-    DiagramAssessment,
 )
 
 

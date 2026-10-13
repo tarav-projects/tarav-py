@@ -18,6 +18,7 @@ from tarav.l0.kernel import (
 )
 from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, CheckSuite
 from tarav.l1.settings import SettingsProvider, SettingsValues
+from tarav.l1.skw import pois as skw
 from tarav.l1.skw.document import Document, SKW_CODE_RECORD_TYPES, SkwBlock
 
 from .workflow import PROJECT_WORKFLOW_SHIP
@@ -69,11 +70,11 @@ class TaravSystemPrompt(SkwBlock):
     def produce(self, document: Document) -> list[str]:
         return _prompt_lines()
 
-    def output_findings(self, document: Document, lock_entry: dict) -> list[dict]:
+    def output_findings(self, document: Document, lock_entry: dict) -> list[skw.Finding]:
         findings = super().output_findings(document, lock_entry)
         if self.get("content") != self.produce(document):
-            findings.append({"kind": "stale-produced-output", "block": self.label,
-                             "detail": str(PROMPT_SOURCE)})
+            findings.append(skw.Finding(skw.StaleProducedOutput, block=self.label,
+                                        detail=str(PROMPT_SOURCE)))
         return findings
 
 
@@ -423,20 +424,21 @@ class AgentsMdLintKindUnrecognized(AgentsMdProductPOI):
                           name="Tarav.Project.Agents.Product.LintKindUnrecognized", workflow=PROJECT_WORKFLOW_SHIP)
 
 
-# Skillware lint kinds are that linter's keys; each selects one atomic POI Type here.
+# tarav.breadcrumb 774da0f859f206730f229473c73f2a6ce3e7b8d32299b76d0daa715235dc5a7f
+# What the Skillware lint finds in the agents file's source, as this file's own POI Type.
 _PRODUCT_POI = {
-    "invalid-source": AgentsMdSourceInvalid,
-    "source-uncompiled": AgentsMdSourceUncompiled,
-    "product-unavailable": AgentsMdProductUnavailable,
-    "product-drift": AgentsMdProductDrift,
-    "missing-content": AgentsMdBlockContentMissing,
-    "stale-generation": AgentsMdGenerationStale,
-    "context-unresolvable": AgentsMdContextUnresolvable,
-    "context-unobserved": AgentsMdContextUnobserved,
-    "stale-context": AgentsMdContextStale,
-    "output-changed": AgentsMdOutputChanged,
-    "invalid-annotation": AgentsMdAnnotationInvalid,
-    "invalid-produced-output": AgentsMdProducedOutputInvalid,
+    skw.InvalidSource: AgentsMdSourceInvalid,
+    skw.SourceUncompiled: AgentsMdSourceUncompiled,
+    skw.ProductUnavailable: AgentsMdProductUnavailable,
+    skw.ProductDrift: AgentsMdProductDrift,
+    skw.MissingContent: AgentsMdBlockContentMissing,
+    skw.StaleGeneration: AgentsMdGenerationStale,
+    skw.ContextUnresolvable: AgentsMdContextUnresolvable,
+    skw.ContextUnobserved: AgentsMdContextUnobserved,
+    skw.StaleContext: AgentsMdContextStale,
+    skw.OutputChanged: AgentsMdOutputChanged,
+    skw.InvalidAnnotation: AgentsMdAnnotationInvalid,
+    skw.InvalidProducedOutput: AgentsMdProducedOutputInvalid,
 }
 
 
@@ -585,13 +587,13 @@ class AgentsMdProductCheck(_AgentsCheck):
                 raise ValueError("Skillware source targets a different agents file")
             findings = document.lint()
         except (OSError, ValueError, TypeError, KeyError) as exc:
-            findings = [{"kind": "invalid-source", "detail": str(exc)}]
+            findings = [skw.Finding(skw.InvalidSource, detail=str(exc))]
         pois = tuple(
-            self.poi(_PRODUCT_POI.get(finding["kind"], AgentsMdLintKindUnrecognized),
-                         f"Agents file: {finding['kind']}",
-                         detail=finding.get("detail", "") or finding["kind"])
+            self.poi(_PRODUCT_POI.get(finding.poi, AgentsMdLintKindUnrecognized),
+                     f"Agents file: {finding.poi.statement}",
+                     detail=finding.get("detail") or "")
             for finding in findings
-            if finding["kind"] != "stale-produced-output"
+            if finding.poi is not skw.StaleProducedOutput
         )
         return CheckResult(self, status="completed", pois=pois)
 

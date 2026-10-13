@@ -7,7 +7,14 @@ from tarav.l1.checks import Check, CheckResult
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.skw.loading import SkillReadingGraph
 
-from .pois import CLASSES, surface_state
+from tarav.l1.skw.pois import (
+    AttachmentCycle, Finding, InclusionCycle, InvalidBlockReference, InvalidContextTarget,
+    InvalidLoadingRoot, InvalidParent, LoadingAnalysisIncomplete, MissingContext,
+    PathDependentContext, RootHasParent, UnannotatedOutputLink, UndeclaredBlock,
+    UnreachableBlock,
+)
+
+from .pois import surface_state
 
 
 # tarav.breadcrumb 0172e2d45dbdb798abc6c154643755217d95a7ff03a42343a5378cd3c75fd586
@@ -30,8 +37,6 @@ class ReadingGraphCheck(Check):
 
 # tarav.breadcrumb 15c7f0c5dc4cf892b31d5923a4c1aae4594dbf3283bf2431bc95b9dcab2f78ba
     def _poi(self, finding):
-        kind = finding["kind"]
-        cls = CLASSES[kind]
         block = finding.get("block")
         binding = self.graph.bindings.get(block)
         subject = {"project": str(self.graph.package.root),
@@ -43,19 +48,15 @@ class ReadingGraphCheck(Check):
             subject["path"] = [
                 str(self.graph.bindings[node][1].id) if node in self.graph.bindings else node
                 for node in finding["path"]]
-        evidence = {"finding": finding,
-                    "check": {"type": entity(type(self)).name},
-                    "loading": str(self.graph.source),
-                    "surface_state": surface_state(self.graph.package)}
+        state = surface_state(self.graph.package)
         # a reader knows a block by its document and label, not by its node id
         where = f"{binding[0].key}: {binding[1].label}" if binding else None
-        return cls.poi(
+        return finding.poi.poi(
             self,
-            situation={
-                "subject": subject,
-                "surface_state": evidence["surface_state"],
-            },
-            details=evidence,
+            situation={"subject": subject, "surface_state": state},
+            finding=finding,
+            details={"check": {"type": entity(type(self)).name},
+                     "loading": str(self.graph.source), "surface_state": state},
             where=where,
         )
 
@@ -74,12 +75,10 @@ class ReadingDeclarationsCheck(ReadingGraphCheck):
 
     def _run(self):
         analysis = self._analysis()
-        kinds = {"invalid-block-reference", "undeclared-block", "invalid-parent",
-                 "invalid-context-target", "invalid-loading-root", "root-has-parent",
-                 "unannotated-output-link"}
-        return self._result(analysis, ({"kind": d["code"], **{k: v for k, v in d.items()
-                                                                if k != "code"}}
-                                       for d in analysis["diagnostics"] if d["code"] in kinds))
+        mine = (InvalidBlockReference, UndeclaredBlock, InvalidParent, InvalidContextTarget,
+                InvalidLoadingRoot, RootHasParent, UnannotatedOutputLink)
+        return self._result(analysis, (found for found in analysis["diagnostics"]
+                                       if found.poi in mine))
 
 
 class ReadingDependenciesCheck(ReadingGraphCheck):
@@ -97,14 +96,14 @@ class ReadingDependenciesCheck(ReadingGraphCheck):
             key = (observation["block"], observation["target"], observation["delivery"])
             by_requirement[key].append(observation)
             if not observation["satisfied"]:
-                findings.append({"kind": "missing-context", **{
-                    key: value for key, value in observation.items() if key != "satisfied"}})
+                findings.append(Finding(MissingContext, **{
+                    key: value for key, value in observation.items() if key != "satisfied"}))
         for (block, target, delivery), observations in by_requirement.items():
             if any(value["satisfied"] for value in observations) and not all(
                 value["satisfied"] for value in observations
             ):
-                findings.append({"kind": "path-dependent-context", "block": block,
-                                 "target": target, "delivery": delivery})
+                findings.append(Finding(PathDependentContext, block=block, target=target,
+                                        delivery=delivery))
         return self._result(analysis, findings)
 
 
@@ -117,11 +116,9 @@ class ReadingCoverageCheck(ReadingGraphCheck):
 
     def _run(self):
         analysis = self._analysis()
-        kinds = {"unreachable-block", "attachment-cycle", "inclusion-cycle",
-                 "loading-analysis-incomplete"}
-        return self._result(analysis, ({"kind": d["code"], **{k: v for k, v in d.items()
-                                                                if k != "code"}}
-                                       for d in analysis["diagnostics"] if d["code"] in kinds))
+        mine = (UnreachableBlock, AttachmentCycle, InclusionCycle, LoadingAnalysisIncomplete)
+        return self._result(analysis, (found for found in analysis["diagnostics"]
+                                       if found.poi in mine))
 
 
 READING_CHECK_TYPES = (ReadingDeclarationsCheck, ReadingDependenciesCheck,
