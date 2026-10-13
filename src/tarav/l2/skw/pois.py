@@ -5,6 +5,7 @@ skw/document.py. Only annotation omissions and semantic freshness
 questions permit attributed acceptance. Structural failures require repair.
 """
 from copy import deepcopy
+from pathlib import Path
 
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TypeShip
@@ -43,6 +44,21 @@ class SkwPOI(CheckPOI):
                             where=where),
             situation=situation,
             details=details,
+        )
+
+    @classmethod
+    def from_finding(cls, check, raw, state):
+        """The POI of one analysis finding. `state` is the package's file state.
+
+        This is the general Skillware line: the place of the finding plus the
+        state of the whole package. A Type that can name its own state overrides it.
+        """
+        subject = {'project': str(check.package.root),
+                   **{k: raw[k] for k in ('block', 'path', 'target', 'delivery', 'code') if k in raw}}
+        return cls.poi(
+            check,
+            situation={"subject": subject, "surface_state": state},
+            details={'finding': raw, 'surface_state': state},
         )
 
 
@@ -702,6 +718,28 @@ class ProductDrift(SkwPOI):
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
+    context_notes = (
+        'Either side may be the newer one: read the difference before compiling, since compiling '
+        'replaces the file with what the source produces.',
+        'It is no longer raised once the file and what its source produces are the same text.',
+    )
+
+    @classmethod
+    # tarav.breadcrumb 3eb40ba8c8c58e9e0ce65142bc077c76f435c823ae1a3d357edfcc3c1e7ade5c
+    # tarav.breadcrumb f41a5d6353932a38b2690134f9db371f0f2e6d656baf7b5079d954337e68520f
+    def from_finding(cls, check, raw, state):
+        """The situation is what was compared: the file, its text and the text its source produces."""
+        root = check.package.root
+        product = Path(raw['product'])
+        return cls(
+            check,
+            f"{root.name}: {product.relative_to(root)} differs from what its "
+            f"source produces ({raw['detail']})",
+            situation={'product': str(product), 'actual': raw['actual'],
+                       'expected': raw['expected']},
+            details={'finding': raw},
+        )
+
 
 class DiagramAssessment(SkwPOI):
     """A Diagram renderer returned an assessment finding; inspect its evidence."""
@@ -913,14 +951,7 @@ def _analysis_pois(check):
         if kind is not None and kind not in CLASSES:
             raise ValueError(f'Unregistered SKW POI kind: {kind}')
         cls = CLASSES[kind] if kind is not None else DiagramAssessment
-        subject = {'project': str(package.root),
-                   **{k: raw[k] for k in ('block', 'path', 'target', 'delivery', 'code') if k in raw}}
-        evidence = {'finding': raw, 'surface_state': state}
-        yield cls.poi(
-            check,
-            situation={"subject": subject, "surface_state": state},
-            details=evidence,
-        )
+        yield cls.from_finding(check, raw, state)
 
 
 def collect(package, findings):

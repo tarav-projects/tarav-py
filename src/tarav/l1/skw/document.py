@@ -1,6 +1,7 @@
 """Typed generation source and deterministic whole-document compilation."""
 from __future__ import annotations
 
+import difflib
 import json
 import hashlib
 from collections.abc import Iterator, Mapping
@@ -284,6 +285,18 @@ def _block_registry(registry: TypeRegistry[TaravObject] | None) -> TypeRegistry:
         return _skw_registry()
 
 
+def _difference(actual: str, expected: str) -> tuple[int, int]:
+    """How far two texts are apart: the places that differ, and the lines in them."""
+    places = lines = 0
+    blocks = difflib.SequenceMatcher(None, actual.splitlines(), expected.splitlines(),
+                                     autojunk=False).get_opcodes()
+    for tag, a1, a2, b1, b2 in blocks:
+        if tag != "equal":
+            places += 1
+            lines += max(a2 - a1, b2 - b1)
+    return places, lines
+
+
 class Document:
     """Load a fresh source for each operation. Storage is explicitly single-writer."""
 
@@ -545,8 +558,8 @@ class Document:
 
     def lint(self, *, freshness=True):
         findings = []
-        def report(kind, block=None, detail=""):
-            findings.append({"kind": kind, "block": block, "detail": detail})
+        def report(kind, block=None, detail="", **observed):
+            findings.append({"kind": kind, "block": block, "detail": detail, **observed})
         entry = self.lock()["documents"].get(self.key, {})
         for identity, block in self.blocks.items():
             generation = block.annotation(GenerationAnnotation)
@@ -583,7 +596,11 @@ class Document:
             report("product-unavailable", detail=str(exc))
         else:
             if expected is not None and actual != expected:
-                report("product-drift")
+                # tarav.breadcrumb a999689284b97d615e42359cc326363dff9073a0cafd1d17a9882859f0a50e5c
+                places, lines = _difference(actual, expected)
+                report("product-drift", detail=f"{places} places, {lines} lines",
+                       product=str(self.target), actual=_hash(actual),
+                       expected=_hash(expected), places=places, lines=lines)
         return findings
 
     def compile(self):

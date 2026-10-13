@@ -207,3 +207,44 @@ def test_the_package_suite_detects_what_the_skill_command_shows(tmp_path):
     # the suite a Project runs and the skill command agree on what they find
     assert kinds(found) == kinds(skill.evaluate().pois)
     assert skill.checks.suite().identity == {"type": "Tarav.Checks.Suite", "key": tmp_path.name}
+
+
+# tarav.breadcrumb 82935932a297a50ab9c5849ee8aa5a7723673f80895d916211bab92cff53fbcf
+def test_a_product_drift_declares_what_was_compared(tmp_path):
+    from tarav.l2.skw.pois import ProductDrift
+
+    source, data = _document_source(tmp_path)
+    data["blocks"][1]["content"] = ["The program prints one."]
+    source.write_text(json.dumps(data))
+    (tmp_path / "context.txt").write_text("available")
+    assert Document(source).compile()["written"]
+    skill = _skill(tmp_path)
+    product = tmp_path / "explanation.md"
+    compiled = product.read_text()
+
+    def drift():
+        return [poi for poi in skill.checks.run().pois() if isinstance(poi, ProductDrift)]
+
+    product.write_text(compiled + "\nA line written by hand.\n")
+    (first,) = drift()
+    assert set(first.situation) == {"product", "actual", "expected"}
+    assert first.situation["product"] == str(product.resolve())
+    assert first.situation["actual"] != first.situation["expected"]
+    assert first.message == (f"{tmp_path.name}: explanation.md differs from what its "
+                             "source produces (1 places, 2 lines)")
+    assert "surface_state" not in first.details
+
+    # another file of the package changes: the same drift, the same POI
+    main = tmp_path / ".skw/main.json"
+    main.write_text(main.read_text() + "\n")
+    (same,) = drift()
+    assert same.identity == first.identity
+
+    # the compiled file changes again: another drift
+    product.write_text(compiled + "\nAnother line written by hand.\n")
+    (other,) = drift()
+    assert other.identity != first.identity
+    assert other.situation["expected"] == first.situation["expected"]
+
+    product.write_text(compiled)
+    assert drift() == []
