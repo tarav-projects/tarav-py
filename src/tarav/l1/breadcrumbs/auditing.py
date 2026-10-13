@@ -17,9 +17,10 @@ from tarav.l1.surfaces.python import PythonNormalModel
 from tarav.l1.surfaces.typescript import TypeScriptNormalModel
 from tarav.l1.references.git import GitCommitMessagePositionTarget
 
-from .store import BreadcrumbError, BreadcrumbResolution, BreadcrumbResolutionPOI, BreadcrumbStore
-from .store import BreadcrumbPositionAmbiguous as ResolutionPositionAmbiguous
-from .store import BreadcrumbPositionMissing as ResolutionPositionMissing
+from .store import (
+    BreadcrumbError, BreadcrumbPositionAmbiguous, BreadcrumbPositionMissing,
+    BreadcrumbResolution, BreadcrumbResolutionPOI, BreadcrumbStore,
+)
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
 from .surfaces import UNSUPPORTED_LANGUAGE, BreadcrumbSurface, infer_surface_language
 from .workflows import BreadcrumbAnnotationWorkflow
@@ -113,22 +114,31 @@ class BreadcrumbRecordUnavailable(BreadcrumbAuditPOI):
                           name='Tarav.Breadcrumbs.Audit.POI.RecordUnavailable', workflow=BREADCRUMBS_WORKFLOW_SHIP)
 
 
-class BreadcrumbPositionMissing(BreadcrumbAuditPOI):
-    """No recorded position contains the Breadcrumb's label."""
+class LabelWithoutPosition(BreadcrumbAuditPOI):
+    """A label on the audited surface belongs to a Breadcrumb that no recorded position contains.
+
+    The audit asks the store where the Breadcrumb is; this is the store's
+    `Resolution.PositionMissing`, stated for one label on one line of one file.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip('d28f9d43-1f76-46ef-aa36-2bb4a031331c'),
-                          name='Tarav.Breadcrumbs.Audit.POI.PositionMissing', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+                          name='Tarav.Breadcrumbs.Audit.POI.LabelWithoutPosition', workflow=BREADCRUMBS_WORKFLOW_SHIP)
 
 
-class BreadcrumbPositionAmbiguous(BreadcrumbAuditPOI):
-    """Several recorded positions contain the Breadcrumb's label."""
+class LabelWithSeveralPositions(BreadcrumbAuditPOI):
+    """A label on the audited surface belongs to a Breadcrumb that several recorded positions
+    contain, so which one is the Breadcrumb cannot be told.
+
+    This is the store's `Resolution.PositionAmbiguous`, stated for one label
+    on one line of one file.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip('9f6b2541-e9af-4502-ac9f-dfced8bbe1c1'),
-                          name='Tarav.Breadcrumbs.Audit.POI.PositionAmbiguous', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+                          name='Tarav.Breadcrumbs.Audit.POI.LabelWithSeveralPositions', workflow=BREADCRUMBS_WORKFLOW_SHIP)
 
 
 class BreadcrumbPositionDisagrees(BreadcrumbAuditPOI):
@@ -250,8 +260,8 @@ class CommitEvidenceRegistrationIncomplete(BreadcrumbAuditPOI):
 
 def audit_type(poi: BreadcrumbResolutionPOI) -> type[BreadcrumbAuditPOI]:
     """The audit's POI Type for what resolving a Breadcrumb found."""
-    return {ResolutionPositionMissing: BreadcrumbPositionMissing,
-            ResolutionPositionAmbiguous: BreadcrumbPositionAmbiguous}[type(poi)]
+    return {BreadcrumbPositionMissing: LabelWithoutPosition,
+            BreadcrumbPositionAmbiguous: LabelWithSeveralPositions}[type(poi)]
 
 
 class BreadcrumbPositionUpdated(NotificationPOI):
