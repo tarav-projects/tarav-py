@@ -66,21 +66,21 @@ class SkwPOI(CheckPOI):
         )
 
     @classmethod
-    def from_finding(cls, check, finding, state):
-        """The POI of one analysis finding. `state` is the package's file state.
+    def from_finding(cls, check, finding, *, root, state=None):
+        """The POI of one analysis finding, raised by `check`.
 
-        This is the general Skillware line: the place of the finding plus the
-        state of the whole package. A Type that can name its own state overrides it.
+        `root` is the folder the analysed document belongs to: a skill
+        package, or a Project for its agents file. `state` is the file state
+        of a package, when the check has one. This is the general Skillware
+        line: the place of the finding, plus that state. A Type that can name
+        its own state overrides it.
         """
-        subject = {'project': str(check.package.root),
+        subject = {'project': str(root),
                    **{k: finding[k] for k in ('block', 'path', 'target', 'delivery')
                       if k in finding}}
-        return cls.poi(
-            check,
-            situation={"subject": subject, "surface_state": state},
-            finding=finding,
-            details={'surface_state': state},
-        )
+        held = {} if state is None else {"surface_state": state}
+        return cls.poi(check, situation={"subject": subject, **held}, finding=finding,
+                       details=held)
 
 
 # tarav.breadcrumb d745f68d7e9441efda0d3f5e255e9a09840c5b55a3aace602b3a188c481ef66c
@@ -697,9 +697,9 @@ class ProductDrift(SkwPOI):
     @classmethod
     # tarav.breadcrumb 3eb40ba8c8c58e9e0ce65142bc077c76f435c823ae1a3d357edfcc3c1e7ade5c
     # tarav.breadcrumb f41a5d6353932a38b2690134f9db371f0f2e6d656baf7b5079d954337e68520f
-    def from_finding(cls, check, finding, state):
+    def from_finding(cls, check, finding, *, root, state=None):
         """The situation is what was compared: the file, its text and the text its source produces."""
-        root = check.package.root
+        root = Path(root)
         product = Path(finding['product'])
         return cls(
             check,

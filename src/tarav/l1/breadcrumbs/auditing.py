@@ -17,7 +17,9 @@ from tarav.l1.surfaces.python import PythonNormalModel
 from tarav.l1.surfaces.typescript import TypeScriptNormalModel
 from tarav.l1.references.git import GitCommitMessagePositionTarget
 
-from .store import BreadcrumbError, BreadcrumbResolution, BreadcrumbStore, resolution_concern_kind
+from .store import BreadcrumbError, BreadcrumbResolution, BreadcrumbResolutionPOI, BreadcrumbStore
+from .store import BreadcrumbPositionAmbiguous as ResolutionPositionAmbiguous
+from .store import BreadcrumbPositionMissing as ResolutionPositionMissing
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
 from .surfaces import UNSUPPORTED_LANGUAGE, BreadcrumbSurface, infer_surface_language
 from .workflows import BreadcrumbAnnotationWorkflow
@@ -38,9 +40,11 @@ class SurfaceBreadcrumbLabel:
 
 @dataclass(frozen=True, slots=True)
 class BreadcrumbAuditConcern:
-    """Transient input to the bound audit Check, never a retained POI."""
+    """What an audit found, before the bound audit Check raises it: the POI Type
+    that states it, and where. Transient input, never a retained POI.
+    """
 
-    code: str
+    poi: "type[BreadcrumbAuditPOI]"
     message: str
     breadcrumb_id: str | None = None
     line: int | None = None
@@ -244,34 +248,10 @@ class CommitEvidenceRegistrationIncomplete(BreadcrumbAuditPOI):
                           name='Tarav.Breadcrumbs.Audit.POI.CommitEvidence.RegistrationIncomplete', workflow=BREADCRUMBS_WORKFLOW_SHIP)
 
 
-class BreadcrumbAuditConcernUnrecognized(BreadcrumbAuditPOI):
-    """An annotation workflow reported an audit concern this check does not classify."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip('81ca16a4-9273-4ed4-a179-8e491e1cc05e'),
-                          name='Tarav.Breadcrumbs.Audit.POI.ConcernUnrecognized', workflow=BREADCRUMBS_WORKFLOW_SHIP)
-
-
-# Audit concerns are transient inputs keyed by their producer; each key selects one POI Type.
-AUDIT_POI_TYPES = {
-    'breadcrumb-record-unavailable': BreadcrumbRecordUnavailable,
-    'breadcrumb-position-missing': BreadcrumbPositionMissing,
-    'breadcrumb-position-ambiguous': BreadcrumbPositionAmbiguous,
-    'breadcrumb-position-disagrees': BreadcrumbPositionDisagrees,
-    'breadcrumb-position-refresh-failed': BreadcrumbPositionRefreshFailed,
-    'breadcrumb-attachment-missing': BreadcrumbAttachmentMissing,
-    'breadcrumb-label-malformed': BreadcrumbLabelMalformed,
-    'chatlas-context-attachment-invalid': ChatlasContextAttachmentInvalid,
-    'chatlas-context-attachment-missing': ChatlasContextAttachmentMissing,
-    'chatlas-context-attachment-multiple': ChatlasContextAttachmentMultiple,
-    'chatlas-context-marker-malformed': ChatlasContextMarkerMalformed,
-    'chatlas-context-marker-unsubmitted': ChatlasContextMarkerUnsubmitted,
-    'chatlas-context-turn-not-user': ChatlasContextTurnNotUser,
-    'chatlas-context-turn-unavailable': ChatlasContextTurnUnavailable,
-    'commit-evidence-invalid': CommitEvidenceInvalid,
-    'commit-evidence-registration-incomplete': CommitEvidenceRegistrationIncomplete,
-}
+def audit_type(poi: BreadcrumbResolutionPOI) -> type[BreadcrumbAuditPOI]:
+    """The audit's POI Type for what resolving a Breadcrumb found."""
+    return {ResolutionPositionMissing: BreadcrumbPositionMissing,
+            ResolutionPositionAmbiguous: BreadcrumbPositionAmbiguous}[type(poi)]
 
 
 class BreadcrumbPositionUpdated(NotificationPOI):
@@ -312,14 +292,7 @@ class BreadcrumbAuditCheck(Check):
                        **({'breadcrumb_id': item.breadcrumb_id}
                           if item.breadcrumb_id else {}),
                        **({'line': item.line} if item.line is not None else {})}
-            case = AUDIT_POI_TYPES.get(item.code, BreadcrumbAuditConcernUnrecognized)
-            return case(
-                self,
-                item.message,
-                situation=details,
-                details=details if case is not BreadcrumbAuditConcernUnrecognized
-                else {**details, 'concern': item.code},
-            )
+            return item.poi(self, item.message, situation=details, details=details)
 
         return CheckResult(self, status='completed', pois=(
             poi(item) for item in concerns
@@ -419,7 +392,7 @@ def audit_annotations(
                     store.observe_position(label.breadcrumb_id, file=str(path), line=label.line)
                 except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
                     findings.append(BreadcrumbAuditConcern(
-                        "breadcrumb-position-refresh-failed", str(exc),
+                        BreadcrumbPositionRefreshFailed, str(exc),
                         label.breadcrumb_id, label.line))
                 else:
                     updates.append({"breadcrumb_id": label.breadcrumb_id,
@@ -430,7 +403,7 @@ def audit_annotations(
         except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
             findings.append(
                 BreadcrumbAuditConcern(
-                    "breadcrumb-record-unavailable",
+                    BreadcrumbRecordUnavailable,
                     str(exc),
                     label.breadcrumb_id,
                     label.line,
@@ -440,7 +413,7 @@ def audit_annotations(
             for poi in resolution.pois:
                 findings.append(
                     BreadcrumbAuditConcern(
-                        resolution_concern_kind(poi),
+                        audit_type(poi),
                         poi.message,
                         label.breadcrumb_id,
                         label.line,
@@ -452,7 +425,7 @@ def audit_annotations(
             ):
                 findings.append(
                     BreadcrumbAuditConcern(
-                        "breadcrumb-position-disagrees",
+                        BreadcrumbPositionDisagrees,
                         "Resolved Breadcrumb position disagrees with this surface label.",
                         label.breadcrumb_id,
                         label.line,
@@ -461,7 +434,7 @@ def audit_annotations(
             if not attachments:
                 findings.append(
                     BreadcrumbAuditConcern(
-                        "breadcrumb-attachment-missing",
+                        BreadcrumbAttachmentMissing,
                         "Breadcrumb has no retained workflow attachment.",
                         label.breadcrumb_id,
                         label.line,
@@ -533,7 +506,7 @@ def _surface_labels(
         if match is None:
             findings.append(
                 BreadcrumbAuditConcern(
-                    "breadcrumb-label-malformed",
+                    BreadcrumbLabelMalformed,
                     "Surface comment contains a malformed Breadcrumb label.",
                     line=line,
                 )

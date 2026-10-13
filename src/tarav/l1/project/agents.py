@@ -200,15 +200,6 @@ class ProjectSystemPromptPOI(CheckPOI):
                           name="Tarav.Project.Agents.ProjectSystemPromptPOI", workflow=PROJECT_WORKFLOW_SHIP)
 
 
-class AgentsMdProductPOI(CheckPOI):
-    """Family, never raised: the agents file and its source disagree or cannot be compared."""
-    context_notes = (_AGENTS_READING, 'The source is what is edited, never the product; compiling makes them agree, and lint shows the finding.', _USER_FIRST)
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("d8353b6d-e8a7-46a7-ba8b-f21a1bc2b775"),
-                          name="Tarav.Project.Agents.ProductPOI", workflow=PROJECT_WORKFLOW_SHIP)
-
-
 class AgentsAliasPOI(CheckPOI):
     """Family, never raised: a declared alias is not a symlink to the main agents file."""
     context_notes = (_AGENTS_READING, 'It is no longer raised once each declared alias is a symlink to the main agents file.', _USER_FIRST)
@@ -304,142 +295,6 @@ class ProjectSystemPromptEmpty(ProjectSystemPromptPOI):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("2f73606f-67a5-4ea3-ba56-65eec05b73ce"),
                           name="Tarav.Project.Agents.ProjectSystemPrompt.Empty", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdSourceInvalid(AgentsMdProductPOI):
-    """The agents file's Skillware source is absent, unreadable, or targets another file."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("ce5e32ca-8a77-4262-9223-3f26889c6786"),
-                          name="Tarav.Project.Agents.Product.SourceInvalid", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdSourceUncompiled(AgentsMdProductPOI):
-    """The agents file's Skillware source changed since it was last compiled."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("fcef7496-c4e3-485a-984f-66e576fc5bc3"),
-                          name="Tarav.Project.Agents.Product.SourceUncompiled", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdProductUnavailable(AgentsMdProductPOI):
-    """The compiled agents file cannot be read."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("bad48c96-de97-4565-a239-7c1d37e744a3"),
-                          name="Tarav.Project.Agents.Product.Unavailable", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdProductDrift(AgentsMdProductPOI):
-    """The agents file differs from what its Skillware source compiles to."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("1d2ad6ad-b45f-4464-9693-1dc17d9dab74"),
-                          name="Tarav.Project.Agents.Product.Drift", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdBlockContentMissing(AgentsMdProductPOI):
-    """A block of the agents file's source has no content."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("f0e543fd-8895-42c2-bb3b-304a8d68ab62"),
-                          name="Tarav.Project.Agents.Product.BlockContentMissing", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdGenerationStale(AgentsMdProductPOI):
-    """A generated block of the agents file's source has changed inputs."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("fd214588-75f2-4038-97cc-e84bdb0ed5ec"),
-                          name="Tarav.Project.Agents.Product.GenerationStale", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdContextUnresolvable(AgentsMdProductPOI):
-    """A block of the agents file's source declares context that cannot be resolved."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("61f5339d-907a-41c7-8f2b-c8dbe1b2c42b"),
-                          name="Tarav.Project.Agents.Product.ContextUnresolvable", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdContextUnobserved(AgentsMdProductPOI):
-    """A block of the agents file's source has context that was never observed."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("a0d942d7-d28e-439b-8850-35aa8efaf76b"),
-                          name="Tarav.Project.Agents.Product.ContextUnobserved", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdContextStale(AgentsMdProductPOI):
-    """A block of the agents file's source has context that changed since it was observed."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("a408b430-ce4e-4dae-a827-0a9894a7cc0a"),
-                          name="Tarav.Project.Agents.Product.ContextStale", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdOutputChanged(AgentsMdProductPOI):
-    """A tracked block of the agents file's source was edited outside a recorded generation."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("94eb724b-3098-4775-9d70-9609a4b08340"),
-                          name="Tarav.Project.Agents.Product.OutputChanged", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdAnnotationInvalid(AgentsMdProductPOI):
-    """A generation annotation of the agents file's source disagrees with its lock."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("a804590d-9ee9-42ba-aef3-68055833644f"),
-                          name="Tarav.Project.Agents.Product.AnnotationInvalid", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class AgentsMdProducedOutputInvalid(AgentsMdProductPOI):
-    """A produced block of the agents file's source cannot compute its output."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("c8c1e97f-8373-49b1-ade2-c1b9b3bd3447"),
-                          name="Tarav.Project.Agents.Product.ProducedOutputInvalid", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-# tarav.breadcrumb e89ee6a0f00a183a370aee37c7e80d0a659a41c54ae6c552f30be16e18ca96f9
-class AgentsMdLintKindUnrecognized(AgentsMdProductPOI):
-    """Skillware lint reported an unknown kind about the agents file."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("454c1852-10ef-4901-bd77-6b64a977bd89"),
-                          name="Tarav.Project.Agents.Product.LintKindUnrecognized", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-# tarav.breadcrumb 774da0f859f206730f229473c73f2a6ce3e7b8d32299b76d0daa715235dc5a7f
-# What the Skillware lint finds in the agents file's source, as this file's own POI Type.
-_PRODUCT_POI = {
-    skw.InvalidSource: AgentsMdSourceInvalid,
-    skw.SourceUncompiled: AgentsMdSourceUncompiled,
-    skw.ProductUnavailable: AgentsMdProductUnavailable,
-    skw.ProductDrift: AgentsMdProductDrift,
-    skw.MissingContent: AgentsMdBlockContentMissing,
-    skw.StaleGeneration: AgentsMdGenerationStale,
-    skw.ContextUnresolvable: AgentsMdContextUnresolvable,
-    skw.ContextUnobserved: AgentsMdContextUnobserved,
-    skw.StaleContext: AgentsMdContextStale,
-    skw.OutputChanged: AgentsMdOutputChanged,
-    skw.InvalidAnnotation: AgentsMdAnnotationInvalid,
-    skw.InvalidProducedOutput: AgentsMdProducedOutputInvalid,
-}
 
 
 class AgentsAliasMissing(AgentsAliasPOI):
@@ -588,11 +443,16 @@ class AgentsMdProductCheck(_AgentsCheck):
             findings = document.lint()
         except (OSError, ValueError, TypeError, KeyError) as exc:
             findings = [skw.Finding(skw.InvalidSource, detail=str(exc))]
+        # tarav.breadcrumb 774da0f859f206730f229473c73f2a6ce3e7b8d32299b76d0daa715235dc5a7f
+        # the agents file is a Skillware document: what its lint finds is said by the
+        # Skillware POI Types themselves, as it is for a document of a skill package
+        root = Path(self.agents.project.root)
+        source = self.agents.source
+        source = str(source.relative_to(root) if source.is_relative_to(root) else source)
         pois = tuple(
-            self.poi(_PRODUCT_POI.get(finding.poi, AgentsMdLintKindUnrecognized),
-                     f"Agents file: {finding.poi.statement}",
-                     detail=finding.get("detail") or "")
+            finding.poi.from_finding(self, finding.at(path=source), root=root)
             for finding in findings
+            # the Tarav System Prompt check states that case itself
             if finding.poi is not skw.StaleProducedOutput
         )
         return CheckResult(self, status="completed", pois=pois)
@@ -629,22 +489,18 @@ class AgentsAliasCheck(_AgentsCheck):
 
 PROJECT_AGENTS_RECORD_TYPES = (
     AgentsMd, TaravSystemPrompt, ProjectSystemPrompt,
-    TaravSystemPromptPOI, ProjectSystemPromptPOI, AgentsMdProductPOI,
+    TaravSystemPromptPOI, ProjectSystemPromptPOI,
     AgentsAliasPOI, TaravSystemPromptCheck, ProjectSystemPromptCheck,
     AgentsMdProductCheck, AgentsAliasCheck,
     TaravSystemPromptSourceUnavailable, TaravSystemPromptMissing, TaravSystemPromptDuplicated,
     TaravSystemPromptStale, ProjectSystemPromptSourceUnavailable, ProjectSystemPromptMissing,
-    ProjectSystemPromptDuplicated, ProjectSystemPromptEmpty, AgentsMdSourceInvalid,
-    AgentsMdSourceUncompiled, AgentsMdProductUnavailable, AgentsMdProductDrift,
-    AgentsMdBlockContentMissing, AgentsMdGenerationStale, AgentsMdContextUnresolvable,
-    AgentsMdContextUnobserved, AgentsMdContextStale, AgentsMdOutputChanged,
-    AgentsMdAnnotationInvalid, AgentsMdProducedOutputInvalid, AgentsMdLintKindUnrecognized,
+    ProjectSystemPromptDuplicated, ProjectSystemPromptEmpty,
     AgentsAliasMissing, AgentsAliasNotSymlink, AgentsAliasWrongTarget,
 )
 
 __all__ = [
     "AgentsAliasCheck", "AgentsAliasPOI", "AgentsMd", "AgentsMdProductCheck",
-    "AgentsMdProductPOI", "PROJECT_AGENTS_RECORD_TYPES", "ProjectSystemPrompt",
+    "PROJECT_AGENTS_RECORD_TYPES", "ProjectSystemPrompt",
     "ProjectSystemPromptCheck", "ProjectSystemPromptPOI", "PROMPT_SOURCE",
     "TaravSystemPrompt", "TaravSystemPromptCheck", "TaravSystemPromptPOI",
 ]

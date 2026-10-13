@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: implemented, with point 6 open.
+Status: implemented.
 
 A Skillware POI has two names: its Type, such as
 `Tarav.SKW.POI.UnreachableBlock`, and a lowercase string, such as
@@ -156,3 +156,21 @@ its POI Type"; daily 2026-10-13).
   `tarav-md/skills/tarav-hugentics/AGENTS.md`.
 - Noticed, not changed: the Breadcrumb audit maps string concerns to POI
   Types through a table of the same kind.
+- Point 6, decided by the user on 2026-10-13: option (a). The Agents file
+  check raises the Skillware Types themselves; its table, its family
+  `AgentsMdProductPOI` and the thirteen Types under it are deleted.
+  `SkwPOI.from_finding(check, finding, *, root, state=None)` takes the folder
+  the document belongs to, so it serves a package and a Project.
+- The user asked for the same in the Breadcrumb audit. A
+  `BreadcrumbAuditConcern` holds its POI Type; the table of sixteen strings,
+  `resolution_concern_kind` and the Type for an unrecognised concern are
+  deleted. The producers in `l2/breadcrumb_workflows` and `l2/git` name the
+  Types.
+- Left: resolving a Breadcrumb has two POI Types, position missing and
+  position ambiguous, and the audit has two Types of the same names. The
+  audit chooses its Type from the resolution's through `audit_type()`. They
+  are mirror Types like those of the Agents file were; merging them changes
+  what a resolution POI is, so it was not done.
+- Checks after these two: Ruff clean; the whole `tests/` folder passes
+  except `test_scoped_lines`; `tarav status --project .` changes nothing;
+  a Breadcrumb audit of a real file prints its Types.

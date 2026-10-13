@@ -255,7 +255,7 @@ def _analysis_pois(check):
     for finding in check.findings:
         if finding.poi in FRESHNESS:
             raise ValueError("Freshness findings must be produced by SituationChecks")
-        yield finding.poi.from_finding(check, finding, state)
+        yield finding.poi.from_finding(check, finding, root=check.package.root, state=state)
 
 
 def collect(package, findings):

@@ -94,17 +94,6 @@ class BreadcrumbPositionAmbiguous(BreadcrumbResolutionPOI):
                           workflow=BREADCRUMBS_WORKFLOW_SHIP)
 
 
-_RESOLUTION_CONCERN_KIND = {
-    BreadcrumbPositionMissing: "breadcrumb-position-missing",
-    BreadcrumbPositionAmbiguous: "breadcrumb-position-ambiguous",
-}
-
-
-def resolution_concern_kind(poi: BreadcrumbResolutionPOI) -> str:
-    """Translate an atomic POI for the audit Check's input vocabulary."""
-    return _RESOLUTION_CONCERN_KIND[type(poi)]
-
-
 @dataclass(frozen=True, slots=True)
 class BreadcrumbResolution:
     breadcrumb: Breadcrumb
@@ -422,5 +411,4 @@ __all__ = [
     "breadcrumb_label",
     "default_breadcrumbs_root",
     "parse_breadcrumb_label",
-    "resolution_concern_kind",
 ]

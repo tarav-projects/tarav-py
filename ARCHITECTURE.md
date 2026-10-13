@@ -795,8 +795,9 @@ under a family parent that is never raised (for example
 `isinstance`. An analysis that runs outside a check says what it found with
 the POI Type that states it: a Skillware finding (`tarav.l1.skw.pois.Finding`)
 holds the class, and the Skillware POI Types live beside that analysis in
-layer 1. There is no second name for a Type. The Breadcrumb audit still maps
-a string concern to a POI Type through a small table next to its check.
+layer 1. The agents file of a Project is a Skillware document, so its check
+raises those same Types. A Breadcrumb audit concern holds its POI Type in
+the same way. There is no second name for a Type.
 Reports group and filter by
 Type, check or identity. Breadcrumb, Reference resolution, and Diagram
 validation use atomic identified POI families. Diagram Draft schema 2 retains

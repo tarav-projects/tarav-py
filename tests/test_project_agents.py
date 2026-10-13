@@ -10,11 +10,11 @@ import pytest
 
 from tarav.l0.kernel import entity
 from tarav.l1.project import TaravProject
+from tarav.l1.skw.pois import ProductDrift
 from tarav.l1.project.agents import (
     AgentsAliasMissing,
     AgentsAliasNotSymlink,
     AgentsAliasWrongTarget,
-    AgentsMdProductDrift,
     ProjectSystemPrompt,
     ProjectSystemPromptEmpty,
     ProjectSystemPromptPOI,
@@ -101,7 +101,7 @@ def test_custom_depot_produce_compile_and_drift(tmp_path: Path) -> None:
     assert document.compile()["written"]
     assert _pois(project) == ()
     agents.path.write_text("changed\n")
-    assert any(isinstance(p, AgentsMdProductDrift)
+    assert any(isinstance(p, ProductDrift)
                for p in _pois(project))
 
 

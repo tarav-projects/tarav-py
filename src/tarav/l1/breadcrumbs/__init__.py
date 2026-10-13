@@ -21,7 +21,6 @@ from .store import (
     breadcrumb_label,
     default_breadcrumbs_root,
     parse_breadcrumb_label,
-    resolution_concern_kind,
 )
 from .surfaces import (
     BreadcrumbSurface,
@@ -66,6 +65,5 @@ __all__ = [
     "breadcrumb_label",
     "default_breadcrumbs_root",
     "parse_breadcrumb_label",
-    "resolution_concern_kind",
     "submit_annotations",
 ]
