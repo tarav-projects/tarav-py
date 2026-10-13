@@ -236,7 +236,10 @@ def test_a_product_drift_declares_what_was_compared(tmp_path):
     assert first.situation["actual"] != first.situation["expected"]
     assert first.message == (f"{tmp_path.name}: explanation.md differs from what its "
                              "source produces (1 places, 2 lines)")
-    assert "surface_state" not in first.details
+    assert set(first.details) == {"source", "difference"}
+    assert first.details["source"] == str(source.resolve())
+    assert first.details["difference"][-1] == "-A line written by hand."
+    assert not set(first.details) & set(first.situation)
 
     # another file of the package changes: the same drift, the same POI
     main = tmp_path / ".skw/main.json"
@@ -256,7 +259,6 @@ def test_a_product_drift_declares_what_was_compared(tmp_path):
 
 # tarav.breadcrumb f38c67b3208d0992bd9f3fdb72418be0d592ab312e0f8c8a328aa47db2bb4cf4
 def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
-    from tarav.l0.kernel import entity
     from tarav.l1.skw import pois as skw
 
     atomic = skw.SkwPOI.__subclasses__()
@@ -286,7 +288,8 @@ def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
     assert all("kind" not in found.to_json() for found in findings)
     for poi in _skill(tmp_path).checks.run().pois():
         if isinstance(poi, skw.SkwPOI):
-            assert poi.details["finding"]["type"] == entity(type(poi)).name
-            assert "kind" not in poi.details["finding"]
+            # the details repeat nothing of the situation, and name no kind
+            assert "finding" not in poi.details and "surface_state" not in poi.details
+            assert "kind" not in poi.records.to_record()["details"]
             assert isinstance(poi, skw.ProductDrift) or poi.message.startswith(
                 type(poi).statement)

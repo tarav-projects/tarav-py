@@ -48,16 +48,18 @@ class SkwPOI(CheckPOI):
         """Build one SKW POI from what the analysis found.
 
         `where` names the place for a reader, when the finding itself only
-        has an internal id for it. `details` is what the check adds for the
-        reader beside the finding.
+        has an internal id for it. The details are what the finding observed
+        beyond the situation, and what the check adds for the reader; nothing
+        of the situation is repeated in them.
         """
         found = finding.data if finding is not None else {}
         if where is None:
             where = ": ".join(found[key] for key in ("path", "block")
                               if isinstance(found.get(key), str) and found[key])
-        details = dict(details or {})
-        if finding is not None:
-            details["finding"] = finding.to_json()
+        place = situation.get("subject") or {}
+        details = {**{key: value for key, value in found.items()
+                      if key not in place and value not in (None, "")},
+                   **(details or {})}
         return cls(
             check,
             cls.sentence(where=where, target=found.get("target"), detail=found.get("detail")),
@@ -79,8 +81,7 @@ class SkwPOI(CheckPOI):
                    **{k: finding[k] for k in ('block', 'path', 'target', 'delivery')
                       if k in finding}}
         held = {} if state is None else {"surface_state": state}
-        return cls.poi(check, situation={"subject": subject, **held}, finding=finding,
-                       details=held)
+        return cls.poi(check, situation={"subject": subject, **held}, finding=finding)
 
 
 # tarav.breadcrumb d745f68d7e9441efda0d3f5e255e9a09840c5b55a3aace602b3a188c481ef66c
@@ -707,7 +708,9 @@ class ProductDrift(SkwPOI):
             f"source produces ({finding['detail']})",
             situation={'product': str(product), 'actual': finding['actual'],
                        'expected': finding['expected']},
-            details={'finding': finding.to_json()},
+            # what helps whoever works on it: the source to edit, and the lines
+            details={'source': str(root / finding['path']) if finding.get('path') else None,
+                     'difference': list(finding.get('difference') or ())},
         )
 
 

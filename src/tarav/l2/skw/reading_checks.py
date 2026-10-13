@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 
-from tarav.l0.kernel import TaravClass, TypeShip, entity
+from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.checks import Check, CheckResult
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.skw.loading import SkillReadingGraph
@@ -55,8 +55,7 @@ class ReadingGraphCheck(Check):
             self,
             situation={"subject": subject, "surface_state": state},
             finding=finding,
-            details={"check": {"type": entity(type(self)).name},
-                     "loading": str(self.graph.source), "surface_state": state},
+            details={"loading": str(self.graph.source)},
             where=where,
         )
 

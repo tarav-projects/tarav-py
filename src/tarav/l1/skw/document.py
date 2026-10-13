@@ -289,16 +289,25 @@ def _block_registry(registry: TypeRegistry[TaravObject] | None) -> TypeRegistry:
         return _skw_registry()
 
 
-def _difference(actual: str, expected: str) -> tuple[int, int]:
-    """How far two texts are apart: the places that differ, and the lines in them."""
+def _difference(actual: str, expected: str, *, limit: int = 40) -> tuple[int, int, list[str]]:
+    """How far two texts are apart: the places that differ, the lines in them, and
+    those lines for a reader, `-` for the file and `+` for what its source produces.
+    """
     places = lines = 0
-    blocks = difflib.SequenceMatcher(None, actual.splitlines(), expected.splitlines(),
-                                     autojunk=False).get_opcodes()
-    for tag, a1, a2, b1, b2 in blocks:
-        if tag != "equal":
-            places += 1
-            lines += max(a2 - a1, b2 - b1)
-    return places, lines
+    shown: list[str] = []
+    have, want = actual.splitlines(), expected.splitlines()
+    for tag, a1, a2, b1, b2 in difflib.SequenceMatcher(None, have, want,
+                                                      autojunk=False).get_opcodes():
+        if tag == "equal":
+            continue
+        places += 1
+        lines += max(a2 - a1, b2 - b1)
+        shown.append(f"@@ line {a1 + 1}")
+        shown.extend(f"-{line}" for line in have[a1:a2])
+        shown.extend(f"+{line}" for line in want[b1:b2])
+    if len(shown) > limit:
+        shown = [*shown[:limit], f"… {len(shown) - limit} more lines"]
+    return places, lines, shown
 
 
 class Document:
@@ -601,10 +610,10 @@ class Document:
         else:
             if expected is not None and actual != expected:
                 # tarav.breadcrumb a999689284b97d615e42359cc326363dff9073a0cafd1d17a9882859f0a50e5c
-                places, lines = _difference(actual, expected)
+                places, lines, shown = _difference(actual, expected)
                 report(ProductDrift, detail=f"{places} places, {lines} lines",
                        product=str(self.target), actual=_hash(actual),
-                       expected=_hash(expected), places=places, lines=lines)
+                       expected=_hash(expected), difference=shown)
         return findings
 
     def compile(self):

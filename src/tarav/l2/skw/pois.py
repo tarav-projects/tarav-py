@@ -78,7 +78,6 @@ class GenerationContextResolutionCheck(Check):
                 finding=Finding(ContextUnresolvable, path=self.document.key,
                                 block=self.block.label, context_index=self.index,
                                 detail=str(exc)),
-                details={"declaration": deepcopy(self.declaration)},
             )
             return CheckResult(self, status="completed", pois=(poi,))
         return CheckResult(
@@ -121,14 +120,9 @@ def _freshness_result(check, *, poi_type, baseline_key, current_key):
     current = check.situation[current_key]
     if baseline == current:
         return CheckResult(check, status="completed")
-    finding = Finding(poi_type, **{
-        key: subject[key] for key in ("path", "block") if key in subject
-    })
-    poi = check.poi(
-        poi_type,
-        message=poi_type.sentence(where=": ".join(str(value) for value in finding.data.values())),
-        details={"finding": finding.to_json(), "baseline": baseline, "current": current},
-    )
+    # the situation holds both sides already; there is nothing more to tell
+    where = ": ".join(str(subject[key]) for key in ("path", "block") if key in subject)
+    poi = check.poi(poi_type, message=poi_type.sentence(where=where))
     return CheckResult(check, status="completed", pois=(poi,))
 
 

@@ -179,9 +179,9 @@ class POIResolutionAction(StepAction):
             poi, chain = found
             change = None
             fresh = _event(poi, chain)
-            if _shown(event) != _shown(fresh):
+            if event != fresh:
                 # the same POI, raised again with other words or other details:
-                # the action shows the POI as it is raised now
+                # the action keeps the POI as it is raised now
                 run.data["event"] = event = fresh
                 change = "updated"
             if situation != PRESENT:
@@ -275,12 +275,6 @@ def _event(poi: SituationPOI, suites: tuple[dict, ...] = ()) -> dict:
     return {"blessable": isinstance(poi, BlessablePOI), "poi": poi.records.to_record(),
             "check": {"type": entity(type(check)).name} if check is not None else None,
             "suites": [dict(suite) for suite in suites]}
-
-
-def _shown(event: dict) -> dict:
-    """An event without the POI's details: they are a courtesy and decide nothing."""
-    poi = {key: value for key, value in (event.get("poi") or {}).items() if key != "details"}
-    return {**event, "poi": poi}
 
 
 def _type_entry(cls: type | None, name: str | None) -> object:
