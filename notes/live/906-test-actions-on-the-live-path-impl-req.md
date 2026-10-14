@@ -141,4 +141,10 @@ graph allows and record it.
   ignored.
 - Breadcrumbs: audited ok on `l2/tests/actions.py`, `l2/project/__init__.py`,
   `tests/test_actions_pois.py`, `ARCHITECTURE.md`, this note and the Wiki.
+- Completion commit `38d7ac4` (tarav-py) and `11c92af` (tarav-md Wiki and
+  step-actions), both through `tarav git commit` with Breadcrumb evidence.
+- The live scenario, continued after the commit: with `tarav-py` clean, the
+  next run logged `clean` at `38d7ac4` and the advice became empty; deleting
+  `.tarav/tests/` closed the action as gone, logged `closed gone` at
+  `38d7ac4`, clean. The action stays in the registry, closed.
 
