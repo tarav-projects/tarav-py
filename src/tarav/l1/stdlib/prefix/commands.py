@@ -6,11 +6,8 @@ import json
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.l0._core.project import (
-    load_project_config,
-    require_explicit_agentos_project,
-)
-from tarav.l0._core.project_command_log import record_project_command_from_args
+from tarav.l0.project import load_project_config, require_explicit_agentos_project
+from tarav.l0.project.command_log import record_project_command_from_args
 from tarav.l0._core.scan import DEFAULT_SCAN_EXCLUDES
 from tarav.l0._core.scan import resolve_relative_paths_under_root
 

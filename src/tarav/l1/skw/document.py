@@ -85,7 +85,6 @@ class SkillwareWorkflow(TaravWorkflow):
     @classmethod
     def _workflow_id(cls):
         return SKILLWARE_WORKFLOW_SHIP
-    workflow_name = "skillware"
     constitution = "Contain the workflows used to develop and deploy Skillware surfaces."
 
 
@@ -268,13 +267,14 @@ SKW_CODE_RECORD_TYPES = (
 
 def _skw_registry() -> TypeRegistry[TaravObject]:
     from tarav.l1.references.workflow import REFERENCE_RECORD_TYPES
-    from .code import READING_DECLARATION_TYPES, READING_ENTRY_TYPES
+    from .code import LINK_PROSE_TYPES, READING_DECLARATION_TYPES, READING_ENTRY_TYPES
 
     return TypeRegistry(TaravObject, (
         *SKW_CODE_RECORD_TYPES,
         *REFERENCE_RECORD_TYPES,
         *READING_DECLARATION_TYPES,
         *READING_ENTRY_TYPES,
+        *LINK_PROSE_TYPES,
     ))
 
 

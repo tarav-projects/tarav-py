@@ -4,6 +4,7 @@ from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip
 from tarav.l1.context import ContextFolder
 from .workflow import LinesWorkflow
 from .identity import LINES_WORKFLOW_SHIP
+from .block import Block
 
 
 class Line(TaravEntity):
@@ -102,4 +103,4 @@ class LineScope(ContextFolder):
         return self.subject.scope
 
 
-__all__ = ["Line", "LineScope", "LinesWorkflow"]
+__all__ = ["Block", "Line", "LineScope", "LinesWorkflow"]

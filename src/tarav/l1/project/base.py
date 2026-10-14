@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from tarav.l0._core.project import project_marker_name, require_agentos_project
+from tarav.l0.project import project_marker_name, require_agentos_project
 from tarav.l0.kernel import NamespaceBase, Ship, TaravClass, TaravEntity, TypeShip, entity
 from tarav.l1.checks import CheckProvider, CheckSuite
 from tarav.l1.loading import LoadingProfile
@@ -41,12 +41,21 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
         def suite(self) -> CheckSuite:
             return CheckSuite([self.obj.agents.agents_md.checks.suite(),
                                self.obj.agents.skills.checks.suite()],
-                              name=self.obj.name)
+                              name=self.obj.name, repositories=self.obj.repositories())
 
         # tarav.breadcrumb 47c83896e2f3b52b8445023094aea20efa16beb513be9c96d448cf803024086a
         def own(self) -> CheckSuite:
             """The checks of this Project alone, without those of its member Projects."""
             return self.suite()
+
+    # tarav.breadcrumb a0b3336717d2a701c4ffecb72778440cc9c4df2a0cf9eff07400b3edd5aa6e49
+    def repositories(self) -> tuple[Path, ...]:
+        """Folders in the Git repositories this Project's checks read; its suites declare them.
+
+        By default the Project's root. A Project whose checks read another
+        repository says so here.
+        """
+        return (self.root,)
 
     def members(self) -> tuple["TaravProject", ...]:
         """The Projects this one contains and can load here. None for a plain Project."""

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Mapping, Sequence
 
-from tarav.l0._core.project import require_agentos_project
+from tarav.l0.project import require_agentos_project
 from tarav.l2.unsorted.evidence import ChatlasEvidence
 from tarav.l2.unsorted.storage import DiagramConfiguration
 from tarav.l2.unsorted.primitives import DiagramError

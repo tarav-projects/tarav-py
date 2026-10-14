@@ -22,7 +22,6 @@ class ContextWorkflow(TaravWorkflow, ContextType):
             workflow=CONTEXT_WORKFLOW_SHIP,
         )
 
-    workflow_name = "context"
     constitution = (
         "Provide read-only progressive Context navigation and retain identified "
         "subjects' Context entries through Record Archive."

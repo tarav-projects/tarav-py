@@ -10,7 +10,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarav.l0._core.project import tarav_home_dir
+from tarav.l0._core.home import tarav_home_dir
 from tarav.l1.hooks import HookRegistry
 
 from .client import daemon_status

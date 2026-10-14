@@ -7,6 +7,7 @@ from .repository import (
     GitRepository,
     git_bytes,
     git_text,
+    repository_states,
 )
 from .workflow import GIT_WORKFLOW_SHIP, GitWorkflow
 
@@ -19,4 +20,5 @@ __all__ = [
     "GitWorkflow",
     "git_bytes",
     "git_text",
+    "repository_states",
 ]

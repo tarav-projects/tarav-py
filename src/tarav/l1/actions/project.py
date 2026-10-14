@@ -98,7 +98,7 @@ class ProjectActions:
                 run = self.runs.find(key)
                 if run is None:
                     run = resolve_action(type(poi).action).opened(
-                        poi, project=self.project, at=at, suites=chain)
+                        poi, project=self.project, at=at, suites=chain, git=result.git)
                 else:
                     run.data["project"] = self.project
                 changed[key] = run

@@ -6,7 +6,6 @@ OPERATOR_CONTEXT_WORKFLOW_SHIP = WorkflowShip("302c88fa-1ba8-43e0-837c-9ca727dd1
 
 
 class OperatorContextWorkflow(TaravWorkflow):
-    workflow_name = "operator-context"
     constitution = (
         "Give operators a standard place for the typed objects they hand to "
         "other workflows, and let those workflows take them under their own control."

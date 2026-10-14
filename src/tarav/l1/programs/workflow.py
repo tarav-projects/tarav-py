@@ -6,7 +6,6 @@ PROGRAMS_WORKFLOW_SHIP = WorkflowShip("d19da6bb-08cb-49ba-a61f-4655ff0c7c89")
 
 
 class ProgramsWorkflow(TaravWorkflow):
-    workflow_name = "programs"
     constitution = "Provide extensible typed Programs for organizing chosen work."
 
     @classmethod

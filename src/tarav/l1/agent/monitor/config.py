@@ -8,7 +8,7 @@ from pathlib import Path
 
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.path_validation import validate_string_for_path
-from tarav.l0._core.project import tarav_home_dir
+from tarav.l0._core.home import tarav_home_dir
 from tarav.l1.agent import auth_registry
 from tarav.l1.agent.config import (
     AgentConfigSource,

@@ -566,7 +566,6 @@ class RecordArchiveWorkflow(TaravWorkflow, ArchiveType):
             workflow=RECORD_ARCHIVE_WORKFLOW_SHIP,
         )
 
-    workflow_name = "record-archive"
     constitution = (
         "Provide explicitly located, typed Archives for retaining Tarav Records "
         "without owning the stored objects' domain meaning."

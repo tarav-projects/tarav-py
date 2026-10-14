@@ -10,7 +10,7 @@ import sys
 from typing import Any
 
 from tarav.l0._core.clock import iso_z
-from tarav.l0._core.project import tarav_home_dir
+from tarav.l0._core.home import tarav_home_dir
 
 
 OPERATIONAL_LOG_CLASS = "tarav.operational-log"

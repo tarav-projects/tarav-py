@@ -27,10 +27,10 @@ from tarav.l1.archive.records import (
     ArchiveList,
 )
 from tarav.l3.runtime import create_runtime
-from tarav.l2.test_workflow import TestItem as WorkspaceItem
-from tarav.l2.test_workflow import TestEntity as WorkspaceEntity
-from tarav.l2.test_workflow import TestWorkflow as WorkspaceWorkflow
-from tarav.l2.test_workflow import TEST_WORKFLOW_SHIP
+from tarav.l2.tests.navigation import TestItem as WorkspaceItem
+from tarav.l2.tests.navigation import TestEntity as WorkspaceEntity
+from tarav.l2.tests.navigation import NavigationTestsWorkflow as WorkspaceWorkflow
+from tarav.l2.tests.navigation import NAVIGATION_TESTS_WORKFLOW_SHIP
 
 
 class ExternalWorkspaceItem(WorkspaceItem):
@@ -40,7 +40,7 @@ class ExternalWorkspaceItem(WorkspaceItem):
             target=cls,
             id=TypeShip("0827c57e-1cf9-4b75-9c9d-c1332ddca986"),
             name="Tarav.Test.ExternalItem",
-            workflow=TEST_WORKFLOW_SHIP,
+            workflow=NAVIGATION_TESTS_WORKFLOW_SHIP,
         )
 
     class RecordInterface(WorkspaceItem.RecordInterface):
@@ -49,7 +49,7 @@ class ExternalWorkspaceItem(WorkspaceItem):
 
 def test_test_workflow_stores_and_reopens_both_archive_structures(tmp_path) -> None:
     runtime = get_runtime()
-    workflow = runtime.workflows.get("test")
+    workflow = runtime.workflows.get("Tarav.Workflow.Tests.Navigation")
     assert workflow is WorkspaceWorkflow
     archive = ArchiveRoot(tmp_path / "archive")
     partition = archive.for_workflow(workflow)
@@ -138,7 +138,7 @@ def test_test_workflow_stores_and_reopens_both_archive_structures(tmp_path) -> N
 
 
 def test_archive_entries_can_open_and_navigate_nested_typed_archives(tmp_path) -> None:
-    workflow = get_runtime().workflows.get("test")
+    workflow = get_runtime().workflows.get("Tarav.Workflow.Tests.Navigation")
     archive = ArchiveRoot(tmp_path / "archive")
     run = archive.for_workflow(workflow).create_directory("nested-run")
     named = run.create_dictionary("named", constitution="Named examples")
@@ -233,7 +233,7 @@ def test_archive_creation_is_explicit_and_never_overwrites_a_root(tmp_path) -> N
 
 
 def test_git_config_can_create_a_new_repository_at_a_child(tmp_path) -> None:
-    workflow = get_runtime().workflows.get("test")
+    workflow = get_runtime().workflows.get("Tarav.Workflow.Tests.Navigation")
     partition = ArchiveRoot(tmp_path / "archive").for_workflow(workflow)
     run = partition.create_directory("run")
     config = run.git_config_path
@@ -258,7 +258,7 @@ def test_git_config_can_create_a_new_repository_at_a_child(tmp_path) -> None:
 def test_git_policy_stops_at_workflow_boundary_and_rejects_invalid_config(
     tmp_path,
 ) -> None:
-    workflow = get_runtime().workflows.get("test")
+    workflow = get_runtime().workflows.get("Tarav.Workflow.Tests.Navigation")
     archive = ArchiveRoot(tmp_path / "archive")
     partition = archive.for_workflow(workflow)
     partition.directory.mkdir(parents=True)
@@ -292,7 +292,7 @@ def test_archive_root_git_is_not_inherited_and_existing_nested_repos_still_open(
     root = tmp_path / "archive"
     root.mkdir()
     subprocess.run(["git", "init", "--quiet", str(root)], check=True)
-    workflow = get_runtime().workflows.get("test")
+    workflow = get_runtime().workflows.get("Tarav.Workflow.Tests.Navigation")
     partition = ArchiveRoot(root).for_workflow(workflow)
     run = partition.create_directory("run")
     assert (run.directory / ".git").is_dir()
@@ -331,7 +331,7 @@ def test_archive_tree_navigates_placements_without_changing_workflow_objects(
     tmp_path,
 ) -> None:
     runtime = get_runtime()
-    workflow = runtime.workflows.get("test")
+    workflow = runtime.workflows.get("Tarav.Workflow.Tests.Navigation")
     root = tmp_path / "archive"
     run = "12345678123456781234567812345678"
     archive = ArchiveRoot(root)

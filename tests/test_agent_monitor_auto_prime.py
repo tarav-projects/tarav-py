@@ -34,7 +34,6 @@ from tarav.l1.agent.monitor.workflows.state import (
 from tarav.l1.agent.monitor.workflows._common import _target_key
 from tarav.l1.agent.ping import AgentPingResult
 
-NOW = datetime.datetime.now(tz=datetime.UTC)
 FIRED = MonitorClockSnapshot(
     tick=1, alarms={}, fired_alarm_names=(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,)
 )
@@ -47,9 +46,24 @@ def _target(account: str, provider: str = "codex") -> MonitorTarget:
 
 
 def _reading(
-    target: MonitorTarget, *, used_percent: int | None, status: str = "ok"
+    target: MonitorTarget,
+    *,
+    elapsed_mins: int | None,
+    status: str = "ok",
+    used_percent: int = 0,
 ) -> LimitsTargetState:
-    limits = [] if used_percent is None else [_limit(used_percent=used_percent, now=NOW)]
+    """A 300-minute burst window with ``elapsed_mins`` already elapsed."""
+    limits = (
+        []
+        if elapsed_mins is None
+        else [
+            _limit(
+                used_percent=used_percent,
+                now=datetime.datetime.now(tz=datetime.UTC),
+                end_offset_mins=300 - elapsed_mins,
+            )
+        ]
+    )
     return LimitsTargetState(
         provider=target.provider,
         account=target.account,
@@ -59,7 +73,7 @@ def _reading(
     )
 
 
-def _workflow(*targets: MonitorTarget, threshold: float = 5) -> AutoPrimeZeroLimitsWorkflow:
+def _workflow(*targets: MonitorTarget, threshold: float = 3) -> AutoPrimeZeroLimitsWorkflow:
     return AutoPrimeZeroLimitsWorkflow(
         MonitorWorkflowConfig(
             name=AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
@@ -107,36 +121,50 @@ def pings(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     return SimpleNamespace(accounts=pinged, events=events)
 
 
-def test_pings_only_targets_whose_burst_is_below_threshold(pings: SimpleNamespace) -> None:
-    low, at, high = _target("low"), _target("at"), _target("high")
-    state = _state(
-        (low, _reading(low, used_percent=4)),
-        (at, _reading(at, used_percent=5)),
-        (high, _reading(high, used_percent=60)),
+def test_pings_only_targets_whose_burst_window_is_not_running(
+    pings: SimpleNamespace,
+) -> None:
+    fresh, expired, running, busy = (
+        _target("fresh"),
+        _target("expired"),
+        _target("running"),
+        _target("busy"),
     )
-    workflow = _workflow(low, at, high)
+    state = _state(
+        (fresh, _reading(fresh, elapsed_mins=5)),
+        (expired, _reading(expired, elapsed_mins=320)),
+        (running, _reading(running, elapsed_mins=10)),
+        (busy, _reading(busy, elapsed_mins=120, used_percent=1)),
+    )
+    workflow = _workflow(fresh, expired, running, busy)
 
     workflow.loop(state, MonitorFrame(tick=1), FIRED)
 
-    assert pings.accounts == ["low"]
+    assert pings.accounts == ["fresh", "expired"]
     workflow_state = state.data[AUTO_PRIME_ZERO_LIMITS_WORKFLOW]
-    assert workflow_state.last_scan == {"tick": 1, "pinged": 1, "failed": 0}
-    assert _auto_prime_status_part(workflow_state.targets[_target_key(low)]) == (
+    assert workflow_state.last_scan == {"tick": 1, "pinged": 2, "failed": 0}
+    assert workflow_state.targets[_target_key(running)].burst_elapsed_percent == 3.3
+    assert _auto_prime_status_part(workflow_state.targets[_target_key(fresh)]) == (
         "ping ok just now"
     )
-    assert _auto_prime_status_part(workflow_state.targets[_target_key(high)]) is None
+    assert _auto_prime_status_part(workflow_state.targets[_target_key(busy)]) is None
 
 
-def test_pings_again_each_interval_while_burst_stays_low(pings: SimpleNamespace) -> None:
+def test_does_not_ping_again_once_the_window_has_started(
+    pings: SimpleNamespace,
+) -> None:
     idle = _target("idle")
-    state = _state((idle, _reading(idle, used_percent=0)))
+    state = _state((idle, _reading(idle, elapsed_mins=0)))
     workflow = _workflow(idle)
 
     workflow.loop(state, MonitorFrame(tick=1), FIRED)
+    state.data[LIMITS_TRACKING_WORKFLOW].targets[_target_key(idle)] = _reading(
+        idle, elapsed_mins=10
+    )
     workflow.loop(state, MonitorFrame(tick=2), MonitorClockSnapshot(2, {}, ()))
     workflow.loop(state, MonitorFrame(tick=3), FIRED)
 
-    assert pings.accounts == ["idle", "idle"]
+    assert pings.accounts == ["idle"]
 
 
 def test_skips_targets_without_an_ok_burst_reading(pings: SimpleNamespace) -> None:
@@ -147,8 +175,8 @@ def test_skips_targets_without_an_ok_burst_reading(pings: SimpleNamespace) -> No
         _target("untracked"),
     )
     state = _state(
-        (errored, _reading(errored, used_percent=0, status="error")),
-        (empty, _reading(empty, used_percent=None)),
+        (errored, _reading(errored, elapsed_mins=0, status="error")),
+        (empty, _reading(empty, elapsed_mins=None)),
     )
 
     _workflow(errored, empty, missing, untracked).loop(
@@ -160,7 +188,7 @@ def test_skips_targets_without_an_ok_burst_reading(pings: SimpleNamespace) -> No
 
 def test_failed_ping_is_recorded_and_logged(pings: SimpleNamespace) -> None:
     broken = _target("broken")
-    state = _state((broken, _reading(broken, used_percent=0)))
+    state = _state((broken, _reading(broken, elapsed_mins=0)))
     frame = MonitorFrame(tick=1)
 
     _workflow(broken).loop(state, frame, FIRED)
@@ -220,7 +248,7 @@ def _load_with_targets(
     return loaded
 
 
-def test_config_defaults_to_ten_minutes_and_five_percent(
+def test_config_defaults_to_ten_minutes_and_three_percent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     loaded = _load_with_targets(
@@ -228,7 +256,7 @@ def test_config_defaults_to_ten_minutes_and_five_percent(
     )
 
     assert loaded.refresh_interval_sec == 600
-    assert loaded.threshold_percent == 5
+    assert loaded.threshold_percent == 3
 
 
 def test_config_rejects_providers_other_than_codex_and_claude(

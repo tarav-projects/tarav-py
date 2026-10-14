@@ -58,7 +58,7 @@ class VersionedEntity(TaravEntity):
 def test_records_workflow_explores_mounted_sources_and_entity_occurrences(tmp_path):
     # tarav.breadcrumb 2b9eaf3c981b3e51f8247714c7fc865ccef4a87852d26039d75a08b8a13664d4
     runtime = create_runtime()
-    assert runtime.workflows.get("records") is TaravRecords
+    assert runtime.workflows.get("Tarav.Workflow.Records") is TaravRecords
     root = tmp_path / "typed"
     root.mkdir()
     (root / "system.json").write_text(json.dumps(TARAV.records.to_record()))
@@ -93,7 +93,7 @@ def test_scoring_repository_contributes_its_own_storage_layout(tmp_path):
     ScoringRepository.initialize(tmp_path / "scoring")
     config = tmp_path / "runtime.json"
     config.write_text(json.dumps({
-        "providers": [{"name": "scoring", "workflow": "scoring", "root": "scoring"}],
+        "providers": [{"name": "scoring", "workflow": "Tarav.Workflow.Scoring", "root": "scoring"}],
     }))
     runtime = create_runtime(config=config)
 
@@ -160,7 +160,7 @@ def test_standard_registry_retains_typed_current_and_exact_git_editions(tmp_path
 
     config = tmp_path / "registry-runtime.json"
     config.write_text(json.dumps({
-        "providers": [{"name": "standard", "workflow": "records", "root": "standard"}],
+        "providers": [{"name": "standard", "workflow": "Tarav.Workflow.Records", "root": "standard"}],
     }))
     reloaded = create_runtime(config=config, record_types=(VersionedEntity,))
     assert isinstance(

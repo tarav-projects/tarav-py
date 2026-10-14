@@ -6,7 +6,6 @@ WIKI_WORKFLOW_SHIP = WorkflowShip("9f226798-f201-431b-bc2e-a77a2e48bc53")
 
 
 class WikiWorkflow(TaravWorkflow):
-    workflow_name = "wiki"
     constitution = (
         "Organize Markdown notes and capture supported discussion into a Wiki."
     )

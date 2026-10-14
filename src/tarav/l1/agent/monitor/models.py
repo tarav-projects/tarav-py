@@ -12,7 +12,8 @@ ACCOUNT_ROTATION_WORKFLOW = "account-rotation"
 AUTO_PRIME_ZERO_LIMITS_WORKFLOW = "auto-prime-zero-limits"
 LIMITS_TRACKING_WORKFLOW = "limits-tracking"
 AUTO_PRIME_DEFAULT_INTERVAL_SEC = 600
-AUTO_PRIME_DEFAULT_THRESHOLD_PERCENT = 5
+# Percent of the burst window's duration already elapsed.
+AUTO_PRIME_DEFAULT_THRESHOLD_PERCENT = 3
 
 
 @dataclass(frozen=True)

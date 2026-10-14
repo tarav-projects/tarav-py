@@ -24,7 +24,6 @@ _COMMAND_NAMESPACE = UUID("568520b3-d876-43cb-8bfd-6c2e4f13d5a0")
 
 # tarav.breadcrumb 4d74d3599852862caba881695d886f0407039f0012b353ce9cafe7e9777b2daa
 class CliWorkflow(TaravWorkflow):
-    workflow_name = "cli"
     constitution = "Expose the installed Tarav command tree as inspectable objects."
 
     @classmethod

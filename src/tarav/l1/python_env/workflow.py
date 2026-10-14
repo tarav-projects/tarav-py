@@ -7,7 +7,6 @@ PYTHON_WORKFLOW_SHIP = WorkflowShip("d0e3b953-4526-4ea4-b404-19a67ce5638c")
 
 
 class PythonWorkflow(TaravWorkflow):
-    workflow_name = "python"
     constitution = "Configure and execute explicit Python operations."
 
     @classmethod

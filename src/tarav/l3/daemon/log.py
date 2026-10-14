@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from tarav.l0._core.clock import iso_z
-from tarav.l0._core.project import tarav_home_dir
+from tarav.l0._core.home import tarav_home_dir
 from tarav.l1.hooks import HookInvocation
 
 

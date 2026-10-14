@@ -24,6 +24,7 @@ from .graph import ReadingGraph
 from .reading import (
     READING_DECLARATION_TYPES,
     READING_ENTRY_TYPES,
+    LINK_PROSE_TYPES,
     BlockEntry,
     ConsultationLink,
     Contains,
@@ -32,6 +33,8 @@ from .reading import (
     FileEntry,
     IncludesBlock,
     InlineDependency,
+    LinkProse,
+    MarkdownProse,
     ReadingDeclaration,
     ReadingDependency,
     ReadingEntry,
@@ -46,7 +49,6 @@ from .reading import (
 class CodeWorkflow(TaravWorkflow):
     """Own the source model and common mechanics used to build SKW surfaces."""
 
-    workflow_name = "skw.code"
     constitution = (
         "Develop typed instruction surfaces as inspectable source and compile "
         "them into ordinary reader-facing products."
@@ -75,6 +77,7 @@ __all__ = [
     "BLOCK_OBJECT_TYPES",
     "READING_DECLARATION_TYPES",
     "READING_ENTRY_TYPES",
+    "LINK_PROSE_TYPES",
     "SKW_CODE_RECORD_TYPES",
     "BlockAnnotation",
     "BlockEntry",
@@ -90,7 +93,9 @@ __all__ = [
     "GenerationRecord",
     "IncludesBlock",
     "InlineDependency",
+    "LinkProse",
     "LockRecord",
+    "MarkdownProse",
     "ObjectIndexReference",
     "ReadingDeclaration",
     "ReadingDependency",

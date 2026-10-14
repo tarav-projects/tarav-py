@@ -71,7 +71,6 @@ class TaravRecords(TaravWorkflow):
     @classmethod
     def _workflow_id(cls):
         return RECORDS_WORKFLOW_SHIP
-    workflow_name = "records"
     constitution = (
         "Provide reusable Record storage mechanics and navigation across "
         "workflow-contributed sources."

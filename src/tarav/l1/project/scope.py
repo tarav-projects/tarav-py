@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.l0._core.project import require_agentos_project
+from tarav.l0.project import require_agentos_project
 
 
 def project_scope(root: str | Path) -> tuple[str, ...]:

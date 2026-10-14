@@ -16,7 +16,7 @@ from tarav.l1.archive.records import (
     ArchiveList,
     ArchiveRoot,
 )
-from tarav.l2.test_workflow import TestItem as WorkspaceItem
+from tarav.l2.tests.navigation import TestItem as WorkspaceItem
 
 
 def _archive_folder(root: Path) -> ExplorerCase:
@@ -35,7 +35,7 @@ def _archive_folder(root: Path) -> ExplorerCase:
 
 
 def _archive_root(root: Path) -> ExplorerCase:
-    workflow = get_runtime().workflows.get("test")
+    workflow = get_runtime().workflows.get("Tarav.Workflow.Tests.Navigation")
     archive = ArchiveRoot(root / "archive")
     archive.for_workflow(workflow).create_directory("run")
     key = str(workflow().id)
@@ -48,7 +48,7 @@ def _archive_root(root: Path) -> ExplorerCase:
 
 
 def _archive_partition(root: Path) -> ExplorerCase:
-    workflow = get_runtime().workflows.get("test")
+    workflow = get_runtime().workflows.get("Tarav.Workflow.Tests.Navigation")
     partition = ArchiveRoot(root / "archive").for_workflow(workflow)
     partition.create_directory("child")
     partition.create_directory("other")

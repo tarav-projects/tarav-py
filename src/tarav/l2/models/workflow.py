@@ -5,7 +5,6 @@ MODELS_WORKFLOW_SHIP = WorkflowShip('97d49ed8-9a40-49d6-8857-c43d78954384')
 
 
 class ModelsWorkflow(TaravWorkflow):
-    workflow_name = 'models'
     constitution = 'Organize Models and their editions independently of their consumers.'
 
     @classmethod

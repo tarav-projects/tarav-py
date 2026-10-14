@@ -13,6 +13,7 @@ from tarav.l0._core.git_repository import (
     GitError,
     commit_paths,
     initialize_repository,
+    repository_states,
     run_git as _run_git,
 )
 # tarav.breadcrumb 748e430a920a826d8c69df0ccf0cd18353e8665d899ec7b1bbea01cf3b5f4c61
@@ -92,6 +93,10 @@ class GitRepository(GitObject):
             f"{revision}^{{commit}}",
         )
 
+    def state(self) -> dict[str, object]:
+        """HEAD, and whether the working tree has no change; untracked files are changes."""
+        return repository_states((self.root,))[str(self.root)]
+
     def commit_message(self, revision: str) -> tuple[str, str]:
         exact = self.exact_commit(revision)
         raw = git_bytes(self.root, "cat-file", "commit", exact)
@@ -168,6 +173,7 @@ class GitRepository(GitObject):
 GIT_RECORD_TYPES = (GitObject, GitRepository)
 
 
+
 def git_bytes(repository: str | Path, *args: str) -> bytes:
     return _run_git(repository, *args).stdout
 
@@ -184,4 +190,5 @@ __all__ = [
     "GitWorktree",
     "git_bytes",
     "git_text",
+    "repository_states",
 ]

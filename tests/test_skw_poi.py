@@ -293,3 +293,53 @@ def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
             assert "kind" not in poi.records.to_record()["details"]
             assert isinstance(poi, skw.ProductDrift) or poi.message.startswith(
                 type(poi).statement)
+
+
+# tarav.breadcrumb f05d8da396a57b6a29eaa13c03eaf6566a43a142b26b04753cadea456fdd02cd
+def test_a_declared_link_is_checked_only_by_its_prose_part(tmp_path):
+    from pathlib import Path
+
+    from tarav.l1.skw.pois import MissingMarkdownLink
+    from tarav.l2.skw.reading_checks import READING_CHECK_TYPES
+
+    source = tmp_path / ".skw/src/explanation.skw.json"
+    source.parent.mkdir(parents=True)
+    data = identify_blocks({
+        "type": entity(DocumentRecord).name, "schema_version": 1, "output": "explanation.md",
+        "blocks": [
+            {"type": entity(SkwBlock).name, "id": "title", "content": ["# Explanation", ""]},
+            {"type": entity(SkwBlock).name, "id": "body", "content": [
+                "Read on, or see [elsewhere](https://example.com).", ""]},
+            {"type": entity(SkwBlock).name, "id": "end", "content": ["The end."]},
+        ],
+    }, scope="links")
+    body, end = data["blocks"][1], data["blocks"][2]["id"]
+    link = {"type": "Tarav.SKW.Reading.ExpectedLink", "target": end,
+            "entry": {"type": "Tarav.SKW.Reading.BlockEntry", "node": end},
+            "prose": {"type": "Tarav.SKW.Reading.MarkdownProse"}}
+    body["annotations"] = [link]
+    href = f"explanation.md#skw-{end}"
+
+    def reading_pois():
+        source.write_text(json.dumps(data))
+        Document(source).compile()
+        return [poi for poi in _skill(tmp_path).checks.run().pois()
+                if isinstance(poi.check, READING_CHECK_TYPES)]
+
+    # the text lacks the declared link; the authored link nobody declared is not a POI
+    (missing,) = reading_pois()
+    assert isinstance(missing, MissingMarkdownLink)
+    assert set(missing.situation) == {"project", "block", "href"}
+    assert Path(missing.situation["project"]).resolve() == tmp_path.resolve()
+    assert (missing.situation["block"], missing.situation["href"]) == (body["id"], href)
+    assert missing.message.startswith(MissingMarkdownLink.statement)
+    assert not missing.details
+
+    # the text holds it: nothing to say
+    body["content"] = [f"Read [the end]({href}), or see [elsewhere](https://example.com).", ""]
+    assert reading_pois() == []
+
+    # a link without a prose part checks nothing, whatever the text says
+    body["content"] = ["Read on.", ""]
+    del link["prose"]
+    assert reading_pois() == []

@@ -365,3 +365,43 @@ def test_suites_that_ran_can_be_gathered_to_read_them_together():
     assert (len(whole.results), whole.complete, whole.summary()["checks"]) == (2, True, 2)
     assert whole.report()["summary"]["pois"] == 2
 
+
+
+def _repository(root):
+    """A Git repository with one commit."""
+    import subprocess
+
+    root.mkdir()
+    (root / "notes.md").write_text("one\n")
+    for args in (("init", "-q"), ("add", "notes.md"),
+                 ("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "one")):
+        subprocess.run(["git", "-C", str(root), *args], check=True)
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], check=True,
+                          capture_output=True, text=True).stdout.strip()
+    return root.resolve(), head
+
+
+# tarav.breadcrumb 2819e8466736b2204fd2921522446e29ab3a0142afedde54ae55ccc363b1e3ad
+def test_a_suite_records_the_git_state_of_the_repositories_it_declares(tmp_path):
+    repo, head = _repository(tmp_path / "repo")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    def run():
+        inner = CheckSuite([ExampleCheck("inner", [])])  # declares nothing: keeps the outer state
+        outer = CheckSuite([ExampleCheck("outer", []), inner], repositories=(repo,))
+        outer.run()
+        return outer, inner
+
+    outer, inner = run()
+    clean = {str(repo): {"commit": head, "clean": True}}
+    assert outer.git == inner.git == clean
+    assert [result.git for result in outer.results] == [clean, clean]
+
+    (repo / "draft.md").write_text("untracked\n")  # an untracked file is a change
+    outer, _ = run()
+    assert outer.results[0].git == {str(repo): {"commit": head, "clean": False}}
+
+    # nothing declared, or a folder in no repository: no state
+    assert CheckSuite([ExampleCheck("x", [])]).run().results[0].git is None
+    assert CheckSuite([ExampleCheck("x", [])], repositories=(elsewhere,)).run().git == {}

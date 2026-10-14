@@ -10,11 +10,9 @@ from pathlib import Path
 
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.path_validation import validate_string_for_path
-from tarav.l0._core.project import (
-    tarav_home_dir,
-    global_config_path,
+from tarav.l0._core.home import tarav_home_dir, global_config_path, load_global_config
+from tarav.l0.project import (
     load_project_marker,
-    load_global_config,
     load_project_config,
     project_config_path,
     project_marker_path,
@@ -44,6 +42,7 @@ DEFAULT_PROJECT_SKILLS_DIRNAME = "skills"
 SKILLS_GLOBAL_DEPOTS_DIR = ("skills", "depots")
 
 
+# tarav.breadcrumb e8be7be5df9b96494f51817765fab8116dfd08f00afc0e32616ecdc40e4203c2
 class SkillsSelectionNotification(NotificationPOI):
     """A skills selection changed and its new targets may need inspection."""
 
@@ -64,6 +63,7 @@ class SkillsStatusPOI(SituationPOI):
     it was expected to point, and what is actually there.
     """
 
+    # tarav.breadcrumb aaa528bbe08ddedbfe3487235c0209cf28d98819108f630f1fb91249b230c6eb
     def __init__(self, message: str, *, situation, entry: dict | None = None) -> None:
         super().__init__(message, situation=situation)
         self.entry = dict(entry or {})

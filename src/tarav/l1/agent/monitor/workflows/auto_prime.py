@@ -1,5 +1,5 @@
 # $kw: --from Account.Management
-"""Auto-prime workflow: ping each configured target whose burst usage is low."""
+"""Auto-prime workflow: ping each configured target whose burst window is not running."""
 
 from __future__ import annotations
 
@@ -42,11 +42,14 @@ from tarav.l1.agent.providers.registry import resolve_account_runtime_agent
 
 # tarav.breadcrumb cbc3ba5f3f3c2affd0fed5e810999a20d14f9d7d1ec104a66503854d17253d22
 class AutoPrimeZeroLimitsWorkflow:
-    """Every interval, ping each target whose last burst reading is below the threshold.
+    """Every interval, ping each target whose burst window is not running.
 
     The reading is the limits-tracking state for the same target; a target without
-    an ok reading is skipped. There is no repeat guard: an idle account stays below
-    the threshold and is pinged again at the next interval."""
+    an ok burst reading is skipped. A window is not running when it has no reset,
+    its reset has passed, or less than ``threshold_percent`` of its duration has
+    elapsed (an idle window that keeps sliding forward). After a ping starts the
+    window, elapsed time grows past the threshold and the target is left alone
+    until the window resets."""
 
     name = AUTO_PRIME_ZERO_LIMITS_WORKFLOW
     periodic_alarm_name = AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM
@@ -108,6 +111,7 @@ class AutoPrimeZeroLimitsWorkflow:
         readings = (
             limits_state.targets if isinstance(limits_state, LimitsWorkflowState) else {}
         )
+        now = datetime.datetime.now(tz=datetime.UTC)
         pinged = 0
         failed = 0
         for target in self.config.targets:
@@ -122,11 +126,11 @@ class AutoPrimeZeroLimitsWorkflow:
                 )
                 workflow_state.targets[target_key] = target_state
             reading = readings.get(target_key)
-            used_percent = _burst_used_percent(reading)
-            target_state.burst_used_percent = used_percent
-            if reading is None or used_percent is None:
+            elapsed_percent = _burst_elapsed_percent(reading, now=now)
+            target_state.burst_elapsed_percent = elapsed_percent
+            if reading is None or elapsed_percent is None:
                 continue
-            if used_percent >= self.threshold_percent:
+            if elapsed_percent >= self.threshold_percent:
                 continue
             if self._ping_target(target_state, reading=reading, tick=tick):
                 pinged += 1
@@ -144,7 +148,7 @@ class AutoPrimeZeroLimitsWorkflow:
         target_state.last_attempt_tick = tick
         target_state.last_ping_at = datetime.datetime.now(tz=datetime.UTC).isoformat()
         payload: dict[str, object] = {
-            "burst_used_percent": target_state.burst_used_percent,
+            "burst_elapsed_percent": target_state.burst_elapsed_percent,
             "threshold_percent": self.threshold_percent,
         }
         try:
@@ -214,7 +218,30 @@ class AutoPrimeZeroLimitsWorkflow:
         frame.add_block(self.name, rows=rows, data=data)
 
 
-def _burst_used_percent(reading: LimitsTargetState | None) -> int | None:
+def _burst_elapsed_percent(
+    reading: LimitsTargetState | None, *, now: datetime.datetime
+) -> float | None:
+    """Percent of the burst window elapsed at ``now``; 0 when no window is running."""
+    usage_over_time = _burst_usage_over_time(reading)
+    if usage_over_time is None:
+        return None
+    resets_at = _parse_datetime(
+        _string_value(usage_over_time.get("resets_at"))
+        or _string_value(usage_over_time.get("period_ends_at"))
+    )
+    if resets_at is None or resets_at <= now:
+        return 0.0
+    duration_mins = _int_value(usage_over_time.get("period_duration_mins"))
+    if not duration_mins:
+        return None
+    started_at = resets_at - datetime.timedelta(minutes=duration_mins)
+    elapsed_sec = max((now - started_at).total_seconds(), 0.0)
+    return round(elapsed_sec / (duration_mins * 60) * 100, 1)
+
+
+def _burst_usage_over_time(
+    reading: LimitsTargetState | None,
+) -> dict[str, object] | None:
     if reading is None or reading.status != "ok":
         return None
     account_status = reading.account_status
@@ -227,9 +254,7 @@ def _burst_used_percent(reading: LimitsTargetState | None) -> int | None:
         if not isinstance(limit, dict) or limit.get("limit_id") != BURST_LIMIT_ID:
             continue
         usage_over_time = limit.get("usage_over_time")
-        if not isinstance(usage_over_time, dict):
-            return None
-        return _int_value(usage_over_time.get("used_percent"))
+        return usage_over_time if isinstance(usage_over_time, dict) else None
     return None
 
 

@@ -9,7 +9,6 @@ PROJECT_WIKI_WORKFLOW_SHIP = WorkflowShip("27922f68-ecea-43ae-9316-2c81ed387e95"
 
 
 class ProjectWikiWorkflow(TaravWorkflow):
-    workflow_name = "project.wiki"
     constitution = "Expose the conventional Wiki folder attached to a Project."
 
     @classmethod
@@ -37,5 +36,21 @@ class ProjectWiki(TaravType):
             raise TypeError("project must be a TaravProject")
         self.project = project
 
+    @property
+    def root(self):
+        return self.project.root / "notes" / "wiki"
+
     def open(self) -> Wiki:
-        return Wiki.from_path(self.project.root / "notes" / "wiki")
+        return Wiki.from_path(self.root)
+
+    def checks(self) -> tuple:
+        """What this Wiki asks to have checked about its notes.
+
+        The Wiki only says "check my notes". What a provisional marker is
+        belongs to the Breadcrumbs workflow that defines it, and the check
+        comes from there.
+        """
+        from tarav.l2.breadcrumb_workflows.chatlas_context.checks import UnsubmittedMarkersCheck
+
+        return (UnsubmittedMarkersCheck(self.root, project=str(self.project.id),
+                                        root=self.project.root),)

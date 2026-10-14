@@ -15,7 +15,7 @@ from tarav.l3.runtime import create_runtime
 
 def test_runtime_discovers_workflow_entities_by_name_and_ship():
     runtime = create_runtime()
-    workflow = runtime.workflows.get("chatlas")
+    workflow = runtime.workflows.get("Tarav.Workflow.Chatlas")
 
     assert workflow is ChatlasWorkflow
     assert runtime.workflows.get(workflow().id) is workflow
@@ -30,8 +30,8 @@ def test_runtime_bootstraps_tarav_and_the_kernel_workflow():
         "id": "e5ff87ed-c382-49c8-855e-e04191dcf4c8",
         "name": "tarav",
     }
-    assert runtime.workflows.get("kernel") is KernelWorkflow
-    assert runtime.workflows.get(KERNEL_WORKFLOW_SHIP).workflow_name == "kernel"
+    assert runtime.workflows.get("Tarav.Workflow.Kernel") is KernelWorkflow
+    assert runtime.workflows.get(KERNEL_WORKFLOW_SHIP) is KernelWorkflow
     assert context(TARAV).open("class").open("entity").target is type(TARAV)
 
 
@@ -66,7 +66,7 @@ def test_runtime_browses_archive_and_loads_reference_without_cli(tmp_path):
         json.dumps(
             {
                 "providers": [
-                    {"name": "archive", "workflow": "archive", "root": "archive"},
+                    {"name": "archive", "workflow": "Tarav.Workflow.Archive", "root": "archive"},
                 ]
             }
         )

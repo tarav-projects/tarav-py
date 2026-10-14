@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import unquote
 
 from tarav.l0._core.errors import CliError
-from tarav.l0._core.project import tarav_home_dir
+from tarav.l0._core.home import tarav_home_dir
 from tarav.l1.agent.config import load_chat_config_documents
 from tarav.l1.agent.primitives import AgentConfig
 from tarav.l1.agent.providers.registry import agent_from_config

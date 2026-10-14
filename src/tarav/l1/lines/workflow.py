@@ -4,7 +4,6 @@ from .identity import LINES_WORKFLOW_SHIP
 
 
 class LinesWorkflow(TaravWorkflow):
-    workflow_name = "lines"
     constitution = "Organize evidence-linked Lines, Blocks, Collections, and their editions."
 
     @classmethod

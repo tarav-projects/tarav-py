@@ -26,7 +26,6 @@ class BreadcrumbWorkflow(TaravWorkflow):
     @classmethod
     def _workflow_id(cls):
         return BREADCRUMBS_WORKFLOW_SHIP
-    workflow_name = "breadcrumbs"
     constitution = (
         "Annotate product surfaces with stable Breadcrumbs, positions, and "
         "workflow-owned attachments."

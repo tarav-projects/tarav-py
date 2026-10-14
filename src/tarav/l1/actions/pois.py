@@ -30,6 +30,7 @@ from . import (
     ACTIONS_WORKFLOW_SHIP, CLOSED, EXIT_ERROR, OPERATOR, PROJECT, RUNNING, ActionRun,
     ChecksUpdate, Closing, Exit, StepAction, _detail, close_run, resolve_action,
 )
+from .git import OPENED, REOPENED, log_clean, log_status
 
 GONE = "gone"
 PRESENT, ABSENT, CHECK_FAILED, NOT_RUN = "present", "absent", "check failed", "not run"
@@ -92,12 +93,13 @@ class POIResolutionAction(StepAction):
     # tarav.breadcrumb c5db1b346c8b5ff563c654bb294079f0d167cfcdabea9a4e04cf10d35bceed8d
     @classmethod
     def opened(cls, poi: SituationPOI, *, project: dict, at: str,
-               suites: tuple[dict, ...] = ()) -> ActionRun:
+               suites: tuple[dict, ...] = (), git: dict | None = None) -> ActionRun:
         """Build the action of a POI, open and not yet registered anywhere.
 
-        `suites` are the identified suites above the check that raised it.
+        `suites` are the identified suites above the check that raised it, and
+        `git` the state of the repositories they declare.
         """
-        return ActionRun(action_id(poi), {
+        run = ActionRun(action_id(poi), {
             "action": entity(cls).name, "state": RUNNING, "exit": None,
             "started_at": at, "opened_at": at, "closed_at": None, "project": project,
             "skill": cls.skill.to_json() if cls.skill else None,
@@ -106,6 +108,8 @@ class POIResolutionAction(StepAction):
             "event": _event(poi, suites), "closing": None,
             "situation": {"state": PRESENT, "at": at},
         })
+        log_status(run, OPENED, git, at=at)
+        return run
 
     # tarav.breadcrumb bdbf97d4ffaec3498e78e81b386648e11d61ddaf21765f99d1b29f6d6f0b9783
     @classmethod
@@ -166,7 +170,7 @@ class POIResolutionAction(StepAction):
             raised_now = {}
             for chain, result in update.checks.walk():
                 for poi in raised(result.pois()):
-                    raised_now.setdefault(str(action_id(poi)), (poi, chain))
+                    raised_now.setdefault(str(action_id(poi)), (poi, chain, result.git))
             seen = update.memo[cls] = {
                 "raised": raised_now,
                 "suites": {_suite_key(suite.identity): suite
@@ -176,7 +180,7 @@ class POIResolutionAction(StepAction):
         found = seen["raised"].get(str(run.id))
         situation = (run.data.get("situation") or {}).get("state")
         if found is not None:
-            poi, chain = found
+            poi, chain, git = found
             change = None
             fresh = _event(poi, chain)
             if event != fresh:
@@ -191,7 +195,10 @@ class POIResolutionAction(StepAction):
                 if cls.exit_named(run.exit).closing.reopens(run.data.get("closing"), poi):
                     run.data.update(state=RUNNING, exit=None, opened_at=update.at,
                                     closed_at=None, output=None, closing=None, event=fresh)
+                    log_status(run, REOPENED, git, at=update.at)
                     change = "reopened"
+            if log_clean(run, git, at=update.at):
+                change = change or "updated"
             return change
         detector = next((seen["suites"][key] for key in map(_suite_key, reversed(event["suites"]))
                          if key in seen["suites"]), update.checks)
@@ -202,12 +209,14 @@ class POIResolutionAction(StepAction):
             state = CHECK_FAILED
         else:
             state = NOT_RUN
+        logged = log_clean(run, detector.git, at=update.at)
         if situation == state:
-            return None
+            return "updated" if logged else None
         run.data["situation"] = {"state": state, "at": update.at}
         if state != ABSENT or run.state != RUNNING:
             return "updated"
-        close_run(cls(), run, GONE, by=PROJECT, at=update.at, extra={"project": update.project})
+        close_run(cls(), run, GONE, by=PROJECT, at=update.at, extra={"project": update.project},
+                  git=detector.git)
         poi_record = event.get("poi") or {}
         update.signals.append(POIActionClosed(
             f"The situation of {poi_record.get('type')} is gone: {poi_record.get('message')}",

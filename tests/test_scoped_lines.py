@@ -4,12 +4,49 @@ import pytest
 
 from tarav.l0.kernel import Ship, TaravEntity
 from tarav.l1.context import Context, ContextExplorer, explore
-from tarav.l1.lines import Line, LineScope
+from tarav.l1.lines import Block, Line, LineScope
 
 
 def make_line():
     scope = TaravEntity(Ship(str(uuid4())))
     return Line(id=Ship(str(uuid4())), text="It is red.", scope=scope)
+
+
+def test_block_topic_order_and_binding():
+    block = Block(id=Ship(str(uuid4())), topic="The car")
+    color = Line(id=Ship(str(uuid4())), text="It is red.", scope=block)
+    finish = Line(id=Ship(str(uuid4())), text="The finish is matte.", scope=color)
+    block.append(color)
+    block.append(finish)
+
+    assert block.lines == (color, finish)
+    assert block.line_ships == (color.id, finish.id)
+    assert finish.scope is color  # Block membership does not assign scope.
+    assert block.ships()[-2:] == block.line_ships
+
+    restored = Block.records.from_record(block.records.to_record())
+    assert restored.records.to_record() == block.records.to_record()
+    with pytest.raises(LookupError):
+        _ = restored.lines
+    with pytest.raises(ValueError):
+        restored.bind_lines((finish, color))
+    restored.bind_lines((color, finish))
+    assert restored.lines == block.lines
+    assert explore(restored).open("lines").open(1) is finish
+
+
+def test_block_rejects_invalid_membership():
+    block = Block(id=Ship(str(uuid4())), topic="A topic")
+    line = make_line()
+    with pytest.raises(ValueError):
+        Block(id=Ship(str(uuid4())), topic=" ")
+    with pytest.raises(TypeError):
+        block.append("not a Line")
+    with pytest.raises(ValueError):
+        block.bind_lines((line,))
+    block.append(line)
+    with pytest.raises(ValueError):
+        block.append(line)
 
 
 def test_line_roundtrip_and_binding():

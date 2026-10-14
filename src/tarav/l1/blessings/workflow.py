@@ -6,7 +6,6 @@ BLESSINGS_WORKFLOW_SHIP = WorkflowShip("36a15db8-2e54-485b-a255-fd0e4daf9c12")
 
 
 class BlessingsWorkflow(TaravWorkflow):
-    workflow_name = "blessings"
     constitution = "Retain attributed acceptance and assessment of explicitly blessable POIs."
 
     @classmethod

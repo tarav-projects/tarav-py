@@ -14,10 +14,7 @@ from collections.abc import Sequence
 from uuid import UUID, uuid4
 
 from tarav.l0._core.persistence import atomic_write_json
-from tarav.l0._core.project import (
-    initialize_project_layout,
-    load_project_marker,
-)
+from tarav.l0.project import initialize_project_layout, load_project_marker
 from tarav.l0.kernel import (
     TaravClass,
     TaravObject,

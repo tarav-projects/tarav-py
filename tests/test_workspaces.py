@@ -7,7 +7,7 @@ import subprocess
 import pytest
 
 from tarav.l1.git.repository import GitRepository
-from tarav.l0._core.project import initialize_project_layout
+from tarav.l0.project import initialize_project_layout
 from tarav.l1.workspaces.depot import WorkspaceDepot, WorkspaceError
 from tarav.l1.workspaces.commands import register_workspace_commands
 from tarav.l1.workspaces.model import (

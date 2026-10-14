@@ -3,8 +3,10 @@
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
+from pathlib import Path
 from typing import ClassVar, Literal
 
+from tarav.l0._core.git_repository import repository_states
 from tarav.l0.kernel import (
     LiteRecord,
     NamespaceBase,
@@ -23,7 +25,6 @@ CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
 
 
 class ChecksWorkflow(TaravWorkflow):
-    workflow_name = "checks"
     constitution = "Run bounded checks and expose their results without prescribing responses."
 
     @classmethod
@@ -221,7 +222,12 @@ class SituationCheck(Check):
 
 
 class CheckResult(TaravObject, POIProvider):
-    """One execution snapshot; inspecting POIs never reruns its Check."""
+    """One execution snapshot; inspecting POIs never reruns its Check.
+
+    `git` is the state of the repositories the nearest suite above it
+    declares, taken when that suite started: by repository root, its HEAD and
+    whether it was clean. None when no suite above declares any.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -238,6 +244,7 @@ class CheckResult(TaravObject, POIProvider):
         self.status = status
         self.data = deepcopy(data)
         self.reason = reason
+        self.git: dict[str, dict] | None = None
         self._pois = tuple(pois)
         if any(not isinstance(poi, POI) for poi in self._pois):
             raise TypeError("CheckResult POIs must be POIs")
@@ -264,6 +271,10 @@ class CheckSuite(TaravObject, POIProvider):
     whether what it ran is conclusive; that is what lets someone conclude
     that a situation it did not report is gone. A subclass is a suite with an
     identity of its own, and a `key` binds one instance to a subject.
+
+    `repositories` are folders in the Git repositories its checks read: a
+    declaration its maintainers keep. When it runs it records their state
+    first, as `git`; a suite that declares none keeps the one above it.
     """
 
     routine: ClassVar[bool] = True  # part of the run that is repeated often
@@ -273,11 +284,13 @@ class CheckSuite(TaravObject, POIProvider):
         return TaravClass(target=cls, id=TypeShip("dc589b3c-9a16-4c3d-8338-50ab6304b2f3"),
                           name="Tarav.Checks.Suite", workflow=CHECKS_WORKFLOW_SHIP)
 
-    def __init__(self, source=(), *, name: str | None = None, key: str | None = None) -> None:
+    def __init__(self, source=(), *, name: str | None = None, key: str | None = None,
+                 repositories: Iterable[str | Path] = ()) -> None:
         super().__init__()
         self.source = source
         self.name = name
         self.key = key
+        self.repositories = tuple(Path(folder) for folder in repositories)
         self.reset()
 
     @classmethod
@@ -311,6 +324,7 @@ class CheckSuite(TaravObject, POIProvider):
         """Forget the run this suite holds."""
         self.items: list[CheckResult | CheckSuite] = []
         self.ran = False
+        self.git: dict[str, dict] | None = None
         self._refused = 0
 
     def produce(self) -> Iterable:
@@ -325,11 +339,14 @@ class CheckSuite(TaravObject, POIProvider):
     def run(
         self, *, select: Callable[[object], bool] | None = None,
         on_result: Callable[[CheckResult], object] | None = None,
+        git: dict[str, dict] | None = None,
     ) -> "CheckSuite":
         """Run what `produce()` yields and keep the results on this suite.
 
         `select` is asked for each check and nested suite before it runs. One
         it refuses does not run, and this suite then did not run completely.
+        `git` is the state the suite above took, for a suite that declares no
+        repositories of its own.
         """
         if select is not None and not callable(select):
             raise TypeError("select must be callable")
@@ -337,12 +354,15 @@ class CheckSuite(TaravObject, POIProvider):
             raise TypeError("on_result must be callable")
         self.reset()
         self.ran = True
+        # tarav.breadcrumb 646320d9df89a53c1ab51fa1adfd01176f4d14b449d1634db183fdcc952f03d1
+        # tarav.breadcrumb 62668358e7f205b4b5bf318d0eae1e8b8aac2f13e2ab52122d248739cf04ec1d
+        self.git = repository_states(self.repositories) if self.repositories else git
         for item in self.produce():
             if isinstance(item, CheckSuite):
                 if select is not None and not select(item):
                     item.reset()  # kept, so that it is known as not run
                 else:
-                    item.run(select=select, on_result=on_result)
+                    item.run(select=select, on_result=on_result, git=self.git)
                 self.items.append(item)
                 continue
             if isinstance(item, CheckResult):
@@ -357,6 +377,8 @@ class CheckSuite(TaravObject, POIProvider):
                     result = CheckResult(item, status="failed", reason=f"{type(exc).__name__}: {exc}")
             else:
                 raise TypeError("A suite yields Checks, suites or CheckResults")
+            if result.git is None:
+                result.git = self.git
             self.items.append(result)
             if on_result is not None:
                 on_result(result)

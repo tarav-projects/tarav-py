@@ -86,7 +86,7 @@ class TaravRuntime:
 
     @property
     def scoring(self) -> type[ScoringWorkflow]:
-        return self.workflows.get("scoring")
+        return self.workflows.get("Tarav.Workflow.Scoring")
 
     @property
     def source_root(self) -> Path:
@@ -163,7 +163,7 @@ class TaravRuntime:
         from tarav.l1.reading_club.commands import register_reading_club_commands
         from tarav.l2.scoring.commands import register_scoring_commands
         from tarav.l1.stdlib.refs import register_refs_commands
-        from tarav.l1.skills import register_skills_commands
+        from tarav.l2.project.skills import register_skills_commands
         from tarav.l2.skw.commands import register_skw_commands
         from tarav.l1.system import register_system_commands
         from tarav.l1.stdlib.utils import register_utils_commands
@@ -274,7 +274,7 @@ def create_runtime(
     )
     from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
-    from tarav.l1.lines import Line, LineScope, LinesWorkflow
+    from tarav.l1.lines import Block, Line, LineScope, LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
     # tarav.breadcrumb 35548ca6fdf72e93e3a5008225dcf66e71eb81faeaa264535405ebd242768a7a
@@ -292,6 +292,7 @@ def create_runtime(
         OPERATOR_CONTEXT_RECORD_TYPES, OperatorContextWorkflow,
     )
     from tarav.l1.actions.pois import POI_ACTION_RECORD_TYPES, POIResolutionAction
+    from tarav.l2.tests.actions import ActionsTestsWorkflow
     from tarav.l2.project.programs import ProjectProgram
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
     from tarav.l2.models import ModelsWorkflow
@@ -342,6 +343,7 @@ def create_runtime(
     )
     from tarav.l1.skw.code import (
         CodeWorkflow,
+        LINK_PROSE_TYPES,
         READING_DECLARATION_TYPES,
         READING_ENTRY_TYPES,
         SKW_CODE_RECORD_TYPES,
@@ -351,11 +353,16 @@ def create_runtime(
     # tarav.breadcrumb c5d54c7649438c13a2949da87599cf3b307a97aa3a4bba56d4b9629006ad8a14
     from tarav.l1.project.skills import PROJECT_SKILLS_RECORD_TYPES
     from tarav.l1.skills.folder import FolderSkill
-    from tarav.l1.skills.workflow import SkillsWorkflow as BaseSkillsWorkflow
     from tarav.l1.skw.generation import GenerationPOI
-    from tarav.l2.skw.skills import SKILLS_RECORD_TYPES, SkillsWorkflow
-    from tarav.l2.test_workflow import TestEntity, TestItem, TestWorkflow
-    from tarav.l1.skills.routing import SkillsSelectionNotification, SkillsStatusPOI
+    from tarav.l2.skw.skills import SKILLS_RECORD_TYPES, SkwSkillsWorkflow
+    from tarav.l1.skills import SkillsWorkflow
+    from tarav.l2.tests.workflow import TestsWorkflow
+    from tarav.l2.tests.navigation import TestEntity, TestItem, NavigationTestsWorkflow
+    from tarav.l2.tests.scoring import (
+        ScoringTestsWorkflow, ScoringTestChat, ScoringTestLine,
+        LineSupportAssertion, LineSupportCase, LineSupportTribunal,
+    )
+    from tarav.l2.project.skills.routing import SkillsSelectionNotification, SkillsStatusPOI
     from tarav.l1.cli import CliWorkflow
     from tarav.l1.live_help import LiveHelpWorkflow
     from tarav.l1.usage import UsageRegistryWorkflow
@@ -373,12 +380,18 @@ def create_runtime(
                 SearchQuery,
                 *CONTEXT_RECORD_TYPES,
                 TaravClass,
+                Block,
                 Line,
                 LineScope,
                 TaravEnvironment,
                 TaravSystem,
                 TestEntity,
                 TestItem,
+                ScoringTestChat,
+                ScoringTestLine,
+                LineSupportAssertion,
+                LineSupportCase,
+                LineSupportTribunal,
                 *CHATLAS_RECORD_TYPES,
                 *REFERENCE_RECORD_TYPES,
                 *BREADCRUMB_RECORD_TYPES,
@@ -416,6 +429,7 @@ def create_runtime(
                 *ACTION_RECORD_TYPES,
                 *POI_ACTION_RECORD_TYPES,
                 *POI_RECORD_TYPES,
+                *SETTINGS_RECORD_TYPES,
                 *BLESSING_RECORD_TYPES,
                 *DECISION_RECORD_TYPES,
                 DecisionReportAssertion,
@@ -427,7 +441,6 @@ def create_runtime(
                 BreadcrumbAuditPOI,
                 *BreadcrumbAuditPOI.__subclasses__(),  # its atomic cases
                 BreadcrumbPositionUpdated,
-                *SETTINGS_RECORD_TYPES,
                 MarkdownNormalModel,
                 LineMarkdownModel,
                 PythonNormalModel,
@@ -462,6 +475,7 @@ def create_runtime(
                 *SkillsStatusPOI.__subclasses__(),  # its atomic cases
                 *READING_DECLARATION_TYPES,
                 *READING_ENTRY_TYPES,
+                *LINK_PROSE_TYPES,
                 *SKILLS_RECORD_TYPES,
                 FolderSkill,
                 *record_types,
@@ -503,7 +517,9 @@ def create_runtime(
         ProjectWorkflow,
         ProjectModelsWorkflow,
         ProjectWikiWorkflow,
+        SkillsWorkflow,
         POIWorkflow,
+        SettingsWorkflow,
         BlessingsWorkflow,
         DecisionsWorkflow,
         ChecksWorkflow,
@@ -516,14 +532,15 @@ def create_runtime(
         ScoringWorkflow,
         RankingWorkflow,
         SkillwareWorkflow,
-        SettingsWorkflow,
         # tarav.breadcrumb eae69a7746f4a20cd6a37196b1384f6e615b348574b6791f791ca6baa9ce96ab
         CodeWorkflow,
-        SkillsWorkflow,
-        BaseSkillsWorkflow,
+        SkwSkillsWorkflow,
         TaravRecords,
         SearchWorkflow,
-        TestWorkflow,
+        TestsWorkflow,
+        NavigationTestsWorkflow,
+        ScoringTestsWorkflow,
+        ActionsTestsWorkflow,
         *workflows,
     ):
         registrations.register(workflow)

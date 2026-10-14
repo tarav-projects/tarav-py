@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.l0._core.project import require_agentos_project
+from tarav.l0.project import require_agentos_project
 
 from tarav.l2.unsorted.evidence import ChatlasEvidence
 from tarav.l2.unsorted.storage import DiagramConfiguration

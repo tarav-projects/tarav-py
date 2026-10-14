@@ -7,11 +7,12 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from tarav.l0._core.project import (
+from tarav.l0._core.errors import CliError
+from tarav.l0._core.home import initialize_global_layout
+from tarav.l0.project import (
     assert_project_base,
     build_not_inside_project_message,
     find_agentos_project_roots_under,
-    initialize_global_layout,
     initialize_project_layout,
     find_agentos_project_root,
     load_project_marker,
@@ -19,6 +20,7 @@ from tarav.l0._core.project import (
     require_agentos_project,
     require_explicit_project_target,
 )
+from .index import ProjectIndex, observe_project
 
 
 def _resolve_not_inside_project() -> int:
@@ -52,6 +54,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
         project_id=args.project_id,
         project_name=args.project_name,
     )
+    observe_project(payload["project_root"])
     output = {
         "status": "ok",
         "command": "project init",
@@ -74,12 +77,14 @@ def _cmd_project_resolve(args: argparse.Namespace) -> int:
     if args.is_inside_agentos_project:
         if project_root is None:
             return _resolve_not_inside_project()
+        observe_project(project_root)
         print("true")
         return 0
 
     if args.show_toplevel:
         if project_root is None:
             return _resolve_not_inside_project()
+        observe_project(project_root)
         print(str(project_root))
         return 0
 
@@ -97,8 +102,26 @@ def _project_list_record(project_root: Path) -> dict[str, object]:
     }
 
 
+# tarav.breadcrumb b025c64790062efc8b9cb6944ba269dbb2591c78daf3cdb0898371bdbe431bbb
 def _cmd_project_list(args: argparse.Namespace) -> int:
+    if args.global_index:
+        if args.root is not None:
+            for root in find_agentos_project_roots_under(args.root):
+                observe_project(root)
+        rows = ProjectIndex().list()
+        if args.json_output:
+            print(json.dumps(rows, indent=2))
+        else:
+            for row in rows:
+                print(f"{row['project_id']}  {row['status']}  {row['name']}")
+                for location in row["locations"]:
+                    print(f"  {location['status']}: {location['path']}")
+        return 0
+    if args.root is None:
+        raise CliError("tarav project list requires --root or --global")
     project_roots = find_agentos_project_roots_under(args.root)
+    for root in project_roots:
+        observe_project(root)
     if args.json_output:
         print(json.dumps([_project_list_record(root) for root in project_roots], indent=2))
         return 0
@@ -115,6 +138,7 @@ def _cmd_project_verify(args: argparse.Namespace) -> int:
         include_init_hint=True,
     )
     assert_project_base(project, args.project_base)
+    observe_project(project.root)
     print("true")
     return 0
 
@@ -174,13 +198,16 @@ def register_project_commands(
 
     projects_list_parser = project_subparsers.add_parser(
         "list",
-        help="List Tarav projects under a root.",
+        help="List Projects under a root or from the global observed index.",
     )
     projects_list_parser.add_argument(
         "--root",
         type=Path,
-        required=True,
-        help="Root directory to scan for Agentos.Project markers.",
+        help="Scan this root for Project markers; with --global, update the index first.",
+    )
+    projects_list_parser.add_argument(
+        "--global", action="store_true", dest="global_index",
+        help="List remembered Project IDs and their current or historical locations.",
     )
     projects_list_parser.add_argument(
         "--json",

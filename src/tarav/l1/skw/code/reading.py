@@ -1,9 +1,14 @@
 """Typed claims about the context supplied by a declared skill reading path."""
 
+from urllib.parse import unquote
+
+from markdown_it import MarkdownIt
+
 from tarav.l0.kernel import Ship, TaravClass, TaravObject, TypeRegistry, TypeShip, entity
 
 from ..annotations import BlockAnnotation
 from ..identity import SKW_CODE_WORKFLOW_SHIP
+from ..pois import Finding, MissingMarkdownLink
 
 
 # tarav.breadcrumb effa713807d1ea29a6b5be34a2603c55ef4c72643a9b9f129d7c2e6a35520365
@@ -103,8 +108,49 @@ class Contains(BlockAnnotation):
                           workflow=SKW_CODE_WORKFLOW_SHIP)
 
 
+# tarav.breadcrumb cc5ae810d7c36b9115f0e8341df7977a974903db6cab59151f8665fa8609b71a
+# tarav.breadcrumb 5d4e0d6cc8a3f9b5952622540e4050b146a5526ddfe70805bdd15cf6c5d43e5d
+class LinkProse(TaravObject):
+    """How a declared link appears in the text of its block.
+
+    The reading graph trusts the declaration and never reads the text; a
+    prose part is what checks the text, for the maintainers. This base checks
+    nothing.
+    """
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("3251688c-1883-46f0-b418-aa1a5ec2f2ff"),
+                          name="Tarav.SKW.Reading.LinkProse", workflow=SKW_CODE_WORKFLOW_SHIP)
+
+    def findings(self, text: str, href: str) -> list[Finding]:
+        """What is wrong with how `text` holds the link to `href`."""
+        return []
+
+
+class MarkdownProse(LinkProse):
+    """The text of the block holds a Markdown link to the declared target."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("1a339fcb-acc3-47b4-8b7c-d2c747531a43"),
+                          name="Tarav.SKW.Reading.MarkdownProse",
+                          workflow=SKW_CODE_WORKFLOW_SHIP)
+
+    def findings(self, text: str, href: str) -> list[Finding]:
+        written = {unquote(child.attrGet("href") or "")
+                   for token in MarkdownIt().parse(text)
+                   for child in token.children or () if child.type == "link_open"}
+        return [] if unquote(href) in written else [Finding(MissingMarkdownLink, href=href)]
+
+
+# tarav.breadcrumb bb711d9c3ade0dd1b7b6e6d8ed8eb1d3b44236371c63595d7f90d157ed4892d3
 class ReadingLink(ReadingDeclaration):
-    """A reference to an entity, with a separately declared reading entry."""
+    """A reference to an entity, with a separately declared reading entry.
+
+    The declaration does not write the link: the block's text holds it, and
+    the optional `prose` part says how, and checks it.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -114,8 +160,7 @@ class ReadingLink(ReadingDeclaration):
 
     class RecordInterface(ReadingDeclaration.RecordInterface):
         entry: dict | None = None
-        slot: str | None = None
-        caption: str | None = None
+        prose: dict | None = None
 
     @property
     def entry(self) -> dict | None:
@@ -123,6 +168,14 @@ class ReadingLink(ReadingDeclaration):
             raise RuntimeError("Reading link has no Record")
         value = self._record.get("entry")
         return dict(value) if isinstance(value, dict) else None
+
+    # tarav.breadcrumb cd646a3168c40dec240403b69648b58d59a443811d5a5074bf42befa1d2991fc
+    @property
+    def prose(self) -> LinkProse | None:
+        if self._record is None:
+            raise RuntimeError("Reading link has no Record")
+        value = self._record.get("prose")
+        return None if value is None else _PROSE.from_record(value)
 
 
 class ExpectedLink(ReadingLink):
@@ -239,10 +292,12 @@ READING_DECLARATION_TYPES = (
     ReadingDependency, InlineDependency, ReferenceDependency, EitherDependency,
 )
 READING_ENTRY_TYPES = (ReadingEntry, BlockEntry, FileEntry)
+LINK_PROSE_TYPES = (LinkProse, MarkdownProse)
 
 _DECLARATIONS = TypeRegistry(TaravObject,
                              (ReadingDeclaration, *READING_DECLARATION_TYPES))
 _ENTRIES = TypeRegistry(ReadingEntry, READING_ENTRY_TYPES)
+_PROSE = TypeRegistry(LinkProse, LINK_PROSE_TYPES)
 
 
 def declaration_from_record(record: dict) -> TaravObject:

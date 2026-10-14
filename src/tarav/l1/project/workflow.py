@@ -6,7 +6,6 @@ PROJECT_WORKFLOW_SHIP = WorkflowShip("1ad784dd-17b4-48fc-a989-68b12c261326")
 
 
 class ProjectWorkflow(TaravWorkflow):
-    workflow_name = "project"
     constitution = "Represent projects through their portable .tarav/project.json identity."
 
     @classmethod

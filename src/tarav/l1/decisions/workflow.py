@@ -8,7 +8,6 @@ DECISIONS_WORKFLOW_SHIP = WorkflowShip("fdb58ef7-ba97-485c-afb3-14cb3b214e4b")
 
 # tarav.breadcrumb ae26ab84d51d3fb0fad0cfaffa0b8a4d143c507536086a8ce9d921a339ed0482
 class DecisionsWorkflow(TaravWorkflow):
-    workflow_name = "decisions"
     constitution = "Retain attributed interventions without making their effects permanent."
 
     @classmethod

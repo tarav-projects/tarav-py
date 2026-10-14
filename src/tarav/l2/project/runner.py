@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from tarav.l0._core.errors import CliError
-from tarav.l0._core.project import require_agentos_project
+from tarav.l0.project import require_agentos_project
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 from tarav.l1.python_env.runner import RunnerConfiguration, RunnerConfigurator

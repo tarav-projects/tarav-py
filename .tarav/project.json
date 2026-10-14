@@ -16,5 +16,8 @@
   },
   "harness": {
     "project": ".."
+  },
+  "agents": {
+    "package_skill": "tarav-pkg"
   }
 }

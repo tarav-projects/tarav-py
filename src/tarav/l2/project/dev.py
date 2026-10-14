@@ -20,7 +20,6 @@ from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 from . import Project
 
 _FAILURE = re.compile(r"^(FAILED|ERROR) (\S+)(?: - (.*))?$")
-_PROVISIONAL = re.compile(r"tarav\.context [0-9a-f]{8}:[0-9a-f]{16}")
 
 
 class TestFailurePOI(CheckPOI):
@@ -174,40 +173,6 @@ class PyTestSuite(CheckSuite):
                                   name=file, key=file)
 
 
-class ProvisionalMarkerPOI(CheckPOI):
-    """A Note still carries provisional Breadcrumb markers that were never submitted."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("568afde8-7cdd-4549-b4e0-5edf7baa3c6c"),
-                          name="Tarav.Project.Dev.ProvisionalMarker", workflow=PROJECT_WORKFLOW_SHIP)
-
-
-class ProvisionalMarkersCheck(Check):
-    """Find Markdown Notes under a folder with unsubmitted `tarav.context` markers."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("041ef42f-f251-421e-a016-f842b1b61e8a"),
-                          name="Tarav.Project.Dev.ProvisionalMarkers",
-                          workflow=PROJECT_WORKFLOW_SHIP)
-
-    def __init__(self, folder: Path) -> None:
-        super().__init__()
-        self.folder = Path(folder)
-
-    def _run(self) -> CheckResult:
-        pois = []
-        for note in sorted(self.folder.rglob("*.md")):
-            count = len(_PROVISIONAL.findall(note.read_text(encoding="utf-8", errors="replace")))
-            if count:
-                relative = note.relative_to(self.folder).as_posix()
-                pois.append(ProvisionalMarkerPOI(
-                    self, f"{relative}: {count} provisional markers",
-                    situation={"note": relative}, details={"markers": count}))
-        return CheckResult(self, status="completed", pois=pois)
-
-
 class SkillLoadCheck(Check):
     """A skill package under the Project could not be loaded to collect its checks."""
 
@@ -239,7 +204,8 @@ class PythonPackageProject(Project):
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
             return CheckSuite([super().suite(), PyTestSuite(self.obj.root),
-                               *self.obj._poi_contract_checks()], name=self.obj.name)
+                               *self.obj._poi_contract_checks()], name=self.obj.name,
+                              repositories=self.obj.repositories())
 
 # tarav.breadcrumb d72b348467b8de83b8b8de698550a5382b36011821f0192de499492b38bb2e7d
     def _poi_contract_checks(self) -> list[Check]:
@@ -253,7 +219,7 @@ class PythonPackageProject(Project):
 
 
 class DocsProject(Project):
-    """A folder of skills, wiki and notes: its skills' checks and unsubmitted markers."""
+    """A folder of skills, wiki and notes: its skills' checks and its Wiki's checks."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -268,7 +234,7 @@ class DocsProject(Project):
         def suite(self) -> CheckSuite:
             return CheckSuite([super().suite(),
                                CheckSuite(lambda suite: self.obj._checks())],
-                              name=self.obj.name)
+                              name=self.obj.name, repositories=self.obj.repositories())
 
     def _checks(self):
         from tarav.l0.kernel.current import current_records
@@ -279,13 +245,13 @@ class DocsProject(Project):
                 yield load_skill(folder, registry=current_records()).checks.suite()
             except (OSError, ValueError, TypeError, RuntimeError) as exc:
                 yield SkillLoadCheck(folder, f"{type(exc).__name__}: {exc}")
-        yield ProvisionalMarkersCheck(self.root / "notes" / "wiki")
+        # the Wiki says what to check about its notes
+        from .wiki import ProjectWiki
+        yield from ProjectWiki(self).checks()
 
 
 __all__ = [
     "DocsProject",
-    "ProvisionalMarkerPOI",
-    "ProvisionalMarkersCheck",
     "PythonPackageProject",
     "SkillLoadCheck",
     "PyTestCheck",

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.ids import generate_uuid4_hex
-from tarav.l0._core.project import project_agentos_dir, require_agentos_project_root
+from tarav.l0.project import project_agentos_dir, require_agentos_project_root
 
 
 def allocate_project_tmp_folder(

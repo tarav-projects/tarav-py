@@ -199,8 +199,8 @@ def stores(tmp_path):
 
 def test_the_runtime_knows_the_workflows_and_the_poi_action():
     runtime = create_runtime()
-    assert entity(runtime.workflows.get("actions")).name == "Tarav.Workflow.Actions"
-    assert entity(runtime.workflows.get("operator-context")).name == "Tarav.Workflow.OperatorContext"
+    assert entity(runtime.workflows.get("Tarav.Workflow.Actions")).name == "Tarav.Workflow.Actions"
+    assert entity(runtime.workflows.get("Tarav.Workflow.OperatorContext")).name == "Tarav.Workflow.OperatorContext"
     from tarav.l1.actions import action_types
     assert action_types()["Tarav.Actions.POI.Resolution"] is POIResolutionAction
 
@@ -929,3 +929,73 @@ def test_an_action_shows_its_poi_as_it_is_raised_now(stores):
     shown = stores.runs.load(str(key)).data["event"]["poi"]
     assert shown["message"] == "hall is on, seen 2 times" and shown["details"] == {"seen": 2}
     assert raised(2)["updated"] == 0  # nothing new to say
+
+
+def _commit_all(repo: Path, message: str) -> str:
+    """Commit every change of a test repository and return the commit."""
+    def git(*args):
+        return subprocess.run(["git", "-C", str(repo), *args], check=True,
+                              capture_output=True, text=True).stdout.strip()
+    git("add", "-A")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message)
+    return git("rev-parse", "HEAD")
+
+
+# tarav.breadcrumb e37bdaa213b9a3147fabe940d9f75b3668541a1867fdd7d49dff82b3619c0631
+def test_an_action_logs_the_git_state_of_its_repositories_at_its_changes(stores, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+    (repo / "house.md").write_text("lamps\n")
+    first = _commit_all(repo, "one")
+    repo = repo.resolve()
+    root = str(repo)
+
+    def lamps(**levels):
+        return stores.update(HOME, CheckSuite([LampCheck(lamp, level) for lamp, level
+                                               in levels.items()], repositories=(repo,)).run())
+
+    poi = LampCheck("hall", 3).run().pois()[0]
+
+    def log():
+        return [(entry["event"], entry.get("exit"), entry["repositories"][root]["commit"],
+                 entry["repositories"][root]["clean"])
+                for entry in stores.pois.of(poi).data["git"]["log"]]
+
+    (repo / "draft.md").write_text("draft\n")  # opened while the repository is not clean
+    lamps(hall=3)
+    assert log() == [("opened", None, first, False)]
+    advice = stores.pois.of(poi).context().open("git").records.to_record()["value"]["advice"]
+    assert len(advice) == 1 and advice[0].startswith(f"{root} was not clean")
+
+    second = _commit_all(repo, "two")  # still open, now clean: logged once
+    assert lamps(hall=3)["updated"] == 1
+    assert lamps(hall=3)["updated"] == 0
+    assert log()[1:] == [("clean", None, second, True)]
+    assert stores.pois.of(poi).context().open("git").records.to_record()["value"]["advice"] == []
+
+    (repo / "draft.md").write_text("fixed\n")  # gone while not clean
+    lamps(hall=0)
+    assert log()[2:] == [("closed", "gone", second, False)]
+    third = _commit_all(repo, "three")  # the first clean state after closing
+    lamps(hall=0)
+    lamps(hall=0)
+    assert log()[3:] == [("clean", None, third, True)]
+
+    # reopened while clean: that entry is already the clean one of its phase
+    lamps(hall=3)
+    lamps(hall=3)
+    assert log()[4:] == [("reopened", None, third, True)]
+
+    # a blessing is taken outside a run: it reads the repository when it closes
+    (repo / "draft.md").write_text("again\n")
+    reason = stores.contexts.put(BlessingInput.new(reason="The hall lamp stays on."))
+    stores.runner.close(str(action_id(poi)), reason, exit=BLESSED)
+    assert log()[5:] == [("closed", BLESSED, third, False)]
+
+
+def test_an_action_whose_checks_declare_no_repository_logs_nothing(stores):
+    stores.lamps(hall=3)
+    run = stores.pois.of(LampCheck("hall", 3).run().pois()[0])
+    assert run.data.get("git") is None
+    assert run.context().open("git").records.to_record()["value"]["log"] == []

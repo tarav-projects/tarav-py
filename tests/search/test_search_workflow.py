@@ -165,6 +165,6 @@ def test_runtime_owns_an_independent_search_service() -> None:
 
     first = create_runtime()
     second = create_runtime()
-    assert first.workflows.get("search") is SearchWorkflow
+    assert first.workflows.get("Tarav.Workflow.Search") is SearchWorkflow
     first.search.register("memory", MemoryEngine("one"))
     assert second.search.engines == {}

@@ -93,7 +93,7 @@ class AutoPrimeTargetState:
     account: str | None = None
     home: str | None = None
     profile: str | None = None
-    burst_used_percent: int | None = None
+    burst_elapsed_percent: float | None = None
     last_ping_at: str | None = None
     last_error: dict[str, object] | None = None
     last_attempt_tick: int | None = None
@@ -104,7 +104,7 @@ class AutoPrimeTargetState:
             "provider": self.provider,
             "account": self.account,
             "home": self.home,
-            "burst_used_percent": self.burst_used_percent,
+            "burst_elapsed_percent": self.burst_elapsed_percent,
             "last_ping_at": self.last_ping_at,
             "last_error": self.last_error,
             "last_attempt_tick": self.last_attempt_tick,

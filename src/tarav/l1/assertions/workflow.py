@@ -21,5 +21,4 @@ class AssertionsWorkflow(TaravWorkflow):
     def _workflow_id(cls):
         return ASSERTIONS_WORKFLOW_SHIP
 
-    workflow_name = 'assertions'
     constitution = 'Represent typed assertions without requiring a scoring method.'

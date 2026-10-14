@@ -5,8 +5,6 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote
 
-from markdown_it import MarkdownIt
-
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import FileRecord, Ship, TypeShip
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
@@ -20,7 +18,7 @@ from .generation import _hash
 from .pois import (
     AttachmentCycle, Finding, InclusionCycle, InvalidBlockReference, InvalidContextTarget,
     InvalidLoadingRoot, InvalidParent, LoadingAnalysisIncomplete, LoadingDeclarationStale,
-    LoadingRenderError, RootHasParent, UnannotatedOutputLink, UndeclaredBlock, UnreachableBlock,
+    LoadingRenderError, RootHasParent, UndeclaredBlock, UnreachableBlock,
 )
 
 
@@ -80,8 +78,8 @@ class SkillReadingGraph(ReadingGraph):
     def __init__(self, package, documents):
         self.package = package
         # tarav.breadcrumb 1f2a5d756e2d5656f99872c4ef20e28c188475e20fd9454ac3ef0f4753e314a0
-        self.source = package.path(package.data.get('loading', '.skw/main.json'))
-        if 'loading' in package.data:
+        self.source = package.path(package.loading_file or '.skw/main.json')
+        if package.loading_file is not None:
             self.data = read(self.source)
         else:
             # Derived bindings are ephemeral, not a registry written to disk.
@@ -135,14 +133,6 @@ class SkillReadingGraph(ReadingGraph):
                 if typed.id in self.by_ship:
                     raise ValueError('Block Ship bound more than once')
                 self.by_ship[typed.id] = identity
-                # Conformance signal only. Parsed links never become edges.
-                content = typed.get('content')
-                if content is not None and not isinstance(typed, SkillLink):
-                    for token in MarkdownIt().parse('\n'.join(content)):
-                        for child in token.children or []:
-                            if child.type == 'link_open':
-                                self.report(UnannotatedOutputLink, identity,
-                                            target=child.attrGet('href'))
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 self.report(InvalidBlockReference, identity, detail=str(exc))
         for document in documents:
@@ -179,6 +169,7 @@ class SkillReadingGraph(ReadingGraph):
                         destination = (self.resolve_entry(declaration.destination())
                                        if isinstance(declaration, ExpectedLink) else
                                        self.resolve_entry_record(declaration.entry))
+                        declaration.prose  # an unknown prose Type is an invalid declaration
                         self.links[identity].append((declaration, destination, target))
                 except (ValueError, KeyError, TypeError) as exc:
                     self.report(InvalidContextTarget, identity,
@@ -206,8 +197,7 @@ class SkillReadingGraph(ReadingGraph):
             if any(kind in node for kind in ('links', 'includes', 'requires')):
                 raise ValueError('Reading declarations belong to source blocks')
             slots = set()
-            for declaration, _, _ in (*self.links.get(identity, ()),
-                                      *self.includes.get(identity, ())):
+            for declaration, _, _ in self.includes.get(identity, ()):
                 slot = declaration._record.get('slot')
                 if slot is None:
                     continue
@@ -216,7 +206,7 @@ class SkillReadingGraph(ReadingGraph):
                     raise ValueError('Reading slots require unique simple IDs')
                 slots.add(slot)
         roots = [identity for identity, (d, b) in self.bindings.items()
-                 if d.target == package.path(package.data['entrypoint'])
+                 if d.target == package.entrypoint
                  and b.label == next(iter(d.blocks))]
         self.root = self.data.get('root', roots[0] if len(roots) == 1 else None)
         if self.root not in self.bindings:
@@ -362,31 +352,14 @@ class SkillReadingGraph(ReadingGraph):
             raise ValueError(f'Inclusion cycle: {identity}')
         document, block = self.bindings[identity]
         text = '\n'.join(block.content_lines())
-        for kind, declarations in (('links', self.links[identity]),
-                                   ('includes', self.includes[identity])):
-            for declaration, destination, _ in declarations:
-                slot = declaration._record.get('slot')
-                if slot is None:
-                    continue
-                token = '{{skw:' + slot + '}}'
-                if text.count(token) != 1:
-                    raise ValueError(f'Expected exactly one slot {token} in {identity}')
-                if kind == 'includes':
-                    value = self.render_block(destination, output, (*active, identity))
-                else:
-                    if destination is None:
-                        raise ValueError(f'Link slot {slot} has no reading destination')
-                    target_document, target_block = self.bindings[destination]
-                    path = quote(os.path.relpath(target_document.target, output.parent), safe='/')
-                    first = target_block.label == next(iter(target_document.blocks))
-                    if not first:
-                        path += '#skw-' + str(target_block.id)
-                    caption = declaration._record.get('caption')
-                    if not isinstance(caption, str):
-                        raise ValueError(f'Link slot {slot} requires a caption')
-                    label = caption.replace('\\', '\\\\').replace('[', '\\[').replace(']', '\\]')
-                    value = f'[{label}]({path})'
-                text = text.replace(token, value)
+        for declaration, destination, _ in self.includes[identity]:
+            slot = declaration._record.get('slot')
+            if slot is None:
+                continue
+            token = '{{skw:' + slot + '}}'
+            if text.count(token) != 1:
+                raise ValueError(f'Expected exactly one slot {token} in {identity}')
+            text = text.replace(token, self.render_block(destination, output, (*active, identity)))
         if '{{skw:' in text:
             raise ValueError(f'Undeclared slot in {identity}')
         # Anchors are a generated primitive only where a declared link needs one.
@@ -398,16 +371,42 @@ class SkillReadingGraph(ReadingGraph):
             text = f'<a id="skw-{block.id}"></a>\n' + text
         return text
 
+    def href(self, node, output: Path) -> str:
+        """The href from the file `output` to the block bound at `node`."""
+        target_document, target_block = self.bindings[node]
+        path = quote(os.path.relpath(target_document.target, output.parent), safe='/')
+        if target_block.label != next(iter(target_document.blocks)):
+            path += '#skw-' + str(target_block.id)
+        return path
+
     def link_output(self, block: SkillLink, output: Path) -> str:
         target = block['target']
         if target not in self.bindings:
             raise ValueError(f'Unknown SkillLink target: {target}')
-        target_document, target_block = self.bindings[target]
-        path = quote(os.path.relpath(target_document.target, output.parent), safe='/')
-        if target_block.label != next(iter(target_document.blocks)):
-            path += '#skw-' + str(target_block.id)
         label = block['caption'].replace('\\', '\\\\').replace('[', '\\[').replace(']', '\\]')
-        return f'[{label}]({path})'
+        return f'[{label}]({self.href(target, output)})'
+
+    # tarav.breadcrumb 7f13a0d4e0cb6be5e1972fffe7f7924aa7bda67b6c88eef97c2a38c43060268e
+    def prose_findings(self):
+        """What the prose parts of the declared links find in the text of their blocks.
+
+        This is verification for maintainers; the analysis never reads text.
+        """
+        findings = []
+        for identity, links in self.links.items():
+            document, block = self.bindings[identity]
+            content = block.get('content')
+            if content is None:
+                continue
+            text = '\n'.join(block.content_lines())
+            for declaration, destination, target in links:
+                prose = declaration.prose
+                node = destination if destination is not None else self.by_ship.get(target)
+                if prose is None or node is None:
+                    continue
+                findings.extend(found.at(block=str(block.id), path=document.key, label=block.label)
+                                for found in prose.findings(text, self.href(node, document.target)))
+        return findings
 
     def document_text(self, document):
         parts = []

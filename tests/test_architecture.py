@@ -52,7 +52,7 @@ def test_project_ownership_and_consumer_direction():
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
-    assert runtime.workflows.get("project") is ProjectWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Project") is ProjectWorkflow
     assert entity(Project).workflow is ProjectWorkflow()
     graph = _top_level_import_graph()
     assert not ({"wiki", "models", "runtime", "cli"} & graph["project.base"])
@@ -67,7 +67,7 @@ def test_loading_workflow_configures_kernel_without_reverse_imports():
     from tarav.l3.runtime import create_runtime
 
     graph = _top_level_import_graph()
-    assert create_runtime().workflows.get("loading") is LoadingWorkflow
+    assert create_runtime().workflows.get("Tarav.Workflow.Loading") is LoadingWorkflow
     assert issubclass(TaravProject, LoadingProfile)
     assert not any(name.startswith("loading") for name in graph["l0.kernel"])
 
@@ -80,9 +80,9 @@ def test_cli_usage_and_live_help_workflows_are_separate() -> None:
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
-    assert runtime.workflows.get("cli") is CliWorkflow
-    assert runtime.workflows.get("usage") is UsageRegistryWorkflow
-    assert runtime.workflows.get("live-help") is LiveHelpWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.CLI") is CliWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Usage") is UsageRegistryWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.LiveHelp") is LiveHelpWorkflow
     assert entity(Command).workflow is CliWorkflow()
     assert entity(CommandUse).workflow is CliWorkflow()
     assert entity(UsageTrace).workflow is UsageRegistryWorkflow()
@@ -105,7 +105,7 @@ def test_git_workflow_spans_mechanics_integration_and_process_adapters():
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
-    assert runtime.workflows.get("git") is GitWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Git") is GitWorkflow
     assert entity(GitRepository).workflow is GitWorkflow()
     assert entity(CommitManifest).workflow is GitWorkflow()
     assert (
@@ -123,7 +123,7 @@ def test_workspaces_own_their_entities_and_project_only_integrates():
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
-    assert runtime.workflows.get("workspaces") is WorkspacesWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Workspaces") is WorkspacesWorkflow
     assert entity(Workspace).workflow is WorkspacesWorkflow()
     assert runtime.records.resolve_ship(entity(Workspace).id) is Workspace
     assert "project" not in _top_level_import_graph()["workspaces.model"]
@@ -140,7 +140,7 @@ def test_poi_workflow_ownership_and_runtime_composition():
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
-    assert runtime.workflows.get('poi') is POIWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.POI") is POIWorkflow
     for record_type in POI_RECORD_TYPES:
         assert entity(record_type).workflow is POIWorkflow()
         assert runtime.records.resolve_ship(entity(record_type).id) is record_type
@@ -157,7 +157,7 @@ def test_assertion_foundation_and_line_specialization_are_separate():
     from tarav.l2.lines.assertions import (
         LineGroundingAssertion, LineGroundingCase, LineSupportInventoryCase,
     )
-    from tarav.l1.lines.workflow import LinesWorkflow
+    from tarav.l1.lines import Block, Line, LinesWorkflow
     from tarav.l1.assertions import AssertionsWorkflow, TaravAssertion
     from tarav.l2.scoring import (
         Assertable, Assertion, AssessmentCase, PairwiseRankingCase,
@@ -179,7 +179,10 @@ def test_assertion_foundation_and_line_specialization_are_separate():
     assert entity(PairwiseRankingCase).workflow is RankingWorkflow()
     assert entity(Tribunal).workflow is RankingWorkflow()
     assert entity(LineGroundingAssertion).workflow is LinesWorkflow()
+    assert entity(Block).workflow is LinesWorkflow()
     runtime = create_runtime()
+    assert runtime.records.resolve_ship(entity(Block).id) is Block
+    assert runtime.records.resolve_ship(entity(Line).id) is Line
     assert runtime.records.resolve_ship(entity(TaravAssertion).id) is TaravAssertion
     for case_type in (
         AssessmentCase, Score, RankingScore, PairwiseRankingCase, Tribunal,
@@ -236,7 +239,7 @@ def test_wiki_ownership_and_parsing_boundary():
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
 
     runtime = create_runtime()
-    assert runtime.workflows.get("wiki") is WikiWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Wiki") is WikiWorkflow
     assert entity(Wiki).workflow is WikiWorkflow()
     assert entity(WikiNote).workflow is WikiWorkflow()
     assert "surfaces" in _top_level_import_graph()["wiki"]
@@ -333,17 +336,17 @@ def test_skw_code_owns_common_source_and_skills_specializes_it():
     from tarav.l1.skw.code import CodeWorkflow, Contains, DocumentRecord, SkwBlock
     from tarav.l1.skw.document import SkillwareWorkflow
     from tarav.l1.skw.skills import SkillLink
-    from tarav.l2.skw.skills import SkillsWorkflow
+    from tarav.l2.skw.skills import SkwSkillsWorkflow
     from tarav.l3.runtime import create_runtime
 
     assert CodeWorkflow().workflow is SkillwareWorkflow()
-    assert SkillsWorkflow().workflow is CodeWorkflow()
+    assert SkwSkillsWorkflow().workflow is CodeWorkflow()
     for common_type in (DocumentRecord, SkwBlock, GenerationAnnotation, Contains):
         assert entity(common_type).workflow_ship == CodeWorkflow().id
-    assert entity(SkillLink).workflow_ship == SkillsWorkflow().id
+    assert entity(SkillLink).workflow_ship == SkwSkillsWorkflow().id
 
     runtime = create_runtime()
-    assert runtime.workflows.get("skw.code") is CodeWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.SKW.Code") is CodeWorkflow
     assert Contains.__module__ == "tarav.l1.skw.code.reading"
 
 
@@ -365,11 +368,11 @@ def test_record_interfaces_belong_to_kernel():
 def test_record_archive_placement_index_is_outside_its_entity_record() -> None:
     from tarav.l1.archive.records import ARCHIVE
     from tarav.l1.archive.records import ArchiveFolder, ArchiveRoot, ArchiveList
-    from tarav.l2.test_workflow import TestWorkflow
+    from tarav.l2.tests.navigation import NavigationTestsWorkflow
 
     assert isinstance(ARCHIVE, ArchiveRoot)
-    assert ARCHIVE.for_workflow(TestWorkflow).parts == (
-        str(entity(TestWorkflow).workflow_ship),
+    assert ARCHIVE.for_workflow(NavigationTestsWorkflow).parts == (
+        str(entity(NavigationTestsWorkflow).workflow_ship),
     )
 
     for archive_type in (ArchiveFolder, ArchiveList):
@@ -636,7 +639,7 @@ def test_records_workflow_owns_navigation_without_owning_contributed_storage() -
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
-    assert runtime.workflows.get("records") is TaravRecords
+    assert runtime.workflows.get("Tarav.Workflow.Records") is TaravRecords
     assert entity(RecordsRoot).workflow is TaravRecords()
     assert "archive" not in _top_level_import_graph()["records"]
     assert "scoring" not in _top_level_import_graph()["records"]
@@ -671,7 +674,7 @@ def test_l0_import_does_not_initialize_composed_domains() -> None:
     import subprocess
     import sys
 
-    for imported in ("tarav.l0._core", "tarav.l0.kernel"):
+    for imported in ("tarav.l0._core", "tarav.l0.kernel", "tarav.l0.project"):
         subprocess.run(
             [sys.executable, "-c", f"""
 import sys
@@ -734,7 +737,9 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
     from tarav.l1.context import Context, ContextEntry, ContextExplorer
     from tarav.l0.kernel.records import TaravObject
     from tarav.l3.runtime import create_runtime
-    from tarav.l2.test_workflow import TestEntity, TestWorkflow
+    from tarav.l2.tests.workflow import TestsWorkflow
+    from tarav.l2.tests.navigation import TestEntity, NavigationTestsWorkflow
+    from tarav.l2.tests.scoring import ScoringTestsWorkflow
 
     imports = _top_level_import_graph()
     assert imports["l0.kernel"] == set()
@@ -749,13 +754,15 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
     assert not (PACKAGE_ROOT / "context_workflow.py").exists()
     assert not (PACKAGE_ROOT / "l0" / "kernel" / "context.py").exists()
     assert not (PACKAGE_ROOT / "context_store.py").exists()
-    assert (PACKAGE_ROOT / "l2" / "test_workflow.py").is_file()
+    assert (PACKAGE_ROOT / "l2" / "tests" / "workflow.py").is_file()
+    assert (PACKAGE_ROOT / "l2" / "tests" / "navigation.py").is_file()
+    assert (PACKAGE_ROOT / "l2" / "tests" / "scoring.py").is_file()
 
     runtime = create_runtime()
     assert (
         runtime.records.resolve_type("Tarav.Context.SubjectRoot") is SubjectContextRoot
     )
-    assert runtime.workflows.get("context") is ContextWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Context") is ContextWorkflow
     assert runtime.records.resolve_type("Tarav.Context.Entry") is ContextEntry
     assert issubclass(Context, TaravObject)
     assert (
@@ -766,12 +773,16 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
         runtime.records.resolve_type("Tarav.Context.StoredVector")
         is StoredVectorContext
     )
-    assert entity(SubjectContextRoot).workflow_ship == runtime.workflows.get("context")().id
-    assert entity(ContextEntry).workflow_ship == runtime.workflows.get("context")().id
+    assert entity(SubjectContextRoot).workflow_ship == runtime.workflows.get("Tarav.Workflow.Context")().id
+    assert entity(ContextEntry).workflow_ship == runtime.workflows.get("Tarav.Workflow.Context")().id
     assert entity(ContextExplorer).name == "Tarav.Context.Explorer"
     assert runtime.records.resolve_type("Tarav.Test.Entity") is TestEntity
-    assert runtime.workflows.get("test") is TestWorkflow
-    assert entity(TestEntity).workflow_ship == runtime.workflows.get("test")().id
+    assert runtime.workflows.get("Tarav.Workflow.Tests") is TestsWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Tests.Navigation") is NavigationTestsWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Tests.Scoring") is ScoringTestsWorkflow
+    assert NavigationTestsWorkflow().workflow is TestsWorkflow()
+    assert ScoringTestsWorkflow().workflow is TestsWorkflow()
+    assert entity(TestEntity).workflow_ship == NavigationTestsWorkflow().id
 
 
 def test_ship_identity_is_owned_by_kernel_and_used_by_lines() -> None:
@@ -894,6 +905,26 @@ def test_consumers_import_the_normal_model_package_not_its_submodules() -> None:
     )
 
 
+# tarav.breadcrumb 8962bfcd4c9671173cf77da9e7b532e2cb05f2d326407656ce21db8b4cdf897a
+def test_project_mechanics_live_in_the_project_namespace() -> None:
+    # Layers only relax dependencies; the Project namespace spans them, and its
+    # lowest part is tarav.l0.project. _core holds no Project mechanics.
+    imports = _top_level_import_graph()
+    assert not (PACKAGE_ROOT / "l0" / "_core" / "project.py").exists()
+    assert not (PACKAGE_ROOT / "l0" / "_core" / "project_command_log.py").exists()
+    assert "l0.project" not in imports["l0._core"]
+    assert imports["l0.project"] <= {"l0._core"}
+
+
+# tarav.breadcrumb 7db2362b422eae20f9b232d0c26435b712f356f54f3f692c1c3b415b9b50ad98
+def test_skill_mechanics_know_nothing_of_projects() -> None:
+    # How a Project selects and installs skills is a Project integration.
+    imports = _top_level_import_graph()
+    assert not imports["skills"] & {"l0.project", "project"}
+    assert not (PACKAGE_ROOT / "l1" / "skills" / "routing.py").exists()
+    assert (PACKAGE_ROOT / "l2" / "project" / "skills" / "routing.py").is_file()
+
+
 # tarav.breadcrumb 56810d2b44380634cc17abe006666e235be6aa3168c35377077ac05e4f943abb
 def test_project_skill_availability_stays_in_project_workflow() -> None:
     from tarav.l0.kernel import entity
@@ -904,6 +935,7 @@ def test_project_skill_availability_stays_in_project_workflow() -> None:
 
     assert entity(ProjectSkills).workflow_ship == PROJECT_WORKFLOW_SHIP
     assert entity(FolderSkill).workflow_ship == SKILLS_WORKFLOW_SHIP
+
 
 # tarav.breadcrumb f38fded0c826624e04780a3a2e18a014ded9311ab856a1384350d68acfefb6dd
 def test_bypass_entry_is_outside_the_guarded_import_graph() -> None:

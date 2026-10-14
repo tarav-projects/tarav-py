@@ -31,7 +31,6 @@ class ArchiveWorkflow(TaravWorkflow):
     @classmethod
     def _workflow_id(cls):
         return ARCHIVE_WORKFLOW_SHIP
-    workflow_name = "archive"
     constitution = (
         "Record artifacts and their retention evidence without interpreting "
         "their domain meaning."

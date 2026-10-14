@@ -24,7 +24,6 @@ _LOG = logging.getLogger(__name__)
 
 
 class UsageRegistryWorkflow(TaravWorkflow):
-    workflow_name = "usage"
     constitution = (
         "Retain recent workflow-attributed usage traces for discovery. "
         "Daily trace files older than the configured window may be removed."

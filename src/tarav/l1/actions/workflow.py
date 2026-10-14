@@ -6,7 +6,6 @@ ACTIONS_WORKFLOW_SHIP = WorkflowShip("8f3394a6-7670-4568-a71e-5120f687affd")
 
 
 class ActionsWorkflow(TaravWorkflow):
-    workflow_name = "actions"
     constitution = (
         "Provide typed Actions that harness a piece of an operator's work, "
         "and record each run of them."

@@ -1,9 +1,9 @@
-"""Workflow-neutral Git repository mutations."""
+"""Workflow-neutral Git repository mutations, and the state of a repository."""
 # tarav.breadcrumb 0ac8bc9208042292276044ca003c83913b57e2f2251282c2a7ee8fc0a56e50b2
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 import os
 from pathlib import Path, PurePosixPath
 import subprocess
@@ -37,6 +37,28 @@ def run_git(
         message = result.stderr.decode(errors="replace").strip()
         raise GitError(message or f"Git command failed: {' '.join(args)}")
     return result
+
+
+# tarav.breadcrumb 4779a9beedc524e919dbb5117d45cfd86f319fbcebd30506d08554718dbb3c6a
+def repository_states(folders: Iterable[str | Path]) -> dict[str, dict[str, object]]:
+    """The state of the repository each folder is in, keyed by repository root.
+
+    A state is HEAD and whether the working tree has no change; untracked
+    files are changes. A folder outside any repository, or in one without a
+    commit, has none.
+    """
+    states: dict[str, dict[str, object]] = {}
+    for folder in folders:
+        try:
+            root = str(Path(run_git(Path(folder).expanduser(), "rev-parse", "--show-toplevel")
+                            .stdout.decode().strip()).resolve())
+            if root not in states:
+                commit = run_git(root, "rev-parse", "--verify", "HEAD^{commit}").stdout.decode().strip()
+                status = run_git(root, "status", "--porcelain").stdout
+                states[root] = {"commit": commit, "clean": not status.strip()}
+        except (GitError, OSError):
+            continue
+    return states
 
 
 def initialize_repository(root: str | Path) -> Path:

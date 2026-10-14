@@ -7,7 +7,6 @@ SKILLS_WORKFLOW_SHIP = WorkflowShip("3839e290-7fe6-4043-b077-2eb6e66c3f50")
 
 # tarav.breadcrumb 5e85cabc262327820bfc9efbb27a0d8537521e6b694f385f0e25de1977a48a24
 class SkillsWorkflow(TaravWorkflow):
-    workflow_name = "skills"
     constitution = ("Represent skills, folders an agent harness loads through their "
                     "SKILL.md, and the primitives every kind of skill shares.")
 

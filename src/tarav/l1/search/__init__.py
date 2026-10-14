@@ -213,7 +213,6 @@ class SearchService(SearchEngine):
 
 
 class SearchWorkflow(TaravWorkflow):
-    workflow_name = "search"
     constitution = "Dispatch typed search queries to independently registered engines."
 
     @classmethod

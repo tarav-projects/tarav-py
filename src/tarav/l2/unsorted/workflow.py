@@ -4,7 +4,6 @@ from .identity import UNSORTED_WORKFLOW_SHIP
 
 
 class UnsortedWorkflow(TaravWorkflow):
-    workflow_name = "unsorted"
     constitution = "Keep unresolved legacy responsibilities operational while their ownership is clarified."
 
     @classmethod

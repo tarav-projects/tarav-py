@@ -84,8 +84,8 @@ from tarav.l2.lines.types import default_diagram_object_types
 from tarav.l2.unsorted.registry import default_diagram_ship_type_registry
 from tarav.l0.kernel import entity
 from pydantic import field_validator
-from tarav.l0._core.project import load_project_marker
-from tarav.l0._core.project import project_marker_path
+from tarav.l0.project import load_project_marker
+from tarav.l0.project import project_marker_path
 from uuid import uuid4
 from typing import TYPE_CHECKING
 

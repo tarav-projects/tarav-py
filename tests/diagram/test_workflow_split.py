@@ -15,8 +15,8 @@ from tarav.l2.unsorted.workflow import UnsortedWorkflow
 
 def test_ownership_split_does_not_redirect_retired_identity():
     runtime = create_runtime()
-    assert runtime.workflows.get("lines") is LinesWorkflow
-    assert runtime.workflows.get("unsorted") is UnsortedWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Lines") is LinesWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Unsorted") is UnsortedWorkflow
     for identity in ("diagram", DIAGRAM_WORKFLOW_SHIP):
         with pytest.raises(KeyError):
             runtime.workflows.get(identity)

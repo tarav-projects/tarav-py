@@ -24,6 +24,16 @@ object whose Python class supplies executable meaning and whose Record supplies
 a lightweight, inspectable representation. Persistence is optional, and a
 Record does not need to contain every fact known by its class.
 
+An object's own state is its source of truth, never its loaded Record. Every
+construction path, whether a constructor, a factory, or `_from_record`, fills
+that state; objects may be partial, because a Record need not hold every fact
+(a location in particular), and a missing part fails where it is used.
+`_record` keeps what was read and is not consulted as state; `to_record()`
+projects state. The kernel's `_to_record()` fallback to `_record` remains only
+for Types not yet migrated, which `tests/kernel/test_object_record_contract.py`
+lists and lets only shrink.
+<!-- tarav.breadcrumb 020e9873510e3a8944267702ca20fa60fa8410e5e51dfe4082c233e7e8d9e789 -->
+
 The main concepts are:
 
 - **Artifacts** are parts of the world Tarav may operate on: files, code,
@@ -141,8 +151,8 @@ folder Record identifying that Archive. This lets either ContextEntry open its
 value without making Context inherit Archive behavior. A Context writer chooses
 leaf cargo explicitly or creates a folder with a Context attachment.
 Plain unidentified Objects can still contribute runtime entries without
-Archive backing. Opening a Context never creates retained data; the Test
-Workflow explicitly seeds synthetic Archives for end-to-end tests.
+Archive backing. Opening a Context never creates retained data; the Navigation
+Tests Workflow explicitly seeds synthetic Archives for end-to-end tests.
 
 `tarav.l3.loading.load(path, expected_type=...)` is the primary dynamic loading
 interface. The composed runtime locates the Record, resolves its registered
@@ -235,10 +245,15 @@ workflows; `l3` contains the installed runtime and process adapters. Context and
 SKW already span levels. A semantic workflow namespace can span levels; levels
 do not establish Workflow parentage. Lower layers do not import higher layers.
 
-- `tarav.l0._core` is the moved private utility package. It currently includes
-  project-specific helpers alongside broadly shared mechanics; those modules
-  have not yet been classified into later layers. New shared utilities enter
-  `_core` only after demonstrated reuse.
+- `tarav.l0._core` is the private utility package. It holds no workflow's
+  mechanics; `_core.home` is the Tarav home (`~/.tarav`, its global config and
+  storage). New shared utilities enter `_core` only after demonstrated reuse.
+- The Project namespace spans layers. `tarav.l0.project` is its lowest part:
+  marker, config, discovery, layout, storage scope, project selection and the
+  project command log, usable by any workflow. `tarav.l1.project` holds the
+  Project Type, `tarav.l2.project` its integrations with other workflows, and
+  `tarav.l3.project` bootstrap and launch.
+  <!-- tarav.breadcrumb 6d977147b5ef1427a82b4bd98151c7dc8581979853d8dae74631c18395befb29 -->
 - `tarav.l0.kernel` contains Tarav's public semantic foundation: Types, Objects,
   Entities, Ships, class-owned Record interfaces, Explorer contracts,
   Record-space contracts, and trusted Type and Workflow registries. Kernel
@@ -277,7 +292,8 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
 - `tarav.l1.archive.records` implements Record Archive, nested beneath its parent
   Archive workflow. Artifact-registration Record definitions live separately in
   `tarav.l1.archive.artifact_records`; Archive's parent implementation does not
-  import its Record Archive child.
+  import its Record Archive child. Its retained layout remains Archive-owned;
+  it shares exact-type write and Git initialization mechanics with Records.
 - `tarav.l1.loading` owns profile discovery and `tarav.l3.loading` owns the
   runtime-backed load facade. `tarav.l1.project` owns the minimal Project Type;
   `tarav.l2.project` adds Models and Wiki integrations. Archive uses the
@@ -307,7 +323,10 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
 
 ## Kernel contracts
 
-`tarav.l1.lines.Line` is a storage-independent entity with text and one
+`tarav.l1.lines.Block` is a storage-independent entity with a named topic and
+ordered Line membership. Its Record retains Line Ships; explicit binding
+resolves the ordered members without changing them. Membership does not change
+a Line's scope. `tarav.l1.lines.Line` is a storage-independent entity with text and one
 interpretive entity scope. Its Record retains the scope Ship; explicit binding
 resolves that edge without changing it. `LineScope` is a read-only Context
 specialization. `explore(subject, type=LineScope)` and the runtime context
@@ -425,8 +444,13 @@ plain grouping has no identity and counts as part of the suite above it.
 `exhausted` says the suite's own code ran to its end with nothing refused,
 and `conclusive_for(check Type)` that its own checks of that Type also
 completed; a nested suite with an identity answers for itself. `walk()` gives
-each result with the identified suites above it. A class with
-`routine = False` is left out of the repeated run. `PyTestSuite`
+each result with the identified suites above it. A suite may declare the
+folders of the Git repositories its checks read (`repositories=`); when it
+runs it first records their HEAD and whether they are clean (`suite.git`,
+read through `tarav.l0._core.git_repository.repository_states`), and each
+result carries the state of the nearest declaring suite (`result.git`). A
+Project's suites declare `TaravProject.repositories()`, its root by default.
+A class with `routine = False` is left out of the repeated run. `PyTestSuite`
 (`tarav.l2.project.dev`) runs pytest once and yields one `PyTestFileSuite`
 per test file. `tarav check --project` (`tarav.l3.check`) launches the
 Project harness, binds the Project's Type, and prints the report rather than
@@ -437,6 +461,15 @@ status, and `status_text()` shows the open actions per Project, what the run
 opened, reopened or closed, and one line about the checks; `--json` prints
 the whole result, the check report included. The check report's text names
 only what needs saying: checks that did not complete and suites left out.
+
+`tarav.l1.project.index` keeps machine-local observations of portable Project
+IDs and their locations under the Tarav home. Explicit Project CLI operations,
+`tarav run --project`, and `tarav check --project` notify it on a best-effort
+basis. `tarav project list --global` validates remembered locations without
+discarding missing paths; an explicit `--root` scan can rediscover moved
+Projects. The Project marker owns identity, while this index only helps locate
+it. Concurrent live locations sharing one ID are reported as ambiguous.
+<!-- tarav.breadcrumb 79bfd183bfe36bf3a301b38b727cb585b1c87039bfac199ef244b1e2b949cd12 -->
 
 The generated package keeps its code-owned Project TypeShip and package
 bootstrap metadata in `.tarav/pyproject.toml`, while the marker retains its
@@ -488,7 +521,10 @@ and `blessed`, and what that Type does with a run of its Project's checks
 composes the two in `project.status()`: it runs its own checks and hands the
 results to its actions, and a container asks each member Project to do the
 same for itself. A POI a Project's checks no longer produce closes its
-action as `gone`. The instance of a POI's action
+action as `gone`. `tarav.l1.actions.git` keeps an action's Git log: the state
+of its checks' repositories at each status change, and per repository the
+first clean state after it; `tarav status` names the repositories that were
+not clean. The instance of a POI's action
 is derived from the POI's identity; its record holds the current state and
 its history is the registry's Git history. Checks do not import Actions and
 give the owner no meaning; a run that no owned suite produced is momentary
@@ -501,6 +537,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 <!-- tarav.breadcrumb 79c4b2ba1ae60b9c354194f6019851a30bd082d3f144adac272728093277e5df -->
 <!-- tarav.breadcrumb 9ee4d9dcc84f3fe51b675d28058a032060fb73abc4cc794542649b33aec1eb74 -->
 <!-- tarav.breadcrumb 2d9d5a81415b516dd8e6f4906bdb3917d37b71ca15ceb895eef1ff8f02d4ce1f -->
+<!-- tarav.breadcrumb 2955673512f98334e8762754e2942b0b414a003b1a934b0f5e95255350bee784 -->
 
 | Package | Architectural responsibility |
 | --- | --- |
@@ -528,6 +565,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `decisions` | DecisionsWorkflow owns the shared attributed Decision contract and prescribes no concrete subtype of its own; consuming workflows define theirs. It owns no storage. The common actor field is exposed as `decider`; subtype schemas keep their own fields and optional POI links. l2 builds an inspectable main Assertion for generic Decisions; assessment cases and attention policy are not yet prescribed. A Blessing is not a Decision: it is the closing record of an action. |
 | `blessings` | BlessingsWorkflow owns the `Blessing`: the closing record of a POI action closed although its situation still exists, with the actor, the reason, the offered support and the POI as it stood. The Type is defined in `l1.actions.blessing`, beside the Actions code it is built from, with `BlessingInput` and the test of that exit; the `BlessablePOI` capability is in `l1.poi.actionable`. A Blessing is Assertable; its Assertion and read-only score providers are composed in runtime from the l2 Blessings integration. A blessed POI is still raised and reported; its action stays closed. There is no separate blessing store. |
 | `checks` | Independently runnable bound Checks, CheckPOIs coupled to their Check objects, optional subject providers, and result snapshots. SituationChecks evaluate a detached Situation and use that same snapshot as the POI acceptance scope. Execution completion and a POI's failure signal are separate. |
+| `l2.tests` | TestsWorkflow is a shallow parent in `tests.workflow`. `tests.navigation` owns disposable Context/Archive fixtures; `tests.scoring` owns a fixed synthetic User chat, ten Lines Blocks, fifty scoped candidate Lines, a Line-support Assertion/Case, and a dedicated ranking Tribunal. The scenario closes cases from the synthetic evidence; tests exercise judgment and derived scores without a live agent. |
 <!-- tarav.breadcrumb b750afdefcc38c23df01af9ca67d4f9d81f2795c8e12860d22ddc28782038a74 -->
 <!-- tarav.breadcrumb 28df20317b527872af6eb271a0ede8e2a1c30d0b8fc98201f63e8cb564ec6183 -->
 | `skw`, `skw.code`, `skw.skills` | Skillware umbrella, common source/compilation and ReadingGraph contract, and deployable-skill specialization. Blocks are Entities with Ships and separate labels; source blocks own typed reading declarations. SkillReadingGraph exposes route facts, while skill-owned Checks turn those facts into POIs. |
@@ -540,6 +578,8 @@ and resolves nothing. Programs and Actions are not yet related in code.
 <!-- tarav.breadcrumb 28d74cb87df8e2cd06518e6e21e63155236c88bedc83944c038fb1e1405943c1 -->
 | `skills` | SkillsWorkflow: the abstract base Skill type, `TaravSkill` (a folder a harness loads through its `SKILL.md`; entrypoint, frontmatter, name, description), folder-backed `FolderSkill`, and skill discovery. Independent of Projects. Every kind of skill subtypes `TaravSkill`; `skw.skills`' `SkwSkill`, with its blocks, reading relationships and checks, is the one other workflows commonly use. |
 <!-- tarav.breadcrumb 653af09b96035601ef5d332103371b28d24a22ca431ea077e29e123f3209064a -->
+| `project.skills` | How a Project selects skills from its sources and profiles, installs them into the folders its agents read, and reports their status (`tarav project skills`). |
+<!-- tarav.breadcrumb 80841d3434804e80c9fea866d78bdbb7642359e2f58de218e9a4ca46ed323b0d -->
 | `hooks`, `daemon` | Hook validation and dispatch, plus daemon-owned delivery adapters. |
 | `stdlib` | Small reusable library and CLI primitives. |
 <!-- tarav.breadcrumb 5390bce98b91f130684fb3322d8ee0022a5e60bd1d5390e7e05c8c53b6718e01 -->

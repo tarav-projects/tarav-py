@@ -173,8 +173,11 @@ def test_a_child_with_its_own_environment_reports_its_counts(tree: Path, in_root
     report = {"summary": {"incomplete": 0, "checks": 1, "pois": 2},
               "items": [{"key": "Test.Tree.Found", "pois": 2, "checks": 1}]}
     calls = []
+    real_run = subprocess.run
 
     def fake_run(command, **kwargs):
+        if command[0] == "git":  # the suites read the state of their repositories
+            return real_run(command, **kwargs)
         calls.append(command)
         return subprocess.CompletedProcess(command, 1, stdout=json.dumps(report) + "\n")
 

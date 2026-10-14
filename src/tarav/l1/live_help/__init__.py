@@ -17,7 +17,6 @@ LIVE_HELP_WORKFLOW_SHIP = WorkflowShip("259a5d90-44a9-4dad-a8fa-8fcb704ed6c1")
 
 # tarav.breadcrumb a81b81424414448e696f428f87a1cf998e05674cc337d204ea17582132908cfe
 class LiveHelpWorkflow(TaravWorkflow):
-    workflow_name = "live-help"
     constitution = "Offer mechanically sourced code and recent-usage leads when help is requested."
 
     @classmethod

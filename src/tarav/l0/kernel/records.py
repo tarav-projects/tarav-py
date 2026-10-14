@@ -137,6 +137,9 @@ class TaravObject(TaravType):
     Every subclass, including intermediate bases, projects its Python class to
     a distinct ``TaravClass`` Entity through ``class_entity()``.
 
+    The object's state is its source of truth. Every construction path fills
+    it; ``_record`` only keeps what ``records.from_record()`` was given, and
+    ``records.to_record()`` projects the state.
     """
 
     @classmethod
@@ -253,7 +256,10 @@ class TaravObject(TaravType):
             )
 
     def _to_record(self) -> Mapping[str, object]:
-        """Select the representation; subclasses may project any runtime state."""
+        """Project the object's state as its Record.
+
+        Returning ``_record`` serves only Types not yet migrated to state.
+        """
 
         if self._record is not None:
             return self._record

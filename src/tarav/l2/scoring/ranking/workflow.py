@@ -29,5 +29,4 @@ class RankingWorkflow(ScoringWorkflow):
     def workflow(self):
         return ScoringWorkflow()
 
-    workflow_name = 'ranking'
     constitution = 'Compare closed cases within a tribunal and derive relative scores.'

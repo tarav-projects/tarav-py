@@ -37,7 +37,6 @@ _STATE = "_settings_state"
 
 # tarav.breadcrumb 808882a33ca3fc19336d38801b8a42d73e8eaae3322de8fe307cc7e1a986c8b3
 class SettingsWorkflow(TaravWorkflow):
-    workflow_name = "settings"
     constitution = "Give capabilities one declared, checked place for their controls."
 
     @classmethod

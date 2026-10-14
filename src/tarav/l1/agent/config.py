@@ -6,14 +6,8 @@ from pathlib import Path
 
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.path_validation import validate_string_for_path
-from tarav.l0._core.project import (
-    tarav_home_dir,
-    find_agentos_project_root,
-    global_config_path,
-    load_global_config,
-    load_project_config,
-    project_config_path,
-)
+from tarav.l0._core.home import tarav_home_dir, global_config_path, load_global_config
+from tarav.l0.project import find_agentos_project_root, load_project_config, project_config_path
 from tarav.l0._core.sequences import _unique_paths
 from tarav.l1.agent.primitives import AgentConfig, default_agent_ping_config
 from tarav.l1.agent.providers import (

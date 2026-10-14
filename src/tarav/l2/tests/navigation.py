@@ -1,4 +1,4 @@
-"""Synthetic Context workspace for exercising real Tarav navigation."""
+"""Disposable Context and Archive navigation fixtures."""
 
 from __future__ import annotations
 
@@ -19,16 +19,16 @@ from tarav.l0.kernel.records import (
     TaravEntity,
     entity,
 )
-from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.archive.records import (
     ArchiveEntry,
     ArchivePartition,
     ArchiveFolder,
     ArchiveList,
 )
+from .workflow import TestsWorkflow
 
 
-TEST_WORKFLOW_SHIP = WorkflowShip("84b6d49c-8bba-4af4-a880-c5fa453f80e5")
+NAVIGATION_TESTS_WORKFLOW_SHIP = WorkflowShip("d337b876-654b-4680-bf75-ce25619095e5")
 TEST_ENTITY_SHIP = Ship("71c9a2be-6d3f-4e38-bb88-20783a10f98c")
 
 
@@ -41,7 +41,7 @@ class TestItem(FileRecord):
             target=cls,
             id=TypeShip("66a6c597-17ef-4604-b7bf-139374176b4d"),
             name="Tarav.Test.Item",
-            workflow=TEST_WORKFLOW_SHIP,
+            workflow=NAVIGATION_TESTS_WORKFLOW_SHIP,
         )
 
     class RecordInterface(FileRecord.RecordInterface):
@@ -75,7 +75,7 @@ class TestEntity(TaravEntity):
             target=cls,
             id=TypeShip("ea6d1c75-2198-4318-8e3a-472a7d3fd0f6"),
             name="Tarav.Test.Entity",
-            workflow=TEST_WORKFLOW_SHIP,
+            workflow=NAVIGATION_TESTS_WORKFLOW_SHIP,
         )
 
     class RecordInterface(TaravEntity.RecordInterface):
@@ -104,27 +104,29 @@ class TestEntity(TaravEntity):
         return {**super()._to_record(), "label": self.label}
 
 
-class TestWorkflow(TaravWorkflow):
-    """Real Workflow backed by deliberately synthetic, disposable fixtures."""
+class NavigationTestsWorkflow(TestsWorkflow):
+    """Synthetic Context and Archive workspace for navigation tests."""
+
+    __test__ = False
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
             target=cls,
-            id=TypeShip("6a444dda-d175-4b9b-b9b3-0db0addc137a"),
-            name="Tarav.Workflow.Test",
-            workflow=TEST_WORKFLOW_SHIP,
+            id=TypeShip("7d682bf3-086a-4bec-acd5-71a811a3ae09"),
+            name="Tarav.Workflow.Tests.Navigation",
+            workflow=NAVIGATION_TESTS_WORKFLOW_SHIP,
         )
 
     @classmethod
     def _workflow_id(cls):
-        return TEST_WORKFLOW_SHIP
+        return NAVIGATION_TESTS_WORKFLOW_SHIP
 
-    workflow_name = "test"
-    constitution = (
-        "Provide a disposable test workspace for Tarav mechanics. Its entries "
-        "are synthetic fixtures, not user or project knowledge."
-    )
+    @property
+    def workflow(self):
+        return TestsWorkflow()
+
+    constitution = "Exercise navigation with disposable synthetic fixtures."
 
     @classmethod
     def class_context(cls, builder: ContextBuilder) -> None:
@@ -216,8 +218,8 @@ class TestWorkflow(TaravWorkflow):
 
 __all__ = [
     "TEST_ENTITY_SHIP",
-    "TEST_WORKFLOW_SHIP",
+    "NAVIGATION_TESTS_WORKFLOW_SHIP",
     "TestEntity",
     "TestItem",
-    "TestWorkflow",
+    "NavigationTestsWorkflow",
 ]

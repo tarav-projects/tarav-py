@@ -10,8 +10,7 @@ from tarav.l1.skw.loading import SkillReadingGraph
 from tarav.l1.skw.pois import (
     AttachmentCycle, Finding, InclusionCycle, InvalidBlockReference, InvalidContextTarget,
     InvalidLoadingRoot, InvalidParent, LoadingAnalysisIncomplete, MissingContext,
-    PathDependentContext, RootHasParent, UnannotatedOutputLink, UndeclaredBlock,
-    UnreachableBlock,
+    PathDependentContext, RootHasParent, UndeclaredBlock, UnreachableBlock,
 )
 
 from .pois import surface_state
@@ -75,7 +74,7 @@ class ReadingDeclarationsCheck(ReadingGraphCheck):
     def _run(self):
         analysis = self._analysis()
         mine = (InvalidBlockReference, UndeclaredBlock, InvalidParent, InvalidContextTarget,
-                InvalidLoadingRoot, RootHasParent, UnannotatedOutputLink)
+                InvalidLoadingRoot, RootHasParent)
         return self._result(analysis, (found for found in analysis["diagnostics"]
                                        if found.poi in mine))
 
@@ -120,8 +119,29 @@ class ReadingCoverageCheck(ReadingGraphCheck):
                                        if found.poi in mine))
 
 
+# tarav.breadcrumb d17fbd7e081f48d2f76cb4c84eba6e25be68e4d1c355123fb41edf8496f232ac
+class LinkProseCheck(ReadingGraphCheck):
+    """Checks the text of each block against the prose parts of the links it declares.
+
+    The other reading checks trust the declarations; this one is for the
+    maintainers, who care that the text holds what is declared.
+    """
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("ac970186-220f-43c4-984a-b6fd94a88227"),
+                          name="Tarav.SKW.Check.LinkProse",
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+    def _run(self):
+        root = self.graph.package.root
+        return CheckResult(self, status="completed",
+                           pois=(found.poi.from_finding(self, found, root=root)
+                                 for found in self.graph.prose_findings()))
+
+
 READING_CHECK_TYPES = (ReadingDeclarationsCheck, ReadingDependenciesCheck,
-                       ReadingCoverageCheck)
+                       ReadingCoverageCheck, LinkProseCheck)
 
 
 def reading_checks(graph: SkillReadingGraph, *, analysis=None):

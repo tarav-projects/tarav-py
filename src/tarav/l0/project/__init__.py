@@ -1,43 +1,35 @@
 # $kw: --from Agentos.Project
+"""Project mechanics below the Project Type: marker, config, discovery, layout.
+
+The Project namespace spans layers: this module is its lowest part, usable by
+any workflow; `tarav.l1.project` holds the Project Type, `tarav.l2.project` its
+integrations with other workflows, `tarav.l3.project` launch and bootstrap.
+"""
 from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 from uuid import UUID
 
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.clock import utc_now_iso as _utc_now_iso
+from tarav.l0._core.home import (
+    TARAV_DIRNAME,
+    ensure_json_file,
+    ensure_named_dirs,
+    global_storage_paths,
+    storage_dir_paths,
+    tarav_home_dir,
+)
 from tarav.l0._core.ids import normalize_or_generate_uuid
 
-TARAV_DIRNAME = ".tarav"
 PROJECT_MARKER_FILENAME = "project.json"
 PROJECT_CONFIG_FILENAME = "config.json"
-GLOBAL_CONFIG_FILENAME = "config.json"
 PROJECT_SCHEMA_VERSION = 1
-GLOBAL_SCHEMA_VERSION = 1
 SCOPE_VALUES = ("project", "global", "auto")
 PROJECT_STORAGE_DIR_NAMES = ("indexes", "tmp", "state")
-GLOBAL_STORAGE_DIR_NAMES = ("indexes", "tmp", "cache")
 TARAV_PROJECT_ID = "e308d11f-d709-4f23-b8c7-f214e28b3f11"
-
-
-def tarav_home_dir() -> Path:
-    env_home = os.getenv("TARAV_HOME")
-    if env_home:
-        return Path(env_home).expanduser().resolve()
-    return (Path.home() / TARAV_DIRNAME).resolve()
-
-
-def home_path_str(home: Path | str | None) -> str | None:
-    """Stringify a home path for logging — expanded, with a best-effort fallback."""
-    if home is None:
-        return None
-    try:
-        return str(Path(home).expanduser())
-    except Exception:
-        return str(home)
 
 
 def project_agentos_dir(project_root: Path) -> Path:
@@ -50,11 +42,6 @@ def project_marker_path(project_root: Path) -> Path:
 
 def project_config_path(project_root: Path) -> Path:
     return project_agentos_dir(project_root) / PROJECT_CONFIG_FILENAME
-
-
-def global_config_path(home_dir: Path | None = None) -> Path:
-    root = tarav_home_dir() if home_dir is None else home_dir
-    return root / GLOBAL_CONFIG_FILENAME
 
 
 class TaravProjectHandler:
@@ -395,26 +382,13 @@ def resolve_scope_storage_paths(
     )
 
 
-def _storage_dir_paths(base: Path, names: tuple[str, ...]) -> dict[str, Path]:
-    return {name: base / name for name in names}
-
-
 def local_storage_paths(project_root: Path) -> dict[str, Path]:
     base = project_agentos_dir(project_root)
     return {
         "tarav_dir": base,
         "project_marker": project_marker_path(project_root),
         "config": project_config_path(project_root),
-        **_storage_dir_paths(base, PROJECT_STORAGE_DIR_NAMES),
-    }
-
-
-def global_storage_paths(home_dir: Path | None = None) -> dict[str, Path]:
-    base = tarav_home_dir() if home_dir is None else home_dir
-    return {
-        "tarav_dir": base,
-        "config": global_config_path(base),
-        **_storage_dir_paths(base, GLOBAL_STORAGE_DIR_NAMES),
+        **storage_dir_paths(base, PROJECT_STORAGE_DIR_NAMES),
     }
 
 
@@ -442,22 +416,6 @@ def load_project_marker(marker_path: Path) -> dict[str, object]:
     return payload
 
 
-def load_global_config(config_path: Path) -> dict[str, object]:
-    if not config_path.exists():
-        raise CliError(f"global config does not exist: {config_path}")
-    if not config_path.is_file():
-        raise CliError(f"global config path is not a file: {config_path}")
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise CliError(f"invalid global config JSON: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise CliError("global config must be a JSON object")
-    if payload.get("class") != "agentos.global.config":
-        raise CliError("global config field class must be 'agentos.global.config'")
-    return payload
-
-
 def load_project_config(config_path: Path) -> dict[str, object]:
     if not config_path.exists():
         raise CliError(f"project config does not exist: {config_path}")
@@ -476,25 +434,6 @@ def load_project_config(config_path: Path) -> dict[str, object]:
 
 def _normalize_project_id(project_id: str | None) -> str:
     return normalize_or_generate_uuid(project_id, field_name="project id")
-
-
-def _ensure_json_file(path: Path, payload: dict[str, object]) -> bool:
-    if path.exists():
-        if not path.is_file():
-            raise CliError(f"path exists but is not a file: {path}")
-        return False
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    return True
-
-
-def _ensure_named_dirs(base_dir: Path, names: tuple[str, ...]) -> dict[str, Path]:
-    resolved: dict[str, Path] = {}
-    for name in names:
-        path = base_dir / name
-        path.mkdir(parents=True, exist_ok=True)
-        resolved[name] = path
-    return resolved
 
 
 def initialize_project_layout(
@@ -540,8 +479,8 @@ def initialize_project_layout(
         marker_path.write_text(json.dumps(marker_payload, indent=2) + "\n", encoding="utf-8")
         marker_created = True
 
-    dirs = _ensure_named_dirs(paths["tarav_dir"], PROJECT_STORAGE_DIR_NAMES)
-    config_created = _ensure_json_file(
+    dirs = ensure_named_dirs(paths["tarav_dir"], PROJECT_STORAGE_DIR_NAMES)
+    config_created = ensure_json_file(
         config_path,
         {"class": "agentos.project.config", "schema_version": PROJECT_SCHEMA_VERSION},
     )
@@ -553,37 +492,6 @@ def initialize_project_layout(
         "marker": marker_payload,
         "marker_created": marker_created,
         "config_path": config_path,
-        "config_created": config_created,
-        "dirs": dirs,
-    }
-
-
-def initialize_global_layout(
-    *,
-    ensure: bool = False,
-    home_dir: Path | None = None,
-) -> dict[str, object]:
-    base = tarav_home_dir() if home_dir is None else home_dir.expanduser().resolve()
-    paths = global_storage_paths(base)
-    config_path = paths["config"]
-    config_created = False
-
-    config_payload: dict[str, object]
-    if config_path.exists():
-        config_payload = load_global_config(config_path)
-        if not ensure:
-            raise CliError(f"tarav global home already initialized: {base}")
-    else:
-        base.mkdir(parents=True, exist_ok=True)
-        config_payload = {"class": "agentos.global.config", "schema_version": GLOBAL_SCHEMA_VERSION}
-        config_created = _ensure_json_file(config_path, config_payload)
-
-    dirs = _ensure_named_dirs(base, GLOBAL_STORAGE_DIR_NAMES)
-
-    return {
-        "tarav_dir": base,
-        "config_path": config_path,
-        "config": config_payload,
         "config_created": config_created,
         "dirs": dirs,
     }

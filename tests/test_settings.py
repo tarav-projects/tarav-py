@@ -162,7 +162,7 @@ def test_the_runtime_registers_the_workflow_and_contributes_settings() -> None:
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
-    assert runtime.workflows.get("settings") is SettingsWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Settings") is SettingsWorkflow
     names = [entry.name for entry in runtime.context(Tracking()).ls()]
     assert "settings" in names
 

@@ -5,10 +5,15 @@ import json
 from pathlib import Path
 
 from tarav.l2.project.harness import ProjectHarness
+from tarav.l1.project.index import observe_project
 
 
+# tarav.breadcrumb c8dbdc6986b799d4697cac330d2e82c8f7f9c383b22ac2bae4ed933c37755e03
 def _inspect(args):
-    print(json.dumps(ProjectHarness.from_path(path=args.project).inspect(), indent=2))
+    harness = ProjectHarness.from_path(path=args.project)
+    result = harness.inspect()
+    observe_project(harness.root)
+    print(json.dumps(result, indent=2))
     return 0
 
 
@@ -20,12 +25,15 @@ def _scaffold(args):
         tarav_source=args.tarav_source,
         adopt=args.adopt,
     )
+    observe_project(harness.root)
     print(json.dumps(harness.inspect(), indent=2))
     return 0
 
 
 def _sync(args):
-    ProjectHarness.from_path(path=args.project).sync(python=args.python)
+    harness = ProjectHarness.from_path(path=args.project)
+    harness.sync(python=args.python)
+    observe_project(harness.root)
     return 0
 
 

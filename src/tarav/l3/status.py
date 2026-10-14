@@ -54,6 +54,11 @@ def status_result(status) -> dict:
             "blessed": sum(1 for run in runs if run.exit == BLESSED
                            and (run.data.get("situation") or {}).get("state") == "present"),
         })
+    # the repositories the Projects' suites declare, as each run found them
+    git = {}
+    for found in status.each():
+        for root, state in (getattr(found.checks, "git", None) or {}).items():
+            git.setdefault(root, {"root": root, **state})
     summary = suite.summary()
     # a suite that was left out is named with the Project it belongs to
     summary["not_run"] = [
@@ -73,6 +78,7 @@ def status_result(status) -> dict:
              "reason": result.reason} for result in suite.results
             if result.status != "completed"]},
         "report": suite.report(limit=10**6),
+        "git": list(git.values()),
         # the status reads only actions: whatever should count here has become one
         "settled": (all(result.status == "completed" for result in suite.results)
                     and not any(project["open"] for project in projects)),
@@ -108,6 +114,12 @@ def status_text(result: dict, *, limit: int = 20) -> str:
                      f"{change['message'] or ''}  [{change['action'][:13]}]")
     if len(result["changes"]) > limit:
         lines.append(f"  and {len(result['changes']) - limit} more; --json has them all.")
+    # tarav.breadcrumb 5d77656c0afa839bef501240fd6ab0f67d8a7bd9a6f3be70d2091123f73b1935
+    dirty = [item for item in result.get("git", ()) if not item["clean"]]
+    if dirty:
+        lines.append("Not committed: " + ", ".join(
+            f"{_relative(item['root'])} (HEAD {item['commit'][:7]})" for item in dirty))
+        lines.append("  Actions log a clean commit after a commit and another run.")
     lines.append("")
     if not result["open"] and not any(project["blessed"] for project in projects):
         lines.append("No open actions.")

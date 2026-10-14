@@ -25,7 +25,7 @@ from tarav.l3.runtime import create_runtime
 def test_runtime_registers_the_agents_workflow():
     runtime = create_runtime()
 
-    assert runtime.workflows.get("agents") is AgentsWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Agents") is AgentsWorkflow
     assert runtime.workflows.get(AGENTS_WORKFLOW_SHIP) is AgentsWorkflow
     assert entity(AgentsWorkflow).name == "Tarav.Workflow.Agents"
 

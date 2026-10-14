@@ -8,7 +8,6 @@ WORKSPACES_WORKFLOW_SHIP = WorkflowShip("76a50a33-030e-4808-b27a-a723e306888e")
 
 # tarav.breadcrumb 258422634094ec693997084e1065f514c092bd4d8da15e25b583e8949c54de8f
 class WorkspacesWorkflow(TaravWorkflow):
-    workflow_name = "workspaces"
     constitution = "Create and inspect isolated, identified working folders."
 
     @classmethod

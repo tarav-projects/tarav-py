@@ -22,6 +22,7 @@ from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.operator_context import Intake, OperatorContext, OperatorContextStore
 from tarav.l1.records import RecordRegistry
 
+from .git import advice, log_closing
 from .workflow import ACTIONS_WORKFLOW_SHIP, ActionsWorkflow
 
 RUNNING, CLOSED = "running", "closed"
@@ -229,6 +230,7 @@ class ActionRun(TaravEntity, FileRecord):
         event: dict | None = None
         closing: dict | None = None
         situation: dict | None = None
+        git: dict | None = None
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -279,6 +281,10 @@ class ActionRun(TaravEntity, FileRecord):
             description="The record of how it closed.")
         builder.add("closings", opener=lambda: _detail(data["closings"]),
                     description="Each attempt by an operator to take an exit, and its tests.")
+        builder.add("git", opener=lambda: _detail({
+            "log": (data.get("git") or {}).get("log", []), "advice": advice(self)}),
+            description="The state of the Git repositories its checks read: at each change "
+                        "of its status, and the first clean state after it, per repository.")
         builder.add("history", opener=lambda: _detail(
             [f"git -C <actions registry> log -p -- records/{key}.json",
              "The record holds the current state. Its past states are the Git history "
@@ -436,8 +442,13 @@ def _session() -> dict | None:
 
 
 def close_run(action: StepAction, run: ActionRun, exit: str, *, by: str, at: str,
-              context: OperatorContext | None = None, extra: dict | None = None) -> dict:
-    """Close a run through one exit and leave that exit's closing record on it."""
+              context: OperatorContext | None = None, extra: dict | None = None,
+              git: dict | None = None) -> dict:
+    """Close a run through one exit and leave that exit's closing record on it.
+
+    `git` is the state of the repositories the run of checks that closed it
+    took; without one, a run with a Git log reads its repositories now.
+    """
     closing_type = type(action).exit_named(exit).closing
     record = {"type": entity(closing_type).name, "id": str(uuid4()), "run": str(run.id),
               "exit": exit, "at": at, "by": by,
@@ -445,6 +456,7 @@ def close_run(action: StepAction, run: ActionRun, exit: str, *, by: str, at: str
     closing_type.records.from_record(record)
     run.data.update(state=CLOSED, exit=exit, closed_at=at,
                     output=action.output(exit, run, context), closing=record)
+    log_closing(run, exit, git, at=at)
     return record
 
 

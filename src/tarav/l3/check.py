@@ -9,6 +9,7 @@ from pathlib import Path
 
 from tarav.l0._core.errors import CliError
 from tarav.l1.checks import CheckResult, routine
+from tarav.l1.project.index import observe_project
 from tarav.l1.poi.rendering import (
     DEFAULT_POI_RENDERER, POISelection, renderer, renderers,
 )
@@ -67,13 +68,16 @@ def in_harness(args: argparse.Namespace, *, command: str, module: str, function:
     if args.project is None:
         raise CliError(f"{command} needs --project [PATH]")
     from tarav.l3.project.harness import run
+    from tarav.l0.project import require_agentos_project
 
+    observe_project(require_agentos_project(args.project).root)
     return run(path=args.project, code=(
         f"from {module} import {function}\n"
         f"raise SystemExit({function}(project, **{options!r}))\n"))
 
 
 # tarav.breadcrumb 1778a37c1707becb0bed583cc5d2ee8f8a4b3047975fb3b90d1c61a0a8065481
+# tarav.breadcrumb 4b3f33142574c7e094be452c0a7de4cc97f4dbc30b66eece4c5fe6c788af4622
 def _check(args: argparse.Namespace) -> int:
     return in_harness(args, command="tarav check", module="tarav.l3.check",
                       function="report_project_checks", options={

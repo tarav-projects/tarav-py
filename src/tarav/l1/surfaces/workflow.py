@@ -6,7 +6,6 @@ SURFACES_WORKFLOW_SHIP = WorkflowShip("6a85e98f-20ca-43b6-8bf4-38f5c07227a9")
 
 
 class SurfacesWorkflow(TaravWorkflow):
-    workflow_name = "surfaces"
     constitution = (
         "Represent native source structure and positions for consuming workflows."
     )

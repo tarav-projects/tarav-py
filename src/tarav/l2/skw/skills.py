@@ -1,6 +1,7 @@
 """Explicit skill-package compilation and consumer deployment."""
 import re
 import shutil
+from typing import Literal
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -18,6 +19,7 @@ from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
 from tarav.l1.checks import CheckProvider, CheckSuite, run_checks
 from tarav.l1.poi import POICollector
 from tarav.l1.poi.rendering import DEFAULT_POI_RENDERER, renderers
+from tarav.l1.skills import TaravSkill
 from tarav.l0._core.errors import CliError
 from tarav.l1.skw.pois import (
     DuplicateOutput, Finding, InvalidLoadingModel, InvalidSource, MissingConsumerFile,
@@ -45,8 +47,8 @@ from tarav.l1.skw.presentation import (
 )
 
 
-class SkwSkill(SkwDepot, CheckProvider):
-    """A deployable Skill retained in one typed `.skw` depot.
+class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
+    """A deployable Skill retained in one typed `.skw` depot: the SKW kind of TaravSkill.
 
     The entry record owns deployment selection; source context stays developer-only.
     Dependency purposes are independent of document context roles. Build and
@@ -61,33 +63,76 @@ class SkwSkill(SkwDepot, CheckProvider):
             name='Tarav.Skillware.SkillPackage',
         )
 
-    @property
-    def data(self):
-        """Validated Skill manifest, after Harness has attached its source."""
+    class RecordInterface(SkwDepot.RecordInterface):
+        type: Literal['Tarav.Skillware.SkillPackage']
+        schema_version: int
+        entrypoint: str
+        sources: list[str]
+        files: list[str]
+        dependencies: list[dict[str, object]] = []
+        loading: str | None = None
+        publications: list[str] | None = None
 
-        self._validate()
-        if self._record is None:
-            raise RuntimeError("Skill package has no loaded Record")
-        return self._record
+    # tarav.breadcrumb 70b9905101eac9da4b5e4fab7ab0196b58d7f7ae1812e7d8c22d5ea3bfee3be6
+    def __init__(self, *, entrypoint='SKILL.md', sources=(), files=None,
+                 dependencies=(), loading=None, publications=None, root=None):
+        """A skill built in code; `root` may stay unknown until it is placed."""
+        super().__init__()
+        self.schema_version = 1
+        self.entrypoint_file = entrypoint
+        self.sources = list(sources)
+        self.files = list(files) if files is not None else [entrypoint]
+        self.dependencies = [dict(d) for d in dependencies]
+        self.loading_file = loading
+        self.publications = list(publications) if publications is not None else None
+        if root is not None:
+            self.source = Path(root) / '.skw' / 'main.json'
+
+    @classmethod
+    def _from_record(cls, record_data):
+        skill = cls(entrypoint=record_data.entrypoint, sources=record_data.sources,
+                    files=record_data.files, dependencies=record_data.dependencies,
+                    loading=record_data.loading, publications=record_data.publications)
+        skill.schema_version = record_data.schema_version
+        return skill
+
+    def _to_record(self):
+        record = {'type': entity(type(self)).name, 'schema_version': self.schema_version,
+                  'entrypoint': self.entrypoint_file, 'sources': list(self.sources),
+                  'files': list(self.files),
+                  'dependencies': [dict(d) for d in self.dependencies]}
+        if self.loading_file is not None:
+            record['loading'] = self.loading_file
+        if self.publications is not None:
+            record['publications'] = list(self.publications)
+        return record
+
+    class Records(SkwDepot.Records):
+        def record_example(self):
+            cls = self._owner
+            return cls()._to_record()
+
+
+    @property
+    def entrypoint(self):
+        """The file a harness loads, as the manifest names it."""
+        return self.path(self.entrypoint_file)
 
     def _validate(self):
-        if self._record is None:
-            raise RuntimeError("Skill package has no loaded Record")
-        data = self._record
-        if data.get("schema_version") != 1:
+        """Check what the manifest's types do not; needs the skill's location."""
+        if self.schema_version != 1:
             raise ValueError("Expected skill package schema 1")
-        for key in ("sources", "files"):
-            values = data[key]
-            if not isinstance(values, list) or len(values) != len(set(values)):
+        for key, values in (("sources", self.sources), ("files", self.files)):
+            if len(values) != len(set(values)):
                 raise ValueError(f"{key} must contain unique relative paths")
             for value in values:
                 self.path(value)
-        if data["entrypoint"] not in data["files"]:
+        if self.entrypoint_file not in self.files:
             raise ValueError("Entrypoint must be a deployed file")
-        for value in data["files"]:
+        for value in self.files:
             if self.path(value).is_relative_to(self.depot):
                 raise ValueError("Build surfaces cannot be deployed")
-        for dependency in data.get("dependencies", []):
+        for dependency in self.dependencies:
             purposes = dependency["purposes"]
             if (not isinstance(purposes, list) or not purposes
                     or len(set(purposes)) != len(purposes)
@@ -111,9 +156,10 @@ class SkwSkill(SkwDepot, CheckProvider):
         return target
 
     def documents(self):
-        cls = SkillDocument if 'loading' in self.data else Document
-        documents = [cls(self.path(p), root=self.root) for p in self.data['sources']]
-        if 'loading' in self.data:
+        self._validate()
+        cls = SkillDocument if self.loading_file is not None else Document
+        documents = [cls(self.path(p), root=self.root) for p in self.sources]
+        if self.loading_file is not None:
             loading = SkillReadingGraph(self, documents)
             for document in documents:
                 document.loading = loading
@@ -122,7 +168,7 @@ class SkwSkill(SkwDepot, CheckProvider):
     def _navigation_document(self, source):
         """Select one declared source, relative to .skw/src."""
         document = project_document(source, project=self.root)
-        if document.key not in self.data['sources']:
+        if document.key not in self.sources:
             raise ValueError('Document is not declared in skill')
         return document
 
@@ -130,10 +176,11 @@ class SkwSkill(SkwDepot, CheckProvider):
         """List source paths or block IDs without loading context targets."""
         if offset < 0 or limit < 1:
             raise ValueError('offset must be nonnegative and limit positive')
+        self._validate()
         if source is None:
             base = self.depot / 'src'
             items = [{'source': str(self.path(p).relative_to(base)),
-                      'path': str(self.path(p))} for p in self.data['sources']]
+                      'path': str(self.path(p))} for p in self.sources]
         else:
             document = self._navigation_document(source)
             items = [{'block': b.label, 'id': str(b.id), 'type': entity(type(b)).name}
@@ -206,8 +253,9 @@ class SkwSkill(SkwDepot, CheckProvider):
         return self.evaluate().report(**selection)
 
     def publications(self):
+        self._validate()
         return [ModelPublication(self.path(p), root=self.root)
-                for p in self.data.get('publications', [])]
+                for p in self.publications or []]
 
     def check(self):
         """The POIs of this package as it is on disk."""
@@ -224,10 +272,10 @@ class SkwSkill(SkwDepot, CheckProvider):
         except (OSError, ValueError, KeyError, TypeError) as exc:
             report(InvalidLoadingModel, self.root, str(exc))
             return findings
-        for source in self.data.get('publications', []):
+        for source in self.publications or []:
             report(PublicationDisconnected, source,
                    'Models publication is disconnected pending redesign.')
-        for source in self.data["sources"]:
+        for source in self.sources:
             try:
                 document = documents[self.path(source)]
                 if isinstance(document, SkillDocument):
@@ -235,13 +283,13 @@ class SkwSkill(SkwDepot, CheckProvider):
                 if document.target in outputs:
                     report(DuplicateOutput, document.target)
                 outputs.add(document.target)
-                if document.target not in {self.path(p) for p in self.data["files"]}:
+                if document.target not in {self.path(p) for p in self.files}:
                     report(OutputNotDeployed, document.target)
                 for finding in document.lint(freshness=False):
                     findings.append(finding.at(path=source))
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 report(InvalidSource, source, str(exc))
-        for value in self.data["files"]:
+        for value in self.files:
             if not self.path(value).is_file():
                 report(MissingConsumerFile, value)
             elif value.endswith(".md"):
@@ -252,17 +300,17 @@ class SkwSkill(SkwDepot, CheckProvider):
                         continue
                     target = (self.path(value).parent / unquote(parts.path)).resolve()
                     if target.is_relative_to(self.root):
-                        if target not in {self.path(p) for p in self.data["files"]}:
+                        if target not in {self.path(p) for p in self.files}:
                             report(UnbundledLink, value, link)
                     else:
                         owners = [(self.root / d["path"]).resolve()
-                                  for d in self.data.get("dependencies", [])
+                                  for d in self.dependencies
                                   if d["kind"] == "skill" and "consumer" in d["purposes"]]
                         if not any(target.is_relative_to(owner) for owner in owners):
                             report(UndeclaredConsumerLink, value, link)
                     if not target.is_file():
                         report(MissingLinkTarget, value, link)
-        for dependency in self.data.get("dependencies", []):
+        for dependency in self.dependencies:
             target = (self.root / dependency["path"]).resolve()
             if dependency["kind"] == "skill":
                 target /= "SKILL.md"
@@ -295,15 +343,15 @@ class SkwSkill(SkwDepot, CheckProvider):
         if destination.exists():
             raise ValueError("Deployment destination must not exist")
         findings = self.check()
-        files = [(value, self.path(value).read_bytes()) for value in self.data["files"]]
+        files = [(value, self.path(value).read_bytes()) for value in self.files]
         destination.mkdir(parents=True)
         for value, payload in files:
             target = destination / value
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
             shutil.copymode(self.path(value), target)
-        return {"destination": str(destination), "files": self.data["files"],
-                "dependencies": [d for d in self.data.get("dependencies", [])
+        return {"destination": str(destination), "files": list(self.files),
+                "dependencies": [d for d in self.dependencies
                                  if "consumer" in d["purposes"]], "findings": findings}
 
 
@@ -323,20 +371,19 @@ SKILLS_RECORD_TYPES = (
 )
 
 
-class SkillsWorkflow(TaravWorkflow):
+class SkwSkillsWorkflow(TaravWorkflow):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
             target=cls,
             id=TypeShip('013c95b7-57db-485a-ac88-590d05af475a'),
-            name='Tarav.Workflow.SKWSkills',
+            name='Tarav.Workflow.SKW.Skills',
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
     @classmethod
     def _workflow_id(cls):
         return SKW_SKILLS_WORKFLOW_SHIP
-    workflow_name = "skw.skills"
     constitution = "Compile and inspect deployable SKW skills and their loading context."
 
     # tarav.breadcrumb c03940fca432ca394b3ae2cc2ed6699cffdaa96186efaa11a94790027b056e6c
@@ -364,7 +411,7 @@ def skill_document(source, *, project=None, depot=".skw",
     except FileNotFoundError:
         return document
     package = registry.load(depot_path)
-    if isinstance(package, SkwSkill) and 'loading' in package.data:
+    if isinstance(package, SkwSkill) and package.loading_file is not None:
         matches = [d for d in package.documents() if d.source == document.source]
         if len(matches) != 1:
             raise ValueError('Document is not declared in skill package')

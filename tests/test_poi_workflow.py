@@ -78,7 +78,7 @@ def test_runtime_collector_and_blessings_workflow(tmp_path):
     occurrence = runtime.pois.emit(poi())
     assert runtime.pois.get(occurrence.identity) is occurrence
     assert runtime.pois.report()["total"] == 1
-    assert runtime.workflows.get("blessings") is BlessingsWorkflow
+    assert runtime.workflows.get("Tarav.Workflow.Blessings") is BlessingsWorkflow
     assert entity(Blessing).workflow is BlessingsWorkflow()
 
 

@@ -12,6 +12,7 @@ from tarav.l0._core.errors import CliError
 from tarav.l1.python_env import (
     CurrentRunnerConfigurator, RunRegistry, registry_root, run_python,
 )
+from tarav.l1.project.index import observe_project
 from tarav.l1.usage import describe_text
 from tarav.l2.project.runner import ProjectRunnerConfigurator
 
@@ -19,6 +20,7 @@ _LOG = logging.getLogger(__name__)
 
 
 # tarav.breadcrumb 327c61e63acb8b7e699f39d0eb3ffac13cac61e1dd52413836a84e381a15e68a
+# tarav.breadcrumb e5466e3d2fb01caf5e627fe841e58c75386403e2a929000ae221074e913de4a1
 def _run(args: argparse.Namespace) -> int:
     if not args.arguments or args.arguments[0] != "--" or len(args.arguments) == 1:
         raise CliError("Expected Python arguments after -- (for example: tarav run -- script.py)")
@@ -28,6 +30,10 @@ def _run(args: argparse.Namespace) -> int:
         else ProjectRunnerConfigurator.from_path(args.project)
     )
     configuration = configurator.configure()
+    if args.project is not None:
+        project = _project_identity(args.project)
+        if project is not None:
+            observe_project(project["root"])
     words = list(args.arguments[1:])
     registry = RunRegistry()
     entry, stdin = None, None

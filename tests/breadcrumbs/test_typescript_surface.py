@@ -18,7 +18,7 @@ from tarav.l1.breadcrumbs.surfaces import (
 from tarav.l1.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow, PreparedAnnotation
 from tarav.l1.surfaces import SurfacesWorkflow
 from tarav.l1.surfaces.typescript import TypeScriptNormalModel
-from tarav.l2.breadcrumb_workflows.chatlas_context.workflow import _markers
+from tarav.l2.breadcrumb_workflows.chatlas_context.workflow import provisional_markers
 from tarav.l3.cli.cli import main
 
 TRICKY = '''// head comment
@@ -94,13 +94,13 @@ def test_context_markers_only_in_line_comments() -> None:
         "/* tarav.context abcdef12:1111111111111111 */\n"
         "run(); // tarav.context abcdef12:2222222222222222\n"
     )
-    markers = _markers(text, "typescript")
+    markers = provisional_markers(text, "typescript")
     assert [(item.position.line, item.position.start_column) for item in markers] == [(1, 0), (4, 7)]
 
 
 def test_markers_refuse_a_surface_the_lexer_lost() -> None:
     with pytest.raises(BreadcrumbError, match="TypeScript surface has normalization"):
-        _markers("const a = `open\n// tarav.context abcdef12:0123456789abcdef\n", "typescript")
+        provisional_markers("const a = `open\n// tarav.context abcdef12:0123456789abcdef\n", "typescript")
 
 
 class _MarkerOnly(BreadcrumbAnnotationWorkflow):
@@ -110,7 +110,7 @@ class _MarkerOnly(BreadcrumbAnnotationWorkflow):
 
     def prepare(self, surface, request):
         return tuple(PreparedAnnotation(item.position, "provisional", item)
-                     for item in _markers(surface.text, surface.language))
+                     for item in provisional_markers(surface.text, surface.language))
 
     def attachments(self, annotation, breadcrumb_id):
         return ()

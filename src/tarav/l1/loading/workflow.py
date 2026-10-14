@@ -6,7 +6,6 @@ LOADING_WORKFLOW_SHIP = WorkflowShip("c075d42a-1a8f-4f7d-ad40-7ec3a7e03648")
 
 
 class LoadingWorkflow(TaravWorkflow):
-    workflow_name = "loading"
     constitution = "Select Record entry files before trusted Type dispatch."
 
     @classmethod

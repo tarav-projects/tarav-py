@@ -91,7 +91,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
         declarations = (
             _markdown_sessions(surface.text) if surface.language == "markdown" else {}
         )
-        markers = _markers(surface.text, surface.language)
+        markers = provisional_markers(surface.text, surface.language)
         if request.resolver is not None:
             turn_records = {
                 (item.alias, item.turn_prefix): dict(
@@ -145,7 +145,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                 "Active tarav.context marker was not submitted as a Breadcrumb.",
                 line=marker.position.line,
             )
-            for marker in _markers(context.surface.text, context.surface.language)
+            for marker in provisional_markers(context.surface.text, context.surface.language)
         ]
         concerns.extend(
             BreadcrumbAuditConcern(
@@ -247,7 +247,8 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
         return tuple(concerns)
 
 
-def _markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:
+def provisional_markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:
+    """The active `tarav.context` markers of a text, by this workflow's convention for its language."""
     if language == "markdown":
         model = MarkdownNormalModel.from_text(text)
         fenced = model.fenced_line_numbers()

@@ -8,7 +8,6 @@ PROJECT_MODELS_WORKFLOW_SHIP = WorkflowShip("a195af42-7509-4939-aa6c-90f73c241eb
 
 
 class ProjectModelsWorkflow(TaravWorkflow):
-    workflow_name = "project.models"
     constitution = "Resolve Models associated with Projects without implying Model ownership."
 
     @classmethod
@@ -61,7 +60,7 @@ class ProjectModels(TaravType):
         return self._resolver().model(ship)
 
     def _named_models(self) -> dict[str, str]:
-        from tarav.l0._core.project import load_project_marker, project_marker_path
+        from tarav.l0.project import load_project_marker, project_marker_path
         from tarav.l0.kernel import Ship
 
         marker = load_project_marker(project_marker_path(self.project.root))

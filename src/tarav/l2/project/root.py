@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from tarav.l0._core.errors import CliError
-from tarav.l0._core.project import require_agentos_project
+from tarav.l0.project import require_agentos_project
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.project import TaravProject
@@ -69,7 +69,7 @@ class RootProject(Project):
                  CheckSuite(lambda run: (
                      found.checks.suite() if isinstance(found, TaravProject) else found
                      for found in map(self.obj._child, self.obj.child_paths())))],
-                name=self.obj.name,
+                name=self.obj.name, repositories=self.obj.repositories(),
             )
 
         # tarav.breadcrumb 4b1c6c97e9897f50cef03fe30204629ef05594185c36dc0c472ac32a121f2e99
@@ -80,7 +80,7 @@ class RootProject(Project):
                  CheckSuite(lambda run: (found for found in map(
                      self.obj._child, self.obj.child_paths())
                      if not isinstance(found, TaravProject)))],
-                name=self.obj.name,
+                name=self.obj.name, repositories=self.obj.repositories(),
             )
 
     def members(self) -> tuple[TaravProject, ...]:

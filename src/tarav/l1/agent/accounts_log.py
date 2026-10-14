@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from tarav.l0._core.clock import iso_z
-from tarav.l0._core.project import tarav_home_dir, home_path_str
+from tarav.l0._core.home import tarav_home_dir, home_path_str
 
 ACCOUNTS_LOG_CLASS = "agentos.agent.accounts-log"
 ACCOUNTS_LOG_SCHEMA_VERSION = 1

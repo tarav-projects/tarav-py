@@ -59,8 +59,10 @@ testpaths = [
     "tests/test_poi_workflow.py",
     "tests/test_poi_tracking.py",
     "tests/test_skw_poi.py",
+    "tests/test_skills.py",
     "tests/test_usage_live_help.py",
     "tests/breadcrumbs/test_typescript_surface.py",
     "tests/test_agents_workflow.py",
     "tests/test_actions_workflow.py",
+    "tests/test_actions_pois.py",
 ]

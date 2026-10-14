@@ -9,7 +9,6 @@ import uuid
 
 from tarav.l2.project.dev import (
     DocsProject,
-    ProvisionalMarkersCheck,
     PythonPackageProject,
     PyTestCheck,
     PyTestFileSuite,
@@ -17,6 +16,7 @@ from tarav.l2.project.dev import (
     SkillLoadCheck,
     TestFailurePOI,
 )
+from tarav.l2.breadcrumb_workflows.chatlas_context.checks import UnsubmittedMarkersCheck
 from tarav.l2.project import Project
 from tarav.l2.project.models import ProjectModels
 
@@ -107,9 +107,18 @@ def test_docs_report_unsubmitted_markers_and_skills_that_do_not_load(tmp_path: P
     project = _project(tmp_path, DocsProject)
     run = project.checks.run()
     domain_results = [result for result in run.results
-                      if isinstance(result.check, (SkillLoadCheck, ProvisionalMarkersCheck))]
+                      if isinstance(result.check, (SkillLoadCheck, UnsubmittedMarkersCheck))]
     assert [type(result.check) for result in domain_results] == [SkillLoadCheck,
-                                                                 ProvisionalMarkersCheck]
+                                                                 UnsubmittedMarkersCheck]
     assert domain_results[0].status == "incomplete"
     [poi] = domain_results[1].pois()
-    assert poi.situation == {"note": "daily/today.md"}
+    assert poi.situation == {"project": str(project.id),
+                             "surface": "notes/wiki/daily/today.md"}
+    assert poi.details == {"sessions": {"5a029cbf": 1}}
+    # the convention is the Breadcrumbs workflow's: a marker quoted in a code block is not one
+    (tmp_path / "notes/wiki/quoted.md").write_text(
+        "An example:\n\n```\n<!-- tarav.context 5a029cbf:0123456789abcdef -->\n```\n")
+    [again] = [result for result in project.checks.run().results
+               if isinstance(result.check, UnsubmittedMarkersCheck)]
+    assert [found.situation["surface"] for found in again.pois()] == [
+        "notes/wiki/daily/today.md"]

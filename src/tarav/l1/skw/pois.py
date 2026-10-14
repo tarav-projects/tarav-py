@@ -123,24 +123,30 @@ class Finding:
         return f"Finding({self.poi.__name__}, {self.data!r})"
 
 
-class UnannotatedOutputLink(SkwPOI, BlessablePOI):
-    """An authored Markdown link has no SKW link primitive declaration.
-
-    SkillReadingGraph binds source blocks, then parses their authored output
-    solely for conformance. This link contributes no simulated context edge.
-    Bless only an intentionally unmodeled link after evaluating its consumer
-    effect; an acceptance does not add an edge or satisfy a context requirement.
+# tarav.breadcrumb 9b73451a9adc72fe2252cb4681bcc46e333a6430db8f453e6378902e892b7aa4
+class MissingMarkdownLink(SkwPOI):
+    """A block declares a link whose prose part is Markdown, and its text holds no Markdown link
+    to the declared target. Either the declaration or the text is wrong.
     """
 
-    statement = "An authored link has no declared link in its source"
+    statement = "A declared Markdown link is missing from the text of its block"
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
             target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000001'),
-            name='Tarav.SKW.POI.UnannotatedOutputLink',
+            id=TypeShip('83887afe-9c07-445a-94c8-4eafaf8039a0'),
+            name='Tarav.SKW.POI.MissingMarkdownLink',
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+    @classmethod
+    def from_finding(cls, check, finding, *, root, state=None):
+        """The situation is what the check compares: the block and the href its text should hold."""
+        return cls(
+            check,
+            cls.sentence(where=f"{finding['path']}: {finding['label']}", target=finding['href']),
+            situation={'project': str(root), 'block': finding['block'], 'href': finding['href']},
         )
 
 

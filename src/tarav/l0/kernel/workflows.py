@@ -41,7 +41,6 @@ class TaravWorkflow(TaravEntity):
             workflow=TARAV_WORKFLOW_SHIP,
         )
 
-    workflow_name: ClassVar[str] = "tarav"
     constitution: ClassVar[str] = "Contain and organize Tarav workflows."
 
     @classmethod
@@ -77,16 +76,11 @@ class TaravWorkflow(TaravEntity):
     @classmethod
     def provider(cls, root: Path, records: object):
         raise NotImplementedError(
-            f"{cls.workflow_name} does not provide navigation"
+            f"{cls.class_entity().name} does not provide navigation"
         )
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        workflow_name = cls.__dict__.get("workflow_name")
-        if not isinstance(workflow_name, str) or not workflow_name:
-            raise WorkflowDeclarationError(
-                f"{cls.__name__} must declare a class-local workflow_name"
-            )
         constitution = cls.__dict__.get("constitution")
         if not isinstance(constitution, str) or not constitution.strip():
             raise WorkflowDeclarationError(
@@ -114,7 +108,6 @@ class KernelWorkflow(TaravWorkflow):
     def _workflow_id(cls):
         return KERNEL_WORKFLOW_SHIP
 
-    workflow_name = "kernel"
     constitution = (
         "Provide Tarav's foundational Types, identities, Records, and "
         "navigation mechanics for other Workflows."
@@ -137,7 +130,6 @@ class TypeWorkflow(TaravWorkflow):
     def _workflow_id(cls):
         return TYPE_WORKFLOW_SHIP
 
-    workflow_name = "type"
     constitution = (
         "Represent Tarav Python classes and expose their declared relationships "
         "without replacing Python's executable authority or represented ownership."
@@ -145,14 +137,17 @@ class TypeWorkflow(TaravWorkflow):
 
 
 class WorkflowRegistry:
-    """Runtime directory from Workflow name or established Ship to its class."""
+    """Runtime directory from a Workflow's Type name or established Ship to its class.
+
+    A Workflow has one name, the name of its Type; there is no shorter label.
+    """
 
     def __init__(self) -> None:
         self.workflows: dict[str, type[TaravWorkflow]] = {}
         self._ships: dict[WorkflowShip, type[TaravWorkflow]] = {}
 
     def get(self, identity: str | WorkflowShip) -> type[TaravWorkflow]:
-        """Return one registered Workflow class by name or exact Ship."""
+        """Return one registered Workflow class by its Type name or exact Ship."""
 
         if isinstance(identity, WorkflowShip):
             return self._ships[identity]
@@ -163,7 +158,7 @@ class WorkflowRegistry:
     def register(self, workflow: type[TaravWorkflow]) -> None:
         if not isinstance(workflow, type) or not issubclass(workflow, TaravWorkflow):
             raise TypeError("Expected a TaravWorkflow class")
-        name = workflow.workflow_name
+        name = workflow.class_entity().name
         ship = workflow().id
         if not isinstance(ship, WorkflowShip):
             raise TypeError("Workflow Entity id must be a WorkflowShip")
