@@ -1,6 +1,7 @@
 """Featured Project integrations with Models and Wiki."""
 
 from tarav.l0.kernel import NamespaceBase, TaravClass, TypeShip
+from tarav.l1.checks import CheckSuite
 from tarav.l1.project import TaravProject
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 
@@ -20,6 +21,17 @@ class Project(TaravProject):
         return TaravClass(target=cls,
                           id=TypeShip("a5f2412f-1c41-4299-9bcd-90cf38685516"),
                           name="Tarav.Project", workflow=PROJECT_WORKFLOW_SHIP)
+
+    # tarav.breadcrumb 06121c6784784eb89691b23fcc74b31b83476bb35d089df8b38b5f5fcbcfc48b
+    # tarav.breadcrumb 961c0af675b5234e34b528c13823337174b4482463a62def0c482ae5df9c8b41
+    class Checks(TaravProject.Checks):
+        def suite(self) -> CheckSuite:
+            """The Project's checks, and its test fixtures while `.tarav/tests/` exists."""
+            from tarav.l2.tests.actions import TestFixturesSuite
+
+            return CheckSuite([super().suite(),
+                               CheckSuite(lambda run: TestFixturesSuite.present(self.obj.root))],
+                              name=self.obj.name, repositories=self.obj.repositories())
 
     # tarav.breadcrumb c45b62790b589c7dca7f19cf431ca868cdb8739dcd1842b306ba54bdc9721689
     class Docs(NamespaceBase["Project"]):

@@ -10,7 +10,8 @@ from tarav.l1.actions.blessing import BLESSED, BlessingInput
 from tarav.l2.tests.actions import TestMarkerPOI, update_workspace, workspace_pois
 from tarav.l3.runtime import create_runtime
 
-from test_actions_workflow import Stores
+from test_actions_workflow import Stores, registry  # noqa: F401  (a fixture)
+from test_project_dev import _project
 
 
 @pytest.fixture
@@ -53,3 +54,48 @@ def test_fixing_a_file_closes_its_action_and_blessing_closes_the_other(stores, w
     assert (after["opened"], after["reopened"], after["gone"]) == (0, 0, 0)
     assert {run.exit for run in stores.runs.list(state=CLOSED)} == {GONE, BLESSED}
     assert stores.runs.list(state=RUNNING) == []
+
+
+# tarav.breadcrumb 17424fc546c8fbd42d1b63e81b7ec777bcb8c45e6dbac5d23e723543fed44498
+@pytest.mark.usefixtures("registry")
+def test_a_projects_test_fixtures_open_real_actions_on_the_live_path(tmp_path):
+    import shutil
+
+    from tarav.l2.project.dev import DocsProject
+    from tarav.l2.tests.actions import FIXTURES, TestFixturesSuite
+
+    root = tmp_path / "docs"
+    root.mkdir()
+    project = _project(root, DocsProject)
+
+    def fixture_suites(status):
+        return [suite for suite in status.checks.suites() if isinstance(suite, TestFixturesSuite)]
+
+    def test_actions(state):
+        return [run for run in project.actions.list(state=state)
+                if run.data["event"]["poi"]["type"] == "Tarav.Test.Actions.MarkerPOI"]
+
+    # without the folder there is no fixtures suite, and no test action
+    assert fixture_suites(project.status()) == [] and test_actions(RUNNING) == []
+
+    folder = root / FIXTURES
+    folder.mkdir()
+    (folder / ".gitignore").write_text("*\n")
+    (folder / "hall.txt").write_text("TODO switch the hall lamp off\n")
+    (folder / "notes.txt").write_text("nothing to do\n")
+    status = project.status()
+    assert len(fixture_suites(status)) == 1 and status.actions["opened"] == 1
+    [run] = test_actions(RUNNING)
+    assert run.data["event"]["poi"]["type"] == "Tarav.Test.Actions.MarkerPOI"
+    assert run.data["event"]["poi"]["situation"] == {
+        "file": "hall.txt", "lines": ["TODO switch the hall lamp off"]}
+    assert run.data["event"]["suites"] == [{"type": "Tarav.Test.Actions.Fixtures",
+                                            "key": FIXTURES}]
+    assert run.data["project"]["root"] == str(project.root)
+
+    # the folder goes: the suite is no longer yielded, and the action closes as gone
+    shutil.rmtree(folder)
+    assert project.status().actions["gone"] == 1
+    [closed] = test_actions(CLOSED)
+    assert (closed.id, closed.exit) == (run.id, GONE)
+

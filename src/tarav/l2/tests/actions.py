@@ -89,7 +89,7 @@ class TestMarkerCheck(SituationCheck):
             return CheckResult(self, status="completed")
         return CheckResult(self, status="completed", pois=(self.poi(
             TestMarkerPOI, message=f"{self.path.name} holds {len(self.lines)} marker line(s)",
-            details={"file": str(self.path), "lines": self.lines}),))
+            details={"file": str(self.path)}),))
 
 
 def workspace_checks(workspace: str | Path) -> list[Check]:
@@ -100,6 +100,39 @@ def workspace_checks(workspace: str | Path) -> list[Check]:
 def workspace_pois(workspace: str | Path) -> list[POI]:
     """Every POI the workspace's checks raise now."""
     return [poi for check in workspace_checks(workspace) for poi in check.run().pois()]
+
+
+FIXTURES = ".tarav/tests"
+
+
+# tarav.breadcrumb 1363e5fa344cfda35d062f885c1fa885edb16b5788572b1994d402a695de7edf
+# tarav.breadcrumb ecb8f5c2a800deede6276e60252778ce933792b707f22771cd51af2793e98d6c
+class TestFixturesSuite(CheckSuite):
+    """The test fixtures of a Project: the files of `.tarav/tests/`, checked on the live path.
+
+    An agent and the User put files there to watch real actions react; the
+    actions are registered under the Project like any other. The folder
+    holds a `.gitignore` of `*`, so it never makes a repository dirty.
+    Removing the folder ends the suite, and its actions close as gone.
+    """
+
+    __test__ = False
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("cfba3228-972f-4c40-80dc-5d079632ad07"),
+                          name="Tarav.Test.Actions.Fixtures",
+                          workflow=ACTIONS_TESTS_WORKFLOW_SHIP)
+
+    def __init__(self, project_root: str | Path) -> None:
+        self.folder = Path(project_root) / FIXTURES
+        super().__init__(lambda suite: workspace_checks(self.folder), name="test fixtures",
+                         key=FIXTURES)
+
+    @classmethod
+    def present(cls, project_root: str | Path) -> "list[TestFixturesSuite]":
+        """The Project's fixtures suite while its folder exists, otherwise none."""
+        return [cls(project_root)] if (Path(project_root) / FIXTURES).is_dir() else []
 
 
 # tarav.breadcrumb 206abf4474ef638d58b0cb83951ece731a4f7c7ca76bd05a90c4f79cc5aee019
@@ -115,6 +148,6 @@ def update_workspace(workspace: str | Path, runs: ActionRunStore | None = None) 
 
 
 __all__ = [
-    "ActionsTestsWorkflow", "MARKER", "TestMarkerCheck", "TestMarkerPOI",
+    "ActionsTestsWorkflow", "FIXTURES", "MARKER", "TestFixturesSuite", "TestMarkerCheck", "TestMarkerPOI",
     "update_workspace", "workspace_checks", "workspace_pois", "workspace_project",
 ]

@@ -521,7 +521,10 @@ and `blessed`, and what that Type does with a run of its Project's checks
 composes the two in `project.status()`: it runs its own checks and hands the
 results to its actions, and a container asks each member Project to do the
 same for itself. A POI a Project's checks no longer produce closes its
-action as `gone`. `tarav.l1.actions.git` keeps an action's Git log: the state
+action as `gone`. While `<project>/.tarav/tests/` exists, the l2 `Project` adds
+`TestFixturesSuite` (`tarav.l2.tests.actions`): its files raise test POIs
+whose actions are real actions of the Project, for trying the action loop on
+the live path. `tarav.l1.actions.git` keeps an action's Git log: the state
 of its checks' repositories at each status change, and per repository the
 first clean state after it; `tarav status` names the repositories that were
 not clean. The instance of a POI's action
@@ -538,6 +541,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 <!-- tarav.breadcrumb 9ee4d9dcc84f3fe51b675d28058a032060fb73abc4cc794542649b33aec1eb74 -->
 <!-- tarav.breadcrumb 2d9d5a81415b516dd8e6f4906bdb3917d37b71ca15ceb895eef1ff8f02d4ce1f -->
 <!-- tarav.breadcrumb 2955673512f98334e8762754e2942b0b414a003b1a934b0f5e95255350bee784 -->
+<!-- tarav.breadcrumb 603b695bea90466baff80405c3dcd835ba2c264f5dfd89c3798f6f4c953ec87f -->
 
 | Package | Architectural responsibility |
 | --- | --- |
