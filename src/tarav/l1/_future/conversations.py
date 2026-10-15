@@ -71,6 +71,10 @@ class UserTurn(FutureEntity):
     def read_text(self):
         return self.text
 
+    @property
+    def label(self):
+        return f"{self.author}: {self.text[:64]}"
+
     @classmethod
     def _from_record(cls, record_data):
         return cls(record_data.id, record_data.conversation, record_data.author, record_data.text)

@@ -78,7 +78,7 @@ Conversation/UserTurn/Annotation Records; explicit demo host and UI adapter.
 
 - [x] Slice 1 — feature: isolated Types and ordinary JSON retention. Prove
   class ownership, namespace binding, Pydantic validation and RecordMap reload.
-- [ ] Slice 2 — feature: RDF contributions, direct SPARQL, typed views and
+- [x] Slice 2 — feature: RDF contributions, direct SPARQL, typed views and
   progressive loading. Prove live/stored parity, representation resolution,
   cumulative filtering, growth, incoming edges and history against RDFLib.
 - [ ] Slice 3 — feature: browser explorer over the same session. Prove root-ID
@@ -109,4 +109,19 @@ check; independent code may proceed while environment checks remain pending.
   tests/future/test_records.py`: 4 passed. Ruff on the new modules/tests passed.
   Existing TypePath semantics are reused; the new Member adds an owning
   TypeShip. Constructors and JSON loading produce the same operational state.
+- Slice 1 committed as `5142b07`; per-surface submission/audit ran. Files with
+  justified markers retain them because durable registration is denied;
+  package initializers and the initial test file had no justified marker.
+- User installed RDFLib 7.6.0 into tarav-py's `.venv`; actual query verification
+  is now available. No substitute query engine was implemented.
+- Slice 2 measured: 15 experimental tests pass, including normal Record reload,
+  direct SPARQL, cumulative filters, unchanged-view results after graph growth,
+  incoming links, relationship and predicate resolution, and retained history.
+  RDFLib's Literal inherits str; a failing query test exposed and fixed
+  accidental conversion of RDF terms to resource IRIs at the resolver boundary.
+- Local TCP bind is denied by this sandbox. HTTP verification will feed actual
+  HTTP requests through the handler in-process; browser/server launch remains
+  a separate host-environment check if this restriction persists.
+- Optional dependency metadata added. uv lock also hits the macOS native
+  configuration panic even offline; lock refresh remains pending.
 - Todo: execute the remaining slices and replace this status with measured results.
