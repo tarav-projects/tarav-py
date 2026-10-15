@@ -4,7 +4,7 @@ import pytest
 
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
 from tarav.l1.context import (
-    ContextEntry, ContextExplorer, ContextFolder, ContextView, ContextViewEntry,
+    ContextEntry, ContextExplorer, ContextFolder, ContextList, ContextView, ContextViewEntry,
     ContextViewRequest, UnsupportedContextView, explore,
 )
 
@@ -274,3 +274,30 @@ def test_reusing_a_relationship_in_a_new_view_does_not_import_an_old_explorer_ro
     assert original.explorer is not None
     assert copied.explorer is None
     assert copied.open() is original.open()
+
+
+def test_registered_steps_use_positions_inside_list_views(tmp_path):
+    from tarav.l3.runtime import create_runtime, get_runtime, set_runtime
+
+    class Positional(Collection):
+        @classmethod
+        def class_entity(cls):
+            return TaravClass(target=cls, id=TypeShip("b1f10000-0000-4000-8000-000000000007"),
+                              name="Test.ContextViews.Positional")
+
+        def obj_context(self, builder):
+            builder.add("list", opener=lambda: ContextList(self, lambda nested:
+                nested.add(0, opener=lambda: self.items[0])))
+
+    old = get_runtime()
+    runtime = create_runtime(archive_root=tmp_path / "archive")
+    runtime.contexts.register_view("all-items", ItemsView)
+    set_runtime(runtime)
+    try:
+        view = Positional().context().open("list")
+        assert [entry.placement for entry in view.ls()] == [0, 1]
+        assert isinstance(view.get(1), ContextViewEntry)
+        assert view.get(1).description == "all-items"
+        assert view.open(1).context_scope.views == (ItemsView,)
+    finally:
+        set_runtime(old)

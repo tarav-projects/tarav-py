@@ -304,10 +304,10 @@ class ContextBuilder(ContextType):
     def add_entry(self, entry: ContextEntry) -> None:
         """Add a specialized Context entry without erasing its Type."""
 
-        if isinstance(entry, ContextViewEntry) and not entry.accepts(self.context_scope):
-            return
         if type(entry.placement) is not self.placement_type:
             raise TypeError(f"Context placement must be {self.placement_type.__name__}")
+        if isinstance(entry, ContextViewEntry) and not entry.accepts(self.context_scope):
+            return
         if entry.name in self._names:
             raise ValueError(f"Duplicate Context entry: {entry.name}")
         self._names.add(entry.name)

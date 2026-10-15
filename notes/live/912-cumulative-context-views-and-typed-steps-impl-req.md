@@ -159,3 +159,19 @@ choices distinct from User decisions; inspect supporting User Turns above.
   repeated --view interface successfully.
 - Wiki start checkpoint: `3281e92`. Wiki text is drafted in context-graph.md
   and daily/2026-10-15.md; both parse through WikiNote.parse.
+- Integrated implementation commit: `61340a6` (plain Git fallback after
+  evidence registration failed). The checks-only Project harness completed
+  315 checks, with no incomplete or skipped suites and 17 POIs; its pytest
+  suites reported no failing tests. This is a completed check run, not a clean
+  POI report. Unrelated existing findings and pending capture remain visible.
+- Final review found that named view registration could try to insert a string
+  key into a positional ContextList. Offered registry steps now use the next
+  numeric placement there and retain their names as descriptions. Builder
+  placement validation runs before availability filtering. A real runtime
+  regression test exercises opening the appended step. Follow-up pipeline,
+  CLI and shared Explorer conformance checks: 42 passed. Ruff passes.
+- Wiki submission ran separately on the daily and topical Notes; registration
+  remains pending because the protected main store cannot be written. Batch
+  audit reports the unsubmitted markers and older unresolved positions; no
+  replacement IDs were invented. Session declarations remain intact for later
+  recovery. No documentation or annotation representation was added.

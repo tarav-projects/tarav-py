@@ -489,7 +489,9 @@ class ContextService:
     def contribute_views(self, subject: ContextSubject, builder: ContextBuilder) -> None:
         """Offer supported steps on every derived view, preserving its scope."""
         for name, view in self.views.items():
-            builder.add_view(name, views=(view,))
+            named = builder.placement_type is str
+            placement = name if named else len(builder.entries())
+            builder.add_view(placement, views=(view,), description=None if named else name)
 
     def _populate(
         self,

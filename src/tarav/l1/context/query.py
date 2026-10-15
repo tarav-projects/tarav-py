@@ -125,7 +125,9 @@ class ContextQueryService(TaravType):
 
     def contribute_views(self, subject, builder) -> None:
         for name, view in self.views.items():
-            builder.add_view(name, views=(view,))
+            named = builder.placement_type is str
+            placement = name if named else len(builder.entries())
+            builder.add_view(placement, views=(view,), description=None if named else name)
 
     def register_resolver(self, name: str, resolver: SearchEngine) -> None:
         self.resolvers.register(name, resolver)
