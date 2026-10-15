@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready.
+Status: implemented.
 
 The extension's action page shows "Workflows" trees for three Types it picks
 by hand (the action's, the POI's, the check's). Nothing in Tarav says why
@@ -117,7 +117,8 @@ row per member: role, Type, Workflow chain, and the value or id.
 Product project: `tarav-py`; also `vscode-tarav-center`. Wiki owner:
 `tarav-md`, root `tarav-md/notes/wiki/`. Relevant notes: `poi-system.md`,
 `context-graph.md`, `daily/2026-10-15.md`. Supporting chat: session
-`abd0372d`. Capture status: pending.
+`abd0372d`. Capture status: done (`context-graph.md`, section "The
+ObjectGroup view"; daily 2026-10-15).
 
 ## Execution.Plan
 
@@ -176,3 +177,18 @@ error. Subtracted: `workflows()` and `workflowTree` in the extension.
   suite, check, poi, action, closing. Whole `tests/`: 447 passed, 1 failed
   (`test_scoped_lines`, foreign). Ruff clean. Breadcrumbs on
   `poi/primitives.py`, `checks/__init__.py`, `actions/pois.py`, audited.
+- Slice 1 committed `02e3b2e`; slice 2 `9c768e4`.
+- Slice 3 (extension `2e8cf7e`, 0.0.19 installed): `group(run)` in
+  `scripts/_common.py` opens the view and adds each member's Workflow chain,
+  resolving its Type by name among `TaravType` subclasses (the runtime's
+  record Types do not include checks, suites or Action Types); script shape
+  9 gives `group`; `workflows()`, `workflowTree` and their CSS are gone; the
+  page's Object group section is a table (member, Type, Workflows, id, key
+  or value). Checks: compile, `test:scripts`, the script on the live action
+  `fe1e4dca` (six members, five chains), the page rendered with a vscode
+  stub.
+- Slice 4: `ARCHITECTURE.md`, a paragraph under "Context queries". Doc and
+  architecture tests: 47 passed.
+- Breadcrumbs: audited on `groups.py`, `poi/primitives.py`,
+  `checks/__init__.py`, `actions/pois.py`, `ARCHITECTURE.md`, this note, the
+  extension's `scripts/_common.py` and the Wiki.

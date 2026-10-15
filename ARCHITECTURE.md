@@ -799,6 +799,22 @@ layer composes the installed resolvers and views; the `context` subsystem import
 no workflow that contributes to it. One match opens, several are listed, and a
 unique prefix is enough.
 
+`ObjectGroup` (`tarav.l1.context.groups`, `--view object-group`) is the view
+of the objects that belong together: `obj.context(type=ObjectGroup)`. No
+method is added to objects. Each workflow registers, with `register_links`,
+a function naming the links of one Type's objects as pairs of `Member`s,
+upstream first, and the runtime registers them: POI (situation → POI),
+Checks (situation → check → POI) and Actions (suites → check, POI → action,
+action → closing records). The view follows the links from the subject
+until nothing new appears, so every member opens the same group in the same
+order; ties are broken by role, Type, id and key. A member is its role, its
+Type and its id or key, or its value when it has no Type; only members with
+a live object attached are followed, so a check or a suite known from an
+action's record is its Type and key, and building a group runs nothing. The
+Project is not a member.
+<!-- tarav.breadcrumb c17763030f34fc92d2d84530ea61fcc1b42a6066856998d43697a6dd52fb8699 -->
+<!-- tarav.breadcrumb 45973656b8a06f76705dad01be4093537a836474c45970737b9ff615cb7e3c8d -->
+
 A POI is a flag between detecting and working: what a check returns. It is
 momentary and owns nothing; nothing stores a POI that was printed. It gives
 an action its identity, it keeps detection apart from work, and inside a
