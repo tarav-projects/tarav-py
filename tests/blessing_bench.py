@@ -58,5 +58,5 @@ class Bench:
         self.produce(poi)
         key = self.contexts.put(BlessingInput.new(reason=reason, support=list(support)))
         run = self.runner.close(str(action_id(poi)), key, exit=BLESSED)
-        assert run.exit == BLESSED, run.data["closings"][-1]
+        assert run.exit == BLESSED, run.data["tape"][-1]
         return self.pois.blessing(poi)

@@ -134,7 +134,7 @@ class ProjectActions:
         written = {**started, **{key: run for key, (run, _) in changes.items()}}
         listed = []  # what an operator wants to hear about: opened, reopened, gone
         for key, run in written.items():
-            if key in started and run.data["started_at"] == at:
+            if key in started and run.started_at == at:
                 name = "opened"
             else:
                 name = changes[key][1] if key in changes else "updated"

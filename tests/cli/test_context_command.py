@@ -79,7 +79,7 @@ def test_an_action_is_found_by_its_id_and_by_the_id_of_its_poi(opened) -> None:
     # no view is named: the action contributes its own entries, and its Type adds the POI's
     assert [entry.name for entry in by_action.target.ls() if entry.name != "class"] == [
         "standing", "poi", "poi-type", "raised-by", "notes", "detection", "acting",
-        "project", "closing", "closings", "git", "history"]
+        "project", "tape", "history"]
 
 
 def test_a_path_is_followed_to_a_value(opened) -> None:

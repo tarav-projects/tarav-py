@@ -14,6 +14,7 @@ from tarav.l0.kernel import entity
 from tarav.l1.operator_context import OperatorContextStore
 from tarav.l1.records import RecordRegistry
 
+from .tape import ClosingAttempt
 from . import (
     CLOSED, RUNNING, ActionError, ActionRun, ActionRunStore, StepAction, StepRunner,
     action_types, axes, resolve_action,
@@ -78,7 +79,7 @@ def _pois(rows: list[dict]) -> list[dict]:
 def _row(run: ActionRun) -> dict:
     data = run.data
     row = {"id": str(run.id), "action": data["action"], "state": run.state, "exit": run.exit,
-           "started_at": data["started_at"], "closed_at": data["closed_at"],
+           "started_at": run.started_at, "closed_at": run.closed_at,
            "project": data["project"], "sessions": len(data["sessions"]),
            "axes": axes(run)}
     poi = (data.get("event") or {}).get("poi")
@@ -164,7 +165,8 @@ def _cmd_do(args) -> int:
 
 def _cmd_close(args) -> int:
     run = _runner(args).close(args.id, args.context, exit=args.exit)
-    attempt = run.data["closings"][-1]
+    attempt = next(item for item in reversed(run.data["tape"])
+                   if item["type"] == entity(ClosingAttempt).name)
     result = {**_row(run), "closing": {"exit": attempt["exit"], "passed": attempt["passed"],
                                        "pois": _pois(attempt["results"])}}
     if run.state != CLOSED:
@@ -173,7 +175,7 @@ def _cmd_close(args) -> int:
                                     f"{value['closing']['exit']} was refused.",
                                     *_poi_lines(value["closing"]["pois"])], 1)
     return _emit(args, {"status": "ok", **result, "output": run.data["output"],
-                        "record": run.data["closing"]},
+                        "record": run.closing_record()},
                  lambda value: [f"Action {value['id']} closed by the exit {value['exit']}.",
                                 *_closing_lines(value["record"])])
 
@@ -200,18 +202,19 @@ def _cmd_show(args) -> int:
         if record["project"]:
             lines.append(f"Project: {record['project'].get('name') or ''} "
                          f"{record['project'].get('root')}".replace("  ", " "))
-        lines.append(f"First opened {record['started_at']}; opened {record['opened_at']}"
-                     + (f"; closed {record['closed_at']}" if record["closed_at"] else ""))
+        lines.append(f"First opened {row['started_at']}; opened {value['opened_at']}"
+                     + (f"; closed {row['closed_at']}" if row["closed_at"] else ""))
         if record["reason"]:
             lines.append(f"Reason: {record['reason']}")
-        lines.extend(_closing_lines(record.get("closing")))
+        lines.extend(_closing_lines(value["closing"]))
         lines.append(f"{len(record['intakes'])} input(s) taken, {len(record['sessions'])} "
                      f"session(s), {len(record['operations'])} operation(s), "
-                     f"{len(record['closings'])} attempt(s) to close.")
+                     f"{len(record['tape'])} event(s) on its tape.")
         lines.append(f"The full record: tarav action show --id {row['id']} --json")
         return lines
 
-    return _emit(args, {"status": "ok", "summary": _row(run),
+    return _emit(args, {"status": "ok", "summary": _row(run), "opened_at": run.opened_at,
+                        "closing": run.closing_record(),
                         "record": run.records.to_record()}, render)
 
 

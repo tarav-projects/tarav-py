@@ -95,7 +95,7 @@ def test_a_blessing_roundtrips_as_the_closing_record_of_its_action(tmp_path):
     record = blessing.records.to_record()
     assert isinstance(blessing, TaravEntity)
     assert runtime.records.from_record(record).id == blessing.id
-    assert bench.pois.of(occurrence).data["closing"] == record
+    assert bench.pois.of(occurrence).closing_record() == record
     assert (record["exit"], record["by"], record["reason"]) == ("blessed", "operator", "Fixture review")
     assert record["actor"] == {"provider": "example", "session_id": "reviewer", "since": record["at"]}
     assert record["poi"]["id"] == occurrence.identity

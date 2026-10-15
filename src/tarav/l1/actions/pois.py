@@ -30,7 +30,7 @@ from . import (
     ACTIONS_WORKFLOW_SHIP, CLOSED, EXIT_ERROR, OPERATOR, PROJECT, RUNNING, ActionRun,
     ChecksUpdate, Closing, Exit, StepAction, _detail, close_run, resolve_action,
 )
-from .git import OPENED, REOPENED, log_clean, log_status
+from . import tape
 
 GONE = "gone"
 PRESENT, ABSENT, CHECK_FAILED, NOT_RUN = "present", "absent", "check failed", "not run"
@@ -100,15 +100,13 @@ class POIResolutionAction(StepAction):
         `git` the state of the repositories they declare.
         """
         run = ActionRun(action_id(poi), {
-            "action": entity(cls).name, "state": RUNNING, "exit": None,
-            "started_at": at, "opened_at": at, "closed_at": None, "project": project,
+            "action": entity(cls).name, "project": project,
             "skill": cls.skill.to_json() if cls.skill else None,
             "intakes": [], "sessions": [], "opening": {"passed": True, "results": []},
-            "operations": [], "closings": [], "output": None, "reason": None,
-            "event": _event(poi, suites), "closing": None,
-            "situation": {"state": PRESENT, "at": at},
+            "operations": [], "output": None, "reason": None, "tape": [],
+            "event": _event(poi, suites), "situation": {"state": PRESENT, "at": at},
         })
-        log_status(run, OPENED, git, at=at)
+        tape.opened(run, at=at, states=git)
         return run
 
     # tarav.breadcrumb bdbf97d4ffaec3498e78e81b386648e11d61ddaf21765f99d1b29f6d6f0b9783
@@ -192,12 +190,14 @@ class POIResolutionAction(StepAction):
                 run.data["situation"] = {"state": PRESENT, "at": update.at}
                 change = "updated"
             if run.state == CLOSED and run.exit != EXIT_ERROR:
-                if cls.exit_named(run.exit).closing.reopens(run.data.get("closing"), poi):
-                    run.data.update(state=RUNNING, exit=None, opened_at=update.at,
-                                    closed_at=None, output=None, closing=None, event=fresh)
-                    log_status(run, REOPENED, git, at=update.at)
+                if cls.exit_named(run.exit).closing.reopens(run.closing_record(), poi):
+                    # tarav.breadcrumb a41daa65b5b4f45c6cb26b121bdfcef6877db6f89bb4732ef1a88e40a81f1a5a
+                    # tarav.breadcrumb a16bb5e9dc95eabab9db1b40353502eab0842da9551db52c010c20e3a159e880
+                    # the closing stays on the tape; the action opens again
+                    run.data.update(output=None, event=fresh)
+                    tape.reopened(run, at=update.at, states=git)
                     change = "reopened"
-            if log_clean(run, git, at=update.at):
+            if tape.clean(run, git, at=update.at):
                 change = change or "updated"
             return change
         detector = next((seen["suites"][key] for key in map(_suite_key, reversed(event["suites"]))
@@ -209,7 +209,7 @@ class POIResolutionAction(StepAction):
             state = CHECK_FAILED
         else:
             state = NOT_RUN
-        logged = log_clean(run, detector.git, at=update.at)
+        logged = tape.clean(run, detector.git, at=update.at)
         if situation == state:
             return "updated" if logged else None
         run.data["situation"] = {"state": state, "at": update.at}

@@ -22,7 +22,8 @@ from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.operator_context import Intake, OperatorContext, OperatorContextStore
 from tarav.l1.records import RecordRegistry
 
-from .git import advice, log_closing
+from . import tape
+from .tape import TAPE_ENTRY_TYPES
 from .workflow import ACTIONS_WORKFLOW_SHIP, ActionsWorkflow
 
 RUNNING, CLOSED = "running", "closed"
@@ -209,28 +210,25 @@ class StepAction(Action):
 
 
 class ActionRun(TaravEntity, FileRecord):
-    """One recorded instance of an Action: its intakes, sessions, tests, state and output."""
+    """One recorded instance of an Action: its intakes, sessions, tests, output and tape.
+
+    The tape (`tarav.l1.actions.tape`) holds the important events in order;
+    the state, the exit, the times and the closing record are read from it.
+    """
 
     class RecordInterface(TaravEntity.RecordInterface):
         action: str
-        state: str
-        exit: str | None
-        started_at: str
-        closed_at: str | None
         project: dict | None
         skill: dict | None
         intakes: list[dict]
         sessions: list[dict]
         opening: dict
         operations: list[dict]
-        closings: list[dict]
         output: dict | None
         reason: str | None
-        opened_at: str
+        tape: list[dict]
         event: dict | None = None
-        closing: dict | None = None
         situation: dict | None = None
-        git: dict | None = None
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -251,13 +249,34 @@ class ActionRun(TaravEntity, FileRecord):
     def _to_record(self):
         return {**super()._to_record(), **self.data}
 
+    # tarav.breadcrumb 252e69173cb617f89ab59fa55ff0fd91b32b969c21befed08b2c490baf1c3a4b
     @property
     def state(self) -> str:
-        return self.data["state"]
+        return CLOSED if tape.last_status(self)["type"] == tape.CLOSED else RUNNING
 
     @property
     def exit(self) -> str | None:
-        return self.data["exit"]
+        last = tape.last_status(self)
+        return last["exit"] if last["type"] == tape.CLOSED else None
+
+    @property
+    def started_at(self) -> str:
+        return self.data["tape"][0]["at"]
+
+    @property
+    def opened_at(self) -> str:
+        return next(item["at"] for item in reversed(tape.status_entries(self))
+                    if item["type"] != tape.CLOSED)
+
+    @property
+    def closed_at(self) -> str | None:
+        last = tape.last_status(self)
+        return last["at"] if last["type"] == tape.CLOSED else None
+
+    def closing_record(self) -> dict | None:
+        """The closing record of the current closing, as stored on the tape."""
+        last = tape.last_status(self)
+        return last.get("closing") if last["type"] == tape.CLOSED else None
 
     # tarav.breadcrumb 76f10b0bd9f63cb39ee38b2f5602ec2ca0ea4a701ab09b838bb53a4befd197a9
     def obj_context(self, builder) -> None:
@@ -265,8 +284,8 @@ class ActionRun(TaravEntity, FileRecord):
         data, key = self.data, str(self.id)
         builder.add("standing", opener=lambda: _detail({
             "action": data["action"], "axes": axes(self),
-            "opened_at": data["opened_at"], "closed_at": data["closed_at"],
-            "first_opened_at": data["started_at"]}),
+            "opened_at": self.opened_at, "closed_at": self.closed_at,
+            "first_opened_at": self.started_at}),
             description="The Action Type and three separate axes: the situation as the "
                         "last run of the Project's checks says it, whether the action is "
                         "open, and the exit it closed by.")
@@ -276,15 +295,11 @@ class ActionRun(TaravEntity, FileRecord):
             pass  # a Type this runtime does not have adds nothing
         builder.add("project", opener=lambda: _detail(data.get("project")),
                     description="The Project this action is registered under.")
-        builder.add("closing", opener=lambda: _detail(
-            data.get("closing") or "Not closed. A closing leaves a record of its own Type here."),
-            description="The record of how it closed.")
-        builder.add("closings", opener=lambda: _detail(data["closings"]),
-                    description="Each attempt by an operator to take an exit, and its tests.")
-        builder.add("git", opener=lambda: _detail({
-            "log": (data.get("git") or {}).get("log", []), "advice": advice(self)}),
-            description="The state of the Git repositories its checks read: at each change "
-                        "of its status, and the first clean state after it, per repository.")
+        builder.add("tape", opener=lambda: _detail({
+            "entries": data["tape"], "advice": tape.advice(self)}),
+            description="The important events of this action, in order: opened, closed with "
+                        "its closing record, reopened, attempts at an exit, and the state of "
+                        "its checks' Git repositories at each change of status.")
         builder.add("history", opener=lambda: _detail(
             [f"git -C <actions registry> log -p -- records/{key}.json",
              "The record holds the current state. Its past states are the Git history "
@@ -294,7 +309,7 @@ class ActionRun(TaravEntity, FileRecord):
 
     def closing(self) -> Closing | None:
         """The record of how this run closed, as an object of its Type."""
-        record = self.data.get("closing")
+        record = self.closing_record()
         if record is None:
             return None
         action_type = resolve_action(self.data["action"])
@@ -308,22 +323,21 @@ class ActionRun(TaravEntity, FileRecord):
     class Records(TaravEntity.Records):
         def validate_record(self, value):
             data = super().validate_record(value)
-            if data.state not in (RUNNING, CLOSED):
-                raise ValueError("Unknown action run state")
-            if (data.state == RUNNING) != (data.exit is None):
-                raise ValueError("A running action run has no exit; a closed one has")
+            if not data.tape or data.tape[0].get("type") != tape.OPENED:
+                raise ValueError("The tape of an action starts with its opening")
+            for item in data.tape:
+                tape.entry(item)
             return data
 
         def record_example(self) -> dict[str, object]:
             return {
                 "type": entity(self._owner).name,
                 "id": "4a9af366-b093-4ba0-aedd-6d71a3f2bbd0",
-                "action": "Tarav.Actions.Step", "state": RUNNING, "exit": None,
-                "started_at": "2026-10-09T00:00:00+00:00",
-                "opened_at": "2026-10-09T00:00:00+00:00", "closed_at": None,
+                "action": "Tarav.Actions.Step",
                 "project": None, "skill": None, "intakes": [], "sessions": [],
                 "opening": {"passed": True, "results": []}, "operations": [],
-                "closings": [], "output": None, "reason": None,
+                "output": None, "reason": None,
+                "tape": [{"type": tape.OPENED, "at": "2026-10-09T00:00:00+00:00"}],
             }
 
 
@@ -390,7 +404,7 @@ class ActionRunStore:
             and (exit is None or run.exit == exit)
             and (roots is None or (run.data["project"] or {}).get("root") in roots)
         ]
-        return sorted(selected, key=lambda run: run.data["started_at"], reverse=True)
+        return sorted(selected, key=lambda run: run.started_at, reverse=True)
 
 
 _ACTION_TYPES: dict[str, type[Action]] = {}
@@ -447,16 +461,15 @@ def close_run(action: StepAction, run: ActionRun, exit: str, *, by: str, at: str
     """Close a run through one exit and leave that exit's closing record on it.
 
     `git` is the state of the repositories the run of checks that closed it
-    took; without one, a run with a Git log reads its repositories now.
+    took; without one, the tape reads the action's repositories now.
     """
     closing_type = type(action).exit_named(exit).closing
     record = {"type": entity(closing_type).name, "id": str(uuid4()), "run": str(run.id),
               "exit": exit, "at": at, "by": by,
               **closing_type.fields(action, run, context), **(extra or {})}
     closing_type.records.from_record(record)
-    run.data.update(state=CLOSED, exit=exit, closed_at=at,
-                    output=action.output(exit, run, context), closing=record)
-    log_closing(run, exit, git, at=at)
+    run.data["output"] = action.output(exit, run, context)
+    tape.closed(run, exit, at=at, closing=record, states=git)
     return record
 
 
@@ -541,19 +554,19 @@ class StepRunner:
         action = action_type()
         name = entity(action_type).name
         run = ActionRun(Ship(str(uuid4())), {
-            "action": name, "state": RUNNING, "exit": None, "started_at": self._now(),
-            "opened_at": self._now(), "closed_at": None, "project": None,
+            "action": name, "project": None,
             "skill": action_type.skill.to_json() if action_type.skill else None,
             "intakes": [], "sessions": [], "opening": {"passed": False, "results": []},
-            "operations": [], "closings": [], "output": None, "reason": None,
+            "operations": [], "output": None, "reason": None,
+            "tape": [{"type": tape.OPENED, "at": self._now()}],
         })
         intake = self._take(action, run, context_id, "start")
         run.data["project"] = intake.context.project
         passed, rows = _results(action.opening_checks(run, intake.context))
         run.data["opening"] = {"passed": passed, "results": rows}
         if not passed:
-            run.data.update(state=CLOSED, exit=EXIT_ERROR, closed_at=self._now(),
-                            reason="The opening test did not pass.")
+            run.data["reason"] = "The opening test did not pass."
+            tape.closed(run, EXIT_ERROR, at=self._now())
         self.runs.save(run, f"Start {name} run {run.id}")
         return run
 
@@ -583,8 +596,7 @@ class StepRunner:
             raise ActionError(f"Exit {exit!r} is not taken by an operator")
         intake = self._take(action, run, context_id, f"exit {exit}")
         passed, rows = _results(action.exit_checks(exit, run, intake.context))
-        run.data["closings"].append({"at": self._now(), "exit": exit, "by": OPERATOR,
-                                     "passed": passed, "results": rows})
+        tape.attempt(run, exit, by=OPERATOR, at=self._now(), passed=passed, results=rows)
         if passed:
             close_run(action, run, exit, by=OPERATOR, at=self._now(), context=intake.context)
         self.runs.save(run, f"Exit {exit} attempted on run {run.id}")
@@ -611,8 +623,7 @@ class StepRunner:
                 passed, rows = _results(checks)
                 if not passed:
                     continue
-                run.data["closings"].append({"at": self._now(), "exit": item.name, "by": LOOP,
-                                             "passed": True, "results": rows})
+                tape.attempt(run, item.name, by=LOOP, at=self._now(), passed=True, results=rows)
                 close_run(action, run, item.name, by=LOOP, at=self._now())
                 keys.append(self.runs.write(run))
                 closed.append(run)
@@ -625,13 +636,13 @@ class StepRunner:
         if not isinstance(reason, str) or not reason.strip():
             raise ActionError("Aborting an action run needs a reason")
         _action, run = self._running(run_id)
-        run.data.update(state=CLOSED, exit=EXIT_ERROR, closed_at=self._now(),
-                        reason=reason.strip())
+        run.data["reason"] = reason.strip()
+        tape.closed(run, EXIT_ERROR, at=self._now())
         self.runs.save(run, f"Abort run {run.id}")
         return run
 
 
-ACTION_RECORD_TYPES = (ActionRun, Closing)
+ACTION_RECORD_TYPES = (ActionRun, Closing, *TAPE_ENTRY_TYPES)
 
 __all__ = [
     "ACTIONS_WORKFLOW_SHIP", "ACTION_RECORD_TYPES", "Action", "ActionError", "ActionRun",

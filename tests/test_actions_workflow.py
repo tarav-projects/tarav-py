@@ -162,6 +162,12 @@ for _action in (FlagStep, TwoExitStep):
     register_action(_action)
 
 
+def _attempts(run):
+    """The attempts at an exit on a run's tape."""
+    return [entry for entry in run.data["tape"]
+            if entry["type"] == "Tarav.Actions.Tape.ClosingAttempt"]
+
+
 class _ByPOI:
     """Find the action of a POI in the registry, whichever Project it is registered under."""
 
@@ -244,13 +250,13 @@ def test_a_step_closes_only_when_its_exit_tests_pass(stores):
         stores.runner.operate(str(run.id), "unknown")
 
     still = stores.runner.close(str(run.id))
-    assert still.state == RUNNING and still.data["closings"][-1]["passed"] is False
+    assert still.state == RUNNING and _attempts(still)[-1]["passed"] is False
 
     stores.contexts.put(OperatorContext(context.id, created_at=context.created_at,
                                         ready=True, done=True))
     closed = stores.runner.close(str(run.id))
     assert (closed.state, closed.exit, closed.data["output"]) == (CLOSED, "done", {"done": True})
-    record = closed.data["closing"]  # every closing leaves a typed record
+    record = closed.closing_record()  # every closing leaves a typed record
     assert (record["type"], record["exit"], record["by"]) == ("Tarav.Actions.Closing", "done", "operator")
     assert type(closed.closing()) is Closing and record["run"] == str(closed.id)
     hashes = [intake["hash"] for intake in closed.data["intakes"]]
@@ -292,7 +298,7 @@ def test_a_step_with_several_exits_closes_by_the_one_that_is_met(stores, tmp_pat
     flag.write_text("here", encoding="utf-8")
     assert [run.id for run in stores.runner.sweep()] == [by_loop.id]
     assert stores.runs.load(str(by_loop.id)).exit == "arrived"
-    assert stores.runs.load(str(by_loop.id)).data["closing"]["by"] == "loop"
+    assert stores.runs.load(str(by_loop.id)).closing_record()["by"] == "loop"
     assert stores.runner.close(str(by_hand.id)).data["output"] == {"by": "done"}
     assert {run.exit for run in stores.runs.list(state=CLOSED)} == {"arrived", "done"}
 
@@ -327,7 +333,7 @@ def test_checks_that_no_longer_produce_a_poi_close_its_action(stores):
     assert result["gone"] == 1
     run = stores.pois.of(poi)
     assert (run.state, run.exit) == (CLOSED, GONE)
-    record = run.data["closing"]
+    record = run.closing_record()
     assert (record["type"], record["by"], record["project"]) == (
         "Tarav.Actions.POI.Gone", "project", HOME)
     assert isinstance(run.closing(), GoneClosing)
@@ -347,8 +353,12 @@ def test_a_situation_that_returns_reopens_the_same_action(stores):
     back = stores.lamps(hall=3)
     assert (back["opened"], back["reopened"]) == (0, 1)
     run = stores.pois.of(poi)
-    assert (run.state, run.exit, run.data["closed_at"], run.data["closing"]) == (
+    assert (run.state, run.exit, run.closed_at, run.closing_record()) == (
         RUNNING, None, None, None)
+    # the closing it reopened from stays on its tape
+    assert [item["type"].rsplit(".", 1)[-1] for item in run.data["tape"]] == [
+        "Opened", "Closed", "Reopened"]
+    assert run.data["tape"][1]["closing"]["exit"] == GONE
     assert len(stores.runs.list()) == 1
     history = subprocess.run(
         ["git", "log", "--format=%s", "--", f"records/{run.id}.json"],
@@ -537,8 +547,8 @@ def test_a_blessed_action_stays_closed_while_its_poi_is_still_raised(stores):
 
     empty = stores.contexts.put(BlessingInput.new(reason="  "))
     refused = stores.runner.close(run_id, empty, exit=BLESSED)
-    assert refused.state == RUNNING and refused.data["closing"] is None
-    assert refused.data["closings"][-1]["results"][0]["pois"][0]["type"] == entity(BlessingWithoutReason).name
+    assert refused.state == RUNNING and refused.closing_record() is None
+    assert _attempts(refused)[-1]["results"][0]["pois"][0]["type"] == entity(BlessingWithoutReason).name
 
     stores.sessions.append({"provider": "claude-code", "session_id": "one"})
     support = [{"type": "Example.Source.Reference", "locator": {"path": "house-rules.md"}}]
@@ -546,7 +556,7 @@ def test_a_blessed_action_stays_closed_while_its_poi_is_still_raised(stores):
         reason="The hall lamp stays on at night.", support=support))
     blessed = stores.runner.close(run_id, reason, exit=BLESSED)
     assert (blessed.state, blessed.exit) == (CLOSED, BLESSED)
-    record = blessed.data["closing"]
+    record = blessed.closing_record()
     assert (record["type"], record["reason"], record["support"]) == (
         "Tarav.Blessings.Blessing", "The hall lamp stays on at night.", support)
     assert record["actor"]["session_id"] == "one" and record["poi"]["id"] == poi.identity
@@ -566,7 +576,7 @@ def test_a_blessed_action_stays_closed_while_its_poi_is_still_raised(stores):
         "situation": "absent", "action": "closed", "closing": "blessed"}
     assert stores.lamps(hall=3)["reopened"] == 0
     assert axes(stores.pois.of(poi))["situation"] == "present"
-    assert stores.pois.of(poi).data["closing"]["id"] == record["id"]
+    assert stores.pois.of(poi).closing_record()["id"] == record["id"]
 
 
 # tarav.breadcrumb 95f611786d834315821c4e6a7296150d2caa44f8a0fa25208e71fae43f2b3225
@@ -832,7 +842,7 @@ def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry,
 
     refused = runner.close(str(action_id(flags)), reason, exit=BLESSED)
     assert refused.state == RUNNING
-    assert refused.data["closings"][-1]["results"][0]["pois"][0]["type"] == entity(BlessingNotPermitted).name
+    assert _attempts(refused)[-1]["results"][0]["pois"][0]["type"] == entity(BlessingNotPermitted).name
 
     assert runner.close(str(action_id(lamp)), reason, exit=BLESSED).exit == BLESSED
     assert report_project_status(home) == 1  # the plain finding is still open
@@ -895,7 +905,7 @@ def test_commands_print_a_summary_by_default_and_the_full_result_as_json(
     _, text = run("action", "show", "--id", key)
     assert "closed (blessed), situation present: Tarav.Test.Actions.LampOn" in text
     shown = json.loads(run("action", "show", "--id", key, "--json")[1])
-    assert shown["record"]["closing"]["reason"] == "Stays on at night."
+    assert shown["closing"]["reason"] == "Stays on at night."
     assert shown["summary"]["axes"]["closing"] == "blessed"
     assert "exit blessed: by operator, leaves Tarav.Blessings.Blessing" in run("action", "types")[1]
 
@@ -958,21 +968,21 @@ def test_an_action_logs_the_git_state_of_its_repositories_at_its_changes(stores,
     poi = LampCheck("hall", 3).run().pois()[0]
 
     def log():
-        return [(entry["event"], entry.get("exit"), entry["repositories"][root]["commit"],
-                 entry["repositories"][root]["clean"])
-                for entry in stores.pois.of(poi).data["git"]["log"]]
+        return [(entry["type"].rsplit(".", 1)[-1].lower(), entry.get("exit"),
+                 entry["repositories"][root]["commit"], entry["repositories"][root]["clean"])
+                for entry in stores.pois.of(poi).data["tape"] if "repositories" in entry]
 
     (repo / "draft.md").write_text("draft\n")  # opened while the repository is not clean
     lamps(hall=3)
     assert log() == [("opened", None, first, False)]
-    advice = stores.pois.of(poi).context().open("git").records.to_record()["value"]["advice"]
+    advice = stores.pois.of(poi).context().open("tape").records.to_record()["value"]["advice"]
     assert len(advice) == 1 and advice[0].startswith(f"{root} was not clean")
 
     second = _commit_all(repo, "two")  # still open, now clean: logged once
     assert lamps(hall=3)["updated"] == 1
     assert lamps(hall=3)["updated"] == 0
     assert log()[1:] == [("clean", None, second, True)]
-    assert stores.pois.of(poi).context().open("git").records.to_record()["value"]["advice"] == []
+    assert stores.pois.of(poi).context().open("tape").records.to_record()["value"]["advice"] == []
 
     (repo / "draft.md").write_text("fixed\n")  # gone while not clean
     lamps(hall=0)
@@ -997,5 +1007,6 @@ def test_an_action_logs_the_git_state_of_its_repositories_at_its_changes(stores,
 def test_an_action_whose_checks_declare_no_repository_logs_nothing(stores):
     stores.lamps(hall=3)
     run = stores.pois.of(LampCheck("hall", 3).run().pois()[0])
-    assert run.data.get("git") is None
-    assert run.context().open("git").records.to_record()["value"]["log"] == []
+    assert [set(entry) for entry in run.data["tape"]] == [{"type", "at"}]
+    advice = run.context().open("tape").records.to_record()["value"]["advice"]
+    assert advice[0].startswith("The suites above its checks declare no Git repository")
