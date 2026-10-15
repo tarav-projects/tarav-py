@@ -170,3 +170,21 @@ trigger: such a Project is migrated by hand and logged.
 - Commits: 44 repositories through `tarav git commit` (only the migration's
   files); pdf-readings-py and voice-readings-py ignore `.tarav/`, so their
   files were force-added and committed with a path-limited `git commit`.
+- Scope extended by the User to the six markers under `~/Documents`.
+  md-library (the depot) already had its Type and `.venv`: `harness` now
+  names them and its manifest lost the `projects` table (811da8f). PaperSON,
+  Obsidian/notebook, js/obajs-monorepo, workspaces/main-workspace and
+  workspaces/csc-reactor had no Type: `tarav project harness scaffold
+  --adopt` gave each a package and Type (`Project.<pkg>.<Class>`), then the
+  legacy fields were removed, `diagram` moved to config.json, environments
+  synced; all load as their Types. Scaffold does not remove legacy fields on
+  adoption; done by hand. Commits: PaperSON 57d0b06 (its `.gitignore`
+  ignores `_*`, so `__init__.py` was force-added, path-limited commit),
+  notebook bcbd1fc, obajs-monorepo 201c4cd; the two workspaces got
+  repositories with the child allowlist (c6741af, 346bab3).
+- Notebook's config.json keeps `agentos_index_canvas`, read by its Obsidian
+  plugin; `ProjectFilesCheck` reports it as a section no Tarav workflow owns.
+- The depot's `tarav check` fails in md-library: `MdLibraryDepot.checks()` is
+  a method, an older Tarav API (now the `checks` namespace) — with the
+  Blessing store, md-library's own pending migration.
+
