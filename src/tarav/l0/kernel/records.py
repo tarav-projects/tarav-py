@@ -42,12 +42,19 @@ JsonFile = TextIO | BinaryIO
 
 _workflow_resolver: Callable[[WorkflowShip], TaravWorkflow] | None = None
 _context_resolver: Callable | None = None
+_context_model_resolver: Callable | None = None
 
 
 def configure_context_resolver(resolver: Callable) -> None:
     """Supply context composition without an upward Kernel import."""
     global _context_resolver
     _context_resolver = resolver
+
+
+def configure_context_model_resolver(resolver: Callable) -> None:
+    """Supply Type models without importing the Context workflow into Kernel."""
+    global _context_model_resolver
+    _context_model_resolver = resolver
 
 
 def configure_workflow_resolver(resolver: Callable[[WorkflowShip], TaravWorkflow]) -> None:
@@ -60,6 +67,13 @@ def resolve_workflow(ship: WorkflowShip) -> TaravWorkflow:
     if _workflow_resolver is None:
         raise RuntimeError("Workflow resolution has not been configured")
     return _workflow_resolver(ship)
+
+
+class _ContextDescriptor:
+    """Bind the selected namespace to the concrete Type or object."""
+
+    def __get__(self, instance: TaravType | None, owner: type[TaravType]):
+        return owner.Context(owner if instance is None else instance)
 
 
 class TaravType:
@@ -82,6 +96,42 @@ class TaravType:
             raise TaravTypeDeclarationError(
                 f"{cls.__name__} must define a class-local class_entity()"
             )
+        check_namespace_composition(cls)
+
+    # tarav.context 473c89a0:8cf85c979321cdcf
+    class Context(NamespaceBase["TaravType | type[TaravType]"]):
+        """Context operations bound to an object or its concrete Type.
+
+        Specialize ``explore`` to change exploration; calling this namespace
+        delegates to that same operation. NamespaceBase itself stays noncallable.
+        """
+
+        @property
+        def _owner(self) -> type[TaravType]:
+            return self.obj if isinstance(self.obj, type) else type(self.obj)
+
+        def explore(self, *, type=None):
+            """Open the subject's default explorer or a selected Context view."""
+            if _context_resolver is None:
+                raise RuntimeError("Context resolution has not been configured")
+            return _context_resolver(self.obj, type=type)
+
+        def __call__(self, *, type=None):
+            """Shorthand for the selected namespace's exploration operation."""
+            return self.explore(type=type)
+
+        @property
+        def model(self):
+            """Open the Type's partial model; objects share their Type's model."""
+            if _context_model_resolver is None:
+                raise RuntimeError("Context model resolution has not been configured")
+            return _context_model_resolver(self._owner)
+
+        def model_nodes(self):
+            """Declare identified Type-model members, composing with super()."""
+            return ()
+
+    context = _ContextDescriptor()
 
     @classmethod
     def class_context(cls, builder: object) -> None:
@@ -265,18 +315,11 @@ class TaravObject(TaravType):
             return self._record
         return {"type": entity(type(self)).name}
 
-    def context(self, *, type=None):
-        """Request a read-only context view from the configured host."""
-        if _context_resolver is None:
-            raise RuntimeError("Context resolution has not been configured")
-        return _context_resolver(self, type=type)
-
     def obj_context(self, builder: object) -> None:
         """Contribute object-specific entries to an instance Context view."""
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        check_namespace_composition(cls)
         direct_record_api = {"from_record", "to_record", "validate_record", "record_example"}
         misplaced = direct_record_api.intersection(cls.__dict__)
         if misplaced:
