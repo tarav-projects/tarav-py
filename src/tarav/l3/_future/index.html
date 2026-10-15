@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tarav · Diagram Explorer</title>
+<style>
+:root{color-scheme:dark;--bg:#10151b;--panel:#171f28;--line:#303c49;--text:#e7eef4;--muted:#9bafbf;--accent:#83d5bc}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif}
+header{padding:22px 28px;border-bottom:1px solid var(--line);display:flex;gap:18px;align-items:center}
+h1{font-size:19px;margin:0;letter-spacing:.02em}h2{font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 14px}
+.badge{color:var(--accent);font-size:11px;border:1px solid #42695c;border-radius:20px;padding:4px 9px}
+button,input,textarea{font:inherit;color:inherit;background:#202b36;border:1px solid var(--line);border-radius:6px}
+button{cursor:pointer;padding:8px 12px}button:hover{border-color:var(--accent)}button:disabled{opacity:.35;cursor:default}
+input{padding:10px 12px;min-width:0;flex:1;font-family:ui-monospace,monospace}.primary{background:var(--accent);color:#10271f;border-color:var(--accent);font-weight:650}
+.toolbar{display:flex;gap:9px;padding:16px 28px;align-items:center}.toolbar label{color:var(--muted);white-space:nowrap}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;padding:0 28px 28px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}.panel-head{padding:16px 18px;border-bottom:1px solid var(--line)}
+.panel-head h2{margin-bottom:8px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.small{font-size:12px;color:var(--muted)}
+#views button.active{color:var(--accent);border-color:var(--accent)}#canvas{display:block;width:100%;height:430px;touch-action:none}
+.edge{stroke:#596f81;stroke-width:1.5;cursor:pointer}.edge-label{fill:var(--accent);font-size:11px;cursor:pointer;paint-order:stroke;stroke:var(--panel);stroke-width:5px;stroke-linejoin:round}
+.node{cursor:grab}.node circle{fill:#253849;stroke:#6c879d;stroke-width:1.5}.node.focus circle{fill:#284e45;stroke:var(--accent);stroke-width:2}
+.node text{fill:var(--text);font-size:12px;text-anchor:middle;pointer-events:none}.node:hover circle{stroke:#fff}
+.body{padding:18px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;color:#bbd1e0;line-height:1.55;max-height:270px;overflow:auto}
+.identity{overflow-wrap:anywhere;font:11px ui-monospace,monospace;color:var(--muted);margin:12px 0}.section{padding:16px 18px;border-top:1px solid var(--line)}
+textarea{width:100%;resize:vertical;min-height:145px;padding:12px;font:12px/1.6 ui-monospace,monospace}.query{margin-top:16px}
+#error{display:none;margin:0 28px 15px;padding:12px 16px;background:#48292c;border:1px solid #a45960;border-radius:7px;color:#ffdde0}
+.results{overflow:auto;max-height:260px}table{border-collapse:collapse;width:100%;font:11px ui-monospace,monospace}th,td{padding:10px;text-align:left;border-bottom:1px solid var(--line);max-width:440px;overflow-wrap:anywhere}
+footer{padding:0 28px 22px;color:var(--muted);font-size:12px}#expansions{display:flex;gap:8px;flex-direction:column}#inspect-title{font-size:17px;margin:0 0 7px;overflow-wrap:anywhere}
+@media(max-width:950px){.workspace{grid-template-columns:1fr}.toolbar{flex-wrap:wrap}.toolbar input{flex-basis:65%}header{padding:18px}.workspace{padding:0 14px 20px}#canvas{height:370px}}
+</style>
+</head>
+<body>
+<header><h1>Tarav / Diagram Explorer</h1><span class="badge">_future experiment</span><span class="small" id="stats"></span></header>
+<form id="root-form" class="toolbar"><label for="root-id">Root ID</label><input id="root-id" aria-label="Root object or Type identifier" spellcheck="false"><button class="primary">Open context</button><button type="button" id="back" aria-label="Back">←</button><button type="button" id="forward" aria-label="Forward">→</button></form>
+<div id="error" role="alert"></div>
+<main class="workspace">
+<div>
+<section class="panel"><div class="panel-head"><h2>Context view</h2><div id="views" class="row"></div><p class="small" id="qualifications"></p></div><svg id="canvas" viewBox="0 0 850 430" aria-label="Graph of the selected Context view"></svg><div class="section small">Select a node to inspect it. Select a relationship label to inspect its meaning; select an arrow to inspect that relationship. Drag nodes to arrange the view.</div></section>
+<section class="panel query"><div class="panel-head"><h2>SPARQL</h2><span class="small">?focus is bound to the current object. Queries use the loaded graph.</span></div><div class="body"><textarea id="sparql" aria-label="SPARQL query" spellcheck="false"></textarea><div class="row" style="margin-top:10px"><button id="run" class="primary">Run query</button><span class="small" id="result-summary"></span></div></div><div id="results" class="results"></div></section>
+</div>
+<aside class="panel"><div class="body"><h2>Inspector</h2><h3 id="inspect-title"></h3><div class="small" id="inspect-type"></div><div class="identity" id="inspect-id"></div><div class="row"><button id="follow">Explore object</button><button id="inspect-class">Inspect Type</button></div></div><div class="section"><h2>Record</h2><pre id="record"></pre><div class="small" id="source"></div></div><div class="section"><h2>Code grounding</h2><pre id="code"></pre></div><div class="section"><h2>Load more context</h2><div id="expansions"></div></div></aside>
+</main>
+<footer id="coverage"></footer>
+<script type="module">
+const $ = id => document.getElementById(id);
+let state, inspected, busy = false;
+const positions = new Map();
+
+async function api(body) {
+  if (busy) return;
+  busy = true;
+  $('error').style.display = 'none';
+  try {
+    const response = await fetch('/api', body ? {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    } : {});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    state = data;
+    render();
+  } catch (error) {
+    $('error').textContent = error.message;
+    $('error').style.display = 'block';
+  } finally { busy = false; }
+}
+
+function button(label, callback) {
+  const item = document.createElement('button');
+  item.textContent = label;
+  item.onclick = callback;
+  return item;
+}
+
+function render() {
+  inspected = state.inspected;
+  $('stats').textContent = `${state.triples} loaded triples · revision ${state.revision}`;
+  $('root-id').value = state.focus.id;
+  $('back').disabled = !state.history.back;
+  $('forward').disabled = !state.history.forward;
+  $('views').replaceChildren(...state.views.map(name => {
+    const item = button(name, () => api({op:'view', name}));
+    item.classList.toggle('active', state.qualifications.includes(name));
+    return item;
+  }));
+  $('qualifications').textContent = state.qualifications.join(' → ') || 'Default context';
+  $('inspect-title').textContent = inspected.label;
+  $('inspect-type').textContent = inspected.type;
+  $('inspect-id').textContent = inspected.id;
+  $('record').textContent = JSON.stringify(inspected.record, null, 2);
+  $('source').textContent = inspected.source ? `Record: ${inspected.source}` : 'No retained Record loaded for this representation.';
+  $('code').textContent = JSON.stringify(inspected.code, null, 2);
+  $('expansions').replaceChildren(...state.expansions.map(value => button(value.label, () => api({op:'expand', name:value.key}))));
+  if (!state.expansions.length) $('expansions').textContent = 'No loading steps offered for the current object.';
+  $('coverage').textContent = state.coverage;
+  if (document.activeElement !== $('sparql')) $('sparql').value = state.sparql;
+  drawGraph();
+  showResults();
+}
+
+function svg(name, attributes = {}) {
+  const item = document.createElementNS('http://www.w3.org/2000/svg', name);
+  for (const [key,value] of Object.entries(attributes)) item.setAttribute(key, value);
+  return item;
+}
+
+function drawGraph() {
+  const canvas = $('canvas');
+  canvas.replaceChildren();
+  const defs = svg('defs'), marker = svg('marker', {id:'arrow', viewBox:'0 0 10 10', refX:9, refY:5, markerWidth:7, markerHeight:7, orient:'auto-start-reverse'});
+  marker.append(svg('path', {d:'M 0 0 L 10 5 L 0 10 z', fill:'#708a9d'}));
+  defs.append(marker); canvas.append(defs);
+  const center = {x:425,y:215};
+  const others = state.nodes.filter(node => node.id !== state.focus.id);
+  if (!positions.has(state.focus.id)) positions.set(state.focus.id, center);
+  others.forEach((node,i) => {
+    if (!positions.has(node.id)) {
+      const angle = 2 * Math.PI * i / Math.max(others.length,1) - Math.PI / 2;
+      positions.set(node.id, {x:425+295*Math.cos(angle), y:215+145*Math.sin(angle)});
+    }
+  });
+  const redraw = [];
+  for (const edge of state.edges) {
+    const line = svg('line', {'class':'edge', 'marker-end':'url(#arrow)'});
+    const title = svg('title'); title.textContent = 'Inspect relationship'; line.append(title);
+    line.onclick = () => api({op:'inspect', id:edge.id});
+    const label = svg('text', {'class':'edge-label', 'text-anchor':'middle'});
+    label.textContent = edge.label;
+    label.onclick = () => api({op:'inspect', id:edge.predicate});
+    const update = () => {
+      const a = positions.get(edge.source), b = positions.get(edge.target);
+      const dx=b.x-a.x, dy=b.y-a.y, distance=Math.hypot(dx,dy)||1;
+      line.setAttribute('x1',a.x+dx/distance*24); line.setAttribute('y1',a.y+dy/distance*24);
+      line.setAttribute('x2',b.x-dx/distance*29); line.setAttribute('y2',b.y-dy/distance*29);
+      label.setAttribute('x',(a.x+b.x)/2); label.setAttribute('y',(a.y+b.y)/2-9);
+    };
+    redraw.push(update); update(); canvas.append(line,label);
+  }
+  for (const node of state.nodes) {
+    const group = svg('g', {'class':`node ${node.id===state.focus.id?'focus':''}`, tabindex:0, role:'button', 'aria-label':node.label});
+    const title = svg('title'); title.textContent = `${node.label}\n${node.id}`;
+    const label = svg('text', {y:42});
+    label.textContent = node.label.length>32 ? node.label.slice(0,30)+'…' : node.label;
+    group.append(svg('circle',{r:23}),label,title);
+    const update = () => { const p=positions.get(node.id); group.setAttribute('transform',`translate(${p.x},${p.y})`); };
+    redraw.push(update); update();
+    let drag = false, moved = false;
+    group.onpointerdown = event => { drag=true; moved=false; group.setPointerCapture(event.pointerId); };
+    group.onpointermove = event => {
+      if (!drag) return;
+      moved=true;
+      const point = new DOMPoint(event.clientX,event.clientY).matrixTransform(canvas.getScreenCTM().inverse());
+      positions.set(node.id,{x:Math.max(35,Math.min(815,point.x)),y:Math.max(35,Math.min(375,point.y))});
+      redraw.forEach(callback=>callback());
+    };
+    group.onpointerup = () => { drag=false; if (!moved) api({op:'inspect',id:node.id}); };
+    group.onkeydown = event => { if(event.key==='Enter') api({op:'inspect',id:node.id}); };
+    canvas.append(group);
+  }
+}
+
+function showResults() {
+  const result = state.query_result;
+  $('results').replaceChildren();
+  if (!result) { $('result-summary').textContent=''; return; }
+  if (result.kind==='ASK') { $('result-summary').textContent=String(result.answer); return; }
+  const rows = result.rows || result.triples.map(triple=>({subject:triple[0],predicate:triple[1],object:triple[2]}));
+  const columns = result.columns || ['subject','predicate','object'];
+  $('result-summary').textContent = `Showing ${rows.length} of ${result.total} ${result.kind==='SELECT'?'rows':'triples'}`;
+  const table=document.createElement('table'), head=document.createElement('tr');
+  for(const name of columns) { const cell=document.createElement('th'); cell.textContent=name; head.append(cell); }
+  table.append(head);
+  for(const row of rows) {
+    const line=document.createElement('tr');
+    for(const name of columns) { const cell=document.createElement('td'); cell.textContent=row[name]||''; line.append(cell); }
+    table.append(line);
+  }
+  $('results').append(table);
+}
+
+$('root-form').onsubmit = event => { event.preventDefault(); api({op:'open',id:$('root-id').value}); };
+$('back').onclick = () => api({op:'back'});
+$('forward').onclick = () => api({op:'forward'});
+$('follow').onclick = () => api({op:'follow',id:inspected.id});
+$('inspect-class').onclick = () => api({op:'inspect',id:inspected.type_id});
+$('run').onclick = () => api({op:'query',sparql:$('sparql').value});
+api();
+</script>
+</body>
+</html>

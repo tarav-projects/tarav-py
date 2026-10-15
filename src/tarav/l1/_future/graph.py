@@ -9,6 +9,7 @@ from uuid import uuid4
 from rdflib import BNode, Graph, Literal, RDF, RDFS, URIRef
 from rdflib.plugins.sparql import prepareQuery
 from rdflib.plugins.sparql.parserutils import CompValue
+from rdflib.util import from_n3
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TaravObject, TaravType, entity
 from tarav.l1.context.models import TypePath
@@ -198,8 +199,8 @@ class Diagram:
 
     def resolve(self, identifier):
         if type(identifier) is str:
-            if identifier.startswith("_:"):
-                identifier = BNode(identifier[2:])
+            if identifier.startswith(("_:", "<", '"', "'")):
+                identifier = from_n3(identifier)
             else:
                 try:
                     identifier = URIRef("urn:uuid:" + str(Ship(identifier)))
@@ -296,7 +297,10 @@ class Diagram:
 
     def query(self, sparql, *, bindings=None):
         """Evaluate read queries entirely inside the accumulated RDF dataset."""
-        query = prepareQuery(sparql)
+        try:
+            query = prepareQuery(sparql)
+        except Exception as exc:
+            raise ValueError(f"Invalid SPARQL query: {exc}") from exc
         def inspect(value):
             if isinstance(value, CompValue):
                 if value.name == "ServiceGraphPattern" or (

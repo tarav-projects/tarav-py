@@ -81,7 +81,7 @@ Conversation/UserTurn/Annotation Records; explicit demo host and UI adapter.
 - [x] Slice 2 — feature: RDF contributions, direct SPARQL, typed views and
   progressive loading. Prove live/stored parity, representation resolution,
   cumulative filtering, growth, incoming edges and history against RDFLib.
-- [ ] Slice 3 — feature: browser explorer over the same session. Prove root-ID
+- [x] Slice 3 — feature: browser explorer over the same session. Prove root-ID
   opening, query/view dispatch, expansion, inspection and navigation through
   the HTTP adapter; inspect the rendered UI where browser tooling is available.
 - [ ] Slice 4 — documentation and integration: runnable tutorial, architecture
@@ -122,6 +122,17 @@ check; independent code may proceed while environment checks remain pending.
 - Local TCP bind is denied by this sandbox. HTTP verification will feed actual
   HTTP requests through the handler in-process; browser/server launch remains
   a separate host-environment check if this restriction persists.
-- Optional dependency metadata added. uv lock also hits the macOS native
-  configuration panic even offline; lock refresh remains pending.
+- Slice 2 committed as `9d1124c`; supported code/test surfaces submitted and
+  audited. Durable Breadcrumb registration remains denied; provisional markers
+  retain the exact session and user turns. TOML has no capture convention.
+- Slice 3 measured: 19 experimental tests pass. Actual HTTP request bytes go
+  through BaseHTTPRequestHandler into the same Application/ContextExplorer;
+  queries return 2 stored turns, then 3 after the runtime-only expansion.
+  Tests cover predicate/occurrence inspection, history and invalid requests.
+  The actual served HTML's JavaScript passes `node --check`. This does not
+  claim a browser rendering review or a successful TCP server launch.
+- Optional dependency lock entries were reconstructed from inspected PyPI
+  release metadata (RDFLib 7.6.0 and pyparsing 3.3.3) after uv lock's native
+  configuration panic. `uv export --frozen --extra future --no-dev` succeeds;
+  the existing dependency versions are preserved.
 - Todo: execute the remaining slices and replace this status with measured results.
