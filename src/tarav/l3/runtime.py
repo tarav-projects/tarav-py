@@ -34,7 +34,11 @@ from tarav.l2.context.storage import (
 )
 from tarav.l1.context.workflow import ContextWorkflow
 from tarav.l0.kernel.space import FilesystemProvider
-from tarav.l0.kernel.records import configure_workflow_resolver, configure_context_resolver
+from tarav.l0.kernel.records import (
+    configure_workflow_resolver,
+    configure_context_resolver,
+    configure_context_model_resolver,
+)
 from tarav.l0.kernel.current import configure_current_records
 from tarav.l0.kernel.workflows import TaravWorkflow, WorkflowRegistry
 from tarav.l1.loading import LoadingProfile, profile_paths
@@ -643,6 +647,8 @@ configure_current_records(lambda: get_runtime().records)
 configure_current_context_service(lambda: get_runtime().contexts)
 
 configure_context_resolver(lambda subject, **kwargs: get_runtime().context(subject, **kwargs))
+# tarav.context 473c89a0:8cf85c979321cdcf
+configure_context_model_resolver(lambda subject: get_runtime().contexts.model(subject))
 
 
 __all__ = [

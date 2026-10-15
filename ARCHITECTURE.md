@@ -138,6 +138,31 @@ origin. `context(entry)` follows its value in that same explorer; calling
 `context(subject)` directly starts a new one. Runtime and retained entries
 share the subject root's namespace.
 
+`TaravType.Context` is the selected bound namespace on Types and objects.
+`subject.context.explore(type=...)` opens a view; `subject.context(type=...)`
+delegates to that same overridable operation. NamespaceBase stays noncallable.
+Namespace composition checks apply to every TaravType, including class-only
+capabilities; independent contributions require an explicitly combined class.
+The existing `class_context` and `obj_context` population hooks remain intact.
+Kernel holds only the bound interface and host hooks, without importing Context.
+<!-- tarav.context 473c89a0:52d399e8d65f61fc -->
+
+`SomeType.context.model` is a partial Type model, also exposed as `model` in the
+runtime Type Context. An object's namespace opens its Type's model, not an
+instance model. `tarav.l1.context.models` owns `TypePath`, an Entity with a
+current path label, and `TypeModel`, a computed read-only Context folder rooted
+at the existing Type Ship. Entries are keyed by Ship; paths are lookup labels.
+Every node has its own ordinary Context. The model may have no member nodes.
+<!-- tarav.context 473c89a0:7ef12f9536d4a790 -->
+
+The namespace's `model_nodes()` declares class-owned nodes. ContextService
+composes these with its external providers and retained `model` folder, which
+reuses Context's Archive backing. Reading never creates storage. Explicit
+`put_model_node(Type, node)` retains a new Ship with Archive's create-only
+placement policy. Same-Ship conflicts and ambiguous path lookups are reported;
+model completeness and correspondence with Python paths are not enforced.
+<!-- tarav.context 473c89a0:0dfbeaeb402e0305 -->
+
 The Context Workflow uses Record Archive for durable roots under
 `~/Documents/tarav/archive/<context-workflow-ship>/<subject-ship>/`. The root is
 a generic Dictionary Archive; a separate Context-owned `context.json` Record

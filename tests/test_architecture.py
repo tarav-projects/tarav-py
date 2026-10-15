@@ -34,6 +34,11 @@ def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
     from tarav.l0.kernel import NamespaceBase, TaravObject
 
     assert issubclass(TaravObject.Records, NamespaceBase)
+    # tarav.context 473c89a0:52d399e8d65f61fc
+    assert issubclass(TaravObject.Context, NamespaceBase)
+    assert TaravObject.context.obj is TaravObject
+    assert callable(TaravObject.context)
+    assert not callable(NamespaceBase(TaravObject))
     assert TaravObject.records.obj is TaravObject
     # tarav.breadcrumb 6756f126eb6b4468aadc15dfb56e2e4b2c712811699c4bdfe5913f5b47fe60c1
     assert TaravObject.records.record_example() == {"type": "Tarav.Object"}
@@ -735,6 +740,7 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
         SubjectContextRoot,
     )
     from tarav.l1.context import Context, ContextEntry, ContextExplorer
+    from tarav.l1.context.models import TypeModel, TypePath
     from tarav.l0.kernel.records import TaravObject
     from tarav.l3.runtime import create_runtime
     from tarav.l2.tests.workflow import TestsWorkflow
@@ -764,6 +770,10 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
     )
     assert runtime.workflows.get("Tarav.Workflow.Context") is ContextWorkflow
     assert runtime.records.resolve_type("Tarav.Context.Entry") is ContextEntry
+    # tarav.context 473c89a0:568b173e6f7d5c24
+    assert runtime.records.resolve_type("Tarav.Context.TypePath") is TypePath
+    assert entity(TypeModel).workflow_ship == entity(TypePath).workflow_ship
+    assert "l3.runtime" not in imports.get("context.models", set())
     assert issubclass(Context, TaravObject)
     assert (
         runtime.records.resolve_type("Tarav.Context.StoredDictionary")

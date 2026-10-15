@@ -24,6 +24,7 @@ from tarav.l1.context import (
 from tarav.l0.kernel.identity import Ship, TypeShip
 from tarav.l0.kernel.records import TaravClass, TaravEntity, TaravObject, TaravType, entity
 from tarav.l0.kernel.types import TypeRegistry
+from tarav.l1.context.models import ModelProvider, TypeModel, TypePath
 from tarav.l1.archive.records import (
     ArchiveEntry,
     ArchivePartition,
@@ -199,6 +200,67 @@ class ContextService:
             .resolve()
         )
         self.records = records
+        self._model_providers: list[ModelProvider] = []
+
+    def register_model_provider(self, provider: ModelProvider) -> None:
+        """Contribute Type nodes from an external workflow, without copying them."""
+        if not callable(provider):
+            raise TypeError("Type model provider must be callable")
+        if provider not in self._model_providers:
+            self._model_providers.append(provider)
+
+    # tarav.context 473c89a0:568b173e6f7d5c24
+    def model(self, subject: type[TaravType]) -> TypeModel:
+        """Compose class, retained and external nodes lazily without writing."""
+        def nodes():
+            yield from subject.context.model_nodes()
+            archive = self._model_archive(subject)
+            if archive is not None:
+                for listed in archive.ls():
+                    backing = archive.get(listed.placement)
+                    node = self._open_stored_entry(backing)
+                    if not isinstance(node, TypePath) or str(node.id) != backing.name:
+                        raise ValueError("Retained Type model node does not match its Ship key")
+                    yield node
+            for provider in tuple(self._model_providers):
+                yield from provider(subject)
+
+        return TypeModel(subject, nodes)
+
+    def put_model_node(self, subject: type[TaravType], node: TypePath) -> ContextEntry:
+        """Retain a new node under its Ship, preserving Archive's create-only policy."""
+        if not isinstance(subject, type) or not issubclass(subject, TaravType):
+            raise TypeError("Type models require a TaravType class")
+        if not isinstance(node, TypePath):
+            raise TypeError("Type model members must be TypePath entities")
+        archive = self._model_archive(subject, create=True)
+        return self.write(archive, str(node.id), node, description=node.path)
+
+    def _model_archive(
+        self, subject: type[TaravType], *, create: bool = False
+    ) -> ArchiveFolder | None:
+        root = self.subject_archive(subject)
+        if root is None:
+            if not create:
+                return None
+            root = self.create_subject_archive(
+                subject, constitution="Retained Context for this identified Type."
+            )
+        try:
+            entry = root.get("model")
+        except KeyError:
+            if not create:
+                return None
+            self.create_folder(
+                root, "model", ArchiveFolder, subject=subject,
+                constitution="Type model nodes keyed by Ship; paths are current labels.",
+            )
+            entry = root.get("model")
+        attachment = self._folder_attachment(entry).open()
+        archive = self._records().load(entry.artifact_location(), expected_type=ArchiveFolder)
+        if not isinstance(attachment, StoredDictionaryContext) or attachment.archive != archive.id:
+            raise ValueError("Type model folder does not match its Context attachment")
+        return archive
 
     @property
     def partition(self) -> ArchivePartition:
@@ -385,17 +447,24 @@ class ContextService:
     def contribute(self, subject: ContextSubject, builder: ContextBuilder) -> None:
         """Mount retained entries after Type or object runtime contributions."""
 
+        is_type = isinstance(subject, type) and issubclass(subject, TaravType)
+        if is_type:
+            builder.add("model", opener=lambda: self.model(subject))
         archive = self.subject_archive(subject)
         if archive is not None:
-            self._populate(subject, archive, builder)
+            self._populate(subject, archive, builder, exclude=("model",) if is_type else ())
 
     def _populate(
         self,
         subject: ContextSubject,
         archive: ArchiveFolder | ArchiveList,
         builder: ContextBuilder,
+        *,
+        exclude: tuple[str, ...] = (),
     ) -> None:
         for listed in archive.ls():
+            if listed.placement in exclude:
+                continue
             entry = archive.get(listed.placement)
             placement = entry.placement
             if placement is None:
@@ -465,6 +534,7 @@ CONTEXT_RECORD_TYPES = (
     SubjectContextRoot,
     StoredDictionaryContext,
     StoredVectorContext,
+    TypePath,
 )
 
 

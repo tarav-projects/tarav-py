@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: designed; implementation in progress. Replace the ordinary object
+Status: implemented; completion checks and capture closure in progress. Replace the ordinary object
 `context()` method with a bound namespace available on both Types and objects.
 Preserve `obj.context(type=ObjectGroup)` as shorthand for
 `obj.context.explore(type=ObjectGroup)`, and expose `SomeType.context.model`.
@@ -73,7 +73,7 @@ Distinguish these implementation choices from user decisions above.
 2. Model slice (code): typed path nodes, root-only model, lazy providers and
    explicit retained writes; expose model through Context exploration. Check
    Record round trips, no-write reads, external/class/storage composition,
-   renamed labels retaining node Context and runtime isolation. Status: pending.
+   renamed labels retaining node Context and runtime isolation. Status: verified.
 3. Integration slice (documentation): architecture, full tests and Project
    validation, product capture and Wiki capture. Status: pending.
 
@@ -92,3 +92,31 @@ Distinguish these implementation choices from user decisions above.
   Product capture ran for Kernel Records and the namespace tests; both remain
   pending because the main data depot is read-only. Model host hook is declared
   here and will be wired in the next slice.
+- Namespace slice commit: `bda47c4`; plain Git recovery, evidence registration
+  pending. Namespace composition validation now lives on TaravType, covering
+  class-only Types as well as Objects.
+- Model slice: 75 focused/integration tests pass; configured suite: 312 pass.
+  Ruff over all `src` and `tests` passes. The first storage test assumed Archive
+  could overwrite a placement; inspection confirmed its existing create-only
+  policy. Kept that policy, tested duplicate writes explicitly, and verified
+  path renaming through a provider while retaining the node's Context by Ship.
+- Data shape first: TypePath is the identified member, TypeModel the computed
+  view. Subtract before adding: deleted the ordinary object context method;
+  shorthand now delegates to the namespace operation. Boundary discipline:
+  Kernel has host hooks only; Context mechanics stay in l1, retention in l2 and
+  host selection in l3. No new mutable global model-provider registry.
+- Product capture attempted separately on models, storage, runtime, model
+  tests, architecture tests and architecture documentation. All submissions
+  remain pending due the protected Breadcrumb store. Batch audit reports the
+  pending markers and existing attachment/position concerns; it is not clean.
+  TOML has no supported embedding convention, so pyproject test registration
+  carries no invented marker. Exact session is declared above for recovery.
+- Broader discovery (`pytest -q tests`): 461 pass, one unrelated failure in
+  `test_scoped_lines::test_models_fail_before_side_effects`. It expects the old
+  ToImplementError from ProjectModels(None), whose current constructor raises
+  TypeError. Reproduced exactly against pre-change commit `4f4bf3d` in a
+  temporary source extraction. No unrelated repair was made.
+- `tarav status --project --all` is blocked writing
+  `~/.tarav/projects.json.lock`. Editable reinstall was attempted as directed;
+  uv itself panicked in macOS system-configuration before installing anything.
+  The existing installed tool is editable and loads these source changes.
