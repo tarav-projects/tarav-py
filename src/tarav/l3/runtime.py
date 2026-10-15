@@ -275,6 +275,7 @@ def create_runtime(
     from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.l1.lines import Block, Line, LineScope, LinesWorkflow
+    from tarav.l1.context.groups import GROUP_RECORD_TYPES
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
     # tarav.breadcrumb 35548ca6fdf72e93e3a5008225dcf66e71eb81faeaa264535405ebd242768a7a
@@ -383,6 +384,7 @@ def create_runtime(
                 Block,
                 Line,
                 LineScope,
+                *GROUP_RECORD_TYPES,
                 TaravEnvironment,
                 TaravSystem,
                 TestEntity,
