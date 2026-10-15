@@ -19,6 +19,7 @@ from tarav.l0.kernel import (
     FileRecord, Ship, TaravClass, TaravEntity, TaravType, TypeShip, entity,
 )
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
+from tarav.l1.context.groups import Link, Member
 from tarav.l1.operator_context import Intake, OperatorContext, OperatorContextStore
 from tarav.l1.records import RecordRegistry
 
@@ -642,11 +643,27 @@ class StepRunner:
         return run
 
 
+def action_member(run: ActionRun) -> Member:
+    """An action as a member of an object group: its Action Type and its id."""
+    return Member("action", member_type=run.data["action"], id=str(run.id), obj=run)
+
+
+def run_links(run: ActionRun):
+    """Each closing record on the tape comes after the action, in the order it closed."""
+    previous = action_member(run)
+    for item in run.data["tape"]:
+        if item["type"] == tape.CLOSED and item.get("closing"):
+            closing = Member("closing", member_type=item["closing"]["type"], key=item["at"])
+            yield Link(previous, closing)
+            previous = closing
+
+
 ACTION_RECORD_TYPES = (ActionRun, Closing, *TAPE_ENTRY_TYPES)
 
 __all__ = [
     "ACTIONS_WORKFLOW_SHIP", "ACTION_RECORD_TYPES", "Action", "ActionError", "ActionRun",
     "ActionRunStore", "ActionsWorkflow", "CLOSED", "ChecksUpdate", "Closing", "EXIT_ERROR",
     "Exit", "LOOP", "OPEN", "OPERATOR", "PROJECT", "RUNNING", "RUN_REFERENCE_TYPE", "SkillLink", "StepAction",
-    "StepRunner", "action_types", "axes", "close_run", "register_action", "resolve_action",
+    "StepRunner", "action_member", "action_types", "axes", "close_run", "register_action",
+    "resolve_action", "run_links",
 ]

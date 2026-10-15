@@ -159,3 +159,20 @@ error. Subtracted: `workflows()` and `workflowTree` in the extension.
   member without a live object is not followed; no links, `TypeError`;
   Member round trip. 4 passed; architecture, record and context tests 142
   passed; Ruff clean. Breadcrumbs: 3 on `groups.py`, audited.
+- Slice 2: links registered by the runtime (`l3/runtime.py`):
+  `situation_links` (`SituationPOI`, l1.poi, with `poi_member`),
+  `check_links` (`CheckPOI`, l1.checks: situation → check → POI),
+  `run_links` (`ActionRun`, l1.actions: action → closing records, each after
+  the previous), `poi_run_links` (`ActionRun`, l1.actions.pois: POI → action,
+  suites outer first → check) and `poi_links` (`ActionablePOI`: POI → its
+  registered action). The action member's Type is its Action Type
+  (`Tarav.Actions.POI.Resolution`), not the record Type. Closing members are
+  their Type and the `at` of their `Closed` entry. `tarav context --view
+  object-group` registered in `l3/cli/cli.py`. Test
+  `test_an_action_and_its_poi_open_the_same_object_group` (real
+  `DocsProject`, opened, gone, reopened): the reopened action and a freshly
+  raised POI give the same six entries, and the CLI query opens `closing`.
+  Live: `tarav context --id fe1e4dca --view object-group` lists situation,
+  suite, check, poi, action, closing. Whole `tests/`: 447 passed, 1 failed
+  (`test_scoped_lines`, foreign). Ruff clean. Breadcrumbs on
+  `poi/primitives.py`, `checks/__init__.py`, `actions/pois.py`, audited.

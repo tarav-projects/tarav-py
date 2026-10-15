@@ -101,10 +101,12 @@ def context_queries(runtime: TaravRuntime):
     """Compose the installed identifier resolvers and named Context views."""
     from tarav.l1.context.query import ContextQueryService, TypeResolver
     from tarav.l1.actions.views import ActionResolver
+    from tarav.l1.context.groups import ObjectGroup
 
     service = ContextQueryService(opener=runtime.context)
     service.register_resolver("action", ActionResolver())
     service.register_resolver("type", TypeResolver(runtime.records.types))
+    service.register_view("object-group", ObjectGroup)
     return service
 
 

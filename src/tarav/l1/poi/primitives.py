@@ -19,6 +19,8 @@ from tarav.l0.kernel import (
     entity,
 )
 
+from tarav.l1.context.groups import Link, Member
+
 from .workflow import POI_WORKFLOW_SHIP
 
 
@@ -171,6 +173,17 @@ class SituationPOI(POI):
 
     def obj_context(self, builder) -> None:
         builder.add("situation", opener=lambda: _details(self.situation))
+
+
+# tarav.breadcrumb dd181022da5fb76ff196852dae28a21147cf4e5d2696947be5252f0a20599723
+def poi_member(poi: SituationPOI) -> Member:
+    """A POI as a member of an object group."""
+    return Member("poi", member_type=entity(type(poi)).name, id=poi.identity, obj=poi)
+
+
+def situation_links(poi: SituationPOI):
+    """The situation a POI is about comes before it."""
+    yield Link(Member("situation", value=poi.situation), poi_member(poi))
 
 
 class NotificationPOI(POI):

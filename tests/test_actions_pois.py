@@ -99,3 +99,51 @@ def test_a_projects_test_fixtures_open_real_actions_on_the_live_path(tmp_path):
     [closed] = test_actions(CLOSED)
     assert (closed.id, closed.exit) == (run.id, GONE)
 
+
+@pytest.mark.usefixtures("registry")
+def test_an_action_and_its_poi_open_the_same_object_group(tmp_path):
+    from tarav.l1.context.groups import ObjectGroup
+    from tarav.l1.context.query import IdentityContextQuery
+    from tarav.l2.project.dev import DocsProject
+    from tarav.l2.tests.actions import FIXTURES
+    from tarav.l3.cli.cli import context_queries
+
+    root = tmp_path / "docs"
+    (root / FIXTURES).mkdir(parents=True)
+    project = _project(root, DocsProject)
+    hall = root / FIXTURES / "hall.txt"
+    hall.write_text("TODO switch the hall lamp off\n")
+    project.status()
+    hall.write_text("done\n")
+    project.status()  # closes as gone
+    hall.write_text("TODO switch the hall lamp off\n")
+    project.status()  # the same situation again: it reopens
+    [run] = [run for run in project.actions.list(state=RUNNING)
+             if run.data["event"]["poi"]["type"] == "Tarav.Test.Actions.MarkerPOI"]
+    [poi] = [poi for poi in workspace_pois(root / FIXTURES) if isinstance(poi, TestMarkerPOI)]
+
+    def rows(view):
+        return [(entry.name, entry.open().records.to_record()) for entry in view.ls()]
+
+    member = "Tarav.Context.Group.Member"
+    expected = [
+        ("situation", {"type": member, "role": "situation",
+                       "value": {"file": "hall.txt", "lines": ["TODO switch the hall lamp off"]}}),
+        ("suite", {"type": member, "role": "suite", "member_type": "Tarav.Test.Actions.Fixtures",
+                   "key": FIXTURES}),
+        ("check", {"type": member, "role": "check",
+                   "member_type": "Tarav.Test.Actions.MarkerCheck"}),
+        ("poi", {"type": member, "role": "poi", "member_type": "Tarav.Test.Actions.MarkerPOI",
+                 "id": poi.identity}),
+        ("action", {"type": member, "role": "action",
+                    "member_type": "Tarav.Actions.POI.Resolution", "id": str(run.id)}),
+        ("closing", {"type": member, "role": "closing", "member_type": "Tarav.Actions.POI.Gone",
+                     "key": run.data["tape"][-2]["at"]}),
+    ]
+    assert rows(run.context(type=ObjectGroup)) == expected
+    # a POI just raised, not loaded from the action, reaches the same group
+    assert rows(poi.context(type=ObjectGroup)) == expected
+    answer = context_queries(create_runtime()).open(
+        IdentityContextQuery(str(run.id), view="object-group", path=["closing"]))
+    assert answer.target.records.to_record() == expected[-1][1]
+

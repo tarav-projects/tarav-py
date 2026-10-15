@@ -18,7 +18,8 @@ from tarav.l0.kernel import (
     WorkflowShip,
     entity,
 )
-from tarav.l1.poi import SituationPOI, POI, POIDetails, POIProvider, fingerprint, plain
+from tarav.l1.context.groups import Link, Member
+from tarav.l1.poi import SituationPOI, POI, POIDetails, POIProvider, fingerprint, plain, poi_member
 from tarav.l1.poi.actionable import ActionablePOI
 
 CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
@@ -150,6 +151,15 @@ class CheckPOI(SituationPOI, ActionablePOI):
         builder.add("check", opener=lambda: self.check)
         builder.add("details", opener=lambda: POIDetails.records.from_record(
             {"type": entity(POIDetails).name, "value": deepcopy(self.details)}))
+
+
+# tarav.breadcrumb fc19d1dda27390665cfc51da98143a0209b87e99bdc414ace2fe55987e55af09
+def check_links(poi: CheckPOI):
+    """The check reads the situation and raises the POI. A loaded POI has no bound
+    check, so only the check's Type is known of it."""
+    check = Member("check", member_type=poi.raised_by)
+    yield Link(Member("situation", value=poi.situation), check)
+    yield Link(check, poi_member(poi))
 
 
 class SituationCheck(Check):
@@ -618,6 +628,7 @@ __all__ = [
     "CheckSuite",
     "Situation",
     "SituationCheck",
+    "check_links",
     "check_report",
     "routine",
     "run_checks",

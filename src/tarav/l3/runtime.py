@@ -275,7 +275,7 @@ def create_runtime(
     from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.l1.lines import Block, Line, LineScope, LinesWorkflow
-    from tarav.l1.context.groups import GROUP_RECORD_TYPES
+    from tarav.l1.context.groups import GROUP_RECORD_TYPES, register_links
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
     # tarav.breadcrumb 35548ca6fdf72e93e3a5008225dcf66e71eb81faeaa264535405ebd242768a7a
@@ -288,11 +288,15 @@ def create_runtime(
     from tarav.l1.python_env import PYTHON_RECORD_TYPES, PythonWorkflow
     from tarav.l1.programs import ProgramsWorkflow, TaravProgram
     from tarav.l1.agent.workflow import AgentsWorkflow
-    from tarav.l1.actions import ACTION_RECORD_TYPES, ActionsWorkflow, register_action
+    from tarav.l1.actions import (
+        ACTION_RECORD_TYPES, ActionRun, ActionsWorkflow, register_action, run_links,
+    )
     from tarav.l1.operator_context import (
         OPERATOR_CONTEXT_RECORD_TYPES, OperatorContextWorkflow,
     )
-    from tarav.l1.actions.pois import POI_ACTION_RECORD_TYPES, POIResolutionAction
+    from tarav.l1.actions.pois import (
+        POI_ACTION_RECORD_TYPES, POIResolutionAction, poi_links, poi_run_links,
+    )
     from tarav.l2.tests.actions import ActionsTestsWorkflow
     from tarav.l2.project.programs import ProjectProgram
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
@@ -302,18 +306,18 @@ def create_runtime(
     from tarav.l2.project.runner import PROJECT_RUNNER_RECORD_TYPES
     from tarav.l2.project.models import ProjectModelsWorkflow
     from tarav.l2.project.wiki import ProjectWikiWorkflow
-    from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow
+    from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow, SituationPOI, situation_links
     from tarav.l1.settings import SETTINGS_RECORD_TYPES, SettingsWorkflow
     from tarav.l1.actions.blessing import (
         BLESSING_RECORD_TYPES, bind_blessing_assertion_services,
     )
     from tarav.l1.blessings import BlessingsWorkflow
-    from tarav.l1.poi.actionable import BlessablePOI
+    from tarav.l1.poi.actionable import ActionablePOI, BlessablePOI
     from tarav.l1.decisions import (
         DECISION_RECORD_TYPES, DecisionsWorkflow, bind_decision_assertions,
     )
     from tarav.l2.decisions import DecisionReportAssertion, assertions_for_decision
-    from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow
+    from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow, check_links
     from tarav.l1.breadcrumbs.auditing import (
         BreadcrumbAuditCheck, BreadcrumbAuditPOI, BreadcrumbPositionUpdated,
     )
@@ -547,6 +551,10 @@ def create_runtime(
     ):
         registrations.register(workflow)
     register_action(POIResolutionAction)
+    for subject_type, links in ((SituationPOI, situation_links), (CheckPOI, check_links),
+                                (ActionRun, run_links), (ActionRun, poi_run_links),
+                                (ActionablePOI, poi_links)):
+        register_links(subject_type, links)
     if config is not None:
         config = config.expanduser().resolve()
         settings = json.loads(config.read_text(encoding="utf-8"))
