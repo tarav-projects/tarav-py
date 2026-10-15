@@ -14,8 +14,8 @@ from tarav.l1.project.commands import _cmd_project_list
 def _project(root: Path, identity: str) -> None:
     marker = root / ".tarav/project.json"
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(json.dumps({"class": "agentos.project", "schema_version": 1,
-                                  "project_id": identity}) + "\n")
+    marker.write_text(json.dumps({"project_id": identity,
+                                  "created_at": "2026-10-15T00:00:00Z"}) + "\n")
 
 
 # tarav.breadcrumb 20a0ae09ee0e838a6f0838fa113fcc9916254499815ad1baf33c6a9464c78b9b

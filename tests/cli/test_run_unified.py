@@ -56,8 +56,9 @@ def test_bare_project_discovers_parent_project(tmp_path: Path, monkeypatch) -> N
     marker.write_text(
         json.dumps(
             {
-                "class": "agentos.project",
                 "project_id": "4e6efc4a-76fd-4585-994e-3d8081e80523",
+                "created_at": "2026-10-15T00:00:00Z",
+                "harness": {"environment": ".tarav/env", "type": "tarav.l2.project:Project"},
             }
         )
     )
@@ -99,8 +100,9 @@ def test_run_without_project_uses_current_environment_inside_project(
     marker.write_text(
         json.dumps(
             {
-                "class": "agentos.project",
                 "project_id": "4e6efc4a-76fd-4585-994e-3d8081e80523",
+                "created_at": "2026-10-15T00:00:00Z",
+                "harness": {"environment": ".tarav/env", "type": "tarav.l2.project:Project"},
             }
         )
     )

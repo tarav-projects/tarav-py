@@ -40,6 +40,17 @@ belong in their owning registries or state roots, not in `project.json`.
 
 ### Optional Project-local Python harness
 
+A Project starts from its `.tarav/project.json`: its `harness` names the uv
+environment that runs it and its Type there, `module:Class`, imported from a
+package installed in that environment. Scaffold one with its own package, or
+point at an environment and a package that already exist:
+
+```json
+{"type": {"uuid": "…", "label": "Project.my_project.MyProject"},
+ "project_id": "…", "created_at": "…",
+ "harness": {"environment": ".tarav/env", "type": "my_project.project:MyProject"}}
+```
+
 Explicitly scaffold a package and install it with Tarav into `.tarav/env`:
 
 ```sh
@@ -60,9 +71,13 @@ are not overwritten. Rerunning scaffold preserves edited package source and
 the generated class Ship. Sync retains `.tarav/uv.lock`; `.tarav/.gitignore`
 ignores env while preserving existing rules.
 
-The package under `.tarav/src/` owns a concrete `MyProject(TaravProject)` and
-its trusted `__main__` launcher. `.tarav/pyproject.toml` holds package launch
-configuration, separate from the marker. `tarav run` selects the Project
+The package under `.tarav/src/` owns a concrete `MyProject(TaravProject)`;
+scaffold writes `harness` into project.json. The environment's manifest
+(`pyproject.toml`) sits beside the environment and only installs packages.
+The launcher, `python -I -m tarav.l3.project.launch`, imports `harness.type`
+and loads project.json as its Record, whose type tag must name the same
+class. Other workflows configure a Project in `.tarav/config.json`, one
+section each (`agents`, `skills`, `diagram`). `tarav run` selects the Project
 interpreter and working directory when `--project` is present. A bare
 `--project` searches the current directory and its parents, failing if no
 Project marker exists; a path starts the search there. Without `--project`,
@@ -72,6 +87,9 @@ the general runner does not inject `project` or `runtime`. An absent Project
 environment requires explicit sync.
 <!-- tarav.breadcrumb 183d55ff0858594084c5e551bf83b4d9788e9818c421b999213507943e110eab -->
 
+<!-- tarav.breadcrumb 1f33fc2cc1912ac21a4a5c3220643c174e55b2118d9cd1f65f1b04471bc9fdbe -->
+<!-- tarav.breadcrumb 47efea5cf58185d9d74fb13d441a72089b4132b654842bb36dfa26ccf822b215 -->
+
 The same filesystem operations are available through
 `tarav.l2.project.harness.ProjectHarness`; runtime bootstrap and subprocess
 launch are in `tarav.l3.project.harness`. Normal Project discovery neither installs
@@ -79,27 +97,21 @@ packages nor imports the Project's specialization.
 
 ### Root Projects and shared environments
 
-A Python library can provide several Project Types. Its harness manifest lists
-them as trusted `module:Class` paths, and a marker selects one of them:
-
-```toml
-[tool.tarav.harness]
-projects = ["tarav.l2.project.root:RootProject", "my_lib.dev:ImplProject"]
-```
-
 A development folder made of several Projects can be a root Project
 (`Tarav.Project.Root`) whose marker lists its children. Its checks are the
 checks of the listed children, in order; folders it does not list, such as a
-link to another place, are not collected. A child keeps its own marker and
-can use the root's environment by naming it:
+link to another place, are not collected. Each Project has a Type of its own,
+defined in its own code base; a child can run in the root's environment by
+naming it, and that environment installs the child's package:
 
 ```json
-{"type": {"label": "Tarav.Project.Root"}, "children": ["impl", "docs"],
- "harness": {"manifest": "pyproject.toml", "environment": ".venv"}}
-{"type": {"label": "MyLib.Dev.Impl"}, "harness": {"project": ".."}}
+{"type": {"label": "MyLib.Dev.Root"}, "children": ["impl", "docs"],
+ "harness": {"environment": ".tarav/env", "type": "mylib_dev:Root"}}
+{"type": {"label": "MyLib.Dev.Impl"},
+ "harness": {"environment": "../.tarav/env", "type": "mylib.dev:ImplProject"}}
 ```
 
-Only an ancestor that lists the child can lend its harness. `tarav check
+`tarav check
 --project` at the root runs children sharing its environment in one process;
 a child with its own environment runs there and is reported as one result
 with a POI per type and its count. A listed child that is missing or cannot

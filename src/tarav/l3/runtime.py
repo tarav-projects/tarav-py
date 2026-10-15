@@ -356,6 +356,7 @@ def create_runtime(
     from tarav.l1.skw.document import SkillwareWorkflow
     from tarav.l1.project.agents import PROJECT_AGENTS_RECORD_TYPES
     # tarav.breadcrumb c5d54c7649438c13a2949da87599cf3b307a97aa3a4bba56d4b9629006ad8a14
+    from tarav.l1.project.files import PROJECT_FILES_RECORD_TYPES
     from tarav.l1.project.skills import PROJECT_SKILLS_RECORD_TYPES
     from tarav.l1.skills.folder import FolderSkill
     from tarav.l1.skw.generation import GenerationPOI
@@ -427,6 +428,7 @@ def create_runtime(
                 # tarav.breadcrumb e413721d29ed9388d54184a6a29e121226d402b0561e3b98b101b9e8b4ab3309
                 *PROJECT_AGENTS_RECORD_TYPES,
                 *PROJECT_SKILLS_RECORD_TYPES,
+                *PROJECT_FILES_RECORD_TYPES,
                 *PYTHON_RECORD_TYPES,
                 *PROJECT_RUNNER_RECORD_TYPES,
                 TaravProgram,
@@ -555,6 +557,13 @@ def create_runtime(
                                 (ActionRun, run_links), (ActionRun, poi_run_links),
                                 (ActionablePOI, poi_links)):
         register_links(subject_type, links)
+    from tarav.l1.project.config import register_config_section
+    from tarav.l1.project.agents import AgentsConfig
+    from tarav.l2.project.skills.routing import SkillsConfig
+    from tarav.l2.unsorted.storage import DiagramConfig
+    for section, model in (("agents", AgentsConfig), ("skills", SkillsConfig),
+                           ("diagram", DiagramConfig)):
+        register_config_section(section, model)
     if config is not None:
         config = config.expanduser().resolve()
         settings = json.loads(config.read_text(encoding="utf-8"))

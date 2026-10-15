@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,7 +9,10 @@ from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
 from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, CheckSuite
 from tarav.l1.skills.folder import FolderSkill
 
+from .agents import AgentsConfig
+from .config import ProjectConfig
 from .workflow import PROJECT_WORKFLOW_SHIP
+
 
 if TYPE_CHECKING:
     from .base import TaravProject
@@ -37,13 +39,8 @@ class ProjectSkills(TaravObject, CheckProvider):
         super().__init__()
         self.project = project
         self.home = Path.home() if home is None else Path(home)
-        raw = project.records.to_record().get("agents", {})
-        if not isinstance(raw, Mapping):
-            raise ValueError("Project agents configuration must be an object")
-        name = raw.get("package_skill")
-        if name is not None and (not isinstance(name, str) or not name.strip()):
-            raise ValueError("Project agents package_skill must be a nonempty name")
-        self.package_skill = name
+        agents = ProjectConfig(project.root).section("agents", AgentsConfig)
+        self.package_skill = agents.package_skill if agents is not None else None
 
     @property
     def search_places(self) -> tuple[Path, Path]:
@@ -87,7 +84,7 @@ class TaravPackageSkillPOI(CheckPOI):
 class ProjectPackageSkillPOI(CheckPOI):
     """Family, never raised: the Project's package skill is undeclared or unavailable."""
 
-    context_notes = (_SKILLS_READING, 'It is no longer raised once the marker names the skill as agents.package_skill and the skill is available.', _USER_FIRST)
+    context_notes = (_SKILLS_READING, 'It is no longer raised once the Project config (.tarav/config.json) names the skill as agents.package_skill and the skill is available.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -109,9 +106,9 @@ class SkillFoldersPOI(CheckPOI):
 
 
 class ProjectPackageSkillUndeclared(ProjectPackageSkillPOI):
-    """The Project marker names no package skill."""
+    """The Project config names no package skill."""
 
-    context_notes = (_SKILLS_READING, 'It is no longer raised once the marker names the skill as agents.package_skill.', _USER_FIRST)
+    context_notes = (_SKILLS_READING, 'It is no longer raised once the Project config (.tarav/config.json) names the skill as agents.package_skill.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:

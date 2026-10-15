@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict, field_validator
+
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.clock import utc_now_iso as _utc_now_iso
 from tarav.l0._core.home import (
@@ -26,7 +28,6 @@ from tarav.l0._core.ids import normalize_or_generate_uuid
 
 PROJECT_MARKER_FILENAME = "project.json"
 PROJECT_CONFIG_FILENAME = "config.json"
-PROJECT_SCHEMA_VERSION = 1
 SCOPE_VALUES = ("project", "global", "auto")
 PROJECT_STORAGE_DIR_NAMES = ("indexes", "tmp", "state")
 TARAV_PROJECT_ID = "e308d11f-d709-4f23-b8c7-f214e28b3f11"
@@ -42,6 +43,37 @@ def project_marker_path(project_root: Path) -> Path:
 
 def project_config_path(project_root: Path) -> Path:
     return project_agentos_dir(project_root) / PROJECT_CONFIG_FILENAME
+
+
+# tarav.breadcrumb aed40d92e487eb75dfcf10d3b8d0e1b374ae522139bc117b9a8e31c19f1a0490
+# tarav.breadcrumb 18fbfa2c450bc9e373371129b0c82beed15204c89b6507b23e95bfb55de8a5ec
+class ProjectHarnessConfig(BaseModel):
+    """How a Project starts: the environment that runs it and its Type there.
+
+    `environment` is a uv environment, relative to the Project's root; it may
+    be another Project's. `type` is `module:Class`, imported from a package
+    installed in that environment.
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+    environment: str
+    type: str
+
+    @field_validator("environment")
+    @classmethod
+    def _relative(cls, value: str) -> str:
+        if not value or Path(value).is_absolute():
+            raise ValueError("harness environment must be a path relative to the Project root")
+        return value
+
+    @field_validator("type")
+    @classmethod
+    def _import_path(cls, value: str) -> str:
+        module, _, name = value.partition(":")
+        if not module or not name or not all(
+                part.isidentifier() for part in (*module.split("."), name)):
+            raise ValueError("harness type must be module:Class")
+        return value
 
 
 class TaravProjectHandler:
@@ -207,10 +239,9 @@ def require_explicit_project_selector(
 
 
 def project_marker_name(marker: dict[str, object]) -> str | None:
-    for field_name in ("project_name", "name"):
-        raw_name = marker.get(field_name)
-        if isinstance(raw_name, str) and raw_name.strip():
-            return raw_name.strip()
+    raw_name = marker.get("project_name")
+    if isinstance(raw_name, str) and raw_name.strip():
+        return raw_name.strip()
     return None
 
 
@@ -403,8 +434,6 @@ def load_project_marker(marker_path: Path) -> dict[str, object]:
         raise CliError(f"invalid project marker JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise CliError("project marker must be a JSON object")
-    if payload.get("class") != "agentos.project":
-        raise CliError("project marker field class must be 'agentos.project'")
 
     project_id = str(payload.get("project_id", "")).strip()
     if not project_id:
@@ -427,8 +456,6 @@ def load_project_config(config_path: Path) -> dict[str, object]:
         raise CliError(f"invalid project config JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise CliError("project config must be a JSON object")
-    if payload.get("class") != "agentos.project.config":
-        raise CliError("project config field class must be 'agentos.project.config'")
     return payload
 
 
@@ -468,8 +495,6 @@ def initialize_project_layout(
     else:
         marker_path.parent.mkdir(parents=True, exist_ok=True)
         marker_payload = {
-            "class": "agentos.project",
-            "schema_version": PROJECT_SCHEMA_VERSION,
             "project_id": _normalize_project_id(project_id),
             "created_at": _utc_now_iso(),
         }
@@ -480,10 +505,7 @@ def initialize_project_layout(
         marker_created = True
 
     dirs = ensure_named_dirs(paths["tarav_dir"], PROJECT_STORAGE_DIR_NAMES)
-    config_created = ensure_json_file(
-        config_path,
-        {"class": "agentos.project.config", "schema_version": PROJECT_SCHEMA_VERSION},
-    )
+    config_created = ensure_json_file(config_path, {})
 
     return {
         "project_root": root,

@@ -9,7 +9,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tarav.l0._core.home import tarav_home_dir
-from tarav.l0.project import load_project_marker, project_marker_path, require_agentos_project_root
+from tarav.l0.project import (
+    load_project_marker, project_marker_name, project_marker_path, require_agentos_project_root,
+)
 
 FORUM_ROOT_ENV = "TARAV_FORUM_ROOT"
 FORUM_CURSOR_ENV = "TARAV_FORUM_CURSOR"
@@ -146,8 +148,7 @@ def current_post_source(start_path: Path | str = ".", *, override: str | None = 
     try:
         project_root = require_agentos_project_root(start_path)
         marker = load_project_marker(project_marker_path(project_root))
-        name = str(marker.get("name") or "").strip()
-        return name or str(project_root)
+        return project_marker_name(marker) or str(project_root)
     except Exception:
         return str(Path(start_path).resolve())
 

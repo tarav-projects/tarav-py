@@ -174,8 +174,8 @@ the abstract selection contract, `CurrentRunnerConfigurator` selects the
 interpreter running Tarav, and `RunnerConfiguration` is the resolved value
 consumed by the shared file/source runner. The Project Workflow specializes
 that contract with `ProjectRunnerConfigurator`; its bootstrap input is a
-`ProjectLaunchConfiguration` read from common marker fields without concrete
-Project Type dispatch. Environment selection is explicit and never participates
+`ProjectLaunchConfiguration` read from the `harness` of project.json without
+concrete Project Type dispatch. Environment selection is explicit and never participates
 in Record loading or automatic imports.
 
 `tarav.l3.runtime.get_runtime()` returns the lazy process-wide current runtime;
@@ -416,13 +416,26 @@ relationships, storage policies, or interpretation of domain payloads.
 
 Project's optional Python harness spans `tarav.l2.project.harness` (inspection,
 scaffolding, uv sync) and `tarav.l3.project` (trusted runtime bootstrap and child
-launch). Without a marker declaration, `.tarav/pyproject.toml` and `.tarav/env`
-remain the generated defaults. A marker may instead declare a product manifest
-and environment using Project-relative paths; inspection and runner
-configuration read these common fields without importing the product package or
-dispatching the marker's concrete Type. Sync targets exactly the selected
-environment. Paths cannot escape the Project root, and run never installs or
-selects a fallback interpreter.
+launch). A Project's `.tarav/project.json` is its Record and the Project
+workflow's own configuration: `project_id`, `created_at`, `project_name`,
+`harness` and what its Type adds (a Root's `children`), validated by the
+Type's RecordInterface. `harness.environment` is a uv environment, relative to
+the Project and possibly another Project's; `harness.type` is the Project's
+Type as `module:Class`, installed in that environment. The manifest sits
+beside the environment and only installs packages. Inspection and runner
+configuration read `harness` without importing anything; the launcher imports
+`harness.type`, loads project.json with it and requires its type tag to name
+the same class. `.tarav/config.json` holds one section per workflow that
+configures a Project (`tarav.l1.project.config`: `agents`, `skills`,
+`diagram`), each validated by its owner's model and registered by the
+runtime. `ProjectFilesCheck` (`tarav.l1.project.files`), in every Project's
+suite, reports undeclared fields, a missing harness or environment, a
+`harness.type` that is not the Record's Type, and config sections no workflow
+owns or that their owner rejects. Run never installs or selects a fallback
+interpreter.
+<!-- tarav.breadcrumb 8ffca46a4e978d081bb7a558f1ea51f3d807a474c4a46f1c92352463d7e1629d -->
+<!-- tarav.breadcrumb 806fd99acd25e2fd66cf0c4509e4687ce68c7bf05f2b369e92692a3f499f325d -->
+<!-- tarav.breadcrumb bc39462931a983db3b9c5c92904046a92839d3dc3ee4d7923899fd369d658267 -->
 
 `TaravProject` is a `CheckProvider` (`tarav.l1.checks`) whose base suite
 checks its Skillware-produced agents file through `project.agents.agents_md`.
@@ -471,11 +484,11 @@ Projects. The Project marker owns identity, while this index only helps locate
 it. Concurrent live locations sharing one ID are reported as ambiguous.
 <!-- tarav.breadcrumb 79bfd183bfe36bf3a301b38b727cb585b1c87039bfac199ef244b1e2b949cd12 -->
 
-The generated package keeps its code-owned Project TypeShip and package
-bootstrap metadata in `.tarav/pyproject.toml`, while the marker retains its
-separate project-instance identity. Adoption of an existing base/untyped marker
-is explicit; specialized markers and edited source are not overwritten.
-Package execution binds the trusted class before dynamic loading. The sole CLI
+The generated package holds the code-owned Project TypeShip; project.json
+retains the separate project-instance identity and names the class in
+`harness.type`. Adoption of an existing base/untyped marker is explicit; a
+marker with a harness or a specialized Type, and edited source, are not
+overwritten. The sole CLI
 runner is `tarav run [--project [PATH]] -- <python arguments>`. Bare
 `--project` discovers the nearest parent Project and fails when absent;
 omitting it uses the current Tarav interpreter even inside a Project. It executes
@@ -598,18 +611,19 @@ Other cohesive command domains follow the same rule: they own their behavior
 and use Kernel contracts without moving their semantics into Kernel.
 
 `TaravProject.from_path()` discovers the nearest marker and explicitly interprets
-its existing schema, preserving every retained field. Entity identity is
+it; fields no model declares are kept and reported by `ProjectFilesCheck`.
+Entity identity is
 serialized as `project_id`, not a second `id`. Records loaded without a source
-remain detached: their location cannot be inferred from identity. Existing
-untyped markers are not rewritten; newly constructed Project projections carry
-the ordinary `type` reference for generic dispatch. Explicit
+remain detached: their location cannot be inferred from identity. Untyped
+markers are not rewritten; newly constructed Project projections carry the
+ordinary `type` reference for generic dispatch. Explicit
 `SomeProject.from_path()` constructs that selected class, reprojecting any
 retained Type tag in memory without changing the file. Generic from_record()
 and load_object() retain exact Type checks. Project-local code is never
 automatically imported by discovery. Subtypes define class_entity() normally.
 
 `Project.models` exposes the bound ProjectModels handler. Its `ls()` reads named
-associations from the Project marker; Model resolution through `get()` and
+associations from the `diagram` section of the Project config; Model resolution through `get()` and
 `main()` remains disconnected pending the Models redesign. `Project.docs.wiki`
 returns the conventional notes/wiki folder without creating data.
 <!-- tarav.breadcrumb a4389802948e1c2e30453b151e3436b217f6fbcff361475b4297284f7a80397e -->
@@ -732,10 +746,10 @@ the default solution is a runtime adapter or independent integration package.
 ## Sources of truth
 
 `TaravProject.load_project(path=...)` combines upward Project discovery with
-trusted Record dispatch through the configured current registry. The marker's
-declared Type selects the concrete class; the calling Project class checks the
-resulting family without substituting its own Type. Untyped markers require
-explicit migration. This is separate from `from_path()`, which retains explicit
+the Project's harness: it imports `harness.type`, binds it in the configured
+current registry and loads project.json, whose type tag must name the same
+class; the calling Project class checks the resulting family. A Project
+without a harness does not load this way. This is separate from `from_path()`, which retains explicit
 caller-class construction, and from generic loading, which does not discover
 enclosing Projects. Import the runtime assembly or configure the registry hook
 before using `load_project()`. Discovery does not execute project-local code.
@@ -890,6 +904,7 @@ provider Type's class view has `settings-template`. Settings are controls on
 how an object operates, not the data it represents, and the capability does
 not regulate how a workflow uses, combines or locks the values it reads.
 `AgentsMd` is the first consumer: its two prompt switches are settings stored
-in the Project marker, while the main file and aliases remain data.
+in the `agents` section of the Project config, while the main file and aliases
+remain data.
 <!-- tarav.breadcrumb 7d19421b22e7d9441b869a48ee3faca7ad6a058c4ecd8345680c1a5d14248da8 -->
 <!-- tarav.breadcrumb 23058407e5e3820b5a3c4fa83c924e2c60c44a4dda63253889c6d327265e0ceb -->

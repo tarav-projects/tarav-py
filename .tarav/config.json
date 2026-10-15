@@ -1,4 +1,8 @@
 {
-  "class": "agentos.project.config",
-  "schema_version": 1
+  "agents": {
+    "package_skill": "tarav-pkg"
+  },
+  "diagram": {
+    "main_model": "b7b78eab-e5c2-4610-9bf5-1b704a106f34"
+  }
 }

@@ -14,7 +14,7 @@ from tarav.l2.unsorted.constants import CHATLAS_INDEX_NAMESPACES
 from tarav.l2.unsorted.constants import CHATLAS_INDEX_SHIP_TYPES
 from tarav.l2.unsorted.constants import CONFIG_SCHEMA_VERSION
 from tarav.l2.unsorted.capture import CaptureReceipt
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict
 from tarav.l2.unsorted.constants import DESIGN_BLOCK_OBJECT_TYPE
 from tarav.l2.unsorted.constants import DIAGRAM_ATTIC
 from tarav.l2.unsorted.constants import DIAGRAM_BLOCK_OBJECT_TYPE
@@ -78,14 +78,13 @@ from tarav.l2.unsorted.primitives import _timestamp
 from tarav.l2.unsorted.primitives import _uuid
 from tarav.l2.unsorted.primitives import _validate_editions
 from tarav.l0._core.persistence import atomic_write_json
+from tarav.l1.project.config import ProjectConfig
 from dataclasses import dataclass
 from tarav.l2.unsorted.registry import default_diagram_annotation_type_registry
 from tarav.l2.lines.types import default_diagram_object_types
 from tarav.l2.unsorted.registry import default_diagram_ship_type_registry
 from tarav.l0.kernel import entity
 from pydantic import field_validator
-from tarav.l0.project import load_project_marker
-from tarav.l0.project import project_marker_path
 from uuid import uuid4
 from typing import TYPE_CHECKING
 
@@ -1158,35 +1157,28 @@ class Diagram:
     def ensure_project_model(self, project_root: Path) -> Model:
         from tarav.l2.models.errors import require_models
         require_models()
-        marker_path = project_marker_path(project_root.expanduser().resolve())
-        marker = load_project_marker(marker_path)
-        setting = marker.get("diagram")
-        if isinstance(setting, dict) and isinstance(setting.get("main_model"), str):
-            return self.model(setting["main_model"])
+        config = ProjectConfig(project_root)
+        setting = config.section("diagram", DiagramConfig) or DiagramConfig()
+        if setting.main_model is not None:
+            return self.model(setting.main_model)
         namespace = (
             self.namespace(USER_TOUCHED_CHATLAS_INDEX)
             if any(item.name == USER_TOUCHED_CHATLAS_INDEX for item in self.namespaces)
             else self.namespace()
         )
         model = namespace.create_model(label=project_root.name)
-        marker["diagram"] = {"main_model": model.ship}
-        atomic_write_json(marker_path, marker, ensure_ascii=False)
+        config.write_section("diagram", setting.model_copy(update={"main_model": model.ship}))
         return model
 
     def project_model(self, project_root: Path) -> Model:
         from tarav.l2.models.errors import require_models
         require_models()
-        marker = load_project_marker(
-            project_marker_path(project_root.expanduser().resolve())
-        )
-        setting = marker.get("diagram")
-        if not isinstance(setting, dict) or not isinstance(
-            setting.get("main_model"), str
-        ):
+        setting = ProjectConfig(project_root).section("diagram", DiagramConfig)
+        if setting is None or setting.main_model is None:
             raise DiagramError(
                 f"Project has no Diagram main Model: {project_root.expanduser().resolve()}"
             )
-        return self.model(setting["main_model"])
+        return self.model(setting.main_model)
 
     def set_project_main_model(
         self, project_root: Path, model_ship: str
@@ -1195,14 +1187,18 @@ class Diagram:
         require_models()
         """Point one Project at an existing Model without implying ownership."""
         model = self.model(model_ship)
-        marker_path = project_marker_path(project_root.expanduser().resolve())
-        marker = load_project_marker(marker_path)
-        current = marker.get("diagram")
-        diagram_data = dict(current) if isinstance(current, dict) else {}
-        diagram_data["main_model"] = model.ship
-        marker["diagram"] = diagram_data
-        atomic_write_json(marker_path, marker, ensure_ascii=False)
+        config = ProjectConfig(project_root)
+        setting = config.section("diagram", DiagramConfig) or DiagramConfig()
+        config.write_section("diagram", setting.model_copy(update={"main_model": model.ship}))
         return model
+
+
+class DiagramConfig(BaseModel):
+    """The `diagram` section of a Project's config: its main Model and named Models."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+    main_model: str | None = None
+    models: dict[str, str] = {}
 
 
 def _merge_line_annotation_record(

@@ -22,7 +22,8 @@ Project discovery and the `diagram.main_model` association belong to
 integration will load configured storage lazily without creating an association.
 Several projects may point to the same Model. Models can exist without projects.
 
-Named associations live in the project's `diagram.models` mapping:
+Named associations live in the `diagram` section of the project's
+`.tarav/config.json`, as its `models` mapping:
 
 ```json
 {"diagram": {"models": {"research": "<model-ship-id>"}}}
@@ -31,7 +32,7 @@ Named associations live in the project's `diagram.models` mapping:
 `project.models.ls()` lists names in sorted order without loading storage.
 `project.models.get("research")` will resolve the selected Model; absent names
 raise KeyError. The existing `diagram.main_model` remains independent, so
-`main()` does not require a named alias. Reads never modify the marker.
+`main()` does not require a named alias. Reads never modify the config.
 
 The existing Model handler remains a live namespace-bound handle, now a
 TaravType with its class entity. Its retained Ship and edition Records are

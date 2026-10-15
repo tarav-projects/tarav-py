@@ -24,7 +24,7 @@ from tarav.l2.project.models import ProjectModels
 def _project(root: Path, project_type):
     (root / ".tarav").mkdir(parents=True, exist_ok=True)
     (root / ".tarav/project.json").write_text(json.dumps(
-        {"class": "agentos.project", "schema_version": 1, "project_id": str(uuid.uuid4())}))
+        {"project_id": str(uuid.uuid4()), "created_at": "2026-10-15T00:00:00Z"}))
     return project_type.from_path(root)
 
 

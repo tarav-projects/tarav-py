@@ -168,24 +168,25 @@ def test_the_runtime_registers_the_workflow_and_contributes_settings() -> None:
 
 
 # tarav.breadcrumb 6fd463b6ff2194bdb4a80e5046b6d3cb143ce867a490c38b270132417860a8e0
-def test_the_agents_file_switches_are_settings_read_from_the_marker(tmp_path: Path) -> None:
+def test_the_agents_file_switches_are_settings_read_from_the_config(tmp_path: Path) -> None:
+    from tarav.l0._core.errors import CliError
     from tarav.l1.project import TaravProject
 
     marker = tmp_path / ".tarav" / "project.json"
     marker.parent.mkdir()
-    marker.write_text(json.dumps({
-        "class": "agentos.project", "schema_version": 1,
-        "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
-        "agents": {"main": "AGENTS.md", "tarav_system_prompt": False},
-    }))
+    marker.write_text(json.dumps({"project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
+                                  "created_at": "2026-10-15T00:00:00Z"}))
+    config = tmp_path / ".tarav" / "config.json"
+    config.write_text(json.dumps(
+        {"agents": {"main": "AGENTS.md", "tarav_system_prompt": False}}))
     agents = TaravProject.from_path(tmp_path).agents.agents_md
 
     assert agents.tarav_prompt_enabled is False
-    assert agents.settings.origin("tarav_system_prompt") == f"file:{marker}"
+    assert agents.settings.origin("tarav_system_prompt") == f"file:{config.resolve()}"
     assert agents.project_prompt_enabled is True
     assert agents.settings.origin("project_system_prompt") == "default"
     assert str(agents.main) == "AGENTS.md"
 
-    marker.write_text(marker.read_text().replace("false", '"no"'))
-    with pytest.raises(ValueError, match="rejects 'no'"):
+    config.write_text(config.read_text().replace("false", '"no"'))
+    with pytest.raises(CliError, match="config section agents is invalid"):
         TaravProject.from_path(tmp_path).agents.agents_md

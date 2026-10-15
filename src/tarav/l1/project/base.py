@@ -1,11 +1,10 @@
-"""Identified projects backed by their existing portable marker."""
+"""Identified Projects backed by their `.tarav/project.json`."""
 
 from pathlib import Path
-from typing import Literal
-
 from pydantic import Field
 
-from tarav.l0.project import project_marker_name, require_agentos_project
+from tarav.l0._core.errors import CliError
+from tarav.l0.project import ProjectHarnessConfig, project_marker_name, require_agentos_project
 from tarav.l0.kernel import NamespaceBase, Ship, TaravClass, TaravEntity, TypeShip, entity
 from tarav.l1.checks import CheckProvider, CheckSuite
 from tarav.l1.loading import LoadingProfile
@@ -39,7 +38,10 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
     class Checks(CheckProvider.Checks):
         # tarav.breadcrumb c1c38799380f065d088e5c7e704ac0e46755ff33a8171e0247bd531f899012ce
         def suite(self) -> CheckSuite:
-            return CheckSuite([self.obj.agents.agents_md.checks.suite(),
+            from .files import ProjectFilesCheck
+
+            return CheckSuite([ProjectFilesCheck(self.obj),
+                               self.obj.agents.agents_md.checks.suite(),
                                self.obj.agents.skills.checks.suite()],
                               name=self.obj.name, repositories=self.obj.repositories())
 
@@ -99,24 +101,61 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
             workflow=PROJECT_WORKFLOW_SHIP,
         )
 
+    # tarav.breadcrumb 953bd0d528d7c78f1597eca6306b387b67d6ebbd0bf3d3340aae6f89f2095192
     class RecordInterface(TaravEntity.RecordInterface):
-        id: Ship = Field(alias="project_id")
-        marker_class: Literal["agentos.project"] = Field(alias="class")
+        """`.tarav/project.json`: the Project's Record and the Project workflow's
+        own configuration. Other workflows configure a Project in config.json."""
 
+        id: Ship = Field(alias="project_id")
+        created_at: str
+        project_name: str | None = None
+        harness: ProjectHarnessConfig | None = None
+
+    # tarav.breadcrumb 930bba78649d17898a6bca5d00e460d43d0678ec801b51ed10e0541f79a3f0ea
     @classmethod
     def load_project(cls, *, path: Path | str = "."):
-        """Discover a marker and load its declared, trusted Project Type.
+        """Load a Project as its harness says.
 
-        Unlike from_path(), this never replaces the Record's Type. The caller
-        class constrains the resulting family, not the dispatch decision.
-        Untyped markers require explicit migration before using this route.
+        `harness.type` is imported from the running environment and
+        `project.json` is loaded as its Record; the Record's Type tag must name
+        the same class. The caller class constrains the family.
         """
-        from tarav.l0.kernel.current import current_records
+        from importlib import import_module
 
-        marker = require_agentos_project(path).marker_path
-        project = current_records().load(marker)
-        if not isinstance(project, cls):
-            raise TypeError(f"Project marker must declare a subtype of {cls.__name__}")
+        from pydantic import ValidationError
+
+        from tarav.l0.kernel.current import current_records
+        from tarav.l0.kernel.types import UnknownRecordType
+
+        handler = require_agentos_project(path)
+        raw = handler.project_json.get("harness")
+        if raw is None:
+            raise CliError(f"{handler.marker_path} declares no harness: "
+                           "harness.environment and harness.type")
+        try:
+            harness = ProjectHarnessConfig.model_validate(raw)
+        except ValidationError as exc:
+            raise CliError(f"{handler.marker_path}: invalid harness: {exc}") from exc
+        module, _, name = harness.type.partition(":")
+        try:
+            project_type = getattr(import_module(module), name)
+        except (ImportError, AttributeError) as exc:
+            raise CliError(f"{handler.marker_path}: harness.type {harness.type} does not "
+                           f"import in this environment: {exc}") from exc
+        if not isinstance(project_type, type) or not issubclass(project_type, cls):
+            raise TypeError(f"harness.type {harness.type} is not a {cls.__name__}")
+        registry = current_records()
+        type_name = entity(project_type).name
+        try:
+            known = registry.resolve_type(type_name)
+        except UnknownRecordType:
+            known = None
+        if known is None:
+            registry.environment.bind_type(type_name, project_type)
+        project = registry.load(handler.marker_path)
+        if type(project) is not project_type:
+            raise TypeError(f"{handler.marker_path} names the Type {entity(type(project)).name}"
+                            f" but harness.type is {harness.type}")
         return project
 
     @classmethod
@@ -152,20 +191,38 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
     def name(self) -> str:
         return project_marker_name(self.records.to_record()) or self.root.name
 
+    _BASE_FIELDS = frozenset({"type", "id", "project_id", "created_at", "project_name", "harness"})
+
+    def __init__(self, id: Ship, *, created_at: str, project_name: str | None = None,
+                 harness: ProjectHarnessConfig | None = None,
+                 fields: dict[str, object] | None = None) -> None:
+        super().__init__(id)
+        self.created_at, self.project_name, self.harness = created_at, project_name, harness
+        # what a Type adds (a Root's children), and anything else the file holds
+        self.fields = dict(fields or {})
+
+    @classmethod
+    def _from_record(cls, record_data):
+        values = record_data.model_dump(mode="json", by_alias=True, exclude_unset=True)
+        return cls(record_data.id, created_at=record_data.created_at,
+                   project_name=record_data.project_name, harness=record_data.harness,
+                   fields={key: value for key, value in values.items()
+                           if key not in cls._BASE_FIELDS})
+
     def _to_record(self):
-        if self._record is not None:
-            return self._record
-        return {
-            "type": entity(type(self)).name,
-            "class": "agentos.project",
-            "project_id": str(self.id),
-        }
+        record = {"type": entity(type(self)).name, "project_id": str(self.id),
+                  "created_at": self.created_at}
+        if self.project_name is not None:
+            record["project_name"] = self.project_name
+        if self.harness is not None:
+            record["harness"] = self.harness.model_dump(mode="json")
+        return {**record, **self.fields}
 
     class Records(TaravEntity.Records):
         def record_example(self):
             cls = self._owner
             return {
                 "type": entity(cls).name,
-                "class": "agentos.project",
                 "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
+                "created_at": "2026-01-01T00:00:00Z",
             }

@@ -35,6 +35,9 @@ class RootProject(Project):
                           id=TypeShip("150b82a2-71c9-428d-862a-24f0d2d14677"),
                           name="Tarav.Project.Root", workflow=PROJECT_WORKFLOW_SHIP)
 
+    class RecordInterface(Project.RecordInterface):
+        children: list[str] = []
+
     def child_paths(self) -> tuple[str, ...]:
         children = self.records.to_record().get("children", [])
         if not isinstance(children, list):

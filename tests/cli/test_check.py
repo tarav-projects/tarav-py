@@ -104,8 +104,8 @@ def test_the_cli_runs_check_in_the_project_harness(tmp_path: Path, monkeypatch) 
     # the command also tells the machine's Project index; keep the test out of it
     (tmp_path / ".tarav").mkdir()
     (tmp_path / ".tarav/project.json").write_text(json.dumps({
-        "class": "agentos.project", "schema_version": 1,
-        "project_id": "5d0c8a3e-2b17-4f69-8e4a-9c1d7b6f3a20"}))
+        "project_id": "5d0c8a3e-2b17-4f69-8e4a-9c1d7b6f3a20",
+        "created_at": "2026-10-15T00:00:00Z"}))
     monkeypatch.setattr(check_module, "observe_project", lambda root: None, raising=False)
     launched = []
 

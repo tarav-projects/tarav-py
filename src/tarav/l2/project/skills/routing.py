@@ -8,6 +8,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict
+
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.path_validation import validate_string_for_path
 from tarav.l0._core.home import tarav_home_dir, global_config_path, load_global_config
@@ -280,6 +282,15 @@ class SkillsStatusResult:
         return (*self.selection.pois,
                 *(poi for status in self.depot_statuses for poi in status.pois))
 
+
+
+class SkillsConfig(BaseModel):
+    """The `skills` section of a Project's config. Its parts are validated in
+    detail where they are read (routing profile, export packages)."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+    routing: dict[str, object] | None = None
+    exports: dict[str, object] | None = None
 
 def _registry_source_field_label(source_name: str) -> str:
     return f"global config field skills.routing.sources.{source_name}"

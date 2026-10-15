@@ -51,26 +51,14 @@ def write_project_marker(
     project_name: str | None = None,
 ) -> Path:
     UUID(project_id)
-    payload: dict[str, object] = {
-        "class": "agentos.project",
-        "schema_version": 1,
-        "project_id": project_id,
-    }
+    payload: dict[str, object] = {"project_id": project_id}
     if project_name is not None:
         payload["project_name"] = project_name
     return write_raw_json(project_root / ".tarav" / "project.json", payload)
 
 
 def write_project_config(project_root: Path, **sections: object) -> Path:
-    _reject_reserved_fields(sections, reserved={"class", "schema_version"})
-    return write_raw_json(
-        project_root / ".tarav" / "config.json",
-        {
-            "class": "agentos.project.config",
-            "schema_version": 1,
-            **sections,
-        },
-    )
+    return write_raw_json(project_root / ".tarav" / "config.json", dict(sections))
 
 
 @dataclass(frozen=True)

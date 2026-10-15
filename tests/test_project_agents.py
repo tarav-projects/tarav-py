@@ -33,10 +33,9 @@ from tarav.l3.runtime import create_runtime
 def _project(root: Path, **agents: object) -> TaravProject:
     marker = root / ".tarav/project.json"
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(json.dumps({
-        "class": "agentos.project", "schema_version": 1,
-        "project_id": str(uuid4()), "agents": agents,
-    }))
+    marker.write_text(json.dumps({"project_id": str(uuid4()),
+                                  "created_at": "2026-10-15T00:00:00Z"}))
+    (root / ".tarav/config.json").write_text(json.dumps({"agents": agents}))
     return TaravProject.from_path(root)
 
 

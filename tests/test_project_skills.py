@@ -23,8 +23,9 @@ def _project(root: Path, package_skill: str | None = "tarav-pkg") -> TaravProjec
     marker = root / ".tarav/project.json"
     marker.parent.mkdir(parents=True)
     agents = {} if package_skill is None else {"package_skill": package_skill}
-    marker.write_text(json.dumps({"class": "agentos.project", "schema_version": 1,
-                                  "project_id": str(uuid4()), "agents": agents}))
+    marker.write_text(json.dumps({"project_id": str(uuid4()),
+                                  "created_at": "2026-10-15T00:00:00Z"}))
+    (root / ".tarav/config.json").write_text(json.dumps({"agents": agents}))
     return TaravProject.from_path(root)
 
 

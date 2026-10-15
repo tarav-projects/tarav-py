@@ -90,7 +90,8 @@ def test_project_runs_use_the_project_partition(
     (project / ".tarav").mkdir(parents=True)
     identity = "20c26be7-a8e5-4974-9ec0-0b5a3a125a94"
     (project / ".tarav" / "project.json").write_text(json.dumps(
-        {"class": "agentos.project", "schema_version": 1, "project_id": identity}))
+        {"project_id": identity, "created_at": "2026-10-15T00:00:00Z",
+         "harness": {"environment": ".tarav/env", "type": "tarav.l2.project:Project"}}))
 
     class Configurator:
         @classmethod

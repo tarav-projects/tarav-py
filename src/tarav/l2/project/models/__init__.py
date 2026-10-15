@@ -60,21 +60,15 @@ class ProjectModels(TaravType):
         return self._resolver().model(ship)
 
     def _named_models(self) -> dict[str, str]:
-        from tarav.l0.project import load_project_marker, project_marker_path
         from tarav.l0.kernel import Ship
+        from tarav.l1.project.config import ProjectConfig
+        from tarav.l2.unsorted.storage import DiagramConfig
 
-        marker = load_project_marker(project_marker_path(self.project.root))
-        setting = marker.get("diagram", {})
-        if not isinstance(setting, dict):
-            raise ValueError("Project diagram must be an object")
-        models = setting.get("models", {})
-        if not isinstance(models, dict):
-            raise ValueError("Project diagram.models must be a name-to-Ship object")
+        setting = ProjectConfig(self.project.root).section("diagram", DiagramConfig)
+        models = setting.models if setting is not None else {}
         for name, ship in models.items():
-            if not isinstance(name, str) or not name.strip():
+            if not name.strip():
                 raise ValueError("Project Model names must be non-empty strings")
-            if not isinstance(ship, str):
-                raise ValueError(f"Project Model {name!r} must reference a Ship string")
             Ship(ship)
         return models
 
