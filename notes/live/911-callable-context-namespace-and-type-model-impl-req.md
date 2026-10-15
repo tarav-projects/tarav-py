@@ -6,7 +6,8 @@
 
 ## Impl.Abstract
 
-Status: implemented; completion checks and capture closure in progress. Replace the ordinary object
+Status: implemented and verified; durable Breadcrumb registration pending.
+Replace the ordinary object
 `context()` method with a bound namespace available on both Types and objects.
 Preserve `obj.context(type=ObjectGroup)` as shorthand for
 `obj.context.explore(type=ObjectGroup)`, and expose `SomeType.context.model`.
@@ -67,15 +68,16 @@ Distinguish these implementation choices from user decisions above.
 
 ## Execution.Plan
 
-1. Namespace slice (code): bind Context on Type/object, preserve callable views,
+1. Namespace slice (feature/refactor): bind Context on Type/object, preserve callable views,
    dynamic exploration overrides and explicit composition. Check existing
    Context tests plus new inheritance/composition tests. Status: verified.
-2. Model slice (code): typed path nodes, root-only model, lazy providers and
+2. Model slice (feature): typed path nodes, root-only model, lazy providers and
    explicit retained writes; expose model through Context exploration. Check
    Record round trips, no-write reads, external/class/storage composition,
    renamed labels retaining node Context and runtime isolation. Status: verified.
 3. Integration slice (documentation): architecture, full tests and Project
-   validation, product capture and Wiki capture. Status: pending.
+   validation, product capture and Wiki capture. Status: verified product and
+   captured Wiki text; Breadcrumb submission/audit pending as logged below.
 
 ## Impl.Log
 
@@ -116,7 +118,27 @@ Distinguish these implementation choices from user decisions above.
   ToImplementError from ProjectModels(None), whose current constructor raises
   TypeError. Reproduced exactly against pre-change commit `4f4bf3d` in a
   temporary source extraction. No unrelated repair was made.
-- `tarav status --project --all` is blocked writing
-  `~/.tarav/projects.json.lock`. Editable reinstall was attempted as directed;
+- `tarav status --project --all` completed 312 checks and reported 15 open
+  actions across the root and child Projects. It warned that global Project
+  index and usage retention could not write under this sandbox; those warnings
+  did not stop the checks. An earlier commentary incorrectly called the run
+  blocked after reading its warnings; corrected after inspecting the full
+  result. The read-only `tarav check --project --json` also completed, reporting
+  POIs rather than a clean Project. Existing POIs were not repaired.
+  Editable reinstall was attempted as directed;
   uv itself panicked in macOS system-configuration before installing anything.
   The existing installed tool is editable and loads these source changes.
+- Model/integration slice commit: `20a981b`.
+- Wiki start checkpoint: `53434bd`; capture commit: `821fe48`. Daily destination:
+  `../tarav-md/notes/wiki/daily/2026-10-15.md`; topical destination:
+  `../tarav-md/notes/wiki/context-graph.md`. Both parse through WikiNote.parse.
+  Separate Breadcrumb submission was attempted on each and failed with the
+  protected store's PermissionError. Audit is not clean: the new markers are
+  unsubmitted; older sessions' attachment/position concerns remain unresolved
+  when auditing through the temporary single-session Chatlas depot.
+- All commits used the skill's plain-Git recovery path after evidence
+  registration failed. No fabricated Breadcrumb IDs or evidence envelopes were
+  committed. Provisional surface markers and exact session declarations remain
+  intact. A later session with data-depot access can refresh this exact Chatlas
+  session, submit each supported surface, and rerun the batch Breadcrumb audit.
+  Product behavior is complete; registration is the outstanding capture task.
