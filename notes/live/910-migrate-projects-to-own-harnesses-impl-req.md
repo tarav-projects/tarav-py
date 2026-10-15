@@ -160,10 +160,13 @@ trigger: such a Project is migrated by hand and logged.
   store (`BlessingRecord`, `BlessingStore` from `tarav.l1.blessings`), a
   break older than 909, left for its own request.
 - Roots: 23 `git init` with the allowlist (an existing root `.gitignore`'s
-  rules kept, telar); first commits hold only allowed files. Not tracked:
-  the five children that are not repositories (academy/index-test,
-  academy/workflow-for-ai-coding, cellar-md, notebook-pi, oba-js) — their
-  harness lives in their folder, ignored by their root.
+  rules kept, telar); first commits hold only allowed files.
+- The five children that were not repositories (academy/index-test,
+  academy/workflow-for-ai-coding, cellar-md, notebook-pi, oba-js) got a
+  repository each, with the same conservative allowlist adapted to a child
+  (`AGENTS.md`, `README.md`, `notes/`, `.tarav/project.json`, `config.json`,
+  `harness/`); first commits 508cb47, d422219, 155da57, c7d1d9e, 665eb24.
+  Every migrated Project is now tracked.
 - Commits: 44 repositories through `tarav git commit` (only the migration's
   files); pdf-readings-py and voice-readings-py ignore `.tarav/`, so their
   files were force-added and committed with a path-limited `git commit`.
