@@ -7,7 +7,7 @@
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: implemented and verified; capture closure in progress.
+Status: implemented and verified; Wiki captured; durable Breadcrumb registration pending.
 
 Context represents a subject under accumulated typed qualifications. A view
 extends the current Context; entries advertise contextualization steps or open
@@ -103,7 +103,8 @@ choices distinct from User decisions; inspect supporting User Turns above.
    compatibility failures. Status: verified.
 3. Documentation/integration: architecture and Wiki capture, configured/full
    tests, Ruff, Project status, inlined capture/audit and evidence commits.
-   Status: pending.
+   Status: complete product and Wiki text; Breadcrumb registration pending as
+   recorded below.
 
 ## Impl.Log
 
@@ -175,3 +176,17 @@ choices distinct from User decisions; inspect supporting User Turns above.
   audit reports the unsubmitted markers and older unresolved positions; no
   replacement IDs were invented. Session declarations remain intact for later
   recovery. No documentation or annotation representation was added.
+- Positional-step fix commit: `3352c94`. Its regression fails against the
+  pre-fix `61340a6` source with "Context placement must be int" and passes
+  against current code; the 42-test focused conformance run and Ruff are green.
+  The broad 485-pass run preceded this bounded follow-up; it was not repeated
+  after the targeted verification resolved the remaining list-placement risk.
+- Wiki completion commit: `74a01dc`; both repositories' own changes are
+  committed. Daily destination: `../tarav-md/notes/wiki/daily/2026-10-15.md`;
+  topical destination: `../tarav-md/notes/wiki/context-graph.md`.
+- All start, implementation, follow-up and Wiki commits followed plain Git
+  recovery after Breadcrumb evidence registration failed. The final scope is
+  the requested Context mechanics and caller migration. Remaining work is
+  registration of the preserved provisional markers when the normal Tarav
+  data depot is writable, followed by a fresh batch audit. No product behavior
+  remains blocked on that capture task.
