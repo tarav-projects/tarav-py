@@ -38,6 +38,7 @@ extend-exclude = ["_DEPRECATED"]
 
 [tool.pytest.ini_options]
 testpaths = [
+    "tests/future",
     "tests/cli/test_import_guard.py",
     "tests/cli/test_run_registry.py",
     "tests/test_settings.py",

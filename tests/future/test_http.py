@@ -1,13 +1,20 @@
 """Exercise actual HTTP parsing and serialization without requiring a TCP bind."""
 
 import io
+import importlib.util
 import json
+import shutil
 import subprocess
 from html.parser import HTMLParser
 
-from tarav.l1._future.conversations import HAS_TURN
-from tarav.l2._future.demo import ALICE_ID, CHAT_ID, LIVE_ID, Demo
-from tarav.l3._future.server import Application, PAGE, handler_for
+import pytest
+
+HAS_RDF = importlib.util.find_spec("rdflib") is not None
+pytestmark = pytest.mark.skipif(not HAS_RDF, reason="Install tarav[future] for RDF checks")
+if HAS_RDF:
+    from tarav.l1._future.conversations import HAS_TURN
+    from tarav.l2._future.demo import ALICE_ID, CHAT_ID, LIVE_ID, Demo
+    from tarav.l3._future.server import Application, PAGE, handler_for
 
 
 class Connection:
@@ -71,6 +78,15 @@ def test_http_predicate_and_relation_inspection_and_history(tmp_path):
     assert json.loads(body)["focus"]["record"]["id"] == str(CHAT_ID)
 
 
+def test_query_and_view_parameters_remain_inspectable(tmp_path):
+    app = Application(Demo(tmp_path).seed())
+    app.dispatch({"op": "view", "name": "messages"})
+    state = app.dispatch({"op": "view", "name": "by-alice"})
+    assert state["qualifications"] == ["messages", "by-alice"]
+    assert state["bindings"]["filter1"] == '"alice"'
+    assert state["query_result"]["total"] == 1
+
+
 def test_http_rejects_bad_input_and_serves_the_actual_ui(tmp_path):
     app = Application(Demo(tmp_path).seed())
     for value in ({"op": "unknown"}, {"op": "query", "sparql": "not SPARQL"},
@@ -84,6 +100,17 @@ def test_http_rejects_bad_input_and_serves_the_actual_ui(tmp_path):
     assert b"Root ID" in body and b"SPARQL" in body
 
 
+def test_unknown_well_formed_root_id_returns_a_readable_http_error(tmp_path):
+    app = Application(Demo(tmp_path).seed())
+    status, body = request(app, "POST", value={
+        "op": "open", "id": "16464918-1167-4b23-b1d6-ad721155ccf9",
+    })
+    assert status == 404
+    assert "error" in json.loads(body)
+    assert app.explorer.subject.id == CHAT_ID
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node is optional UI syntax-check tooling")
 def test_actual_ui_javascript_parses(tmp_path):
     class Scripts(HTMLParser):
         active = False

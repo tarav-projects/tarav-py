@@ -1,8 +1,15 @@
 """Real JSON → object → RDF and progressive navigation without a mock engine."""
 
-from tarav.l1._future.context import ContextViewEntry
-from tarav.l1._future.conversations import ABOUT, AUTHOR
-from tarav.l2._future.demo import ALICE_ID, BOB_ID, CHAT_ID, LIVE_ID, Demo
+import importlib.util
+
+import pytest
+
+HAS_RDF = importlib.util.find_spec("rdflib") is not None
+pytestmark = pytest.mark.skipif(not HAS_RDF, reason="Install tarav[future] for RDF checks")
+if HAS_RDF:
+    from tarav.l1._future.context import ContextViewEntry
+    from tarav.l1._future.conversations import ABOUT, AUTHOR
+    from tarav.l2._future.demo import ALICE_ID, BOB_ID, CHAT_ID, LIVE_ID, Demo
 
 
 def objects(view):

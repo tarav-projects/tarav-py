@@ -91,8 +91,8 @@ class Relation(FutureEntity):
     def class_entity(cls):
         return class_projection(cls, "f31cc708-a714-41dc-a6ad-715005b646a2", "Relation")
 
-    def __init__(self, diagram, subject, predicate, target):
-        super().__init__(Ship(uuid4()))
+    def __init__(self, diagram, subject, predicate, target, *, id=None):
+        super().__init__(id if id is not None else Ship(uuid4()))
         self.diagram, self.subject, self.predicate, self.target = diagram, subject, predicate, target
 
     def _to_record(self):
@@ -164,17 +164,18 @@ class Diagram:
             obj = entity(obj)
         if not isinstance(obj, TaravObject):
             raise TypeError("Graph resources require TaravObject representations")
-        if isinstance(obj, RDFValue):
-            term = obj.value
-        elif isinstance(obj, RDFTerm):
-            term = URIRef(obj.iri)
-        elif isinstance(obj, TaravEntity):
-            term = URIRef("urn:uuid:" + str(obj.id))
-        else:
-            term = self._runtime.setdefault(id(obj), BNode())
+        term = self._identity(obj)
         previous = self.objects.get(term)
         if previous is not None and previous is not obj:
-            if previous.records.to_record() != obj.records.to_record():
+            if isinstance(previous, Relation) and isinstance(obj, Relation):
+                def signature(relation):
+                    return (entity(type(relation)).id, *(self._identity(value) for value in (
+                        relation.subject, relation.predicate, relation.target,
+                    )))
+                agrees = signature(previous) == signature(obj)
+            else:
+                agrees = previous.records.to_record() == obj.records.to_record()
+            if not agrees:
                 raise ValueError(f"Conflicting object representations for {term}")
             # Prefer a live class projection over its detached Record.
             if isinstance(obj, TaravClass) and obj._target is not None:
@@ -187,6 +188,17 @@ class Diagram:
             self._described.add(term)
             self._put(term, RDF.type, self.ref(entity(type(obj))))
             self._put(term, RDFS.label, Literal(self.label(obj)))
+        return term
+
+    def _identity(self, obj):
+        if isinstance(obj, RDFValue):
+            term = obj.value
+        elif isinstance(obj, RDFTerm):
+            term = URIRef(obj.iri)
+        elif isinstance(obj, TaravEntity):
+            term = URIRef("urn:uuid:" + str(obj.id))
+        else:
+            term = self._runtime.setdefault(id(obj), BNode())
         return term
 
     @staticmethod
@@ -294,6 +306,50 @@ class Diagram:
         expansion = self._offers[self.ref(subject)][key]
         expansion.load(self)
         del self._offers[self.ref(subject)][key]
+
+    def merge(self, other: Diagram):
+        """Import loaded triples and representations, keeping local provider policy.
+
+        Runtime resources are reconciled through their Python objects; blank
+        node labels from another exploration are not treated as global IDs.
+        """
+        if other is self:
+            return self
+        translated = {}
+        occurrences = {relation.id: relation for relation in other._relations.values()}
+        occurrences.update({obj.id: obj for obj in other.objects.values() if isinstance(obj, Relation)})
+        for term, obj in tuple(other.objects.items()):
+            if not isinstance(obj, Relation):
+                translated[term] = self.ref(obj)
+        local_occurrences = {}
+        for identity, relation in occurrences.items():
+            term = URIRef("urn:uuid:" + str(identity))
+            existing = self.objects.get(term)
+            if existing is not None and not isinstance(existing, Relation):
+                raise ValueError(f"Conflicting relationship identity: {identity}")
+            local_occurrences[identity] = existing or Relation(
+                self, relation.subject, relation.predicate, relation.target, id=identity,
+            )
+            self.objects[term] = local_occurrences[identity]
+            translated[term] = term
+
+        def translate(term):
+            if term not in translated:
+                translated[term] = self.ref(other.resolve(term))
+            return translated[term]
+
+        for identity, relation in occurrences.items():
+            local = local_occurrences[identity]
+            local.subject = self.resolve(translate(other.ref(relation.subject)))
+            local.predicate = self.resolve(translate(other.ref(relation.predicate)))
+            local.target = self.resolve(translate(other.ref(relation.target)))
+            self.ref(local)
+        for s, p, o in tuple(other._graph):
+            self._put(translate(s), translate(p), translate(o))
+        for triple, relation in other._relations.items():
+            self._relations.setdefault(tuple(translate(term) for term in triple),
+                                       local_occurrences[relation.id])
+        return self
 
     def query(self, sparql, *, bindings=None):
         """Evaluate read queries entirely inside the accumulated RDF dataset."""

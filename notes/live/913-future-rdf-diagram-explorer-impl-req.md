@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready for execution; dependency verification pending. Alignment.Mode:
+Status: implementation verified; browser launch and durable capture pending. Alignment.Mode:
 Autonomous. Knowledge.Surface: wiki.
 
 Build an explicitly selected `_future` experiment: typed Python objects expose
@@ -84,7 +84,7 @@ Conversation/UserTurn/Annotation Records; explicit demo host and UI adapter.
 - [x] Slice 3 — feature: browser explorer over the same session. Prove root-ID
   opening, query/view dispatch, expansion, inspection and navigation through
   the HTTP adapter; inspect the rendered UI where browser tooling is available.
-- [ ] Slice 4 — documentation and integration: runnable tutorial, architecture
+- [x] Slice 4 — documentation and integration: runnable tutorial, architecture
   isolation checks, focused regressions and project verification; capture and
   commit the outcome.
 
@@ -135,4 +135,53 @@ check; independent code may proceed while environment checks remain pending.
   release metadata (RDFLib 7.6.0 and pyparsing 3.3.3) after uv lock's native
   configuration panic. `uv export --frozen --extra future --no-dev` succeeds;
   the existing dependency versions are preserved.
-- Todo: execute the remaining slices and replace this status with measured results.
+- Slice 3 committed as `f7d64aa`; code/test capture submitted and audited.
+  HTML/JavaScript has no supported inline capture convention in this skill;
+  no native markers were invented in that surface.
+- Slice 4 measured: 23 experimental tests pass. Graph merge preserves Ships,
+  reconciles runtime resources by their actual objects, and is idempotent.
+  The merge test exposed differing graph-local blank-node labels in occurrence
+  Records; occurrence identity checks now compare endpoint identities in the
+  receiving graph. Runtime provider/view registration stays local host policy.
+- Full maintained `uv run --offline --no-sync pytest -q`: 359 passed in 74.28s.
+  An earlier run had one new architecture assertion matching Python's
+  `__future__` import; the check was corrected to match the actual experimental
+  module namespace. The full rerun passed. `ruff check src tests
+  examples/future_diagram.py` and `git diff --check` passed.
+- `tarav check --project tarav-py --all --json`: 53 completed checks, no
+  incomplete/not-run checks, 41 completed pytest suites without test POIs.
+  Two existing `Tarav.Test.Actions.MarkerPOI` signals remain. Routine status
+  completed with those same two open actions and no action changes; its slow
+  tests were explicitly left out, covered by the separate all-check run.
+  Machine-local Project-index and usage-log writes emitted permission warnings.
+- The real `tarav run -- examples/future_diagram.py` surface succeeded: one
+  stored Alice message became two after runtime expansion; the active SPARQL
+  remained qualified. The module's real `--help` route also succeeded.
+- Added a README with browser/Python commands and a runnable disposable example.
+  The UI displays active query bindings and limits result rendering explicitly.
+  Optional RDF tests are skipped clearly when the `future` extra is absent;
+  namespace/JSON/import-isolation tests still run. The experiment imports no
+  higher layer and normal runtime composition does not register its Types.
+- Required editable-tool reinstall was attempted; uv hit the same native
+  configuration panic. The already editable command successfully loaded and
+  ran the new module/example, so source dispatch is verified.
+- Remaining limits: TCP binding is denied in this sandbox and no browser tool
+  is exposed, so visual rendering and an actual listening server are unverified.
+  The complete HTTP wire-to-application path and JavaScript syntax are tested.
+  Durable Breadcrumb registration remains pending in the protected data depot;
+  provisional markers plus the exact Chatlas declaration retain recovery paths.
+- This first experiment is additive and scoped. It does not implement global
+  completeness, arbitrary query-composition inference, mutable-source refresh,
+  RDF persistence, a production annotation schema or production workflow migration.
+- Final review reproduced an uncaught FileNotFoundError for a valid but unknown
+  pasted root ID through the actual HTTP handler. Added a 404 boundary response
+  and a regression test proving the current focus is preserved. The focused
+  experiment suite and the complete maintained suite then passed.
+- Final per-surface capture covered supported code, tests, documentation and
+  both Wiki destinations. The 14-file audit completed with 200 POIs: 45 pending
+  markers, 82 labels without matching position observations, and 73 invalid
+  attachment resolutions (the selected temporary Chatlas depot contains only
+  this exact session). This is a scoped inventory including older material,
+  not a claim that all findings were introduced here. ARCHITECTURE position
+  refresh was attempted and denied by the protected Breadcrumb store. TOML,
+  lock files and HTML have no supported native capture convention.

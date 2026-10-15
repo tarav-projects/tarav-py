@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+from rdflib import Literal as RDFLiteral
 
-from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravClass, TaravObject, entity
 from tarav.l1._future.context import ContextViewEntry
 from tarav.l1.records.registry import default_records_root
 from tarav.l2._future.demo import CHAT_ID, Demo
@@ -88,11 +89,24 @@ class Application:
             else:
                 triples = sorted(tuple(value.n3() for value in triple) for triple in result.graph)
                 query_result = {"kind": result.type, "triples": triples[:200], "total": len(triples)}
+        qualifications = []
+        for value in explorer.view.qualifications:
+            if isinstance(value, str):
+                qualifications.append(value)
+            else:
+                qualifications.append(next(
+                    (name for name, request in diagram.views.items() if request is value),
+                    entity(type(value)).name,
+                ))
+        bindings = {
+            name: diagram.ref(value).n3() if isinstance(value, TaravObject) else (
+                RDFLiteral(value).n3() if type(value) in (str, int, float, bool) else value.n3()
+            ) for name, value in explorer.view.bindings.items()
+        }
         return {
             "focus": focus, "nodes": list(nodes.values()), "edges": edges,
             "inspected": self.node(self.inspected), "views": available,
-            "qualifications": [value if isinstance(value, str) else entity(type(value)).name
-                               for value in explorer.view.qualifications],
+            "qualifications": qualifications, "bindings": bindings,
             "expansions": [{"key": value.key, "label": value.label} for value in explorer.expansions()],
             "sparql": query_text, "query_result": query_result,
             "triples": diagram.triple_count, "revision": diagram.revision,
@@ -165,6 +179,8 @@ def handler_for(application):
                     raise ValueError("Request body must contain at most 1 MB of JSON")
                 value = json.loads(self.rfile.read(length))
                 self.send(200, application.dispatch(value))
+            except FileNotFoundError as exc:
+                self.send(404, {"error": str(exc)})
             except (ValueError, TypeError, KeyError) as exc:
                 self.send(400, {"error": str(exc)})
 

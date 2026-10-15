@@ -37,7 +37,7 @@ footer{padding:0 28px 22px;color:var(--muted);font-size:12px}#expansions{display
 <main class="workspace">
 <div>
 <section class="panel"><div class="panel-head"><h2>Context view</h2><div id="views" class="row"></div><p class="small" id="qualifications"></p></div><svg id="canvas" viewBox="0 0 850 430" aria-label="Graph of the selected Context view"></svg><div class="section small">Select a node to inspect it. Select a relationship label to inspect its meaning; select an arrow to inspect that relationship. Drag nodes to arrange the view.</div></section>
-<section class="panel query"><div class="panel-head"><h2>SPARQL</h2><span class="small">?focus is bound to the current object. Queries use the loaded graph.</span></div><div class="body"><textarea id="sparql" aria-label="SPARQL query" spellcheck="false"></textarea><div class="row" style="margin-top:10px"><button id="run" class="primary">Run query</button><span class="small" id="result-summary"></span></div></div><div id="results" class="results"></div></section>
+<section class="panel query"><div class="panel-head"><h2>SPARQL</h2><span class="small">?focus is bound to the current object. Queries use the loaded graph.</span></div><div class="body"><textarea id="sparql" aria-label="SPARQL query" spellcheck="false"></textarea><pre id="bindings" aria-label="Query parameter bindings"></pre><div class="row" style="margin-top:10px"><button id="run" class="primary">Run query</button><span class="small" id="result-summary"></span></div></div><div id="results" class="results"></div></section>
 </div>
 <aside class="panel"><div class="body"><h2>Inspector</h2><h3 id="inspect-title"></h3><div class="small" id="inspect-type"></div><div class="identity" id="inspect-id"></div><div class="row"><button id="follow">Explore object</button><button id="inspect-class">Inspect Type</button></div></div><div class="section"><h2>Record</h2><pre id="record"></pre><div class="small" id="source"></div></div><div class="section"><h2>Code grounding</h2><pre id="code"></pre></div><div class="section"><h2>Load more context</h2><div id="expansions"></div></div></aside>
 </main>
@@ -94,6 +94,7 @@ function render() {
   if (!state.expansions.length) $('expansions').textContent = 'No loading steps offered for the current object.';
   $('coverage').textContent = state.coverage;
   if (document.activeElement !== $('sparql')) $('sparql').value = state.sparql;
+  $('bindings').textContent = Object.entries(state.bindings).map(([name,value]) => `?${name} = ${value}`).join('\n');
   drawGraph();
   showResults();
 }

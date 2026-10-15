@@ -675,6 +675,25 @@ assert entity(TaravObject).workflow is not None
 '''], check=True, capture_output=True, text=True)
 
 
+def test_future_experiment_preserves_layer_and_runtime_boundaries():
+    """The experiment is explicitly selected above the existing object kernel."""
+    expected = (
+        PACKAGE_ROOT / "l1" / "_future" / "graph.py",
+        PACKAGE_ROOT / "l2" / "_future" / "demo.py",
+        PACKAGE_ROOT / "l3" / "_future" / "server.py",
+    )
+    assert all(path.is_file() for path in expected)
+    assert "._future" not in (PACKAGE_ROOT / "l3" / "runtime.py").read_text()
+    for layer in ("l0", "l1", "l2", "l3"):
+        for path in (PACKAGE_ROOT / layer).rglob("*.py"):
+            if "_future" in path.parts:
+                continue
+            tree = ast.parse(path.read_text())
+            imports = [node.module for node in ast.walk(tree)
+                       if isinstance(node, ast.ImportFrom) and node.module]
+            assert not any("._future" in name for name in imports), path
+
+
 def test_l0_import_does_not_initialize_composed_domains() -> None:
     import subprocess
     import sys

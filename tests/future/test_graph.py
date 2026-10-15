@@ -1,13 +1,20 @@
 """Queries use RDFLib itself against the incrementally contributed graph."""
 
+import importlib.util
+
 import pytest
-from rdflib import Literal
 
 from tarav.l0.kernel import Ship, entity
 from tarav.l1._future import future
-from tarav.l1._future.context import Along, Where
+from tarav.l1._future import FutureObject
 from tarav.l1._future.conversations import AUTHOR, HAS_TURN, IN_CHAT, Conversation, UserTurn
-from tarav.l1._future.graph import Diagram, RDFValue
+
+HAS_RDF = importlib.util.find_spec("rdflib") is not None
+pytestmark = pytest.mark.skipif(not HAS_RDF, reason="Install tarav[future] for RDF checks")
+if HAS_RDF:
+    from rdflib import Literal
+    from tarav.l1._future.context import Along, Where
+    from tarav.l1._future.graph import Diagram, RDFValue
 
 
 def example():
@@ -97,6 +104,26 @@ def test_literal_representation_preserves_language_and_datatype():
     obj = graph.resolve(value)
     assert isinstance(obj, RDFValue)
     assert RDFValue.records.from_record(obj.records.to_record()).value == value
+
+
+def test_merging_explorations_preserves_ships_and_reconciles_runtime_nodes():
+    first, chat, alice, _ = example()
+    second = Diagram()
+    temporary = FutureObject()
+    first.relate(chat, IN_CHAT, temporary)
+    occurrence = second.relate(alice, IN_CHAT, temporary)
+    runtime_ref = first.ref(temporary)
+    incoming_count = second.triple_count
+    first.merge(second)
+    assert first.ref(temporary) == runtime_ref
+    assert first.resolve(first.ref(occurrence)).id == occurrence.id
+    imported = first.resolve(first.ref(occurrence))
+    assert imported.target is temporary
+    assert imported.diagram is first
+    assert second.triple_count == incoming_count
+    count = first.triple_count
+    first.merge(second)
+    assert first.triple_count == count
 
 
 @pytest.mark.parametrize("query", [

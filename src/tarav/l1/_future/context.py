@@ -59,6 +59,8 @@ class Where(ViewRequest):
 
     def __init__(self, predicate, value):
         super().__init__()
+        if value is None:
+            raise TypeError("Where requires a bound RDF value")
         self.predicate, self.value = predicate, value
 
     def accepts(self, current):
@@ -123,6 +125,10 @@ class ContextView(FutureObject):
         return self.location.pattern
 
     @property
+    def bindings(self):
+        return {"focus": self.subject, **dict(self.location.bindings)}
+
+    @property
     def sparql(self):
         if not self.pattern:
             return ""
@@ -144,9 +150,8 @@ class ContextView(FutureObject):
     def ls(self):
         if not self.pattern:
             return tuple(ContextViewEntry(self, name) for name in self.available_views())
-        bindings = {"focus": self.subject, **dict(self.location.bindings)}
         result = []
-        for row in self.diagram.query(self.sparql, bindings=bindings):
+        for row in self.diagram.query(self.sparql, bindings=self.bindings):
             target = self.diagram.resolve(row.target)
             predicate = self.diagram.resolve(row.predicate)
             incoming = self.qualifications[0] == "in"
