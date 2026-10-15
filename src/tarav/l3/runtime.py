@@ -156,6 +156,7 @@ class TaravRuntime:
         from tarav.l1.stdlib.prefix.commands import register_prefix_commands
         from tarav.l1.project.commands import register_project_commands
         from tarav.l3.project.commands import register_harness_commands
+        from tarav.l3.project.system import register_init_command
         from tarav.l1.python_env import register_python_commands
         from tarav.l3.run import register_run_command
         from tarav.l3.check import register_check_command
@@ -198,6 +199,7 @@ class TaravRuntime:
             skills_registrar=register_skills_commands,
             harness_registrar=register_harness_commands,
         )
+        register_init_command(subparsers)
         register_reading_club_commands(subparsers)
         register_system_commands(subparsers)
         register_python_commands(subparsers)
@@ -308,6 +310,7 @@ def create_runtime(
     from tarav.l1.project import ProjectWorkflow, TaravProject
     from tarav.l2.project import Project
     from tarav.l2.project.runner import PROJECT_RUNNER_RECORD_TYPES
+    from tarav.l2.project.system import SYSTEM_RECORD_TYPES
     from tarav.l2.project.models import ProjectModelsWorkflow
     from tarav.l2.project.wiki import ProjectWikiWorkflow
     from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow, SituationPOI, situation_links
@@ -435,6 +438,7 @@ def create_runtime(
                 *PROJECT_FILES_RECORD_TYPES,
                 *PYTHON_RECORD_TYPES,
                 *PROJECT_RUNNER_RECORD_TYPES,
+                *SYSTEM_RECORD_TYPES,
                 TaravProgram,
                 ProjectProgram,
                 *OPERATOR_CONTEXT_RECORD_TYPES,

@@ -145,7 +145,7 @@ Namespace composition checks apply to every TaravType, including class-only
 capabilities; independent contributions require an explicitly combined class.
 The existing `class_context` and `obj_context` population hooks remain intact.
 Kernel holds only the bound interface and host hooks, without importing Context.
-<!-- tarav.context 473c89a0:52d399e8d65f61fc -->
+<!-- tarav.breadcrumb 08ffcac5c6a08768e8a5b53a7f20b01e91d564d0993d14e3a2ba4608e5aa9cb3 -->
 
 `SomeType.context.model` is a partial Type model, also exposed as `model` in the
 runtime Type Context. An object's namespace opens its Type's model, not an
@@ -153,7 +153,7 @@ instance model. `tarav.l1.context.models` owns `TypePath`, an Entity with a
 current path label, and `TypeModel`, a computed read-only Context folder rooted
 at the existing Type Ship. Entries are keyed by Ship; paths are lookup labels.
 Every node has its own ordinary Context. The model may have no member nodes.
-<!-- tarav.context 473c89a0:7ef12f9536d4a790 -->
+<!-- tarav.breadcrumb 2448699db88d6552d5ee7820f453d4a06053da01c68f3297c462e445d4a31da2 -->
 
 The namespace's `model_nodes()` declares class-owned nodes. ContextService
 composes these with its external providers and retained `model` folder, which
@@ -161,7 +161,7 @@ reuses Context's Archive backing. Reading never creates storage. Explicit
 `put_model_node(Type, node)` retains a new Ship with Archive's create-only
 placement policy. Same-Ship conflicts and ambiguous path lookups are reported;
 model completeness and correspondence with Python paths are not enforced.
-<!-- tarav.context 473c89a0:0dfbeaeb402e0305 -->
+<!-- tarav.breadcrumb a879b73240b82b56e386b12073f47b1db810f17fd1b445371bc2797333be06ad -->
 
 The Context Workflow uses Record Archive for durable roots under
 `~/Documents/tarav/archive/<context-workflow-ship>/<subject-ship>/`. The root is
@@ -461,6 +461,19 @@ interpreter.
 <!-- tarav.breadcrumb 8ffca46a4e978d081bb7a558f1ea51f3d807a474c4a46f1c92352463d7e1629d -->
 <!-- tarav.breadcrumb 806fd99acd25e2fd66cf0c4509e4687ce68c7bf05f2b369e92692a3f499f325d -->
 <!-- tarav.breadcrumb bc39462931a983db3b9c5c92904046a92839d3dc3ee4d7923899fd369d658267 -->
+
+A machine has one Tarav System Project, an ordinary Project at
+`~/Documents/tarav/system/` from which work over all Projects is done;
+Projects never know about it. `TaravSystemProject` (`Tarav.Project.System`,
+`tarav.l2.project.system`) is its base Type; the machine's own Type
+subclasses it in its harness. Its record adds `active`, the Projects it works
+on, kept by hand; its suite adds one `ActiveProjectCheck` per active Project,
+which loads that Project through its own harness, in its own environment,
+and reports one that is missing or does not load. `tarav init --system`
+(`tarav.l3.project.system`) creates it once per machine: the folder, its
+harness (`scaffold(base=...)`), its environment and a Git repository.
+<!-- tarav.breadcrumb 91260ffaa49dae900702a655cdbbaeacab670134cdeec45099dfd6bfbfdf27b3 -->
+<!-- tarav.breadcrumb f4f493ec99d35a8bef4ea8b09e87c6a0305d758e6412dd80d6309fc546d4af69 -->
 
 `TaravProject` is a `CheckProvider` (`tarav.l1.checks`) whose base suite
 checks its Skillware-produced agents file through `project.agents.agents_md`.

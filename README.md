@@ -95,6 +95,22 @@ The same filesystem operations are available through
 launch are in `tarav.l3.project.harness`. Normal Project discovery neither installs
 packages nor imports the Project's specialization.
 
+### The System Project
+
+Each machine has one Tarav System Project, from which work over all Projects
+is done; Projects never know about it. Create it once:
+
+```sh
+tarav init --system --tarav-source /path/to/tarav-py
+```
+
+It lives at `~/Documents/tarav/system/`, a Project with its own Type,
+environment and Git repository. Its `.tarav/project.json` lists the Projects
+it works on, by hand: `"active": ["~/projects/my-project", …]`.
+`tarav status --project ~/Documents/tarav/system` loads each one through its
+own harness and reports those that are missing or do not load.
+<!-- tarav.breadcrumb 13ce5fe0f9a85d8170df5351149a085f7979f9bfb7ba8af03b5f30ad9b608345 -->
+
 ### Root Projects and shared environments
 
 A development folder made of several Projects can be a root Project

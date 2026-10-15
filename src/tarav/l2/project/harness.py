@@ -135,6 +135,7 @@ class ProjectHarness(TaravObject):
         tarav_source: Path | str,
         class_name: str = "MyProject",
         adopt: bool = False,
+        base: str = "tarav.l1.project:TaravProject",
     ) -> ProjectHarness:
         """Create a harness in `.tarav/`: a package defining the Project's Type, the
         manifest and the `harness` of project.json. Edited files are preserved.
@@ -142,9 +143,14 @@ class ProjectHarness(TaravObject):
         tarav_source explicitly selects a local Tarav checkout or wheel. An
         existing untyped or base-typed marker requires adopt; a marker that
         already has a harness or a specialized Type is never reassigned.
+        `base` is the generated class's base, as `module:Class`.
         """
         _identifier(package, "Package")
         _identifier(class_name, "Class name")
+        base_module, _, base_name = base.partition(":")
+        if not base_module or not all(part.isidentifier() for part in base_module.split(".")):
+            raise ProjectHarnessError(f"base must be module:Class: {base!r}")
+        _identifier(base_name, "Base class name")
         if class_name in {"TaravClass", "TypeShip", "PROJECT_WORKFLOW_SHIP"}:
             raise ProjectHarnessError("Class name conflicts with generated imports")
         if package == "tarav":
@@ -205,7 +211,7 @@ class ProjectHarness(TaravObject):
         package_root.mkdir(parents=True, exist_ok=True)
         files = {
             "__init__.py": f'"""Executable Project harness."""\n\nfrom .project import {class_name}\n\n__all__ = [{class_name!r}]\n',
-            "project.py": _project_source(class_name, type_ship, type_name),
+            "project.py": _project_source(class_name, type_ship, type_name, base),
         }
         for name, text in files.items():
             target = package_root / name
@@ -290,15 +296,16 @@ members = []
 
 
 # tarav.breadcrumb d6ba8cb735d3af7f6f1877c97fa39b76945f91ef13cab93971e91dbcfe147568
-def _project_source(class_name: str, type_ship: str, type_name: str) -> str:
+def _project_source(class_name: str, type_ship: str, type_name: str, base: str) -> str:
+    base_module, _, base_name = base.partition(":")
     return f'''"""This Project's code-owned specialization; extend it with Project operations."""
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.project import TaravProject
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
+from {base_module} import {base_name}
 
 
-class {class_name}(TaravProject):
+class {class_name}({base_name}):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
