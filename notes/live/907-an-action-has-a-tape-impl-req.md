@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: ready.
+Status: implemented.
 
 An action that reopens forgets how it closed: reopening clears its closing
 record, which then survives only in the Git history of the registry. This
@@ -108,7 +108,7 @@ entry, a closing record expandable, repository states as tags.
 Product project: `tarav-py`; also `vscode-tarav-center`. Wiki owner:
 `tarav-md`, root `tarav-md/notes/wiki/`. Relevant notes: `poi-system.md`,
 `daily/2026-10-14.md`. Supporting chat: session `abd0372d`. Capture status:
-pending.
+done (`poi-system.md`, section "An action has a tape"; daily 2026-10-15).
 
 ## Execution.Plan
 
@@ -132,3 +132,30 @@ deviation trigger: a reader that cannot be served by the properties.
 ## Impl.Log
 
 - Design written from the discussion of 2026-10-14.
+- Start checkpoint: tarav-md `7a7dfe9` (the commit rule of the skill); tarav-py
+  was clean.
+- Slice 1 (`6a19f68`): `tarav.l1.actions.tape` with `TapeEntry`,
+  `StatusChange` and the five entry Types, each holding its state as
+  attributes (the Record contract test requires it). `ActionRun` stores
+  `tape`; `state`, `exit`, `started_at`, `opened_at`, `closed_at`,
+  `closing_record()` and `closing()` read it; a record must start with
+  `Opened`. `tarav.l1.actions.git` is deleted; its rules live in
+  `tape.closed()` and `tape.clean()`. The context entry `tape` (entries and
+  advice) replaces `closing`, `closings` and `git`. Tests read the tape.
+- Slice 2 (registry `65327fa`): a one-off script rebuilt 160 records; the
+  opening always comes from `started_at` (`02063ac8`'s Git log did not start
+  at its opening), Git entries added on top. `fe1e4dca`: Opened, Clean,
+  Closed (gone, its record recovered from registry commit `93ee414`),
+  Reopened. `tarav status` still gives the same 15 open actions.
+- Slice 3 (extension `cab36ac`, 0.0.18 installed): script shape 8 gives the
+  page `standing` (first opened, opened, closed, closing); the action page
+  has a Tape section (one row per entry, the closing record expandable,
+  repository states as tags). The old closings table is gone.
+- Slice 4: `ARCHITECTURE.md` (the tape, closing records on `Closed`
+  entries) and `tarav-pkg/references/step-actions.md` (tape paragraph,
+  scenarios Git and Reopen; source block compiled).
+- Checks: Ruff clean; the whole `tests/` 442 passed, 1 failed
+  (`test_scoped_lines`, another agent's area); doc and architecture tests
+  after slice 4: 54 passed.
+- Breadcrumbs: audited ok on `tape.py`, `ARCHITECTURE.md`, this note and the
+  Wiki.
