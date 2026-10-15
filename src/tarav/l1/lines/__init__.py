@@ -93,9 +93,13 @@ class LineScope(ContextFolder):
                           name="Tarav.Lines.Scope", workflow=LINES_WORKFLOW_SHIP)
 
     @classmethod
-    def for_subject(cls, subject):
-        if not isinstance(subject, Line):
-            raise TypeError("LineScope requires a Line")
+    def accepts(cls, scope):
+        # tarav.context 473c89a0:926997d41da95b26
+        return not scope.views and isinstance(scope.subject, Line)
+
+    @classmethod
+    def for_context(cls, current):
+        subject = current.subject
         return cls(subject, lambda builder: builder.add("scope", opener=lambda: subject.scope))
 
     @property

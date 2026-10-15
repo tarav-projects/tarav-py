@@ -10,7 +10,10 @@ from pydantic import ConfigDict, Field
 from tarav.l0.kernel.identity import Ship, TypeShip
 from tarav.l0.kernel.records import TaravClass, TaravEntity, TaravType, entity
 
-from . import CONTEXT_WORKFLOW_SHIP, ContextBuilder, ContextFolder, ContextType
+from . import (
+    CONTEXT_WORKFLOW_SHIP, ContextBuilder, ContextFolder, ContextScope, ContextType,
+    ContextViewEntry, UnsupportedContextView,
+)
 
 
 # tarav.context 473c89a0:7ef12f9536d4a790
@@ -78,8 +81,22 @@ class TypeModel(ContextFolder):
         if not isinstance(subject, type) or not issubclass(subject, TaravType):
             raise TypeError("Type models require a TaravType class")
         super().__init__(subject, self._populate)
+        self.context_scope = ContextScope(subject, (type(self),))
         self.root = entity(subject)
         self._nodes = nodes
+
+    @classmethod
+    def accepts(cls, scope):
+        return not scope.views and isinstance(scope.subject, type) and issubclass(scope.subject, TaravType)
+
+    @classmethod
+    def for_context(cls, current):
+        """Use the host's model contribution without importing its storage service."""
+        try:
+            model = current.open("model")
+        except KeyError as exc:
+            raise UnsupportedContextView("No Type model contribution is configured") from exc
+        return model
 
     def _populate(self, builder: ContextBuilder) -> None:
         builder.add(str(self.root.id), opener=lambda: self.root, description="Type root")
@@ -99,7 +116,7 @@ class TypeModel(ContextFolder):
 
     def nodes(self) -> tuple[TypePath, ...]:
         """Return declared members, excluding the existing Type root."""
-        return tuple(entry.open() for entry in self.ls()[1:])
+        return tuple(entry.open() for entry in self.ls()[1:] if not isinstance(entry, ContextViewEntry))
 
     def at(self, path: str) -> TypePath | TaravClass:
         """Select a current path label; the empty path denotes the Type root."""

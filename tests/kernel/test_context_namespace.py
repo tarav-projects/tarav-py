@@ -30,8 +30,8 @@ def test_named_and_callable_operations_preserve_default_and_selected_views(tmp_p
         assert Example.context.explore().subject is Example
         assert Example.context().subject is Example
         poi = SituationPOI(message="Context namespace test", situation={"path": "a"})
-        assert isinstance(poi.context(type=ObjectGroup), ObjectGroup)
-        assert isinstance(poi.context.explore(type=ObjectGroup), ObjectGroup)
+        assert isinstance(poi.context(views=(ObjectGroup,)), ObjectGroup)
+        assert isinstance(poi.context.explore(views=(ObjectGroup,)), ObjectGroup)
         assert not callable(NamespaceBase(obj))
     finally:
         set_runtime(old)
@@ -48,8 +48,8 @@ def test_call_dispatches_through_override_and_super_with_concrete_binding():
             )
 
         class Context(Example.Context):
-            def explore(self, *, type=None):
-                return (self.obj, type, super().model_nodes())
+            def explore(self, *, views=()):
+                return (self.obj, views, super().model_nodes())
 
     class Inherited(Custom):
         @classmethod
@@ -60,8 +60,8 @@ def test_call_dispatches_through_override_and_super_with_concrete_binding():
             )
 
     obj = Inherited()
-    assert obj.context(type=ObjectGroup) == (obj, ObjectGroup, ())
-    assert Inherited.context(type=ObjectGroup) == (Inherited, ObjectGroup, ())
+    assert obj.context(views=(ObjectGroup,)) == (obj, (ObjectGroup,), ())
+    assert Inherited.context(views=(ObjectGroup,)) == (Inherited, (ObjectGroup,), ())
 
 
 def test_independent_class_only_types_require_explicit_context_composition():

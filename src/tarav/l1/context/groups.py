@@ -14,7 +14,6 @@ Building a group reads what is there; it never runs anything.
 
 from __future__ import annotations
 
-import builtins
 import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -22,7 +21,7 @@ from dataclasses import dataclass
 from tarav.l0.kernel.identity import TypeShip
 from tarav.l0.kernel.records import TaravClass, TaravObject, entity
 
-from . import CONTEXT_WORKFLOW_SHIP, ContextFolder
+from . import CONTEXT_WORKFLOW_SHIP, ContextFolder, ContextViewEntry
 
 
 # tarav.breadcrumb a2790b232f6f2badcfb8e0d1a6978a2137b26a8123bc81d57cea48e60e543981
@@ -150,9 +149,13 @@ class ObjectGroup(ContextFolder):
                           name="Tarav.Context.ObjectGroup", workflow=CONTEXT_WORKFLOW_SHIP)
 
     @classmethod
-    def for_subject(cls, subject):
-        if not isinstance(subject, TaravObject) or not _functions(subject):
-            raise TypeError(f"No links are registered for {builtins.type(subject).__name__}")
+    def accepts(cls, scope):
+        # tarav.context 473c89a0:926997d41da95b26
+        return not scope.views and isinstance(scope.subject, TaravObject) and bool(_functions(scope.subject))
+
+    @classmethod
+    def for_context(cls, current):
+        subject = current.subject
         group = members(subject)
 
         def populate(builder) -> None:
@@ -164,7 +167,7 @@ class ObjectGroup(ContextFolder):
 
     @property
     def members(self) -> tuple[Member, ...]:
-        return tuple(entry.open() for entry in self.ls())
+        return tuple(entry.open() for entry in self.ls() if not isinstance(entry, ContextViewEntry))
 
 
 def _names(group: tuple[Member, ...]) -> list[tuple[str, Member]]:

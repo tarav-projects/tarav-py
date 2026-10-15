@@ -57,6 +57,18 @@ def test_empty_type_model_has_existing_root_and_reading_creates_nothing(runtime)
     assert not runtime.contexts.archive_root.exists()
 
 
+# tarav.context 473c89a0:926997d41da95b26
+def test_type_model_accessor_path_and_view_selection_have_the_same_scope(runtime):
+    direct = ModeledType.context(views=(TypeModel,))
+    by_path = ModeledType.context().open("model")
+    accessor = ModeledType.context.model
+    for model in (direct, by_path, accessor):
+        assert model.context_scope.subject is ModeledType
+        assert model.context_scope.views == (TypeModel,)
+        assert model.at("contains").id == MEMBER_SHIP
+    assert not runtime.contexts.archive_root.exists()
+
+
 # tarav.context 473c89a0:3fea6e90a968360c
 def test_class_and_external_nodes_compose_lazily_and_dedupe_identical_ships(runtime):
     calls = []

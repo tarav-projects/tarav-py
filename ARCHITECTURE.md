@@ -127,9 +127,9 @@ The registries keep mechanics separate from semantics:
 `tarav.l1.context.explore()` exposes standalone navigation and accepts explicit
 contributors. `tarav.l3.context.context()` adds the current runtime's retained
 entries. Both invoke `class_context()` for a Type and `obj_context()` for an
-Object, then return a
+Object. With no requested views they return a
 `ContextExplorer`: a stateful explorer with history across nested folders and
-jumps to other subjects. A `Context` is a read-only `TaravObject` folder with
+jumps to other subjects. A `ContextView` is a read-only `TaravObject` folder with
 named or positional entries and no cursor state. Each `ContextEntry` is an
 attachment point at one path; `open()` returns its value, either another Context
 folder or any other `TaravObject`. Folder status follows the opened value,
@@ -139,13 +139,36 @@ origin. `context(entry)` follows its value in that same explorer; calling
 share the subject root's namespace.
 
 `TaravType.Context` is the selected bound namespace on Types and objects.
-`subject.context.explore(type=...)` opens a view; `subject.context(type=...)`
+`subject.context.explore(views=(...))` opens a view; `subject.context(views=(...))`
 delegates to that same overridable operation. NamespaceBase stays noncallable.
 Namespace composition checks apply to every TaravType, including class-only
 capabilities; independent contributions require an explicitly combined class.
 The existing `class_context` and `obj_context` population hooks remain intact.
 Kernel holds only the bound interface and host hooks, without importing Context.
 <!-- tarav.breadcrumb 08ffcac5c6a08768e8a5b53a7f20b01e91d564d0993d14e3a2ba4608e5aa9cb3 -->
+
+ContextScope carries the subject and ordered qualifications. Static ContextView
+classes and parameterized ContextViewRequest objects apply left to right;
+`accepts(scope)` declares compatibility without running a view factory.
+`for_context(current)` or a request's `apply(current)` opens the next view.
+The dispatcher preserves prior qualifications and rejects unsupported steps or
+implicit subject changes. Scope is exposed as `context_scope`, distinct from
+domain relationships such as LineScope.scope. Python's old `Context` view-class
+name and `type=` selector are removed; ontology Ships and Record labels stay
+stable. No generic compatibility solver or persisted request schema is implied.
+<!-- tarav.context 473c89a0:3cae519d8e79ad5b -->
+
+`ContextBuilder.add_view(name, views=(...))` contributes a typed ContextViewEntry.
+Listing offers supported steps without opening them. Entry opening and direct
+view selection reuse `refine(views=...)`. ContextService registers named views;
+the runtime offers compatible registrations on every derived view, and queries
+share that registry. Generic same-subject folders inherit active qualifications.
+Entering another subject's Context starts a new scope and retains explorer
+history. Entries can still open ordinary nodes directly. Specialized retained
+entry Types, metadata and cargo survive listing and navigation; `put_entry` and
+`write_entry` preserve their registered Record Types without generic rewrapping.
+<!-- tarav.context 473c89a0:9b167562b00b0279 -->
+<!-- tarav.context 473c89a0:5696389e9d36d4fc -->
 
 `SomeType.context.model` is a partial Type model, also exposed as `model` in the
 runtime Type Context. An object's namespace opens its Type's model, not an
@@ -842,17 +865,19 @@ The registry is best effort; a failure is logged and the run is unchanged.
 
 ### Context queries; the POI is a flag
 
-`tarav context --id <identifier> [--view <name>] [--path a/b]` is the shell door
+`tarav context --id <identifier> [--view <name> ...] [--path a/b]` is the shell door
 to the same Context that scripts reach through `.context`. `tarav.l1.context.query`
 owns the typed `ContextQuery` (an identity query by default), a
 `ContextQueryService` whose resolvers are Search engines, and named views, which
-are `Context` subclasses opened through `explore(subject, type=...)`. The CLI
+are view classes or typed requests opened through `explore(subject, views=...)`.
+Repeated `--view` options apply left to right. Listings expose entry Types and
+JSON includes active qualifications alongside available next views. The CLI
 layer composes the installed resolvers and views; the `context` subsystem imports
 no workflow that contributes to it. One match opens, several are listed, and a
 unique prefix is enough.
 
 `ObjectGroup` (`tarav.l1.context.groups`, `--view object-group`) is the view
-of the objects that belong together: `obj.context(type=ObjectGroup)`. No
+of the objects that belong together: `obj.context(views=(ObjectGroup,))`. No
 method is added to objects. Each workflow registers, with `register_links`,
 a function naming the links of one Type's objects as pairs of `Member`s,
 upstream first, and the runtime registers them: POI (situation → POI),

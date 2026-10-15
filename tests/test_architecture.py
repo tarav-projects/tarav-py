@@ -739,7 +739,8 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
         StoredVectorContext,
         SubjectContextRoot,
     )
-    from tarav.l1.context import Context, ContextEntry, ContextExplorer
+    from tarav.l1.context import ContextView, ContextEntry, ContextExplorer
+    from tarav.l1.context import ContextScope, ContextViewRequest
     from tarav.l1.context.models import TypeModel, TypePath
     from tarav.l0.kernel.records import TaravObject
     from tarav.l3.runtime import create_runtime
@@ -774,7 +775,8 @@ def test_context_storage_and_test_workspace_stay_above_kernel() -> None:
     assert runtime.records.resolve_type("Tarav.Context.TypePath") is TypePath
     assert entity(TypeModel).workflow_ship == entity(TypePath).workflow_ship
     assert "l3.runtime" not in imports.get("context.models", set())
-    assert issubclass(Context, TaravObject)
+    assert issubclass(ContextView, TaravObject)
+    assert ContextView.__module__ == ContextScope.__module__ == ContextViewRequest.__module__ == "tarav.l1.context"
     assert (
         runtime.records.resolve_type("Tarav.Context.StoredDictionary")
         is StoredDictionaryContext

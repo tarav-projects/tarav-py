@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import copy
 from pathlib import Path
 from typing import Literal
 
@@ -13,13 +14,16 @@ from tarav.l0._core.persistence import atomic_write_json
 from tarav.l0.kernel.current import current_records
 from tarav.l1.context import (
     CONTEXT_WORKFLOW_SHIP,
-    Context,
+    ContextView,
     ContextBuilder,
     ContextEntry,
     ContextObject,
     ContextSubject,
     ContextFolder,
     ContextList,
+    ContextScope,
+    ContextViewEntry,
+    ViewSelection,
 )
 from tarav.l0.kernel.identity import Ship, TypeShip
 from tarav.l0.kernel.records import TaravClass, TaravEntity, TaravObject, TaravType, entity
@@ -201,6 +205,14 @@ class ContextService:
         )
         self.records = records
         self._model_providers: list[ModelProvider] = []
+        self.views: dict[str, ViewSelection] = {}
+
+    def register_view(self, name: str, view: ViewSelection) -> None:
+        """Offer a named contextualization through both discovery and queries."""
+        ContextViewEntry(name, views=(view,))  # Validate the name and selector once.
+        if name in self.views:
+            raise ValueError(f"View already registered: {name}")
+        self.views[name] = view
 
     def register_model_provider(self, provider: ModelProvider) -> None:
         """Contribute Type nodes from an external workflow, without copying them."""
@@ -225,7 +237,9 @@ class ContextService:
             for provider in tuple(self._model_providers):
                 yield from provider(subject)
 
-        return TypeModel(subject, nodes)
+        model = TypeModel(subject, nodes)
+        model._view_contributors = (self.contribute_views,)
+        return model
 
     def put_model_node(self, subject: type[TaravType], node: TypePath) -> ContextEntry:
         """Retain a new node under its Ship, preserving Archive's create-only policy."""
@@ -348,6 +362,16 @@ class ContextService:
             subject=subject,
         )
 
+    # tarav.context 473c89a0:ba32e41d46ab46db
+    def put_entry(
+        self, subject: ContextSubject, name: str, entry: ContextEntry
+    ) -> ContextEntry:
+        """Retain a registered typed relationship entry without rewrapping it."""
+        archive = self.subject_archive(subject)
+        if archive is None:
+            raise FileNotFoundError("Create the subject Context Archive first")
+        return self.write_entry(archive, name, entry)
+
     def write(
         self,
         archive: ArchiveFolder | ArchiveList,
@@ -358,28 +382,36 @@ class ContextService:
     ) -> ContextEntry:
         """Wrap selected cargo in Context semantics at one Archive placement."""
 
-        if isinstance(cargo, Context):
+        if isinstance(cargo, ContextView):
             raise TypeError("Create Context folders with create_folder()")
-        wrapper = ContextEntry(cargo=cargo, description=description)
+        return self.write_entry(archive, placement, ContextEntry(cargo=cargo, description=description))
+
+    def write_entry(
+        self, archive: ArchiveFolder | ArchiveList, placement: str | int | None,
+        entry: ContextEntry,
+    ) -> ContextEntry:
+        """Write one concrete entry Type using ordinary Archive placement."""
+        if not isinstance(entry, ContextEntry):
+            raise TypeError("Context writer requires a ContextEntry")
         if isinstance(archive, ArchiveFolder):
             if not isinstance(placement, str):
                 raise TypeError("Dictionary Context placement must be a name")
-            backing = archive.put(placement, wrapper)
+            backing = archive.put(placement, entry)
         elif isinstance(archive, ArchiveList):
             if placement is None:
-                backing = archive.append(wrapper)
+                backing = archive.append(entry)
             elif isinstance(placement, int) and not isinstance(placement, bool):
-                backing = archive.insert(placement, wrapper)
+                backing = archive.insert(placement, entry)
             else:
                 raise TypeError("Vector Context placement must be an index or None")
         else:
             raise TypeError("Context writer requires a Dictionary or Vector Archive")
-        return ContextEntry(
-            backing.placement,
-            opener=lambda: self._open_stored_entry(backing),
-            backing=backing,
-            description=description,
-        )
+        result = copy(entry)
+        result.placement = backing.placement
+        result.backing = backing
+        result.source = backing.artifact_location()
+        result._bind_record_loader(self._records().from_record)
+        return result
 
     def create_folder(
         self,
@@ -454,6 +486,11 @@ class ContextService:
         if archive is not None:
             self._populate(subject, archive, builder, exclude=("model",) if is_type else ())
 
+    def contribute_views(self, subject: ContextSubject, builder: ContextBuilder) -> None:
+        """Offer supported steps on every derived view, preserving its scope."""
+        for name, view in self.views.items():
+            builder.add_view(name, views=(view,))
+
     def _populate(
         self,
         subject: ContextSubject,
@@ -469,20 +506,26 @@ class ContextService:
             placement = entry.placement
             if placement is None:
                 raise ValueError("Archive entry has no Context placement")
-            attachment = self._folder_attachment(entry) if entry.directory else None
-            builder.add(
-                placement,
-                opener=lambda entry=entry: self._open_entry(subject, entry),
-                backing=entry,
-                description=attachment.description if attachment is not None else None,
-            )
+            if entry.directory:
+                retained = self._folder_attachment(entry)
+                handle = copy(retained)
+                handle._opener = lambda entry=entry: self._open_entry(subject, entry)
+            else:
+                retained = self._records().load(entry.artifact_location())
+                if not isinstance(retained, ContextEntry):
+                    raise TypeError("Context Archive leaf must contain a ContextEntry")
+                handle = copy(retained)
+            handle.placement = placement
+            handle.backing = entry
+            builder.add_entry(handle)
 
     def _folder_attachment(self, entry: ArchiveEntry) -> ContextEntry:
         if not entry.directory:
             raise NotADirectoryError(entry.name)
-        return self._records().load(
-            entry.artifact_location() / "context.json", expected_type=ContextEntry
-        )
+        attachment = self._records().load(entry.artifact_location() / "context.json")
+        if not isinstance(attachment, ContextEntry):
+            raise TypeError("Context folder attachment must be a ContextEntry")
+        return attachment
 
     def _open_entry(self, subject: ContextSubject, entry: ArchiveEntry) -> TaravObject:
         target = self._records().load(entry.artifact_location())
@@ -494,15 +537,13 @@ class ContextService:
             ):
                 if folder.archive != target.id:
                     raise ValueError("Context folder Archive Ship does not match")
-                folder.subject = subject
-                return folder
+                return folder._with_scope(ContextScope(subject))
             if isinstance(target, ArchiveList) and isinstance(
                 folder, StoredVectorContext
             ):
                 if folder.archive != target.id:
                     raise ValueError("Context folder Archive Ship does not match")
-                folder.subject = subject
-                return folder
+                return folder._with_scope(ContextScope(subject))
             raise TypeError("Context folder attachment does not match its Archive")
         if not isinstance(target, ContextEntry):
             raise TypeError("Context Archive leaf must contain a ContextEntry")

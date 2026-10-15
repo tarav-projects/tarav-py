@@ -73,7 +73,7 @@ def test_every_member_opens_the_same_group_upstream_first():
     seed = Seed("apple")
     plant = Plant(seed, ["b", "a"])
 
-    from_seed, from_plant = (explore(subject, type=ObjectGroup) for subject in (seed, plant))
+    from_seed, from_plant = (explore(subject, views=(ObjectGroup,)) for subject in (seed, plant))
 
     expected = [
         ("soil", {"type": "Tarav.Context.Group.Member", "role": "soil", "value": {"ph": 6.5}}),
@@ -94,12 +94,12 @@ def test_every_member_opens_the_same_group_upstream_first():
 def test_a_member_known_only_by_its_type_is_not_followed():
     seed = Seed("pear")  # no plant: its links stop at the seed
 
-    assert [entry.name for entry in explore(seed, type=ObjectGroup).ls()] == ["soil", "seed"]
+    assert [entry.name for entry in explore(seed, views=(ObjectGroup,)).ls()] == ["soil", "seed"]
 
 
 def test_an_object_without_links_has_no_group():
-    with pytest.raises(TypeError, match="No links are registered for Pebble"):
-        explore(Pebble(), type=ObjectGroup)
+    with pytest.raises(TypeError, match="ObjectGroup does not support"):
+        explore(Pebble(), views=(ObjectGroup,))
 
 
 def test_a_member_round_trips_through_its_record():

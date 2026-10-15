@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from tarav.l0.kernel import FileRecord, TaravClass, TaravObject, TaravType, TaravTypeDeclarationError, TypeShip, entity
-from tarav.l1.context import Context, ContextFolder, ContextBuilder, ContextExplorer, explore as context
+from tarav.l1.context import ContextView, ContextFolder, ContextBuilder, ContextExplorer, explore as context
 
 
 class ContextExample(TaravObject):
@@ -75,7 +75,7 @@ def test_object_context_is_a_read_only_cursor_over_nested_contexts() -> None:
     assert view.pwd() == "/"
 
     class_view = view.open("class")
-    assert isinstance(class_view, Context)
+    assert isinstance(class_view, ContextView)
     assert class_view.subject is ContextExample
 
     assert view.cd("folder") is view
@@ -92,15 +92,15 @@ def test_object_context_is_a_read_only_cursor_over_nested_contexts() -> None:
 
 
 def test_context_folders_are_tarav_objects() -> None:
-    assert issubclass(Context, TaravType)
-    assert issubclass(Context, TaravObject)
+    assert issubclass(ContextView, TaravType)
+    assert issubclass(ContextView, TaravObject)
     assert issubclass(ContextExplorer, TaravType)
 
-    class_view = context(Context)
+    class_view = context(ContextView)
     class_representation = class_view.open("entity")
     assert isinstance(class_representation, TaravClass)
-    assert class_representation.target is Context
-    assert class_representation.id == entity(Context).id
+    assert class_representation.target is ContextView
+    assert class_representation.id == entity(ContextView).id
 
     assert context(class_view.root).subject is class_view.root
 

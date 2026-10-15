@@ -110,15 +110,16 @@ class TaravType:
         def _owner(self) -> type[TaravType]:
             return self.obj if isinstance(self.obj, type) else type(self.obj)
 
-        def explore(self, *, type=None):
+        # tarav.context 473c89a0:3cae519d8e79ad5b
+        def explore(self, *, views=()):
             """Open the subject's default explorer or a selected Context view."""
             if _context_resolver is None:
                 raise RuntimeError("Context resolution has not been configured")
-            return _context_resolver(self.obj, type=type)
+            return _context_resolver(self.obj, views=views)
 
-        def __call__(self, *, type=None):
+        def __call__(self, *, views=()):
             """Shorthand for the selected namespace's exploration operation."""
-            return self.explore(type=type)
+            return self.explore(views=views)
 
         @property
         def model(self):

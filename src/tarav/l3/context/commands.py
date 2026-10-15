@@ -7,6 +7,7 @@ import json
 
 from tarav.l0._core.errors import CliError
 from tarav.l1.context.query import ContextQueryService, IdentityContextQuery
+from tarav.l0.kernel import entity
 
 
 def _record(value) -> object:
@@ -17,14 +18,15 @@ def _record(value) -> object:
 
 
 def _listing(target) -> list[dict[str, object]]:
-    return [{"name": entry.name, "description": entry.description} for entry in target.ls()]
+    return [{"name": entry.name, "type": entity(type(entry)).name,
+             "description": entry.description} for entry in target.ls()]
 
 
 # tarav.breadcrumb bf3dacc3977903e5c373e142f5942adca5b966ddf5b9611c1024700e3119614b
 def _context(args: argparse.Namespace, *, service: ContextQueryService) -> int:
     path = [part for part in (args.path or "").split("/") if part]
     try:
-        answer = service.open(IdentityContextQuery(args.id, view=args.view, path=path))
+        answer = service.open(IdentityContextQuery(args.id, views=args.views, path=path))
     except (KeyError, TypeError, ValueError) as exc:
         raise CliError(str(exc.args[0]) if exc.args else str(exc)) from exc
     if answer.subject is None:
@@ -48,21 +50,29 @@ def _context(args: argparse.Namespace, *, service: ContextQueryService) -> int:
     location = "/" + "/".join(answer.location)
     listing = _listing(answer.target) if hasattr(answer.target, "ls") else None
     body = None if listing is not None else _record(answer.target)
+    scope = getattr(answer.target, "context_scope", None)
+    qualifications = [
+        {"type": entity(view).name, "ship": str(entity(view).id)}
+        if isinstance(view, type) else view.records.to_record()
+        for view in scope.views
+    ] if scope is not None else []
     if args.json:
         print(json.dumps({
             "identifier": candidate.identifier, "label": candidate.label, "resolver": name,
-            "view": args.view, "views": list(answer.views), "location": location,
+            "selected_views": args.views, "views": list(answer.views), "location": location,
+            "qualifications": qualifications,
             "entries": listing, "value": body}, indent=2, default=str))
         return 0
     print(f"{candidate.identifier}  {candidate.label}")
-    print(f"view: {args.view or 'general'}   location: {location}")
-    others = [view for view in answer.views if view != args.view]
+    view_label = " → ".join(args.views) or " → ".join(view["type"] for view in qualifications) or "general"
+    print(f"view: {view_label}   location: {location}")
+    others = list(answer.views)
     if others:
         print("other views: " + ", ".join(f"--view {view}" for view in others))
     if listing is not None:
         print("entries (open one with --path <name>):")
         for row in listing:
-            print(f"  {row['name']}" + (f"  — {row['description']}" if row["description"] else ""))
+            print(f"  {row['name']} [{row['type']}]" + (f"  — {row['description']}" if row["description"] else ""))
         return 0
     text = json.dumps(body.get("value", body) if isinstance(body, dict) else body,
                       indent=2, default=str).splitlines()
@@ -73,7 +83,7 @@ def _context(args: argparse.Namespace, *, service: ContextQueryService) -> int:
 
 
 def _describe(args: argparse.Namespace) -> dict[str, object]:
-    return {"id": args.id, "view": args.view, "path": args.path}
+    return {"id": args.id, "views": args.views, "path": args.path}
 
 
 def register_context_command(
@@ -97,7 +107,9 @@ def register_context_command(
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--id", required=True, help="Identifier, or a unique prefix of it.")
-    parser.add_argument("--view", help="Named Context view; default is the general view.")
+    # tarav.context 473c89a0:4c4bb8bf8f117d07
+    parser.add_argument("--view", action="append", dest="views", default=[],
+                        help="Named Context view; repeat to qualify left to right.")
     parser.add_argument("--path", help="Entries to follow inside the Context, a/b/c.")
     parser.add_argument("--limit", type=int, default=60,
                         help="Maximum lines printed for one opened value.")

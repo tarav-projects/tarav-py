@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import builtins
-
 from collections.abc import Callable, Iterable, Mapping
 from copy import copy
 from dataclasses import dataclass
+from types import MethodType
 from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict
 
 from tarav.l0.kernel.identity import TypeShip, WorkflowShip
 from tarav.l0.kernel.explorer import Explorer, ExplorerEntry, ExplorerFolder, ExplorerList
-from tarav.l0.kernel.records import TaravClass, TaravObject, TaravType, entity
+from tarav.l0.kernel.records import TaravClass, TaravEntity, TaravObject, TaravType, entity
 
 
 CONTEXT_WORKFLOW_SHIP = WorkflowShip("ae6fb02b-b82f-4f64-82e8-67f28a76d179")
@@ -44,6 +43,55 @@ class ContextObject(TaravObject, ContextType):
 ContextSubject = type[TaravType] | TaravObject
 ContextPopulator = Callable[["ContextBuilder"], None]
 ContextContributor = Callable[[ContextSubject, "ContextBuilder"], None]
+
+
+class UnsupportedContextView(TypeError):
+    """A requested view does not support this subject and accumulated context."""
+
+
+# tarav.context 473c89a0:926997d41da95b26
+@dataclass(frozen=True)
+class ContextScope(ContextType):
+    """A subject under ordered, active contextualization qualifications."""
+
+    subject: ContextSubject
+    views: tuple[type[ContextView] | ContextViewRequest, ...] = ()
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls, id=TypeShip("a4f5ac66-b982-49df-bd5b-1f0b95ca986a"),
+            name="Tarav.Context.Scope", workflow=CONTEXT_WORKFLOW_SHIP,
+        )
+
+
+class ContextViewRequest(ContextObject):
+    """A parameterized request declaring accepts(scope) and apply(current).
+
+    Request subclasses own their parameter schemas and compatibility rules.
+    The dispatcher attaches the resulting cumulative scope centrally.
+    """
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls, id=TypeShip("becb8f0a-4cea-47b6-85f6-13fd9bc3ace9"),
+            name="Tarav.Context.ViewRequest", workflow=CONTEXT_WORKFLOW_SHIP,
+        )
+
+    def apply(self, current: ContextView) -> ContextView:
+        raise UnsupportedContextView(f"Unsupported view request: {type(self).__name__}")
+
+    def accepts(self, scope: ContextScope) -> bool:
+        """Declare compatibility without opening a view or any of its values."""
+        return False
+
+
+def _same_subject(left: ContextSubject, right: ContextSubject) -> bool:
+    return left is right or (
+        isinstance(left, TaravEntity) and isinstance(right, TaravEntity)
+        and left.id == right.id
+    )
 
 
 @dataclass(frozen=True)
@@ -116,6 +164,7 @@ class ContextEntry(ExplorerEntry, ContextObject):
         self.explorer: ContextExplorer | None = None
         self._origin: ContextLocation | None = None
         self._origin_history: tuple[ContextLocation, ...] = ()
+        self._context_view: ContextView | None = None
 
     @property
     def name(self) -> str:
@@ -172,7 +221,27 @@ class ContextEntry(ExplorerEntry, ContextObject):
             raise ValueError("Context entry has no cargo")
         if not isinstance(value, TaravObject):
             raise TypeError("Context entry opener must return a TaravObject")
+        parent = self._context_view
+        if isinstance(value, ContextView) and parent is not None:
+            if _same_subject(value.subject, parent.subject):
+                current = parent.context_scope.views
+                selected = value.context_scope.views
+                if not selected:
+                    value = value._with_scope(parent.context_scope)
+                elif selected[:len(current)] != current:
+                    raise UnsupportedContextView("Opened view drops active qualifications")
+            value = value._with_scope(
+                value.context_scope, view_contributors=parent._view_contributors
+            )
         return value
+
+    def _for_view(self, view: ContextView) -> ContextEntry:
+        entry = copy(self)
+        entry._context_view = view
+        entry.explorer = None
+        entry._origin = None
+        entry._origin_history = ()
+        return entry
 
     def _bind_record_loader(self, loader: Callable[[object], TaravObject]) -> None:
         self._cargo_loader = loader
@@ -203,12 +272,14 @@ class ContextBuilder(ContextType):
             name="Tarav.Context.Builder",
         )
 
-    __slots__ = ("subject", "placement_type", "_entries", "_names")
+    __slots__ = ("subject", "context_scope", "placement_type", "_entries", "_names")
 
     def __init__(
-        self, subject: ContextSubject, *, placement_type: type[str] | type[int] = str
+        self, subject: ContextSubject, *, placement_type: type[str] | type[int] = str,
+        scope: ContextScope | None = None,
     ) -> None:
         self.subject = subject
+        self.context_scope = scope or ContextScope(subject)
         self.placement_type = placement_type
         self._entries: list[ContextEntry] = []
         self._names: set[str] = set()
@@ -233,6 +304,8 @@ class ContextBuilder(ContextType):
     def add_entry(self, entry: ContextEntry) -> None:
         """Add a specialized Context entry without erasing its Type."""
 
+        if isinstance(entry, ContextViewEntry) and not entry.accepts(self.context_scope):
+            return
         if type(entry.placement) is not self.placement_type:
             raise TypeError(f"Context placement must be {self.placement_type.__name__}")
         if entry.name in self._names:
@@ -240,12 +313,24 @@ class ContextBuilder(ContextType):
         self._names.add(entry.name)
         self._entries.append(entry)
 
+    def add_view(
+        self, placement: str | int, *, views: Iterable[ViewSelection],
+        description: str | None = None,
+    ) -> None:
+        """Advertise a step using the same derivation as direct view selection."""
+        self.add_entry(ContextViewEntry(placement, views=views, description=description))
+
     def entries(self) -> tuple[ContextEntry, ...]:
         return tuple(self._entries)
 
 
-class Context(ContextObject):
-    """A read-only Context folder; navigation state belongs to the explorer."""
+class ContextView(ContextObject):
+    """A read-only contextualized folder; navigation belongs to the explorer.
+
+    Static view Types declare accepts(scope) and for_context(current). Each
+    derivation receives the preceding view and retains earlier qualifications.
+    The ontology Ship and Record label remain those of the original Context.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -256,17 +341,24 @@ class Context(ContextObject):
             workflow=CONTEXT_WORKFLOW_SHIP,
         )
 
-    __slots__ = ("subject", "_populator", "_entries")
+    __slots__ = ("subject", "context_scope", "_view_contributors", "_populator", "_entries")
     placement_type: ClassVar[type[str] | type[int]] = str
 
     @classmethod
-    def for_subject(cls, subject):
-        """Specializations explicitly declare the subjects they support."""
-        raise TypeError(f"Unsupported context type: {cls.__name__}")
+    def for_context(cls, current: ContextView) -> ContextView:
+        """Specializations explicitly interpret the accumulated input context."""
+        raise UnsupportedContextView(f"Unsupported Context view: {cls.__name__}")
+
+    @classmethod
+    def accepts(cls, scope: ContextScope) -> bool:
+        """Specializations explicitly declare supported cumulative contexts."""
+        return False
 
     def __init__(self, subject: ContextSubject, populator: ContextPopulator) -> None:
         super().__init__()
         self.subject = subject
+        self.context_scope = ContextScope(subject)
+        self._view_contributors: tuple[ContextContributor, ...] = ()
         self._populator = populator
         self._entries: tuple[ContextEntry, ...] | None = None
 
@@ -276,10 +368,53 @@ class Context(ContextObject):
 
     def ls(self) -> tuple[ContextEntry, ...]:
         if self._entries is None:
-            builder = ContextBuilder(self.subject, placement_type=self.placement_type)
+            builder = ContextBuilder(
+                self.subject, placement_type=self.placement_type, scope=self.context_scope
+            )
             self._populator(builder)
-            self._entries = builder.entries()
+            for contribute in self._view_contributors:
+                contribute(self.subject, builder)
+            self._entries = tuple(entry._for_view(self) for entry in builder.entries())
         return self._entries
+
+    def _with_scope(
+        self, scope: ContextScope, *,
+        view_contributors: tuple[ContextContributor, ...] | None = None,
+    ) -> ContextView:
+        """Bind a view without sharing scope or cached entries between routes."""
+        result = copy(self)
+        result.subject = scope.subject
+        result.context_scope = scope
+        if view_contributors is not None:
+            result._view_contributors = view_contributors
+        result._entries = None
+        if isinstance(self._populator, MethodType) and self._populator.__self__ is self:
+            result._populator = self._populator.__func__.__get__(result)
+        return result
+
+    def refine(self, *, views: Iterable[ViewSelection]) -> ContextView:
+        """Apply ordered views while keeping every earlier qualification."""
+        current = self
+        for selector in _view_selections(views):
+            if not selector.accepts(current.context_scope):
+                label = selector.__name__ if isinstance(selector, type) else type(selector).__name__
+                raise UnsupportedContextView(f"{label} does not support the current ContextScope")
+            value = (
+                selector.for_context(current) if isinstance(selector, type)
+                else selector.apply(current)
+            )
+            if not isinstance(value, ContextView) or value is current:
+                raise TypeError("A contextualization must return a new ContextView")
+            if isinstance(selector, type) and not isinstance(value, selector):
+                raise TypeError("View factory returned an incompatible ContextView Type")
+            if not _same_subject(value.subject, current.subject):
+                raise UnsupportedContextView("A view cannot silently change its subject")
+            selected_scope = (*current.context_scope.views, selector)
+            if value.context_scope.views not in ((), current.context_scope.views, selected_scope):
+                raise UnsupportedContextView("View factory returned unrelated qualifications")
+            scope = ContextScope(current.subject, selected_scope)
+            current = value._with_scope(scope, view_contributors=current._view_contributors)
+        return current
 
     def get(self, name: str | int) -> ContextEntry:
         if type(name) is not self.placement_type:
@@ -293,7 +428,7 @@ class Context(ContextObject):
         return self.get(name).open()
 
 
-class ContextFolder(Context, ExplorerFolder):
+class ContextFolder(ContextView, ExplorerFolder):
     """Named Context directory, including an identified subject's root."""
 
     @classmethod
@@ -305,7 +440,7 @@ class ContextFolder(Context, ExplorerFolder):
         )
 
 
-class ContextList(Context, ExplorerList):
+class ContextList(ContextView, ExplorerList):
     """Positional Context directory whose indexes are not identities."""
 
     placement_type: ClassVar[type[str] | type[int]] = int
@@ -317,6 +452,66 @@ class ContextList(Context, ExplorerList):
             id=TypeShip("b41f1e67-71b3-4740-b9ba-5bb56b3429cb"),
             name="Tarav.Context.List",
         )
+
+
+ViewSelection = type[ContextView] | ContextViewRequest
+
+
+def _view_selections(views: Iterable[ViewSelection]) -> tuple[ViewSelection, ...]:
+    if isinstance(views, (str, bytes, type, ContextViewRequest)):
+        raise TypeError("views must be an iterable of view classes or typed requests")
+    selected = tuple(views)
+    if any(not (
+        isinstance(view, type) and issubclass(view, ContextView)
+        or isinstance(view, ContextViewRequest)
+    ) for view in selected):
+        raise TypeError("Each view must be a ContextView class or ContextViewRequest")
+    return selected
+
+
+# tarav.context 473c89a0:9b167562b00b0279
+class ContextViewEntry(ContextEntry):
+    """A computed step that extends the containing view's contextualization."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls, id=TypeShip("da11f81f-41cc-4cdd-8f61-e317727b2d99"),
+            name="Tarav.Context.ViewEntry", workflow=CONTEXT_WORKFLOW_SHIP,
+        )
+
+    def __init__(
+        self, placement: str | int, *, views: Iterable[ViewSelection],
+        description: str | None = None,
+    ) -> None:
+        super().__init__(placement, description=description)
+        self.views = _view_selections(views)
+        if not self.views:
+            raise ValueError("A view entry must declare a contextualization")
+
+    def open(self) -> ContextView:
+        if self._context_view is None:
+            raise ValueError("View entry is not bound to a containing ContextView")
+        if not self.accepts(self._context_view.context_scope):
+            raise UnsupportedContextView("View entry does not support the current ContextScope")
+        return self._context_view.refine(views=self.views)
+
+    def accepts(self, scope: ContextScope) -> bool:
+        """Check the whole proposed step without running any view factory."""
+        for selector in self.views:
+            if not selector.accepts(scope):
+                return False
+            scope = ContextScope(scope.subject, (*scope.views, selector))
+        return True
+
+    @property
+    def context_scope(self) -> ContextScope:
+        if self._context_view is None:
+            raise ValueError("View entry is not bound to a containing ContextView")
+        return self._context_view.context_scope
+
+    def _to_record(self):
+        raise TypeError("Computed view steps have no retained request schema")
 
 
 class ContextExplorer(Explorer[ContextLocation], ContextType):
@@ -334,7 +529,7 @@ class ContextExplorer(Explorer[ContextLocation], ContextType):
     def __init__(
         self,
         root: ContextObject,
-        open_subject: Callable[[ContextSubject], Context],
+        open_subject: Callable[[ContextSubject], ContextView],
     ) -> None:
         if not isinstance(root, ContextObject):
             raise TypeError("Context explorer root must be a ContextObject")
@@ -345,6 +540,13 @@ class ContextExplorer(Explorer[ContextLocation], ContextType):
     @property
     def subject(self) -> ContextSubject:
         return self.current.folder.subject
+
+    @property
+    def context_scope(self) -> ContextScope:
+        return self.current.folder.context_scope
+
+    def refine(self, *, views: Iterable[ViewSelection]) -> ContextView:
+        return self.current.folder.refine(views=views)
 
     def ls(self) -> tuple[ContextEntry, ...]:
         origin = self.current
@@ -390,7 +592,7 @@ class ContextExplorer(Explorer[ContextLocation], ContextType):
         if entry.explorer is not self or entry._origin is None:
             raise ValueError("Context entry belongs to another explorer")
         target = entry.open()
-        if isinstance(target, Context):
+        if isinstance(target, ContextView):
             next_location = ContextLocation(
                 target,
                 (*entry._origin.parts, entry.name),
@@ -454,23 +656,29 @@ def explore(
     subject: ContextSubject | ContextEntry,
     *,
     contributors: Iterable[ContextContributor] = (),
-    type: builtins.type[Context] | None = None,
-) -> ContextExplorer | Context:
+    view_contributors: Iterable[ContextContributor] = (),
+    views: Iterable[ViewSelection] = (),
+) -> ContextExplorer | ContextView:
     """Start a new exploration, or continue through an explorer-bound entry."""
 
-    if type is not None:
-        if not isinstance(type, builtins.type) or not issubclass(type, Context):
-            raise TypeError("context type must be a Context subclass")
-        view = type.for_subject(subject)
-        if not isinstance(view, type):
-            raise TypeError("Context factory returned an incompatible view")
-        return view
+    selected = _view_selections(views)
     if isinstance(subject, ContextEntry):
         if subject.explorer is None:
             raise ValueError("Context entry is not bound to an explorer")
-        return subject.explorer.follow(subject)
+        explorer = subject.explorer.follow(subject)
+        return explorer.refine(views=selected) if selected else explorer
     contributions = tuple(contributors)
+    next_steps = tuple(view_contributors)
+
+    def open_subject(subject):
+        root = _view(subject, contributors=contributions)
+        root._view_contributors = next_steps
+        return root
+
+    root = open_subject(subject)
+    if selected:
+        return root.refine(views=selected)
     return ContextExplorer(
-        _view(subject, contributors=contributions),
-        lambda target: _view(target, contributors=contributions),
+        root,
+        open_subject,
     )

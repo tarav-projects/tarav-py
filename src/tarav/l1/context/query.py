@@ -7,14 +7,17 @@ an identifier builds a query; resolvers find the subject and the same
 
 from __future__ import annotations
 
-import builtins
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from functools import partial
 
 from tarav.l0.kernel import TaravClass, TaravObject, TaravType, TypeShip, entity
 from tarav.l1.search import SearchEngine, SearchHit, SearchQuery, SearchService
 
-from . import CONTEXT_WORKFLOW_SHIP, Context, ContextSubject, explore
+from . import (
+    CONTEXT_WORKFLOW_SHIP, ContextViewEntry, ContextSubject,
+    UnsupportedContextView, ViewSelection, explore,
+)
 
 
 # tarav.breadcrumb d128fb8aa9f239546a23d18b6e3f7eb3520bc13a1b888977dacf0f64a4c0f489
@@ -26,14 +29,17 @@ class ContextQuery(SearchQuery):
         return TaravClass(target=cls, id=TypeShip("0d6a3d0e-2c5d-4f43-a0f5-5d3b6a0f7c11"),
                           name="Tarav.Context.Query", workflow=CONTEXT_WORKFLOW_SHIP)
 
-    def __init__(self, *, view: str | None = None, path: Iterable[str] = (),
+    # tarav.context 473c89a0:4c4bb8bf8f117d07
+    def __init__(self, *, views: Iterable[str] = (), path: Iterable[str] = (),
                  max_hits: int | None = None, engines: Iterable[str] | None = None) -> None:
         super().__init__(max_hits=max_hits, engines=engines)
-        if view is not None and (not isinstance(view, str) or not view):
-            raise ValueError("view must be a nonempty name or None")
+        if isinstance(views, str):
+            raise TypeError("views must be an iterable of names")
+        self.views = tuple(views)
+        if any(not isinstance(view, str) or not view for view in self.views):
+            raise ValueError("view names must be nonempty strings")
         if isinstance(path, str):
             raise TypeError("path must be an iterable of entry names")
-        self.view = view
         self.path = tuple(path)
         if any(not isinstance(part, str) or not part for part in self.path):
             raise ValueError("path entries must be nonempty names")
@@ -106,34 +112,36 @@ class ContextQueryService(TaravType):
         return TaravClass(target=cls, id=TypeShip("8e2b9d15-3f6c-4a18-b7e4-6c9a1d0e2f84"),
                           name="Tarav.Context.QueryService", workflow=CONTEXT_WORKFLOW_SHIP)
 
-    def __init__(self, *, opener: Callable[..., object] = explore) -> None:
+    def __init__(
+        self, *, opener: Callable[..., object] = explore,
+        views: dict[str, ViewSelection] | None = None,
+    ) -> None:
         self.resolvers = SearchService()
-        self.views: dict[str, builtins.type[Context]] = {}
-        self._open = opener
+        self.views = views if views is not None else {}
+        self._open = (
+            partial(explore, view_contributors=(self.contribute_views,))
+            if opener is explore else opener
+        )
+
+    def contribute_views(self, subject, builder) -> None:
+        for name, view in self.views.items():
+            builder.add_view(name, views=(view,))
 
     def register_resolver(self, name: str, resolver: SearchEngine) -> None:
         self.resolvers.register(name, resolver)
 
     # tarav.breadcrumb 0c6ec926fa98b0a8fa6aac3808baabcf0b8a5fc01764dc8236ab316a4d733583
-    def register_view(self, name: str, view: builtins.type[Context]) -> None:
-        if not isinstance(name, str) or not name:
-            raise ValueError("view name must be nonempty text")
-        if not isinstance(view, type) or not issubclass(view, Context):
-            raise TypeError("a view is a Context subclass")
+    def register_view(self, name: str, view: ViewSelection) -> None:
+        ContextViewEntry(name, views=(view,))
         if name in self.views:
             raise ValueError(f"View already registered: {name}")
         self.views[name] = view
 
-    def views_for(self, subject: ContextSubject) -> tuple[str, ...]:
-        """Named views that declare support for this subject."""
-        supported = []
-        for name, view in self.views.items():
-            try:
-                view.for_subject(subject)
-            except (TypeError, ValueError):
-                continue
-            supported.append(name)
-        return tuple(supported)
+    def views_for(self, subject: ContextSubject, *, views: Iterable[str] = ()) -> tuple[str, ...]:
+        """Next supported views, without opening their values or their factories."""
+        current = self._open(subject, views=tuple(self.views[name] for name in views))
+        return tuple(name for name, view in self.views.items()
+                     if view.accepts(current.context_scope))
 
     def resolve(self, query: ContextQuery) -> tuple[tuple[str, ContextCandidate], ...]:
         found: dict[tuple[int, str], tuple[str, ContextCandidate]] = {}
@@ -146,24 +154,29 @@ class ContextQueryService(TaravType):
 
     def open(self, query: ContextQuery) -> ContextAnswer:
         """Resolve, open the requested view, and walk the query's path."""
-        if query.view is not None and query.view not in self.views:
+        for name in query.views:
+            if name in self.views:
+                continue
             known = ", ".join(sorted(self.views)) or "none"
-            raise KeyError(f"Unknown context view: {query.view} (known: {known})")
+            raise KeyError(f"Unknown context view: {name} (known: {known})")
         candidates = self.resolve(query)
-        if query.view is not None and len(candidates) > 1:
-            # Several things can share an identifier; the requested view says which is meant.
-            supported = tuple(found for found in candidates
-                              if query.view in self.views_for(found[1].subject))
+        selectors = tuple(self.views[name] for name in query.views)
+        if selectors and len(candidates) > 1:
+            supported = []
+            for found in candidates:
+                try:
+                    self._open(found[1].subject, views=selectors)
+                except UnsupportedContextView:
+                    continue
+                supported.append(found)
+            supported = tuple(supported)
             candidates = supported or candidates
         if len(candidates) != 1:
             return ContextAnswer(candidates)
         subject = candidates[0][1].subject
-        if query.view is None:
-            target: object = self._open(subject)
-        else:
-            target = self._open(subject, type=self.views[query.view])
+        target: object = self._open(subject, views=selectors)
         walked: list[str] = []
-        for part in query.path:
+        for index, part in enumerate(query.path):
             if not hasattr(target, "get"):
                 raise KeyError(f"/{'/'.join(walked)} has no entries to follow")
             try:
@@ -173,10 +186,14 @@ class ContextQueryService(TaravType):
             target = entry.open()
             walked.append(part)
             if isinstance(target, TaravObject) and not hasattr(target, "ls") \
-                    and part != query.path[-1]:
+                    and index < len(query.path) - 1:
                 target = self._open(target)
-        return ContextAnswer(candidates, subject, target, tuple(walked),
-                             self.views_for(subject))
+        scope = getattr(target, "context_scope", None)
+        available = (
+            tuple(name for name, view in self.views.items() if view.accepts(scope))
+            if scope is not None else ()
+        )
+        return ContextAnswer(candidates, subject, target, tuple(walked), available)
 
 
 __all__ = [

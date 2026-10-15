@@ -274,8 +274,9 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
     assert all("blessing" not in item for item in report["items"])
     assert [entry.name for entry in notice.context().ls()] == ["class", "details"]
     assert notice.context().open("details").records.to_record()["value"] == {}
+    # tarav.context 473c89a0:9b167562b00b0279
     assert [entry.name for entry in failure.context().ls()] == [
-        "class", "situation", "check", "details",
+        "class", "situation", "check", "details", "object-group",
     ]
     assert failure.context().open("check") is check
     assert failure.context().open("details").records.to_record()["value"] == {"line": 3}

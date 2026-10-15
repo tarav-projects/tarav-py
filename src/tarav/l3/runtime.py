@@ -123,13 +123,14 @@ class TaravRuntime:
             path, expected_type=expected_type, entry_paths=profile_paths(profile)
         )
 
-    def context(self, subject: ContextSubject | ContextEntry, *, type=None):
+    def context(self, subject: ContextSubject | ContextEntry, *, views=()):
         """Compose runtime and retained entries into one read-only view."""
 
         from tarav.l1.settings import contribute_settings
 
         return open_context(
-            subject, contributors=(self.contexts.contribute, contribute_settings), type=type)
+            subject, contributors=(self.contexts.contribute, contribute_settings),
+            view_contributors=(self.contexts.contribute_views,), views=views)
 
     def register_commands(
         self,
@@ -281,7 +282,7 @@ def create_runtime(
     from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.l1.lines import Block, Line, LineScope, LinesWorkflow
-    from tarav.l1.context.groups import GROUP_RECORD_TYPES, register_links
+    from tarav.l1.context.groups import GROUP_RECORD_TYPES, ObjectGroup, register_links
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
     # tarav.breadcrumb 35548ca6fdf72e93e3a5008225dcf66e71eb81faeaa264535405ebd242768a7a
@@ -508,6 +509,8 @@ def create_runtime(
     search = SearchWorkflow.service()
     references = ReferenceWorkflow.service(records)
     contexts = ContextService(archive_root, records)
+    # tarav.context 473c89a0:9b167562b00b0279
+    contexts.register_view("object-group", ObjectGroup)
     breadcrumbs = BreadcrumbWorkflow.service(composed_breadcrumb_integrations)
     for workflow in (
         TaravWorkflow,

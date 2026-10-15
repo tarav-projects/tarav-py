@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 
 from tarav.l0.kernel import Ship, TaravEntity
-from tarav.l1.context import Context, ContextExplorer, explore
+from tarav.l1.context import ContextView, ContextExplorer, explore
 from tarav.l1.lines import Block, Line, LineScope
 
 
@@ -69,16 +69,16 @@ def test_nested_scope_and_typed_view():
     line = make_line()
     detail = Line(id=Ship(str(uuid4())), text="The finish is matte.", scope=line)
     before = detail.records.to_record()
-    view = explore(detail, type=LineScope)
+    view = explore(detail, views=(LineScope,))
     assert isinstance(view, LineScope)
     assert view.scope is line
     assert view.open("scope") is line
     assert detail.records.to_record() == before
     assert isinstance(explore(detail), ContextExplorer)
     with pytest.raises(TypeError):
-        explore(detail, type=Context)
+        explore(detail, views=(ContextView,))
     with pytest.raises(TypeError):
-        explore(line.scope, type=LineScope)
+        explore(line.scope, views=(LineScope,))
     with pytest.raises(TypeError):
         Line(id=Ship(str(uuid4())), text="x", scope="not an entity")
 
@@ -107,7 +107,7 @@ def test_object_context_entry_point():
     from tarav.l3.runtime import get_runtime
 
     line = make_line()
-    assert line.context(type=LineScope).scope is line.scope
+    assert line.context(views=(LineScope,)).scope is line.scope
     assert isinstance(line.context(), ContextExplorer)
     assert get_runtime().records is not None
 

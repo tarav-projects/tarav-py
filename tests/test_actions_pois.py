@@ -140,10 +140,10 @@ def test_an_action_and_its_poi_open_the_same_object_group(tmp_path):
         ("closing", {"type": member, "role": "closing", "member_type": "Tarav.Actions.POI.Gone",
                      "key": run.data["tape"][-2]["at"]}),
     ]
-    assert rows(run.context(type=ObjectGroup)) == expected
+    assert rows(run.context(views=(ObjectGroup,))) == expected
     # a POI just raised, not loaded from the action, reaches the same group
-    assert rows(poi.context(type=ObjectGroup)) == expected
+    assert rows(poi.context(views=(ObjectGroup,))) == expected
     answer = context_queries(create_runtime()).open(
-        IdentityContextQuery(str(run.id), view="object-group", path=["closing"]))
+        IdentityContextQuery(str(run.id), views=("object-group",), path=["closing"]))
     assert answer.target.records.to_record() == expected[-1][1]
 

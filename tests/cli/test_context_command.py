@@ -123,7 +123,7 @@ def test_queries_validate_their_parts() -> None:
     with pytest.raises(TypeError):
         ContextQuery(path="a/b")
     with pytest.raises(KeyError):
-        ContextQueryService().open(IdentityContextQuery("x", view="missing"))
+        ContextQueryService().open(IdentityContextQuery("x", views=("missing",)))
 
 
 # tarav.breadcrumb fae0e168d36f1e4818647e0f437ee4772014d06bb618074c67240e5ef86bf888
