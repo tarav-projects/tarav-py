@@ -11,8 +11,8 @@ request 012); VS Code visual review and durable capture pending. Alignment.Mode:
 Autonomous. Knowledge.Surface: wiki.
 
 Build an explicitly selected `_future` experiment: typed Python objects expose
-an in-memory RDF graph, SPARQL selects Context views, and a local visual
-explorer uses the same backend as Python callers. `_FutureWorkflow` owns the
+an in-memory RDF graph, SPARQL selects Context views, and the Tarav Center
+extension's visual explorer uses the same backend as Python callers. `_FutureWorkflow` owns the
 experimental Types and their ordinary JSON Records. Keep existing Context,
 runtime assembly, identities and storage consumers intact.
 <!-- tarav.context 473c89a0:b4ad4b3730008174 -->
@@ -21,8 +21,8 @@ runtime assembly, identities and storage consumers intact.
 Scope includes identified model members, represented predicates and particular
 relationships, a small synthetic Conversation/UserTurn/Annotation family,
 normal Record Registry retention, progressive graph loading, typed view
-selection, direct SPARQL and a browser UI accepting a root identifier.
-The UI is a local experiment, not a new deployed Center application.
+selection, direct SPARQL and an extension webview accepting a root identifier.
+The initial standalone HTTP UI was superseded by the placement correction.
 General ontology inference, production workflow migration, global completeness,
 disk RDF indexing, and a general annotation/documentation schema are outside
 this implementation. These boundaries are agent implementation choices.
@@ -51,7 +51,9 @@ Agent choices: use an optional RDFLib dependency; plain Python providers;
 explicit in-memory identity resolution; built-in out/in/type/model views;
 parameterized predicate and literal filters composed as SPARQL patterns;
 ordinary RDF reification for inspectable relationship occurrences; explicit
-expansion entries; one local HTTP process with a self-contained SVG UI.
+expansion entries; initially one local HTTP process with a self-contained SVG
+UI. The user corrected that placement: extension-owned script, a persistent
+Python child over stdin/stdout, and existing Center.Workflow panels (request 012).
 Experimental objects expose `._future.context()`, and a `future(obj)` wrapper
 adapts existing objects without modifying Kernel.
 
@@ -120,6 +122,11 @@ check; independent code may proceed while environment checks remain pending.
   sources/docs. Durable registration is still denied; supported provisional
   markers and exact Chatlas session remain intact. Pending visual verification
   is now a VS Code window check; no listening server remains to verify.
+- Core removal committed as `b8e03db`; the extension adapter/UI slices are
+  `315dc6e` and `cef7775`. Corrected Tarav topical/daily Wiki capture committed
+  as `e284560`. Extension request 012 carries build, transport, renderer and
+  direct script evidence. This correction is complete; 0.1.3 is packaged,
+  not installed or visually reviewed by this session.
 
 - 2026-10-15: start checkpoints `65b60c6` (tarav-py) and `51bf436` (tarav-md).
   Evidence commit registration failed on the protected Breadcrumb store;
