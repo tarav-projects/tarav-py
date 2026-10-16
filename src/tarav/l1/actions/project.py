@@ -125,6 +125,27 @@ class ProjectActions:
                 changes[key] = (run, change)
         return changes, update
 
+    def register(self, checks: CheckSuite) -> dict[str, ActionRun]:
+        """Register the actions of these POIs, and hand the results to those actions only.
+
+        For results that are not a run of the Project's checks, such as a POI
+        a Git hook raised: `update` would take them for the whole run and let
+        every other action conclude its POI is gone. Returns the changed
+        actions by id, written and recorded.
+        """
+        at = self._now()
+        changed = self.start(checks, at=at)
+        mine = {str(action_id(poi)) for poi in raised(checks.pois())}
+        update = ChecksUpdate(checks, self.project, at)
+        for run in self.list(own=True):
+            key = str(run.id)
+            if key in mine and key not in changed:
+                if resolve_action(run.data["action"]).on_checks(run, update) is not None:
+                    changed[key] = run
+        keys = [self.runs.write(run) for run in changed.values()]
+        self.runs.commit(keys, f"Register actions of {self.project['name']}: {len(changed)}")
+        return changed
+
     def update(self, checks: CheckSuite) -> dict:
         """Start and refresh this Project's actions from one run of its checks, and record it."""
         at = self._now()

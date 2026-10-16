@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: executing; slice 1 done.
+Status: executing; slices 1 and 2 done.
 
 Follow-up to request 915. A machine-local witness, outside the repository,
 keeps the tarav-change IDs each Project's branch had at its last commit. The
@@ -183,3 +183,26 @@ deadlocks on the action registry's Git; refusal codes collide with the CLI.
   `dispatch` and `run_hook` (with the environment variable); a fake `tarav`
   on PATH shows a real `git commit` stopped by 75 only, while exit 1 warns
   and commits and 0 commits. Full suite passed; ruff clean.
+- Slice 1 commit: `220c7a4`.
+- Slice 2 done. `tarav.l1.git.witness` (`ChangeWitness`, `ChangeOverrule`,
+  `ChangeWitnesses` with `TARAV_GIT_CHANGES_ROOT`); tarav-change compares in
+  `pre-commit` before appending, stops with `GitHookRefusal` and registers a
+  `Tarav.Git.Change.Removed` action, or keeps the overrule for
+  `post-commit`, which records a `ChangeOverrule`, registers a
+  `Tarav.Git.Change.Overruled` action and moves the witness (kept when IDs
+  vanished without an overrule); `TaravChangeCheck` raises both POIs;
+  `ProjectActions.register`. Found on the way: (1) `TaravObject` Record
+  interfaces must declare `type` themselves (as `GitRepository` does), the
+  hook warned and wrote no witness until both Records did; (2) an overrule
+  file was opened before serializing, leaving it empty on failure, now
+  serialized first; (3) importing `TaravProject` from Git made a
+  `git` ↔ `project.base` cycle (architecture test): `TaravChangeCheck` now
+  takes the root and the hook reads the Project marker for its actions.
+  Check: `tests/test_git_change.py` 13 passed (witness after a commit; a lost
+  ID stops the commit, names the overrule and opens a Removed action without
+  appending; the overrule commits, records itself, opens an Overruled action
+  and moves the witness; `reset --hard` is seen between commits and a
+  `--no-verify` commit keeps the witness; branches are independent); Git
+  and architecture tests 70 passed; the full suite before the cycle fix had
+  only that architecture failure (321 passed); ruff clean. Breadcrumbs:
+  `witness.py` 3, `change.py` 3, audits ok.

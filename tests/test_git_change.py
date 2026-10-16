@@ -13,15 +13,22 @@ import pytest
 from tarav.l1.git import GitError, GitRepository
 from tarav.l1.git.change import CHANGES_FILE, TaravChangeCheck, find
 from tarav.l1.git.hooks import install
+from tarav.l1.git.witness import ChangeWitnesses
 from tarav.l2.project import Project
 from tarav.l3.runtime import create_runtime
 
 
+PROJECT_ID = "20c26be7-a8e5-4974-9ec0-0b5a3a125a94"
+
+
 @pytest.fixture(autouse=True)
-def _runtime(monkeypatch):
+def _runtime(monkeypatch, tmp_path_factory):
     create_runtime()  # registers tarav-change and the `git` config section
-    # The hook scripts call the `tarav` of this environment.
+    # The hook scripts call the `tarav` of this environment, with its witness and actions here.
     monkeypatch.setenv("PATH", os.pathsep.join([str(Path(sys.executable).parent), os.environ["PATH"]]))
+    monkeypatch.setenv("TARAV_GIT_CHANGES_ROOT", str(tmp_path_factory.mktemp("witness")))
+    monkeypatch.setenv("TARAV_RECORDS", str(tmp_path_factory.mktemp("records")))
+    monkeypatch.delenv("TARAV_GIT_HOOKS_OVERRULE", raising=False)
 
 
 def git(root: Path, *args: str) -> str:
@@ -35,7 +42,7 @@ def repository(root: Path, *, commit: bool = True) -> Path:
     git(root, "config", "user.name", "Test")
     (root / ".tarav").mkdir()
     (root / ".tarav/project.json").write_text(json.dumps({
-        "type": "Tarav.Project", "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
+        "type": "Tarav.Project", "project_id": PROJECT_ID,
         "created_at": "2026-10-16T00:00:00Z",
         "harness": {"environment": "env", "type": "tarav.l2.project:Project"}}))
     (root / ".tarav/config.json").write_text("{}")
@@ -138,14 +145,14 @@ def test_the_check_reports_commits_made_without_the_hooks(tmp_path: Path) -> Non
     edit(root, "a.txt", "hooked")
     git(root, "add", "a.txt")
     git(root, "commit", "-qm", "hooked")
-    assert TaravChangeCheck(project).run().pois() == ()
+    assert TaravChangeCheck(project.root).run().pois() == ()
 
     edit(root, "a.txt", "skipped")
     git(root, "add", "a.txt")
     git(root, "commit", "-q", "--no-verify", "-m", "skipped the hooks")
     skipped = git(root, "rev-parse", "HEAD").strip()
 
-    [poi] = TaravChangeCheck(project).run().pois()
+    [poi] = TaravChangeCheck(project.root).run().pois()
     assert poi.situation["commit"] == skipped
     assert poi.message == f"Commit {skipped[:7]} carries no tarav-change: skipped the hooks"
     assert {type(item).__name__ for item in project.checks.suite().run().pois()} >= {"TaravChangeMissing"}
@@ -182,3 +189,96 @@ def test_tarav_git_commit_accepts_hook_trailers_and_nothing_else(tmp_path: Path,
     else:
         with pytest.raises(GitError, match="apart from trailers its hooks added"):
             GitRepository(tmp_path).commit(["a.txt"], "prepared")
+
+
+def committed(root: Path, message: str, **environment: str) -> subprocess.CompletedProcess:
+    edit(root, "a.txt", message)
+    git(root, "add", "a.txt")
+    return subprocess.run(["git", "commit", "-m", message], cwd=root, capture_output=True, text=True,
+                          env={**os.environ, **environment})
+
+
+def actions(root: Path) -> list[tuple[str, dict]]:
+    """The POI type and situation of each action registered on the Project, oldest first."""
+    from tarav.l1.actions.project import ProjectActions
+
+    runs = ProjectActions.for_project(Project.from_path(root)).list(own=True)
+    return sorted(((run.data["event"]["poi"]["type"],
+                    {key: value for key, value in run.data["event"]["poi"]["situation"].items()
+                     if key in ("branch", "commit")}) for run in runs), key=str)
+
+
+def found(root: Path) -> list[tuple[str, dict]]:
+    pois = TaravChangeCheck(root).run().pois()
+    return [(type(poi).__name__, {key: value for key, value in poi.situation.items()
+                                  if key in ("branch", "commit")}) for poi in pois]
+
+
+def drop_first_line(root: Path) -> str:
+    path = root / CHANGES_FILE
+    first, *rest = path.read_text().splitlines()
+    path.write_text("".join(line + "\n" for line in rest))
+    return first
+
+
+def test_the_witness_takes_each_commits_ids(tmp_path: Path) -> None:
+    root = repository(tmp_path)
+    committed(root, "second")
+    witness = ChangeWitnesses().get(PROJECT_ID, "main")
+    assert witness.changes == (root / CHANGES_FILE).read_text().split()
+    assert len(witness.changes) == 2
+
+
+def test_a_lost_id_stops_the_commit_and_opens_an_action(tmp_path: Path) -> None:
+    root = repository(tmp_path)
+    committed(root, "second")
+    before = git(root, "rev-parse", "HEAD").strip()
+    lost = drop_first_line(root)
+
+    stopped = committed(root, "third")
+
+    assert stopped.returncode != 0 and git(root, "rev-parse", "HEAD").strip() == before
+    assert f"1 tarav-change IDs that main had at its last commit are gone from {CHANGES_FILE} ({lost})" \
+        in stopped.stderr
+    assert "TARAV_GIT_HOOKS_OVERRULE=tarav-change" in stopped.stderr
+    assert actions(root) == [("Tarav.Git.Change.Removed", {"branch": "main"})]
+    assert lost not in (root / CHANGES_FILE).read_text()  # nothing was appended either
+
+
+def test_an_overrule_commits_records_itself_and_moves_the_witness(tmp_path: Path) -> None:
+    root = repository(tmp_path)
+    committed(root, "second")
+    lost = drop_first_line(root)
+
+    passed = committed(root, "third", TARAV_GIT_HOOKS_OVERRULE="tarav-change")
+
+    assert passed.returncode == 0, passed.stderr
+    head = git(root, "rev-parse", "HEAD").strip()
+    [overrule] = ChangeWitnesses().overrules(PROJECT_ID)
+    assert (overrule.branch, overrule.commit, overrule.missing) == ("main", head, [lost])
+    assert lost not in ChangeWitnesses().get(PROJECT_ID, "main").changes
+    assert actions(root) == [("Tarav.Git.Change.Overruled", {"branch": "main", "commit": head})]
+    assert found(root) == [("TaravChangeOverruled", {"branch": "main", "commit": head})]
+    assert committed(root, "fourth").returncode == 0  # the witness accepted the rewrite
+
+
+def test_the_check_sees_a_rewrite_between_commits_and_a_commit_that_skipped_the_hooks(
+        tmp_path: Path) -> None:
+    root = repository(tmp_path)
+    committed(root, "second")
+    git(root, "reset", "-q", "--hard", "HEAD~1")  # cuts the second commit's ID
+    assert found(root) == [("TaravChangeRemoved", {"branch": "main"})]
+
+    drop_first_line(root)
+    git(root, "commit", "-qam", "skips the hooks", "--no-verify")
+    assert [name for name, _ in found(root)].count("TaravChangeRemoved") == 1
+    assert len(ChangeWitnesses().get(PROJECT_ID, "main").changes) == 2  # kept, so it keeps reporting
+
+
+def test_each_branch_has_its_own_witness(tmp_path: Path) -> None:
+    root = repository(tmp_path)
+    committed(root, "second")
+    git(root, "checkout", "-qb", "older", "HEAD~1")  # lacks main's latest ID, legitimately
+    assert committed(root, "on older").returncode == 0
+    assert len(ChangeWitnesses().get(PROJECT_ID, "older").changes) == 2
+    assert len(ChangeWitnesses().get(PROJECT_ID, "main").changes) == 2
