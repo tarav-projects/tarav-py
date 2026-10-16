@@ -124,18 +124,37 @@ The registries keep mechanics separate from semantics:
 - Runtime composition verifies that every registered Type's Workflow Ship
   resolves to a registered Workflow.
 
-Every TaravType has the `.context` namespace. `triplets()` returns what the
-subject contributes about itself: triples `(subject, predicate IRI, target)`,
-the target a Tarav object, a class, or a str, int, float or bool literal. The
-default is one triple, `(subject, RDF_TYPE, entity(type(subject)))`, a class
-standing for its `entity`; a Type overrides it, composing with `super()`.
-Calling the namespace, `subject.context()`, opens a `ContextExplorer` through
-a host-configured Kernel hook; Kernel does not import Context or RDFLib.
+Every TaravType has the `.context` namespace. `subject.context.build()`
+returns an `ObjectContext`; its `triplets` list holds triples `(subject,
+predicate IRI, target)`, the target a Tarav object, class or str/int/float/bool
+literal. Class access delegates to the representing object:
+`SomeType.context.build()` builds `entity(SomeType)` through TaravClass's
+namespace, not the hooks for SomeType instances.
+
+One result passes through `_class_context_hook(cxt)`, then
+`_obj_context_hook(cxt)`, then registered external hooks. Both namespace
+hooks compose through ordinary `super()` and explicit NamespaceBase multiple
+inheritance. The default class hook adds the type triple; the instance hook
+is empty. `build()` owns orchestration; Types override contribution hooks.
+There is no `.context.triplets()` shortcut. Kernel delegates construction
+and `.context()` exploration through host callbacks, importing neither
+Context nor RDFLib.
+
+`tarav.l1.context.ContextBuilder` owns each runtime's ordered external
+registry (`runtime.contexts.register(name, hook)` / `unregister(name)`). All
+hooks share the mutable result, including its options and opaque hints.
+Registrations are snapshotted before construction; changes take effect on
+the next build. `ObjectContext.runs` records stage entry points, elapsed
+time, triple counts and errors; it does not trace individual super calls.
+`ContextBuildError` retains the failed partial context and cause. Results
+are runtime data, with no persistence contract.
 <!-- tarav.breadcrumb d2fc001a48cd5061c68999356e70273bc19428e950af073ad0a3b2052123c46f -->
 
 `tarav.l1.context.ContextExplorer` is a TaravObject holding an RDFLib graph
 collected from the objects it opened, the object behind every term, a focus
-and its history. `open()` collects an object's triples once; an identifier
+and its history. Its constructor takes a completed ObjectContext. `open()`
+builds an object's context once and retains it in `contexts`, keyed by graph
+node; an identifier
 resolves through the runtime's resolvers (`TaravRuntime.context_queries()`).
 `ls()` lists the edges at the focus among the triples collected, `follow()`
 moves the focus along an edge and opens its target, `back()` and `forward()`
@@ -143,7 +162,11 @@ move the focus, and `query()` runs SELECT or ASK over what is open without
 opening anything. The graph only grows. Entities, classes included, are
 `urn:uuid:<Ship>`; other objects are blank nodes for the Explorer's life.
 Navigation, search and resolution are ordinary Context workflow code; objects
-only contribute. Contributions are added Type by Type as they are needed.
+only contribute. Invalid or failed contributions are not partially published;
+an unsuccessful open may be retried. Later mutation of a retained result
+does not retract collected facts. Contributions are added Type by Type as
+they are needed. See `src/tarav/l1/context/README.md` and the runnable
+`examples/object_context.py`.
 <!-- tarav.breadcrumb f4ee4baa75c2ef6c6f63210c2e4267b40246449d077c7e81a03f38dc82a491e2 -->
 <!-- tarav.breadcrumb 31740a0af8080b6fcd08005c5dddb9e71ac81187cb544723c254a6000b8f51e6 -->
 <!-- tarav.breadcrumb 786354609782dd54b9d97050a7218a3b244f3ff621a473a69035a5838f1176f2 -->
@@ -575,7 +598,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `search` | SearchWorkflow owns typed incremental queries and a registry-backed meta engine. SearchEngine Types contribute a bound `.search` namespace; the runtime holds one SearchService per composition. Engine registration does not imply storing queries or hits. |
 <!-- tarav.breadcrumb 4597f1786f7c1c0b1fce993a19bef717743bb666489fd98b1b2fcad2d4f8e253 -->
 <!-- tarav.breadcrumb 9b87f84163c1777984484c0543b3e3011a5bea09e1c24833b15527175c4f9e52 -->
-| `l1.context`, `l3.context` | The Context Workflow: the Explorer and resolvers, and the `tarav context` command. |
+| `l1.context`, `l3.context` | The Context Workflow: ObjectContext construction, ordered hooks, the Explorer and resolvers, and the `tarav context` command. |
 | `references` | Shared typed locator, check, hints, and resolution mechanics. |
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |

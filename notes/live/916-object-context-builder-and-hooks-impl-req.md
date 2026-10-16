@@ -3,7 +3,8 @@
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: slice 1 implemented and verified; documentation and closure pending.
+Status: implemented and verified; conversational grounding and status persistence
+remain pending because of the environment restrictions recorded below.
 
 Replace `.context.triplets()` with explicit `.context.build()` returning an
 `ObjectContext`. Build the result through class, instance, then external
@@ -95,7 +96,7 @@ Data shape: `ObjectContext(subject, triplets, options, hints, runs, status)`;
   and multiple-inheritance composition, class identity equivalence, external
   registration/isolation, failure diagnostics and Explorer retention. Run
   Context, namespace and architecture tests, then the curated suite.
-- [ ] Slice 2 — documentation: update maintained guidance through its SKW
+- [x] Slice 2 — documentation: update maintained guidance through its SKW
   source, architecture and CLI help; add a runnable tutorial. Prove the
   tutorial and installed CLI, extension real-worker integration, Ruff and
   required Project checks. Capture the daily/topical Wiki and complete.
@@ -109,7 +110,7 @@ Re-read it before product edits. Record any material deviation explicitly.
 - Start checkpoints: tarav-py `8a67d35`; tarav-md `8608027` (both clean).
 - Baseline: `UV_CACHE_DIR=/private/tmp/tarav-review-uv-cache uv run --no-sync pytest -q`:
   306 passed in 69.95 seconds.
-- Todo: implement slice 1; verify and capture; document and verify slice 2;
+- Initial todo: implement slice 1; verify and capture; document and verify slice 2;
   capture Wiki; close request and commit.
 - Design Inlined Capture: no justified exact Turn positions could be
   registered because current discussion is not retained. Session and reason
@@ -137,3 +138,42 @@ Re-read it before product edits. Record any material deviation explicitly.
   batch audit over these seven surfaces; registration/position recovery is
   pending in the protected data depot. Full output is in
   `/private/tmp/tarav-context-slice1-audit.json` for this run.
+
+### Slice 2 — documentation and integration verified
+
+- Slice 1 commit: `7019ebe`.
+- Updated ARCHITECTURE.md, Context workflow and CLI help, and the authoritative
+  `.tarav/skillware/src/AGENTS.skw.json`; compiled the agents file and lock with
+  `tarav skw document compile --source AGENTS.skw.json --depot .tarav/skillware`:
+  written, no findings. Added the Context README and runnable example.
+- Measured: `tarav run -- examples/object_context.py` prints the ordered stages,
+  3 triples, the expected title/length SPARQL row and the class identity.
+  `tarav context --id Tarav.POI --json` retains its default type edge.
+  CLI tests after wording changes: 7 passed. Ruff (src/tests/examples) and
+  diff whitespace checks pass.
+- Extension verification: `TARAV_CENTER_TEST_COMMAND=tarav npm test`: all
+  13 passed, none skipped; `npm run test:context`: 1 passed. No extension
+  source or transport shape change was required. Actual VS Code rendering
+  was not inspected.
+- `uv tool install --reinstall --editable . --offline` failed in uv's macOS
+  system-configuration initialization (NULL object panic), before a successful
+  reinstall. The existing editable installed CLI ran the example, Context
+  command and extension worker against this code successfully.
+- Required `tarav status --project tarav-py --all` ran through checks but
+  could not persist actions: sandbox PermissionError on the central Record
+  Registry `.write.lock`. No successful status result is claimed. A routine
+  read-only `tarav check` is used to inspect findings without action writes.
+- Routine Project check: 14 completed, none incomplete; only the two existing
+  `Tarav.Test.Actions.MarkerPOI` findings. The pytest suite is excluded from
+  the routine command and was run separately as recorded above. No new
+  agents-file drift, hook or POI-rendering finding was reported.
+- Slice Inlined Capture: inspected the changed architecture, CLI, workflow,
+  example, README, SKW source and product. Current User-Turn grounding remains
+  unavailable, as in slice 1; the JSON SKW source has no native Breadcrumb
+  convention. No unsupported markers or substitute old Turns were added.
+- Wiki capture writes the mandatory daily narrative in
+  `tarav-md/notes/wiki/daily/2026-10-16.md` and the topical section
+  "ObjectContext construction through ordered hooks" in
+  `tarav-md/notes/wiki/rdf-diagram-experiment.md`. Both parse through WikiNote.
+  They preserve the exact native session and selected User phrases for later
+  grounding; registration and existing stale-position repair are pending.

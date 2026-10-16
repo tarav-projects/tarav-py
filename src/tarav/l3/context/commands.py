@@ -25,7 +25,7 @@ def _context(args: argparse.Namespace, *, service: ContextQueryService, opener) 
     if args.views:
         raise CliError(
             f"Context view {args.views[0]!r} is not implemented in the graph Context model. "
-            "Every object now contributes its triples through `.context.triplets()`; "
+            "Every object now builds its context through `.context.build()`; "
             "views are reimplemented as queries when they are needed.")
     try:
         candidates = service.resolve(IdentityContextQuery(args.id))
@@ -83,7 +83,8 @@ def register_context_command(
             "  tarav context --id <poi-id>\n"
             "  tarav context --id Tarav.POI\n\n"
             "Prints the subject and the edges at it in its Context graph, the\n"
-            "triples it contributes through `.context.triplets()`. Identifiers\n"
+            "triples assembled by `.context.build()` in ObjectContext.triplets.\n"
+            "Identifiers\n"
             "resolve today for actions, by their id or by the id of the POI they\n"
             "follow (a unique prefix is enough), and for Tarav Types by name or\n"
             "Ship. Scripts open the same Explorer with `obj.context()`."

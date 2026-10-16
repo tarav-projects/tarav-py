@@ -40,12 +40,16 @@
 - Keep subsystem imports acyclic outside runtime composition.
 - Record Archive lives in `tarav.l1.archive.records`, matching its Archive parent.
   Artifact-registration Record types live in `tarav.l1.archive.artifact_records`.
-- Context is a graph. An object contributes what it says about itself through
-  `obj.context.triplets()` (by default its type); `obj.context()` opens a
-  `ContextExplorer` (`tarav.l1.context`) whose graph only grows. Identifier
-  resolvers are composed in `TaravRuntime.context_queries()`. Kernel's
-  context hook has no runtime Context dependency. A Type's contribution is
-  added when it is needed; named views are not implemented and fail.
+- Context construction is explicit: `cxt = obj.context.build()` returns an
+  `ObjectContext`, then `cxt.triplets` supplies its graph contribution.
+  `_class_context_hook(cxt)`, `_obj_context_hook(cxt)`, then external hooks
+  share that mutable result. Compose hooks through `super()`. Register
+  external hooks on `runtime.contexts`; registrations are runtime-local.
+  Class access builds its identity object's context: `Type.context` is
+  `entity(Type).context`. `obj.context()` opens a `ContextExplorer` that
+  retains built results and whose graph only grows. Identifier resolvers
+  are composed in `TaravRuntime.context_queries()`. Kernel delegates through
+  host callbacks without importing Context or RDFLib. Named views still fail.
   <!-- tarav.breadcrumb ad0f4807b92fcc359c084cc69e7966cba5579b315e690981d7f52748b89856bb -->
   <!-- tarav.breadcrumb 0094f5ae9193c13bbbd28788ad4a2cb23d873dd94c4bd39237357af38be25256 -->
 - Provider-neutral orchestration belongs in `tarav.l1.agent`; concrete adapters

@@ -7,7 +7,7 @@ from tarav.l0.kernel import TaravClass, TypeShip, TaravWorkflow
 
 
 class ContextWorkflow(TaravWorkflow):
-    """Own the Context graph: how objects contribute triples and how they are explored."""
+    """Own context construction and exploration of its contributed graph."""
 
     @classmethod
     def _workflow_id(cls):
@@ -23,6 +23,7 @@ class ContextWorkflow(TaravWorkflow):
         )
 
     constitution = (
-        "Collect the triples objects contribute about themselves into a graph "
+        "Build ObjectContexts through class, instance and external hooks. "
+        "Collect their triples into a graph "
         "that only grows, and explore it: list, open, follow, query."
     )
