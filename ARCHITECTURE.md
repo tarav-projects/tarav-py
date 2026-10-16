@@ -268,27 +268,6 @@ above it does not force nested repositories. Archive directories expose the
 effective policy and its source, plus each directory's native `.gitignore`
 path and presence. Existing repositories are not rewritten by this policy.
 
-## Opt-in RDF experiment
-
-`tarav.l1._future` owns the isolated `_FutureWorkflow`, experimental Types,
-RDFLib-backed in-memory Diagram and SPARQL Context views. `tarav.l2._future`
-adapts a synthetic conversation family to the ordinary Record Registry.
-The Tarav Center extension consumes that backend in its own Python script
-and renders its Diagram explorer through the existing Center.Workflow shell.
-The `future` package extra supplies RDFLib. Normal runtime composition imports and
-registers none of these Types. `_future` namespace binding reuses NamespaceBase;
-existing objects can be adapted explicitly with `future(obj)`.
-
-An explorer accumulates contributed triples and resolves RDF identifiers to
-typed Python representations. Query refinement and graph growth are separate.
-Records load into ordinary objects before RDF contribution. Providers and
-loading steps are explicit; query results describe the currently loaded graph.
-This is an experiment, not a replacement for installed Context or production
-Diagram storage. See `src/tarav/l1/_future/README.md` and request 913.
-<!-- tarav.context 473c89a0:b4ad4b3730008174 -->
-<!-- tarav.context 473c89a0:2231281cb94571ae -->
-<!-- tarav.context 473c89a0:944a943d7daaf1ba -->
-
 ## Package layers
 
 The general import direction is:
