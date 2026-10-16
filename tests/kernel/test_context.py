@@ -132,5 +132,6 @@ def test_queries_run_over_what_is_open_and_open_nothing() -> None:
     rows = explorer.query(select)
     assert sorted(row["name"] for row in rows) == ["alice", "bob"]
     assert {row["who"].name for row in rows} == {"alice", "bob"}
+    assert {row["p"] for row in explorer.query("SELECT ?p WHERE { ?s ?p ?o }")} == {RDF_TYPE, NAME, AUTHOR}
     with pytest.raises(ValueError, match="SELECT and ASK"):
         explorer.query("CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }")

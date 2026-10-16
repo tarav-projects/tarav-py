@@ -141,6 +141,8 @@ class ContextExplorer(TaravObject):
     def _value(self, term: Node) -> Value:
         if isinstance(term, Literal):
             return term.toPython()
+        if term not in self.objects and isinstance(term, URIRef):
+            return str(term)  # a predicate, as triples write it
         return self.objects[term]
 
 
