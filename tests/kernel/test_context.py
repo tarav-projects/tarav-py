@@ -111,6 +111,8 @@ def test_a_literal_cannot_be_followed_and_bad_triples_are_rejected() -> None:
 
 
 def test_identifiers_open_through_the_resolver() -> None:
+    by_id = get_runtime().context("Tarav.POI")
+    assert by_id.focus.target is POI
     explorer = get_runtime().context(Person("alice"))
     node = explorer.open("Tarav.POI")
     assert explorer.objects[node].id == entity(POI).id and node in explorer.opened

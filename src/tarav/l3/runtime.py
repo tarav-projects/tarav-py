@@ -119,8 +119,11 @@ class TaravRuntime:
     def context(self, subject) -> ContextExplorer:
         """Open a Context Explorer on a subject; identifiers resolve through this runtime."""
 
+        resolve = self.context_queries().find
+        if isinstance(subject, str):
+            subject = resolve(subject)
         return ContextExplorer(self.contexts.build(subject),
-                               resolve=self.context_queries().find, build=self.contexts.build)
+                               resolve=resolve, build=self.contexts.build)
 
     def context_queries(self) -> ContextQueryService:
         """The installed resolvers from an identifier to what it identifies."""

@@ -177,3 +177,31 @@ Re-read it before product edits. Record any material deviation explicitly.
   `tarav-md/notes/wiki/rdf-diagram-experiment.md`. Both parse through WikiNote.
   They preserve the exact native session and selected User phrases for later
   grounding; registration and existing stale-position repair are pending.
+
+### Completion
+
+Product and documentation are implemented and verified. Product commits:
+`7019ebe` (construction), `10b40d0` (guide, example and compiled guidance).
+Wiki capture commit: tarav-md `d1230ba`. This closing commit records the
+final resolver correction and evidence report.
+
+Final review found that `runtime.context("Tarav.POI")`, supported by the
+previous Explorer's identifier-aware constructor, now reached the builder
+with a string. A regression assertion first failed with the expected
+ObjectContext subject TypeError. Resolve identifiers in the runtime before
+building, preserving that existing behavior. After the correction, the
+Context and CLI suites pass all 20 tests; Ruff and whitespace checks pass.
+The complete 313-test run was before this final targeted correction.
+
+Final Inlined Capture outcome: no new Breadcrumb IDs; exact current User
+Turns cannot yet be resolved from retained Chatlas data. The seven-file
+audit resolved 9 existing labels and reported 28 existing labels as
+unresolvable; labels were retained and the report path is recorded above.
+No conversational coverage is claimed for newly implemented positions.
+
+Outstanding environment work: refresh this exact Chatlas session and attach
+the supporting Turns to the request, product surfaces and the two Wiki
+sections; repair existing label observations as needed; rerun status where
+it can write the central action registry. Tool reinstall also remains
+uncompleted after uv's initialization panic; the installed editable tool's
+real behavior was verified. These gaps do not invalidate the product tests.
