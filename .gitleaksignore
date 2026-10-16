@@ -1,0 +1,5 @@
+# Reviewed gitleaks findings: false positives (test fixtures, content hashes,
+# internal workflow tokens). See the tarav-pkg --github module.
+597c6e5ac3d7e56048269f636debefb674511c35:tests/chatlas/test_anchory_depot.py:generic-api-key:359
+597c6e5ac3d7e56048269f636debefb674511c35:tests/chatlas/test_index_approval_checks.py:generic-api-key:26
+b107ae5551c4ca71c4bacf520bdfc1734d8eae73:tests/test_chatlas_commands.py:generic-api-key:1690
