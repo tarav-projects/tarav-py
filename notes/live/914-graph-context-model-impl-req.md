@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: designed; ready for execution.
+Status: implemented and verified; Wiki capture at completion.
 
 Migrate all of Tarav's Context to one model. Every object answers
 `obj.context.triplets()` with the triples it contributes about itself; by
@@ -220,3 +220,9 @@ harness sync and is left uncommitted. The extension's Diagram explorer
 workflow imports the deleted `_future` package and its action page asks for
 `--view object-group`; both now fail, as decided. The Records the `_future`
 demo seeded in the User's records root are untouched.
+
+### Completion
+
+Commits: start `c607b84`, slice 1 `dd3bc9d`, slice 2 `0ecb616`, slice 3
+`6fcce90`. Final `uv run pytest`: 291 passed. Real CLI and Project status as
+recorded in slices 2 and 3.
