@@ -3,8 +3,8 @@
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Phase: Develop.
-Status: implemented; focused verification passed; final Project verification
-and Wiki closure in progress.
+Status: implemented and verified; Wiki written and committed. Exact
+conversational grounding and Project status persistence remain pending.
 
 Replace external callable hooks with instances of a real ContextHook base
 class exposing `run(cxt)`. Register explicitly constructed instances so
@@ -68,7 +68,7 @@ instances. Existing class/instance hooks and ObjectContext are unchanged.
   architecture, guide and example in the same coherent migration. Check:
   Context/CLI/architecture tests, runnable example, Ruff; then one full
   required Project verification rather than repeated broad suites.
-- [ ] Close: capture the daily and topical Wiki sections, inspect evidence
+- [x] Close: capture the daily and topical Wiki sections, inspect evidence
   gaps, commit verified surfaces and complete the request.
 
 Cold execution readiness: targets and consumers were inspected, current
@@ -104,3 +104,33 @@ first product edit. Record material deviations rather than silently adapting.
   `tarav-md/notes/wiki/rdf-diagram-experiment.md` and "Configured external
   ContextHook instances" to the 2026-10-16 daily Note. They retain the
   withdrawn class-routing proposal, final User decision and recovery gap.
+
+## Completion
+
+Product commit: `131b035`. Wiki commit: tarav-md `a55cee0`. Both Wiki Notes
+parse through WikiNote; no source or dependency changes were required in
+the extension. All maintained registered-callable consumers were migrated.
+
+Verification: baseline 20 Context/CLI tests; after migration, 68 focused
+Context/CLI/architecture tests passed, Ruff and whitespace checks passed,
+and the installed-tool example produced its literal expected graph/query
+result. No further product edits followed these checks.
+
+Required `tarav status --project tarav-py --all` finished its check phase
+but failed when writing actions to the protected central Record Registry
+(`.../records/8f3394a6-7670-4568-a71e-5120f687affd/.write.lock`). No
+successful full status or aggregate test outcome is claimed from that
+failed operation. Tests were not broadly repeated to reproduce the same
+environment limitation.
+
+Inlined Capture and Wiki grounding remain pending: exact-session Chatlas
+refresh failed writing its protected cache, so new supporting Turn hashes
+could not be resolved. Five changed surfaces audited cleanly with zero
+labels. No new Breadcrumb IDs or unsupported provisional references were
+invented. Current decisions, the exact session and selected User wording
+remain in this request and the Wiki for later recovery. Existing labels in
+other changed surfaces have not been refreshed in the protected depot.
+
+Recovery: refresh the exact session, resolve the final class-hook and
+self-filtering User Turns, attach them to justified positions in the
+request/product/Wiki, and rerun status where action writes are permitted.
