@@ -29,7 +29,7 @@ def git(root: Path, *args: str) -> str:
                           check=True).stdout
 
 
-def repository(root: Path) -> Path:
+def repository(root: Path, *, commit: bool = True) -> Path:
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "t@example.com")
     git(root, "config", "user.name", "Test")
@@ -40,8 +40,9 @@ def repository(root: Path) -> Path:
         "harness": {"environment": "env", "type": "tarav.l2.project:Project"}}))
     (root / ".tarav/config.json").write_text("{}")
     install(root, add=["tarav-change"])
-    git(root, "add", "-A")
-    git(root, "commit", "-qm", "Install the hooks")
+    if commit:
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "Install the hooks")
     return root
 
 
@@ -78,6 +79,16 @@ def test_every_commit_mode_carries_one_id_in_its_trailer_and_its_file(tmp_path: 
     assert len(set(seen)) == 4
     assert git(root, "status", "--short") == ""  # the index matches HEAD in every mode
     assert find(root, seen[2]) == (git(root, "rev-parse", "HEAD~1").strip(),)
+
+
+def test_the_first_hooked_commit_through_tarav_git_commit_leaves_the_index_clean(
+        tmp_path: Path) -> None:
+    root = repository(tmp_path, commit=False)
+    GitRepository(root).commit([".gitattributes", ".tarav/project.json", ".tarav/config.json",
+                                ".tarav/git-hooks"], "Install the hooks")
+    assert git(root, "status", "--short") == ""
+    trailers = git(root, "log", "-1", "--format=%(trailers:key=tarav-change,valueonly)").split()
+    assert len(trailers) == 1 and trailers == git(root, "show", f"HEAD:{CHANGES_FILE}").split()
 
 
 def test_an_amended_commit_gains_an_id_and_the_old_one_still_finds_it(tmp_path: Path) -> None:

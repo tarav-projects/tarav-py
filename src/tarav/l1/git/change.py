@@ -85,12 +85,11 @@ class TaravChange(GitHookHandler):
     def _post_commit(self, call: GitHookCall) -> None:
         # `git commit <paths>` and temporary-index commits leave the repository's own index
         # with the old file; realign it when the worktree already holds what HEAD holds.
+        # Compare contents directly: `git diff HEAD` relies on that same index.
         environment = _own_index()
-        in_head = git_result(call.root, "cat-file", "-e", f"HEAD:{CHANGES_FILE}",
-                             environment=environment).returncode == 0
-        unchanged = git_result(call.root, "diff", "--quiet", "HEAD", "--", CHANGES_FILE,
-                               environment=environment).returncode == 0
-        if in_head and unchanged:
+        held = git_result(call.root, "show", f"HEAD:{CHANGES_FILE}", environment=environment)
+        path = call.root / CHANGES_FILE
+        if held.returncode == 0 and path.is_file() and path.read_bytes() == held.stdout:
             run_git(call.root, "reset", "-q", "--", CHANGES_FILE, environment=environment)
 
     def _post_rewrite(self, call: GitHookCall) -> None:

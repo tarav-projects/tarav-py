@@ -222,3 +222,14 @@ Project suite cannot import the check without a layering cycle.
   passed; ruff clean; `tarav check --project .` 14 checks, only the 2
   pre-existing MarkerPOIs. The slice commit itself is the first hooked one;
   its trailer and `.tarav/changes` line are verified after committing.
+- Slice 3 commit: `ff21d4d`, the first hooked commit: trailer and file
+  line carry `63736466-86f6-4d42-b164-8e7c56502a20`. It exposed a defect:
+  the repository's own index never held `.tarav/changes` (`D` plus `??`).
+  Root cause: post-commit compared with `git diff HEAD`, which reads that
+  same index, so a file the index never held looked deleted and the
+  realignment was skipped; the tests' first hooked commits were plain
+  `git commit`s. Fix: compare `HEAD:.tarav/changes` with the worktree bytes.
+  Regression test (first hooked commit through `tarav git commit` with a
+  selection that does not cover the file) failed before with exactly
+  `D  .tarav/changes` / `?? .tarav/changes`, passes after. Index realigned
+  once by hand with `git reset -- .tarav/changes`. Full suite 306 passed.
