@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: implemented and verified; Wiki capture at completion.
+Status: implemented and verified; Wiki captured.
 
 Two levels. First, a Git hook system for Tarav Projects: a Project whose
 root is a Git repository declares in its `.tarav/config.json` which Tarav
@@ -152,7 +152,9 @@ levels and asked for it to be developed.
   the root); relevant notes `projects.md`, `checks-workflow.md`,
   `references.md`; a new topical note for tarav-change when captured.
 - Supporting turns: session `abd0372d`, turns cited above.
-- Capture status: pending until completion.
+- Capture status: captured in `notes/wiki/tarav-change.md` (new),
+  `notes/wiki/projects.md` ("Project Git hooks — 915") and the daily
+  `2026-10-16.md`; tarav-md commits `9b09cf2` (checkpoint), `1ca2dc6`.
 
 ## Execution.Plan
 
@@ -233,3 +235,10 @@ Project suite cannot import the check without a layering cycle.
   selection that does not cover the file) failed before with exactly
   `D  .tarav/changes` / `?? .tarav/changes`, passes after. Index realigned
   once by hand with `git reset -- .tarav/changes`. Full suite 306 passed.
+- Fix commit: `0c6a750` (second hooked commit; index clean afterwards;
+  `tarav git change find` resolves its ID to it).
+- Completion. Product Breadcrumbs: `hooks.py` 3, `change.py` 4,
+  `AGENTS.md` 2 (labels copied into the skw source), `ARCHITECTURE.md` 1,
+  this note 5; audits ok. Wiki: 11 Breadcrumbs, audits ok. Not done, as
+  scoped: hooks in other repositories, References carrying tarav-change,
+  rewriting the citations left by the tarav-md purge.
