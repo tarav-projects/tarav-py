@@ -9,6 +9,8 @@ from pathlib import Path
 from tarav.l0._core.errors import CliError
 from tarav.l1.breadcrumbs import BreadcrumbError, BreadcrumbStore
 from tarav.l1.git import GitError
+from tarav.l1.git.hooks import install, run_hook
+from tarav.l0.project import require_agentos_project
 from tarav.l1.usage import describe_file
 from tarav.l2.breadcrumb_workflows.chatlas_context import (
     ChatlasContextBreadcrumbWorkflow,
@@ -56,6 +58,21 @@ def _cmd_register_commit(args: argparse.Namespace) -> int:
     return _print_result(args, result.to_json())
 
 
+def _cmd_hook(args: argparse.Namespace) -> int:
+    return run_hook(args.name, args.arg)
+
+
+def _cmd_hooks_install(args: argparse.Namespace) -> int:
+    root = require_agentos_project(args.project.expanduser().resolve()).root.resolve()
+    config = install(root, add=args.handler)
+    if args.json:
+        print(json.dumps({"project": str(root), **config.model_dump(mode="json")}, indent=2))
+    else:
+        print(f"project: {root}")
+        print(f"handlers: {', '.join(config.handlers) or 'none'}")
+    return 0
+
+
 def _print_result(args: argparse.Namespace, payload: dict[str, object]) -> int:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -85,6 +102,30 @@ def register_commands(subparsers: argparse._SubParsersAction) -> None:
         handler=_cmd_commit,
         usage_descriptor=lambda args: {"manifest": describe_file(args.manifest)},
     )
+
+
+    hook = commands.add_parser(
+        "hook",
+        help="Run the Project's Tarav handlers for one Git hook; the installed scripts call it.",
+    )
+    hook.add_argument("--name", required=True, help="The Git hook, such as commit-msg.")
+    hook.add_argument("--arg", action="append", default=[],
+                      help="One argument Git gave the hook, in order; repeat for each.")
+    hook.set_defaults(handler=_cmd_hook)
+    hooks = commands.add_parser("hooks", help="Manage the Git hooks of a Project.")
+    hooks_commands = hooks.add_subparsers(dest="git_hooks_command", required=True)
+    hooks_install = hooks_commands.add_parser(
+        "install",
+        help="Make the Project's repository run the hooks its config selects.",
+    )
+    hooks_install.add_argument(
+        "--project", type=Path, nargs="?", const=Path("."), required=True,
+        help="Search this directory and parents for a Project; optionally start at PATH.",
+    )
+    hooks_install.add_argument("--handler", action="append", default=[],
+                               help="Add this handler to the Project's config first; repeatable.")
+    hooks_install.add_argument("--json", action="store_true")
+    hooks_install.set_defaults(handler=_cmd_hooks_install)
 
 
 def register_breadcrumb_git_commands(

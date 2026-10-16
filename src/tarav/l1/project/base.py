@@ -38,11 +38,14 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
     class Checks(CheckProvider.Checks):
         # tarav.breadcrumb c1c38799380f065d088e5c7e704ac0e46755ff33a8171e0247bd531f899012ce
         def suite(self) -> CheckSuite:
+            from tarav.l1.git.hooks import git_hooks_suite
+
             from .files import ProjectFilesCheck
 
             return CheckSuite([ProjectFilesCheck(self.obj),
                                self.obj.agents.agents_md.checks.suite(),
-                               self.obj.agents.skills.checks.suite()],
+                               self.obj.agents.skills.checks.suite(),
+                               git_hooks_suite(self.obj)],
                               name=self.obj.name, repositories=self.obj.repositories())
 
         # tarav.breadcrumb 47c83896e2f3b52b8445023094aea20efa16beb513be9c96d448cf803024086a

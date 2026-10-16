@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: ready for execution.
+Status: executing; slice 1 done.
 
 Two levels. First, a Git hook system for Tarav Projects: a Project whose
 root is a Git repository declares in its `.tarav/config.json` which Tarav
@@ -183,3 +183,14 @@ Project suite cannot import the check without a layering cycle.
 ## Impl.Log
 
 - Design: experiments recorded above; request written.
+- Start checkpoint: `edb7b1e` (with the request).
+- Slice 1 done. `tarav.l1.git.hooks` (config model, handler registry,
+  scripts, install, dispatch, `GitHooksCheck` and its four POIs); `git`
+  config section and POI types registered in `tarav.l3.runtime`;
+  `git_hooks_suite` in `TaravProject.Checks.suite()`; `tarav git hook` and
+  `tarav git hooks install` in `tarav.l3.git.commands`. A chained hook's
+  standard input is captured once and fed to both callees. Handler and Check
+  classes are not Record types, as with `ProjectFilesCheck`. Check:
+  `tests/test_git_hooks.py` 6 passed (install, dispatch, real commits with
+  and without `tarav` on PATH, chain refusal, every POI, Project suite);
+  full suite 297 passed; ruff clean. Breadcrumbs: 3 in `hooks.py`, audit ok.
