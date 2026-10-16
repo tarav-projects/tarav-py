@@ -124,6 +124,13 @@
   uses it.
   <!-- tarav.breadcrumb 3ac71846f72a6a9632d30bfe3a73cfd107bb0cd34eb6539f7428fa690a94e9c0 -->
   <!-- tarav.breadcrumb 1e1e0a27ff6ad6e419e9317087e988a49b106cd6494a4a888e07f3ffec8731ed -->
+  A handler may also stop Git on purpose (`GitHookRefusal`, exit 75), so
+  whoever commits rethinks; `TARAV_GIT_HOOKS_OVERRULE=<handler>` overrules it.
+  tarav-change stops a commit whose `.tarav/changes` lost IDs that the
+  witness (`tarav.l1.git.witness`, under `~/Documents/tarav/git-changes/`, per
+  Project and branch) saw at the branch's last commit; stops and overrules
+  become actions of the Project.
+  <!-- tarav.breadcrumb 1413fcedc6ffd4d8a10e9416bda015b20e328a738611e646ebd91c144b1418dd -->
 - `project.agents.skills` discovers skill folders in Project and home
   `.agents/skills`, using each `SKILL.md` declared name. Set
   `agents.package_skill` in `.tarav/project.json`; the built-in Tarav skill

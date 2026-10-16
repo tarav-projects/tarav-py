@@ -321,6 +321,13 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   config, not the Project Type. Handlers such as `tarav.l1.git.change`
   (tarav-change IDs) are registered in runtime composition. Git hooks are
   synchronous and unrelated to the daemon's event hooks in `tarav.l1.hooks`.
+  A handler may stop Git with `GitHookRefusal`, overruled through
+  `TARAV_GIT_HOOKS_OVERRULE`. `tarav.l1.git.witness` keeps, outside the
+  repositories, the tarav-change IDs each Project branch had; tarav-change
+  stops commits that lost some and hands stops and overrules to
+  `ProjectActions.register`, which registers actions without treating the
+  results as a whole run of the Project's checks.
+<!-- tarav.breadcrumb 547dbca6729188942ad14da5fa869377507896794295376fc49b060ca002ef48 -->
 <!-- tarav.breadcrumb c61ceaf85a21dbe08b378bf6e378b6ac3e27aa499cb15654c8f2c67b22b7d00c -->
 - `tarav.l1.skw.code` owns neutral typed document blocks, typed block-local
   objects, workflow-owned block annotations, retained content, common reading

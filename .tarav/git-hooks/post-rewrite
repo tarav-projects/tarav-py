@@ -6,7 +6,10 @@ n=$#
 for a do set -- "$@" "--arg=$a"; done
 shift "$n"
 if command -v tarav >/dev/null 2>&1; then
-  printf '%s\n' "$input" | tarav git hook --name "$hook" "$@" || echo "tarav: the $hook hook failed; Git continues" >&2
+  printf '%s\n' "$input" | tarav git hook --name "$hook" "$@"
+  status=$?
+  if [ "$status" -eq 75 ]; then exit 1; fi
+  if [ "$status" -ne 0 ]; then echo "tarav: the $hook hook failed; Git continues" >&2; fi
 else
   echo "tarav: not found on PATH; the Tarav $hook hook did nothing" >&2
 fi

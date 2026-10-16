@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: executing; slices 1 and 2 done.
+Status: implemented and verified; Wiki captured.
 
 Follow-up to request 915. A machine-local witness, outside the repository,
 keeps the tarav-change IDs each Project's branch had at its last commit. The
@@ -143,7 +143,9 @@ the witness is stored as Records, one per Project and branch, under
 
 - Product project: tarav-py. Wiki: `tarav-md/notes/wiki/`; topical note
   `tarav-change.md`, daily note.
-- Capture status: pending until completion.
+- Capture status: captured in `notes/wiki/tarav-change.md` ("Append-only,
+  with a witness outside the repository") and the daily `2026-10-16.md`;
+  tarav-md commits `03a9361` (checkpoint), `07e0b0a`.
 
 ## Execution.Plan
 
@@ -206,3 +208,15 @@ deadlocks on the action registry's Git; refusal codes collide with the CLI.
   and architecture tests 70 passed; the full suite before the cycle fix had
   only that architecture failure (321 passed); ruff clean. Breadcrumbs:
   `witness.py` 3, `change.py` 3, audits ok.
+- Slice 2 commit: `92071cd`; its post-commit already wrote tarav-py's
+  real witness (`~/Documents/tarav/git-changes/<project_id>/branches/main.json`).
+- Slice 3 done. `tarav check --project .` reported the four tarav-py hook
+  scripts as `Tarav.Git.Hooks.Stale` (they predated the refusal path);
+  `tarav git hooks install --project .` rewrote them and the check is back
+  to the 2 pre-existing MarkerPOIs. AGENTS.md (skw source, label copied
+  back, product identical) and ARCHITECTURE.md describe stops, overrules and
+  the witness. Check: full suite 322 passed; ruff clean; doc audits ok.
+- Completion. Breadcrumbs: `hooks.py` 1, `witness.py` 3, `change.py` 3,
+  `AGENTS.md` 1, `ARCHITECTURE.md` 1, this note 5; Wiki 7; audits ok. Not
+  done, as scoped: finding the new commit of a lost ID, sharing witnesses
+  between machines, hooks in other repositories.
