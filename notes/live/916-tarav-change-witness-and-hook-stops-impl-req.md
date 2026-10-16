@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: ready for execution.
+Status: executing; slice 1 done.
 
 Follow-up to request 915. A machine-local witness, outside the repository,
 keeps the tarav-change IDs each Project's branch had at its last commit. The
@@ -174,3 +174,12 @@ deadlocks on the action registry's Git; refusal codes collide with the CLI.
 ## Impl.Log
 
 - Design: request written.
+- Start checkpoint: `83cd002`.
+- Slice 1 done. `GitHookRefusal`, `REFUSED_EXIT = 75`,
+  `TARAV_GIT_HOOKS_OVERRULE` (`GitHookCall.overrule`, `overrules()`),
+  `dispatch` returning warnings and refusals, `run_hook` exiting 75 on a
+  refusal, and the script exiting 1 only then. Check:
+  `tests/test_git_hooks.py` 11 passed: a refusal and its overrule through
+  `dispatch` and `run_hook` (with the environment variable); a fake `tarav`
+  on PATH shows a real `git commit` stopped by 75 only, while exit 1 warns
+  and commits and 0 commits. Full suite passed; ruff clean.

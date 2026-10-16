@@ -13,12 +13,15 @@ import pytest
 
 from tarav.l1.git.hooks import (
     HOOKS_FOLDER,
+    REFUSED_EXIT,
     GitHookCall,
     GitHookHandler,
+    GitHookRefusal,
     dispatch,
     git_hook_checks,
     install,
     register_git_hook_handler,
+    run_hook,
 )
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l2.project import Project
@@ -28,7 +31,7 @@ CALLS: list[GitHookCall] = []
 
 
 class Recorder(GitHookHandler):
-    """Remembers each call; fails when Git's first argument says so."""
+    """Remembers each call; fails or stops when Git's first argument says so."""
 
     __test__ = False
     name = "test-recorder"
@@ -43,6 +46,8 @@ class Recorder(GitHookHandler):
     def run(self, call: GitHookCall) -> None:
         if call.arguments[:1] == ("fail",):
             raise RuntimeError("asked to fail")
+        if call.arguments[:1] == ("stop",) and not call.overrules(self.name):
+            raise GitHookRefusal("asked to stop")
         CALLS.append(call)
 
 
@@ -108,14 +113,50 @@ def test_dispatch_runs_the_handlers_that_use_the_hook_and_turns_failures_into_wa
         tmp_path: Path) -> None:
     project(tmp_path, {"git": {"hooks": {"handlers": ["test-recorder", "nobody"]}}})
 
-    warnings = dispatch(GitHookCall("commit-msg", (".git/COMMIT_EDITMSG",), tmp_path))
-    assert warnings == ["No Git hook handler is named nobody"]
+    warnings, refusals = dispatch(GitHookCall("commit-msg", (".git/COMMIT_EDITMSG",), tmp_path))
+    assert (warnings, refusals) == (["No Git hook handler is named nobody"], [])
     assert [(call.hook, call.arguments) for call in CALLS] == [("commit-msg", (".git/COMMIT_EDITMSG",))]
 
-    assert dispatch(GitHookCall("pre-commit", (), tmp_path))[1:] == []  # the recorder skips it
+    dispatch(GitHookCall("pre-commit", (), tmp_path))  # the recorder does not use it
     assert len(CALLS) == 1
-    assert dispatch(GitHookCall("post-commit", ("fail",), tmp_path)) == [
-        "test-recorder failed in post-commit: asked to fail", "No Git hook handler is named nobody"]
+    assert dispatch(GitHookCall("post-commit", ("fail",), tmp_path)) == (
+        ["test-recorder failed in post-commit: asked to fail", "No Git hook handler is named nobody"], [])
+
+
+def test_a_handler_may_stop_and_an_overrule_lets_it_through(tmp_path: Path, monkeypatch,
+                                                           capsys) -> None:
+    project(tmp_path, {"git": {"hooks": {"handlers": ["test-recorder"]}}})
+    stop = GitHookCall("commit-msg", ("stop",), tmp_path)
+    assert dispatch(stop) == ([], ["test-recorder stopped commit-msg: asked to stop"])
+    overruled = GitHookCall("commit-msg", ("stop",), tmp_path, overrule=frozenset({"test-recorder"}))
+    assert dispatch(overruled) == ([], []) and len(CALLS) == 1
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TARAV_GIT_HOOKS_OVERRULE", raising=False)
+    assert run_hook("commit-msg", ["stop"]) == REFUSED_EXIT
+    assert "tarav: test-recorder stopped commit-msg: asked to stop" in capsys.readouterr().err
+    monkeypatch.setenv("TARAV_GIT_HOOKS_OVERRULE", "other, test-recorder")
+    assert run_hook("commit-msg", ["stop"]) == 0
+
+
+@pytest.mark.parametrize(("status", "committed", "said"), [
+    (REFUSED_EXIT, False, ""),
+    (1, True, "tarav: the commit-msg hook failed; Git continues"),
+    (0, True, ""),
+])
+def test_only_a_refusal_from_tarav_stops_git(tmp_path: Path, status: int, committed: bool,
+                                             said: str) -> None:
+    project(tmp_path)
+    install(tmp_path, add=["test-recorder"])
+    fake = tmp_path / "fake-bin"
+    fake.mkdir()
+    (fake / "tarav").write_text(f"#!/bin/sh\nexit {status}\n")
+    (fake / "tarav").chmod(0o755)
+    git(tmp_path, "add", "-A")
+    result = subprocess.run(["git", "commit", "-m", "try"], cwd=tmp_path, env=path_with(str(fake)),
+                            capture_output=True, text=True)
+    assert (result.returncode == 0) is committed
+    assert said in result.stderr
 
 
 def test_git_runs_the_scripts_and_a_missing_or_unknowing_tarav_never_blocks_a_commit(

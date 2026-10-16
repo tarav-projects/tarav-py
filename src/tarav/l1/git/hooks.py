@@ -6,7 +6,9 @@ per Git hook those handlers use into `.tarav/git-hooks/`, tracked with the
 Project, and points `core.hooksPath` there. A script runs the chained hook,
 if any, then `tarav git hook`, which runs the handlers in process. Hooks are
 not a guarantee: a missing or failing Tarav warns and lets Git continue, and
-the Project checks report what drifted.
+the Project checks report what drifted. A handler may stop the Git operation
+on purpose, to make whoever commits rethink; naming it in
+`TARAV_GIT_HOOKS_OVERRULE` overrules the stop, and the handler records that.
 """
 
 from __future__ import annotations
@@ -32,6 +34,9 @@ HOOKS_FOLDER = ".tarav/git-hooks"
 ATTRIBUTES_FILE = ".gitattributes"
 # Git hooks that receive data on standard input; their script passes it to both callees.
 STDIN_HOOKS = frozenset({"post-rewrite", "pre-push", "reference-transaction"})
+# The exit status of `tarav git hook` when a handler stopped the operation; no other stops Git.
+REFUSED_EXIT = 75
+OVERRULE_ENV_VAR = "TARAV_GIT_HOOKS_OVERRULE"
 
 
 # tarav.breadcrumb f7391cbd2d285b21a9ece290e050180b3092461f83c8b7a82691a32b0ddb321e
@@ -52,14 +57,31 @@ class GitConfig(BaseModel):
     hooks: GitHooksConfig | None = None
 
 
+# tarav.breadcrumb 7336e756890d1dd0e16b3b04c3968867219198d280f5de764e70450dfbe41e81
+class GitHookRefusal(Exception):
+    """A handler stops the Git operation; its message says why and how to overrule it."""
+
+
 @dataclass(frozen=True)
 class GitHookCall:
-    """One run of a Git hook: its name, Git's arguments, the repository and standard input."""
+    """One run of a Git hook: its name, Git's arguments, the repository and standard input.
+
+    `overrule` names the handlers whose stops are overruled for this run.
+    """
 
     hook: str
     arguments: tuple[str, ...]
     root: Path
     stdin: str = ""
+    overrule: frozenset[str] = frozenset()
+
+    def overrules(self, handler: str) -> bool:
+        return handler in self.overrule or "all" in self.overrule
+
+
+def overrule_from_environment() -> frozenset[str]:
+    raw = os.environ.get(OVERRULE_ENV_VAR, "")
+    return frozenset(name.strip() for name in raw.split(",") if name.strip())
 
 
 class GitHookHandler(TaravObject):
@@ -124,7 +146,10 @@ def hook_script(hook: str, chain: str | None) -> str:
     call = 'tarav git hook --name "$hook" "$@"'
     if reads_stdin:
         call = f"printf '%s\\n' \"$input\" | {call}"
-    lines += [f'  {call} || echo "tarav: the $hook hook failed; Git continues" >&2',
+    lines += [f"  {call}",
+              "  status=$?",
+              f'  if [ "$status" -eq {REFUSED_EXIT} ]; then exit 1; fi',
+              '  if [ "$status" -ne 0 ]; then echo "tarav: the $hook hook failed; Git continues" >&2; fi',
               "else",
               '  echo "tarav: not found on PATH; the Tarav $hook hook did nothing" >&2',
               "fi",
@@ -190,15 +215,19 @@ def install(root: Path | str, *, add: Sequence[str] = ()) -> GitHooksConfig:
     return config
 
 
-def dispatch(call: GitHookCall) -> list[str]:
-    """Run the configured handlers that use ``call.hook``; return warnings, never raise."""
+def dispatch(call: GitHookCall) -> tuple[list[str], list[str]]:
+    """Run the configured handlers that use ``call.hook``; return warnings and refusals.
+
+    A refusal is a handler stopping the operation on purpose; every other
+    failure is only a warning.
+    """
     try:
         config = hooks_config(call.root)
     except CliError as exc:
-        return [str(exc)]
+        return [str(exc)], []
     if config is None:
-        return [f"{call.root} configures no Tarav Git hooks"]
-    warnings = []
+        return [f"{call.root} configures no Tarav Git hooks"], []
+    warnings, refusals = [], []
     handlers = git_hook_handlers()
     for name in config.handlers:
         handler = handlers.get(name)
@@ -207,9 +236,11 @@ def dispatch(call: GitHookCall) -> list[str]:
         elif call.hook in handler.hooks:
             try:
                 handler.run(call)
+            except GitHookRefusal as exc:
+                refusals.append(f"{name} stopped {call.hook}: {exc}")
             except (GitError, OSError, ValueError, RuntimeError) as exc:
                 warnings.append(f"{name} failed in {call.hook}: {exc}")
-    return warnings
+    return warnings, refusals
 
 
 # tarav.breadcrumb 98cfc9f168e70dae1b1d4cee5bbe5cc58d4d52fdb3d9444f91217de8687dfd47
@@ -220,9 +251,11 @@ def run_hook(hook: str, arguments: Sequence[str]) -> int:
         print(f"tarav: {hook} ran outside a Git repository", file=sys.stderr)
         return 0
     stdin = sys.stdin.read() if hook in STDIN_HOOKS else ""
-    for warning in dispatch(GitHookCall(hook, tuple(arguments), root, stdin)):
-        print(f"tarav: {warning}", file=sys.stderr)
-    return 0
+    warnings, refusals = dispatch(GitHookCall(hook, tuple(arguments), root, stdin,
+                                              overrule_from_environment()))
+    for message in (*warnings, *refusals):
+        print(f"tarav: {message}", file=sys.stderr)
+    return REFUSED_EXIT if refusals else 0
 
 
 class GitHooksPOI(CheckPOI):
@@ -346,7 +379,8 @@ GIT_HOOKS_RECORD_TYPES = (GitHooksPOI, HooksNotInstalled, HookStale, UnknownHook
                           HookAttributesMissing)
 
 __all__ = [
-    "GIT_HOOKS_RECORD_TYPES", "GitConfig", "GitHookCall", "GitHookHandler", "GitHooksCheck",
+    "GIT_HOOKS_RECORD_TYPES", "GitConfig", "GitHookCall", "GitHookHandler", "GitHookRefusal",
+    "GitHooksCheck", "OVERRULE_ENV_VAR", "REFUSED_EXIT", "overrule_from_environment",
     "GitHooksConfig", "GitHooksPOI", "HOOKS_FOLDER", "HookAttributesMissing", "HookStale",
     "HooksNotInstalled", "UnknownHookHandler", "dispatch", "expected_scripts",
     "git_hook_checks", "git_hook_handlers", "git_hooks_suite", "hook_script", "hooks_config",
