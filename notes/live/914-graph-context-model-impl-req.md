@@ -194,3 +194,29 @@ Deviation (Autonomous): the request named Context code to cut; it also
 covered `context_notes`, `tape.advice` and Action Types'
 `context_entries`, read only by the old Context. They were cut too, per the
 User's "cut it, all goes to the default".
+
+### Slice 3 — documentation (done)
+
+AGENTS.md (through its Skillware source `.tarav/skillware/src/AGENTS.skw.json`,
+compiled with `tarav skw document compile --depot .tarav/skillware`; the
+first edit went to the product and the status reported ProductDrift, fixed
+by moving it to the source), the canonical Tarav System Prompt
+(`src/tarav/l1/project/tarav-system-prompt.md`: `tarav context` now opens a
+graph holding only the action's type), ARCHITECTURE.md (Context as a graph,
+the Explorer, the command, layer table; old views, models, storage,
+ObjectGroup, LineScope and `context_notes` passages removed) and the POI
+README. Check: no maintained Markdown names a removed API; Ruff clean;
+`tarav project harness sync --project ..` added RDFLib to the root
+harness environment; `tarav status --project --all`: 43 checks completed,
+the two findings this work had opened (ProductDrift, a stale bytecode
+directory left by a `git stash` check) closed as gone; 2 MarkerPOI actions
+remain, open before this work. Inlined capture: new passages marked and
+submitted with the session; audits ok after position refresh.
+
+Outside this request: the root workspace now reports
+`TaravSystemPrompt.Stale` for the agents files that embed the old System
+Prompt text (other repositories); the root `.tarav/uv.lock` changed with the
+harness sync and is left uncommitted. The extension's Diagram explorer
+workflow imports the deleted `_future` package and its action page asks for
+`--view object-group`; both now fail, as decided. The Records the `_future`
+demo seeded in the User's records root are untouched.

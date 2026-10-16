@@ -26,8 +26,9 @@ reported point of interest (POI) is a signal to investigate, not an automatic
 instruction to repair or a reason to stop unrelated work. A check may report
 missing context, stale generated output, or a problem that needs user judgment.
 A POI is only a flag: what persists is the action the status opens for it.
-Before acting, open that action with `tarav context --id <action-id>`; it
-shows the POI, what its Type says about it, and how the action can be closed.
+Before acting, read the action in `tarav action list --project`;
+`tarav context --id <action-id>` opens its Context graph, which for now holds
+only its type.
 
 ### Work with Tarav data
 

@@ -51,7 +51,8 @@ The main concepts are:
 - **The Diagram** is the graph that emerges from Objects, Types, Ships,
   References, and workflow-defined relationships. It is not limited to the
   `tarav.diagram` package or one physical store.
-- **Context** is a progressively navigable view rooted at a Type or Object.
+- **Context** is the graph of triples objects contribute about themselves,
+  explored from a Type or Object.
 
 A subject participates in the Diagram when Tarav can represent it as a
 `TaravObject`. Python classes participate through `TaravClass`, Workflows are
@@ -78,16 +79,15 @@ owning Workflow are data on that `TaravClass`, rather than parallel attributes
 on the Python class. `TypeWorkflow` owns `TaravClass`, while its instances'
 `workflow` fields continue to describe the represented classes' owners.
 `TaravClass.bases()` derives direct Tarav base entities from Python declaration
-order, omitting non-Tarav mixins. Its Context exposes `bases` and a `target`
-route to the represented class context, preserving ancestor context rather
-than merging it. Detached class Records cannot infer live bases or targets.
+order, omitting non-Tarav mixins. Detached class Records cannot infer live
+bases or targets.
 `KernelWorkflow` owns the remaining foundational Types; each concrete
 Workflow entity retains its established WorkflowShip address. Each concrete
 Workflow declares that fixed identity independently through `_workflow_id()`;
 `WorkflowClass()` returns the same process-wide entity on repeated calls.
 `entity(WorkflowClass)` represents only the implementation class, retaining its
 separate TypeShip. Its `workflow` field declares ownership, not instance identity.
-Class and object Context therefore have separate subject addresses. Both UUIDs
+Classes and their objects therefore have separate identities. Both UUIDs
 remain unchanged; existing Archive partitions do not move. Workflow Records
 can be projected and explicitly loaded through their class, but Workflow Types
 are not automatically registered for dynamic Record loading.
@@ -118,89 +118,35 @@ The registries keep mechanics separate from semantics:
   maintain a second reverse relationship.
 - Each Workflow class declares its code-owned text constitution alongside its
   name; the constitution remains code-owned rather than a retained instance field.
-- Runtime-local state lives in `ContextService`, `ReferenceService`,
+- Runtime-local state lives in `ReferenceService`,
   `BreadcrumbService`, and `RecordsService`, not Workflow instances or mutable
   Workflow class attributes. Separate runtimes receive separate service objects.
 - Runtime composition verifies that every registered Type's Workflow Ship
   resolves to a registered Workflow.
 
-`tarav.l1.context.explore()` exposes standalone navigation and accepts explicit
-contributors. `tarav.l3.context.context()` adds the current runtime's retained
-entries. Both invoke `class_context()` for a Type and `obj_context()` for an
-Object. With no requested views they return a
-`ContextExplorer`: a stateful explorer with history across nested folders and
-jumps to other subjects. A `ContextView` is a read-only `TaravObject` folder with
-named or positional entries and no cursor state. Each `ContextEntry` is an
-attachment point at one path; `open()` returns its value, either another Context
-folder or any other `TaravObject`. Folder status follows the opened value,
-without a separate entry flag. Entries produced by an explorer remember their
-origin. `context(entry)` follows its value in that same explorer; calling
-`context(subject)` directly starts a new one. Runtime and retained entries
-share the subject root's namespace.
+Every TaravType has the `.context` namespace. `triplets()` returns what the
+subject contributes about itself: triples `(subject, predicate IRI, target)`,
+the target a Tarav object, a class, or a str, int, float or bool literal. The
+default is one triple, `(subject, RDF_TYPE, entity(type(subject)))`, a class
+standing for its `entity`; a Type overrides it, composing with `super()`.
+Calling the namespace, `subject.context()`, opens a `ContextExplorer` through
+a host-configured Kernel hook; Kernel does not import Context or RDFLib.
+<!-- tarav.breadcrumb d2fc001a48cd5061c68999356e70273bc19428e950af073ad0a3b2052123c46f -->
 
-`TaravType.Context` is the selected bound namespace on Types and objects.
-`subject.context.explore(views=(...))` opens a view; `subject.context(views=(...))`
-delegates to that same overridable operation. NamespaceBase stays noncallable.
-Namespace composition checks apply to every TaravType, including class-only
-capabilities; independent contributions require an explicitly combined class.
-The existing `class_context` and `obj_context` population hooks remain intact.
-Kernel holds only the bound interface and host hooks, without importing Context.
-<!-- tarav.breadcrumb 08ffcac5c6a08768e8a5b53a7f20b01e91d564d0993d14e3a2ba4608e5aa9cb3 -->
-
-ContextScope carries the subject and ordered qualifications. Static ContextView
-classes and parameterized ContextViewRequest objects apply left to right;
-`accepts(scope)` declares compatibility without running a view factory.
-`for_context(current)` or a request's `apply(current)` opens the next view.
-The dispatcher preserves prior qualifications and rejects unsupported steps or
-implicit subject changes. Scope is exposed as `context_scope`, distinct from
-domain relationships such as LineScope.scope. Python's old `Context` view-class
-name and `type=` selector are removed; ontology Ships and Record labels stay
-stable. No generic compatibility solver or persisted request schema is implied.
-<!-- tarav.context 473c89a0:3cae519d8e79ad5b -->
-
-`ContextBuilder.add_view(name, views=(...))` contributes a typed ContextViewEntry.
-Listing offers supported steps without opening them. Entry opening and direct
-view selection reuse `refine(views=...)`. ContextService registers named views;
-the runtime offers compatible registrations on every derived view, and queries
-share that registry. Generic same-subject folders inherit active qualifications.
-Entering another subject's Context starts a new scope and retains explorer
-history. Entries can still open ordinary nodes directly. Specialized retained
-entry Types, metadata and cargo survive listing and navigation; `put_entry` and
-`write_entry` preserve their registered Record Types without generic rewrapping.
-<!-- tarav.context 473c89a0:9b167562b00b0279 -->
-<!-- tarav.context 473c89a0:5696389e9d36d4fc -->
-
-`SomeType.context.model` is a partial Type model, also exposed as `model` in the
-runtime Type Context. An object's namespace opens its Type's model, not an
-instance model. `tarav.l1.context.models` owns `TypePath`, an Entity with a
-current path label, and `TypeModel`, a computed read-only Context folder rooted
-at the existing Type Ship. Entries are keyed by Ship; paths are lookup labels.
-Every node has its own ordinary Context. The model may have no member nodes.
-<!-- tarav.breadcrumb 2448699db88d6552d5ee7820f453d4a06053da01c68f3297c462e445d4a31da2 -->
-
-The namespace's `model_nodes()` declares class-owned nodes. ContextService
-composes these with its external providers and retained `model` folder, which
-reuses Context's Archive backing. Reading never creates storage. Explicit
-`put_model_node(Type, node)` retains a new Ship with Archive's create-only
-placement policy. Same-Ship conflicts and ambiguous path lookups are reported;
-model completeness and correspondence with Python paths are not enforced.
-<!-- tarav.breadcrumb a879b73240b82b56e386b12073f47b1db810f17fd1b445371bc2797333be06ad -->
-
-The Context Workflow uses Record Archive for durable roots under
-`~/Documents/tarav/archive/<context-workflow-ship>/<subject-ship>/`. The root is
-a generic Dictionary Archive; a separate Context-owned `context.json` Record
-binds its Ship to the Entity or class Ship. Nested Dictionary and Vector
-Archives provide arbitrary organization. The Archive owns retention, placement,
-and Git policy; Context owns entry attachments, folder objects, and runtime
-composition. A retained leaf ArchiveEntry stores a ContextEntry whose cargo is
-another typed Record. A retained folder ArchiveEntry stores a typed Archive;
-its `context.json` attachment is a ContextEntry whose cargo is a typed Context
-folder Record identifying that Archive. This lets either ContextEntry open its
-value without making Context inherit Archive behavior. A Context writer chooses
-leaf cargo explicitly or creates a folder with a Context attachment.
-Plain unidentified Objects can still contribute runtime entries without
-Archive backing. Opening a Context never creates retained data; the Navigation
-Tests Workflow explicitly seeds synthetic Archives for end-to-end tests.
+`tarav.l1.context.ContextExplorer` is a TaravObject holding an RDFLib graph
+collected from the objects it opened, the object behind every term, a focus
+and its history. `open()` collects an object's triples once; an identifier
+resolves through the runtime's resolvers (`TaravRuntime.context_queries()`).
+`ls()` lists the edges at the focus among the triples collected, `follow()`
+moves the focus along an edge and opens its target, `back()` and `forward()`
+move the focus, and `query()` runs SELECT or ASK over what is open without
+opening anything. The graph only grows. Entities, classes included, are
+`urn:uuid:<Ship>`; other objects are blank nodes for the Explorer's life.
+Navigation, search and resolution are ordinary Context workflow code; objects
+only contribute. Contributions are added Type by Type as they are needed.
+<!-- tarav.breadcrumb f4ee4baa75c2ef6c6f63210c2e4267b40246449d077c7e81a03f38dc82a491e2 -->
+<!-- tarav.breadcrumb 31740a0af8080b6fcd08005c5dddb9e71ac81187cb544723c254a6000b8f51e6 -->
+<!-- tarav.breadcrumb 786354609782dd54b9d97050a7218a3b244f3ff621a473a69035a5838f1176f2 -->
 
 `tarav.l3.loading.load(path, expected_type=...)` is the primary dynamic loading
 interface. The composed runtime locates the Record, resolves its registered
@@ -313,9 +259,9 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   `~/Documents/tarav/records/` or an explicitly selected root. Records sources
   keep their own storage layouts and need no per-Record global registration.
   <!-- tarav.breadcrumb 013cd36673190cd8c872889558b1cb8ac1236068984883faab3582e17d8db005 -->
-- `tarav.l1.context` owns Context types, standalone navigation, class-bases
-  presentation, and the Context Workflow declaration. `explore()` accepts
-  explicit contributors without loading Archive or runtime.
+- `tarav.l1.context` owns the Context Explorer, the identifier resolver
+  service and the Context Workflow declaration, without loading Archive or
+  runtime. The runtime composes the resolvers and configures `.context()`.
 - `tarav.l1.cli` projects the built argparse tree as stable `Command` Entities
   and supplies command checks. These runtime-derived objects are resolved from
   the current parser tree, not loaded as standalone retained Records.
@@ -331,10 +277,6 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   <!-- tarav.breadcrumb 4c65e8ba6ee4799e598a5973b7dbfc70858d934bd4e2abc9bc4c07ac06e9d207 -->
   <!-- tarav.breadcrumb 217080a6ff2b0b121aee1e55ec553d860ad1076d13b23db78882b78b1694e72f -->
   <!-- tarav.breadcrumb 5ede35bc5676515a281d72565d409ecb46bbe06adab48eedf903130170c49bcd -->
-- `tarav.l2.context` owns Archive-backed Context Types and `ContextService`;
-  `tarav.l3.context` owns the runtime-aware `context()` convenience. Runtime
-  assembly constructs its service directly; the l1 Workflow has no service factory. Kernel retains
-  extensible context hooks with opaque builder arguments, not Context imports.
 - Domain packages own their vocabulary, Records, storage, validation, and
   operations. Cross-domain imports remain acyclic.
 - `tarav.l1.archive.records` implements Record Archive, nested beneath its parent
@@ -345,7 +287,7 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
 - `tarav.l1.loading` owns profile discovery and `tarav.l3.loading` owns the
   runtime-backed load facade. `tarav.l1.project` owns the minimal Project Type;
   `tarav.l2.project` adds Models and Wiki integrations. Archive uses the
-  kernel-owned current Record registry; retained Context owns its service lookup.
+  kernel-owned current Record registry.
 - `tarav.l1.git` owns bounded repository mutation and preserves unrelated index
   state through isolated commit indexes. Immutable Git surface References stay
   in `tarav.l1.references.git`. `tarav.l2.git.breadcrumbs` composes Git and
@@ -376,15 +318,9 @@ ordered Line membership. Its Record retains Line Ships; explicit binding
 resolves the ordered members without changing them. Membership does not change
 a Line's scope. `tarav.l1.lines.Line` is a storage-independent entity with text and one
 interpretive entity scope. Its Record retains the scope Ship; explicit binding
-resolves that edge without changing it. `LineScope` is a read-only Context
-specialization. `explore(subject, type=LineScope)` and the runtime context
-entry points select it explicitly; unsupported context types fail. With no
-selector, existing general ContextExplorer behavior remains unchanged.
-Object `.context(type=...)` uses a host-configured Kernel hook, avoiding upward
-Kernel imports. Specialized Context factories own subject compatibility.
+resolves that edge without changing it.
 
-Archive and Context expose workflow membership through `ArchiveType` /
-`ArchiveObject` and `ContextType` / `ContextObject`. Explorers are workflow
+Archive exposes workflow membership through `ArchiveType` / `ArchiveObject`. Explorers are workflow
 Types without requiring the Object Record contract. Their roots may be owned
 leaf objects; listing or selection then raises `NotADirectoryError`. Shared
 Explorer helpers check Folder/List capability and key typing. Workflow-specific
@@ -632,7 +568,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `search` | SearchWorkflow owns typed incremental queries and a registry-backed meta engine. SearchEngine Types contribute a bound `.search` namespace; the runtime holds one SearchService per composition. Engine registration does not imply storing queries or hits. |
 <!-- tarav.breadcrumb 4597f1786f7c1c0b1fce993a19bef717743bb666489fd98b1b2fcad2d4f8e253 -->
 <!-- tarav.breadcrumb 9b87f84163c1777984484c0543b3e3011a5bea09e1c24833b15527175c4f9e52 -->
-| `l1.context`, `l2.context`, `l3.context` | The same Context Workflow spans standalone navigation, Archive-backed retention, and runtime selection. |
+| `l1.context`, `l3.context` | The Context Workflow: the Explorer and resolvers, and the `tarav context` command. |
 | `references` | Shared typed locator, check, hints, and resolution mechanics. |
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
@@ -865,32 +801,15 @@ The registry is best effort; a failure is logged and the run is unchanged.
 
 ### Context queries; the POI is a flag
 
-`tarav context --id <identifier> [--view <name> ...] [--path a/b]` is the shell door
-to the same Context that scripts reach through `.context`. `tarav.l1.context.query`
-owns the typed `ContextQuery` (an identity query by default), a
-`ContextQueryService` whose resolvers are Search engines, and named views, which
-are view classes or typed requests opened through `explore(subject, views=...)`.
-Repeated `--view` options apply left to right. Listings expose entry Types and
-JSON includes active qualifications alongside available next views. The CLI
-layer composes the installed resolvers and views; the `context` subsystem imports
-no workflow that contributes to it. One match opens, several are listed, and a
-unique prefix is enough.
-
-`ObjectGroup` (`tarav.l1.context.groups`, `--view object-group`) is the view
-of the objects that belong together: `obj.context(views=(ObjectGroup,))`. No
-method is added to objects. Each workflow registers, with `register_links`,
-a function naming the links of one Type's objects as pairs of `Member`s,
-upstream first, and the runtime registers them: POI (situation → POI),
-Checks (situation → check → POI) and Actions (suites → check, POI → action,
-action → closing records). The view follows the links from the subject
-until nothing new appears, so every member opens the same group in the same
-order; ties are broken by role, Type, id and key. A member is its role, its
-Type and its id or key, or its value when it has no Type; only members with
-a live object attached are followed, so a check or a suite known from an
-action's record is its Type and key, and building a group runs nothing. The
-Project is not a member.
-<!-- tarav.breadcrumb c17763030f34fc92d2d84530ea61fcc1b42a6066856998d43697a6dd52fb8699 -->
-<!-- tarav.breadcrumb 45973656b8a06f76705dad01be4093537a836474c45970737b9ff615cb7e3c8d -->
+`tarav context --id <identifier> [--json]` is the shell door to the same
+Explorer that scripts open with `obj.context()`: it prints the subject and
+the edges at it. `tarav.l1.context.query` owns the typed `ContextQuery` (an
+identity query by default) and a `ContextQueryService` whose resolvers are
+Search engines; the runtime composes the installed ones. One match opens,
+several are listed, and a unique prefix is enough. `--view` is kept only to
+fail: named views, such as the former object group, are not implemented in
+the graph model and come back as queries when needed.
+<!-- tarav.breadcrumb 2c617b4d656b44c0c0e7bdc5c0fcf1f69767a972143f195f29c01fdbc973d469 -->
 
 A POI is a flag between detecting and working: what a check returns. It is
 momentary and owns nothing; nothing stores a POI that was printed. It gives
@@ -905,8 +824,8 @@ declare theirs, such as `hints` on a reference resolution POI or `entry` on
 a skills status POI. A POI becomes data in one way, the Record system:
 `poi.records.to_record()` gives its Type, message, situation and the fields
 its Type adds, and `from_record()` loads it back. The record holds the
-occurrence only; what the Type says (its description, its `context_notes`,
-where it is defined) is read from the class. A consumer decides what
+occurrence only; what the Type says (its description, where it is defined)
+is read from the class. A consumer decides what
 happens to a POI. Printing (`tarav check`, `tarav skw skills`, the
 breadcrumbs and Diagram commands) is how a person looks at checks directly.
 The Project status escalates: each POI its checks raise becomes an action
@@ -915,11 +834,8 @@ running step keeps the POIs of its tests as the reason it could not close.
 What integrates several workflows, such as blessing or asking how an action
 stands for a POI, is modeled on the Project (`project.actions.of(poi)`,
 `standing(poi)`, `blessing(poi)`); POI listings say nothing about actions.
-An action contributes its own Context (`ActionRun.obj_context`) and its
-Action Type adds what is specific to it (`Action.context_entries`);
 `ActionResolver` (`tarav.l1.actions.views`) finds an action by its id or by
-the id of the POI it follows, so `tarav context --id <id>` opens it without
-naming a view. `tarav.l1.poi.rendering` owns named renderers for a selected
+the id of the POI it follows, so `tarav context --id <id>` opens it. `tarav.l1.poi.rendering` owns named renderers for a selected
 page of POIs; the default and JSON-lines renderers expose the `line` and
 `record` levels. `tarav.l1.checks.poi_contract` checks that every POI Type
 renders a meaningful line.
