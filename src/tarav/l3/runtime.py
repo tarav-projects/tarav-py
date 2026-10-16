@@ -23,13 +23,14 @@ from tarav.l0.kernel import (
     entity,
 )
 from tarav.l0._core.data_root import default_tarav_data_root
-from tarav.l1.context import ContextExplorer
+from tarav.l1.context import ContextBuilder, ContextExplorer
 from tarav.l1.context.query import ContextQueryService, TypeResolver
 from tarav.l1.context.workflow import ContextWorkflow
 from tarav.l0.kernel.space import FilesystemProvider
 from tarav.l0.kernel.records import (
     configure_workflow_resolver,
     configure_context_opener,
+    configure_context_builder,
 )
 from tarav.l0.kernel.current import configure_current_records
 from tarav.l0.kernel.workflows import TaravWorkflow, WorkflowRegistry
@@ -73,6 +74,7 @@ class TaravRuntime:
     environment: TaravEnvironment
     navigation: RecordsService
     search: SearchService
+    contexts: ContextBuilder
     references: ReferenceService
     breadcrumbs: BreadcrumbService
     usage: UsageRegistry
@@ -117,7 +119,8 @@ class TaravRuntime:
     def context(self, subject) -> ContextExplorer:
         """Open a Context Explorer on a subject; identifiers resolve through this runtime."""
 
-        return ContextExplorer(subject, resolve=self.context_queries().find)
+        return ContextExplorer(self.contexts.build(subject),
+                               resolve=self.context_queries().find, build=self.contexts.build)
 
     def context_queries(self) -> ContextQueryService:
         """The installed resolvers from an identifier to what it identifies."""
@@ -611,6 +614,7 @@ def create_runtime(
             (archive_root or default_tarav_data_root() / "archive").expanduser().resolve()),
         navigation=navigation,
         search=search,
+        contexts=ContextBuilder(),
         breadcrumb_integrations=composed_breadcrumb_integrations,
         pois=POICollector(),
     )
@@ -644,6 +648,7 @@ def set_runtime(runtime: TaravRuntime | None) -> None:
 configure_workflow_resolver(lambda ship: get_runtime().workflows.get(ship)())
 configure_current_records(lambda: get_runtime().records)
 configure_context_opener(lambda subject: get_runtime().context(subject))
+configure_context_builder(lambda subject, **kwargs: get_runtime().contexts.build(subject, **kwargs))
 
 
 __all__ = [

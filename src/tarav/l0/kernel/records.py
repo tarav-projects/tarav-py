@@ -42,6 +42,7 @@ JsonFile = TextIO | BinaryIO
 
 _workflow_resolver: Callable[[WorkflowShip], TaravWorkflow] | None = None
 _context_opener: Callable | None = None
+_context_builder: Callable | None = None
 
 # The predicate of the one triple every object contributes by default.
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
@@ -51,6 +52,12 @@ def configure_context_opener(opener: Callable) -> None:
     """Supply the Context Explorer without an upward Kernel import."""
     global _context_opener
     _context_opener = opener
+
+
+def configure_context_builder(builder: Callable) -> None:
+    """Supply Context construction without an upward Kernel import."""
+    global _context_builder
+    _context_builder = builder
 
 
 def configure_workflow_resolver(resolver: Callable[[WorkflowShip], TaravWorkflow]) -> None:
@@ -66,10 +73,12 @@ def resolve_workflow(ship: WorkflowShip) -> TaravWorkflow:
 
 
 class _ContextDescriptor:
-    """Bind the selected namespace to the concrete Type or object."""
+    """Classes enter through their identity object's own namespace."""
 
     def __get__(self, instance: TaravType | None, owner: type[TaravType]):
-        return owner.Context(owner if instance is None else instance)
+        if instance is None:
+            return entity(owner).context
+        return owner.Context(instance)
 
 
 class TaravType:
@@ -96,18 +105,25 @@ class TaravType:
 
     # tarav.breadcrumb 0989202cb613e8944a0ef489b8da99f37acfdd9570fe39d836a30d115407f322
     # tarav.breadcrumb 057f6334bd2a0439741a54d218d08b4452b5c690ebc72fea3b885272ff3b0b4c
-    class Context(NamespaceBase["TaravType | type[TaravType]"]):
-        """How an object or Type takes part in the Context graph.
+    class Context(NamespaceBase["TaravType"]):
+        """Build an object's context, or open an Explorer over it.
 
-        ``triplets()`` is what the subject contributes about itself; a Type
-        overrides it, composing with ``super()`` when it adds to it. Calling
-        the namespace opens a Context Explorer on the subject.
+        Construction calls the class hook, the instance hook, then external
+        hooks with one result. Override hooks cooperatively with ``super()``.
         """
 
-        def triplets(self):
-            """Triples ``(subject, predicate IRI, target)``; by default, its type."""
-            subject = entity(self.obj) if isinstance(self.obj, type) else self.obj
-            return ((subject, RDF_TYPE, entity(type(subject))),)
+        def build(self, *, options: Mapping[str, object] | None = None):
+            """Return the ObjectContext assembled by the configured builder."""
+            if _context_builder is None:
+                raise RuntimeError("Context construction has not been configured")
+            return _context_builder(self.obj, options=options)
+
+        def _class_context_hook(self, cxt) -> None:
+            """The inherited class contribution, by default the subject's type."""
+            cxt.triplets.append((self.obj, RDF_TYPE, entity(type(self.obj))))
+
+        def _obj_context_hook(self, cxt) -> None:
+            """The instance contribution, empty by default."""
 
         def __call__(self):
             """Open a Context Explorer focused on the subject."""

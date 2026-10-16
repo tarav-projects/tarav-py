@@ -1,8 +1,7 @@
-"""The Context graph: objects contribute triples, an Explorer collects them.
+"""Build object contexts, then collect and explore their triples.
 
-Every object answers ``obj.context.triplets()`` with what it contributes
-about itself. ``ContextExplorer`` holds the RDF graph collected from the
-objects it opened. The graph only grows; the focus moves, with a history.
+``obj.context.build()`` returns the context assembled by class, instance and
+external hooks. The Explorer retains it alongside the growing RDF graph.
 """
 
 from __future__ import annotations
@@ -14,17 +13,20 @@ from typing import Literal as Direction
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.term import Node
 
-from tarav.l0.kernel.identity import TypeShip, WorkflowShip
+from tarav.l0.kernel.identity import TypeShip
 from tarav.l0.kernel.records import TaravClass, TaravEntity, TaravObject, TaravType, entity
 
-
-CONTEXT_WORKFLOW_SHIP = WorkflowShip("ae6fb02b-b82f-4f64-82e8-67f28a76d179")
+from .construction import (
+    CONTEXT_WORKFLOW_SHIP,
+    ContextBuildError,
+    ContextBuilder,
+    ContextHookRun,
+    ObjectContext,
+    Subject,
+    Value,
+)
 
 LITERALS = (str, int, float, bool)
-
-Subject = TaravType | type[TaravType]
-Value = Subject | str | int | float | bool
-
 
 @dataclass(frozen=True, slots=True)
 class ContextEdge:
@@ -46,14 +48,19 @@ class ContextExplorer(TaravObject):
         return TaravClass(target=cls, id=TypeShip("f3e47a44-5182-47d5-b6d5-cad8a674b7df"),
                           name="Tarav.Context.Explorer", workflow=CONTEXT_WORKFLOW_SHIP)
 
-    def __init__(self, subject: Subject, *, resolve: Callable[[str], Subject] | None = None) -> None:
+    def __init__(
+        self, context: ObjectContext, *, resolve: Callable[[str], Subject] | None = None,
+        build: Callable[[Subject], ObjectContext] | None = None,
+    ) -> None:
         super().__init__()
         self.graph = Graph()
         self.objects: dict[Node, object] = {}
         self.opened: set[Node] = set()
+        self.contexts: dict[Node, ObjectContext] = {}
         self._resolve = resolve
+        self._build = build or (lambda subject: subject.context.build())
         self._blank: dict[int, BNode] = {}
-        start = self.open(subject)
+        start = self._collect(context)
         self.history: list[Node] = [start]
         self.position = 0
 
@@ -62,16 +69,28 @@ class ContextExplorer(TaravObject):
         return self.objects[self.history[self.position]]
 
     def open(self, target: Subject | str) -> Node:
-        """Collect the triples an object contributes, once; return its node."""
+        """Build and collect a subject once; return its node without moving."""
         if isinstance(target, str):
             if self._resolve is None:
                 raise KeyError(f"Nothing resolves identifiers in this Explorer: {target!r}")
             target = self._resolve(target)
         node = self._node(target)
         if node not in self.opened:
-            self.opened.add(node)
-            for triple in self.objects[node].context.triplets():
-                self._add(triple)
+            self._collect(self._build(self.objects[node]))
+        return node
+
+    def _collect(self, context: ObjectContext) -> Node:
+        if not isinstance(context, ObjectContext):
+            raise TypeError("A ContextExplorer starts with a built ObjectContext")
+        if context.status != "completed":
+            raise ValueError(f"Cannot collect a {context.status} ObjectContext")
+        node = self._node(context.subject)
+        pending = Graph()
+        for triple in context.triplets:
+            self._add(triple, pending)
+        self.graph += pending
+        self.contexts[node] = context
+        self.opened.add(node)
         return node
 
     def ls(self) -> tuple[ContextEdge, ...]:
@@ -132,11 +151,11 @@ class ContextExplorer(TaravObject):
         self.objects.setdefault(node, value)
         return node
 
-    def _add(self, triple: tuple) -> None:
+    def _add(self, triple: tuple, graph: Graph) -> None:
         subject, predicate, target = triple
         if not isinstance(predicate, str) or not predicate:
             raise TypeError(f"A Context predicate is an IRI string, not {predicate!r}")
-        self.graph.add((self._node(subject), URIRef(predicate), self.node(target)))
+        graph.add((self._node(subject), URIRef(predicate), self.node(target)))
 
     def _value(self, term: Node) -> Value:
         if isinstance(term, Literal):
@@ -146,4 +165,7 @@ class ContextExplorer(TaravObject):
         return self.objects[term]
 
 
-__all__ = ["CONTEXT_WORKFLOW_SHIP", "ContextEdge", "ContextExplorer"]
+__all__ = [
+    "CONTEXT_WORKFLOW_SHIP", "ContextBuildError", "ContextBuilder", "ContextEdge",
+    "ContextExplorer", "ContextHookRun", "ObjectContext",
+]

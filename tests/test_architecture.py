@@ -36,7 +36,7 @@ def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
     assert issubclass(TaravObject.Records, NamespaceBase)
     # tarav.context 473c89a0:52d399e8d65f61fc
     assert issubclass(TaravObject.Context, NamespaceBase)
-    assert TaravObject.context.obj is TaravObject
+    assert TaravObject.context.obj.target is TaravObject
     assert callable(TaravObject.context)
     assert not callable(NamespaceBase(TaravObject))
     assert TaravObject.records.obj is TaravObject
@@ -262,15 +262,20 @@ def test_context_package_import_order_and_runtime_boundary():
     ):
         code = first_import + '''
 import tarav.l0.kernel as kernel
-from tarav.l1.context import ContextExplorer
+from tarav.l1.context import ContextBuilder, ContextExplorer, ObjectContext
 from tarav.l1.context.workflow import ContextWorkflow
 from tarav.l3.runtime import get_runtime
 from tarav.l0.kernel import TaravType, entity
 assert not hasattr(kernel, "ContextExplorer")
+assert not hasattr(kernel, "ObjectContext")
+assert not hasattr(kernel, "ContextBuilder")
 assert ContextExplorer.__module__ == "tarav.l1.context"
 get_runtime()
 assert entity(ContextExplorer).workflow is ContextWorkflow()
+assert entity(ObjectContext).workflow is ContextWorkflow()
+assert entity(ContextBuilder).workflow is ContextWorkflow()
 assert TaravType.context().focus.id == entity(TaravType).id
+assert TaravType.context.build().subject.target is TaravType
 '''
         subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)
 
