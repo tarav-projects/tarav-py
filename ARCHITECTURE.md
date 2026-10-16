@@ -141,8 +141,13 @@ and `.context()` exploration through host callbacks, importing neither
 Context nor RDFLib.
 
 `tarav.l1.context.ContextBuilder` owns each runtime's ordered external
-registry (`runtime.contexts.register(name, hook)` / `unregister(name)`). All
-hooks share the mutable result, including its options and opaque hints.
+registry (`runtime.contexts.register(name, hook)` / `unregister(name)`).
+External contributors extend the public `ContextHook` abstract Python
+interface and implement `run(cxt)`. Register explicitly constructed instances;
+the instance bundles its own dependencies, configuration and state and is
+reused across builds. Each hook decides whether the subject concerns it;
+there is no target-class routing. Namespace class/instance hooks remain bound
+methods. All hooks share the mutable result, including its options and opaque hints.
 Registrations are snapshotted before construction; changes take effect on
 the next build. `ObjectContext.runs` records stage entry points, elapsed
 time, triple counts and errors; it does not trace individual super calls.

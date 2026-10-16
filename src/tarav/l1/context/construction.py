@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from time import perf_counter
@@ -63,7 +64,16 @@ class ContextBuildError(RuntimeError):
         super().__init__(f"Context hook {name!r} failed: {type(cause).__name__}: {cause}")
 
 
-ContextHook = Callable[[ObjectContext], None]
+class ContextHook(ABC):
+    """An external contributor, with dependencies supplied by its constructor.
+
+    The registered instance is reused across builds. Each hook decides
+    whether the current subject concerns it and may simply return unchanged.
+    """
+
+    @abstractmethod
+    def run(self, cxt: ObjectContext) -> None:
+        """Inspect the subject and contribute to this shared context."""
 
 
 class ContextBuilder(TaravType):
@@ -81,8 +91,8 @@ class ContextBuilder(TaravType):
         """Append an external contributor; names cannot silently replace hooks."""
         if not isinstance(name, str) or not name.strip():
             raise ValueError("A Context hook needs a nonempty name")
-        if not callable(hook):
-            raise TypeError("A Context hook must be callable")
+        if not isinstance(hook, ContextHook):
+            raise TypeError("A Context hook must be a ContextHook instance")
         if name in self._hooks:
             raise KeyError(f"Context hook {name!r} is already registered")
         self._hooks[name] = hook
@@ -100,12 +110,12 @@ class ContextBuilder(TaravType):
         self._run(cxt, "class", "_class_context_hook", namespace._class_context_hook)
         self._run(cxt, "instance", "_obj_context_hook", namespace._obj_context_hook)
         for name, hook in external:
-            self._run(cxt, "external", name, hook)
+            self._run(cxt, "external", name, hook.run)
         cxt.status = "completed"
         return cxt
 
     @staticmethod
-    def _run(cxt: ObjectContext, stage, name: str, hook: ContextHook) -> None:
+    def _run(cxt: ObjectContext, stage, name: str, hook: Callable[[ObjectContext], None]) -> None:
         before, start, error = len(cxt.triplets), perf_counter(), None
         try:
             hook(cxt)

@@ -262,13 +262,15 @@ def test_context_package_import_order_and_runtime_boundary():
     ):
         code = first_import + '''
 import tarav.l0.kernel as kernel
-from tarav.l1.context import ContextBuilder, ContextExplorer, ObjectContext
+from tarav.l1.context import ContextBuilder, ContextExplorer, ContextHook, ObjectContext
 from tarav.l1.context.workflow import ContextWorkflow
 from tarav.l3.runtime import get_runtime
 from tarav.l0.kernel import TaravType, entity
 assert not hasattr(kernel, "ContextExplorer")
 assert not hasattr(kernel, "ObjectContext")
 assert not hasattr(kernel, "ContextBuilder")
+assert not hasattr(kernel, "ContextHook")
+assert ContextHook.__module__ == "tarav.l1.context.construction"
 assert ContextExplorer.__module__ == "tarav.l1.context"
 get_runtime()
 assert entity(ContextExplorer).workflow is ContextWorkflow()

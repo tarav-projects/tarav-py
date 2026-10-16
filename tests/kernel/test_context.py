@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tarav.l0.kernel import RDF_TYPE, TaravClass, TaravObject, TypeShip, entity
-from tarav.l1.context import ContextBuildError, ContextBuilder, ContextEdge, ContextExplorer, ObjectContext
+from tarav.l1.context import ContextBuildError, ContextBuilder, ContextEdge, ContextExplorer, ContextHook, ObjectContext
 from tarav.l1.poi import POI
 from tarav.l3.runtime import create_runtime, get_runtime, set_runtime
 
@@ -173,18 +173,20 @@ def test_build_passes_one_mutable_result_through_class_instance_and_external_hoo
                 cxt.hints["stages"].append("instance")
                 cxt.options["label"] += ":instance"
 
-    def annotate(cxt):
-        seen.append(cxt)
-        cxt.hints["stages"].append("annotations")
-        cxt.triplets[:] = [triple for triple in cxt.triplets if triple[1] != NAME]
-        cxt.triplets.append((cxt.subject, NAME, cxt.options["label"]))
+    class Annotate(ContextHook):
+        def run(self, cxt):
+            seen.append(cxt)
+            cxt.hints["stages"].append("annotations")
+            cxt.triplets[:] = [triple for triple in cxt.triplets if triple[1] != NAME]
+            cxt.triplets.append((cxt.subject, NAME, cxt.options["label"]))
 
-    def finish(cxt):
-        seen.append(cxt)
-        cxt.hints["stages"].append("finish")
+    class Finish(ContextHook):
+        def run(self, cxt):
+            seen.append(cxt)
+            cxt.hints["stages"].append("finish")
 
-    context_runtime.contexts.register("annotations", annotate)
-    context_runtime.contexts.register("finish", finish)
+    context_runtime.contexts.register("annotations", Annotate())
+    context_runtime.contexts.register("finish", Finish())
     document = Document("original")
     options = {"label": "requested"}
     cxt = document.context.build(options=options)
@@ -288,17 +290,22 @@ def test_super_composes_both_hook_stages_once_across_a_diamond():
 def test_external_registration_is_ordered_snapshotted_and_runtime_local():
     first, second = create_runtime(), create_runtime()
 
-    def late(cxt):
-        cxt.hints["late"] = True
+    class Late(ContextHook):
+        def run(self, cxt):
+            cxt.hints["late"] = True
 
-    def register_during_build(cxt):
-        first.contexts.register("late", late)
-        first.contexts.unregister("first")
-        cxt.hints["first"] = True
+    class RegisterDuringBuild(ContextHook):
+        def __init__(self, builder):
+            self.builder = builder
 
-    first.contexts.register("first", register_during_build)
+        def run(self, cxt):
+            self.builder.register("late", Late())
+            self.builder.unregister("first")
+            cxt.hints["first"] = True
+
+    first.contexts.register("first", RegisterDuringBuild(first.contexts))
     with pytest.raises(KeyError, match="already registered"):
-        first.contexts.register("first", late)
+        first.contexts.register("first", Late())
     person = Person("alice")
     assert first.contexts.build(person).hints == {"first": True}
     assert first.contexts.build(person).hints == {"late": True}
@@ -315,11 +322,12 @@ def test_failed_hooks_preserve_diagnostics_and_do_not_publish_a_partial_graph():
     before = set(explorer.graph)
     cause = ValueError("annotation source unavailable")
 
-    def fail(cxt):
-        cxt.triplets.append((cxt.subject, AUTHOR, alice))
-        raise cause
+    class Fail(ContextHook):
+        def run(self, cxt):
+            cxt.triplets.append((cxt.subject, AUTHOR, alice))
+            raise cause
 
-    builder.register("annotations", fail)
+    builder.register("annotations", Fail())
     with pytest.raises(ContextBuildError) as raised:
         explorer.open(bob)
     failed = raised.value.context
@@ -338,11 +346,12 @@ def test_explorer_retains_built_results_and_collects_each_subject_once():
     builder, alice = ContextBuilder(), Person("alice")
     calls = []
 
-    def contribute(cxt):
-        calls.append(cxt.subject)
-        cxt.hints["source"] = "external"
+    class Contribute(ContextHook):
+        def run(self, cxt):
+            calls.append(cxt.subject)
+            cxt.hints["source"] = "external"
 
-    builder.register("contributor", contribute)
+    builder.register("contributor", Contribute())
     cxt = builder.build(alice)
     explorer = ContextExplorer(cxt, build=builder.build)
     node = explorer.node(alice)
@@ -365,11 +374,12 @@ def test_invalid_triplets_are_not_partially_collected_and_can_be_retried():
     explorer = ContextExplorer(builder.build(alice), build=builder.build)
     before = set(explorer.graph)
 
-    def invalid(cxt):
-        cxt.triplets.append((cxt.subject, NAME, "a valid preceding triple"))
-        cxt.triplets.append((cxt.subject, entity(Person), "invalid predicate"))
+    class Invalid(ContextHook):
+        def run(self, cxt):
+            cxt.triplets.append((cxt.subject, NAME, "a valid preceding triple"))
+            cxt.triplets.append((cxt.subject, entity(Person), "invalid predicate"))
 
-    builder.register("invalid", invalid)
+    builder.register("invalid", Invalid())
     with pytest.raises(TypeError, match="IRI string"):
         explorer.open(bob)
     assert set(explorer.graph) == before
@@ -378,3 +388,53 @@ def test_invalid_triplets_are_not_partially_collected_and_can_be_retried():
     builder.unregister("invalid")
     explorer.open(bob)
     assert explorer.contexts[explorer.node(bob)].subject is bob
+
+
+def test_hook_instances_bundle_dependencies_keep_state_and_choose_subjects(context_runtime):
+    class Labels(ContextHook):
+        def __init__(self, labels):
+            self.labels = labels
+            self.used = []
+
+        def run(self, cxt):
+            subject = cxt.subject
+            if not isinstance(subject, Person) or subject.name not in self.labels:
+                return
+            self.used.append(subject)
+            cxt.triplets.append((subject, "urn:tarav:test:label", self.labels[subject.name]))
+
+    labels = {"alice": "first"}
+    hook = Labels(labels)
+    context_runtime.contexts.register("labels", hook)
+    alice, bob = Person("alice"), Person("bob")
+    alice_context = alice.context.build()
+    ignored = bob.context.build()
+    class_context = Person.context.build()
+    labels["bob"] = "second"  # the registered instance retains its supplied dependency
+    bob_context = bob.context.build()
+
+    assert hook.used == [alice, bob]
+    assert alice_context.triplets[-1] == (alice, "urn:tarav:test:label", "first")
+    assert bob_context.triplets[-1] == (bob, "urn:tarav:test:label", "second")
+    assert [(p, value) for _, p, value in ignored.triplets if p == NAME] == [(NAME, "bob")]
+    assert len(ignored.triplets) == 2 and len(class_context.triplets) == 1
+    assert [(run.name, run.before, run.after) for run in ignored.runs[-1:]] == [("labels", 2, 2)]
+
+
+def test_external_registration_requires_a_concrete_context_hook_instance():
+    class Concrete(ContextHook):
+        def run(self, cxt):
+            cxt.hints["concrete"] = True
+
+    class Duck:
+        def run(self, cxt):
+            raise AssertionError("Unregistered duck-typed hook ran")
+
+    with pytest.raises(TypeError, match="abstract"):
+        ContextHook()
+    builder = ContextBuilder()
+    for invalid in (lambda cxt: None, Concrete, Duck()):
+        with pytest.raises(TypeError, match="ContextHook instance"):
+            builder.register("contributor", invalid)
+    builder.register("contributor", Concrete())
+    assert builder.build(Person("alice")).hints == {"concrete": True}

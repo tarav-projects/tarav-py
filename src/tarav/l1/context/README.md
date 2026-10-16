@@ -37,18 +37,41 @@ There is no separate `.context.triplets()` method.
 ## External contributors
 
 ```python
+from tarav.l1.context import ContextHook
 from tarav.l3.runtime import get_runtime
 
+
+class TitleLengthHook(ContextHook):
+    def __init__(self, predicate):
+        self.predicate = predicate
+
+    def run(self, cxt):
+        if not isinstance(cxt.subject, Document):
+            return
+        cxt.triplets.append(
+            (cxt.subject, self.predicate, len(cxt.subject.title))
+        )
+
+
 runtime = get_runtime()
-runtime.contexts.register("my-workflow", contribute_context)
-# contribute_context(cxt) inspects the subject and mutates this build's result.
+runtime.contexts.register(
+    "my-workflow", TitleLengthHook("urn:example:title-length")
+)
 runtime.contexts.unregister("my-workflow")
 ```
+
+This uses Document from the runnable example below. `ContextHook` is an
+abstract Python interface with `run(cxt)`; subclasses use ordinary
+constructors for their dependencies and configuration. Register an instance,
+not its class or a free function. The builder calls that same instance's
+`run` on every build, so state may persist until it is unregistered.
 
 The registry belongs to this runtime, not the singleton ContextWorkflow.
 Names must be unique. The builder snapshots registrations before any hook
 runs; registering or removing a hook affects subsequent builds. A workflow
-decides which subjects its hook handles and which data it loads.
+decides which subjects its hook handles and which data it loads. Every
+registered hook runs; it selects its own subjects and can return without
+changes. Registration does not route hooks by subject class.
 
 Hook failures raise `ContextBuildError`; `error.context` retains the failed
 result, including the run's error and preceding changes. The original

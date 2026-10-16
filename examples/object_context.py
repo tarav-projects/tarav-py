@@ -1,7 +1,7 @@
 """Run with `tarav run -- examples/object_context.py` from tarav-py."""
 
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip, entity
-from tarav.l1.context import ContextExplorer
+from tarav.l1.context import ContextExplorer, ContextHook
 from tarav.l3.runtime import get_runtime
 
 
@@ -30,15 +30,19 @@ class Document(TaravObject):
                 cxt.triplets.append((self.obj, TITLE, self.obj.title))
 
 
-def title_length(cxt):
-    if isinstance(cxt.subject, Document):
-        cxt.triplets.append((cxt.subject, LENGTH, len(cxt.subject.title)))
-        cxt.hints["title-length"] = "computed from the instance title"
+class TitleLengthHook(ContextHook):
+    def __init__(self, predicate):
+        self.predicate = predicate
+
+    def run(self, cxt):
+        if isinstance(cxt.subject, Document):
+            cxt.triplets.append((cxt.subject, self.predicate, len(cxt.subject.title)))
+            cxt.hints["title-length"] = "computed from the instance title"
 
 
 def main():
     runtime = get_runtime()
-    runtime.contexts.register("example.title-length", title_length)
+    runtime.contexts.register("example.title-length", TitleLengthHook(LENGTH))
     try:
         document = Document("Shared context")
         cxt = document.context.build()

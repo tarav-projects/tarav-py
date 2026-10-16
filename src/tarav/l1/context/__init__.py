@@ -20,6 +20,7 @@ from .construction import (
     CONTEXT_WORKFLOW_SHIP,
     ContextBuildError,
     ContextBuilder,
+    ContextHook,
     ContextHookRun,
     ObjectContext,
     Subject,
@@ -167,5 +168,5 @@ class ContextExplorer(TaravObject):
 
 __all__ = [
     "CONTEXT_WORKFLOW_SHIP", "ContextBuildError", "ContextBuilder", "ContextEdge",
-    "ContextExplorer", "ContextHookRun", "ObjectContext",
+    "ContextExplorer", "ContextHook", "ContextHookRun", "ObjectContext",
 ]
