@@ -57,6 +57,7 @@ testpaths = [
     "tests/test_lite_records.py",
     "tests/test_checks_workflow.py",
     "tests/test_git_hooks.py",
+    "tests/test_git_change.py",
     "tests/test_poi_primitives.py",
     "tests/test_poi_workflow.py",
     "tests/test_poi_tracking.py",

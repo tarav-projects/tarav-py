@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: executing; slice 1 done.
+Status: executing; slices 1 and 2 done.
 
 Two levels. First, a Git hook system for Tarav Projects: a Project whose
 root is a Git repository declares in its `.tarav/config.json` which Tarav
@@ -194,3 +194,19 @@ Project suite cannot import the check without a layering cycle.
   `tests/test_git_hooks.py` 6 passed (install, dispatch, real commits with
   and without `tarav` on PATH, chain refusal, every POI, Project suite);
   full suite 297 passed; ruff clean. Breadcrumbs: 3 in `hooks.py`, audit ok.
+- Slice 1 commit: `42cf14e`.
+- Slice 2 done. `tarav.l1.git.change`: `TaravChange` (pre-commit appends a
+  UUID4 to `.tarav/changes` and stages it, commit-msg adds the trailer with
+  `git interpret-trailers`, post-commit realigns the repository's own index,
+  post-rewrite logs to `.git/tarav/rewrites.jsonl`), `find`, and
+  `TaravChangeCheck` with `Tarav.Git.Change.Missing`; registered in
+  `tarav.l3.runtime`; `tarav git change find`. `commit_paths` accepts a
+  message extended only by hook trailer lines. Check:
+  `tests/test_git_change.py` 7 passed: plain, `-a`, `<paths>` and
+  `tarav git commit` each carry one ID in trailer and file with a clean
+  index; amend gains a second ID and both find the amended commit; rebase
+  keeps the ID and logs the rewrite, union merge joins both branches'
+  lines; a `--no-verify` commit is reported, also through the Project
+  suite; the CLI prints JSON; commit_paths accepts a hook trailer and
+  rejects a rewritten message. Full suite 304 passed (72 s; each hooked
+  commit starts `tarav` three times); ruff clean.

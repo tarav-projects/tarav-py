@@ -361,6 +361,7 @@ def create_runtime(
     # tarav.breadcrumb c5d54c7649438c13a2949da87599cf3b307a97aa3a4bba56d4b9629006ad8a14
     from tarav.l1.project.files import PROJECT_FILES_RECORD_TYPES
     from tarav.l1.git.hooks import GIT_HOOKS_RECORD_TYPES
+    from tarav.l1.git.change import GIT_CHANGE_RECORD_TYPES
     from tarav.l1.project.skills import PROJECT_SKILLS_RECORD_TYPES
     from tarav.l1.skills.folder import FolderSkill
     from tarav.l1.skw.generation import GenerationPOI
@@ -431,6 +432,7 @@ def create_runtime(
                 *PROJECT_SKILLS_RECORD_TYPES,
                 *PROJECT_FILES_RECORD_TYPES,
                 *GIT_HOOKS_RECORD_TYPES,
+                *GIT_CHANGE_RECORD_TYPES,
                 *PYTHON_RECORD_TYPES,
                 *PROJECT_RUNNER_RECORD_TYPES,
                 *SYSTEM_RECORD_TYPES,
@@ -559,10 +561,12 @@ def create_runtime(
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig
     from tarav.l2.unsorted.storage import DiagramConfig
-    from tarav.l1.git.hooks import GitConfig
+    from tarav.l1.git.hooks import GitConfig, register_git_hook_handler
+    from tarav.l1.git.change import TaravChange
     for section, model in (("agents", AgentsConfig), ("skills", SkillsConfig),
                            ("diagram", DiagramConfig), ("git", GitConfig)):
         register_config_section(section, model)
+    register_git_hook_handler(TaravChange())
     if config is not None:
         config = config.expanduser().resolve()
         settings = json.loads(config.read_text(encoding="utf-8"))

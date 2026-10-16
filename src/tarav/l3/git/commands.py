@@ -9,6 +9,7 @@ from pathlib import Path
 from tarav.l0._core.errors import CliError
 from tarav.l1.breadcrumbs import BreadcrumbError, BreadcrumbStore
 from tarav.l1.git import GitError
+from tarav.l1.git.change import find
 from tarav.l1.git.hooks import install, run_hook
 from tarav.l0.project import require_agentos_project
 from tarav.l1.usage import describe_file
@@ -73,6 +74,18 @@ def _cmd_hooks_install(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_change_find(args: argparse.Namespace) -> int:
+    try:
+        commits = find(Path(args.repo).expanduser().resolve(), args.id)
+    except (GitError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    if args.json:
+        print(json.dumps({"change": args.id, "commits": list(commits)}, indent=2))
+    else:
+        print("\n".join(commits) if commits else f"No commit carries {args.id}")
+    return 0 if commits else 1
+
+
 def _print_result(args: argparse.Namespace, payload: dict[str, object]) -> int:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -126,6 +139,14 @@ def register_commands(subparsers: argparse._SubParsersAction) -> None:
                                help="Add this handler to the Project's config first; repeatable.")
     hooks_install.add_argument("--json", action="store_true")
     hooks_install.set_defaults(handler=_cmd_hooks_install)
+    change = commands.add_parser("change", help="Find commits by their tarav-change.")
+    change_commands = change.add_subparsers(dest="git_change_command", required=True)
+    change_find = change_commands.add_parser(
+        "find", help="The commits on any branch that gained this tarav-change, oldest first.")
+    change_find.add_argument("--id", required=True, help="The tarav-change, a lowercase UUID.")
+    change_find.add_argument("--repo", default=".", help="A folder in the repository.")
+    change_find.add_argument("--json", action="store_true")
+    change_find.set_defaults(handler=_cmd_change_find)
 
 
 def register_breadcrumb_git_commands(

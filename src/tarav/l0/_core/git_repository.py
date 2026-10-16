@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 import os
+import re
 from pathlib import Path, PurePosixPath
 import subprocess
 import tempfile
@@ -84,6 +85,10 @@ def _literal_pathspec(path: str) -> str:
     return f":(top,literal){path}"
 
 
+# Trailer lines a commit-msg hook may append, such as `tarav-change: <id>`.
+_HOOK_TRAILERS = re.compile(r"\n\n?(?:[A-Za-z0-9][A-Za-z0-9-]*: [^\n]*\n?)+")
+
+
 def commit_paths(
     root: str | Path,
     paths: Sequence[str],
@@ -129,8 +134,11 @@ def commit_paths(
         retained_message = raw.split(b"\n\n", 1)[1].decode("utf-8").rstrip("\n")
     except (IndexError, UnicodeDecodeError) as exc:
         raise GitError(f"Commit {exact} has no UTF-8 message body") from exc
-    if retained_message != message.rstrip("\n"):
-        raise GitError(f"Commit {exact} did not retain the prepared message exactly")
+    prepared = message.rstrip("\n")
+    added = retained_message[len(prepared):] if retained_message.startswith(prepared) else None
+    if added is None or (added and _HOOK_TRAILERS.fullmatch(added) is None):
+        raise GitError(f"Commit {exact} did not retain the prepared message, "
+                       "apart from trailers its hooks added")
     if selected:
         run_git(root, "reset", "-q", "HEAD", "--", *(_literal_pathspec(path) for path in selected))
     return exact
