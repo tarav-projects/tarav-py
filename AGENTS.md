@@ -109,6 +109,17 @@
   <!-- tarav.breadcrumb e975fb22535bf1b80fc7ee95b2b15fb340d677036ab7ba55adbba1f3c064deaf -->
   <!-- tarav.breadcrumb f1b6c4d85568e1afc1b76afc02983662c5d2be806b568698cd7b28b853a639e6 -->
   <!-- tarav.breadcrumb 2cad01bfc733b3b450e3908f187d06d110c511dd5329d9b74e0165b87839fbc9 -->
+- A Project whose root is a Git repository selects Tarav Git hook handlers in
+  the `git` section of its config (`tarav.l1.git.hooks`). `tarav git hooks
+  install --project [PATH] [--handler NAME]` writes `.tarav/git-hooks/` and
+  sets `core.hooksPath`; the scripts call `tarav git hook`, and a missing or
+  failing `tarav` never blocks Git. The Project suite reports drift. The first
+  handler, `tarav-change` (`tarav.l1.git.change`), gives each commit an ID in a
+  `tarav-change:` trailer and a line of `.tarav/changes`, so `tarav git change
+  find --id <id>` finds the commit after a history rewrite. This repository
+  uses it.
+  <!-- tarav.breadcrumb 3ac71846f72a6a9632d30bfe3a73cfd107bb0cd34eb6539f7428fa690a94e9c0 -->
+  <!-- tarav.breadcrumb 1e1e0a27ff6ad6e419e9317087e988a49b106cd6494a4a888e07f3ffec8731ed -->
 - `project.agents.skills` discovers skill folders in Project and home
   `.agents/skills`, using each `SKILL.md` declared name. Set
   `agents.package_skill` in `.tarav/project.json`; the built-in Tarav skill

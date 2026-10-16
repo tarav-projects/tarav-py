@@ -7,7 +7,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Autonomous. Phase: Develop.
-Status: executing; slices 1 and 2 done.
+Status: implemented and verified; Wiki capture at completion.
 
 Two levels. First, a Git hook system for Tarav Projects: a Project whose
 root is a Git repository declares in its `.tarav/config.json` which Tarav
@@ -210,3 +210,15 @@ Project suite cannot import the check without a layering cycle.
   suite; the CLI prints JSON; commit_paths accepts a hook trailer and
   rejects a rewritten message. Full suite 304 passed (72 s; each hooked
   commit starts `tarav` three times); ruff clean.
+- Slice 2 commit: `36a550c`.
+- Slice 3 done. Found while installing in tarav-py: `--handler` collided
+  with argparse's `handler` default (the command function); renamed its
+  destination and added a CLI install test. `tarav git hooks install
+  --project . --handler tarav-change` in tarav-py wrote `.tarav/git-hooks/`
+  (pre-commit, commit-msg, post-commit, post-rewrite), `.gitattributes`, the
+  `git` config section and `core.hooksPath`. AGENTS.md (skw source compiled;
+  Breadcrumb labels copied back so the product is unchanged) and
+  ARCHITECTURE.md describe the hooks and tarav-change. Check: full suite 305
+  passed; ruff clean; `tarav check --project .` 14 checks, only the 2
+  pre-existing MarkerPOIs. The slice commit itself is the first hooked one;
+  its trailer and `.tarav/changes` line are verified after committing.

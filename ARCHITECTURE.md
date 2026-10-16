@@ -292,6 +292,13 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   state through isolated commit indexes. Immutable Git surface References stay
   in `tarav.l1.references.git`. `tarav.l2.git.breadcrumbs` composes Git and
   Breadcrumb evidence; `tarav.l3.git` exposes process adapters.
+- `tarav.l1.git.hooks` owns Project Git hooks: the `git` config section,
+  registered handlers, the scripts in `.tarav/git-hooks/`, in-process dispatch
+  and the hooks check composed into every Project suite. It reads Project
+  config, not the Project Type. Handlers such as `tarav.l1.git.change`
+  (tarav-change IDs) are registered in runtime composition. Git hooks are
+  synchronous and unrelated to the daemon's event hooks in `tarav.l1.hooks`.
+<!-- tarav.breadcrumb c61ceaf85a21dbe08b378bf6e378b6ac3e27aa499cb15654c8f2c67b22b7d00c -->
 - `tarav.l1.skw.code` owns neutral typed document blocks, typed block-local
   objects, workflow-owned block annotations, retained content, common reading
   declarations, the abstract ReadingGraph analysis contract, and compilation.

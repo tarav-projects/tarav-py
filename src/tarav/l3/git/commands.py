@@ -65,7 +65,7 @@ def _cmd_hook(args: argparse.Namespace) -> int:
 
 def _cmd_hooks_install(args: argparse.Namespace) -> int:
     root = require_agentos_project(args.project.expanduser().resolve()).root.resolve()
-    config = install(root, add=args.handler)
+    config = install(root, add=args.handlers)
     if args.json:
         print(json.dumps({"project": str(root), **config.model_dump(mode="json")}, indent=2))
     else:
@@ -135,7 +135,7 @@ def register_commands(subparsers: argparse._SubParsersAction) -> None:
         "--project", type=Path, nargs="?", const=Path("."), required=True,
         help="Search this directory and parents for a Project; optionally start at PATH.",
     )
-    hooks_install.add_argument("--handler", action="append", default=[],
+    hooks_install.add_argument("--handler", dest="handlers", action="append", default=[],
                                help="Add this handler to the Project's config first; repeatable.")
     hooks_install.add_argument("--json", action="store_true")
     hooks_install.set_defaults(handler=_cmd_hooks_install)

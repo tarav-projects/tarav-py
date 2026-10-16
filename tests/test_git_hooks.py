@@ -178,3 +178,15 @@ def test_the_project_suite_includes_the_hooks_check(tmp_path: Path) -> None:
     suite = target.checks.suite().run()
     names = {type(poi).__name__ for poi in suite.pois()}
     assert {"HooksNotInstalled", "HookStale"} <= names
+
+
+def test_the_cli_installs_a_handler_the_runtime_registers(tmp_path: Path) -> None:
+    project(tmp_path)
+    printed = subprocess.run(
+        [str(Path(sys.executable).parent / "tarav"), "git", "hooks", "install",
+         "--project", str(tmp_path), "--handler", "tarav-change", "--json"],
+        capture_output=True, text=True, check=True).stdout
+    assert json.loads(printed) == {"project": str(tmp_path.resolve()), "handlers": ["tarav-change"],
+                                   "chain": None}
+    assert sorted(path.name for path in (tmp_path / HOOKS_FOLDER).iterdir()) == [
+        "commit-msg", "post-commit", "post-rewrite", "pre-commit"]

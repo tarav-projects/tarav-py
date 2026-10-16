@@ -1,0 +1,12 @@
+#!/bin/sh
+# Tarav Git hook, written by `tarav git hooks install`. Do not edit.
+hook=pre-commit
+n=$#
+for a do set -- "$@" "--arg=$a"; done
+shift "$n"
+if command -v tarav >/dev/null 2>&1; then
+  tarav git hook --name "$hook" "$@" || echo "tarav: the $hook hook failed; Git continues" >&2
+else
+  echo "tarav: not found on PATH; the Tarav $hook hook did nothing" >&2
+fi
+exit 0
