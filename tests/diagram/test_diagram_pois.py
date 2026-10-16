@@ -35,7 +35,6 @@ def test_case_catalog_has_unique_atomic_identity_and_guidance() -> None:
         DiagramPOI(path="p", message="m")
     for cls in CASE_TYPES:
         assert cls.__doc__
-        assert cls.context_notes
         assert cls(path="p", message="m").summary()
 
 

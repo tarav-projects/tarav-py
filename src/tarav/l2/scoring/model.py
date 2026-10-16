@@ -18,7 +18,7 @@ from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import FileRecord, InvalidRecordJSON, Ship, TaravEntity, TaravObject, TypeShip
 from tarav.l0.kernel.records import _json_object
 from tarav.l2.scoring.identity import SCORING_WORKFLOW_SHIP
-from .assertions import AssertionReferenceInterface, ScoringDetails
+from .assertions import AssertionReferenceInterface
 
 
 JsonObject = dict[str, Any]
@@ -145,13 +145,6 @@ class ScoringRecord(TaravEntity, Mapping[str, object]):
                         if reference_target_type(ref) is not None)
         return (*super().ships(), *targets)
 
-    def obj_context(self, builder):
-        for name, reference in self.references().items():
-            builder.add(name, opener=lambda reference=reference: reference)
-        builder.add('record', opener=lambda: ScoringDetails.records.from_record(
-            {'type': entity(ScoringDetails).name, 'value': self.records.to_record()}))
-
-
 class ScoringReference(FileRecord):
     """An inspectable graph edge resolved through explicitly supplied mechanics."""
 
@@ -200,11 +193,6 @@ class ScoringReference(FileRecord):
         def record_example(self):
             cls = self._owner
             return cls(_record_reference_example(GROUNDING_POOL_TYPE)).records.to_record()
-
-
-    def obj_context(self, builder):
-        builder.add('reference', opener=lambda: ScoringDetails.records.from_record(
-            {'type': entity(ScoringDetails).name, 'value': self.reference}))
 
 
 class GroundingRankingPoolRecord(ScoringRecord):

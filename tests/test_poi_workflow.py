@@ -44,12 +44,9 @@ def poi(*, details=None, situation=None):
     )
 
 
-def test_blessable_check_poi_composes_by_type_and_context():
+def test_blessable_check_poi_composes_by_type():
     occurrence = poi()
     assert isinstance(occurrence, (CheckPOI, BlessablePOI))
-    assert occurrence.context().open("check") is occurrence.check
-    assert occurrence.context().open("situation").records.to_record()["value"] == occurrence.situation
-    assert occurrence.context().open("details").records.to_record()["value"] == {"text": "x"}
     # what a check observed is not part of the identity: the Type and the situation are
     changed = poi(details={"text": "y"})
     assert changed.identity == occurrence.identity

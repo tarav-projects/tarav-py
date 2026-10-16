@@ -1,4 +1,4 @@
-"""`tarav context` opens the Context of an identifier; reports advertise it."""
+"""`tarav context` finds what an identifier identifies and opens its Context."""
 
 from __future__ import annotations
 
@@ -7,16 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from tarav.l0.kernel import TaravClass, TypeShip, entity
+from tarav.l0.kernel import RDF_TYPE, TaravClass, TypeShip, entity
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.actions.project import ProjectActions
 from tarav.l1.actions.pois import action_id
 from tarav.l1.actions.views import ActionResolver
-from tarav.l1.context.query import (
-    ContextCandidate, ContextQuery, ContextQueryService, IdentityContextQuery,
-)
+from tarav.l1.context.query import ContextCandidate, ContextQueryService, IdentityContextQuery
 from tarav.l1.poi.rendering import POISelection, renderer
-from tarav.l1.actions import ActionRunStore
+from tarav.l1.actions import ActionRun, ActionRunStore
 from tarav.l1.records import RecordRegistry
 from tarav.l3.runtime import create_runtime, set_runtime
 from tarav.l1.search import SearchEngine, SearchHit
@@ -40,10 +38,7 @@ class SampleCheck(Check):
 
 
 class GuidedPOI(CheckPOI):
-    """A sample POI whose Type adds notes to its context."""
-
-    context_notes = ("It is described in the sample note.",
-                     "It is no longer raised once the sample is fixed.")
+    """A sample POI raised by the sample check."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -72,26 +67,13 @@ def _service(opened) -> ContextQueryService:
 # tarav.breadcrumb 7d1ed0ce36ce5a6522313fae4015436f8bbe952d270165c1a37f05d158db2018
 def test_an_action_is_found_by_its_id_and_by_the_id_of_its_poi(opened) -> None:
     poi = opened[0]
-    by_action = _service(opened).open(IdentityContextQuery(str(action_id(poi))[:13]))
-    by_poi = _service(opened).open(IdentityContextQuery(poi.identity[:12]))
+    by_action = _service(opened).find(str(action_id(poi))[:13])
+    by_poi = _service(opened).find(poi.identity[:12])
+    assert by_action.id == by_poi.id == action_id(poi)
 
-    assert by_action.subject.id == by_poi.subject.id == action_id(poi)
-    # no view is named: the action contributes its own entries, and its Type adds the POI's
-    assert [entry.name for entry in by_action.target.ls() if entry.name != "class"] == [
-        "standing", "poi", "poi-type", "raised-by", "notes", "detection", "acting",
-        "project", "tape", "history"]
-
-
-def test_a_path_is_followed_to_a_value(opened) -> None:
-    answer = _service(opened).open(IdentityContextQuery(opened[0].identity, path=["notes"]))
-
-    assert answer.location == ("notes",)
-    assert answer.target.records.to_record()["value"] == [
-        "It is described in the sample note.", "It is no longer raised once the sample is fixed."]
-    kind = _service(opened).open(IdentityContextQuery(opened[0].identity, path=["poi-type"]))
-    assert kind.target.id == entity(GuidedPOI).id  # the Type itself, read from the code
-    by = _service(opened).open(IdentityContextQuery(opened[0].identity, path=["raised-by"]))
-    assert by.target.id == entity(SampleCheck).id
+    # its Context holds what it contributes: by default, its type
+    [edge] = by_action.context().ls()
+    assert (edge.direction, edge.predicate, edge.node.name) == ("out", RDF_TYPE, "Tarav.Actions.Run")
 
 
 def test_several_matches_are_candidates_and_none_is_empty(opened) -> None:
@@ -112,25 +94,21 @@ def test_several_matches_are_candidates_and_none_is_empty(opened) -> None:
     service = ContextQueryService()
     service.register_resolver("both", Both())
 
-    answer = service.open(IdentityContextQuery("anything"))
-    assert answer.subject is None and len(answer.candidates) == 2
-    assert _service(opened).open(IdentityContextQuery("ffffffffffff")).candidates == ()
+    assert len(service.resolve(IdentityContextQuery("anything"))) == 2
+    with pytest.raises(KeyError, match="2 things"):
+        service.find("anything")
+    assert _service(opened).resolve(IdentityContextQuery("ffffffffffff")) == ()
 
 
 def test_queries_validate_their_parts() -> None:
     with pytest.raises(ValueError):
         IdentityContextQuery("  ")
-    with pytest.raises(TypeError):
-        ContextQuery(path="a/b")
-    with pytest.raises(KeyError):
-        ContextQueryService().open(IdentityContextQuery("x", views=("missing",)))
 
 
 # tarav.breadcrumb fae0e168d36f1e4818647e0f437ee4772014d06bb618074c67240e5ef86bf888
 def test_a_pois_record_holds_the_occurrence_and_nothing_of_its_type(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("TARAV_RECORDS", str(tmp_path / "records"))
     poi = GuidedPOI(SampleCheck(), "Something was found", situation={"where": "a"})
-    assert CheckPOI.context_notes == ()
     record = poi.records.to_record()
     assert set(record) == {"type", "class_id", "id", "message", "situation", "check",
                            "details", "failure"}
@@ -150,16 +128,24 @@ def test_the_command_opens_an_action_and_reports_misses(opened, capsys) -> None:
     poi = opened[0]
     key = str(action_id(poi))
     assert main(["context", "--id", key[:13]]) == 0
-    listing = capsys.readouterr().out
-    assert listing.splitlines()[0].startswith(key) and "view: general" in listing
-    assert "notes" in listing and "detection" in listing
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith(key)
+    assert lines[1] == f"focus: <urn:uuid:{key}>  Tarav.Actions.Run"
+    assert lines[2:] == ["edges:", f"  0  → <{RDF_TYPE}>  <urn:uuid:{entity(ActionRun).id}>  Tarav.Actions.Run"]
 
-    assert main(["context", "--id", poi.identity[:12], "--path", "poi", "--json"]) == 0
-    value = json.loads(capsys.readouterr().out)["value"]["value"]
-    assert value["situation"] == {"where": "a"}
+    assert main(["context", "--id", poi.identity[:12], "--json"]) == 0
+    answer = json.loads(capsys.readouterr().out)
+    assert answer["focus"] == {"node": f"<urn:uuid:{key}>", "type": "Tarav.Actions.Run"}
+    assert [(edge["direction"], edge["predicate"], edge["type"]) for edge in answer["edges"]] == [
+        ("out", RDF_TYPE, "Tarav.Actions.Run")]
 
     assert main(["context", "--id", "Tarav.POI"]) == 0
-    assert "entity" in capsys.readouterr().out
+    assert "Tarav.Class" in capsys.readouterr().out
 
     assert main(["context", "--id", "0000000000"]) != 0
     capsys.readouterr()
+
+
+def test_a_named_view_is_an_explicit_error(opened, capsys) -> None:
+    assert main(["context", "--id", "Tarav.POI", "--view", "object-group"]) != 0
+    assert "'object-group' is not implemented in the graph Context model" in capsys.readouterr().err

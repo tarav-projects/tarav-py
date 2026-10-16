@@ -18,8 +18,6 @@ class DiagramPOI(SituationPOI):
     is a field of this line: free data the raising code observed, such as
     the error it met. It is not part of the identity.
     """
-    context_notes = ("It concerns the reported path and its source Diagram record.",
-                     "Whether a correction is warranted is judged from that source.")
 
     @classmethod
     def class_entity(cls) -> TaravClass:

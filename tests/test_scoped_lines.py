@@ -3,8 +3,8 @@ from uuid import uuid4
 import pytest
 
 from tarav.l0.kernel import Ship, TaravEntity
-from tarav.l1.context import ContextView, ContextExplorer, explore
-from tarav.l1.lines import Block, Line, LineScope
+from tarav.l1.context import ContextExplorer
+from tarav.l1.lines import Block, Line
 
 
 def make_line():
@@ -32,7 +32,6 @@ def test_block_topic_order_and_binding():
         restored.bind_lines((finish, color))
     restored.bind_lines((color, finish))
     assert restored.lines == block.lines
-    assert explore(restored).open("lines").open(1) is finish
 
 
 def test_block_rejects_invalid_membership():
@@ -65,20 +64,10 @@ def test_line_roundtrip_and_binding():
     assert restored.scope is line.scope
 
 
-def test_nested_scope_and_typed_view():
+def test_nested_scope():
     line = make_line()
     detail = Line(id=Ship(str(uuid4())), text="The finish is matte.", scope=line)
-    before = detail.records.to_record()
-    view = explore(detail, views=(LineScope,))
-    assert isinstance(view, LineScope)
-    assert view.scope is line
-    assert view.open("scope") is line
-    assert detail.records.to_record() == before
-    assert isinstance(explore(detail), ContextExplorer)
-    with pytest.raises(TypeError):
-        explore(detail, views=(ContextView,))
-    with pytest.raises(TypeError):
-        explore(line.scope, views=(LineScope,))
+    assert detail.scope is line
     with pytest.raises(TypeError):
         Line(id=Ship(str(uuid4())), text="x", scope="not an entity")
 
@@ -107,8 +96,8 @@ def test_object_context_entry_point():
     from tarav.l3.runtime import get_runtime
 
     line = make_line()
-    assert line.context(views=(LineScope,)).scope is line.scope
     assert isinstance(line.context(), ContextExplorer)
+    assert line.context().focus is line
     assert get_runtime().records is not None
 
 

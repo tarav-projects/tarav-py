@@ -22,15 +22,13 @@ from uuid import UUID
 from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.checks import Check
 from tarav.l1.operator_context import OperatorContext
-from tarav.l1.context.groups import Link, Member
-from tarav.l1.poi import POI, SituationPOI, fingerprint, plain, poi_member, type_named
+from tarav.l1.poi import POI, SituationPOI, fingerprint, plain
 from tarav.l1.poi.actionable import ActionablePOI, BlessablePOI
 
 from .blessing import BLESSED, Blessing, BlessingInput, BlessingInputCheck
 from . import (
-    ACTIONS_WORKFLOW_SHIP, CLOSED, EXIT_ERROR, OPERATOR, PROJECT, RUNNING, ActionError,
-    ActionRun, ActionRunStore, ChecksUpdate, Closing, Exit, StepAction, _detail,
-    action_member, close_run, resolve_action,
+    ACTIONS_WORKFLOW_SHIP, CLOSED, EXIT_ERROR, OPERATOR, PROJECT, RUNNING, ActionRun, ChecksUpdate, Closing, Exit, StepAction,
+    close_run, resolve_action,
 )
 from . import tape
 
@@ -110,44 +108,6 @@ class POIResolutionAction(StepAction):
         })
         tape.opened(run, at=at, states=git)
         return run
-
-    # tarav.breadcrumb bdbf97d4ffaec3498e78e81b386648e11d61ddaf21765f99d1b29f6d6f0b9783
-    @classmethod
-    def context_entries(cls, run: ActionRun, builder: object) -> None:
-        """The flag behind this action: the POI, what its Type says, and who detects it."""
-        event, key = run.data["event"], str(run.id)
-        record = event["poi"]
-        # what the Types say is read from the classes, not kept in the action
-        poi_type = type_named(POI, record["type"])
-        check_type = type_named(Check, record["check"]) if record.get("check") else None
-        builder.add("poi", opener=lambda: _detail(record),
-                    description="The record of the POI as it was last raised.")
-        builder.add("poi-type", opener=lambda: _type_entry(poi_type, record["type"]),
-                    description="What this kind of POI is, and where its class is defined.")
-        builder.add("raised-by", opener=lambda: _type_entry(check_type, record.get("check")),
-                    description="The check that raised it, and where that check is defined.")
-        builder.add("notes", opener=lambda: _detail(
-            [str(item) for item in getattr(poi_type, "context_notes", ())]
-            or ["This POI Type adds no notes. A POI states an event; poi-type "
-                "and raised-by say what it is and where it comes from."]),
-            description="What the POI Type's producer says about it: what it means, "
-                        "where it is documented, what is known to end it.")
-        builder.add("detection", opener=lambda: _detail({
-            "situation": run.data.get("situation"), "check": event.get("check"),
-            "suites": event["suites"]}),
-            description="The suites above the check that raised the POI, and what the last "
-                        "run says. The action closes as gone when the nearest of those "
-                        "suites that ran did not report the POI; a suite that was left out "
-                        "(run with --all) or a failed check leaves it as it is.")
-        builder.add("acting", opener=lambda: _detail([
-            "tarav operator-context put --type Tarav.Blessings.Input "
-            "--data '{\"reason\": \"<why>\", \"support\": []}'",
-            f"tarav action close --id {key} --exit blessed --context <input id>",
-            "Blessing closes the action although the situation still exists; it needs a "
-            "reason, and the POI's Type has to allow it. `support` lists typed evidence "
-            "references. The exit `gone` is taken from a run of the Project's checks.",
-            "The skill module tarav-pkg/references/step-actions.md describes the loop."]),
-            description="The commands that act on this action.")
 
     # tarav.breadcrumb 5aeb4d2196d479937f983178eac99642a65b42c34a2354a1900172f2c8ae2961
     @classmethod
@@ -288,50 +248,8 @@ def _event(poi: SituationPOI, suites: tuple[dict, ...] = ()) -> dict:
             "suites": [dict(suite) for suite in suites]}
 
 
-def _type_entry(cls: type | None, name: str | None) -> object:
-    """A Type as a Context entry: the class itself, or a word when the code no longer has it."""
-    if cls is not None:
-        return entity(cls)
-    return _detail({"type": name, "note": "This Type is not defined in the running code."}
-                   if name else "This POI was not raised by a check.")
-
-
 def _suite_key(identity: dict) -> tuple:
     return identity["type"], identity["key"]
-
-
-# tarav.breadcrumb 21990b6af9de4aade974bce6aa96c4873dc8e1962708ae0a6740e890a3bc611f
-def poi_run_links(run: ActionRun):
-    """A POI action follows its POI; the suites above the POI's check found it.
-
-    The POI is loaded from the action's record; the check and the suites are
-    known by Type and key only, so nothing is run to know them.
-    """
-    event = run.data.get("event") or {}
-    record = event.get("poi")
-    if not record:
-        return
-    poi_type = type_named(POI, record["type"])
-    poi = (poi_member(poi_type.records.from_record(record)) if poi_type is not None
-           else Member("poi", member_type=record["type"], id=record.get("id")))
-    yield Link(poi, action_member(run))
-    if record.get("check"):
-        chain = [Member("suite", member_type=suite["type"], key=suite["key"])
-                 for suite in event["suites"]] + [Member("check", member_type=record["check"])]
-        for upper, lower in zip(chain, chain[1:]):
-            yield Link(upper, lower)
-
-
-def poi_links(poi: ActionablePOI):
-    """A POI comes before the action that follows it, once one is registered."""
-    if not isinstance(poi, SituationPOI) or type(poi).action is None:
-        return
-    try:
-        run = ActionRunStore().find(str(action_id(poi)))
-    except ActionError:
-        return  # its Action Type is not registered in this runtime
-    if run is not None:
-        yield Link(poi_member(poi), action_member(run))
 
 
 POI_ACTION_RECORD_TYPES = (GoneClosing,)
@@ -340,5 +258,5 @@ __all__ = [
     "ABSENT", "ActionablePOI", "BLESSED", "BlessablePOI", "CHECK_FAILED", "GONE", "GoneClosing",
     "NOT_RUN",
     "POIActionClosed", "POIResolutionAction", "POI_ACTION_RECORD_TYPES",
-    "PRESENT", "action_id", "poi_links", "poi_run_links", "raised",
+    "PRESENT", "action_id", "raised",
 ]

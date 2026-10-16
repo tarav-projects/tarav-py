@@ -4,7 +4,7 @@ import json
 
 from tarav.l0.kernel import Ship, TaravClass, TypeShip
 from tarav.l2.scoring.assertions import (
-    Assertion, AssessmentCase, IncompleteCaseScope, ScoringDetails,
+    Assertion, AssessmentCase, IncompleteCaseScope,
 )
 from tarav.l2.scoring.model import (
     DIAGRAM_LINE_EDITION_REFERENCE_TYPE, GROUNDING_POOL_TYPE,
@@ -199,14 +199,6 @@ class LineGroundingAssertion(Assertion):
     def ships(self):
         return (*super().ships(), *(Ship(self.subject_ref[key])
                                    for key in ('namespace_id', 'line_ship', 'edition_id')))
-
-    def obj_context(self, builder):
-        super().obj_context(builder)
-        builder.add('evidence', opener=lambda: ScoringDetails.records.from_record({
-            'type': 'Tarav.Scoring.Details',
-            'reference': self.subject_ref,
-            'relation': 'declared Support.Set of this exact Line edition',
-        }))
 
     class Records(Assertion.Records):
         def record_example(self):

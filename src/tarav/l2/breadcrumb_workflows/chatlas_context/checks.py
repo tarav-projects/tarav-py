@@ -26,14 +26,6 @@ class SurfaceWithUnsubmittedMarkers(CheckPOI):
     name; each alias is declared in the surface's `tarav.sessions` block.
     """
 
-    context_notes = (
-        "A marker is the provisional form of a Breadcrumb: a session alias and a turn. "
-        "Submitting registers each one and replaces it with its permanent label.",
-        "It is no longer raised once the surface has no active marker: "
-        "`tarav breadcrumbs submit chatlas-context --surface <file> --provider <provider> "
-        "--session-id <session>`, once for each session its markers name.",
-    )
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("568afde8-7cdd-4549-b4e0-5edf7baa3c6c"),

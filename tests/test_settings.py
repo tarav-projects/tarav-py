@@ -1,4 +1,4 @@
-"""Settings are a capability: declared, checked, and visible in Context."""
+"""Settings are a capability: declared and checked."""
 
 from __future__ import annotations
 
@@ -9,13 +9,11 @@ import pytest
 from pydantic import BaseModel, Field
 
 from tarav.l0.kernel import TaravClass, TaravObject, TaravTypeDeclarationError, TypeShip, entity
-from tarav.l1.context import explore
 from tarav.l1.settings import (
     SettingsError,
     SettingsProvider,
     SettingsValues,
     SettingsWorkflow,
-    contribute_settings,
 )
 from tarav.l1.settings.testing import SettingsContractTests
 
@@ -145,26 +143,11 @@ def test_settings_can_be_loaded_from_a_file_through_the_record_machinery(tmp_pat
     assert values.records.to_record()["partitions"] == {entity(Tracking).name: {"limit": 4}}
 
 
-def test_settings_are_visible_in_object_and_type_context() -> None:
-    obj = Tracking(settings=SettingsValues.of(Tracking, limit=7))
-    view = explore(obj, contributors=(contribute_settings,))
-    report = view.get("settings").open().records.to_record()["value"]
-    assert report[entity(Tracking).name]["limit"] == {
-        "value": 7, "origin": "construction", "type": "int", "default": 10,
-        "description": "How many to keep."}
-
-    template = explore(Tracking).get("settings-template").open().records.to_record()["value"]
-    assert template[entity(Tracking).name]["enabled"]["description"] == "Store raised instances."
-    assert "settings-template" not in [entry.name for entry in explore(Silent).ls()]
-
-
-def test_the_runtime_registers_the_workflow_and_contributes_settings() -> None:
+def test_the_runtime_registers_the_workflow() -> None:
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
     assert runtime.workflows.get("Tarav.Workflow.Settings") is SettingsWorkflow
-    names = [entry.name for entry in runtime.context(Tracking()).ls()]
-    assert "settings" in names
 
 
 # tarav.breadcrumb 6fd463b6ff2194bdb4a80e5046b6d3cb143ce867a490c38b270132417860a8e0

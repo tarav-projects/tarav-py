@@ -21,10 +21,6 @@ if TYPE_CHECKING:
 TARAV_PACKAGE_SKILL = "tarav-pkg"
 
 
-# tarav.breadcrumb f011d7009f1b32971b3f77364fe0233f55c8d1d9543a658f3fd8105a4db97f6b
-_SKILLS_READING = "Skill availability is described in tarav-md/notes/wiki/agents-bootstrap.md, section 'Skill availability'."
-_USER_FIRST = 'Its producer intends it to be raised to the User before anything is changed.'
-
 class ProjectSkills(TaravObject, CheckProvider):
     """Skills visible to an agent entering this Project."""
 
@@ -72,8 +68,6 @@ class ProjectSkills(TaravObject, CheckProvider):
 class TaravPackageSkillPOI(CheckPOI):
     """The Tarav package skill is not in the Project or home skill folders."""
 
-    context_notes = (_SKILLS_READING, 'It is no longer raised once the skill is imported; `tarav project skills import` does that.', _USER_FIRST)
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("7c5bce92-5ece-48e9-b803-444f7b6166cc"),
@@ -83,8 +77,6 @@ class TaravPackageSkillPOI(CheckPOI):
 
 class ProjectPackageSkillPOI(CheckPOI):
     """Family, never raised: the Project's package skill is undeclared or unavailable."""
-
-    context_notes = (_SKILLS_READING, 'It is no longer raised once the Project config (.tarav/config.json) names the skill as agents.package_skill and the skill is available.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -96,8 +88,6 @@ class ProjectPackageSkillPOI(CheckPOI):
 class SkillFoldersPOI(CheckPOI):
     """Family, never raised: the skill folders an agent would load are missing or disagree."""
 
-    context_notes = (_SKILLS_READING, 'It is no longer raised once the skill folders exist and agree; `tarav project skills import` recreates them.', _USER_FIRST)
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("0ef39065-28a2-4c91-ae45-a4c994b8e2b8"),
@@ -108,8 +98,6 @@ class SkillFoldersPOI(CheckPOI):
 class ProjectPackageSkillUndeclared(ProjectPackageSkillPOI):
     """The Project config names no package skill."""
 
-    context_notes = (_SKILLS_READING, 'It is no longer raised once the Project config (.tarav/config.json) names the skill as agents.package_skill.', _USER_FIRST)
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("7aaa4b65-adc8-43ae-8684-483928b1fa6b"),
@@ -118,8 +106,6 @@ class ProjectPackageSkillUndeclared(ProjectPackageSkillPOI):
 
 class ProjectPackageSkillMissing(ProjectPackageSkillPOI):
     """The package skill the Project names is in neither the Project nor the home skill folder."""
-
-    context_notes = (_SKILLS_READING, 'It is no longer raised once the named skill is imported; `tarav project skills import` does that.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -147,8 +133,6 @@ class ClaudeSkillsFolderAbsent(SkillFoldersPOI):
 
 class ClaudeSkillsFolderDiverges(SkillFoldersPOI):
     """`.claude/skills` does not resolve to the same directory as `.agents/skills`."""
-
-    context_notes = (_SKILLS_READING, 'It is no longer raised once `.claude/skills` resolves to the `.agents/skills` directory.', _USER_FIRST)
 
     @classmethod
     def class_entity(cls) -> TaravClass:

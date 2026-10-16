@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 import hashlib
-from typing import ClassVar
 import json
 import warnings
 
@@ -19,7 +18,6 @@ from tarav.l0.kernel import (
     entity,
 )
 
-from tarav.l1.context.groups import Link, Member
 
 from .workflow import POI_WORKFLOW_SHIP
 
@@ -68,7 +66,6 @@ class POI(TaravObject):
     #: Descriptive sentences this Type adds to its POIs' context: what the POI
     #: means, where its producer's documentation is, what is known to make it
     #: stop being raised. They are not part of the POI's record.
-    context_notes: ClassVar[tuple[str, ...]] = ()
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -171,21 +168,6 @@ class SituationPOI(POI):
             return {**super().record_example(), "class_id": class_id,
                     "id": fingerprint([class_id, situation]), "situation": situation}
 
-    def obj_context(self, builder) -> None:
-        builder.add("situation", opener=lambda: _details(self.situation))
-
-
-# tarav.breadcrumb dd181022da5fb76ff196852dae28a21147cf4e5d2696947be5252f0a20599723
-def poi_member(poi: SituationPOI) -> Member:
-    """A POI as a member of an object group."""
-    return Member("poi", member_type=entity(type(poi)).name, id=poi.identity, obj=poi)
-
-
-def situation_links(poi: SituationPOI):
-    """The situation a POI is about comes before it."""
-    yield Link(Member("situation", value=poi.situation), poi_member(poi))
-
-
 class NotificationPOI(POI):
     """An operation or event worth showing without implying failure."""
 
@@ -217,10 +199,6 @@ class NotificationPOI(POI):
     class Records(POI.Records):
         def record_example(self) -> dict[str, object]:
             return {**super().record_example(), "details": {}}
-
-    def obj_context(self, builder):
-        builder.add("details", opener=lambda: _details(self.details))
-
 
 class POIDetails(FileRecord):
     """Plain JSON data of a POI exposed as an ordinary Context value."""

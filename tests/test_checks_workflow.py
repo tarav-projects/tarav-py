@@ -230,10 +230,6 @@ def test_situation_checks_snapshot_validate_and_bind_poi_identity():
 
     poi = check.run().pois()[0]
     assert check.situation.to_json_value() == {"before": 1, "after": 2}
-    assert check.context().open("situation").records.to_record()["value"] == {
-        "before": 1,
-        "after": 2,
-    }
     assert poi.situation == check.situation.to_json_value()
     assert DifferenceCheck(situation=Situation(source)).run().pois() == ()
 
@@ -272,14 +268,6 @@ def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
     report = collector.report()
     assert report["total"] == 4
     assert all("blessing" not in item for item in report["items"])
-    assert [entry.name for entry in notice.context().ls()] == ["class", "details"]
-    assert notice.context().open("details").records.to_record()["value"] == {}
-    # tarav.context 473c89a0:9b167562b00b0279
-    assert [entry.name for entry in failure.context().ls()] == [
-        "class", "situation", "check", "details", "object-group",
-    ]
-    assert failure.context().open("check") is check
-    assert failure.context().open("details").records.to_record()["value"] == {"line": 3}
     with pytest.raises(ValueError, match="another Check"):
         CheckResult(ExampleCheck("two", []), status="completed", pois=(failure,))
 

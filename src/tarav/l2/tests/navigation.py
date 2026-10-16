@@ -10,8 +10,6 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from tarav.l2.context.storage import ContextService
-from tarav.l1.context import ContextBuilder
 from tarav.l0.kernel.identity import Ship, TypeShip, WorkflowShip
 from tarav.l0.kernel.records import (
     FileRecord,
@@ -20,7 +18,6 @@ from tarav.l0.kernel.records import (
     entity,
 )
 from tarav.l1.archive.records import (
-    ArchiveEntry,
     ArchivePartition,
     ArchiveFolder,
     ArchiveList,
@@ -127,69 +124,6 @@ class NavigationTestsWorkflow(TestsWorkflow):
         return TestsWorkflow()
 
     constitution = "Exercise navigation with disposable synthetic fixtures."
-
-    @classmethod
-    def class_context(cls, builder: ContextBuilder) -> None:
-        example = TestItem("runtime")
-        builder.add(
-            "runtime-example",
-            opener=lambda: example,
-        )
-        builder.add(
-            "runtime-alias",
-            opener=lambda: example,
-        )
-        builder.add(
-            "sample-entity",
-            opener=lambda: TestEntity(TEST_ENTITY_SHIP, "sample"),
-        )
-
-    @classmethod
-    def create_context_workspace(
-        self, contexts: ContextService
-    ) -> tuple[ArchiveFolder, ArchiveFolder]:
-        """Explicitly seed disposable Context Archives for this Test Workflow."""
-
-        sample_entity = TestEntity(TEST_ENTITY_SHIP, "sample")
-
-        workflow_root = contexts.create_subject_archive(
-            self, constitution="Disposable Test Workflow Context."
-        )
-        entity_root = contexts.create_subject_archive(
-            sample_entity, constitution="Disposable Test Entity Context."
-        )
-        contexts.put(
-            self,
-            "retained-example",
-            TestItem("retained"),
-            description="Synthetic retained example.",
-        )
-        examples_entry = contexts.put_folder(
-            self,
-            "examples",
-            ArchiveFolder,
-            constitution="Named Context examples.",
-            description="Named synthetic examples.",
-        )
-        examples_backing = examples_entry.archive_entry()
-        assert isinstance(examples_backing, ArchiveEntry)
-        examples = examples_backing.open()
-        assert isinstance(examples, ArchiveFolder)
-        contexts.write(examples, "nested-example", TestItem("nested"))
-        ordered_entry = contexts.put_folder(
-            self,
-            "ordered",
-            ArchiveList,
-            constitution="Ordered Context examples.",
-        )
-        ordered_backing = ordered_entry.archive_entry()
-        assert isinstance(ordered_backing, ArchiveEntry)
-        ordered = ordered_backing.open()
-        assert isinstance(ordered, ArchiveList)
-        contexts.write(ordered, None, TestItem("first"))
-        contexts.write(ordered, None, TestItem("second"))
-        contexts.put(sample_entity, "entity-note", TestItem("about sample"))
-        return workflow_root, entity_root
 
     @classmethod
     def create_record_archives(

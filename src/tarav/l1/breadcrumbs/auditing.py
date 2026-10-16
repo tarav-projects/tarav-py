@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from tarav.l0.kernel import TaravClass, entity
+from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TypeShip
 from tarav.l1.checks import Check, CheckPOI, CheckResult
-from tarav.l1.poi import NotificationPOI, POI, POIDetails
+from tarav.l1.poi import NotificationPOI, POI
 from tarav.l1.surfaces.markdown import MarkdownNormalModel
 from tarav.l1.surfaces.python import PythonNormalModel
 from tarav.l1.surfaces.typescript import TypeScriptNormalModel
@@ -307,19 +307,6 @@ class BreadcrumbAuditCheck(Check):
         return CheckResult(self, status='completed', pois=(
             poi(item) for item in concerns
         ))
-
-    # tarav.breadcrumb 596b1161c0983854154effc76ffa82d48ca21c56785d6915423fe9d12ff196cf
-    def obj_context(self, builder) -> None:
-        builder.add('audit', opener=lambda: POIDetails.records.from_record({
-            'type': entity(POIDetails).name,
-            'value': {
-                'surface': str(self.audit_context.surface.path),
-                'language': self.audit_context.surface.language,
-                'breadcrumbs': len(self.audit_context.breadcrumbs),
-                'concerns': len(self.concerns),
-            },
-        }))
-
 
 @dataclass(frozen=True, slots=True)
 # tarav.breadcrumb f30f87cf9b4f99e5814636176c19237fd190cd53e646284c2c3430dbfcf6cfe6

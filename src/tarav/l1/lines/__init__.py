@@ -1,7 +1,6 @@
 """Scoped natural-language statements, independent of Models."""
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip
-from tarav.l1.context import ContextFolder
 from .workflow import LinesWorkflow
 from .identity import LINES_WORKFLOW_SHIP
 from .block import Block
@@ -79,32 +78,4 @@ class Line(TaravEntity):
     def ships(self):
         return (*super().ships(), self.scope_ship)
 
-    def obj_context(self, builder):
-        super().obj_context(builder)
-        builder.add("scope", opener=lambda: self.scope)
-
-
-class LineScope(ContextFolder):
-    """Read-only view of a Line's interpretive dependency."""
-
-    @classmethod
-    def class_entity(cls):
-        return TaravClass(target=cls, id=TypeShip("90c30663-fd0d-4ee7-9146-d50eabb2505a"),
-                          name="Tarav.Lines.Scope", workflow=LINES_WORKFLOW_SHIP)
-
-    @classmethod
-    def accepts(cls, scope):
-        # tarav.context 473c89a0:926997d41da95b26
-        return not scope.views and isinstance(scope.subject, Line)
-
-    @classmethod
-    def for_context(cls, current):
-        subject = current.subject
-        return cls(subject, lambda builder: builder.add("scope", opener=lambda: subject.scope))
-
-    @property
-    def scope(self):
-        return self.subject.scope
-
-
-__all__ = ["Block", "Line", "LineScope", "LinesWorkflow"]
+__all__ = ["Block", "Line", "LinesWorkflow"]

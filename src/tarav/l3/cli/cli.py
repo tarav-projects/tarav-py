@@ -48,7 +48,7 @@ def build_parser(
     composed.register_commands(subparsers)
     from tarav.l3.context.commands import register_context_command
 
-    register_context_command(subparsers, service=context_queries(composed))
+    register_context_command(subparsers, service=composed.context_queries(), opener=composed.context)
     for command in commands_from_parser(parser):
         command.parser.set_defaults(_tarav_command=command)
         command.parser.live_help = (
@@ -94,18 +94,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 },
             )
 
-
-
-# tarav.breadcrumb b567d02429f0dff5bbfaac61c15bf5682e95640251d0963d66249a87ee127c3a
-def context_queries(runtime: TaravRuntime):
-    """Compose the installed identifier resolvers and named Context views."""
-    from tarav.l1.context.query import ContextQueryService, TypeResolver
-    from tarav.l1.actions.views import ActionResolver
-
-    service = ContextQueryService(opener=runtime.context, views=runtime.contexts.views)
-    service.register_resolver("action", ActionResolver())
-    service.register_resolver("type", TypeResolver(runtime.records.types))
-    return service
 
 
 if __name__ == "__main__":

@@ -27,7 +27,6 @@ from tarav.l0.kernel import (
     WorkflowShip,
     entity,
 )
-from tarav.l1.context import ContextFolder, ContextBuilder
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.records.storage import write_typed_record
 # tarav.breadcrumb a64a1925bb137ec1ec7ef10d1b432b5a3c349ffdcd505583c00cf3eb99b75b4c
@@ -181,11 +180,6 @@ class ArchiveEntry(ExplorerEntry, ArchiveObject):
         if self.artifact is None:
             return self
         return current_records().load(self.artifact_location())
-
-    def obj_context(self, builder: ContextBuilder) -> None:
-        if self._opener is not None or self.artifact is not None:
-            builder.add("object", opener=self.open)
-
 
 class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
     """Shared storage mechanics; concrete archive Types own their interface."""
@@ -396,16 +390,6 @@ class ArchiveFolder(ArchiveEntity, ExplorerFolder):
     def _save_entries(self, entries: dict[str, str]) -> None:
         atomic_write_json(self.root / ENTRIES_FILENAME, entries)
 
-    def obj_context(self, builder: ContextBuilder) -> None:
-        builder.add(
-            "entries",
-            opener=lambda: ContextFolder(self, self._populate_context),
-        )
-
-    def _populate_context(self, builder: ContextBuilder) -> None:
-        for entry in self.ls():
-            builder.add(entry.name, opener=lambda name=entry.name: self.get(name))
-
     def ls(self) -> tuple[ArchiveEntry, ...]:
         return tuple(
             self._listed_entry(name, path) for name, path in self.entries.items()
@@ -475,19 +459,6 @@ class ArchiveList(ArchiveEntity, ExplorerList):
 
     def _save_entries(self, entries: list[str]) -> None:
         atomic_write_json(self.root / ENTRIES_FILENAME, entries)
-
-    def obj_context(self, builder: ContextBuilder) -> None:
-        builder.add(
-            "entries",
-            opener=lambda: ContextFolder(self, self._populate_context),
-        )
-
-    def _populate_context(self, builder: ContextBuilder) -> None:
-        for entry in self.ls():
-            builder.add(
-                entry.name,
-                opener=lambda position=entry.placement: self.get(position),
-            )
 
     def ls(self) -> tuple[ArchiveEntry, ...]:
         return tuple(

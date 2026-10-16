@@ -4,7 +4,6 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip
-from tarav.l1.context import ContextList
 
 from .identity import LINES_WORKFLOW_SHIP
 
@@ -106,11 +105,3 @@ class Block(TaravEntity):
     def ships(self):
         return (*super().ships(), *self.line_ships)
 
-    def obj_context(self, builder):
-        super().obj_context(builder)
-
-        def populate_lines(lines_builder):
-            for index, line in enumerate(self.lines):
-                lines_builder.add(index, opener=lambda line=line: line)
-
-        builder.add("lines", opener=lambda: ContextList(self, populate_lines))

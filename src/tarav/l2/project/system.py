@@ -61,9 +61,6 @@ class TaravSystemProject(Project):
 class ActivePOI(CheckPOI):
     """Family, never raised: an active Project of the System Project needs attention."""
 
-    context_notes = ("The System Project's project.json lists its active Projects "
-                     "(`active`); each one is loaded through its own harness.",)
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("1b82c932-f7dc-441e-9970-c45cc515eb6b"),
@@ -73,9 +70,6 @@ class ActivePOI(CheckPOI):
 class ActiveProjectMissing(ActivePOI):
     """No Project marker at an active path."""
 
-    context_notes = (*ActivePOI.context_notes, "It is no longer raised once the path holds a "
-                     "Project again, or it leaves the active list.")
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("90e1c418-42a5-438e-9185-80f5e7905588"),
@@ -84,10 +78,6 @@ class ActiveProjectMissing(ActivePOI):
 
 class ActiveProjectDoesNotLoad(ActivePOI):
     """An active Project does not load through its harness in its own environment."""
-
-    context_notes = (*ActivePOI.context_notes, "It is no longer raised once the Project's "
-                     "harness names an environment that exists and a Type that imports there; "
-                     "the details hold the error.")
 
     @classmethod
     def class_entity(cls) -> TaravClass:

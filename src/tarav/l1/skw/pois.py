@@ -695,12 +695,6 @@ class ProductDrift(SkwPOI):
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
-    context_notes = (
-        'Either side may be the newer one: read the difference before compiling, since compiling '
-        'replaces the file with what the source produces.',
-        'It is no longer raised once the file and what its source produces are the same text.',
-    )
-
     @classmethod
     # tarav.breadcrumb 3eb40ba8c8c58e9e0ce65142bc077c76f435c823ae1a3d357edfcc3c1e7ade5c
     # tarav.breadcrumb f41a5d6353932a38b2690134f9db371f0f2e6d656baf7b5079d954337e68520f

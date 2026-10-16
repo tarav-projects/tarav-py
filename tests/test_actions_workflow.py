@@ -609,7 +609,7 @@ def test_a_blessing_declares_assertions_and_scores_stay_with_the_scorer(stores, 
 def test_an_action_keeps_the_record_of_its_poi_and_reads_its_types_from_the_code(stores):
     # tarav.breadcrumb 312c3b09cec0df8a66862ce78f1ef41f245d6192129da92c441553c428de3905
     from tarav.l1.actions.views import ActionResolver
-    from tarav.l1.context.query import ContextQueryService, IdentityContextQuery
+    from tarav.l1.context.query import ContextQueryService
 
     poi = LampCheck("hall", 3).run().pois()[0]
     stores.lamps(hall=3)
@@ -619,11 +619,8 @@ def test_an_action_keeps_the_record_of_its_poi_and_reads_its_types_from_the_code
 
     service = ContextQueryService()
     service.register_resolver("action", ActionResolver(lambda: stores.runs))
-    answer = service.open(IdentityContextQuery(poi.identity[:12], path=["standing"]))
-    assert answer.subject.id == action_id(poi)
-    value = answer.target.records.to_record()["value"]
-    assert value["action"] == "Tarav.Actions.POI.Resolution"
-    assert value["axes"] == {"situation": "present", "action": "open", "closing": None}
+    run = service.find(poi.identity[:12])
+    assert run.id == action_id(poi) and run.data["action"] == "Tarav.Actions.POI.Resolution"
 
 
 class _Flags(Check):
@@ -975,14 +972,11 @@ def test_an_action_logs_the_git_state_of_its_repositories_at_its_changes(stores,
     (repo / "draft.md").write_text("draft\n")  # opened while the repository is not clean
     lamps(hall=3)
     assert log() == [("opened", None, first, False)]
-    advice = stores.pois.of(poi).context().open("tape").records.to_record()["value"]["advice"]
-    assert len(advice) == 1 and advice[0].startswith(f"{root} was not clean")
 
     second = _commit_all(repo, "two")  # still open, now clean: logged once
     assert lamps(hall=3)["updated"] == 1
     assert lamps(hall=3)["updated"] == 0
     assert log()[1:] == [("clean", None, second, True)]
-    assert stores.pois.of(poi).context().open("tape").records.to_record()["value"]["advice"] == []
 
     (repo / "draft.md").write_text("fixed\n")  # gone while not clean
     lamps(hall=0)
@@ -1008,5 +1002,3 @@ def test_an_action_whose_checks_declare_no_repository_logs_nothing(stores):
     stores.lamps(hall=3)
     run = stores.pois.of(LampCheck("hall", 3).run().pois()[0])
     assert [set(entry) for entry in run.data["tape"]] == [{"type", "at"}]
-    advice = run.context().open("tape").records.to_record()["value"]["advice"]
-    assert advice[0].startswith("The suites above its checks declare no Git repository")

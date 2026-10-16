@@ -147,3 +147,50 @@ guarding the experiment. `uv lock` dropped RDFLib (it returns as a core
 dependency in slice 2). Check: `uv run pytest` 335 passed after removing
 that guard test (the 18 experiment tests are gone); Ruff clean. Inlined
 capture: deletions only, no remaining position to annotate.
+
+### Slice 2 — the graph Context model replaces the old one (feature + subtract, done)
+
+- Kernel: `TaravType.Context` is `triplets()` (default `(subject, RDF_TYPE,
+  entity(type(subject)))`, a class standing for its `entity`) and
+  `__call__()`; `configure_context_opener` replaces the two resolvers;
+  `RDF_TYPE` exported. `class_context`, `obj_context`, `explore`, `model`,
+  `model_nodes` deleted.
+- `tarav.l1.context`: `ContextExplorer(TaravObject)` and `ContextEdge`
+  (graph, objects, opened, history, position; `open`, `ls`, `follow`,
+  `back`, `forward`, `query`, `node`). Deleted views, builder, entries,
+  scopes, models (`TypePath`, `TypeModel`), groups (ObjectGroup, links,
+  members) and `tarav.l2.context` storage (ContextService and its Record
+  types). `query.py` keeps the resolvers and gains `find()`.
+- Cut every contribution: `obj_context`/`class_context` in Archive,
+  Settings (`contribute_settings`), Lines (`LineScope`), Block, Checks,
+  POIs, Actions (and Action Types' `context_entries`, `_detail`,
+  `_type_entry`), Breadcrumb audits, scoring, the navigation fixtures;
+  the link helpers; `context_notes` on every POI Type and the constants
+  only they used; `tape.advice`, which only the Context showed.
+- Runtime: `context(subject)` returns an Explorer resolving identifiers
+  through `context_queries()` (moved from the CLI); the usage registry
+  takes the archive root directly. CLI: `tarav context --id [--json]`
+  prints focus and edges; `--view` fails explicitly; `--path` removed.
+- RDFLib is a core dependency again.
+- Tests: deleted the old Context suites and the ObjectGroup tests; new
+  `tests/kernel/test_context.py` (6) and rewritten
+  `tests/cli/test_context_command.py` (7); removed only the Context
+  assertions from other workflow tests; the explorer contract tests use
+  Archive folders; architecture tests describe the new boundaries.
+
+Checks: `uv run pytest` 291 passed; Ruff clean; `uv tool install
+--reinstall --editable .`; real CLI: `tarav context --id Tarav.POI` prints
+its type edge to `Tarav.Class`, `--view object-group` exits 1 with the
+explicit error, an existing action id prints its `Tarav.Actions.Run` type
+in JSON. Measured. `tests/test_scoped_lines.py::test_models_fail_before_side_effects`
+(outside the curated test paths) fails identically before and after.
+
+Inlined capture: provisional markers on the Kernel namespace, the Explorer
+and the command, submitted with the session; audits ok (10, 3, 2
+Breadcrumbs); positions refreshed in every changed file. A codex-session
+marker in `tests/test_architecture.py` was already pending and is left.
+
+Deviation (Autonomous): the request named Context code to cut; it also
+covered `context_notes`, `tape.advice` and Action Types'
+`context_entries`, read only by the old Context. They were cut too, per the
+User's "cut it, all goes to the default".

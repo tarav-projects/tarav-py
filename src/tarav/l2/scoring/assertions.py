@@ -242,6 +242,3 @@ class Assertion(TaravAssertion):
         return cls(data.subject_ref)
 
 
-    def obj_context(self, builder):
-        builder.add('subject', opener=lambda: ScoringDetails.records.from_record(
-            {'type': entity(ScoringDetails).name, 'reference': self.subject_ref}))

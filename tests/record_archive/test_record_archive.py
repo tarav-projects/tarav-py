@@ -129,13 +129,6 @@ def test_test_workflow_stores_and_reopens_both_archive_structures(tmp_path) -> N
     assert "placement" not in old_second.records.to_record()
     assert len(json.loads((root / "ordered" / "entries.json").read_text())) == 3
 
-    archive_context = runtime.context(reopened_named)
-    entries_context = archive_context.open("entries")
-    assert [entry.name for entry in entries_context.ls()] == ["greeting"]
-    placed = entries_context.open("greeting")
-    assert isinstance(placed, ArchiveEntry)
-    assert runtime.context(placed).open("object").label == "hello tarav"
-
 
 def test_archive_entries_can_open_and_navigate_nested_typed_archives(tmp_path) -> None:
     workflow = get_runtime().workflows.get("Tarav.Workflow.Tests.Navigation")

@@ -22,22 +22,14 @@ from tarav.l0.kernel import (
     TypeRegistry,
     entity,
 )
-from tarav.l1.context import (
-    ContextEntry,
-    ContextSubject,
-    explore as open_context,
-)
-from tarav.l2.context.storage import (
-    CONTEXT_RECORD_TYPES,
-    ContextService,
-    configure_current_context_service,
-)
+from tarav.l0._core.data_root import default_tarav_data_root
+from tarav.l1.context import ContextExplorer
+from tarav.l1.context.query import ContextQueryService, TypeResolver
 from tarav.l1.context.workflow import ContextWorkflow
 from tarav.l0.kernel.space import FilesystemProvider
 from tarav.l0.kernel.records import (
     configure_workflow_resolver,
-    configure_context_resolver,
-    configure_context_model_resolver,
+    configure_context_opener,
 )
 from tarav.l0.kernel.current import configure_current_records
 from tarav.l0.kernel.workflows import TaravWorkflow, WorkflowRegistry
@@ -79,7 +71,6 @@ class TaravRuntime:
     workflows: WorkflowRegistry
     records: TypeRegistry[TaravObject]
     environment: TaravEnvironment
-    contexts: ContextService
     navigation: RecordsService
     search: SearchService
     references: ReferenceService
@@ -123,14 +114,19 @@ class TaravRuntime:
             path, expected_type=expected_type, entry_paths=profile_paths(profile)
         )
 
-    def context(self, subject: ContextSubject | ContextEntry, *, views=()):
-        """Compose runtime and retained entries into one read-only view."""
+    def context(self, subject) -> ContextExplorer:
+        """Open a Context Explorer on a subject; identifiers resolve through this runtime."""
 
-        from tarav.l1.settings import contribute_settings
+        return ContextExplorer(subject, resolve=self.context_queries().find)
 
-        return open_context(
-            subject, contributors=(self.contexts.contribute, contribute_settings),
-            view_contributors=(self.contexts.contribute_views,), views=views)
+    def context_queries(self) -> ContextQueryService:
+        """The installed resolvers from an identifier to what it identifies."""
+        from tarav.l1.actions.views import ActionResolver
+
+        service = ContextQueryService()
+        service.register_resolver("action", ActionResolver())
+        service.register_resolver("type", TypeResolver(self.records.types))
+        return service
 
     def register_commands(
         self,
@@ -281,8 +277,7 @@ def create_runtime(
     )
     from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
-    from tarav.l1.lines import Block, Line, LineScope, LinesWorkflow
-    from tarav.l1.context.groups import GROUP_RECORD_TYPES, ObjectGroup, register_links
+    from tarav.l1.lines import Block, Line, LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
     # tarav.breadcrumb 35548ca6fdf72e93e3a5008225dcf66e71eb81faeaa264535405ebd242768a7a
@@ -296,13 +291,13 @@ def create_runtime(
     from tarav.l1.programs import ProgramsWorkflow, TaravProgram
     from tarav.l1.agent.workflow import AgentsWorkflow
     from tarav.l1.actions import (
-        ACTION_RECORD_TYPES, ActionRun, ActionsWorkflow, register_action, run_links,
+        ACTION_RECORD_TYPES, ActionsWorkflow, register_action,
     )
     from tarav.l1.operator_context import (
         OPERATOR_CONTEXT_RECORD_TYPES, OperatorContextWorkflow,
     )
     from tarav.l1.actions.pois import (
-        POI_ACTION_RECORD_TYPES, POIResolutionAction, poi_links, poi_run_links,
+        POI_ACTION_RECORD_TYPES, POIResolutionAction,
     )
     from tarav.l2.tests.actions import ActionsTestsWorkflow
     from tarav.l2.project.programs import ProjectProgram
@@ -314,18 +309,18 @@ def create_runtime(
     from tarav.l2.project.system import SYSTEM_RECORD_TYPES
     from tarav.l2.project.models import ProjectModelsWorkflow
     from tarav.l2.project.wiki import ProjectWikiWorkflow
-    from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow, SituationPOI, situation_links
+    from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow
     from tarav.l1.settings import SETTINGS_RECORD_TYPES, SettingsWorkflow
     from tarav.l1.actions.blessing import (
         BLESSING_RECORD_TYPES, bind_blessing_assertion_services,
     )
     from tarav.l1.blessings import BlessingsWorkflow
-    from tarav.l1.poi.actionable import ActionablePOI, BlessablePOI
+    from tarav.l1.poi.actionable import BlessablePOI
     from tarav.l1.decisions import (
         DECISION_RECORD_TYPES, DecisionsWorkflow, bind_decision_assertions,
     )
     from tarav.l2.decisions import DecisionReportAssertion, assertions_for_decision
-    from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow, check_links
+    from tarav.l1.checks import Check, CheckPOI, CheckResult, ChecksWorkflow
     from tarav.l1.breadcrumbs.auditing import (
         BreadcrumbAuditCheck, BreadcrumbAuditPOI, BreadcrumbPositionUpdated,
     )
@@ -392,12 +387,9 @@ def create_runtime(
                 DirectoryRecord,
                 *RECORDS_TYPES,
                 SearchQuery,
-                *CONTEXT_RECORD_TYPES,
                 TaravClass,
                 Block,
                 Line,
-                LineScope,
-                *GROUP_RECORD_TYPES,
                 TaravEnvironment,
                 TaravSystem,
                 TestEntity,
@@ -508,9 +500,6 @@ def create_runtime(
     # tarav.breadcrumb 62297208d649cb6d9101c2e75061f5637bdc22d0150e28dc7b6e0576fb5c52d2
     search = SearchWorkflow.service()
     references = ReferenceWorkflow.service(records)
-    contexts = ContextService(archive_root, records)
-    # tarav.context 473c89a0:9b167562b00b0279
-    contexts.register_view("object-group", ObjectGroup)
     breadcrumbs = BreadcrumbWorkflow.service(composed_breadcrumb_integrations)
     for workflow in (
         TaravWorkflow,
@@ -564,10 +553,6 @@ def create_runtime(
     ):
         registrations.register(workflow)
     register_action(POIResolutionAction)
-    for subject_type, links in ((SituationPOI, situation_links), (CheckPOI, check_links),
-                                (ActionRun, run_links), (ActionRun, poi_run_links),
-                                (ActionablePOI, poi_links)):
-        register_links(subject_type, links)
     from tarav.l1.project.config import register_config_section
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig
@@ -613,10 +598,10 @@ def create_runtime(
         workflows=registrations,
         records=records,
         environment=running_environment,
-        contexts=contexts,
         references=references,
         breadcrumbs=breadcrumbs,
-        usage=UsageRegistry(contexts.archive_root),
+        usage=UsageRegistry(
+            (archive_root or default_tarav_data_root() / "archive").expanduser().resolve()),
         navigation=navigation,
         search=search,
         breadcrumb_integrations=composed_breadcrumb_integrations,
@@ -651,11 +636,7 @@ def set_runtime(runtime: TaravRuntime | None) -> None:
 
 configure_workflow_resolver(lambda ship: get_runtime().workflows.get(ship)())
 configure_current_records(lambda: get_runtime().records)
-configure_current_context_service(lambda: get_runtime().contexts)
-
-configure_context_resolver(lambda subject, **kwargs: get_runtime().context(subject, **kwargs))
-# tarav.context 473c89a0:8cf85c979321cdcf
-configure_context_model_resolver(lambda subject: get_runtime().contexts.model(subject))
+configure_context_opener(lambda subject: get_runtime().context(subject))
 
 
 __all__ = [

@@ -1,4 +1,4 @@
-"""The same public contract suite works for retained and runtime explorers."""
+"""The same public contract suite works for every folder explorer."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import pytest
 from tarav.l0.explorer_testing import ExplorerCase, ExplorerContractTests, check_collection
 from tarav.l3.runtime import get_runtime
 from tarav.l0.kernel import ExplorerEntry, ExplorerFolder, TaravClass, TypeShip
-from tarav.l1.context import ContextBuilder, ContextEntry, ContextExplorer, ContextFolder, ContextList
 from tarav.l1.archive.records import (
     ArchiveExplorer,
     ArchiveFolder,
@@ -76,50 +75,6 @@ def _archive_list(root: Path) -> ExplorerCase:
     )
 
 
-def _context_folder(root: Path) -> ExplorerCase:
-    del root
-    leaf = WorkspaceItem("one")
-    child = ContextFolder(WorkspaceItem, lambda builder: None)
-    other = ContextFolder(WorkspaceItem, lambda builder: None)
-
-    def populate(builder: ContextBuilder) -> None:
-        builder.add("leaf", opener=lambda: leaf)
-        builder.add("child", opener=lambda: child)
-        builder.add("other", opener=lambda: other)
-
-    folder = ContextFolder(WorkspaceItem, populate)
-    return ExplorerCase(
-        folder,
-        ("leaf", "child", "other"),
-        ContextExplorer(folder, lambda subject: folder),
-        child="child",
-        leaf="leaf",
-        other_child="other",
-    )
-
-
-def _context_list(root: Path) -> ExplorerCase:
-    del root
-    leaf = WorkspaceItem("one")
-    child = ContextList(WorkspaceItem, lambda builder: None)
-    other = ContextList(WorkspaceItem, lambda builder: None)
-
-    def populate(builder: ContextBuilder) -> None:
-        builder.add(0, opener=lambda: leaf)
-        builder.add(1, opener=lambda: child)
-        builder.add(2, opener=lambda: other)
-
-    values = ContextList(WorkspaceItem, populate)
-    return ExplorerCase(
-        values,
-        (0, 1, 2),
-        ContextExplorer(values, lambda subject: values),
-        child=1,
-        leaf=0,
-        other_child=2,
-    )
-
-
 class ArchiveContractTests(ExplorerContractTests):
     def assert_value(self, case, key, value):
         if key == case.leaf:
@@ -147,32 +102,12 @@ class TestArchivePartition(ArchiveContractTests):
     make_case = staticmethod(_archive_partition)
 
 
-class ContextContractTests(ExplorerContractTests):
-    def assert_value(self, case, key, value):
-        if key == case.leaf:
-            assert value.records.to_record() == WorkspaceItem("one").records.to_record()
-        else:
-            assert isinstance(value, type(case.value))
-            assert value.subject is WorkspaceItem
-            assert value.ls() == ()
-
-
-class TestContextFolder(ContextContractTests):
-    make_case = staticmethod(_context_folder)
-
-
-class TestContextList(ContextContractTests):
-    make_case = staticmethod(_context_list)
-
-
 def test_empty_collections_obey_the_same_contract(tmp_path: Path) -> None:
     from tarav.l0.explorer_testing import check_collection
 
     check_collection(ArchiveRoot(tmp_path / "missing"), ())
     check_collection(ArchiveFolder.create(tmp_path / "named", constitution="Empty"), ())
     check_collection(ArchiveList.create(tmp_path / "ordered", constitution="Empty"), ())
-    check_collection(ContextFolder(WorkspaceItem, lambda builder: None), ())
-    check_collection(ContextList(WorkspaceItem, lambda builder: None), ())
 
 
 def test_independent_folder_can_register_without_repository_test_helpers() -> None:
@@ -223,31 +158,6 @@ def test_independent_folder_can_register_without_repository_test_helpers() -> No
     check_collection(IndependentFolder(), ("item",))
 
 
-def test_context_explorer_preserves_specialized_entry_type_and_parent_history() -> None:
-    class SpecializedEntry(ContextEntry):
-        @classmethod
-        def class_entity(cls) -> TaravClass:
-            return TaravClass(
-                target=cls,
-                id=TypeShip("d64ddaa2-e832-4dcc-a350-609e81376c3b"),
-                name="Test.Explorer.SpecializedEntry",
-            )
-
-    child = ContextFolder(WorkspaceItem, lambda builder: None)
-
-    def populate(builder: ContextBuilder) -> None:
-        builder.add_entry(SpecializedEntry("child", opener=lambda: child))
-
-    explorer = ContextExplorer(
-        ContextFolder(WorkspaceItem, populate), lambda subject: child
-    )
-    assert type(explorer.get("child")) is SpecializedEntry
-    explorer.cd("child").cd("..")
-    assert explorer.pwd() == "/"
-    assert explorer.back().pwd() == "/child"
-    assert explorer.forward().pwd() == "/"
-
-
 def test_archive_parent_navigation_is_distinct_from_visit_history(
     tmp_path: Path,
 ) -> None:
@@ -260,37 +170,12 @@ def test_archive_parent_navigation_is_distinct_from_visit_history(
     assert explorer.forward().pwd() == "/"
 
 
-def test_suite_detects_broken_listing_and_cleans_fixture_directory() -> None:
-    class BrokenContext(ContextFolder):
-        @classmethod
-        def class_entity(cls) -> TaravClass:
-            return TaravClass(
-                target=cls,
-                id=TypeShip("efeea913-3317-4c83-8776-ac56bcf299e6"),
-                name="Test.Explorer.Broken",
-            )
-
-        def ls(self):
-            return ()
-
-    created: list[Path] = []
-
-    def fixture(root: Path) -> ExplorerCase:
-        created.append(root)
-        root.joinpath("marker").write_text("fixture")
-        value = BrokenContext(
-            WorkspaceItem,
-            lambda builder: builder.add("item", opener=lambda: WorkspaceItem("one")),
-        )
-        return ExplorerCase(value, ("item",))
-
-    from tempfile import TemporaryDirectory
-
-    with TemporaryDirectory() as directory:
-        case = fixture(Path(directory))
-        with pytest.raises(AssertionError):
-            check_collection(case.value, case.keys)
-    assert created and not created[0].exists()
+def test_suite_detects_broken_listing(tmp_path: Path) -> None:
+    folder = ArchiveFolder.create(tmp_path / "archive", constitution="Broken fixture")
+    folder.put("item", WorkspaceItem("one"))
+    folder.ls = lambda: ()
+    with pytest.raises(AssertionError):
+        check_collection(folder, ("item",))
 
 
 def test_abstract_support_is_required():
@@ -299,7 +184,7 @@ def test_abstract_support_is_required():
 
 
 def test_inherited_checks_reject_failed_navigation_mutation(tmp_path, monkeypatch):
-    case = _context_folder(tmp_path)
+    case = _archive_folder(tmp_path)
     original = case.explorer.cd
 
     def broken_cd(key):
@@ -309,23 +194,23 @@ def test_inherited_checks_reject_failed_navigation_mutation(tmp_path, monkeypatc
         return original(key)
 
     monkeypatch.setattr(case.explorer, "cd", broken_cd)
-    tests = TestContextFolder()
+    tests = TestArchiveFolder()
     monkeypatch.setattr(tests, "make_case", lambda path: case)
     with pytest.raises(AssertionError):
         tests.test_navigation_contract(tmp_path)
 
 
 def test_inherited_checks_reject_wrong_value(tmp_path, monkeypatch):
-    case = _context_folder(tmp_path)
+    case = _archive_folder(tmp_path)
     monkeypatch.setattr(case.value, "open", lambda key: WorkspaceItem("wrong"))
-    tests = TestContextFolder()
+    tests = TestArchiveFolder()
     monkeypatch.setattr(tests, "make_case", lambda path: case)
     with pytest.raises(AssertionError):
         tests.test_collection_contract(tmp_path)
 
 
 def test_inherited_checks_reject_history_mutation(tmp_path, monkeypatch):
-    case = _context_folder(tmp_path)
+    case = _archive_folder(tmp_path)
     original = case.explorer.open
 
     def broken_open(key):
@@ -333,7 +218,7 @@ def test_inherited_checks_reject_history_mutation(tmp_path, monkeypatch):
         return original(key)
 
     monkeypatch.setattr(case.explorer, "open", broken_open)
-    tests = TestContextFolder()
+    tests = TestArchiveFolder()
     monkeypatch.setattr(tests, "make_case", lambda path: case)
     with pytest.raises(AssertionError):
         tests.test_navigation_contract(tmp_path)

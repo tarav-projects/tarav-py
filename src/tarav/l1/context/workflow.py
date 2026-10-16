@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from tarav.l1.context import ContextType, CONTEXT_WORKFLOW_SHIP
+from tarav.l1.context import CONTEXT_WORKFLOW_SHIP
 from tarav.l0.kernel import TaravClass, TypeShip, TaravWorkflow
 
 
-class ContextWorkflow(TaravWorkflow, ContextType):
-    """Compose runtime Context with Archive-backed subject directories."""
+class ContextWorkflow(TaravWorkflow):
+    """Own the Context graph: how objects contribute triples and how they are explored."""
 
     @classmethod
     def _workflow_id(cls):
@@ -23,6 +23,6 @@ class ContextWorkflow(TaravWorkflow, ContextType):
         )
 
     constitution = (
-        "Provide read-only progressive Context navigation and retain identified "
-        "subjects' Context entries through Record Archive."
+        "Collect the triples objects contribute about themselves into a graph "
+        "that only grows, and explore it: list, open, follow, query."
     )

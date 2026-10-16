@@ -8,7 +8,6 @@ from tarav.l3.loading import load as load_object
 from tarav.l1.archive import Archive
 from tarav.l1.chatlas.workflow import ChatlasWorkflow
 from tarav.l0.kernel import DirectoryRecord, FileRecord, KERNEL_WORKFLOW_SHIP, RecordTypeMismatch, TARAV, KernelWorkflow
-from tarav.l1.context import explore as context
 from tarav.l1.references import FileReference
 from tarav.l3.runtime import create_runtime
 
@@ -32,7 +31,6 @@ def test_runtime_bootstraps_tarav_and_the_kernel_workflow():
     }
     assert runtime.workflows.get("Tarav.Workflow.Kernel") is KernelWorkflow
     assert runtime.workflows.get(KERNEL_WORKFLOW_SHIP) is KernelWorkflow
-    assert context(TARAV).open("class").open("entity").target is type(TARAV)
 
 
 def test_public_load_object_dispatches_and_checks_expected_type(tmp_path):

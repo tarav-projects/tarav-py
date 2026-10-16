@@ -18,6 +18,7 @@ from .records import (
     DirectoryRecord,
     FileRecord,
     InvalidRecordJSON,
+    RDF_TYPE,
     RecordTypeMismatch,
     TaravAssertion,
     TaravEntity,
@@ -54,6 +55,7 @@ from .workflows import (
 )
 
 __all__ = [
+    "RDF_TYPE",
     "configure_current_records",
     "current_records",
     "DIRECTORY_ENTRY_PATH",

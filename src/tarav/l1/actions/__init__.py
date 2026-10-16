@@ -19,7 +19,6 @@ from tarav.l0.kernel import (
     FileRecord, Ship, TaravClass, TaravEntity, TaravType, TypeShip, entity,
 )
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
-from tarav.l1.context.groups import Link, Member
 from tarav.l1.operator_context import Intake, OperatorContext, OperatorContextStore
 from tarav.l1.records import RecordRegistry
 
@@ -153,10 +152,6 @@ class Action(TaravType):
                           name="Tarav.Actions.Action", workflow=ACTIONS_WORKFLOW_SHIP)
 
     @classmethod
-    def context_entries(cls, run: "ActionRun", builder: object) -> None:
-        """Add to an action's Context what only this Type knows about it."""
-
-    @classmethod
     def on_checks(cls, run: "ActionRun", update: ChecksUpdate) -> str | None:
         """What one registered action does with a run of its Project's checks.
 
@@ -278,35 +273,6 @@ class ActionRun(TaravEntity, FileRecord):
         """The closing record of the current closing, as stored on the tape."""
         last = tape.last_status(self)
         return last.get("closing") if last["type"] == tape.CLOSED else None
-
-    # tarav.breadcrumb 76f10b0bd9f63cb39ee38b2f5602ec2ca0ea4a701ab09b838bb53a4befd197a9
-    def obj_context(self, builder) -> None:
-        """What every action has, and then what its Type adds."""
-        data, key = self.data, str(self.id)
-        builder.add("standing", opener=lambda: _detail({
-            "action": data["action"], "axes": axes(self),
-            "opened_at": self.opened_at, "closed_at": self.closed_at,
-            "first_opened_at": self.started_at}),
-            description="The Action Type and three separate axes: the situation as the "
-                        "last run of the Project's checks says it, whether the action is "
-                        "open, and the exit it closed by.")
-        try:
-            resolve_action(data["action"]).context_entries(self, builder)
-        except ActionError:
-            pass  # a Type this runtime does not have adds nothing
-        builder.add("project", opener=lambda: _detail(data.get("project")),
-                    description="The Project this action is registered under.")
-        builder.add("tape", opener=lambda: _detail({
-            "entries": data["tape"], "advice": tape.advice(self)}),
-            description="The important events of this action, in order: opened, closed with "
-                        "its closing record, reopened, attempts at an exit, and the state of "
-                        "its checks' Git repositories at each change of status.")
-        builder.add("history", opener=lambda: _detail(
-            [f"git -C <actions registry> log -p -- records/{key}.json",
-             "The record holds the current state. Its past states are the Git history "
-             "of its file in the Actions registry; `tarav action list` prints the "
-             "registry's location."]),
-            description="Where the earlier states of this action are.")
 
     def closing(self) -> Closing | None:
         """The record of how this run closed, as an object of its Type."""
@@ -431,15 +397,6 @@ def resolve_action(name: str) -> type[Action]:
         return _ACTION_TYPES[name]
     except KeyError:
         raise ActionError(f"No Action Type is registered as {name!r}") from None
-
-
-def _detail(content: object) -> object:
-    from copy import deepcopy
-
-    from tarav.l1.poi import POIDetails
-
-    return POIDetails.records.from_record(
-        {"type": entity(POIDetails).name, "value": deepcopy(content)})
 
 
 def _now() -> str:
@@ -643,27 +600,12 @@ class StepRunner:
         return run
 
 
-def action_member(run: ActionRun) -> Member:
-    """An action as a member of an object group: its Action Type and its id."""
-    return Member("action", member_type=run.data["action"], id=str(run.id), obj=run)
-
-
-def run_links(run: ActionRun):
-    """Each closing record on the tape comes after the action, in the order it closed."""
-    previous = action_member(run)
-    for item in run.data["tape"]:
-        if item["type"] == tape.CLOSED and item.get("closing"):
-            closing = Member("closing", member_type=item["closing"]["type"], key=item["at"])
-            yield Link(previous, closing)
-            previous = closing
-
-
 ACTION_RECORD_TYPES = (ActionRun, Closing, *TAPE_ENTRY_TYPES)
 
 __all__ = [
     "ACTIONS_WORKFLOW_SHIP", "ACTION_RECORD_TYPES", "Action", "ActionError", "ActionRun",
     "ActionRunStore", "ActionsWorkflow", "CLOSED", "ChecksUpdate", "Closing", "EXIT_ERROR",
     "Exit", "LOOP", "OPEN", "OPERATOR", "PROJECT", "RUNNING", "RUN_REFERENCE_TYPE", "SkillLink", "StepAction",
-    "StepRunner", "action_member", "action_types", "axes", "close_run", "register_action",
-    "resolve_action", "run_links",
+    "StepRunner", "action_types", "axes", "close_run", "register_action",
+    "resolve_action",
 ]

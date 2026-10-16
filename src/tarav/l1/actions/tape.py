@@ -223,17 +223,6 @@ def waiting(run) -> list[str]:
     return [root for root in repositories(run) if not _clean_in(phase, root)]
 
 
-def advice(run) -> list[str]:
-    """What an agent can do so that the tape holds clean commits."""
-    if not repositories(run):
-        return ["The suites above its checks declare no Git repository, so the tape "
-                "holds no repository state."]
-    project = (run.data.get("project") or {}).get("root", "<project>")
-    return [f"{root} was not clean at the last change of this action, nor since. Commit "
-            f"it and run the checks again (tarav status --project {project}), so the "
-            f"tape holds a clean commit." for root in waiting(run)]
-
-
 def _phase(run) -> list[dict]:
     """The entries since the last status change, that change included."""
     tape = run.data["tape"]
@@ -250,7 +239,7 @@ def _clean_in(entries: list[dict], root: str) -> bool:
 
 __all__ = [
     "CLEAN", "CLOSED", "Clean", "Closed", "ClosingAttempt", "OPENED", "Opened", "REOPENED",
-    "Reopened", "STATUS", "StatusChange", "TAPE_ENTRY_TYPES", "TapeEntry", "advice", "attempt",
+    "Reopened", "STATUS", "StatusChange", "TAPE_ENTRY_TYPES", "TapeEntry", "attempt",
     "clean", "closed", "entry", "last_status", "opened", "reopened", "repositories",
     "status_entries", "waiting",
 ]

@@ -171,15 +171,6 @@ class SettingsProvider(TaravType):
                 result.setdefault(name, other)
         return result
 
-    @classmethod
-    def class_context(cls, builder: object) -> None:
-        super().class_context(builder)
-        if cls.settings_partitions():
-            builder.add("settings-template",
-                        description="The settings this Type declares or includes.",
-                        opener=lambda: _report({name: _template(interface) for name, interface
-                                                in cls.settings_partitions().items()}))
-
     # tarav.breadcrumb 0d26ccdceb3f246057aa2822a58dcfea867c57759d7df38c6c7ae39d76b793a5
     class Settings(NamespaceBase["SettingsProvider"]):
         """Read and write an object's settings against its declared template."""
@@ -263,15 +254,6 @@ class SettingsProvider(TaravType):
         return type(self).Settings(self)
 
 
-def contribute_settings(subject: object, builder: object) -> None:
-    """Context contributor: an object with settings gains a `settings` entry."""
-    if (isinstance(subject, SettingsProvider) and not isinstance(subject, type)
-            and type(subject).settings_partitions()):
-        builder.add("settings",
-                    description="This object's settings: partitions, values and origins.",
-                    opener=lambda: _report(subject.settings.describe()))
-
-
 SETTINGS_RECORD_TYPES = (SettingsValues, SettingsReport)
 
 __all__ = [
@@ -282,5 +264,4 @@ __all__ = [
     "SettingsReport",
     "SettingsValues",
     "SettingsWorkflow",
-    "contribute_settings",
 ]

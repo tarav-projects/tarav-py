@@ -19,15 +19,8 @@ from tarav.l1.checks import Check, CheckPOI, CheckResult
 from .config import ProjectConfig, config_sections
 from .workflow import PROJECT_WORKFLOW_SHIP
 
-_READING = ("A Project's project.json is its Record and the Project workflow's own "
-            "configuration (project_id, created_at, project_name, harness, and what its "
-            "Type adds); config.json holds one section per workflow that configures it.")
-
-
 class ProjectFilesPOI(CheckPOI):
     """Family, never raised: a Project's project.json or config.json needs attention."""
-
-    context_notes = (_READING,)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -38,9 +31,6 @@ class ProjectFilesPOI(CheckPOI):
 class UnknownProjectField(ProjectFilesPOI):
     """project.json holds a field neither the Project nor its Type declares."""
 
-    context_notes = (_READING, "It is no longer raised once the field is removed, or moved "
-                     "to the config.json section of the workflow that owns it.")
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("b2d94e17-5c38-4a06-8f71-e3a9c0d52b84"),
@@ -50,9 +40,6 @@ class UnknownProjectField(ProjectFilesPOI):
 class NoHarness(ProjectFilesPOI):
     """project.json declares no harness, so the Project cannot be started as its Type."""
 
-    context_notes = (_READING, "It is no longer raised once project.json has harness."
-                     "environment and harness.type; `tarav project harness scaffold` writes them.")
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("6a1e0f93-2b47-4d8c-a5e6-91c7d3b0f428"),
@@ -61,9 +48,6 @@ class NoHarness(ProjectFilesPOI):
 
 class HarnessEnvironmentMissing(ProjectFilesPOI):
     """The environment the harness names does not exist."""
-
-    context_notes = (_READING, "It is no longer raised once the environment exists; "
-                     "`tarav project harness sync` builds it from the manifest beside it.")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -75,9 +59,6 @@ class HarnessEnvironmentMissing(ProjectFilesPOI):
 class HarnessTypeMismatch(ProjectFilesPOI):
     """harness.type does not import here, or is not the Type project.json's tag names."""
 
-    context_notes = (_READING, "It is no longer raised once harness.type imports in the "
-                     "harness environment and names the same class as the Record's type tag.")
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("8e05b7d1-3c64-4f29-a1b8-2d7f9e6c0a51"),
@@ -88,9 +69,6 @@ class HarnessTypeMismatch(ProjectFilesPOI):
 class UnknownConfigSection(ProjectFilesPOI):
     """config.json holds a section no workflow owns."""
 
-    context_notes = (_READING, "It is no longer raised once the section is removed, or a "
-                     "workflow registers it (register_config_section).")
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("0c9f6a42-e1d8-4b73-96a5-b4e2d7c18f06"),
@@ -100,9 +78,6 @@ class UnknownConfigSection(ProjectFilesPOI):
 
 class InvalidConfigSection(ProjectFilesPOI):
     """A config.json section does not validate with its owner's model."""
-
-    context_notes = (_READING, "It is no longer raised once the section matches the model "
-                     "of the workflow that owns it; the details hold the validation error.")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
