@@ -680,7 +680,6 @@ def test_future_experiment_preserves_layer_and_runtime_boundaries():
     expected = (
         PACKAGE_ROOT / "l1" / "_future" / "graph.py",
         PACKAGE_ROOT / "l2" / "_future" / "demo.py",
-        PACKAGE_ROOT / "l3" / "_future" / "server.py",
     )
     assert all(path.is_file() for path in expected)
     assert "._future" not in (PACKAGE_ROOT / "l3" / "runtime.py").read_text()

@@ -6,7 +6,8 @@
 
 ## Impl.Abstract
 
-Status: implementation verified; browser launch and durable capture pending. Alignment.Mode:
+Status: implementation verified; visual UI moved to Tarav Center (extension
+request 012); VS Code visual review and durable capture pending. Alignment.Mode:
 Autonomous. Knowledge.Surface: wiki.
 
 Build an explicitly selected `_future` experiment: typed Python objects expose
@@ -95,6 +96,30 @@ that claim query correctness. Each completed slice requires a green relevant
 check; independent code may proceed while environment checks remain pending.
 
 ## Impl.Log
+
+- 2026-10-15 correction: the user requested the visual explorer inside the
+  existing Tarav Center extension. The HTTP server was an unnecessary agent
+  choice. Superseding the standalone browser slice: move its consumer adapter
+  to `vscode-tarav-center/scripts`, keep Python state through stdin/stdout,
+  and delete the l3 HTTP package and HTTP-specific tests. The extension's
+  request 012 owns its workflow/UI; l1/l2 RDF mechanics stay reusable.
+  <!-- tarav.context 473c89a0:944a943d7daaf1ba -->
+- Correction checkpoints: `4f0fd8b` (tarav-py), `e899443` (tarav-md) and
+  `5d2e25c` (extension), ordinary fallback after evidence-depot denial.
+  Deleted l3 `_future` HTTP package and six HTTP tests; updated the README,
+  architecture narrative and obsolete server-existence assertion. No graph,
+  query, Record or runtime assembly code changed.
+- Corrected verification: core maintained pytest 353 passed in 71.42 seconds;
+  Ruff passed. `tarav status --project tarav-py --all --json` completed all 52
+  checks, including 40 pytest suites, with no incomplete/not-run checks and
+  zero test POIs. Exit 1 represents the same two existing MarkerPOI actions;
+  no actions were opened, reopened, updated or closed. Existing protected
+  usage/index writes emitted warnings. The extension's 12 tests include its
+  actual persistent `tarav run` worker and rendering adapter; 0.1.3 packages.
+- Per-surface correction capture attempted on the remaining changed core
+  sources/docs. Durable registration is still denied; supported provisional
+  markers and exact Chatlas session remain intact. Pending visual verification
+  is now a VS Code window check; no listening server remains to verify.
 
 - 2026-10-15: start checkpoints `65b60c6` (tarav-py) and `51bf436` (tarav-md).
   Evidence commit registration failed on the protected Breadcrumb store;

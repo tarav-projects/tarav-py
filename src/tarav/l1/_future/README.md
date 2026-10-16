@@ -8,28 +8,27 @@ its Types. Importing the `_future` package alone does not import RDFLib.
 
 ## Run the visual explorer
 
-From `tarav-py`:
-
-```bash
-uv run --extra future tarav run -- -m tarav.l3._future --seed-demo
-```
-
-Open `http://127.0.0.1:8737`. The synthetic conversation's root ID is:
+In Tarav Center, use **Tarav Center: Select Workflow** and select
+**Diagram explorer (experimental)**. The center panel accepts a root ID;
+the right panel inspects objects, predicates and relationship occurrences.
+Choose **Create synthetic demo** to create its missing Records. The root is:
 
 ```text
 776cd033-b741-4bc2-8207-193ca827d9f2
 ```
 
-`--seed-demo` creates only missing synthetic Records through the normal Record
+The demo creates only missing synthetic Records through the normal Record
 Registry in `_FutureWorkflow`'s partition. It never rewrites an existing Record.
-Use `--records-root /tmp/tarav-future-demo` for a disposable Registry root.
-Use `--root ID` to select another retained object in that partition, or paste
-an ID in the UI. The live session also resolves loaded class, member, predicate,
-relationship and runtime object identifiers. This is one local explorer session.
+The extension runs its own `scripts/diagram.py` through `tarav run`, keeps
+one Python process for the workflow, and communicates through stdin/stdout.
+Switching workflows or restarting ends that runtime session. Its JSON Records
+remain available. No HTTP server is involved.
 <!-- tarav.context 473c89a0:8944495a171e5499 -->
+<!-- tarav.context 473c89a0:944a943d7daaf1ba -->
 
-If dependencies are already installed and a package-manager refresh is
-undesirable, use `uv run --no-sync tarav run -- ...` instead.
+The executable selected by `taravCenter.taravCommand` needs the `future` extra.
+For development here it can point to `tarav-py/.venv/bin/tarav`, where RDFLib
+was installed. See `vscode-tarav-center/README.md` for build and test commands.
 
 Choose `messages`, then `by-alice`. Initially there is one result. Load the
 runtime-only turn: the same selection now has two. Load the external annotation,
@@ -114,7 +113,6 @@ uv run --extra future pytest -q tests/future
 
 The suite tests normal JSON retention and reload, actual SPARQL execution,
 composed views, graph growth and merging, relationship inspection, history,
-import isolation, and real HTTP parsing/serialization against the shared backend.
-The HTML's JavaScript is syntax checked when Node is installed. Browser rendering
-and actual local-server launch are separate checks; the implementation session's
-sandbox prohibited TCP binding and exposed no browser automation tool.
+and import isolation. The extension separately tests its real persistent
+`tarav run` script, workflow lifecycle, transport and generated webview scripts.
+Visual rendering in a VS Code window remains a separate manual check.
