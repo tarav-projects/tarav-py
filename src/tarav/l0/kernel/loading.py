@@ -160,7 +160,6 @@ def build(context: RecordLoadingContext) -> None:
         raise TypeError(f"{record_type.__name__}._from_record() must return exact class")
     if record_type.keeps_source:
         result.source = context.loaded().metadata.source
-    result._record = context.record
     context.instance = result
 
 

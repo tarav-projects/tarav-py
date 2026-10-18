@@ -117,9 +117,12 @@ class ScoringRecord(TaravEntity, Mapping[str, object]):
 
     def __init__(self, record: Mapping[str, object]) -> None:
         super().__init__(Ship(record['id']))
-        self._record = _json_object(record)
-        type(self).records.parse_record(self._record)
-        _validate_record_semantics(self._record)
+        self._fields = _json_object(record)
+        type(self).records.parse_record(self._fields)
+        _validate_record_semantics(self._fields)
+
+    def _to_record(self) -> dict[str, object]:
+        return _json_object(self._fields)
 
     @classmethod
     def _from_record(cls, loaded: LoadedRecord) -> Self:
@@ -128,21 +131,21 @@ class ScoringRecord(TaravEntity, Mapping[str, object]):
         )
 
     def __getitem__(self, key: str) -> object:
-        return self._record[key]
+        return self._fields[key]
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._record)
+        return iter(self._fields)
 
     def __len__(self) -> int:
-        return len(self._record)
+        return len(self._fields)
 
     def references(self):
         """Named graph edges, keeping their exact retained reference payloads."""
         return {name: ScoringReference(reference)
-                for name, reference in record_relations(self._record)}
+                for name, reference in record_relations(self._fields)}
 
     def ships(self):
-        targets = tuple(Ship(ref['id']) for _, ref in record_relations(self._record)
+        targets = tuple(Ship(ref['id']) for _, ref in record_relations(self._fields)
                         if reference_target_type(ref) is not None)
         return (*super().ships(), *targets)
 

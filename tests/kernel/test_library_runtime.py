@@ -105,9 +105,8 @@ def test_reference_check_and_hints_are_separate(tmp_path):
         hints={"content": "wrong"},
     )
     assert create_runtime().references.resolve(reference.records.to_record()).ok
-    assert reference._record is not None
-    reference._record["check"] = {"sha256": "0" * 64}
-    reference._record["hints"] = {
+    reference._fields["check"] = {"sha256": "0" * 64}
+    reference._fields["hints"] = {
         "sha256": "15a596e3c98c407e043751ff3b21ff0358a1bdfdf3fe948b1523893a8e5de2e8"
     }
     result = create_runtime().references.resolve(reference.records.to_record())

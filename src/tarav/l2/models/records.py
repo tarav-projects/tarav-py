@@ -48,11 +48,11 @@ class ModelEditionRecord(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        _uuid(self._record.get("model_ship"), field="Model.Edition.model_ship")
+        _uuid(self._fields.get("model_ship"), field="Model.Edition.model_ship")
 
     @property
     def model_ship(self) -> str:
-        return _string(self._record.get("model_ship"), field="model_ship")
+        return _string(self._fields.get("model_ship"), field="model_ship")
 
     def model_location(self) -> tuple[str, str]:
         return self.model_ship, "model_ship"

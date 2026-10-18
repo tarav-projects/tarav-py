@@ -3,6 +3,7 @@
 import json
 from datetime import datetime
 
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import FileRecord, TaravClass, TaravEntity, TypeShip, entity
 from tarav.l1.assertions import Assertable
 
@@ -29,7 +30,7 @@ def _reference(value):
 
 
 # tarav.breadcrumb a4d91364e7bd
-class Decision(TaravEntity, FileRecord, Assertable):
+class Decision(TypedState, TaravEntity, FileRecord, Assertable):
     """An attributed intervention; subclasses own its operational meaning."""
 
     class RecordInterface(TaravEntity.RecordInterface):

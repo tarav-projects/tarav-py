@@ -3,6 +3,7 @@
 from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import (
     DirectoryRecord,
+    TypedState,
     FileRecord,
     TaravObject,
     TypeRegistry,
@@ -11,7 +12,7 @@ from tarav.l0.kernel import (
 from tarav.l1.archive.identity import ARCHIVE_WORKFLOW_SHIP
 
 
-class ArchiveRecord(DirectoryRecord):
+class ArchiveRecord(TypedState, DirectoryRecord):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -22,7 +23,7 @@ class ArchiveRecord(DirectoryRecord):
         )
 
 
-class ArtifactRecord(DirectoryRecord):
+class ArtifactRecord(TypedState, DirectoryRecord):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -41,7 +42,7 @@ class ArtifactRecord(DirectoryRecord):
         return self.records.to_record()["contract"]
 
 
-class LocatorRecord(FileRecord):
+class LocatorRecord(TypedState, FileRecord):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -52,7 +53,7 @@ class LocatorRecord(FileRecord):
         )
 
 
-class GitHintRecord(FileRecord):
+class GitHintRecord(TypedState, FileRecord):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -63,7 +64,7 @@ class GitHintRecord(FileRecord):
         )
 
 
-class GitCoordinateRecord(FileRecord):
+class GitCoordinateRecord(TypedState, FileRecord):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -74,7 +75,7 @@ class GitCoordinateRecord(FileRecord):
         )
 
 
-class FileVersionRecord(FileRecord):
+class FileVersionRecord(TypedState, FileRecord):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -85,7 +86,7 @@ class FileVersionRecord(FileRecord):
         )
 
 
-class ExternalDescriptorsRecord(FileRecord):
+class ExternalDescriptorsRecord(TypedState, FileRecord):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -96,7 +97,7 @@ class ExternalDescriptorsRecord(FileRecord):
         )
 
 
-class TombstoneRecord(FileRecord):
+class TombstoneRecord(TypedState, FileRecord):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

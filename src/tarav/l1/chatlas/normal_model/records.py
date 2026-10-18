@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.l1.chatlas.identity import CHATLAS_WORKFLOW_SHIP
@@ -54,7 +55,7 @@ class _EventRecordInterface(TaravObject.RecordInterface):
     content: EventContent | None = None
 
 
-class UserEvent(TaravObject):
+class UserEvent(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -75,7 +76,7 @@ class UserEvent(TaravObject):
 
 
 
-class AgentEvent(TaravObject):
+class AgentEvent(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -96,7 +97,7 @@ class AgentEvent(TaravObject):
 
 
 
-class UnresolvedEvent(TaravObject):
+class UnresolvedEvent(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -117,7 +118,7 @@ class UnresolvedEvent(TaravObject):
 
 
 
-class ChatMessage(TaravObject):
+class ChatMessage(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -151,7 +152,7 @@ class ChatMessage(TaravObject):
 
 
 
-class ChatTurn(TaravObject):
+class ChatTurn(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -187,7 +188,7 @@ class ChatTurn(TaravObject):
 
 
 
-class AgentLoadedContext(TaravObject):
+class AgentLoadedContext(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

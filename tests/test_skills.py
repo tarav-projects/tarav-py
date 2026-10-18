@@ -62,8 +62,7 @@ def test_a_skill_built_in_code_and_one_loaded_from_disk_agree(tmp_path: Path) ->
     assert loaded.records.to_record() == made.records.to_record()
     assert (loaded.root, loaded.entrypoint) == (made.root, made.entrypoint)
     assert loaded.skill_name == made.skill_name == "made"
-    loaded._record["entrypoint"] = "OTHER.md"
-    assert loaded.entrypoint == root / "SKILL.md"
+    assert not hasattr(loaded, "_record")
 
 
 def test_a_skill_not_yet_placed_has_state_but_no_root() -> None:

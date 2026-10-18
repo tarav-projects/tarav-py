@@ -11,7 +11,7 @@ from uuid import UUID
 from .identity import ShipIdentityError, TypeShip
 from .environment import EnvironmentTypeError, TaravEnvironment
 from .loading import DEFAULT_LOADING, RecordLoadingConfig, RecordLoadingContext
-from .records import TaravObject, _json_object, entity
+from .records import TaravObject, entity
 
 TYPE_RESOLUTION_PATH: Final[tuple[tuple[str, ...], ...]] = (
     ("__tarav__", "type"),
@@ -348,7 +348,11 @@ class TypeRegistry(Generic[RecordTypeT]):
             run_steps,
         )
 
-        context = RecordLoadingContext(config=config, record=_json_object(value))
+        if not isinstance(value, Mapping):
+            from .records import InvalidRecordJSON
+
+            raise InvalidRecordJSON("Tarav JSON root must be an object")
+        context = RecordLoadingContext(config=config, record=value)
         return raise_failure(run_steps(context, (
             ("resolve type", resolve_step(self)),
             *TYPED_STEPS,

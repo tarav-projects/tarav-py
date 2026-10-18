@@ -7,9 +7,9 @@ import pytest
 from pydantic import ValidationError
 
 from tarav.l0.kernel import (
+    TypedState,
     DirectoryRecord,
     FileRecord,
-    InvalidRecordJSON,
     Ship,
     TaravEntity,
     TypeShip,
@@ -18,7 +18,7 @@ from tarav.l0.kernel import (
 ENTITY_ID = "11c94ee8-b6f9-48e5-8a66-8518fce3076b"
 
 
-class ExampleEntity(TaravEntity):
+class ExampleEntity(TypedState, TaravEntity):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -31,7 +31,6 @@ class ExampleEntity(TaravEntity):
 def test_entity_keeps_json_identity_and_exposes_a_typed_ship() -> None:
     subject = ExampleEntity.records.from_record({"id": ENTITY_ID, "label": "example"})
 
-    assert subject._record == {"id": ENTITY_ID, "label": "example"}
     assert type(subject.id) is Ship
     assert subject.id == Ship(ENTITY_ID)
     assert not hasattr(subject, "record_data")
@@ -57,8 +56,6 @@ def test_entity_requires_a_json_uuid_string_identity() -> None:
         ExampleEntity.records.from_record({})
     with pytest.raises(ValidationError):
         ExampleEntity.records.from_record({"id": "not-a-uuid"})
-    with pytest.raises(InvalidRecordJSON):
-        ExampleEntity.records.from_record({"id": Ship(ENTITY_ID)})
 
 
 @pytest.mark.parametrize("storage_base", [FileRecord, DirectoryRecord])

@@ -11,6 +11,7 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field
 
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l0.kernel.records import _json_object
 from tarav.l1.breadcrumbs import (
@@ -60,7 +61,7 @@ class CommitObservationError(CommitEvidenceError):
         super().__init__(f"Commit {commit} exists; observation failed: {cause}")
 
 
-class CommitManifest(GitObject):
+class CommitManifest(TypedState, GitObject):
     """Temporary declaration of one bounded evidence commit."""
 
     @classmethod
@@ -134,9 +135,7 @@ class CommitManifest(GitObject):
         return bool(self._value("allow_empty", False))
 
     def _value(self, key: str, default: object = None) -> object:
-        if self._record is None:
-            raise RuntimeError("Commit manifest has no Record")
-        return self._record.get(key, default)
+        return getattr(self.typed, key, default)
 
 
 @dataclass(frozen=True, slots=True)

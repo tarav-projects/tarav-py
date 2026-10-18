@@ -108,8 +108,8 @@ class TypedShip(FileRecord):
             self.ship = None
             retained = _object(record, field="Ship.Record")
         super().__init__()
-        self._record = _json_object(retained)
-        type(self).records.parse_record(self._record)
+        self._fields = _json_object(retained)
+        type(self).records.parse_record(self._fields)
         self._validate_record()
 
     @classmethod
@@ -117,6 +117,9 @@ class TypedShip(FileRecord):
         return cls(
             loaded.data.model_dump(mode="json", exclude_unset=True, by_alias=True)
         )
+
+    def _to_record(self) -> JsonObject:
+        return _json_object(self._fields)
 
     def _validate_record(self) -> None:
         return None
@@ -145,7 +148,7 @@ class TypedShip(FileRecord):
 
     @property
     def type(self) -> str:
-        return _record_type_name(self._record, field="Ship")
+        return _record_type_name(self._fields, field="Ship")
 
     @property
     def namespace(self) -> DiagramNamespace:
@@ -156,11 +159,11 @@ class TypedShip(FileRecord):
         subject = self.ship.id if self.ship is not None else type(self).__name__
         return tuple(
             _object(item, field=f"Ship.{subject}.editions[]")
-            for item in _array(self._record.get("editions", []), field="Ship.editions")
+            for item in _array(self._fields.get("editions", []), field="Ship.editions")
         )
 
     def _require_record_type(self) -> None:
-        reference = _record_type_reference(self._record, field="Ship")
+        reference = _record_type_reference(self._fields, field="Ship")
         if not type(self).matches(reference):
             raise DiagramModelError(
                 f"not a {entity(type(self)).name}: {reference.describe()}"
@@ -239,8 +242,8 @@ class TypedAnnotation(FileRecord):
             self.annotation = None
             retained = _object(record, field="Annotation.Record")
         super().__init__()
-        self._record = _json_object(retained)
-        type(self).records.parse_record(self._record)
+        self._fields = _json_object(retained)
+        type(self).records.parse_record(self._fields)
         self._validate_record()
 
     @classmethod
@@ -248,6 +251,9 @@ class TypedAnnotation(FileRecord):
         return cls(
             loaded.data.model_dump(mode="json", exclude_unset=True, by_alias=True)
         )
+
+    def _to_record(self) -> JsonObject:
+        return _json_object(self._fields)
 
     def _validate_record(self) -> None:
         return None
@@ -356,7 +362,7 @@ class TypedAnnotation(FileRecord):
 
     @property
     def type(self) -> str:
-        return _record_type_name(self._record, field="Annotation")
+        return _record_type_name(self._fields, field="Annotation")
 
     @property
     def namespace(self) -> DiagramNamespace:
@@ -371,7 +377,7 @@ class TypedAnnotation(FileRecord):
         return ()
 
     def score_vector(self) -> JsonObject:
-        value = self._record.get("score_vector", {})
+        value = self._fields.get("score_vector", {})
         return value if isinstance(value, dict) else {}
 
     def type_pois(
@@ -388,7 +394,7 @@ class TypedAnnotation(FileRecord):
         return None
 
     def _require_record_type(self) -> None:
-        reference = _record_type_reference(self._record, field="Annotation")
+        reference = _record_type_reference(self._fields, field="Annotation")
         if not type(self).matches(reference):
             raise DiagramModelError(
                 f"not a {entity(type(self)).name}: {reference.describe()}"
@@ -407,11 +413,11 @@ class UserTouchedAnnotation(TypedAnnotation):
 
     @property
     def producer(self) -> ChatlasTurnReferenceInterface:
-        return ChatlasTurnReferenceInterface.model_validate(self._record.get("producer"))
+        return ChatlasTurnReferenceInterface.model_validate(self._fields.get("producer"))
 
     @property
     def support(self) -> tuple[SupportMemberInterface, ...]:
-        return _support_members(self._record.get("support", []))
+        return _support_members(self._fields.get("support", []))
 
     def render_support(self, evidence: ChatlasEvidence) -> list[JsonObject]:
         return [evidence.render_member(item) for item in self.support]

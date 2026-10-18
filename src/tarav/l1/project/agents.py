@@ -58,7 +58,7 @@ class TaravSystemPrompt(SkwBlock):
 
     def __init__(self, record: Mapping[str, object]) -> None:
         super().__init__(record)
-        self._prompt_record = deepcopy(self._record)
+        self._prompt_record = deepcopy(self._fields)
 
     def _to_record(self) -> Mapping[str, object]:
         return self._prompt_record
@@ -87,7 +87,7 @@ class ProjectSystemPrompt(SkwBlock):
 
     def __init__(self, record: Mapping[str, object]) -> None:
         super().__init__(record)
-        self._prompt_record = deepcopy(self._record)
+        self._prompt_record = deepcopy(self._fields)
 
     def _to_record(self) -> Mapping[str, object]:
         return self._prompt_record

@@ -16,6 +16,7 @@ from pydantic import ConfigDict, model_validator
 from tarav.l0._core.data_root import default_tarav_data_root
 from tarav.l0._core.persistence import atomic_write_json
 from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
 
@@ -40,7 +41,7 @@ def default_diagram_drafts_root() -> Path:
     return default_tarav_data_root() / "diagram" / "drafts"
 
 
-class DiagramDraft(TaravObject):
+class DiagramDraft(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

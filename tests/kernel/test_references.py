@@ -38,14 +38,13 @@ def test_reference_checks_identity_and_hints_never_repair(tmp_path):
     )
     assert reference.resolve().ok
     target.write_bytes(b"changed")
-    assert reference._record is not None
-    reference._record["hints"] = {"sha256": hashlib.sha256(b"changed").hexdigest()}
+    reference._fields["hints"] = {"sha256": hashlib.sha256(b"changed").hexdigest()}
     assert reference.resolve().status == "mismatch"
     assert target.read_bytes() == b"changed"
     target.unlink()
     other = tmp_path / "other"
     other.write_bytes(b"original")
-    reference._record["hints"] = {"path": str(other)}
+    reference._fields["hints"] = {"path": str(other)}
     result = reference.resolve()
     assert result.status == "unresolvable"
     assert result.hints == {"path": str(other)}
@@ -132,8 +131,7 @@ def test_file_position_reference_accepts_cheap_and_rich_file_values(tmp_path):
     )
     assert rich.resolve().target.path == target
 
-    assert cheap._record is not None
-    cheap._record["locator"]["line"] = 1
+    cheap._fields["locator"]["line"] = 1
     assert cheap.resolve().status == "mismatch"
 
     relative = FilePositionReference.records.from_record(

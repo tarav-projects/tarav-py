@@ -20,6 +20,7 @@ from .loading import (
     RecordLoadingContext,
 )
 from .records import (
+    TypedState,
     DIRECTORY_ENTRY_PATH,
     DirectoryRecord,
     FileRecord,
@@ -76,6 +77,7 @@ __all__ = [
     "ExplorerFolder",
     "ExplorerList",
     "InvalidRecordJSON",
+    "TypedState",
     "LoadedRecord",
     "LoadingMetadata",
     "RecordLoadingConfig",

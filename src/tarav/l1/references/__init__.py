@@ -7,7 +7,7 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Self
 
 from pydantic import ConfigDict, Field, JsonValue, model_validator
 
@@ -148,21 +148,26 @@ class Reference(FileRecord):
 
     @property
     def locator(self) -> object:
-        if self._record is None:
-            raise RuntimeError("Reference has no runtime representation")
-        return self._record["locator"]
+        return self._fields["locator"]
 
     @property
     def check(self) -> object:
-        if self._record is None:
-            raise RuntimeError("Reference has no runtime representation")
-        return self._record.get("check")
+        return self._fields.get("check")
 
     @property
     def hints(self) -> object:
-        if self._record is None:
-            raise RuntimeError("Reference has no runtime representation")
-        return self._record.get("hints")
+        return self._fields.get("hints")
+
+    # A Reference is a JSON reference document: its state is that document.
+    @classmethod
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        result = cls.__new__(cls)
+        TaravObject.__init__(result)
+        result._fields = loaded.data.model_dump(mode="json", exclude_unset=True, by_alias=True)
+        return result
+
+    def _to_record(self) -> dict[str, object]:
+        return _json_object(self._fields)
 
     def locate(self, locator: object) -> object:
         raise NotImplementedError
@@ -225,7 +230,7 @@ class FileReference(Reference):
         elif "type" not in record and "__tarav__" not in record:
             record = {"type": entity(type(self)).name, **record}
         super().__init__()
-        self._record = _json_object(record)
+        self._fields = _json_object(record)
 
     def locate(self, locator: object) -> Path:
         if not isinstance(locator, str) or not locator:

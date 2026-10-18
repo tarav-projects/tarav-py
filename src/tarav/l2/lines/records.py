@@ -71,12 +71,12 @@ class BlockShipRecord(TypedShip):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        _uuid(self._record.get("model_ship"), field="Block.Ship.model_ship")
+        _uuid(self._fields.get("model_ship"), field="Block.Ship.model_ship")
         _validate_editions(self.editions, field="Block.Ship.editions")
 
     @property
     def model_ship(self) -> str:
-        return _uuid(self._record.get("model_ship"), field="Block.Ship.model_ship")
+        return _uuid(self._fields.get("model_ship"), field="Block.Ship.model_ship")
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -114,17 +114,17 @@ class LineShipRecord(TypedShip):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        _uuid(self._record.get("model_ship"), field="Line.Ship.model_ship")
-        _uuid(self._record.get("block_ship"), field="Line.Ship.block_ship")
+        _uuid(self._fields.get("model_ship"), field="Line.Ship.model_ship")
+        _uuid(self._fields.get("block_ship"), field="Line.Ship.block_ship")
         _validate_editions(self.editions, field="Line.Ship.editions")
 
     @property
     def model_ship(self) -> str:
-        return _uuid(self._record.get("model_ship"), field="Line.Ship.model_ship")
+        return _uuid(self._fields.get("model_ship"), field="Line.Ship.model_ship")
 
     @property
     def block_ship(self) -> str:
-        return _uuid(self._record.get("block_ship"), field="Line.Ship.block_ship")
+        return _uuid(self._fields.get("block_ship"), field="Line.Ship.block_ship")
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -164,12 +164,12 @@ class CollectionShipRecord(TypedShip):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        _uuid(self._record.get("model_ship"), field="Collection.Ship.model_ship")
+        _uuid(self._fields.get("model_ship"), field="Collection.Ship.model_ship")
         _validate_editions(self.editions, field="Collection.Ship.editions")
 
     @property
     def model_ship(self) -> str:
-        return _uuid(self._record.get("model_ship"), field="Collection.Ship.model_ship")
+        return _uuid(self._fields.get("model_ship"), field="Collection.Ship.model_ship")
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -209,7 +209,7 @@ class LineAnnotationRecord(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        _uuid(self._record.get("model_ship"), field="Line.Annotation.model_ship")
+        _uuid(self._fields.get("model_ship"), field="Line.Annotation.model_ship")
         _validate_editions(self.editions, field="Line.Annotation.editions")
         if not self.editions:
             raise DiagramModelError("Line.Annotation must contain an edition")
@@ -220,14 +220,14 @@ class LineAnnotationRecord(TypedAnnotation):
 
     @property
     def model_ship(self) -> str:
-        return _uuid(self._record.get("model_ship"), field="Line.Annotation.model_ship")
+        return _uuid(self._fields.get("model_ship"), field="Line.Annotation.model_ship")
 
     @property
     def editions(self) -> tuple[JsonObject, ...]:
         return tuple(
             _object(item, field="Line.Annotation.editions[]")
             for item in _array(
-                self._record.get("editions", []), field="Line.Annotation.editions"
+                self._fields.get("editions", []), field="Line.Annotation.editions"
             )
         )
 
@@ -289,7 +289,7 @@ class LineAnnotationRecord(TypedAnnotation):
 
     def score_vector(self) -> JsonObject:
         value = self.current_edition.get(
-            "score_vector", self._record.get("score_vector", {})
+            "score_vector", self._fields.get("score_vector", {})
         )
         return value if isinstance(value, dict) else {}
 
@@ -372,42 +372,42 @@ class LineEditionRecord(UserTouchedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramLocationInterface.model_validate(self._record.get("location"))
+        DiagramLocationInterface.model_validate(self._fields.get("location"))
         _string(
-            _object(self._record.get("data", {}), field="data").get("text"),
+            _object(self._fields.get("data", {}), field="data").get("text"),
             field="data.text",
         )
-        _verbatim_gates(self._record.get("gates", []))
+        _verbatim_gates(self._fields.get("gates", []))
         self.host
         self.authorization_gates
 
     @property
     def location(self) -> DiagramLocationInterface:
-        return DiagramLocationInterface.model_validate(self._record.get("location"))
+        return DiagramLocationInterface.model_validate(self._fields.get("location"))
 
     @property
     def text(self) -> str:
         return _string(
-            _object(self._record.get("data", {}), field="data").get("text"),
+            _object(self._fields.get("data", {}), field="data").get("text"),
             field="data.text",
         )
 
     @property
     def gates(self) -> tuple[VerbatimGate, ...]:
-        return _verbatim_gates(self._record.get("gates", []))
+        return _verbatim_gates(self._fields.get("gates", []))
 
     @property
     def line_type(self) -> str | None:
-        value = self._record.get("line_type")
+        value = self._fields.get("line_type")
         return _string(value, field="line_type") if value is not None else None
 
     @property
     def host(self) -> DiagramHostReferenceInterface:
-        return _record_host(self._record, self.location.model_ship)
+        return _record_host(self._fields, self.location.model_ship)
 
     @property
     def authorization_gates(self) -> tuple[str, ...]:
-        return _authorization_gate_ids(self._record)
+        return _authorization_gate_ids(self._fields)
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -457,9 +457,9 @@ class BlockEditionRecord(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramBlockLocationInterface.model_validate(self._record.get("location"))
+        DiagramBlockLocationInterface.model_validate(self._fields.get("location"))
         _string(
-            _object(self._record.get("data", {}), field="data").get("label"),
+            _object(self._fields.get("data", {}), field="data").get("label"),
             field="data.label",
         )
         self.host
@@ -467,27 +467,27 @@ class BlockEditionRecord(TypedAnnotation):
 
     @property
     def location(self) -> DiagramBlockLocationInterface:
-        return DiagramBlockLocationInterface.model_validate(self._record.get("location"))
+        return DiagramBlockLocationInterface.model_validate(self._fields.get("location"))
 
     @property
     def label(self) -> str:
         return _string(
-            _object(self._record.get("data", {}), field="data").get("label"),
+            _object(self._fields.get("data", {}), field="data").get("label"),
             field="data.label",
         )
 
     @property
     def block_type(self) -> str | None:
-        value = self._record.get("block_type")
+        value = self._fields.get("block_type")
         return _string(value, field="block_type") if value is not None else None
 
     @property
     def host(self) -> DiagramHostReferenceInterface:
-        return _record_host(self._record, self.location.model_ship)
+        return _record_host(self._fields, self.location.model_ship)
 
     @property
     def authorization_gates(self) -> tuple[str, ...]:
-        return _authorization_gate_ids(self._record)
+        return _authorization_gate_ids(self._fields)
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -526,14 +526,14 @@ class CollectionEditionRecord(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        _uuid(self._record.get("model_ship"), field="Collection.Edition.model_ship")
+        _uuid(self._fields.get("model_ship"), field="Collection.Edition.model_ship")
         _uuid(
-            self._record.get("collection_ship"),
+            self._fields.get("collection_ship"),
             field="Collection.Edition.collection_ship",
         )
-        _string(self._record.get("collection_type"), field="collection_type")
+        _string(self._fields.get("collection_type"), field="collection_type")
         _string(
-            _object(self._record.get("data", {}), field="data").get("label"),
+            _object(self._fields.get("data", {}), field="data").get("label"),
             field="data.label",
         )
         self.host
@@ -542,41 +542,41 @@ class CollectionEditionRecord(TypedAnnotation):
 
     @property
     def model_ship(self) -> str:
-        return _uuid(self._record.get("model_ship"), field="model_ship")
+        return _uuid(self._fields.get("model_ship"), field="model_ship")
 
     @property
     def collection_ship(self) -> str:
-        return _uuid(self._record.get("collection_ship"), field="collection_ship")
+        return _uuid(self._fields.get("collection_ship"), field="collection_ship")
 
     @property
     def collection_type(self) -> str:
-        return _string(self._record.get("collection_type"), field="collection_type")
+        return _string(self._fields.get("collection_type"), field="collection_type")
 
     @property
     def label(self) -> str:
         return _string(
-            _object(self._record.get("data", {}), field="data").get("label"),
+            _object(self._fields.get("data", {}), field="data").get("label"),
             field="data.label",
         )
 
     @property
     def data(self) -> JsonObject:
-        return _object(self._record.get("data", {}), field="data")
+        return _object(self._fields.get("data", {}), field="data")
 
     @property
     def host(self) -> DiagramHostReferenceInterface:
-        return _record_host(self._record, self.model_ship)
+        return _record_host(self._fields, self.model_ship)
 
     @property
     def references(self) -> tuple[DiagramArgumentReferenceInterface, ...]:
         return tuple(
             DiagramArgumentReferenceInterface.model_validate(item)
-            for item in _array(self._record.get("references", []), field="references")
+            for item in _array(self._fields.get("references", []), field="references")
         )
 
     @property
     def authorization_gates(self) -> tuple[str, ...]:
-        return _authorization_gate_ids(self._record)
+        return _authorization_gate_ids(self._fields)
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -613,16 +613,16 @@ class BlockTypeAnnotation(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramBlockLocationInterface.model_validate(self._record.get("location"))
-        _string(self._record.get("block_type"), field="block_type")
+        DiagramBlockLocationInterface.model_validate(self._fields.get("location"))
+        _string(self._fields.get("block_type"), field="block_type")
 
     @property
     def location(self) -> DiagramBlockLocationInterface:
-        return DiagramBlockLocationInterface.model_validate(self._record.get("location"))
+        return DiagramBlockLocationInterface.model_validate(self._fields.get("location"))
 
     @property
     def block_type(self) -> str:
-        return _string(self._record.get("block_type"), field="block_type")
+        return _string(self._fields.get("block_type"), field="block_type")
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -652,11 +652,11 @@ class LineSupportAnnotation(UserTouchedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramLocationInterface.model_validate(self._record.get("location"))
+        DiagramLocationInterface.model_validate(self._fields.get("location"))
 
     @property
     def location(self) -> DiagramLocationInterface:
-        return DiagramLocationInterface.model_validate(self._record.get("location"))
+        return DiagramLocationInterface.model_validate(self._fields.get("location"))
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -695,16 +695,16 @@ class LineTypeAnnotation(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        DiagramLocationInterface.model_validate(self._record.get("location"))
-        _string(self._record.get("line_type"), field="line_type")
+        DiagramLocationInterface.model_validate(self._fields.get("location"))
+        _string(self._fields.get("line_type"), field="line_type")
 
     @property
     def location(self) -> DiagramLocationInterface:
-        return DiagramLocationInterface.model_validate(self._record.get("location"))
+        return DiagramLocationInterface.model_validate(self._fields.get("location"))
 
     @property
     def line_type(self) -> str:
-        return _string(self._record.get("line_type"), field="line_type")
+        return _string(self._fields.get("line_type"), field="line_type")
 
     def ships(self) -> tuple[Ship, ...]:
         return (
@@ -737,10 +737,10 @@ class LineGateAnnotation(TypedAnnotation):
     def _validate_record(self) -> None:
         self._require_record_type()
         _uuid(
-            self._record.get("target_edition"),
+            self._fields.get("target_edition"),
             field="Line.Gate.Annotation.target_edition",
         )
-        gates = _verbatim_gates(self._record.get("gates"))
+        gates = _verbatim_gates(self._fields.get("gates"))
         if len(gates) != 1:
             raise DiagramModelError(
                 "Line.Gate.Annotation must contain exactly one Gate"
@@ -749,13 +749,13 @@ class LineGateAnnotation(TypedAnnotation):
     @property
     def target_edition_id(self) -> str:
         return _uuid(
-            self._record.get("target_edition"),
+            self._fields.get("target_edition"),
             field="Line.Gate.Annotation.target_edition",
         )
 
     @property
     def gates(self) -> tuple[VerbatimGate, ...]:
-        return _verbatim_gates(self._record.get("gates"))
+        return _verbatim_gates(self._fields.get("gates"))
 
     @property
     def target(self) -> LineEditionRecord:

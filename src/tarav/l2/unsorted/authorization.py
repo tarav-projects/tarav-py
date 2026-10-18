@@ -31,14 +31,14 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
 
     def _validate_record(self) -> None:
         self._require_record_type()
-        _uuid(self._record.get("model_ship"), field="Capture.Authorization.model_ship")
-        _string(self._record.get("token"), field="Capture.Authorization.token")
-        _string(self._record.get("workflow"), field="Capture.Authorization.workflow")
-        ChatlasTurnReferenceInterface.model_validate(self._record.get("permission_turn"))
+        _uuid(self._fields.get("model_ship"), field="Capture.Authorization.model_ship")
+        _string(self._fields.get("token"), field="Capture.Authorization.token")
+        _string(self._fields.get("workflow"), field="Capture.Authorization.workflow")
+        ChatlasTurnReferenceInterface.model_validate(self._fields.get("permission_turn"))
         operations = tuple(
             _string(item, field="Capture.Authorization.operations[]")
             for item in _array(
-                self._record.get("operations", []),
+                self._fields.get("operations", []),
                 field="Capture.Authorization.operations",
             )
         )
@@ -49,7 +49,7 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
         scopes = tuple(
             DiagramArgumentReferenceInterface.model_validate(item)
             for item in _array(
-                self._record.get("target_scope", []),
+                self._fields.get("target_scope", []),
                 field="Capture.Authorization.target_scope",
             )
         )
@@ -60,27 +60,27 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
 
     @property
     def model_ship(self) -> str:
-        return _uuid(self._record.get("model_ship"), field="model_ship")
+        return _uuid(self._fields.get("model_ship"), field="model_ship")
 
     @property
     def token(self) -> str:
-        return _string(self._record.get("token"), field="token")
+        return _string(self._fields.get("token"), field="token")
 
     @property
     def workflow(self) -> str:
-        return _string(self._record.get("workflow"), field="workflow")
+        return _string(self._fields.get("workflow"), field="workflow")
 
     @property
     def permission_turn(self) -> ChatlasTurnReferenceInterface:
         return ChatlasTurnReferenceInterface.model_validate(
-            self._record.get("permission_turn")
+            self._fields.get("permission_turn")
         )
 
     @property
     def operations(self) -> tuple[str, ...]:
         return tuple(
             _string(item, field="operations[]")
-            for item in _array(self._record.get("operations", []), field="operations")
+            for item in _array(self._fields.get("operations", []), field="operations")
         )
 
     @property
@@ -88,7 +88,7 @@ class CaptureAuthorizationGateRecord(TypedAnnotation):
         return tuple(
             DiagramArgumentReferenceInterface.model_validate(item)
             for item in _array(
-                self._record.get("target_scope", []), field="target_scope"
+                self._fields.get("target_scope", []), field="target_scope"
             )
         )
 

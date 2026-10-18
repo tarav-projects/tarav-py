@@ -4,6 +4,7 @@ from urllib.parse import unquote
 
 from markdown_it import MarkdownIt
 
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import Ship, TaravClass, TaravObject, TypeRegistry, TypeShip, entity
 
 from ..annotations import BlockAnnotation
@@ -32,12 +33,10 @@ class ReadingDeclaration(BlockAnnotation):
 
     @property
     def target(self) -> str:
-        if self._record is None:
-            raise RuntimeError("Reading declaration has no Record")
-        return str(self._record["target"])
+        return str(self.typed.target)
 
 
-class ReadingEntry(TaravObject):
+class ReadingEntry(TypedState, TaravObject):
     """The point at which following a link resumes reading."""
 
     @classmethod
@@ -90,9 +89,7 @@ class Contains(BlockAnnotation):
 
     @property
     def target(self) -> str:
-        if self._record is None:
-            raise RuntimeError("Content declaration has no Record")
-        return str(self._record["target"])
+        return str(self.typed.target)
 
     class Records(BlockAnnotation.Records):
         def record_example(self):
@@ -110,7 +107,7 @@ class Contains(BlockAnnotation):
 
 # tarav.breadcrumb cc5ae810d7c3
 # tarav.breadcrumb 5d4e0d6cc8a3
-class LinkProse(TaravObject):
+class LinkProse(TypedState, TaravObject):
     """How a declared link appears in the text of its block.
 
     The reading graph trusts the declaration and never reads the text; a
@@ -164,17 +161,13 @@ class ReadingLink(ReadingDeclaration):
 
     @property
     def entry(self) -> dict | None:
-        if self._record is None:
-            raise RuntimeError("Reading link has no Record")
-        value = self._record.get("entry")
+        value = getattr(self.typed, "entry", None)
         return dict(value) if isinstance(value, dict) else None
 
     # tarav.breadcrumb cd646a3168c4
     @property
     def prose(self) -> LinkProse | None:
-        if self._record is None:
-            raise RuntimeError("Reading link has no Record")
-        value = self._record.get("prose")
+        value = getattr(self.typed, "prose", None)
         return None if value is None else _PROSE.from_record(value)
 
 
@@ -217,7 +210,7 @@ class IncludesBlock(Contains):
                           workflow=SKW_CODE_WORKFLOW_SHIP)
 
     def destination(self):
-        entry = self._record.get("entry") if self._record else None
+        entry = getattr(self.typed, "entry", None)
         if entry is None:
             raise ValueError("IncludesBlock requires a reading entry")
         return entry_from_record(entry)

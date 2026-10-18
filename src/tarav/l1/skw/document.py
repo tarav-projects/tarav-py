@@ -144,15 +144,15 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
             raise ValueError(f"Migrate retired block fields: {sorted(retired)}")
         identity = record.get("id")
         super().__init__(identity if isinstance(identity, Ship) else Ship(identity))
-        self._record = _json_object(record)
+        self._fields = _json_object(record)
         self._registry: TypeRegistry[TaravObject] | None = None
         self._objects_index: dict[str, TaravObject] = {}
         self._annotations: tuple[BlockAnnotation, ...] = ()
-        type(self).records.parse_record(self._record)
-        if not isinstance(self._record.get("label"), str) or not self._record["label"]:
+        type(self).records.parse_record(self._fields)
+        if not isinstance(self._fields.get("label"), str) or not self._fields["label"]:
             raise ValueError("Blocks require non-empty labels")
-        if self._record.get("content") is not None:
-            lines(self._record["content"])
+        if self._fields.get("content") is not None:
+            lines(self._fields["content"])
 
     @classmethod
     def _from_record(cls, loaded: LoadedRecord) -> Self:
@@ -160,24 +160,27 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
             loaded.data.model_dump(mode="json", exclude_unset=True, by_alias=True)
         )
 
+    def _to_record(self) -> dict[str, object]:
+        return _json_object(self._fields)
+
     def __getitem__(self, key: str) -> object:
-        return self._record[key]
+        return self._fields[key]
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._record)
+        return iter(self._fields)
 
     def __len__(self) -> int:
-        return len(self._record)
+        return len(self._fields)
 
     @property
     def label(self) -> str:
-        return self._record["label"]  # type: ignore[return-value]
+        return self._fields["label"]  # type: ignore[return-value]
 
     def bind_registry(self, registry: TypeRegistry[TaravObject]) -> None:
         """Bind and validate every nested typed object through one authority."""
 
         self._registry = registry
-        index = self._record.get("objects_index", {}) if self._record else {}
+        index = self._fields.get("objects_index", {})
         if not isinstance(index, Mapping):
             raise ValueError("objects_index must be an object")
         loaded = {}
@@ -187,7 +190,7 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
             loaded[name] = self.load_object(record)
         self._objects_index = loaded
 
-        records = self._record.get("annotations", []) if self._record else []
+        records = self._fields.get("annotations", [])
         if not isinstance(records, list):
             raise ValueError("annotations must be an array")
         annotations = tuple(self.load_object(record) for record in records)
@@ -228,7 +231,7 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
         return matches[0] if matches else None
 
     def content_lines(self) -> list[str]:
-        content = self._record.get("content") if self._record is not None else None
+        content = self._fields.get("content")
         if content is None:
             raise ValueError(f"Missing content: {self.label}")
         return lines(content)
@@ -345,10 +348,8 @@ class Document:
             block = self.registry.from_record(b)
             if not isinstance(block, SkwBlock):
                 raise ValueError(f"Document block is not a SkwBlock: {type(block).__name__}")
-            if block._record is None:
-                raise RuntimeError("Loaded Skillware block has no retained Record")
             block.bind_registry(self.registry)
-            self.data["blocks"][index] = block._record
+            self.data["blocks"][index] = block.records.to_record()
             if block.label in self.blocks or block.id in self.blocks_by_ship:
                 raise ValueError("Blocks require unique labels and Ships in one document")
             self.blocks[block.label] = block
@@ -391,7 +392,7 @@ class Document:
     def _context_records(self, identity):
         block = self.block(identity)
         annotation = self.definition(block)
-        records = annotation._record.get("context", ()) if annotation._record else ()
+        records = annotation.typed.context
         return block, tuple(records)
 
     def _resolved_context(self, identity, selected=None):
@@ -582,7 +583,7 @@ class Document:
                         and baseline["input_hash"] != self.generation_fingerprint(identity)):
                     report(StaleGeneration, identity)
             if (freshness and generation is not None
-                    and (generation._record.get("context") if generation._record else None
+                    and (generation.typed.context
                          or identity in entry.get("contexts", {}))):
                 try:
                     context_hash = self._context_hash(self._resolved_context(identity))

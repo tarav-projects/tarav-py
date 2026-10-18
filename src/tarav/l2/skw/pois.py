@@ -95,9 +95,9 @@ def generation_context_resolution_checks(package, *, documents=None):
     for document in selected:
         for block in document.blocks.values():
             annotation = block.annotation(GenerationAnnotation)
-            if annotation is None or annotation._record is None:
+            if annotation is None:
                 continue
-            declarations = annotation._record.get("context", ())
+            declarations = annotation.typed.context
             objects = annotation.context_objects(block)
             for index, (declaration, value) in enumerate(
                 zip(declarations, objects, strict=True)

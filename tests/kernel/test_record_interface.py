@@ -1,11 +1,11 @@
-from tarav.l0.kernel import TaravClass
+from tarav.l0.kernel import TaravClass, entity
 
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from tarav.l0.kernel import (
-    InvalidRecordJSON,
+    TypedState,
     TaravObject,
     TypeRegistry,
     TypeShip,
@@ -15,7 +15,7 @@ from tarav.l0.kernel import (
 from tarav.l0.kernel import LoadedRecord
 
 
-class A(TaravObject):
+class A(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -79,6 +79,9 @@ class D(A):
         TaravObject.__init__(result)
         result.title = loaded.data.title
         return result
+
+    def _to_record(self):
+        return {"type": entity(type(self)).name, "title": self.title}
 
     def label(self):
         return self.title
@@ -202,10 +205,7 @@ def test_no_coercion_discard_or_default_insertion():
     obj = Defaults.records.from_record({"name": "x", "unknown": [1]})
     assert Defaults.records.parse_record(obj.records.to_record()).count == 1
     assert obj.records.to_record() == {"name": "x", "unknown": [1]}
-    with pytest.raises(InvalidRecordJSON):
-        A.records.from_record({"name": "x", "hints": {1: "a", "1": "b"}})
 
-    assert obj._record is not None
-    obj._record["name"] = 1
-    with pytest.raises(ValidationError):
+    obj.typed.name = 1  # unchecked state: writing is where it is caught
+    with pytest.warns(UserWarning, match="serializer"), pytest.raises(ValidationError):
         obj.records.to_record()

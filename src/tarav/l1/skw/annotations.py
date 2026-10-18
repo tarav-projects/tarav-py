@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip, entity
 from tarav.l1.references import Reference, ReferenceResult
 
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 # tarav.breadcrumb 36e63e091848
 # tarav.breadcrumb 050e6956d3f2
-class BlockAnnotation(TaravObject):
+class BlockAnnotation(TypedState, TaravObject):
     """A typed workflow contribution attached to one SKW block."""
 
     @classmethod
@@ -60,19 +61,12 @@ class GenerationAnnotation(BlockAnnotation):
 
     @property
     def instructions(self) -> tuple[str, ...]:
-        if self._record is None:
-            raise RuntimeError("Generation annotation has no Record")
-        return tuple(self._record.get("instructions", ()))
+        return tuple(self.typed.instructions)
 
     def context_objects(self, block: SkwBlock) -> tuple[TaravObject, ...]:
         """Type context declarations without resolving their targets."""
 
-        if self._record is None:
-            raise RuntimeError("Generation annotation has no Record")
-        return tuple(
-            block.load_object(record)
-            for record in self._record.get("context", ())
-        )
+        return tuple(block.load_object(record) for record in self.typed.context)
 
 
 # tarav.breadcrumb 19de67db6f4f
@@ -100,9 +94,7 @@ class ObjectIndexReference(Reference):
 
     @property
     def index(self) -> str:
-        if self._record is None:
-            raise RuntimeError("Object-index Reference has no Record")
-        return str(self._record["index"])
+        return str(self._fields["index"])
 
     def resolve(self, *, block: SkwBlock) -> ReferenceResult:
         try:

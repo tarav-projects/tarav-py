@@ -52,6 +52,7 @@ from tarav.l2.unsorted.constants import NAMESPACE_CLASS
 from pathlib import Path
 from tarav.l2.unsorted.constants import SCHEMA_VERSION
 from tarav.l2.unsorted.contracts import ShipDraftInterface
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TaravObject
 from tarav.l0.kernel import TypeRegistry
@@ -837,7 +838,7 @@ class DiagramNamespace:
         )
 
 
-class DiagramConfiguration(TaravObject):
+class DiagramConfiguration(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

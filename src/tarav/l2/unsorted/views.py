@@ -25,6 +25,7 @@ from pydantic import (
 from tarav.l0._core.data_root import default_tarav_data_root
 from tarav.l0._core.persistence import atomic_write_json
 from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
 
@@ -83,7 +84,7 @@ class DiagramViewScopeInterface(TaravObject.RecordInterface):
         return self
 
 
-class DiagramViewManifest(TaravObject):
+class DiagramViewManifest(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -120,7 +121,7 @@ class DiagramViewManifest(TaravObject):
         return self._view_type
 
 
-class DiagramViewConfiguration(TaravObject):
+class DiagramViewConfiguration(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -177,7 +178,7 @@ class DiagramViewConfiguration(TaravObject):
         return self._max_visible_lines
 
 
-class DiagramViewState(TaravObject):
+class DiagramViewState(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -203,7 +204,7 @@ class DiagramViewState(TaravObject):
             return _uuid(value, field="View.view_ship")
 
 
-class DiagramViewAbout(TaravObject):
+class DiagramViewAbout(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -230,7 +231,7 @@ class DiagramViewAbout(TaravObject):
         return dict(self._data)
 
 
-class DiagramViewRepositoryRecord(TaravObject):
+class DiagramViewRepositoryRecord(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

@@ -56,7 +56,7 @@ def test_registered_runtime_objects_round_trip_their_record_examples() -> None:
 def test_runtime_object_projects_state_without_a_loaded_record() -> None:
     subject = RuntimeProjection(7)
 
-    assert subject._record is None
+    assert not hasattr(subject, "_record")
     assert not hasattr(subject, "record")
     assert not hasattr(subject, "record_data")
     assert subject.records.to_record() == {"type": "Test.RuntimeProjection", "value": 7}
@@ -66,11 +66,10 @@ def test_loaded_record_is_input_material_not_the_objects_source_of_truth() -> No
     supplied = {"type": "Test.RuntimeProjection", "value": 7}
     subject = RuntimeProjection.records.from_record(supplied)
 
-    assert subject._record == supplied
-    assert subject._record is not supplied
-    subject._record["value"] = 99
+    supplied["value"] = 99
+    assert not hasattr(subject, "_record")
     assert subject.value == 7
-    assert subject.records.to_record() == supplied
+    assert subject.records.to_record() == {"type": "Test.RuntimeProjection", "value": 7}
 
 
 def test_default_projection_is_the_types_minimal_record() -> None:
@@ -85,7 +84,7 @@ def test_default_projection_is_the_types_minimal_record() -> None:
 
     subject = Minimal()
 
-    assert subject._record is None
+    assert not hasattr(subject, "_record")
     assert subject.records.to_record() == {"type": "Test.Minimal"}
 
 
@@ -125,97 +124,13 @@ def test_record_extensions_must_use_the_selected_namespace(name: str) -> None:
         )
 
 
-# Types whose Record still reads its state from `_record`. Migrating one means
-# removing it here; nothing may be added.
-RECORD_STATE_DEBT = frozenset({
-    "tarav.l1.archive.references.ArchiveReference",
-    "tarav.l1.breadcrumbs.model.Breadcrumb",
-    "tarav.l1.breadcrumbs.model.LocatorObservation",
-    "tarav.l1.chatlas.normal_model.model.ChatlasNormalModel",
-    "tarav.l1.chatlas.normal_model.records.AgentEvent",
-    "tarav.l1.chatlas.normal_model.records.AgentLoadedContext",
-    "tarav.l1.chatlas.normal_model.records.ChatMessage",
-    "tarav.l1.chatlas.normal_model.records.ChatTurn",
-    "tarav.l1.chatlas.normal_model.records.UnresolvedEvent",
-    "tarav.l1.chatlas.normal_model.records.UserEvent",
-    "tarav.l1.chatlas.references.ChatlasTurnReference",
-    "tarav.l1.decisions.records.Decision",
-    "tarav.l1.git.repository.GitRepository",
-    "tarav.l1.references.FileReference",
-    "tarav.l1.references.Reference",
-    "tarav.l1.references.git.GitCommitMessagePositionReference",
-    "tarav.l1.references.git.GitFileReference",
-    "tarav.l1.references.positions.FilePositionReference",
-    "tarav.l1.references.structured.StructuredFileReference",
-    "tarav.l1.skw.annotations.GenerationAnnotation",
-    "tarav.l1.skw.annotations.ObjectIndexReference",
-    "tarav.l1.skw.code.reading.BlockEntry",
-    "tarav.l1.skw.code.reading.ConsultationLink",
-    "tarav.l1.skw.code.reading.Contains",
-    "tarav.l1.skw.code.reading.EitherDependency",
-    "tarav.l1.skw.code.reading.ExpectedLink",
-    "tarav.l1.skw.code.reading.FileEntry",
-    "tarav.l1.skw.code.reading.IncludesBlock",
-    "tarav.l1.skw.code.reading.InlineDependency",
-    "tarav.l1.skw.code.reading.ReadingDependency",
-    "tarav.l1.skw.code.reading.ReadingLink",
-    "tarav.l1.skw.code.reading.ReferenceDependency",
-    "tarav.l1.skw.document.SkwBlock",
-    "tarav.l1.skw.skills.SkillLink",
-    "tarav.l2.blessings.assertions.BlessingAcceptanceCase",
-    "tarav.l2.blessings.assertions.BlessingGroundsCase",
-    "tarav.l2.breadcrumb_workflows.chatlas_context.model.ChatlasContextAttachment",
-    "tarav.l2.git.breadcrumbs.CommitManifest",
-    "tarav.l2.lines.assertions.LineGroundingCase",
-    "tarav.l2.lines.assertions.LineSupportInventoryCase",
-    "tarav.l2.lines.records.BlockEditionRecord",
-    "tarav.l2.lines.records.BlockShipRecord",
-    "tarav.l2.lines.records.BlockTypeAnnotation",
-    "tarav.l2.lines.records.CollectionEditionRecord",
-    "tarav.l2.lines.records.CollectionShipRecord",
-    "tarav.l2.lines.records.LineAnnotationRecord",
-    "tarav.l2.lines.records.LineEditionRecord",
-    "tarav.l2.lines.records.LineGateAnnotation",
-    "tarav.l2.lines.records.LineShipRecord",
-    "tarav.l2.lines.records.LineSupportAnnotation",
-    "tarav.l2.lines.records.LineTypeAnnotation",
-    "tarav.l2.models.records.ModelEditionRecord",
-    "tarav.l2.scoring.assertions.AssessmentCase",
-    "tarav.l2.scoring.model.GroundingRankingPoolRecord",
-    "tarav.l2.scoring.model.GroundingRankingTaskRecord",
-    "tarav.l2.scoring.model.PoolEnrollmentRecord",
-    "tarav.l2.scoring.model.RankingResultRecord",
-    "tarav.l2.scoring.model.RankingRunRecord",
-    "tarav.l2.scoring.model.ScoringEventRecord",
-    "tarav.l2.scoring.model.ScoringTraceRecord",
-    "tarav.l2.scoring.model.TribunalCaseRecord",
-    "tarav.l2.scoring.model.TribunalJudgmentRecord",
-    "tarav.l2.scoring.model.TribunalPairRecord",
-    "tarav.l2.scoring.ranking.score.RankingScore",
-    "tarav.l2.scoring.ranking.tribunals.PairwiseRankingCase",
-    "tarav.l2.tests.scoring.LineSupportCase",
-    "tarav.l2.unsorted.authorization.CaptureAuthorizationGateRecord",
-})
-
-
-def _reads_state_from_its_record(object_type, registry) -> bool:
-    example = object_type.records.record_example()
-    subject = registry.from_record(example)
-    subject._record = None
-    try:
-        return subject.records.to_record() != example
-    except Exception:
-        return True
-
-
 def test_objects_project_their_state_not_their_loaded_record() -> None:
     # tarav.breadcrumb c3e31a009b49
     registry = create_runtime().records
-    debt = {
-        f"{object_type.__module__}.{object_type.__qualname__}"
-        for object_type in registry.record_types
-        if _reads_state_from_its_record(object_type, registry)
-    }
 
-    assert debt - RECORD_STATE_DEBT == set(), "new Types read state from _record"
-    assert RECORD_STATE_DEBT - debt == set(), "migrated Types: remove them from the list"
+    for object_type in registry.record_types:
+        example = object_type.records.record_example()
+        subject = registry.from_record(example)
+
+        assert not hasattr(subject, "_record"), object_type.__name__
+        assert subject.records.to_record() == example, object_type.__name__

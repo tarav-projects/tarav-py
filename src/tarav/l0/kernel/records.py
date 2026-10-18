@@ -195,8 +195,8 @@ class TaravObject(TaravType):
     a distinct ``TaravClass`` Entity through ``class_entity()``.
 
     The object's state is its source of truth. Every construction path fills
-    it; ``_record`` only keeps what ``records.from_record()`` was given, and
-    ``records.to_record()`` projects the state.
+    it; loading a Record is one such path and leaves nothing of the Record on
+    the instance. ``records.to_record()`` projects the state.
     """
 
     @classmethod
@@ -265,9 +265,9 @@ class TaravObject(TaravType):
             owner = self._owner
             if owner is TaravObject:
                 raise TypeError("TaravObject is not an opaque JSON wrapper")
-            context = RecordLoadingContext(
-                config=config, record=_json_object(value), record_type=owner
-            )
+            if not isinstance(value, Mapping):
+                raise InvalidRecordJSON("Tarav JSON root must be an object")
+            context = RecordLoadingContext(config=config, record=value, record_type=owner)
             return raise_failure(run_steps(context, TYPED_STEPS))
 
     records = _RecordsDescriptor()
@@ -294,7 +294,6 @@ class TaravObject(TaravType):
     def __init__(self) -> None:
         if type(self) is TaravObject:
             raise TypeError("TaravObject is not an opaque JSON wrapper")
-        self._record: dict[str, object] | None = None
         self.source: Path | None = None
 
     @classmethod
@@ -321,14 +320,10 @@ class TaravObject(TaravType):
                 f"expected exact Type {entity(cls).name}"
             )
 
+    # tarav.breadcrumb e9181caf624b
     def _to_record(self) -> Mapping[str, object]:
-        """Project the object's state as its Record.
+        """Project the object's state as its Record; a Type with state adds it."""
 
-        Returning ``_record`` serves only Types not yet migrated to state.
-        """
-
-        if self._record is not None:
-            return self._record
         return {"type": entity(type(self)).name}
 
     def __init_subclass__(cls, **kwargs: object) -> None:
@@ -370,6 +365,30 @@ class TaravObject(TaravType):
         """
 
         return (entity(type(self)).id,)
+
+
+# tarav.breadcrumb 9eb4ed0c7b03
+class TypedState:
+    """Mixin for a Type whose whole state is its typed data.
+
+    The builder keeps the parsed model as ``typed``, not a copy and not the
+    Record; writing dumps it. Code that builds such an object directly sets
+    ``typed`` from its own values. Place it before the Tarav base classes.
+    """
+
+    typed: BaseModel
+
+    @classmethod
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        result = super()._from_record(loaded)  # the Tarav bases build identity
+        result.typed = loaded.data
+        return result
+
+    def _to_record(self) -> Mapping[str, object]:
+        typed = getattr(self, "typed", None)
+        if typed is None:  # built by its own constructor: the bases project it
+            return super()._to_record()
+        return typed.model_dump(mode="json", exclude_unset=True, by_alias=True)
 
 
 class TaravEntity(TaravObject):

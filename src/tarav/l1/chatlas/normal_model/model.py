@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.persistence import atomic_write_json
 from tarav.l0.kernel import TaravClass, entity
-from tarav.l0.kernel import DirectoryRecord, TypeShip
+from tarav.l0.kernel import DirectoryRecord, TypedState, TypeShip
 from tarav.l1.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 
 from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record_type
@@ -68,7 +68,7 @@ class NormalModelCounts(_ClosedRecord):
 
 
 # tarav.breadcrumb fbcaa106132b
-class ChatlasNormalModel(DirectoryRecord):
+class ChatlasNormalModel(TypedState, DirectoryRecord):
     """One provider-neutral chat tape stored as a streamable directory Record."""
 
     @classmethod

@@ -31,6 +31,7 @@ from tarav.l2.lines.records import LineShipRecord
 from typing import Literal
 from tarav.l2.unsorted.constants import SCHEMA_VERSION
 from tarav.l2.unsorted.contracts import ShipDraftInterface
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TaravObject
 from tarav.l0.kernel import TypeRegistry
@@ -57,7 +58,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
-class CaptureManifest(TaravObject):
+class CaptureManifest(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -284,7 +285,7 @@ class CaptureManifest(TaravObject):
         return _dedupe_pois(pois)
 
 
-class CaptureReceipt(TaravObject):
+class CaptureReceipt(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

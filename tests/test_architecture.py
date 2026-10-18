@@ -34,7 +34,7 @@ def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
     from tarav.l0.kernel import NamespaceBase, TaravObject
 
     assert issubclass(TaravObject.Records, NamespaceBase)
-    # tarav.context 473c89a0:52d399e8d65f61fc
+    # tarav.breadcrumb 44bf7a3ce4e7
     assert issubclass(TaravObject.Context, NamespaceBase)
     assert TaravObject.context.obj.target is TaravObject
     assert callable(TaravObject.context)
@@ -926,3 +926,18 @@ def test_bypass_entry_is_outside_the_guarded_import_graph() -> None:
                                              for alias in node.names)
         for node in tree.body
     )
+
+
+# tarav.breadcrumb f5fe14e161df
+def test_no_object_keeps_the_record_it_was_loaded_from() -> None:
+    """Loading a Record is one way to get an instance; its state lives in the instance."""
+
+    offenders = []
+    for path in PACKAGE_ROOT.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        offenders += [
+            f"{path.relative_to(PACKAGE_ROOT)}:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute) and node.attr == "_record"
+        ]
+    assert offenders == []

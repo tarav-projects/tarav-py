@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import ConfigDict, Field
 
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import DirectoryRecord, TaravObject, TypeShip
 from tarav.l1.references import FilePositionReference
@@ -16,7 +17,7 @@ from tarav.l1.breadcrumbs.identity import BREADCRUMBS_WORKFLOW_SHIP
 BreadcrumbId = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
-class Breadcrumb(DirectoryRecord):
+class Breadcrumb(TypedState, DirectoryRecord):
     """Stable identity for one surface anchor."""
 
     @classmethod
@@ -47,7 +48,7 @@ class LocatorHints(TaravObject.RecordInterface):
     next_line: str | None = None
 
 
-class LocatorObservation(TaravObject):
+class LocatorObservation(TypedState, TaravObject):
     """One append-only observation of a Breadcrumb's file position."""
 
     @classmethod

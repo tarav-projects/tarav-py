@@ -176,7 +176,7 @@ class GitFileReference(Reference):
         elif any(value is not None for value in (repository, commit, path, hints)):
             raise ValueError("Loading retained data cannot override reference fields")
         super().__init__()
-        self._record = _json_object(record)
+        self._fields = _json_object(record)
 
     def locate(self, locator):
         if not isinstance(locator, dict) or set(locator) != {
@@ -265,7 +265,7 @@ class GitCommitMessagePositionReference(Reference):
         elif any(value is not None for value in (repository, commit, line, hints)):
             raise ValueError("Loading retained data cannot override reference fields")
         super().__init__()
-        self._record = _json_object(record)
+        self._fields = _json_object(record)
 
     def locate(self, locator):
         if not isinstance(locator, Mapping) or set(locator) != {

@@ -8,6 +8,7 @@ from typing import ClassVar
 import pytest
 
 from tarav.l0.kernel import (
+    TypedState,
     InvalidRecordJSON,
     RecordTypeMismatch,
     TaravObject,
@@ -18,7 +19,7 @@ from tarav.l0.kernel import (
 from tarav.l0.kernel import LoadedRecord
 
 
-class RegisteredRecord(TaravObject):
+class RegisteredRecord(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -38,7 +39,7 @@ class SpecializedRecord(RegisteredRecord):
         )
 
 
-class OtherRecord(TaravObject):
+class OtherRecord(TypedState, TaravObject):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -48,7 +49,7 @@ class OtherRecord(TaravObject):
         )
 
 
-class RoutedRecord(TaravObject):
+class RoutedRecord(TypedState, TaravObject):
     construction_count: ClassVar[int] = 0
 
     @classmethod
@@ -80,7 +81,7 @@ def test_registry_path_load_constructs_exact_registered_class(
     loaded = registry.load(path)
 
     assert type(loaded) is RegisteredRecord
-    assert loaded._record == {"type": "Registered.Record", "value": 7}
+    assert loaded.records.to_record() == {"type": "Registered.Record", "value": 7}
 
 
 # tarav.breadcrumb 8584bce0a339
@@ -94,7 +95,7 @@ def test_registry_from_record_routes_through_selected_class(
     restored = RegisteredRecord.records.from_record(loaded.records.to_record())
     assert restored.records.to_record() == loaded.records.to_record()
     assert loaded.records.to_record() == {"type": "Registered.Record", "value": 7}
-    assert loaded.records.to_record() is not loaded._record
+    assert not hasattr(loaded, "_record")
 
 
 def test_registry_construction_calls_the_selected_class_hook() -> None:
@@ -120,8 +121,7 @@ def test_expected_type_requires_the_exact_registered_class(
     loaded = registry.load(path, expected_type=SpecializedRecord)
 
     assert type(loaded) is SpecializedRecord
-    assert loaded._record is not None
-    assert loaded._record["value"] == 7
+    assert loaded.records.to_record()["value"] == 7
 
 
 def test_expected_type_rejects_before_object_construction(tmp_path) -> None:
@@ -163,8 +163,7 @@ def test_direct_class_loading_uses_ship_authority_and_path_precedence() -> None:
 
 def test_writing_rejects_a_record_that_identifies_another_type() -> None:
     loaded = RegisteredRecord.records.from_record({"type": "Registered.Record"})
-    assert loaded._record is not None
-    loaded._record["type"] = "Specialized.Record"
+    loaded.typed.type = "Specialized.Record"
 
     with pytest.raises(RecordTypeMismatch, match="expected exact Type"):
         loaded.records.to_record()

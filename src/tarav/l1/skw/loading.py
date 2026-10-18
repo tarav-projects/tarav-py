@@ -198,7 +198,7 @@ class SkillReadingGraph(ReadingGraph):
                 raise ValueError('Reading declarations belong to source blocks')
             slots = set()
             for declaration, _, _ in self.includes.get(identity, ()):
-                slot = declaration._record.get('slot')
+                slot = getattr(declaration.typed, 'slot', None)
                 if slot is None:
                     continue
                 if (not isinstance(slot, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', slot)
@@ -231,12 +231,12 @@ class SkillReadingGraph(ReadingGraph):
 
     def resolve_entry(self, entry):
         if isinstance(entry, BlockEntry):
-            node = entry._record['node']
+            node = entry.typed.node
             if node not in self.bindings:
                 raise ValueError(f'Unknown block entry: {node}')
             return node
         if isinstance(entry, FileEntry):
-            source = self.package.path(entry._record['source'])
+            source = self.package.path(entry.typed.source)
             matches = [node for node, (document, block) in self.bindings.items()
                        if document.target == source
                        and block.label == next(iter(document.blocks))]
@@ -353,7 +353,7 @@ class SkillReadingGraph(ReadingGraph):
         document, block = self.bindings[identity]
         text = '\n'.join(block.content_lines())
         for declaration, destination, _ in self.includes[identity]:
-            slot = declaration._record.get('slot')
+            slot = getattr(declaration.typed, 'slot', None)
             if slot is None:
                 continue
             token = '{{skw:' + slot + '}}'

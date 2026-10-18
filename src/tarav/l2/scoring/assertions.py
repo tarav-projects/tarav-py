@@ -10,6 +10,7 @@ from uuid import UUID, uuid5
 
 from pydantic import model_validator
 
+from tarav.l0.kernel import TypedState
 from tarav.l0.kernel import (
     FileRecord, Ship, TaravClass, TaravObject,
     TypeShip, entity,
@@ -59,7 +60,7 @@ class AssertionNamespace(Mapping[str, 'Assertion']):
         return matches[0]
 
 
-class ScoringDetails(FileRecord):
+class ScoringDetails(TypedState, FileRecord):
     """Inspectable JSON carried by scoring Context entries."""
 
     @classmethod
@@ -82,7 +83,7 @@ class AssertionReferenceInterface(ScoringDetails.RecordInterface):
         return self
 
 
-class AssessmentCase(TaravObject):
+class AssessmentCase(TypedState, TaravObject):
     """Typed, self-contained scorer input; subtypes own their payload schema."""
     # tarav.breadcrumb fe2d8ede0b40
 
@@ -113,8 +114,7 @@ class AssessmentCase(TaravObject):
             **payload,
         }
         # The scorer receives a snapshot, even if the producer later edits its inputs.
-        self._record = json.loads(json.dumps(record, allow_nan=False))
-        type(self).records.parse_record(self._record)
+        self.typed = type(self).records.parse_record(json.loads(json.dumps(record, allow_nan=False)))
 
     class Records(TaravObject.Records):
         def parse_record(self, value):

@@ -66,7 +66,9 @@ class GitRepository(GitObject):
         selected = Path(root).expanduser().resolve()
         discovered = git_text(selected, "rev-parse", "--show-toplevel")
         self.root = Path(discovered).resolve()
-        self._record = {"type": entity(type(self)).name, "root": str(self.root)}
+
+    def _to_record(self) -> dict[str, object]:
+        return {"type": entity(type(self)).name, "root": str(self.root)}
 
     @classmethod
     def initialize(cls, root: str | Path) -> GitRepository:
