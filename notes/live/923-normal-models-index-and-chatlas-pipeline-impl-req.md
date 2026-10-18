@@ -189,3 +189,15 @@ changes plain-text searches; index size far beyond the estimate.
   `tests/chatlas/test_stages.py` failed at collection, then 4 passed. Real
   scoped run for this session: before, cache fresh and index stale; `run`
   2.5 s (capture ok, 1 cached, 1 indexed); after, both fresh.
+- Slice 3: `search.py` reads the index: `text` (words as a phrase), `match`
+  (FTS5 expression), `contains` (substring through SQL), the same filters,
+  and `capture`/`cache`/`index` flags that run those stages first for the
+  query's selection; hits carry the session facts, the turn and its
+  messages (or the message) as the index holds them. The per-file scan,
+  `build_missing`, `times` and the cache standing in hits are gone.
+  `NormalModelsIndex.rows` streams, so `max_hits` stops early.
+  `tests/chatlas/test_search.py` rewritten: 6 of 7 failed on the old engine,
+  then 7 passed. Real searches: messages "tarav-center" 17 ms (was 12.9 s),
+  turns 121 ms (was 24.8 s), substring 1.5 s, first 20 turns for "cache"
+  64 ms. Word matching finds 64 messages where the substring finds 33,
+  because the phrase also matches "Tarav Center".

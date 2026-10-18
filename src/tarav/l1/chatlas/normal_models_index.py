@@ -11,7 +11,7 @@ updating is explicit.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
@@ -141,11 +141,16 @@ class NormalModelsIndex:
     # tarav.breadcrumb 122be7e1e81a
     def query(self, sql: str, parameters: Sequence[object] | Mapping[str, object] = ()) -> list[JsonObject]:
         """Run read-only SQL over the index and return its rows as dicts."""
+        return list(self.rows(sql, parameters))
+
+    def rows(self, sql: str, parameters: Sequence[object] | Mapping[str, object] = ()) -> Iterator[JsonObject]:
+        """Stream read-only SQL rows; the connection closes when iteration stops."""
         connection = self._connect(write=False)
         try:
             cursor = connection.execute(sql, parameters)
             names = [column[0] for column in cursor.description or ()]
-            return [dict(zip(names, values)) for values in cursor.fetchall()]
+            for values in cursor:
+                yield dict(zip(names, values))
         finally:
             connection.close()
 
