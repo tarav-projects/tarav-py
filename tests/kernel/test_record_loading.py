@@ -119,3 +119,76 @@ def test_the_public_path_raises_the_original_error_with_where_it_stopped(
     assert f"Record loading stopped at 'parse' for {path}" in caught.value.__notes__
     with pytest.raises(ValidationError):
         Shape.records.from_record({"type": "Test.Loading.Shape", "origin": {}})
+
+
+class Strict(TaravObject):
+    """Defines its own lite and full levels; default stays the plain parse."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("9a3f2c71-5e84-4b06-8d1f-7c2e4b9a6d53"),
+                          name="Test.Loading.Strict")
+
+    class RecordInterface(TaravObject.RecordInterface):
+        type: Literal["Test.Loading.Strict"]
+        count: int
+        total: int
+
+    @classmethod
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        result = cls.__new__(cls)
+        TaravObject.__init__(result)
+        result.data = loaded.data
+        return result
+
+    class Records(TaravObject.Records):
+        def _parse_lite(self, value):
+            # Only the Type name; the fields are trusted.
+            return self._owner.RecordInterface.model_construct(**value)
+
+        def _parse_full(self, value):
+            data = self.parse_record(value)
+            if data.count > data.total:
+                raise ValueError("count exceeds total")
+            return data
+
+
+def _levels(registry: TypeRegistry, tmp_path: Path, record: dict) -> dict[str, object]:
+    path = _write(tmp_path, record)
+    outcome = {}
+    for level in ("none", "lite", "default", "full"):
+        context = registry.load_context(path, config=RecordLoadingConfig(level=level))
+        outcome[level] = type(context.error).__name__ if context.error else "loaded"
+    return outcome
+
+
+def test_each_check_level_is_the_types_choice(tmp_path: Path) -> None:
+    registry = TypeRegistry(TaravObject, (Strict,))
+
+    assert _levels(registry, tmp_path, {"type": "Test.Loading.Strict", "count": 3, "total": 2}) == {
+        "none": "loaded", "lite": "loaded", "default": "loaded", "full": "ValueError"}
+    assert _levels(registry, tmp_path, {"type": "Test.Loading.Strict", "count": "3", "total": 2}) == {
+        "none": "loaded", "lite": "loaded", "default": "ValidationError", "full": "ValidationError"}
+
+
+def test_a_type_without_levels_checks_the_same_at_lite_default_and_full(
+    registry: TypeRegistry, tmp_path: Path
+) -> None:
+    assert _levels(registry, tmp_path, {"type": "Test.Loading.Shape", "origin": {"x": "1", "y": 2}}) == {
+        "none": "loaded", "lite": "ValidationError", "default": "ValidationError",
+        "full": "ValidationError"}
+
+
+def test_unchecked_data_is_built_as_given_and_the_level_never_reaches_the_builder(
+    registry: TypeRegistry, tmp_path: Path
+) -> None:
+    path = _write(tmp_path, {"type": "Test.Loading.Shape", "origin": {"x": "1", "y": 2}})
+
+    shape = registry.load(path, config=RecordLoadingConfig(level="none"))
+
+    (loaded,) = Shape.seen
+    assert shape.origin == {"x": "1", "y": 2}
+    assert set(type(loaded).__dataclass_fields__) == {"data", "metadata"}
+    assert set(type(loaded.metadata).__dataclass_fields__) == {"source"}
+    with pytest.raises(ValueError, match="level"):
+        RecordLoadingConfig(level="paranoid")

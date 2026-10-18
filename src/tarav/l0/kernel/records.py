@@ -234,6 +234,15 @@ class TaravObject(TaravType):
                 raise InvalidRecordJSON("Tarav JSON root must be an object")
             return self._owner.RecordInterface.model_validate(value, strict=True)
 
+        # tarav.breadcrumb b30563c62a26
+        def _parse_lite(self, value: object) -> BaseModel:
+            """The Type's minimal check when speed matters more; by default, the parse."""
+            return self.parse_record(value)
+
+        def _parse_full(self, value: object) -> BaseModel:
+            """The Type's most thorough check; by default, the parse."""
+            return self.parse_record(value)
+
         # tarav.breadcrumb 195ac6bd926a
         def record_example(self) -> dict[str, object]:
             """Return a minimal storage-independent example for the bound Type."""

@@ -24,11 +24,27 @@ if TYPE_CHECKING:
 
 
 # tarav.breadcrumb 6ecc299ebaed
+# tarav.breadcrumb b548804330bb
+# tarav.breadcrumb b40281463c5c
+CHECK_LEVELS = ("none", "lite", "default", "full")
+
+
 @dataclass(frozen=True, slots=True)
 class RecordLoadingConfig:
-    """What the loading steps react to; shared by every load that uses it."""
+    """What the loading steps react to; shared by every load that uses it.
 
+    ``level`` selects how much the parse step checks: ``none`` builds the
+    typed data without checks, ``lite`` and ``full`` are the Type's own
+    levels, ``default`` its RecordInterface. The level stays in the loading
+    phase; whoever lowers it answers for what was loaded.
+    """
+
+    level: str = "default"
     source: bool = True
+
+    def __post_init__(self) -> None:
+        if self.level not in CHECK_LEVELS:
+            raise ValueError(f"Record check level must be one of {', '.join(CHECK_LEVELS)}")
 
 
 DEFAULT_LOADING = RecordLoadingConfig()
@@ -125,7 +141,16 @@ def check_type(context: RecordLoadingContext) -> None:
 
 
 def parse(context: RecordLoadingContext) -> None:
-    context.data = _record_type(context).records.parse_record(_record(context))
+    records = _record_type(context).records
+    record, level = _record(context), context.config.level
+    if level == "none":
+        context.data = records._owner.RecordInterface.model_construct(**record)
+    elif level == "lite":
+        context.data = records._parse_lite(record)
+    elif level == "full":
+        context.data = records._parse_full(record)
+    else:
+        context.data = records.parse_record(record)
 
 
 def build(context: RecordLoadingContext) -> None:
@@ -169,6 +194,7 @@ def _record_type(context: RecordLoadingContext) -> type[TaravObject]:
 
 
 __all__ = [
+    "CHECK_LEVELS",
     "DEFAULT_LOADING",
     "LoadedRecord",
     "LoadingMetadata",
