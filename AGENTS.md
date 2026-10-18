@@ -4,6 +4,7 @@
 1f561f5d = codex:01a0b984-4664-7871-934a-89cf92595b64 @1f561f5d8db849a3a445b83a91a5e94acbb80927f9c332d45322ac70f8705a74
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 64298cbc = claude-code:9da4cef5-68b7-4d17-8a06-1351ca51e82f @64298cbc8db2e7aa971e0828653c07bcb483cfed40931fdf87d5abe7ce1c60b3
+abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c625e3f68354a234a91e4992b67406f075d93ccb20f4d4
 -->
 
 ## Read first
@@ -172,6 +173,18 @@
   package layout, components, loading analysis, deployment, and checks.
   <!-- tarav.breadcrumb 2d3d132a3afb -->
 
+- A skill keeps only its product and `.tarav/skill.json` (`SkillMarker`, its
+  UUID). It is not a Project: its depot lives in the Project that builds it,
+  `.tarav/skillware/skills/<name>/`, beside the Project's agents-file source,
+  and names the skill folder (`product`) and its `skill_id`. skw POIs name a
+  skill by that UUID. `load_skill(folder)` finds the depot through the nearest
+  `.tarav/project.json`; `tarav skw skills --skill <folder>` selects one. A
+  source is named relative to its depot; a product, dependency or reference
+  target relative to the skill folder, except that a reference path in a
+  source resolves from that source file.
+  <!-- tarav.breadcrumb 0dae42b5b600 -->
+  <!-- tarav.breadcrumb 1f388fab42f6 -->
+
 - Skill packages with a `loading` declaration use `tarav.l1.skw.loading` for
   declared slot composition and `tarav.l1.skw.skills` for typed components.
   `tarav.l1.skw.code.ReadingGraph` is the common static-analysis contract;
@@ -192,7 +205,7 @@
   for head/tail/cat reads or use exposed absolute paths. Keep payload
   resolution for dependency checks separate from context presentation.
 
-- JSON document sources under `.skw/src/` own all retained text for their
+- JSON document sources under a depot's `src/` own all retained text for their
   product. `SkwBlock` is the neutral concrete block Type: it carries `content`,
   a typed local `objects_index`, and typed workflow-owned `annotations`.
   Generation is a `GenerationAnnotation`; reading declarations are annotation
@@ -211,7 +224,7 @@
   attachment policy or Index domain policy.
 - Project-aware discovery supplies a file plus its surface context. Domain
   adapters assign domain interpretation from that context.
-- `tarav.l1.skw.code` owns typed JSON document sources under `.skw/src/`.
+- `tarav.l1.skw.code` owns typed JSON document sources under a depot's `src/`.
   `tarav.l1.skw.skills` owns skill-specific component Types;
   `tarav.l2.skw.skills` owns deployable package operations and checks.
   The retired Skillware annotation compiler and `.skw.md` machinery has no

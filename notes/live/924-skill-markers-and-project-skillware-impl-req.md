@@ -6,7 +6,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Impl.Abstract
 
-Status: ready, 2026-10-18.
+Status: complete, 2026-10-18.
 Knowledge.Surface: wiki.
 
 A skw skill folder keeps only its product plus a small identity marker, `.tarav/skill.json` (a UUID). Its skw depot, today `skills/<name>/.skw/`, moves into the owning Project at `.tarav/skillware/skills/<name>/`, next to the Project's own agents-file source. skw POIs name a skill by its UUID instead of its path.
@@ -56,7 +56,7 @@ Inspected 2026-10-18:
 
 ## Impl.Req.Wiki
 
-Product: `tarav-py`. Documentation owner: `tarav-md/notes/wiki/` (topic `skillware.md` if present, else a new `skills.md`; daily `2026-10-18.md`). Supporting turns are attached above. Capture status: pending.
+Product: `tarav-py`. Documentation owner: `tarav-md/notes/wiki/` (topic `skillware.md` if present, else a new `skills.md`; daily `2026-10-18.md`). Supporting turns are attached above. Capture status: done (`skillware.md`, section "Skill identity and Project-held depots (924)"; daily `2026-10-18.md`).
 
 ## Execution.Plan
 
@@ -90,3 +90,7 @@ Risks and deviation triggers: a consumer that resolves source keys relative to t
 - Deviation (design-reality mismatch, Interactive mode, taken without stopping because no User decision is involved): the design said context targets resolve from the product root, but a reference path in a source resolves from the source file. Moving the sources broke 87 such references in tarav-hugentics (86 ContextUnresolvable). The contract was kept and the data migrated instead: `~/.tarav/tmp/repath_924.py` rewrote the 28 distinct paths that leave the depot so each reaches the same file from the source's new place (paths inside the depot moved with it). Rebuilding recompiled the 13 touched sources byte-identically.
 - Data: `~/.tarav/tmp/move_924_depots.py` moved the four depots and added `skill_id` and `product` to each `main.json`; `tarav-md/.skw/` (legacy `skw.json`) deleted.
 - Checks: tests moved to the Project layout (`test_skw_poi.py` fixtures `_layout`, `_depot`, `_document`; `test_skills.py`; `test_project_dev.py`); new tests `test_a_skill_belongs_to_the_project_above_it`, `test_the_depot_and_the_folder_must_name_the_same_skill`, `test_a_deployed_copy_carries_the_skill_marker`, `test_the_skills_command_selects_a_skill_folder`. The record contract caught `SkwSkill`'s example record missing the new fields; fixed in its `Records.record_example`. Full suite 389 passed; ruff clean. Live: the four skills build with no product byte changed; tarav-hugentics shows its baseline 6 OutputChanged and 56 StaleContext, the others 0; `tarav status --project` on tarav-md keeps the same 68 open actions.
+- Slice 3 commits: tarav-py `ebb9589`; tarav-md `e99982c`, miacad-md `efec990`, md-library-md `9b588f2`.
+- Slice 4 (documentation): tarav-py AGENTS.md (skw source: a paragraph on skill markers and Project-held depots, `.skw/src/` wording replaced; Breadcrumbs submitted on the product, copied back, rebuild byte-identical, audit clean) and ARCHITECTURE.md (`skw` and `skills` rows). The skill developer notes `skills/tarav-hugentics/AGENTS.md` and `skills/tarav-pkg/AGENTS.md` are hand-written, not deployed, and describe the depot, so they moved into their depots and now give Project-root commands with `--skill` or `--depot`; the stale `.skw/blessings/` sentence now points to the Project's actions. Their commands were run and work; their Breadcrumbs re-audited clean after the move.
+- Wiki capture: tarav-md `notes/wiki/skillware.md` (new section) and `notes/wiki/daily/2026-10-18.md`; Breadcrumbs submitted, audits clean.
+- Open: `miatube-pkg` still uses the retired `skw.json` and does not load; hand-written skills have no marker yet; tarav-md's `.agents/`-style untracked folders in md-library-md stay untracked as decided.
