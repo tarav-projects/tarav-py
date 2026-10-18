@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
+from tarav.l0.project import project_id
 from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, CheckSuite
 from tarav.l1.skills.folder import FolderSkill
 
@@ -156,8 +157,9 @@ class _SkillsCheck(Check):
                 *, scope: str = "project") -> CheckPOI:
         return poi_type(
             self, message,
-            situation={"project": str(self.skills.project.root), "scope": scope},
-            details={"search_places": [str(p) for p in self.skills.search_places],
+            situation={"project": project_id(self.skills.project.root), "scope": scope},
+            details={"root": str(self.skills.project.root),
+                     "search_places": [str(p) for p in self.skills.search_places],
                      "repair": "tarav project skills import"},
         )
 

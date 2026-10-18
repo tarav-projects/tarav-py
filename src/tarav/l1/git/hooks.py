@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.git_repository import GitError, git_result, run_git
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
+from tarav.l0.project import project_id
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.project.config import ProjectConfig
@@ -324,7 +325,8 @@ class GitHooksCheck(Check):
         self.project, self.config = project, config
 
     def _poi(self, poi_type: type[GitHooksPOI], message: str, **situation) -> GitHooksPOI:
-        return poi_type(self, message, situation={"project": str(self.project.root), **situation})
+        return poi_type(self, message, situation={"project": project_id(self.project.root), **situation},
+                        details={"root": str(self.project.root)})
 
     def _run(self) -> CheckResult:
         root = self.project.root

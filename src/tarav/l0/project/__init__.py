@@ -445,6 +445,15 @@ def load_project_marker(marker_path: Path) -> dict[str, object]:
     return payload
 
 
+def project_id(project_root: Path | str) -> str:
+    """The UUID that identifies the Project at ``project_root``, read from its marker.
+
+    POI situations name a Project by it, never by its path, which changes when
+    the folder moves.
+    """
+    return str(load_project_marker(project_marker_path(Path(project_root)))["project_id"])
+
+
 def load_project_config(config_path: Path) -> dict[str, object]:
     if not config_path.exists():
         raise CliError(f"project config does not exist: {config_path}")

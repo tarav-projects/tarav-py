@@ -27,7 +27,7 @@ from pathlib import Path
 
 from tarav.l0._core.git_repository import git_result, run_git
 from tarav.l0.kernel import Ship, TaravClass, TypeShip
-from tarav.l0.project import load_project_marker, project_marker_name
+from tarav.l0.project import load_project_marker, project_id, project_marker_name
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 
 from .hooks import OVERRULE_ENV_VAR, GitHookCall, GitHookHandler, GitHookRefusal
@@ -244,16 +244,17 @@ class TaravChangeOverruled(CheckPOI):
 def _removed(check: Check, branch: str, missing: list[str]) -> TaravChangeRemoved:
     return TaravChangeRemoved(
         check, f"{len(missing)} tarav-change IDs that {branch} had at its last commit are gone "
-        f"from {CHANGES_FILE}", situation={"project": str(check.root), "branch": branch},
-        details={"missing": missing})
+        f"from {CHANGES_FILE}", situation={"project": project_id(check.root), "branch": branch},
+        details={"root": str(check.root), "missing": missing})
 
 
 def _overruled(check: Check, overrule: ChangeOverrule) -> TaravChangeOverruled:
     return TaravChangeOverruled(
         check, f"Commit {overrule.commit[:7]} on {overrule.branch} went through without "
         f"{len(overrule.missing)} tarav-change IDs, by overrule",
-        situation={"project": str(check.root), "branch": overrule.branch,
-                   "commit": overrule.commit}, details={"missing": overrule.missing})
+        situation={"project": overrule.project, "branch": overrule.branch,
+                   "commit": overrule.commit},
+        details={"root": str(check.root), "missing": overrule.missing})
 
 
 # tarav.breadcrumb 6d5eab772e44
@@ -316,7 +317,8 @@ class TaravChangeCheck(Check):
                 continue
             pois.append(TaravChangeMissing(
                 self, f"Commit {commit[:7]} carries no tarav-change: {subject}",
-                situation={"project": str(root), "commit": commit}))
+                situation={"project": project_id(root), "commit": commit},
+                details={"root": str(root)}))
         return pois
 
 

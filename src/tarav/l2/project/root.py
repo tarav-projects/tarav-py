@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from tarav.l0._core.errors import CliError
-from tarav.l0.project import require_agentos_project
+from tarav.l0.project import require_agentos_project, project_id
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.project import TaravProject
@@ -156,11 +156,13 @@ class ChildProjectCheck(Check):
             report = json.loads(completed.stdout.strip().splitlines()[-1])
         except (CliError, OSError, ValueError, IndexError) as exc:
             return CheckResult(self, status="failed", reason=f"{type(exc).__name__}: {exc}")
+        child = project_id(path)
         pois = [
             ChildProjectPOI(self,
                             f"{row['pois']} {row['key']} POIs in {self.child}",
-                            situation={"child": self.child, "type": row["key"]},
-                            details={"pois": row["pois"], "checks": row["checks"]})
+                            situation={"project": child, "type": row["key"]},
+                            details={"child": self.child, "pois": row["pois"],
+                                     "checks": row["checks"]})
             for row in report["items"]
         ]
         incomplete = report["summary"]["incomplete"]

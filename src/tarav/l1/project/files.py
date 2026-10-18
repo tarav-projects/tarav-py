@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from tarav.l0.kernel import TaravClass, TypeShip, locate_record_type
 from tarav.l0.kernel.types import RecordTypeReference
-from tarav.l0.project import ProjectHarnessConfig, load_project_marker
+from tarav.l0.project import ProjectHarnessConfig, load_project_marker, project_id
 from tarav.l1.checks import Check, CheckPOI, CheckResult
 
 from .config import ProjectConfig, config_sections
@@ -101,8 +101,9 @@ class ProjectFilesCheck(Check):
 
     def _poi(self, poi_type: type[ProjectFilesPOI], message: str, *, details: dict | None = None,
              **situation) -> ProjectFilesPOI:
-        return poi_type(self, message, situation={"project": str(self.project.root), **situation},
-                        details=details)
+        return poi_type(self, message, situation={"project": project_id(self.project.root),
+                                                  **situation},
+                        details={"root": str(self.project.root), **(details or {})})
 
     def _run(self) -> CheckResult:
         project = self.project

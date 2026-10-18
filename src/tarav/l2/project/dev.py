@@ -14,6 +14,7 @@ import tempfile
 from xml.etree import ElementTree
 
 from tarav.l0.kernel import TaravClass, TypeShip
+from tarav.l0.project import project_id
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 
@@ -113,7 +114,8 @@ class PyTestCheck(Check):
         pois = [
             (TestFailed if kind == "FAILED" else TestErrored)(
                 self, f"{test}: {message or kind.lower()}",
-                situation={"project": self.root.name, "test": test})
+                situation={"project": project_id(self.root), "test": test},
+                details={"root": str(self.root)})
             for file, found in outcome["failures"].items()
             if self.file is None or file == self.file
             for kind, test, message in found

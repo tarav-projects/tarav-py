@@ -16,6 +16,7 @@ from tarav.l0.kernel import (
     TypeShip,
     current_records,
 )
+from tarav.l0.project import project_id
 from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, CheckSuite
 from tarav.l1.settings import SettingsProvider, SettingsValues
 from tarav.l1.skw import pois as skw
@@ -45,6 +46,12 @@ def _project_file(value: object) -> Path:
 def _prompt_lines() -> list[str]:
     return PROMPT_SOURCE.read_text(encoding="utf-8").splitlines()
 
+
+
+def _from_root(path: Path, root: Path) -> str:
+    """A path as a situation names it: from the Project root when inside it."""
+    path, root = Path(path).resolve(), Path(root).resolve()
+    return path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path)
 
 class TaravSystemPrompt(SkwBlock):
     """Code-produced, identical Tarav bootstrap text."""
@@ -338,8 +345,8 @@ class _AgentsCheck(Check):
         if detail:
             details["detail"] = detail
         return poi_type(self, message,
-                        situation={"project": str(self.agents.project.root),
-                                   "path": str(target)},
+                        situation={"project": project_id(self.agents.project.root),
+                                   "path": _from_root(target, self.agents.project.root)},
                         details=details)
 
     def _document(self) -> Document | None:

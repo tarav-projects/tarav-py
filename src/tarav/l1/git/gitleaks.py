@@ -310,12 +310,12 @@ class GitleaksCheck(Check):
 
     def _run(self) -> CheckResult:
         root, pois = self.root, []
-        if gitleaks_binary() is None:
-            pois.append(GitleaksMissing(self, "gitleaks is not on PATH",
-                                        situation={"repository": str(root)}))
         key = repository_key(root)
         if key is None:
             return CheckResult(self, status="completed", pois=pois)
+        if gitleaks_binary() is None:
+            pois.append(GitleaksMissing(self, "gitleaks is not on PATH",
+                                        situation={"repository": key}, details={"path": str(root)}))
         run = self.depot.latest(key)
         if run is None:
             pois.append(GitleaksNeverScanned(
