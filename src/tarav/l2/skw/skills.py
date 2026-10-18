@@ -12,17 +12,20 @@ from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.skw.code import CodeWorkflow
 from tarav.l1.skw.depot import SkwDepot
-from tarav.l1.skw.document import Document, project_document, project_root
+from tarav.l0.kernel import Ship
+from tarav.l0.project import find_agentos_project_root
+from tarav.l1.skw.document import DEFAULT_DEPOT, Document, project_document
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
 from tarav.l1.skw.loading import LoadingRecord, SkillDocument, SkillReadingGraph
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
 from tarav.l1.checks import CheckProvider, CheckSuite, run_checks
 from tarav.l1.poi import POICollector
 from tarav.l1.poi.rendering import DEFAULT_POI_RENDERER, renderers
-from tarav.l1.skills import TaravSkill
+from tarav.l1.skills import SKILL_JSON, SkillMarker, TaravSkill
 from tarav.l0._core.errors import CliError
 from tarav.l1.skw.pois import (
     DuplicateOutput, Finding, InvalidLoadingModel, InvalidSource, MissingConsumerFile,
+    SkillMarkerMismatch, SkillMarkerMissing,
     MissingDependency, MissingLinkTarget, OutputNotDeployed, PublicationDisconnected,
     SkwPOI, UnbundledLink, UndeclaredConsumerLink,
 )
@@ -48,8 +51,19 @@ from tarav.l1.skw.presentation import (
 from tarav.l0.kernel import LoadedRecord
 
 
+#: Where a Project keeps the depots of the skills it builds.
+SKILL_DEPOTS = Path(DEFAULT_DEPOT) / "skills"
+
+
+# tarav.breadcrumb 46ea29390613
 class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
-    """A deployable Skill retained in one typed `.skw` depot: the SKW kind of TaravSkill.
+    """A deployable Skill built by one typed depot of its Project: the SKW kind of TaravSkill.
+
+    The depot lives at `<project>/.tarav/skillware/skills/<name>/`; the skill
+    folder it builds keeps only the product and its `.tarav/skill.json`. The
+    depot names that folder (`product`, relative to the Project) and the
+    skill (`skill_id`); a skill is not a Project and always belongs to the one
+    holding its depot.
 
     The entry record owns deployment selection; source context stays developer-only.
     Dependency purposes are independent of document context roles. Build and
@@ -67,6 +81,8 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
     class RecordInterface(SkwDepot.RecordInterface):
         type: Literal['Tarav.Skillware.SkillPackage']
         schema_version: int
+        skill_id: str
+        product: str
         entrypoint: str
         sources: list[str]
         files: list[str]
@@ -75,23 +91,26 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         publications: list[str] | None = None
 
     # tarav.breadcrumb 70b9905101ea
-    def __init__(self, *, entrypoint='SKILL.md', sources=(), files=None,
-                 dependencies=(), loading=None, publications=None, root=None):
-        """A skill built in code; `root` may stay unknown until it is placed."""
+    def __init__(self, *, skill_id=None, product=None, entrypoint='SKILL.md', sources=(),
+                 files=None, dependencies=(), loading=None, publications=None, depot=None):
+        """A skill built in code; its `depot` may stay unknown until it is placed."""
         super().__init__()
         self.schema_version = 1
+        self.declared_skill_id = skill_id
+        self.product = product
         self.entrypoint_file = entrypoint
         self.sources = list(sources)
         self.files = list(files) if files is not None else [entrypoint]
         self.dependencies = [dict(d) for d in dependencies]
         self.loading_file = loading
         self.publications = list(publications) if publications is not None else None
-        if root is not None:
-            self.source = Path(root) / '.skw' / 'main.json'
+        if depot is not None:
+            self.source = Path(depot) / 'main.json'
 
     @classmethod
     def _from_record(cls, loaded: LoadedRecord):
-        skill = cls(entrypoint=loaded.data.entrypoint, sources=loaded.data.sources,
+        skill = cls(skill_id=loaded.data.skill_id, product=loaded.data.product,
+                    entrypoint=loaded.data.entrypoint, sources=loaded.data.sources,
                     files=loaded.data.files, dependencies=loaded.data.dependencies,
                     loading=loaded.data.loading, publications=loaded.data.publications)
         skill.schema_version = loaded.data.schema_version
@@ -99,6 +118,7 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
 
     def _to_record(self):
         record = {'type': entity(type(self)).name, 'schema_version': self.schema_version,
+                  'skill_id': self.declared_skill_id, 'product': self.product,
                   'entrypoint': self.entrypoint_file, 'sources': list(self.sources),
                   'files': list(self.files),
                   'dependencies': [dict(d) for d in self.dependencies]}
@@ -110,9 +130,34 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
 
     class Records(SkwDepot.Records):
         def record_example(self):
-            cls = self._owner
-            return cls()._to_record()
+            return self._owner(skill_id="6f1c2d3e-4b5a-4c6d-8e7f-901a2b3c4d5e",
+                               product="skills/example")._to_record()
 
+
+    @property
+    def project(self):
+        """The Project whose Skillware holds this depot."""
+        depots = self.depot.parent
+        project = depots.parent.parent.parent
+        if project / SKILL_DEPOTS != depots:
+            raise ValueError(f"A skill depot lives in <project>/{SKILL_DEPOTS}/, not {self.depot}")
+        return project
+
+    @property
+    def root(self):
+        """The skill folder the depot builds."""
+        return _relative(self.project, self.product, "The product escapes its Project")
+
+    @property
+    def skill_id(self):
+        """The skill this depot builds, as the depot names it."""
+        return Ship(self.declared_skill_id)
+
+    # tarav.breadcrumb e92c586be979
+    @property
+    def owner(self):
+        """How a POI names this skill: by UUID, wherever its folder lies."""
+        return {"skill": str(self.skill_id)}
 
     @property
     def entrypoint(self):
@@ -294,6 +339,11 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
                     findings.append(finding.at(path=source))
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 report(InvalidSource, source, str(exc))
+        if not (self.root / SKILL_JSON).is_file():
+            report(SkillMarkerMissing, self.root / SKILL_JSON)
+        elif SkillMarker.of(self.root).id != self.skill_id:
+            report(SkillMarkerMismatch, self.root / SKILL_JSON,
+                   f"the marker names {SkillMarker.of(self.root).id}")
         for value in self.files:
             if not self.path(value).is_file():
                 report(MissingConsumerFile, value)
@@ -348,14 +398,16 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         if destination.exists():
             raise ValueError("Deployment destination must not exist")
         findings = self.check()
-        files = [(value, self.path(value).read_bytes()) for value in self.files]
+        # the marker travels with every copy: a deployed copy is the same skill
+        files = [(value, self.path(value).read_bytes())
+                 for value in (*self.files, SKILL_JSON.as_posix())]
         destination.mkdir(parents=True)
         for value, payload in files:
             target = destination / value
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
             shutil.copymode(self.path(value), target)
-        return {"destination": str(destination), "files": list(self.files),
+        return {"destination": str(destination), "files": [value for value, _ in files],
                 "dependencies": [d for d in self.dependencies
                                  if "consumer" in d["purposes"]], "findings": findings}
 
@@ -408,18 +460,38 @@ def _relative(base, value, escape):
     return target
 
 
-def load_skill(root, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:
-    """Load a Skill depot through registered Record dispatch."""
+def project_skills(project) -> tuple[Path, ...]:
+    """The skill depots a Project holds; load each with `load_depot`."""
+    return tuple(sorted(main.parent for main in (Path(project) / SKILL_DEPOTS).glob("*/main.json")))
 
-    depot = registry.load(Path(root) / ".skw")
-    if not isinstance(depot, SkwSkill):
-        raise ValueError(f"Expected a registered SkwSkill depot, got {type(depot).__name__}")
-    return depot
+
+def load_depot(depot, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:
+    """Load one skill depot through registered Record dispatch."""
+    loaded = registry.load(Path(depot))
+    if not isinstance(loaded, SkwSkill):
+        raise ValueError(f"Expected a registered SkwSkill depot, got {type(loaded).__name__}")
+    return loaded
+
+
+# tarav.breadcrumb f257a5d837fc
+def load_skill(folder, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:
+    """The skill a folder holds, built by the depot of the Project above it."""
+    folder = Path(folder).expanduser().resolve()
+    project = find_agentos_project_root(folder)
+    if project is None:
+        raise ValueError(f"A skill belongs to a Project; no .tarav/project.json at or above {folder}")
+    product = folder.relative_to(project).as_posix()
+    for depot in project_skills(project):
+        skill = load_depot(depot, registry=registry)
+        if skill.product == product:
+            return skill
+    raise ValueError(f"No depot in {project / SKILL_DEPOTS} builds {product}")
 
 
 # tarav.breadcrumb 6d845a3dd724
-def skill_document(source, *, project=None, depot=".skw",
+def skill_document(source, *, project=None, depot=DEFAULT_DEPOT,
                    registry: TypeRegistry[TaravObject]):
+    """A document of a Project's depot; a skill depot's documents build its skill folder."""
     document = project_document(source, project=project, depot=depot, registry=registry)
     depot_path = document.depot
     try:
@@ -427,7 +499,7 @@ def skill_document(source, *, project=None, depot=".skw",
     except FileNotFoundError:
         return document
     package = registry.load(depot_path)
-    if isinstance(package, SkwSkill) and package.loading_file is not None:
+    if isinstance(package, SkwSkill):
         matches = [d for d in package.documents() if d.source == document.source]
         if len(matches) != 1:
             raise ValueError('Document is not declared in skill package')
@@ -435,12 +507,23 @@ def skill_document(source, *, project=None, depot=".skw",
     return document
 
 
+def _skill_folder(value):
+    if value is not None:
+        return Path(value).expanduser().resolve()
+    start = Path.cwd().resolve()
+    for candidate in (start, *start.parents):
+        if (candidate / SKILL_JSON).is_file():
+            return candidate
+    raise ValueError(f"No .tarav/skill.json at or above {start}; supply --skill")
+
+
 def register_commands(subparsers, *, registry: TypeRegistry[TaravObject]):
     parser = subparsers.add_parser("skills", help="Build and deploy skill packages")
     commands = parser.add_subparsers(dest="skills_action", required=True)
     for action in ("check", "build", "deploy", "context", "poi", "ls", "read"):
         command = commands.add_parser(action)
-        command.add_argument("--project")
+        command.add_argument("--skill", help="The skill folder; default: the nearest one "
+                             "with a .tarav/skill.json at or above the current directory.")
         if action == 'ls':
             command.add_argument('--source')
             command.add_argument('--offset', type=int, default=0)
@@ -472,22 +555,10 @@ def register_commands(subparsers, *, registry: TypeRegistry[TaravObject]):
 
 def _command(args):
     try:
-        root = project_root(args.project)
-    except ValueError as exc:
-        raise CliError(str(exc)) from exc
-    try:
-        entry_file(root / '.skw')
-    except FileNotFoundError as exc:
-        raise CliError(
-            f'Found {root / ".skw"}, but it has no typed entry record. '
-            'A legacy skw.json is not a skill declaration. '
-            'Use --project <skill-directory> to select a skill with a typed '
-            '.skw/main.json.'
-        ) from exc
-    try:
-        package = load_skill(root, registry=args.skw_registry)
+        folder = _skill_folder(args.skill)
+        package = load_skill(folder, registry=args.skw_registry)
     except (OSError, ValueError, TypeError) as exc:
-        raise CliError(f'Cannot load skill at {root}: {exc}') from exc
+        raise CliError(f'Cannot load skill: {exc}') from exc
     if args.skills_action == 'ls':
         result = package.ls(source=args.source, offset=args.offset, limit=args.limit)
         emit(args, result, render_skill_listing)

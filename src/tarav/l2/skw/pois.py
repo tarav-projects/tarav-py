@@ -14,7 +14,7 @@ from tarav.l1.poi import POICollector
 from tarav.l1.references import Reference
 from tarav.l1.skw.annotations import GenerationAnnotation
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
-from tarav.l1.skw.pois import ContextUnresolvable, Finding, StaleContext, StaleGeneration, owner
+from tarav.l1.skw.pois import ContextUnresolvable, Finding, StaleContext, StaleGeneration
 
 
 class SkwAnalysisCheck(Check):
@@ -59,7 +59,7 @@ class GenerationContextResolutionCheck(Check):
         self.index = index
         self.declaration = deepcopy(declaration)
         self.subject = {
-            **owner(package.root),
+            **package.owner,
             "path": document.key,
             "block": block.label,
             "context_index": index,
@@ -188,7 +188,7 @@ def freshness_checks(package, *, skip_unresolved=False, documents=None):
                     f"Cannot build generation freshness Situation: {document.key}:{block}"
                 ) from exc
             subject = {
-                **owner(package.root),
+                **package.owner,
                 "path": document.key,
                 "block": block,
             }
@@ -207,7 +207,7 @@ def freshness_checks(package, *, skip_unresolved=False, documents=None):
                     f"Cannot build context freshness Situation: {document.key}:{block}"
                 ) from exc
             subject = {
-                **owner(package.root),
+                **package.owner,
                 "path": document.key,
                 "block": block,
             }
@@ -249,7 +249,8 @@ def _analysis_pois(check):
     for finding in check.findings:
         if finding.poi in FRESHNESS:
             raise ValueError("Freshness findings must be produced by SituationChecks")
-        yield finding.poi.from_finding(check, finding, root=check.package.root, state=state)
+        yield finding.poi.from_finding(check, finding, root=check.package.root,
+                                       owner=check.package.owner, state=state)
 
 
 def collect(package, findings):

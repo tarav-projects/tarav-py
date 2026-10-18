@@ -444,7 +444,8 @@ class AgentsMdProductCheck(_AgentsCheck):
         source = self.agents.source
         source = str(source.relative_to(root) if source.is_relative_to(root) else source)
         pois = tuple(
-            finding.poi.from_finding(self, finding.at(path=source), root=root)
+            finding.poi.from_finding(self, finding.at(path=source), root=root,
+                                     owner={"project": project_id(root)})
             for finding in findings
             # the Tarav System Prompt check states that case itself
             if finding.poi is not skw.StaleProducedOutput

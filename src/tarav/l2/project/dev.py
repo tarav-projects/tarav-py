@@ -176,7 +176,7 @@ class PyTestSuite(CheckSuite):
 
 
 class SkillLoadCheck(Check):
-    """A skill package under the Project could not be loaded to collect its checks."""
+    """A skill depot of the Project could not be loaded to collect its checks."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -228,9 +228,10 @@ class DocsProject(Project):
         return TaravClass(target=cls, id=TypeShip("b811ca80-597a-4d11-90f2-7bdb30f9fd19"),
                           name="Tarav.Project.Docs", workflow=PROJECT_WORKFLOW_SHIP)
 
-    def skill_folders(self) -> tuple[Path, ...]:
-        return tuple(sorted(path.parent.parent for path in
-                            (self.root / "skills").glob("*/.skw/main.json")))
+    def skill_depots(self) -> tuple[Path, ...]:
+        from tarav.l2.skw.skills import project_skills
+
+        return project_skills(self.root)
 
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
@@ -240,13 +241,13 @@ class DocsProject(Project):
 
     def _checks(self):
         from tarav.l0.kernel.current import current_records
-        from tarav.l2.skw.skills import load_skill
+        from tarav.l2.skw.skills import load_depot
 
-        for folder in self.skill_folders():
+        for depot in self.skill_depots():
             try:
-                yield load_skill(folder, registry=current_records()).checks.suite()
+                yield load_depot(depot, registry=current_records()).checks.suite()
             except (OSError, ValueError, TypeError, RuntimeError) as exc:
-                yield SkillLoadCheck(folder, f"{type(exc).__name__}: {exc}")
+                yield SkillLoadCheck(depot, f"{type(exc).__name__}: {exc}")
         # the Wiki says what to check about its notes
         from .wiki import ProjectWiki
         yield from ProjectWiki(self).checks()

@@ -106,8 +106,8 @@ def test_docs_report_unsubmitted_markers_and_skills_that_do_not_load(tmp_path: P
         "Text.\n<!-- tarav.breadcrumb " + "a" * 64 + " -->\n")
     (tmp_path / "notes/wiki/daily/today.md").write_text(
         "Text.\n<!-- tarav.context 5a029cbf:0123456789abcdef -->\n")
-    (tmp_path / "skills/broken/.skw").mkdir(parents=True)
-    (tmp_path / "skills/broken/.skw/main.json").write_text("{}")
+    (tmp_path / ".tarav/skillware/skills/broken").mkdir(parents=True)
+    (tmp_path / ".tarav/skillware/skills/broken/main.json").write_text("{}")
     project = _project(tmp_path, DocsProject)
     run = project.checks.run()
     domain_results = [result for result in run.results

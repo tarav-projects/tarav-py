@@ -1,4 +1,4 @@
-"""Typed `.skw` depot records.
+"""Typed Skillware depot records.
 
 The depot is a normal directory Record.  Its concrete type decides which
 operations and schema apply; this base deliberately adds no manifest policy.
@@ -12,7 +12,7 @@ from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 
 
 class SkwDepot(DirectoryRecord):
-    """A `.skw` directory selected through the trusted Record registry."""
+    """A Skillware depot directory selected through the trusted Record registry."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -25,7 +25,7 @@ class SkwDepot(DirectoryRecord):
 
     @property
     def depot(self) -> Path:
-        """The retained `.skw` directory."""
+        """The retained depot directory."""
 
         return self.directory.resolve()
 

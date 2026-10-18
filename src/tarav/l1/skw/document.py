@@ -88,6 +88,10 @@ class SkillwareWorkflow(TaravWorkflow):
     constitution = "Contain the workflows used to develop and deploy Skillware surfaces."
 
 
+#: A Project's own Skillware depot; its skills' depots are under `skills/` in it.
+DEFAULT_DEPOT = ".tarav/skillware"
+
+
 def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -316,18 +320,14 @@ def _difference(actual: str, expected: str, *, limit: int = 40) -> tuple[int, in
 class Document:
     """Load a fresh source for each operation. Storage is explicitly single-writer."""
 
-    def __init__(self, source, *, root=None, depot=None, roles=None, registry=None):
+    def __init__(self, source, *, root, depot, roles=None, registry=None):
+        """`depot` holds the source; `root` is where its product and context resolve."""
         if roles is not None:
             raise TypeError("Context roles were replaced by typed block annotations")
         self.source = Path(source).resolve()
-        if root is None:
-            inferred = next((p for p in self.source.parents if p.name == ".skw"), None)
-            if inferred is None:
-                raise ValueError("Source outside .skw needs project root")
-            root = inferred.parent
         self.root = Path(root).resolve()
         # tarav.breadcrumb b730537a34b4
-        selected_depot = self.root / ".skw" if depot is None else Path(depot)
+        selected_depot = Path(depot)
         if not selected_depot.is_absolute():
             selected_depot = self.root / selected_depot
         self.depot = selected_depot.resolve()
@@ -634,8 +634,8 @@ class Document:
         return {"written": True, "findings": self.lint()}
 
 
-def project_root(project=None, *, depot=".skw"):
-    """Select an explicit project or discover the nearest .skw ancestor."""
+def project_root(project=None, *, depot=DEFAULT_DEPOT):
+    """Select an explicit project or discover the nearest ancestor holding the depot."""
     start = Path(project).expanduser().resolve() if project is not None else Path.cwd().resolve()
     candidates = (start,) if project is not None else (start, *start.parents)
     for candidate in candidates:
@@ -648,7 +648,7 @@ def project_root(project=None, *, depot=".skw"):
                      else f"No {depot} depot found above {start}; supply --project")
 
 
-def project_document(source, *, project=None, registry=None, depot=".skw"):
+def project_document(source, *, project=None, registry=None, depot=DEFAULT_DEPOT):
     root = project_root(project, depot=depot)
     relative = Path(source)
     if relative.is_absolute():
@@ -665,9 +665,10 @@ def register_commands(subparsers, *, document_factory=project_document):
     commands = parser.add_subparsers(dest="document_command", required=True)
     for name in ("lint", "compile", "prepare", "record", "produce", "context", "observe-context"):
         command = commands.add_parser(name)
-        command.add_argument("--source", required=True, help="Source path relative to .skw/src.")
-        command.add_argument("--project", help="Directory containing .skw; default: discover upward from cwd.")
-        command.add_argument("--depot", help="Project-relative Skillware depot; default: .skw.")
+        command.add_argument("--source", required=True, help="Source path relative to the depot's src.")
+        command.add_argument("--project", help="The Project; default: discover upward from cwd.")
+        command.add_argument("--depot", help=f"Project-relative Skillware depot; default: {DEFAULT_DEPOT}; "
+                             "a skill's is .tarav/skillware/skills/<name>.")
         if name in ("prepare", "produce", "context", "observe-context"):
             command.add_argument("--block", required=True)
         if name == "prepare":

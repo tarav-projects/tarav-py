@@ -10,7 +10,7 @@ from tarav.l1.skw.loading import SkillReadingGraph
 from tarav.l1.skw.pois import (
     AttachmentCycle, Finding, InclusionCycle, InvalidBlockReference, InvalidContextTarget,
     InvalidLoadingRoot, InvalidParent, LoadingAnalysisIncomplete, MissingContext,
-    PathDependentContext, RootHasParent, UndeclaredBlock, UnreachableBlock, owner,
+    PathDependentContext, RootHasParent, UndeclaredBlock, UnreachableBlock,
 )
 
 from .pois import surface_state
@@ -38,7 +38,7 @@ class ReadingGraphCheck(Check):
     def _poi(self, finding):
         block = finding.get("block")
         binding = self.graph.bindings.get(block)
-        subject = {**owner(self.graph.package.root),
+        subject = {**self.graph.package.owner,
                    "block": str(binding[1].id) if binding else block}
         for key in ("target", "delivery"):
             if key in finding:
@@ -134,9 +134,10 @@ class LinkProseCheck(ReadingGraphCheck):
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def _run(self):
-        root = self.graph.package.root
+        package = self.graph.package
         return CheckResult(self, status="completed",
-                           pois=(found.poi.from_finding(self, found, root=root)
+                           pois=(found.poi.from_finding(self, found, root=package.root,
+                                                        owner=package.owner)
                                  for found in self.graph.prose_findings()))
 
 

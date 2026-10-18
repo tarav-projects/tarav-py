@@ -10,22 +10,12 @@ from pathlib import Path
 from typing import ClassVar
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
-from tarav.l0.project import project_id
 from tarav.l1.checks import CheckPOI
 from tarav.l1.poi.actionable import BlessablePOI
-from tarav.l1.skills.marker import SKILL_JSON, SkillMarker
 
 from .identity import SKW_SKILLS_WORKFLOW_SHIP
 
 
-
-# tarav.breadcrumb e92c586be979
-def owner(root):
-    """Whose a document is, by UUID: a skill's by its marker, an agents file's by its Project."""
-    root = Path(root)
-    if (root / SKILL_JSON).is_file():
-        return {"skill": str(SkillMarker.of(root).id)}
-    return {"project": project_id(root)}
 
 class SkwPOI(CheckPOI):
     """A workflow-owned SKW POI explained by the bound analysis Check."""
@@ -79,16 +69,18 @@ class SkwPOI(CheckPOI):
         )
 
     @classmethod
-    def from_finding(cls, check, finding, *, root, state=None):
+    def from_finding(cls, check, finding, *, root, owner, state=None):
         """The POI of one analysis finding, raised by `check`.
 
         `root` is the folder the analysed document belongs to: a skill
-        package, or a Project for its agents file. `state` is the file state
+        package, or a Project for its agents file; `owner` names that skill
+        or Project by its UUID, as `{"skill": id}` or `{"project": id}`.
+        `state` is the file state
         of a package, when the check has one. This is the general Skillware
         line: the place of the finding, plus that state. A Type that can name
         its own state overrides it.
         """
-        subject = {**owner(root),
+        subject = {**owner,
                    **{k: finding[k] for k in ('block', 'path', 'target', 'delivery')
                       if k in finding}}
         held = {} if state is None else {"surface_state": state}
@@ -152,12 +144,12 @@ class MissingMarkdownLink(SkwPOI):
         )
 
     @classmethod
-    def from_finding(cls, check, finding, *, root, state=None):
+    def from_finding(cls, check, finding, *, root, owner, state=None):
         """The situation is what the check compares: the block and the href its text should hold."""
         return cls(
             check,
             cls.sentence(where=f"{finding['path']}: {finding['label']}", target=finding['href']),
-            situation={**owner(root), 'block': finding['block'], 'href': finding['href']},
+            situation={**owner, 'block': finding['block'], 'href': finding['href']},
         )
 
 
@@ -452,6 +444,36 @@ class MissingConsumerFile(SkwPOI):
         )
 
 
+class SkillMarkerMissing(SkwPOI):
+    """The folder the depot builds has no `.tarav/skill.json`: the skill has no identity there."""
+
+    statement = "The skill folder the depot builds has no .tarav/skill.json"
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('a11c7a39-3a98-4b95-a2e1-b63361d924d2'),
+            name='Tarav.SKW.POI.SkillMarkerMissing',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+
+class SkillMarkerMismatch(SkwPOI):
+    """The skill folder's `.tarav/skill.json` names another skill than the depot builds."""
+
+    statement = "The skill folder's .tarav/skill.json names another skill than its depot"
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(
+            target=cls,
+            id=TypeShip('ec7d92bf-a64c-4ca4-b09c-e7e93cfcc0e5'),
+            name='Tarav.SKW.POI.SkillMarkerMismatch',
+            workflow=SKW_SKILLS_WORKFLOW_SHIP,
+        )
+
+
 class UnbundledLink(SkwPOI):
     """A file the package delivers links to a file inside the package that the package does not
     list among its files.
@@ -709,7 +731,7 @@ class ProductDrift(SkwPOI):
     @classmethod
     # tarav.breadcrumb 3eb40ba8c8c5
     # tarav.breadcrumb f41a5d635393
-    def from_finding(cls, check, finding, *, root, state=None):
+    def from_finding(cls, check, finding, *, root, owner, state=None):
         """The situation is what was compared: the file, its text and the text its source produces."""
         root = Path(root)
         product = Path(finding['product'])
