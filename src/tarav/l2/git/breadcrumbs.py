@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
 import json
@@ -15,6 +14,7 @@ from pydantic import ConfigDict, Field
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l0.kernel.records import _json_object
 from tarav.l1.breadcrumbs import (
+    LABEL_PREFIX,
     AuditedBreadcrumb,
     BreadcrumbAuditContext,
     BreadcrumbAuditConcern,
@@ -27,7 +27,7 @@ from tarav.l1.breadcrumbs import (
     breadcrumb_label,
 )
 from tarav.l1.breadcrumbs import auditing as audit
-from tarav.l1.breadcrumbs.auditing import surface_labels
+from tarav.l1.breadcrumbs.auditing import find_label, surface_labels
 from tarav.l1.breadcrumbs.workflows import BreadcrumbAnnotationWorkflow
 from tarav.l1.git import GIT_WORKFLOW_SHIP, GitObject, GitRepository
 from tarav.l1.references.git import GitCommitMessagePositionTarget
@@ -38,7 +38,7 @@ _CONTEXT = re.compile(
     r"^\s*<!--\s*tarav\.context\s+[0-9a-f]{8}:[0-9a-f]{1,64}\s*-->\s*$"
 )
 _BREADCRUMB = re.compile(
-    r"^\s*<!--\s*tarav\.breadcrumb\s+([0-9a-f]{64})\s*-->\s*$"
+    rf"^\s*<!--\s*tarav\.breadcrumb\s+([0-9a-f]{{{LABEL_PREFIX},64}})\s*-->\s*$"
 )
 _EVIDENCE = re.compile(
     r"^\s*<!--\s*tarav\.evidence\s+(agent-initiated|unknown-session)\s*-->\s*$"
@@ -183,6 +183,7 @@ def prepare_message(
     for annotation in annotations:
         breadcrumb = store.create()
         breadcrumb_id = str(breadcrumb.records.to_record()["id"])
+        label = store.label(breadcrumb_id)
         attachments = tuple(
             _json_object(item)
             for item in workflow.attachments(annotation, breadcrumb_id)
@@ -193,7 +194,7 @@ def prepare_message(
         current = rewritten[marker.line - 1]
         ending = "\n" if current.endswith("\n") else ""
         body = current[:-1] if ending else current
-        rendered = f"<!-- {breadcrumb_label(breadcrumb_id)} -->"
+        rendered = f"<!-- {label} -->"
         rewritten[marker.line - 1] = (
             body[: marker.start_column]
             + rendered
@@ -214,13 +215,7 @@ def prepare_message(
     )
     rendered_message += f"\n\n<!-- tarav.commit-evidence\n{envelope}\n-->"
     _validate_message(rendered_message, provisional=False)
-    entries = _parse_envelope(rendered_message)
-    if Counter(_breadcrumb_lines(rendered_message).keys()) != Counter(
-        str(entry["id"]) for entry in entries
-    ):
-        raise CommitEvidenceError(
-            "Prepared message labels and recoverable evidence mapping disagree"
-        )
+    _label_lines(rendered_message, _parse_envelope(rendered_message))
     return PreparedCommitMessage(rendered_message, tuple(breadcrumb_ids))
 
 
@@ -258,12 +253,8 @@ def register_commit(
     selected = GitRepository(repository)
     exact, message = selected.commit_message(commit)
     entries = _parse_envelope(message)
-    label_lines = _breadcrumb_lines(message)
+    label_lines = _label_lines(message, entries)
     expected_ids = tuple(str(entry["id"]) for entry in entries)
-    if Counter(label_lines.keys()) != Counter(expected_ids):
-        raise CommitEvidenceError(
-            "Commit message labels and recoverable evidence mapping disagree"
-        )
 
     for entry in entries:
         breadcrumb_id = str(entry["id"])
@@ -304,12 +295,7 @@ def audit_commit(
     try:
         _validate_message(message, provisional=False)
         entries = _parse_envelope(message)
-        if Counter(_breadcrumb_lines(message).keys()) != Counter(
-            str(entry["id"]) for entry in entries
-        ):
-            raise CommitEvidenceError(
-                "Commit message labels and recoverable evidence mapping disagree"
-            )
+        _label_lines(message, entries)
         evidence_by_id = {
             str(entry["id"]): entry["attachments"] for entry in entries
         }
@@ -318,27 +304,34 @@ def audit_commit(
 
     audited: list[AuditedBreadcrumb] = []
     for label in labels:
+        # The message's own envelope names its full IDs; the registry is the fallback.
+        enveloped = [item for item in evidence_by_id if item.startswith(label.prefix)]
+        breadcrumb_id = enveloped[0] if len(enveloped) == 1 else find_label(
+            store, label, findings)
+        if breadcrumb_id is None:
+            audited.append(AuditedBreadcrumb(label.prefix, label.line, label.label, None))
+            continue
         resolution = None
         observations: tuple[Mapping[str, object], ...] = ()
         attachments: tuple[Mapping[str, object], ...] = ()
         try:
-            observations = store.observations(label.breadcrumb_id)
-            attachments = store.attachments(label.breadcrumb_id)
-            expected = evidence_by_id.get(label.breadcrumb_id)
+            observations = store.observations(breadcrumb_id)
+            attachments = store.attachments(breadcrumb_id)
+            expected = evidence_by_id.get(breadcrumb_id)
             if expected is not None:
-                _check_attachment_conflicts(store, label.breadcrumb_id, expected)
+                _check_attachment_conflicts(store, breadcrumb_id, expected)
                 if any(item not in attachments for item in expected):
                     findings.append(
                         BreadcrumbAuditConcern(
                             audit.CommitEvidenceRegistrationIncomplete,
                             "Commit evidence contains attachments not retained in the store.",
-                            label.breadcrumb_id,
+                            breadcrumb_id,
                             label.line,
                         )
                     )
             resolution = _resolve_commit_label(
                 store,
-                label.breadcrumb_id,
+                breadcrumb_id,
                 selected,
                 exact,
                 label.line,
@@ -348,7 +341,7 @@ def audit_commit(
                 BreadcrumbAuditConcern(
                     audit.BreadcrumbRecordUnavailable,
                     str(exc),
-                    label.breadcrumb_id,
+                    breadcrumb_id,
                     label.line,
                 )
             )
@@ -358,7 +351,7 @@ def audit_commit(
                     BreadcrumbAuditConcern(
                         audit.audit_type(poi),
                         poi.message,
-                        label.breadcrumb_id,
+                        breadcrumb_id,
                         label.line,
                     )
                 )
@@ -372,7 +365,7 @@ def audit_commit(
                     BreadcrumbAuditConcern(
                         audit.BreadcrumbPositionDisagrees,
                         "Resolved Breadcrumb position disagrees with this commit message.",
-                        label.breadcrumb_id,
+                        breadcrumb_id,
                         label.line,
                     )
                 )
@@ -381,13 +374,13 @@ def audit_commit(
                     BreadcrumbAuditConcern(
                         audit.BreadcrumbAttachmentMissing,
                         "Breadcrumb has no retained workflow attachment.",
-                        label.breadcrumb_id,
+                        breadcrumb_id,
                         label.line,
                     )
                 )
         audited.append(
             AuditedBreadcrumb(
-                label.breadcrumb_id,
+                breadcrumb_id,
                 label.line,
                 label.label,
                 resolution,
@@ -492,16 +485,24 @@ def _parse_envelope(message: str) -> list[dict[str, object]]:
     return entries
 
 
-def _breadcrumb_lines(message: str) -> dict[str, int]:
+def _label_lines(message: str, entries: list[dict[str, object]]) -> dict[str, int]:
+    """Each envelope ID's message line: every label is a prefix of exactly one."""
+    ids = [str(entry["id"]) for entry in entries]
     result: dict[str, int] = {}
     for number, line in enumerate(message.splitlines(), 1):
         match = _BREADCRUMB.fullmatch(line)
         if match is None:
             continue
-        breadcrumb_id = match.group(1)
-        if breadcrumb_id in result:
-            raise CommitEvidenceError(f"Duplicate Breadcrumb label: {breadcrumb_id}")
-        result[breadcrumb_id] = number
+        named = [item for item in ids if item.startswith(match.group(1))]
+        if len(named) != 1:
+            raise CommitEvidenceError(
+                "Commit message labels and recoverable evidence mapping disagree")
+        if named[0] in result:
+            raise CommitEvidenceError(f"Duplicate Breadcrumb label: {named[0]}")
+        result[named[0]] = number
+    if len(result) != len(ids):
+        raise CommitEvidenceError(
+            "Commit message labels and recoverable evidence mapping disagree")
     return result
 
 
@@ -529,7 +530,7 @@ def _resolve_commit_label(
     line: int,
 ) -> BreadcrumbResolution:
     breadcrumb = store.load(breadcrumb_id)
-    canonical = breadcrumb_label(breadcrumb_id)
+    canonical = breadcrumb_label(breadcrumb_id[:LABEL_PREFIX])
     for observation in reversed(store.observations(breadcrumb_id)):
         record = observation.get("locator")
         if not isinstance(record, dict):

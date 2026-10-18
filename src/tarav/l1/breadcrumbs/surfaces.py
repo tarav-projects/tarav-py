@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tarav.l0._core.persistence import atomic_write_text
 
-from .store import BreadcrumbError, BreadcrumbStore, breadcrumb_label
+from .store import BreadcrumbError, BreadcrumbStore
 from .workflows import BreadcrumbAnnotationWorkflow, PreparedAnnotation
 
 
@@ -83,13 +83,18 @@ def submit_annotations(
         )
     _validate_annotations(document, annotations)
 
+    # tarav.breadcrumb cc0bdfe5ce1f
+    # Every label is settled before anything is observed or written, so a
+    # collision leaves the surface and the new Breadcrumbs' positions untouched.
+    labelled = []
+    for annotation in annotations:
+        breadcrumb_id = str(store.create().records.to_record()["id"])
+        labelled.append((annotation, breadcrumb_id, store.label(breadcrumb_id)))
+
     original_lines = document.text.splitlines()
     rewritten = document.text.splitlines(keepends=True)
     submitted: list[SubmittedBreadcrumb] = []
-    for annotation in annotations:
-        breadcrumb = store.create()
-        breadcrumb_id = str(breadcrumb.records.to_record()["id"])
-        core_label = breadcrumb_label(breadcrumb_id)
+    for annotation, breadcrumb_id, core_label in labelled:
         rendered = render_surface_label(selected_language, core_label)
         marker = annotation.marker
         current = rewritten[marker.line - 1]

@@ -18,15 +18,15 @@ from tarav.l1.surfaces.typescript import TypeScriptNormalModel
 from tarav.l1.references.git import GitCommitMessagePositionTarget
 
 from .store import (
-    BreadcrumbError, BreadcrumbPositionAmbiguous, BreadcrumbPositionMissing,
-    BreadcrumbResolution, BreadcrumbResolutionPOI, BreadcrumbStore,
+    LABEL_PREFIX, BreadcrumbAmbiguous, BreadcrumbError, BreadcrumbPositionAmbiguous,
+    BreadcrumbPositionMissing, BreadcrumbResolution, BreadcrumbResolutionPOI, BreadcrumbStore,
 )
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
 from .surfaces import UNSUPPORTED_LANGUAGE, BreadcrumbSurface, infer_surface_language
 from .workflows import BreadcrumbAnnotationWorkflow
 
 
-_BREADCRUMB_CORE = r"tarav\.breadcrumb\s+([0-9a-f]{64})"
+_BREADCRUMB_CORE = rf"tarav\.breadcrumb\s+([0-9a-f]{{{LABEL_PREFIX},64}})"
 _MARKDOWN_BREADCRUMB = re.compile(rf"^\s*<!--\s*{_BREADCRUMB_CORE}\s*-->\s*$")
 _PYTHON_BREADCRUMB = re.compile(rf"#\s*{_BREADCRUMB_CORE}\s*$")
 _TYPESCRIPT_BREADCRUMB = re.compile(rf"//\s*{_BREADCRUMB_CORE}\s*$")
@@ -34,7 +34,9 @@ _TYPESCRIPT_BREADCRUMB = re.compile(rf"//\s*{_BREADCRUMB_CORE}\s*$")
 
 @dataclass(frozen=True, slots=True)
 class SurfaceBreadcrumbLabel:
-    breadcrumb_id: str
+    """A label as a surface carries it: an ID prefix of 12 to 64 characters."""
+
+    prefix: str
     line: int
     label: str
 
@@ -112,6 +114,20 @@ class BreadcrumbRecordUnavailable(BreadcrumbAuditPOI):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip('27680081-5ca5-4f3a-b2f1-ed82f8e71756'),
                           name='Tarav.Breadcrumbs.Audit.POI.RecordUnavailable', workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+# tarav.breadcrumb 488c9f0b9a18
+class LabelAmbiguous(BreadcrumbAuditPOI):
+    """A label's prefix matches several Breadcrumbs, so which one it names cannot be told.
+
+    The message lists the colliding full IDs. Lengthening the label until it is
+    unique, after choosing the intended Breadcrumb, is Agent or User work.
+    """
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip('b7fa6e78-b3f7-4f29-8caf-9d9e5aade182'),
+                          name='Tarav.Breadcrumbs.Audit.POI.LabelAmbiguous', workflow=BREADCRUMBS_WORKFLOW_SHIP)
 
 
 class LabelWithoutPosition(BreadcrumbAuditPOI):
@@ -373,36 +389,41 @@ def audit_annotations(
         path.read_text(encoding="utf-8"),
     )
     labels, findings = _surface_labels(document)
-    counts = Counter(label.breadcrumb_id for label in labels)
+    found = {label.prefix: find_label(store, label, findings) for label in labels}
+    counts = Counter(found.get(label.prefix) for label in labels)
     updates: list[Mapping[str, object]] = []
     audited: list[AuditedBreadcrumb] = []
     for label in labels:
+        breadcrumb_id = found[label.prefix]
+        if breadcrumb_id is None:
+            audited.append(AuditedBreadcrumb(label.prefix, label.line, label.label, None))
+            continue
         resolution: BreadcrumbResolution | None = None
         observations: tuple[Mapping[str, object], ...] = ()
         attachments: tuple[Mapping[str, object], ...] = ()
         try:
-            resolution = store.resolve(label.breadcrumb_id)
-            if refresh_positions and counts[label.breadcrumb_id] == 1 and (
+            resolution = store.resolve(breadcrumb_id)
+            if refresh_positions and counts[breadcrumb_id] == 1 and (
                 resolution.status == "unresolvable"
             ):
                 try:
-                    store.observe_position(label.breadcrumb_id, file=str(path), line=label.line)
+                    store.observe_position(breadcrumb_id, file=str(path), line=label.line)
                 except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
                     findings.append(BreadcrumbAuditConcern(
                         BreadcrumbPositionRefreshFailed, str(exc),
-                        label.breadcrumb_id, label.line))
+                        breadcrumb_id, label.line))
                 else:
-                    updates.append({"breadcrumb_id": label.breadcrumb_id,
+                    updates.append({"breadcrumb_id": breadcrumb_id,
                                     "file": str(path), "line": label.line})
-                    resolution = store.resolve(label.breadcrumb_id)
-            observations = store.observations(label.breadcrumb_id)
-            attachments = store.attachments(label.breadcrumb_id)
+                    resolution = store.resolve(breadcrumb_id)
+            observations = store.observations(breadcrumb_id)
+            attachments = store.attachments(breadcrumb_id)
         except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
             findings.append(
                 BreadcrumbAuditConcern(
                     BreadcrumbRecordUnavailable,
                     str(exc),
-                    label.breadcrumb_id,
+                    breadcrumb_id,
                     label.line,
                 )
             )
@@ -412,7 +433,7 @@ def audit_annotations(
                     BreadcrumbAuditConcern(
                         audit_type(poi),
                         poi.message,
-                        label.breadcrumb_id,
+                        breadcrumb_id,
                         label.line,
                     )
                 )
@@ -424,7 +445,7 @@ def audit_annotations(
                     BreadcrumbAuditConcern(
                         BreadcrumbPositionDisagrees,
                         "Resolved Breadcrumb position disagrees with this surface label.",
-                        label.breadcrumb_id,
+                        breadcrumb_id,
                         label.line,
                     )
                 )
@@ -433,13 +454,13 @@ def audit_annotations(
                     BreadcrumbAuditConcern(
                         BreadcrumbAttachmentMissing,
                         "Breadcrumb has no retained workflow attachment.",
-                        label.breadcrumb_id,
+                        breadcrumb_id,
                         label.line,
                     )
                 )
         audited.append(
             AuditedBreadcrumb(
-                label.breadcrumb_id,
+                breadcrumb_id,
                 label.line,
                 label.label,
                 resolution,
@@ -450,6 +471,19 @@ def audit_annotations(
     context = BreadcrumbAuditContext(document, tuple(audited))
     return BreadcrumbAuditResult.from_concerns(
         context, workflow, request, tuple(findings), tuple(updates))
+
+
+def find_label(store: BreadcrumbStore, label: SurfaceBreadcrumbLabel,
+               findings: list[BreadcrumbAuditConcern]) -> str | None:
+    """The full ID a surface label names, or None after recording why not."""
+    try:
+        return store.find(label.prefix)
+    except BreadcrumbAmbiguous as exc:
+        findings.append(BreadcrumbAuditConcern(LabelAmbiguous, str(exc), line=label.line))
+    except (BreadcrumbError, OSError) as exc:
+        findings.append(BreadcrumbAuditConcern(BreadcrumbRecordUnavailable, str(exc),
+                                               label.prefix, label.line))
+    return None
 
 
 def _surface_labels(
@@ -509,14 +543,8 @@ def _surface_labels(
                 )
             )
             continue
-        breadcrumb_id = match.group(1)
-        labels.append(
-            SurfaceBreadcrumbLabel(
-                breadcrumb_id,
-                line,
-                f"tarav.breadcrumb {breadcrumb_id}",
-            )
-        )
+        prefix = match.group(1)
+        labels.append(SurfaceBreadcrumbLabel(prefix, line, f"tarav.breadcrumb {prefix}"))
     return tuple(labels), findings
 
 
@@ -535,5 +563,6 @@ __all__ = [
     "BreadcrumbAuditResult",
     "SurfaceBreadcrumbLabel",
     "audit_annotations",
+    "find_label",
     "surface_labels",
 ]
