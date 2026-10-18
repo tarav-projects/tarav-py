@@ -567,6 +567,8 @@ def create_runtime(
     ):
         registrations.register(workflow)
     register_action(POIResolutionAction)
+    from tarav.l1.git.gitleaks import GitleaksFindingResolution
+    register_action(GitleaksFindingResolution)
     from tarav.l1.project.config import register_config_section
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig

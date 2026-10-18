@@ -16,6 +16,7 @@ from tarav.l0._core.errors import CliError
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l0.project import require_agentos_project
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
+from tarav.l1.git.gitleaks import unowned_checks
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 
 from . import Project
@@ -49,12 +50,16 @@ class TaravSystemProject(Project):
 
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
-            """Its own checks, and one check per active Project."""
+            """Its own checks, one check per active Project, and the gitleaks findings of
+            scanned repositories no Project owns."""
             return CheckSuite(
                 [super().suite(),
                  CheckSuite([ActiveProjectCheck(self.obj, path)
                              for path in self.obj.active_paths()],
-                            name=f"{self.obj.name} active Projects")],
+                            name=f"{self.obj.name} active Projects"),
+                 # tarav.breadcrumb 23b1e2b1c68b
+                 CheckSuite(lambda _suite: unowned_checks(),
+                            name="gitleaks: repositories no Project owns")],
                 name=self.obj.name, repositories=self.obj.repositories())
 
 

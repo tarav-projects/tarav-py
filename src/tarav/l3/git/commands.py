@@ -10,7 +10,7 @@ from tarav.l0._core.errors import CliError
 from tarav.l1.breadcrumbs import BreadcrumbError, BreadcrumbStore
 from tarav.l1.git import GitError
 from tarav.l1.git.change import find
-from tarav.l1.git.gitleaks import GitleaksUnavailable, run_gitleaks
+from tarav.l1.git.gitleaks import GitleaksUnavailable, owner_of, register_run, run_gitleaks
 from tarav.l1.git.hooks import install, run_hook
 from tarav.l0.project import require_agentos_project
 from tarav.l1.usage import describe_file
@@ -91,15 +91,19 @@ def _cmd_gitleaks_scan(args: argparse.Namespace) -> int:
     root = Path(args.repo).expanduser().resolve()
     try:
         run = run_gitleaks(root)
+        owner = owner_of(root)
+        changed = register_run(root, run)
     except (GitleaksUnavailable, GitError, RuntimeError, ValueError) as exc:
         raise CliError(str(exc)) from exc
-    payload = run.records.to_record()
+    payload = {**run.records.to_record(), "owner": owner, "actions_changed": len(changed)}
     if args.json:
         print(json.dumps(payload, indent=2))
     else:
         print(f"repository: {run.repository}")
         print(f"findings: {run.findings}")
         print(f"report: {run.report}")
+        print(f"owner: {owner['name']} ({owner['root']})")
+        print(f"actions changed: {len(changed)}")
     return 0
 
 
