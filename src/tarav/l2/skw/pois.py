@@ -229,11 +229,11 @@ def surface_state(package):
     # later source edits, even when the checker emits the same compact operands.
     from .publication import digest
     paths = {package.depot / 'main.json', package.depot / 'lock.json'}
-    paths.update(package.path(s) for s in package.sources)
-    paths.update(package.path(s) for s in package.publications or [])
+    paths.update(package.depot_path(s) for s in package.sources)
+    paths.update(package.depot_path(s) for s in package.publications or [])
     paths.update(package.path(s) for s in package.files)
     if package.loading_file is not None:
-        paths.add(package.path(package.loading_file))
+        paths.add(package.depot_path(package.loading_file))
     state = {}
     for path in sorted(paths):
         try:

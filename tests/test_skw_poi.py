@@ -76,7 +76,7 @@ def _skill(root):
         "type": entity(SkwSkill).name,
         "schema_version": 1,
         "entrypoint": "explanation.md",
-        "sources": [".skw/src/explanation.skw.json"],
+        "sources": ["src/explanation.skw.json"],
         "files": ["explanation.md"],
         "dependencies": [],
     }))
@@ -135,7 +135,7 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
         "type": entity(SkwSkill).name,
         "schema_version": 1,
         "entrypoint": "explanation.md",
-        "sources": [".skw/src/explanation.skw.json"],
+        "sources": ["src/explanation.skw.json"],
         "files": ["explanation.md"],
         "dependencies": [],
     }))

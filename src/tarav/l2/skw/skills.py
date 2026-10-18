@@ -123,11 +123,12 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         """Check what the manifest's types do not; needs the skill's location."""
         if self.schema_version != 1:
             raise ValueError("Expected skill package schema 1")
-        for key, values in (("sources", self.sources), ("files", self.files)):
+        for key, values, resolve in (("sources", self.sources, self.depot_path),
+                                     ("files", self.files, self.path)):
             if len(values) != len(set(values)):
                 raise ValueError(f"{key} must contain unique relative paths")
             for value in values:
-                self.path(value)
+                resolve(value)
         if self.entrypoint_file not in self.files:
             raise ValueError("Entrypoint must be a deployed file")
         for value in self.files:
@@ -147,19 +148,18 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
                 raise ValueError("Dependency paths must be relative")
 
     def path(self, value):
-        if (not isinstance(value, str) or not value or Path(value).is_absolute()
-                or ".." in Path(value).parts or Path(value).as_posix() != value
-                or value == "."):
-            raise ValueError("Expected package-relative path")
-        target = (self.root / value).resolve()
-        if not target.is_relative_to(self.root):
-            raise ValueError("Package path escapes root")
-        return target
+        """A product path: a deployed file, a dependency, a context target."""
+        return _relative(self.root, value, "Package path escapes root")
+
+    def depot_path(self, value):
+        """A path inside the depot: a source, the loading record, a publication."""
+        return _relative(self.depot, value, "Depot path escapes the depot")
 
     def documents(self):
         self._validate()
         cls = SkillDocument if self.loading_file is not None else Document
-        documents = [cls(self.path(p), root=self.root) for p in self.sources]
+        documents = [cls(self.depot_path(p), root=self.root, depot=self.depot)
+                     for p in self.sources]
         if self.loading_file is not None:
             loading = SkillReadingGraph(self, documents)
             for document in documents:
@@ -168,7 +168,11 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
 
     def _navigation_document(self, source):
         """Select one declared source, relative to .skw/src."""
-        document = project_document(source, project=self.root)
+        relative = Path(source)
+        base = self.depot / 'src'
+        if relative.is_absolute() or not (base / relative).resolve().is_relative_to(base):
+            raise ValueError('--source must be relative to the depot\'s src directory')
+        document = Document(base / relative, root=self.root, depot=self.depot)
         if document.key not in self.sources:
             raise ValueError('Document is not declared in skill')
         return document
@@ -180,8 +184,8 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         self._validate()
         if source is None:
             base = self.depot / 'src'
-            items = [{'source': str(self.path(p).relative_to(base)),
-                      'path': str(self.path(p))} for p in self.sources]
+            items = [{'source': str(self.depot_path(p).relative_to(base)),
+                      'path': str(self.depot_path(p))} for p in self.sources]
         else:
             document = self._navigation_document(source)
             items = [{'block': b.label, 'id': str(b.id), 'type': entity(type(b)).name}
@@ -255,7 +259,7 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
 
     def publications(self):
         self._validate()
-        return [ModelPublication(self.path(p), root=self.root)
+        return [ModelPublication(self.depot_path(p), root=self.root, depot=self.depot)
                 for p in self.publications or []]
 
     def check(self):
@@ -278,7 +282,7 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
                    'Models publication is disconnected pending redesign.')
         for source in self.sources:
             try:
-                document = documents[self.path(source)]
+                document = documents[self.depot_path(source)]
                 if isinstance(document, SkillDocument):
                     document.text()
                 if document.target in outputs:
@@ -391,6 +395,17 @@ class SkwSkillsWorkflow(TaravWorkflow):
     @property
     def workflow(self):
         return CodeWorkflow()
+
+
+def _relative(base, value, escape):
+    if (not isinstance(value, str) or not value or Path(value).is_absolute()
+            or ".." in Path(value).parts or Path(value).as_posix() != value
+            or value == "."):
+        raise ValueError("Expected package-relative path")
+    target = (base / value).resolve()
+    if not target.is_relative_to(base):
+        raise ValueError(escape)
+    return target
 
 
 def load_skill(root, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:

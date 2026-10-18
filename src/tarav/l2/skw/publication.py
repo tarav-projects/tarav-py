@@ -43,12 +43,13 @@ def digest(value):
 
 
 class ModelPublication:
-    def __init__(self, source, *, root):
+    def __init__(self, source, *, root, depot):
         from tarav.l2.models.errors import require_models
         require_models()
         self.source = Path(source).resolve()
         self.root = Path(root).resolve()
-        self.key = self.source.relative_to(self.root).as_posix()
+        self.depot = Path(depot).resolve()
+        self.key = self.source.relative_to(self.depot).as_posix()
         self.data = read(self.source)
         if (self.data.get('type') != entity(ModelPublicationRecord).name
                 or self.data.get('schema_version') != 1):
@@ -59,14 +60,14 @@ class ModelPublication:
             raise ValueError('Expected package-relative Markdown output')
         self.target = (self.root / output).resolve()
         if (not self.target.is_relative_to(self.root)
-                or self.target.is_relative_to(self.root / '.skw')):
+                or self.target.is_relative_to(self.depot)):
             raise ValueError('Publication output must be a consumer surface')
         blocks = self.data['blocks']
         if (not isinstance(blocks, list) or not blocks
                 or any(not isinstance(b, str) for b in blocks)
                 or len(blocks) != len(set(blocks))):
             raise ValueError('Select a nonempty ordered list of unique Block Ships')
-        self.lock_path = self.root / '.skw/publications.lock.json'
+        self.lock_path = self.depot / 'publications.lock.json'
 
     def render(self):
         # Namespace paths are relative to the publication source, like other

@@ -331,9 +331,11 @@ class Document:
         if not selected_depot.is_absolute():
             selected_depot = self.root / selected_depot
         self.depot = selected_depot.resolve()
-        if not self.depot.is_relative_to(self.root):
-            raise ValueError("Skillware depot must be inside project root")
-        self.key = self.source.relative_to(self.root).as_posix()
+        if not self.source.is_relative_to(self.depot):
+            raise ValueError("Source must be inside its Skillware depot")
+        # tarav.breadcrumb f3d91ef05572
+        # a source is named from its depot; products and context from the root
+        self.key = self.source.relative_to(self.depot).as_posix()
         self.data = read(self.source)
         if self.data.get("type") != entity(DocumentRecord).name or self.data.get("schema_version") != 1:
             raise ValueError("Expected Skillware document schema 1")
@@ -613,7 +615,7 @@ class Document:
                 # tarav.breadcrumb a999689284b9
                 places, lines, shown = _difference(actual, expected)
                 report(ProductDrift, detail=f"{places} places, {lines} lines",
-                       product=str(self.target), actual=_hash(actual),
+                       product=str(self.target), source=str(self.source), actual=_hash(actual),
                        expected=_hash(expected), difference=shown)
         return findings
 

@@ -2,7 +2,7 @@
   "type": "Tarav.Skillware.Lock",
   "schema_version": 1,
   "documents": {
-    ".tarav/skillware/src/AGENTS.skw.json": {
+    "src/AGENTS.skw.json": {
       "blocks": {},
       "source_hash": "7910e4709e7167845140f6ef9c536597c1170844f8fa54ba71f658a8f025d079",
       "product_hash": "5696aea396df047b5d7deb2016f76b6c555a25999f5e4c1f550210cac360e127"

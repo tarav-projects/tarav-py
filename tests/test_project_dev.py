@@ -7,6 +7,8 @@ from datetime import date
 from pathlib import Path
 import uuid
 
+from tarav.l0.testing import DEFAULT_TEST_PROJECT_ID, write_project_marker
+
 from tarav.l2.project.dev import (
     DocsProject,
     PythonPackageProject,
@@ -58,6 +60,7 @@ def test_pytest_runs_once_and_each_test_file_is_a_suite_of_its_own(tmp_path: Pat
         "def test_passes():\n    assert True\n\n"
         "def test_fails():\n    assert 1 == 2\n")
     (tmp_path / "test_two.py").write_text("def test_fine():\n    assert True\n")
+    write_project_marker(tmp_path)
     suite = PyTestSuite(tmp_path).run()
     assert suite.identity == {"type": "Tarav.Project.Dev.PyTest.Suite", "key": None}
     assert not PyTestSuite.routine
@@ -68,7 +71,7 @@ def test_pytest_runs_once_and_each_test_file_is_a_suite_of_its_own(tmp_path: Pat
     assert suite.complete and "1 failed, 2 passed" in suite.summary_line
     chain, result = next(iter(suite.walk()))
     assert [item["key"] for item in chain] == [None, "test_one.py"]
-    assert result.pois()[0].situation == {"project": tmp_path.name,
+    assert result.pois()[0].situation == {"project": DEFAULT_TEST_PROJECT_ID,
                                          "test": "test_one.py::test_fails"}
 
     # a file that is gone is no longer yielded by a run that went to its end
@@ -84,6 +87,7 @@ def test_pytest_runs_once_and_each_test_file_is_a_suite_of_its_own(tmp_path: Pat
 def test_a_test_file_that_cannot_be_collected_is_a_poi(tmp_path: Path) -> None:
     (tmp_path / "test_broken.py").write_text("import no_such_module_anywhere\n")
     (tmp_path / "test_fine.py").write_text("def test_fine():\n    assert True\n")
+    write_project_marker(tmp_path)
     suite = PyTestSuite(tmp_path).run()
     assert [found.key for found in suite.suites()] == ["test_broken.py", "test_fine.py"]
     assert [poi.situation["test"] for poi in suite.pois()] == ["test_broken.py"]

@@ -78,7 +78,7 @@ class SkillReadingGraph(ReadingGraph):
     def __init__(self, package, documents):
         self.package = package
         # tarav.breadcrumb 1f2a5d756e2d
-        self.source = package.path(package.loading_file or '.skw/main.json')
+        self.source = package.depot_path(package.loading_file or 'main.json')
         if package.loading_file is not None:
             self.data = read(self.source)
         else:

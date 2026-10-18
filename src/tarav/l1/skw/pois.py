@@ -709,7 +709,7 @@ class ProductDrift(SkwPOI):
             situation={'product': str(product), 'actual': finding['actual'],
                        'expected': finding['expected']},
             # what helps whoever works on it: the source to edit, and the lines
-            details={'source': str(root / finding['path']) if finding.get('path') else None,
+            details={'source': finding.get('source'),
                      'difference': list(finding.get('difference') or ())},
         )
 
