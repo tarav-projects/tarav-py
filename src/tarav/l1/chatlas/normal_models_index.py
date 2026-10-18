@@ -2,16 +2,17 @@
 
 Chatlas produces and caches Normal Models; this index holds their messages and
 Turns in one file, ``index/normal-models.sqlite``, for any consumer to query.
-It is built only from the cached JSON parts. Each indexed part records the
-version of the cache part it consumed, so a session is fresh while those
-versions still match. Queries are read-only; updating is explicit.
+It is built only from the cached JSON parts and keeps only what lookups need
+(who, where, side, text, which Turn); full records stay in the JSON cache.
+Each indexed part records the version of the cache part it consumed, so a
+session is fresh while those versions still match. Queries are read-only;
+updating is explicit.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-import json
 from pathlib import Path
 import sqlite3
 from typing import Any
@@ -22,11 +23,12 @@ from tarav.l1.chatlas.paths import default_chatlas_root
 JsonObject = dict[str, Any]
 
 INDEX_PATH = Path("index") / "normal-models.sqlite"
-INDEX_SCHEMA_VERSION = 1
+INDEX_SCHEMA_VERSION = 2
 INDEXED_PARTS = ("messages", "turns")
 POLICIES = ("missing", "stale", "all")
 SESSION_FACTS = ("provider", "instance", "session_id", "project_path", "last_activity_at")
 
+# tarav.breadcrumb ac4e1f989ab7
 _SCHEMA = """
 create table if not exists sessions(
     identity text primary key, provider text, instance text, session_id text,
@@ -35,11 +37,11 @@ create table if not exists parts(
     identity text, part text, version text, primary key(identity, part));
 create table if not exists messages(
     id integer primary key, identity text, position integer, message_address text,
-    turn_hash text, side text, text text, record text);
+    turn_hash text, side text, text text);
 create index if not exists messages_session on messages(identity, position);
 create table if not exists turns(
     id integer primary key, identity text, position integer, turn_address text,
-    turn_hash text, side text, record text);
+    turn_hash text, side text);
 create index if not exists turns_session on turns(identity, position);
 create index if not exists turns_hash on turns(identity, turn_hash);
 create virtual table if not exists messages_fts using fts5(
@@ -185,17 +187,17 @@ class NormalModelsIndex:
             for position, message in enumerate(messages):
                 cursor = connection.execute(
                     "insert into messages(identity, position, message_address, turn_hash,"
-                    " side, text, record) values (?, ?, ?, ?, ?, ?, ?)",
+                    " side, text) values (?, ?, ?, ?, ?, ?)",
                     (identity, position, message["message_address"],
                      turn_of_message.get(message["message_address"]), message["side"],
-                     message["text"], json.dumps(message, ensure_ascii=False)))
+                     message["text"]))
                 connection.execute("insert into messages_fts(rowid, text) values (?, ?)",
                                    (cursor.lastrowid, message["text"]))
             connection.executemany(
-                "insert into turns(identity, position, turn_address, turn_hash, side, record)"
-                " values (?, ?, ?, ?, ?, ?)",
-                [(identity, position, turn["turn_address"], turn["turn_hash"], turn["side"],
-                  json.dumps(turn, ensure_ascii=False)) for position, turn in enumerate(turns)])
+                "insert into turns(identity, position, turn_address, turn_hash, side)"
+                " values (?, ?, ?, ?, ?)",
+                [(identity, position, turn["turn_address"], turn["turn_hash"], turn["side"])
+                 for position, turn in enumerate(turns)])
             connection.executemany(
                 "insert into parts values (?, ?, ?)",
                 [(identity, name, part.cache_version) for name, part in parts.items()])

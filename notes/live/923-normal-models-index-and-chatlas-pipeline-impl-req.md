@@ -166,3 +166,19 @@ changes plain-text searches; index size far beyond the estimate.
 
 - 2026-10-18: request designed in the session above; handed off as
   needs-alignment on the two open questions.
+- 2026-10-18, Execute (same session). Clarification recorded; start
+  checkpoints: tarav-py acbf539, tarav-md 789651d (empty).
+- Slice 1: `NormalModelsIndex` (`src/tarav/l1/chatlas/normal_models_index.py`)
+  and `NormalModelCache.rows(part)`. `tests/chatlas/test_normal_models_index.py`
+  failed at collection (no module), then 3 passed; the index joined the
+  Normal Model consumers in `tests/test_architecture.py`. Real build: 10,146
+  sessions indexed, 34 skipped (no conversation), 0 failed, 39 s, 1,032 MB;
+  phrase match 3 ms, `instr` substring scan 1.9 s; an update with nothing to
+  do 2.2 s. Commit 563906a.
+- Deviation trigger (size) raised with the User: the JSON copies of each turn
+  (428 MB, mostly event references) and message (182 MB) took most of it.
+  User decision: keep only what lookups need; full records stay in the JSON
+  cache.
+  Schema 2 without the record columns: rebuilt in 31 s, 338 MB; phrase
+  match 2 ms, substring scan 1.1 s.
+  <!-- tarav.breadcrumb 9f02077f9d08 -->
