@@ -132,6 +132,16 @@
   Project and branch) saw at the branch's last commit; stops and overrules
   become actions of the Project.
   <!-- tarav.breadcrumb 1413fcedc6ff -->
+  Gitleaks (`tarav.l1.git.gitleaks`) is a default handler: a Project whose
+  config names none gets it, and its checks report the hooks as not
+  installed until it installs them or blesses that POI. The pre-commit hook
+  scans the staged changes and stops on findings; `tarav git gitleaks scan
+  --repo PATH` scans a whole history on request. Every run leaves gitleaks'
+  raw report in `~/Documents/tarav/gitleaks/`, and `GitleaksCheck` verifies
+  each reported finding (commit reachable, file and lines present). Findings
+  become actions of the owning Project, else the System Project; blessing one
+  appends its fingerprint to `.gitleaksignore`. This repository uses it.
+  <!-- tarav.breadcrumb ab0b66d49279 -->
 - `project.agents.skills` discovers skill folders in Project and home
   `.agents/skills`, using each `SKILL.md` declared name. Set
   `agents.package_skill` in `.tarav/project.json`; the built-in Tarav skill

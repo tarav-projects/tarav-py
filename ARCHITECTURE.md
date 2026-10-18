@@ -334,6 +334,14 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   results as a whole run of the Project's checks.
 <!-- tarav.breadcrumb 547dbca67291 -->
 <!-- tarav.breadcrumb c61ceaf85a21 -->
+- `tarav.l1.git.gitleaks` integrates the gitleaks binary: gitleaks detects,
+  Tarav keeps each run's raw report in a depot outside the repositories and
+  verifies the reported findings in `GitleaksCheck`. Owner resolution reads
+  Project markers, not the Project Type, and falls back to the System Project,
+  whose suite checks the scanned repositories no Project owns. Staged reports
+  from the hook are raised by `GitleaksStagedCheck`, which runs in no suite, so
+  their actions close only by hand.
+<!-- tarav.breadcrumb da564609c81e -->
 - `tarav.l1.skw.code` owns neutral typed document blocks, typed block-local
   objects, workflow-owned block annotations, retained content, common reading
   declarations, the abstract ReadingGraph analysis contract, and compilation.
