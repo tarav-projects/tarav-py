@@ -826,6 +826,7 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
             "workflow.py",
             "sessions.py",
             "search.py",
+            "normal_models_index.py",
         }:
             # commands.py is the composition point: it builds the one `tarav chatlas`
             # group and hands its subparsers to the layer. Everything else in

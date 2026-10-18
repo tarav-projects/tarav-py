@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -92,6 +93,16 @@ class NormalModelCache:
     def fresh(self, parts: tuple[str, ...] = PARTS) -> bool:
         standing = self.parts()
         return all(standing[name].fresh for name in _known_parts(parts))
+
+    # tarav.breadcrumb a8d1e2c12914
+    def rows(self, part: str) -> Iterator[JsonObject]:
+        """One collection's rows as stored, without checks; missing parts raise OSError."""
+        if part not in COLLECTION_FILES:
+            raise ValueError(f"not a Normal Model collection: {part}")
+        with (self.path / COLLECTION_FILES[part]).open(encoding="utf-8") as stream:
+            for line in stream:
+                if line.strip():
+                    yield json.loads(line)
 
     def model(self) -> ChatlasNormalModel:
         """The stored Model, fresh or not; a missing collection fails when read."""
