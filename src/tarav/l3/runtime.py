@@ -282,6 +282,7 @@ def create_runtime(
         BreadcrumbWorkflow,
     )
     from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
+    from tarav.l1.chatlas.search import ChatlasSearchEngine
     from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
     from tarav.l1.lines import Block, Line, LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
@@ -513,6 +514,8 @@ def create_runtime(
     navigation = TaravRecords.service()
     # tarav.breadcrumb 62297208d649
     search = SearchWorkflow.service()
+    # tarav.breadcrumb 41ba4335c0c7
+    search.register("chatlas", ChatlasSearchEngine())
     references = ReferenceWorkflow.service(records)
     breadcrumbs = BreadcrumbWorkflow.service(composed_breadcrumb_integrations)
     for workflow in (

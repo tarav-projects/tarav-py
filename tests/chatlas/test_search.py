@@ -12,6 +12,7 @@ from tarav.l1.chatlas.index_writer import _upsert_session_index_rows
 from tarav.l1.chatlas.paths import SESSION_INDEX_ROOT
 from tarav.l1.chatlas.search import ChatlasSearchEngine, ChatlasSearchQuery
 from tarav.l1.search import SearchQuery
+from tarav.l3.runtime import create_runtime
 
 OLD, NEW = "1" * 64, "2" * 64
 CHATS = {
@@ -157,3 +158,13 @@ def test_the_engine_only_answers_chatlas_queries(depot: Depot) -> None:
         ChatlasSearchQuery("cache", target="events")
     with pytest.raises(ValueError, match="since"):
         ChatlasSearchQuery("cache", since="yesterday")
+
+
+def test_the_runtime_search_service_routes_to_chatlas(depot: Depot) -> None:
+    service = create_runtime().search
+    service.engines["chatlas"].chatlas_root = depot.root
+
+    result = service.search.run(ChatlasSearchQuery("again"))
+
+    assert _texts(result) == ["search the CACHE again"]
+    assert result.hits[0].engines == ("chatlas",)
