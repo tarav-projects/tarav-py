@@ -545,6 +545,23 @@ an explicit identity-hash view handles collisions. `ChatSession.model()` delegat
 to the existing Normal Model reader and cache. The depot root is runtime
 configuration, not retained Session identity or part of its portable Record.
 
+<!-- tarav.sessions
+3537df0a = claude-code:2bff854f-66a0-4e8c-8f96-9078af34c479 @3537df0a6015d884a94e9594478f971cb92e38df63776b87b5eea38741740d8a
+-->
+
+Cache freshness depends only on the raw data. The Session Index row carries
+`raw_version`, a hash of its transcript sources' paths, sizes and modification
+times (`index_writer.raw_version`). `normal_model_cache.NormalModelCache`
+records the version each part was built from (`main` and the four
+collections) and reports every part as present, fresh or stale without
+building; its `model()` returns what is stored. The safe path,
+`provide_normal_model_reader(parts=…)` and `ChatSession.model(parts=…)`,
+builds when a requested part is missing or stale. Code changes do not
+invalidate the cache; after a normalizer change, maintainers delete the
+derived `normal-model/` directories.
+<!-- tarav.breadcrumb 704f9f515ebc -->
+<!-- tarav.breadcrumb 0dbcd88f7c41 -->
+
 `tarav.l1.programs` declares `ProgramsWorkflow` and the minimal
 `TaravProgram(TaravEntity)` family. `tarav.l2.project.programs.ProjectProgram`
 provides a distinct project-oriented subtype without adding fields or behavior.
