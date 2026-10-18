@@ -67,7 +67,7 @@ Data shape:
 - POIs, family `Tarav.Git.Gitleaks.POI`: `Finding` (blessable; situation `{repository, fingerprint}`; its action blesses by appending to `.gitleaksignore`), `Staged` (blessable; situation `{repository, run}`; raised only through the hook), `NeverScanned` and `Missing` (blessable).
 - `GitleaksCheck(root)` raises Finding, NeverScanned and Missing; `GitleaksStagedCheck` raises Staged and never runs in a suite.
 
-1. **Feature — runs and depot.** `scan(root)` runs a history scan and records a run; `tarav git gitleaks scan --repo PATH`. Check: a temporary repository with a committed token yields a run whose report lists it; a repository whose fingerprint is in `.gitleaksignore` yields none.
+1. **Feature — runs and depot.** Done. `scan(root)` runs a history scan and records a run; `tarav git gitleaks scan --repo PATH`. Check: a temporary repository with a committed token yields a run whose report lists it; a repository whose fingerprint is in `.gitleaksignore` yields none.
 2. **Feature — verification, POIs and actions.** The check, the owner resolution, registration after a scan, the System Project's checks for unowned repositories, and blessing that appends to `.gitleaksignore`. Check: a finding raises one POI; ignoring it, rewriting the commit away, or a later clean report removes it; blessing appends the fingerprint and closes the action as blessed; an unowned repository's actions land in the System Project.
 3. **Feature — hook handler and defaults.** The `gitleaks` handler on pre-commit, default handlers, blessable `HooksNotInstalled`, tarav-py enabling it. Check: a commit with a staged token is stopped and opens a Staged action; the overrule lets it through; a clean commit passes; without gitleaks on PATH the hook warns and Git continues.
 4. **Documentation.** AGENTS.md (SKW source), ARCHITECTURE.md, the Wiki.
@@ -77,3 +77,5 @@ Tests build tokens at run time so no literal secret enters the repository. Run `
 ## Impl.Log
 
 - 2026-10-18: Designed from the discussion above and started Develop in Autonomous mode.
+- Start checkpoints: tarav-py `b1ec6ff` (this note); tarav-md `ee6dc22` (empty; another session had just committed its own edits).
+- Slice 1 (runs and depot): `tarav.l1.git.gitleaks` with `GitleaksRun`, `GitleaksDepot`, `repository_key`, `run_gitleaks` (history or staged), and `tarav git gitleaks scan --repo`. `tests/test_git_gitleaks.py` failed at import before and passes after (3 tests: a committed token is reported with its commit, file and line and a redacted secret; an ignored fingerprint is not; the CLI scans). Record contract tests pass; ruff clean. Breadcrumbs on `gitleaks.py` (2).

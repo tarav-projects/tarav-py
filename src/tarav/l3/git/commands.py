@@ -10,6 +10,7 @@ from tarav.l0._core.errors import CliError
 from tarav.l1.breadcrumbs import BreadcrumbError, BreadcrumbStore
 from tarav.l1.git import GitError
 from tarav.l1.git.change import find
+from tarav.l1.git.gitleaks import GitleaksUnavailable, run_gitleaks
 from tarav.l1.git.hooks import install, run_hook
 from tarav.l0.project import require_agentos_project
 from tarav.l1.usage import describe_file
@@ -86,6 +87,22 @@ def _cmd_change_find(args: argparse.Namespace) -> int:
     return 0 if commits else 1
 
 
+def _cmd_gitleaks_scan(args: argparse.Namespace) -> int:
+    root = Path(args.repo).expanduser().resolve()
+    try:
+        run = run_gitleaks(root)
+    except (GitleaksUnavailable, GitError, RuntimeError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    payload = run.records.to_record()
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"repository: {run.repository}")
+        print(f"findings: {run.findings}")
+        print(f"report: {run.report}")
+    return 0
+
+
 def _print_result(args: argparse.Namespace, payload: dict[str, object]) -> int:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -147,6 +164,13 @@ def register_commands(subparsers: argparse._SubParsersAction) -> None:
     change_find.add_argument("--repo", default=".", help="A folder in the repository.")
     change_find.add_argument("--json", action="store_true")
     change_find.set_defaults(handler=_cmd_change_find)
+    gitleaks = commands.add_parser("gitleaks", help="Find secrets with gitleaks.")
+    gitleaks_commands = gitleaks.add_subparsers(dest="git_gitleaks_command", required=True)
+    gitleaks_scan = gitleaks_commands.add_parser(
+        "scan", help="Scan a repository's whole history and keep the report in the depot.")
+    gitleaks_scan.add_argument("--repo", default=".", help="The repository root.")
+    gitleaks_scan.add_argument("--json", action="store_true")
+    gitleaks_scan.set_defaults(handler=_cmd_gitleaks_scan)
 
 
 def register_breadcrumb_git_commands(

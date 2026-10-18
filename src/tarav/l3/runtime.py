@@ -369,6 +369,7 @@ def create_runtime(
     from tarav.l1.git.hooks import GIT_HOOKS_RECORD_TYPES
     from tarav.l1.git.change import GIT_CHANGE_RECORD_TYPES
     from tarav.l1.git.witness import GIT_WITNESS_RECORD_TYPES
+    from tarav.l1.git.gitleaks import GIT_GITLEAKS_RECORD_TYPES
     from tarav.l1.project.skills import PROJECT_SKILLS_RECORD_TYPES
     from tarav.l1.skills.folder import FolderSkill
     from tarav.l1.skw.generation import GenerationPOI
@@ -441,6 +442,7 @@ def create_runtime(
                 *GIT_HOOKS_RECORD_TYPES,
                 *GIT_CHANGE_RECORD_TYPES,
                 *GIT_WITNESS_RECORD_TYPES,
+                *GIT_GITLEAKS_RECORD_TYPES,
                 *PYTHON_RECORD_TYPES,
                 *PROJECT_RUNNER_RECORD_TYPES,
                 *SYSTEM_RECORD_TYPES,
