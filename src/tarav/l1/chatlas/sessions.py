@@ -33,6 +33,7 @@ from tarav.l1.chatlas.session_resolver import (
     ChatlasSessionAmbiguous,
     resolve_session_index_row,
 )
+from tarav.l0.kernel import LoadedRecord
 
 
 class ChatSession(TaravObject):
@@ -100,12 +101,12 @@ class ChatSession(TaravObject):
         return self
 
     @classmethod
-    def _from_record(cls, record_data: ChatSession.RecordInterface) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         return cls(
-            provider=record_data.provider,
-            instance=record_data.instance,
-            session_id=record_data.session_id,
-            identity_hash=record_data.identity_hash,
+            provider=loaded.data.provider,
+            instance=loaded.data.instance,
+            session_id=loaded.data.session_id,
+            identity_hash=loaded.data.identity_hash,
         )
 
     def _to_record(self) -> dict[str, object]:

@@ -18,6 +18,7 @@ from pydantic import ConfigDict, TypeAdapter, field_validator
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip, entity
 from tarav.l1.surfaces.model import SourceDiagnostic, SourceSpan
 from tarav.l1.surfaces.workflow import SURFACES_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 # After one of these keywords an expression starts, so `/` opens a regex.
 _EXPRESSION_KEYWORDS = frozenset({
@@ -85,9 +86,9 @@ class TypeScriptNormalModel(TaravObject):
         return {"type": entity(type(self)).name, **json.loads(json.dumps(asdict(self)))}
 
     @classmethod
-    def _from_record(cls, record_data):
-        return cls(text=record_data.text, comments=record_data.comments,
-                   diagnostics=record_data.diagnostics)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(text=loaded.data.text, comments=loaded.data.comments,
+                   diagnostics=loaded.data.diagnostics)
 
     class Records(TaravObject.Records):
         def record_example(self):

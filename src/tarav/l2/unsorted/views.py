@@ -16,7 +16,6 @@ from typing import Any, ClassVar, Literal, TypeVar, cast
 from uuid import UUID, uuid4
 
 from pydantic import (
-    BaseModel,
     ConfigDict,
     ValidationError,
     field_validator,
@@ -37,6 +36,7 @@ from tarav.l2.lines.line import DiagramLineShip
 from tarav.l2.models import Model
 from tarav.l2.unsorted.pois import DiagramPOI, load_poi
 from tarav.l2.unsorted.records import UserTouchedAnnotation
+from tarav.l0.kernel import LoadedRecord
 
 
 VIEW_REPOSITORY_TYPE = "Tarav.Diagram.View.Repository"
@@ -110,9 +110,9 @@ class DiagramViewManifest(TaravObject):
             return _uuid(value, field="View.Manifest")
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> DiagramViewManifest:
-        result = super()._from_record(record_data)
-        result._view_type = record_data.view_type
+    def _from_record(cls, loaded: LoadedRecord) -> DiagramViewManifest:
+        result = super()._from_record(loaded)
+        result._view_type = loaded.data.view_type
         return result
 
     @property
@@ -162,10 +162,10 @@ class DiagramViewConfiguration(TaravObject):
         )
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> DiagramViewConfiguration:
-        result = super()._from_record(record_data)
-        result._bootstrap_visible_lines = record_data.bootstrap_visible_lines
-        result._max_visible_lines = record_data.max_visible_lines
+    def _from_record(cls, loaded: LoadedRecord) -> DiagramViewConfiguration:
+        result = super()._from_record(loaded)
+        result._bootstrap_visible_lines = loaded.data.bootstrap_visible_lines
+        result._max_visible_lines = loaded.data.max_visible_lines
         return result
 
     @property
@@ -220,9 +220,9 @@ class DiagramViewAbout(TaravObject):
         data: JsonObject
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> DiagramViewAbout:
-        result = super()._from_record(record_data)
-        result._data = dict(record_data.data)
+    def _from_record(cls, loaded: LoadedRecord) -> DiagramViewAbout:
+        result = super()._from_record(loaded)
+        result._data = dict(loaded.data.data)
         return result
 
     @property

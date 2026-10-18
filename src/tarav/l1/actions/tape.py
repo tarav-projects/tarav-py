@@ -20,6 +20,7 @@ from tarav.l0._core.git_repository import repository_states
 from tarav.l0.kernel import TaravClass, TaravObject, TypeRegistry, TypeShip, entity
 
 from .workflow import ACTIONS_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 # tarav.breadcrumb 0da79fa1ca3d
@@ -35,8 +36,8 @@ class TapeEntry(TaravObject):
         self.fields = dict(fields)
 
     @classmethod
-    def _from_record(cls, data):
-        values = data.model_dump(mode="json", exclude_unset=True)
+    def _from_record(cls, loaded: LoadedRecord):
+        values = loaded.data.model_dump(mode="json", exclude_unset=True)
         values.pop("type", None)
         return cls(values)
 

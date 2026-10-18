@@ -17,6 +17,7 @@ from tarav.l0.kernel import (
 from tarav.l1.assertions import Assertable as Assertable, TaravAssertion
 # tarav.breadcrumb 7c3445f11b52
 from .identity import SCORING_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 class UnsupportedAssessmentCase(TypeError):
@@ -238,7 +239,7 @@ class Assertion(TaravAssertion):
         return {**super()._to_record(), 'subject_ref': self.subject_ref}
 
     @classmethod
-    def _from_record(cls, data):
-        return cls(data.subject_ref)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(loaded.data.subject_ref)
 
 

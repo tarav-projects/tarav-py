@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 from tarav.l1.python_env.runner import RunnerConfiguration, RunnerConfigurator
+from tarav.l0.kernel import LoadedRecord
 
 
 class ProjectRunnerError(CliError):
@@ -83,9 +84,9 @@ class ProjectLaunchConfiguration(TaravObject):
             )
 
     @classmethod
-    def _from_record(cls, record_data):
-        return cls(root=record_data.root, environment=record_data.environment,
-                   project_type=record_data.project_type)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(root=loaded.data.root, environment=loaded.data.environment,
+                   project_type=loaded.data.project_type)
 
     def _to_record(self):
         return {**super()._to_record(), "root": str(self.root),

@@ -9,6 +9,7 @@ import sys
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
 
 from .workflow import PYTHON_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 class PythonObject(TaravObject):
@@ -48,8 +49,8 @@ class RunnerConfiguration(PythonObject):
         self.cwd = None if cwd is None else Path(cwd).expanduser().resolve()
 
     @classmethod
-    def _from_record(cls, record_data):
-        return cls(interpreter=record_data.interpreter, cwd=record_data.cwd)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(interpreter=loaded.data.interpreter, cwd=loaded.data.cwd)
 
     def _to_record(self):
         return {

@@ -46,9 +46,9 @@ from tarav.l2.unsorted.primitives import _uuid
 from dataclasses import dataclass
 from tarav.l0.kernel import entity
 from typing import TYPE_CHECKING
+from tarav.l0.kernel import LoadedRecord
 
 if TYPE_CHECKING:
-    from pydantic import BaseModel
     from tarav.l2.unsorted.evidence import ChatlasEvidence
     from tarav.l2.unsorted.storage import DiagramNamespace
     from tarav.l2.lines.projection import DiagramProjectionBuilder
@@ -113,9 +113,9 @@ class TypedShip(FileRecord):
         self._validate_record()
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         return cls(
-            record_data.model_dump(mode="json", exclude_unset=True, by_alias=True)
+            loaded.data.model_dump(mode="json", exclude_unset=True, by_alias=True)
         )
 
     def _validate_record(self) -> None:
@@ -244,9 +244,9 @@ class TypedAnnotation(FileRecord):
         self._validate_record()
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         return cls(
-            record_data.model_dump(mode="json", exclude_unset=True, by_alias=True)
+            loaded.data.model_dump(mode="json", exclude_unset=True, by_alias=True)
         )
 
     def _validate_record(self) -> None:

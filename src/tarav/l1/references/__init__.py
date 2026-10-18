@@ -1,5 +1,6 @@
 """Typed references. Hints are evidence for consumers, never resolver inputs."""
 
+from tarav.l0.kernel import LoadedRecord
 from tarav.l0.kernel import TaravClass, entity
 
 import hashlib
@@ -36,9 +37,9 @@ class ReferenceResolutionPOI(SituationPOI):
         return {**super()._to_record(), "hints": plain(self.hints)}
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result.hints = record_data.hints
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.hints = loaded.data.hints
         return result
 
     class Records(SituationPOI.Records):

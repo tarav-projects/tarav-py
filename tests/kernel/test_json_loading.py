@@ -6,7 +6,6 @@ import json
 from typing import ClassVar
 
 import pytest
-from pydantic import BaseModel
 
 from tarav.l0.kernel import (
     InvalidRecordJSON,
@@ -16,6 +15,7 @@ from tarav.l0.kernel import (
     TypeShip,
     entity,
 )
+from tarav.l0.kernel import LoadedRecord
 
 
 class RegisteredRecord(TaravObject):
@@ -60,9 +60,9 @@ class RoutedRecord(TaravObject):
         )
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel):
+    def _from_record(cls, loaded: LoadedRecord):
         cls.construction_count += 1
-        result = super()._from_record(record_data)
+        result = super()._from_record(loaded)
         result.constructed_by = "_from_record"
         return result
 

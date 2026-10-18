@@ -18,6 +18,7 @@ from ..model import (
 from ..repository import ScoringRepository
 from .score import RankingScore
 from .workflow import RANKING_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 class PairwiseRankingCase(AssessmentCase):
@@ -97,8 +98,8 @@ class Tribunal(TaravEntity):
         pass
 
     @classmethod
-    def _from_record(cls, data):
-        if data.id != cls._tribunal_id():
+    def _from_record(cls, loaded: LoadedRecord):
+        if loaded.data.id != cls._tribunal_id():
             raise ValueError('Record does not identify this Tribunal')
         return cls()
 

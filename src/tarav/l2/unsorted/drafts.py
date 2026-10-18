@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import ConfigDict, model_validator
 
 from tarav.l0._core.data_root import default_tarav_data_root
 from tarav.l0._core.persistence import atomic_write_json
@@ -25,6 +25,7 @@ from tarav.l2.unsorted.evidence import ChatlasEvidence
 from tarav.l2.unsorted.constants import DIAGRAM_DRAFT_TYPE
 from tarav.l2.unsorted.storage import Diagram
 from tarav.l2.unsorted.primitives import DiagramError
+from tarav.l0.kernel import LoadedRecord
 
 
 DRAFT_SCHEMA_VERSION = 2
@@ -76,9 +77,9 @@ class DiagramDraft(TaravObject):
             return self
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> DiagramDraft:
-        result = super()._from_record(record_data)
-        result._data = record_data.model_copy(deep=True)
+    def _from_record(cls, loaded: LoadedRecord) -> DiagramDraft:
+        result = super()._from_record(loaded)
+        result._data = loaded.data.model_copy(deep=True)
         return result
 
     @classmethod

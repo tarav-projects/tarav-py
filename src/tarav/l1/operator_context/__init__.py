@@ -16,6 +16,7 @@ from tarav.l1.poi import fingerprint
 from tarav.l1.records import RecordRegistry
 
 from .workflow import OPERATOR_CONTEXT_WORKFLOW_SHIP, OperatorContextWorkflow
+from tarav.l0.kernel import LoadedRecord
 
 
 # tarav.breadcrumb 7b34e9c3c7d0
@@ -57,11 +58,11 @@ class OperatorContext(TaravEntity, FileRecord):
                    project=project, session=session, **fields)
 
     @classmethod
-    def _from_record(cls, data):
-        values = data.model_dump(mode="json", exclude_unset=True)
+    def _from_record(cls, loaded: LoadedRecord):
+        values = loaded.data.model_dump(mode="json", exclude_unset=True)
         values.pop("type", None)
         values.pop("id")
-        return cls(data.id, **values)
+        return cls(loaded.data.id, **values)
 
     def _to_record(self):
         record = {**super()._to_record(), "created_at": self.created_at, **self.fields}

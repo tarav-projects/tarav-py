@@ -20,6 +20,7 @@ from tarav.l0.kernel import (
 
 
 from .workflow import POI_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 def canonical(value):
@@ -91,9 +92,9 @@ class POI(TaravObject):
         return {"type": entity(type(self)).name, "message": self.message}
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result.message = record_data.message
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.message = loaded.data.message
         return result
 
     class Records(TaravObject.Records):
@@ -153,12 +154,12 @@ class SituationPOI(POI):
                 "situation": self.situation}
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result._situation = LiteRecord(record_data.situation)
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result._situation = LiteRecord(loaded.data.situation)
         result.class_id = str(entity(cls).id)
         result.identity = fingerprint([result.class_id, result.situation])
-        if (record_data.class_id, record_data.id) != (result.class_id, result.identity):
+        if (loaded.data.class_id, loaded.data.id) != (result.class_id, result.identity):
             raise ValueError("A POI record's identity does not match its Type and situation")
         return result
 
@@ -191,9 +192,9 @@ class NotificationPOI(POI):
         return {**super()._to_record(), "details": plain(self.details)}
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result.details = deepcopy(record_data.details)
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.details = deepcopy(loaded.data.details)
         return result
 
     class Records(POI.Records):

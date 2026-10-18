@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.poi import SituationPOI, fingerprint, plain
 from tarav.l2.unsorted.identity import UNSORTED_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 class DiagramPOI(SituationPOI):
@@ -41,9 +42,9 @@ class DiagramPOI(SituationPOI):
         return {**super()._to_record(), "evidence": plain(self.evidence)}
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result.evidence = dict(record_data.evidence)
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.evidence = dict(loaded.data.evidence)
         return result
 
     class Records(SituationPOI.Records):

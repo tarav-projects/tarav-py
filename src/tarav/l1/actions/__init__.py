@@ -25,6 +25,7 @@ from tarav.l1.records import RecordRegistry
 from . import tape
 from .tape import TAPE_ENTRY_TYPES
 from .workflow import ACTIONS_WORKFLOW_SHIP, ActionsWorkflow
+from tarav.l0.kernel import LoadedRecord
 
 RUNNING, CLOSED = "running", "closed"
 EXIT_ERROR = "error"
@@ -72,11 +73,11 @@ class Closing(TaravEntity, FileRecord):
         self.data = data
 
     @classmethod
-    def _from_record(cls, data):
-        values = data.model_dump(mode="json", exclude_unset=True)
+    def _from_record(cls, loaded: LoadedRecord):
+        values = loaded.data.model_dump(mode="json", exclude_unset=True)
         values.pop("type", None)
         values.pop("id")
-        return cls(data.id, values)
+        return cls(loaded.data.id, values)
 
     def _to_record(self):
         return {**super()._to_record(), **self.data}
@@ -236,11 +237,11 @@ class ActionRun(TaravEntity, FileRecord):
         self.data = data
 
     @classmethod
-    def _from_record(cls, data):
-        values = data.model_dump(mode="json", exclude_unset=True)
+    def _from_record(cls, loaded: LoadedRecord):
+        values = loaded.data.model_dump(mode="json", exclude_unset=True)
         values.pop("type", None)
         values.pop("id")
-        return cls(data.id, values)
+        return cls(loaded.data.id, values)
 
     def _to_record(self):
         return {**super()._to_record(), **self.data}

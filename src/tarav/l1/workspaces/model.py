@@ -12,6 +12,7 @@ from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip
 from tarav.l1.checks import CheckProvider, CheckSuite
 
 from .workflow import WORKSPACES_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 def _relative_path(value: str) -> str:
@@ -120,8 +121,8 @@ class Workspace(TaravEntity, CheckProvider):
             self.source = root / "manifest.json"
 
     @classmethod
-    def _from_record(cls, record_data: WorkspaceManifest):
-        return cls(record_data)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(loaded.data)
 
     def _to_record(self):
         return self.manifest.model_dump(mode="json")

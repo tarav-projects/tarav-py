@@ -22,6 +22,7 @@ from tarav.l0._core.persistence import atomic_write_json
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TaravObject, TypeShip, entity
 
 from .workflow import GIT_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 WITNESS_ENV_VAR = "TARAV_GIT_CHANGES_ROOT"
 
@@ -50,9 +51,9 @@ class ChangeWitness(TaravObject):
         self.project, self.branch, self.changes, self.at = project, branch, list(changes), at
 
     @classmethod
-    def _from_record(cls, record_data):
-        return cls(project=record_data.project, branch=record_data.branch,
-                   changes=record_data.changes, at=record_data.at)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(project=loaded.data.project, branch=loaded.data.branch,
+                   changes=loaded.data.changes, at=loaded.data.at)
 
     def _to_record(self):
         return {"type": entity(type(self)).name, "project": self.project, "branch": self.branch,
@@ -91,9 +92,9 @@ class ChangeOverrule(TaravEntity):
         self.missing, self.at = list(missing), at
 
     @classmethod
-    def _from_record(cls, record_data):
-        return cls(record_data.id, project=record_data.project, branch=record_data.branch,
-                   commit=record_data.commit, missing=record_data.missing, at=record_data.at)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(loaded.data.id, project=loaded.data.project, branch=loaded.data.branch,
+                   commit=loaded.data.commit, missing=loaded.data.missing, at=loaded.data.at)
 
     def _to_record(self):
         return {**super()._to_record(), "project": self.project, "branch": self.branch,

@@ -25,6 +25,7 @@ from tarav.l0.kernel.types import RecordTypeReference
 from tarav.l1.project import TaravProject
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 from tarav.l2.project.runner import ProjectLaunchConfiguration, ProjectRunnerError
+from tarav.l0.kernel import LoadedRecord
 
 
 class ProjectHarnessError(ProjectRunnerError):
@@ -71,8 +72,8 @@ class ProjectHarness(TaravObject):
         return cls(launch.root, launch=launch)
 
     @classmethod
-    def _from_record(cls, record_data: ProjectHarness.RecordInterface) -> ProjectHarness:
-        return cls(record_data.root)
+    def _from_record(cls, loaded: LoadedRecord) -> ProjectHarness:
+        return cls(loaded.data.root)
 
     def _to_record(self) -> dict[str, object]:
         return {**super()._to_record(), "root": str(self.root)}

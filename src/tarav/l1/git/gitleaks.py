@@ -34,6 +34,7 @@ from tarav.l1.poi.actionable import BlessablePOI
 
 from .hooks import OVERRULE_ENV_VAR, GitHookCall, GitHookHandler, GitHookRefusal
 from .workflow import GIT_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 DEPOT_ENV_VAR = "TARAV_GITLEAKS_ROOT"
 IGNORE_FILE = ".gitleaksignore"
@@ -92,10 +93,10 @@ class GitleaksRun(TaravEntity):
         self.version, self.at, self.report, self.findings = version, at, report, findings
 
     @classmethod
-    def _from_record(cls, record_data):
-        return cls(record_data.id, repository=record_data.repository, key=record_data.key,
-                   kind=record_data.kind, head=record_data.head, version=record_data.version,
-                   at=record_data.at, report=record_data.report, findings=record_data.findings)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(loaded.data.id, repository=loaded.data.repository, key=loaded.data.key,
+                   kind=loaded.data.kind, head=loaded.data.head, version=loaded.data.version,
+                   at=loaded.data.at, report=loaded.data.report, findings=loaded.data.findings)
 
     def _to_record(self):
         return {**super()._to_record(), "repository": self.repository, "key": self.key,

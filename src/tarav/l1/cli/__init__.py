@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid5
 
-from pydantic import BaseModel
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, WorkflowShip
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.checks import Check, CheckPOI, CheckProvider, CheckResult, CheckSuite
 from tarav.l1.live_help import LiveHelpProvider
 from tarav.l1.usage import UsageTrace
+from tarav.l0.kernel import LoadedRecord
 
 
 CLI_WORKFLOW_SHIP = WorkflowShip("66ab1312-5e49-4849-8503-1315f461b4bd")
@@ -100,7 +100,7 @@ class Command(TaravEntity, CheckProvider, LiveHelpProvider):
         self.description = parser.description or help_text or ""
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel):
+    def _from_record(cls, loaded: LoadedRecord):
         raise TypeError("Commands are resolved from the current parser tree")
 
     def _to_record(self) -> dict[str, object]:

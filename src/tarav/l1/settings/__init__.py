@@ -30,6 +30,7 @@ from tarav.l0.kernel import (
     current_records,
     entity,
 )
+from tarav.l0.kernel import LoadedRecord
 
 SETTINGS_WORKFLOW_SHIP = WorkflowShip("07c04e06-a861-4ecf-b07d-ab4a03cf75ce")
 _STATE = "_settings_state"
@@ -90,8 +91,8 @@ class SettingsValues(FileRecord):
         return registry.load(path, expected_type=cls)
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        return cls(record_data.partitions)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        return cls(loaded.data.partitions)
 
     def _to_record(self) -> Mapping[str, object]:
         return {"type": entity(type(self)).name, "partitions": deepcopy(self.partitions)}

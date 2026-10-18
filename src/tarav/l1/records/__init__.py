@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from tarav.l0.kernel import LoadedRecord
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity
 from tarav.l0.kernel import TaravObject, TypeShip
 from tarav.l0.kernel.space import Entry, RecordProvider
@@ -28,9 +29,9 @@ class ProviderError(SituationPOI):
         return {**super()._to_record(), "error": plain(self.error)}
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result.error = record_data.error
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.error = loaded.data.error
         return result
 
     class Records(SituationPOI.Records):

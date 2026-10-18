@@ -9,6 +9,7 @@ from tarav.l0.kernel import TaravClass, TaravObject, TypeShip, entity
 from tarav.l1.surfaces.markdown import MarkdownNormalModel
 
 from .workflow import WIKI_WORKFLOW_SHIP, WikiWorkflow
+from tarav.l0.kernel import LoadedRecord
 
 
 class Wiki(TaravObject):
@@ -79,8 +80,8 @@ class Wiki(TaravObject):
         return {"type": entity(type(self)).name, "root": str(self.root)}
 
     @classmethod
-    def _from_record(cls, record_data):
-        return cls(record_data.root)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(loaded.data.root)
 
     class Records(TaravObject.Records):
         def record_example(self):
@@ -139,8 +140,8 @@ class WikiNote(TaravObject):
         }
 
     @classmethod
-    def _from_record(cls, record_data):
-        return cls(Wiki.from_path(record_data.root), record_data.path)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(Wiki.from_path(loaded.data.root), loaded.data.path)
 
     class Records(TaravObject.Records):
         def record_example(self):

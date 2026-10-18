@@ -3,12 +3,12 @@
 from pathlib import Path
 from typing import Self
 
-from pydantic import BaseModel
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 
 from .skill import TaravSkill
 from .workflow import SKILLS_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 # tarav.breadcrumb 1b535cbde91f
@@ -34,8 +34,8 @@ class FolderSkill(TaravSkill):
         return self._root
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        return cls(record_data.root)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        return cls(loaded.data.root)
 
     def _to_record(self) -> dict[str, object]:
         return {"type": entity(type(self)).name, "root": str(self.root)}

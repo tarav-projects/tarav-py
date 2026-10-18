@@ -9,6 +9,7 @@ from tarav.l0.kernel.space import Entry, FilesystemProvider, RecordProvider
 from tarav.l1.records import TaravRecords
 from tarav.l2.scoring.repository import ScoringRepository
 from tarav.l3.runtime import create_runtime
+from tarav.l0.kernel import LoadedRecord
 
 
 class MemorySource(RecordProvider):
@@ -42,8 +43,8 @@ class VersionedEntity(TaravEntity):
         self.value = value
 
     @classmethod
-    def _from_record(cls, data):
-        return cls(data.id, data.value)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(loaded.data.id, loaded.data.value)
 
     def _to_record(self):
         return {**super()._to_record(), "value": self.value}

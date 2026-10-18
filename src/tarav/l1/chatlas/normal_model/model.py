@@ -19,6 +19,7 @@ from tarav.l0.kernel import DirectoryRecord, TypeShip
 from tarav.l1.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 
 from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record_type
+from tarav.l0.kernel import LoadedRecord
 
 
 JsonObject = dict[str, Any]
@@ -89,9 +90,9 @@ class ChatlasNormalModel(DirectoryRecord):
         counts: NormalModelCounts
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> ChatlasNormalModel:
-        result = super()._from_record(record_data)
-        result._counts = record_data.counts.model_copy(deep=True)
+    def _from_record(cls, loaded: LoadedRecord) -> ChatlasNormalModel:
+        result = super()._from_record(loaded)
+        result._counts = loaded.data.counts.model_copy(deep=True)
         return result
 
     @property

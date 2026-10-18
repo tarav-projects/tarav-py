@@ -87,6 +87,7 @@ from tarav.l0.kernel import entity
 from pydantic import field_validator
 from uuid import uuid4
 from typing import TYPE_CHECKING
+from tarav.l0.kernel import LoadedRecord
 
 if TYPE_CHECKING:
     from tarav.l2.unsorted.contracts import AnnotationDraftInterface
@@ -864,13 +865,13 @@ class DiagramConfiguration(TaravObject):
             )
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> DiagramConfiguration:
-        result = super()._from_record(record_data)
+    def _from_record(cls, loaded: LoadedRecord) -> DiagramConfiguration:
+        result = super()._from_record(loaded)
         result._namespace_locations = tuple(
             Path(item).expanduser().resolve()
-            for item in record_data.namespace_locations
+            for item in loaded.data.namespace_locations
         )
-        result._default_namespace_id = record_data.default_namespace_id
+        result._default_namespace_id = loaded.data.default_namespace_id
         return result
 
     @property

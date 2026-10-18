@@ -10,11 +10,15 @@ from tarav.l1.checks import CheckProvider, CheckSuite
 from tarav.l1.loading import LoadingProfile
 
 from .workflow import PROJECT_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 # tarav.breadcrumb 5cd4a1370534
 class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
     """A Project with shared bootstrap checks and subtype-specific checks."""
+
+    # A Project is located by the marker it was loaded from.
+    keeps_source = True
 
     # tarav.breadcrumb 2493391ddebf
     class Agents(NamespaceBase["TaravProject"]):
@@ -205,10 +209,10 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
         self.fields = dict(fields or {})
 
     @classmethod
-    def _from_record(cls, record_data):
-        values = record_data.model_dump(mode="json", by_alias=True, exclude_unset=True)
-        return cls(record_data.id, created_at=record_data.created_at,
-                   project_name=record_data.project_name, harness=record_data.harness,
+    def _from_record(cls, loaded: LoadedRecord):
+        values = loaded.data.model_dump(mode="json", by_alias=True, exclude_unset=True)
+        return cls(loaded.data.id, created_at=loaded.data.created_at,
+                   project_name=loaded.data.project_name, harness=loaded.data.harness,
                    fields={key: value for key, value in values.items()
                            if key not in cls._BASE_FIELDS})
 

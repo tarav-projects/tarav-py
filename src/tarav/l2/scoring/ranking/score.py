@@ -12,6 +12,7 @@ from tarav.l0.kernel import TaravClass, TypeShip, entity
 
 from ..score import Score
 from .workflow import RANKING_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 class RankingScore(Score, Mapping[str, object]):
@@ -66,8 +67,8 @@ class RankingScore(Score, Mapping[str, object]):
         return deepcopy(self._row)
 
     @classmethod
-    def _from_record(cls, data):
-        return cls({key: value for key, value in data.model_dump().items() if key != 'type'})
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls({key: value for key, value in loaded.data.model_dump().items() if key != 'type'})
 
     class Records(Score.Records):
         def record_example(self):

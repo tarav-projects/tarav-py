@@ -17,6 +17,7 @@ from tarav.l0.kernel import TaravObject, TaravClass, TypeShip, entity
 from tarav.l1.surfaces.workflow import SURFACES_WORKFLOW_SHIP
 
 from tarav.l1.surfaces.model import SourceDiagnostic, SourceSpan
+from tarav.l0.kernel import LoadedRecord
 
 
 @dataclass(frozen=True)
@@ -101,13 +102,13 @@ class PythonNormalModel(TaravObject):
         return {"type": entity(type(self)).name, **json.loads(json.dumps(asdict(self)))}
 
     @classmethod
-    def _from_record(cls, record_data):
+    def _from_record(cls, loaded: LoadedRecord):
         return cls(
-            text=record_data.text,
-            elements=record_data.elements,
-            comments=record_data.comments,
-            directives=record_data.directives,
-            diagnostics=record_data.diagnostics,
+            text=loaded.data.text,
+            elements=loaded.data.elements,
+            comments=loaded.data.comments,
+            directives=loaded.data.directives,
+            diagnostics=loaded.data.diagnostics,
         )
 
     class Records(TaravObject.Records):

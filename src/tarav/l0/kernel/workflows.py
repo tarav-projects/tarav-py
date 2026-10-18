@@ -14,6 +14,7 @@ from .records import (
     TaravClass,
     TaravEntity,
 )
+from .loading import LoadedRecord
 
 TARAV_WORKFLOW_SHIP = WorkflowShip("7873fdd4-27d3-41e7-a6b4-92acfe4ceaa7")
 
@@ -68,8 +69,8 @@ class TaravWorkflow(TaravEntity):
         pass
 
     @classmethod
-    def _from_record(cls, record_data):
-        if record_data.id != cls._workflow_id():
+    def _from_record(cls, loaded: LoadedRecord):
+        if loaded.data.id != cls._workflow_id():
             raise ValueError("Record does not identify this workflow")
         return cls()
 

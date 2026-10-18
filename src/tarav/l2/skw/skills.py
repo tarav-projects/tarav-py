@@ -45,6 +45,7 @@ from tarav.l1.skw.presentation import (
     render_skill_listing,
     render_skill_operation,
 )
+from tarav.l0.kernel import LoadedRecord
 
 
 class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
@@ -89,11 +90,11 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
             self.source = Path(root) / '.skw' / 'main.json'
 
     @classmethod
-    def _from_record(cls, record_data):
-        skill = cls(entrypoint=record_data.entrypoint, sources=record_data.sources,
-                    files=record_data.files, dependencies=record_data.dependencies,
-                    loading=record_data.loading, publications=record_data.publications)
-        skill.schema_version = record_data.schema_version
+    def _from_record(cls, loaded: LoadedRecord):
+        skill = cls(entrypoint=loaded.data.entrypoint, sources=loaded.data.sources,
+                    files=loaded.data.files, dependencies=loaded.data.dependencies,
+                    loading=loaded.data.loading, publications=loaded.data.publications)
+        skill.schema_version = loaded.data.schema_version
         return skill
 
     def _to_record(self):

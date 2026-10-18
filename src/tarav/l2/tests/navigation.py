@@ -8,7 +8,6 @@ from collections.abc import Mapping
 from typing import Literal, Self
 from uuid import uuid4
 
-from pydantic import BaseModel
 
 from tarav.l0.kernel.identity import Ship, TypeShip, WorkflowShip
 from tarav.l0.kernel.records import (
@@ -23,6 +22,7 @@ from tarav.l1.archive.records import (
     ArchiveList,
 )
 from .workflow import TestsWorkflow
+from tarav.l0.kernel import LoadedRecord
 
 
 NAVIGATION_TESTS_WORKFLOW_SHIP = WorkflowShip("d337b876-654b-4680-bf75-ce25619095e5")
@@ -50,8 +50,8 @@ class TestItem(FileRecord):
         self.label = label
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        return cls(record_data.label)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        return cls(loaded.data.label)
 
     class Records(FileRecord.Records):
         def record_example(self) -> dict[str, object]:
@@ -84,8 +84,8 @@ class TestEntity(TaravEntity):
         self.label = label
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        return cls(record_data.id, record_data.label)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        return cls(loaded.data.id, loaded.data.label)
 
     class Records(TaravEntity.Records):
         def record_example(self) -> dict[str, object]:

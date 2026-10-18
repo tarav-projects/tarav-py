@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Self, TypeVar
 
-from pydantic import BaseModel
 
 from tarav.l0._core.data_root import default_tarav_data_root
 from tarav.l0.kernel.current import current_records
@@ -34,6 +33,7 @@ from . import (
     _name,
 )
 from .git import GIT_CONFIG_FILENAME, initialize_repository, placement_for_child
+from tarav.l0.kernel import LoadedRecord
 
 
 ArchiveT = TypeVar("ArchiveT", bound=ArchiveEntity)
@@ -62,7 +62,7 @@ class ArchiveRoot(ExplorerFolder, ArchiveObject):
         )
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         return cls()
 
     @property
@@ -153,9 +153,9 @@ class ArchivePartition(ExplorerFolder, ArchiveObject):
         self.parts = tuple(_name(part) for part in selected)
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         return cls(
-            Path(record_data.root), record_data.workflow, tuple(record_data.parts)
+            Path(loaded.data.root), loaded.data.workflow, tuple(loaded.data.parts)
         )
 
     class Records(ExplorerFolder.Records):

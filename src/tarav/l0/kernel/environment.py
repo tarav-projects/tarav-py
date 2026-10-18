@@ -7,10 +7,10 @@ import sys
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import BaseModel
 
 from .identity import KERNEL_WORKFLOW_SHIP, TypeShip
 from .records import TaravClass, TaravObject, entity
+from .loading import LoadedRecord
 
 
 class EnvironmentTypeError(ValueError):
@@ -44,7 +44,7 @@ class TaravEnvironment(TaravObject):
         self._resolved: dict[str, type[TaravObject]] = {}
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         return cls()
 
     @property

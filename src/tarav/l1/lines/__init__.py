@@ -4,6 +4,7 @@ from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip
 from .workflow import LinesWorkflow
 from .identity import LINES_WORKFLOW_SHIP
 from .block import Block
+from tarav.l0.kernel import LoadedRecord
 
 
 class Line(TaravEntity):
@@ -67,11 +68,11 @@ class Line(TaravEntity):
                 "scope_ship": str(self.scope_ship)}
 
     @classmethod
-    def _from_record(cls, record_data):
+    def _from_record(cls, loaded: LoadedRecord):
         obj = cls.__new__(cls)
-        TaravEntity.__init__(obj, record_data.id)
-        obj.text = record_data.text
-        obj._scope_ship = record_data.scope_ship
+        TaravEntity.__init__(obj, loaded.data.id)
+        obj.text = loaded.data.text
+        obj._scope_ship = loaded.data.scope_ship
         obj._scope = None
         return obj
 

@@ -31,6 +31,7 @@ from tarav.l1.surfaces.markdown.model import (
 )
 from tarav.l1.surfaces.model import SourceSpan
 from tarav.l1.surfaces.workflow import SURFACES_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 MATH_NOT_ALONE = "LineMarkdown.Math.NotAlone"
 MATH_UNCLOSED = "LineMarkdown.Math.Unclosed"
@@ -96,14 +97,14 @@ class LineMarkdownModel(MarkdownNormalModel):
         return _parse_line_markdown(text, model_type=cls)
 
     @classmethod
-    def _from_record(cls, record_data):
+    def _from_record(cls, loaded: LoadedRecord):
         return cls(
-            text=record_data.text,
-            lines=record_data.lines,
-            headings=record_data.headings,
-            fences=record_data.fences,
-            diagnostics=record_data.diagnostics,
-            math_blocks=record_data.math_blocks,
+            text=loaded.data.text,
+            lines=loaded.data.lines,
+            headings=loaded.data.headings,
+            fences=loaded.data.fences,
+            diagnostics=loaded.data.diagnostics,
+            math_blocks=loaded.data.math_blocks,
         )
 
     def math_line_numbers(self) -> frozenset[int]:

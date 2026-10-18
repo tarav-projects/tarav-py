@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip
 
 from .identity import LINES_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 if TYPE_CHECKING:
     from . import Line
@@ -94,11 +95,11 @@ class Block(TaravEntity):
         }
 
     @classmethod
-    def _from_record(cls, record_data):
+    def _from_record(cls, loaded: LoadedRecord):
         obj = cls.__new__(cls)
-        TaravEntity.__init__(obj, record_data.id)
-        obj.topic = record_data.topic
-        obj._line_ships = tuple(record_data.line_ships)
+        TaravEntity.__init__(obj, loaded.data.id)
+        obj.topic = loaded.data.topic
+        obj._line_ships = tuple(loaded.data.line_ships)
         obj._lines = () if not obj._line_ships else None
         return obj
 

@@ -12,6 +12,7 @@ from tarav.l1.assertions import Assertable
 from tarav.l1.lines import Block, Line
 from tarav.l2.scoring import Assertion, PairwiseRankingCase, Tribunal
 from .workflow import TestsWorkflow
+from tarav.l0.kernel import LoadedRecord
 
 
 SCORING_TESTS_WORKFLOW_SHIP = WorkflowShip("3a99b56b-7162-4ffd-bb88-e2fe6065fd9e")
@@ -66,8 +67,8 @@ class ScoringTestChat(TaravEntity):
         return {**super()._to_record(), "turns": list(self.turns)}
 
     @classmethod
-    def _from_record(cls, record_data):
-        return cls(id=record_data.id, turns=record_data.turns)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(id=loaded.data.id, turns=loaded.data.turns)
 
     class Records(TaravEntity.Records):
         def record_example(self):
@@ -114,10 +115,10 @@ class ScoringTestLine(Line, Assertable):
                 "turn_ids": list(self.turn_ids)}
 
     @classmethod
-    def _from_record(cls, record_data):
-        obj = super()._from_record(record_data)
-        obj.chat_ship = record_data.chat_ship
-        obj.turn_ids = tuple(record_data.turn_ids)
+    def _from_record(cls, loaded: LoadedRecord):
+        obj = super()._from_record(loaded)
+        obj.chat_ship = loaded.data.chat_ship
+        obj.turn_ids = tuple(loaded.data.turn_ids)
         return obj
 
     class Records(Line.Records):

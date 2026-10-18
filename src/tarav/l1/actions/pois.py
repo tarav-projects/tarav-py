@@ -31,6 +31,7 @@ from . import (
     close_run, resolve_action,
 )
 from . import tape
+from tarav.l0.kernel import LoadedRecord
 
 GONE = "gone"
 PRESENT, ABSENT, CHECK_FAILED, NOT_RUN = "present", "absent", "check failed", "not run"
@@ -209,9 +210,9 @@ class POIActionClosed(SituationPOI):
                 "closed": plain(self.closed)}
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result.project, result.closed = record_data.project, record_data.closed
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.project, result.closed = loaded.data.project, loaded.data.closed
         return result
 
     class Records(SituationPOI.Records):

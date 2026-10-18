@@ -13,6 +13,7 @@ from tarav.l0.kernel import TaravObject, TaravClass, TypeShip, entity
 from tarav.l1.surfaces.workflow import SURFACES_WORKFLOW_SHIP
 
 from tarav.l1.surfaces.model import SourceDiagnostic, SourceSpan
+from tarav.l0.kernel import LoadedRecord
 
 
 @dataclass(frozen=True)
@@ -95,13 +96,13 @@ class MarkdownNormalModel(TaravObject):
         return {"type": entity(type(self)).name, **json.loads(json.dumps(asdict(self)))}
 
     @classmethod
-    def _from_record(cls, record_data):
+    def _from_record(cls, loaded: LoadedRecord):
         return cls(
-            text=record_data.text,
-            lines=record_data.lines,
-            headings=record_data.headings,
-            fences=record_data.fences,
-            diagnostics=record_data.diagnostics,
+            text=loaded.data.text,
+            lines=loaded.data.lines,
+            headings=loaded.data.headings,
+            fences=loaded.data.fences,
+            diagnostics=loaded.data.diagnostics,
         )
 
     class Records(TaravObject.Records):

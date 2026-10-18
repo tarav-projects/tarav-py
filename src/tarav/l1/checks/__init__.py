@@ -20,6 +20,7 @@ from tarav.l0.kernel import (
 )
 from tarav.l1.poi import SituationPOI, POI, POIProvider, fingerprint, plain
 from tarav.l1.poi.actionable import ActionablePOI
+from tarav.l0.kernel import LoadedRecord
 
 CHECKS_WORKFLOW_SHIP = WorkflowShip("44fc55a7-771e-4b63-8b38-6641a5069fc7")
 
@@ -132,11 +133,11 @@ class CheckPOI(SituationPOI, ActionablePOI):
                 "details": plain(self.details), "failure": self.failure}
 
     @classmethod
-    def _from_record(cls, record_data):
+    def _from_record(cls, loaded: LoadedRecord):
         """A loaded check POI has no bound check: `raised_by` still names its Type."""
-        result = super()._from_record(record_data)
-        result.check, result.raised_by = None, record_data.check
-        result.details, result.failure = deepcopy(record_data.details), record_data.failure
+        result = super()._from_record(loaded)
+        result.check, result.raised_by = None, loaded.data.check
+        result.details, result.failure = deepcopy(loaded.data.details), loaded.data.failure
         return result
 
     class Records(SituationPOI.Records):

@@ -9,10 +9,11 @@ from typing import Literal, Self
 from uuid import uuid4
 
 from filelock import FileLock
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import ConfigDict, field_validator
 
 from tarav.l0._core.persistence import atomic_write_json
 from tarav.l0.kernel.current import current_records
+from tarav.l0.kernel import LoadedRecord
 from tarav.l0.kernel import (
     DirectoryRecord,
     ExplorerEntry,
@@ -138,10 +139,10 @@ class ArchiveEntry(ExplorerEntry, ArchiveObject):
         return str(self.placement)
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         return cls(
-            archive=record_data.archive,
-            artifact=record_data.artifact,
+            archive=loaded.data.archive,
+            artifact=loaded.data.artifact,
         )
 
     class Records(ExplorerEntry.Records):
@@ -209,8 +210,8 @@ class ArchiveEntity(TaravEntity, DirectoryRecord, ArchiveObject):
         return self.directory
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        return cls(record_data.id, record_data.constitution)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        return cls(loaded.data.id, loaded.data.constitution)
 
     class Records(TaravEntity.Records):
         def record_example(self) -> dict[str, object]:
@@ -369,8 +370,8 @@ class ArchiveFolder(ArchiveEntity, ExplorerFolder):
         type: Literal["Tarav.RecordArchive.Dictionary"]
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        return cls(record_data.id, record_data.constitution)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        return cls(loaded.data.id, loaded.data.constitution)
 
     @property
     def entries(self) -> dict[str, str]:
@@ -440,8 +441,8 @@ class ArchiveList(ArchiveEntity, ExplorerList):
         type: Literal["Tarav.RecordArchive.Vector"]
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        return cls(record_data.id, record_data.constitution)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        return cls(loaded.data.id, loaded.data.constitution)
 
     @property
     def entries(self) -> list[str]:

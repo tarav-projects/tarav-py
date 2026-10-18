@@ -27,6 +27,7 @@ from tarav.l1.references.git import (
 
 from .model import Breadcrumb, LocatorObservation
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 # tarav.breadcrumb b8fcfd6a5d2b
@@ -97,9 +98,9 @@ class BreadcrumbPositionAmbiguous(BreadcrumbResolutionPOI):
         return {**super()._to_record(), "positions": self.positions}
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result.positions = record_data.positions
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.positions = loaded.data.positions
         return result
 
     class Records(BreadcrumbResolutionPOI.Records):

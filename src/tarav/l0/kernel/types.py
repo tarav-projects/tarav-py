@@ -10,6 +10,7 @@ from uuid import UUID
 
 from .identity import ShipIdentityError, TypeShip
 from .environment import EnvironmentTypeError, TaravEnvironment
+from .loading import DEFAULT_LOADING, RecordLoadingConfig, RecordLoadingContext
 from .records import TaravObject, _json_object, entity
 
 TYPE_RESOLUTION_PATH: Final[tuple[tuple[str, ...], ...]] = (
@@ -191,11 +192,30 @@ class TypeRegistry(Generic[RecordTypeT]):
         *,
         expected_type: type[RecordTypeT] | None = None,
         entry_paths: tuple[str, ...] | None = None,
+        config: RecordLoadingConfig = DEFAULT_LOADING,
     ) -> RecordTypeT:
         from .records import _load_record
 
         return _load_record(
-            path, registry=self, expected_type=expected_type, entry_paths=entry_paths
+            path, registry=self, expected_type=expected_type, entry_paths=entry_paths,
+            config=config,
+        )
+
+    # tarav.breadcrumb f3211a945dbd
+    def load_context(
+        self,
+        path: str | Path,
+        *,
+        expected_type: type[RecordTypeT] | None = None,
+        entry_paths: tuple[str, ...] | None = None,
+        config: RecordLoadingConfig = DEFAULT_LOADING,
+    ) -> RecordLoadingContext:
+        """The internal path: load without raising and return the whole context."""
+        from .records import _load_context
+
+        return _load_context(
+            path, registry=self, expected_type=expected_type, entry_paths=entry_paths,
+            config=config,
         )
 
     def register(self, record_type: type[RecordTypeT]) -> None:
@@ -314,23 +334,26 @@ class TypeRegistry(Generic[RecordTypeT]):
         except UnknownRecordType as exc:
             raise UnknownRecordType(f"{exc} (at {location.field})") from None
 
-    def from_record(self, value: object) -> RecordTypeT:
-        """Resolve JSON and construct it through the selected semantic class."""
-
-        record = _json_object(value)
-        return self._construct(record, self.resolve(record))
-
-    def _construct(
-        self, record: Mapping[str, object], authority: type[RecordTypeT]
+    def from_record(
+        self, value: object, *, config: RecordLoadingConfig = DEFAULT_LOADING
     ) -> RecordTypeT:
-        """Construct with an already checked Type and bind nested Record loading."""
+        """Load an in-memory Record as the Type it names, through the loading workflow."""
 
-        # tarav.breadcrumb 468893297110
-        result = authority.records.from_record(record)
-        bind_loader = getattr(result, "_bind_record_loader", None)
-        if bind_loader is not None:
-            bind_loader(self.from_record)
-        return result
+        from .loading import (
+            TYPED_STEPS,
+            RecordLoadingContext,
+            bind_loader_step,
+            raise_failure,
+            resolve_step,
+            run_steps,
+        )
+
+        context = RecordLoadingContext(config=config, record=_json_object(value))
+        return raise_failure(run_steps(context, (
+            ("resolve type", resolve_step(self)),
+            *TYPED_STEPS,
+            ("bind loader", bind_loader_step(self)),
+        )))
 
     def record_observations(
         self, record: Mapping[str, object]

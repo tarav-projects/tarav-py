@@ -63,7 +63,7 @@ def test_runtime_lazily_loads_an_external_class_from_its_environment(
     assert "external_example.records" not in sys.modules
     loaded = runtime.load_object(path)
     assert type(loaded).__name__ == "ExternalNote"
-    assert loaded.source == path
+    assert loaded.source is None  # loading metadata reaches only builders that keep it
     assert "external_example.records" in sys.modules
     assert type(loaded) in runtime.records.record_types
     assert registry_observations(runtime, path) == ()

@@ -49,9 +49,9 @@ from tarav.l2.unsorted.primitives import _uuid
 from tarav.l0.kernel import entity
 from pydantic import field_validator
 from typing import TYPE_CHECKING
+from tarav.l0.kernel import LoadedRecord
 
 if TYPE_CHECKING:
-    from pydantic import BaseModel
     from tarav.l2.unsorted.evidence import ChatlasEvidence
     from tarav.l2.unsorted.storage import DiagramNamespace
     from collections.abc import Iterable
@@ -82,11 +82,11 @@ class CaptureManifest(TaravObject):
             return _uuid(value, field="Capture.Manifest.model_ship")
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> CaptureManifest:
-        result = super()._from_record(record_data)
-        result._model_ship = record_data.model_ship
-        result._ship_drafts = tuple(record_data.ships)
-        result._annotations = tuple(record_data.annotations)
+    def _from_record(cls, loaded: LoadedRecord) -> CaptureManifest:
+        result = super()._from_record(loaded)
+        result._model_ship = loaded.data.model_ship
+        result._ship_drafts = tuple(loaded.data.ships)
+        result._annotations = tuple(loaded.data.annotations)
         return result
 
     @classmethod
@@ -314,9 +314,9 @@ class CaptureReceipt(TaravObject):
         authorizations: list[JsonObject]
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> CaptureReceipt:
-        result = super()._from_record(record_data)
-        result._data = record_data.model_copy(deep=True)
+    def _from_record(cls, loaded: LoadedRecord) -> CaptureReceipt:
+        result = super()._from_record(loaded)
+        result._data = loaded.data.model_copy(deep=True)
         return result
 
     @classmethod

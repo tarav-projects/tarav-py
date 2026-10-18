@@ -12,6 +12,7 @@ from tarav.l0.kernel import (
     isrecordsubclass,
     issubrecord,
 )
+from tarav.l0.kernel import LoadedRecord
 
 
 class A(TaravObject):
@@ -27,9 +28,9 @@ class A(TaravObject):
         name: str
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel):
-        result = super()._from_record(record_data)
-        result.name = record_data.name
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.name = loaded.data.name
         return result
 
     def label(self):
@@ -73,10 +74,10 @@ class D(A):
         title: str
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel):
+    def _from_record(cls, loaded: LoadedRecord):
         result = cls.__new__(cls)
         TaravObject.__init__(result)
-        result.title = record_data.title
+        result.title = loaded.data.title
         return result
 
     def label(self):

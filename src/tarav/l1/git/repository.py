@@ -20,6 +20,7 @@ from tarav.l0._core.git_repository import (
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip, entity
 
 from .workflow import GIT_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 
 @dataclass(frozen=True)
@@ -73,9 +74,9 @@ class GitRepository(GitObject):
         return cls(initialize_repository(root))
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result.root = Path(record_data.root).expanduser().resolve()
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.root = Path(loaded.data.root).expanduser().resolve()
         return result
 
     class Records(GitObject.Records):

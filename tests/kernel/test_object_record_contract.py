@@ -1,7 +1,6 @@
 from typing import Literal, Self
 
 import pytest
-from pydantic import BaseModel
 
 from tarav.l0.kernel import (
     TaravClass,
@@ -11,6 +10,7 @@ from tarav.l0.kernel import (
     entity,
 )
 from tarav.l3.runtime import create_runtime
+from tarav.l0.kernel import LoadedRecord
 
 
 class RuntimeProjection(TaravObject):
@@ -31,8 +31,8 @@ class RuntimeProjection(TaravObject):
         self.value = value
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        return cls(record_data.value)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        return cls(loaded.data.value)
 
     def _to_record(self) -> dict[str, object]:
         return {"type": entity(type(self)).name, "value": self.value}

@@ -31,6 +31,7 @@ from tarav.l1.skills.catalog import (
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.poi import SituationPOI, NotificationPOI, plain
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
+from tarav.l0.kernel import LoadedRecord
 
 DEFAULT_SKILLS_DEPOTS = (
     ".agents/skills",
@@ -77,9 +78,9 @@ class SkillsStatusPOI(SituationPOI):
         return {**super()._to_record(), "entry": plain(self.entry)}
 
     @classmethod
-    def _from_record(cls, record_data):
-        result = super()._from_record(record_data)
-        result.entry = record_data.entry
+    def _from_record(cls, loaded: LoadedRecord):
+        result = super()._from_record(loaded)
+        result.entry = loaded.data.entry
         return result
 
     class Records(SituationPOI.Records):

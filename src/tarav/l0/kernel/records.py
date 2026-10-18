@@ -7,7 +7,7 @@ import json
 import math
 from pathlib import Path
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, BinaryIO, Self, TextIO, TypeVar
+from typing import TYPE_CHECKING, BinaryIO, ClassVar, Self, TextIO, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -18,6 +18,18 @@ from .identity import (
     Ship,
     TypeShip,
     WorkflowShip,
+)
+from .loading import (
+    DEFAULT_LOADING,
+    TYPED_STEPS,
+    LoadedRecord,
+    RecordLoadingConfig,
+    RecordLoadingContext,
+    bind_loader_step,
+    raise_failure,
+    read_step,
+    resolve_step,
+    run_steps,
 )
 
 if TYPE_CHECKING:
@@ -236,22 +248,25 @@ class TaravObject(TaravType):
             return record
 
         # tarav.breadcrumb fe4ebb28de64
-        def from_record(self, value: object) -> TaravObject:
-            """Construct the bound Type through its hook and retain the Record."""
+        def from_record(
+            self, value: object, *, config: RecordLoadingConfig = DEFAULT_LOADING
+        ) -> TaravObject:
+            """Load an in-memory Record as the bound Type through the loading workflow."""
 
             owner = self._owner
             if owner is TaravObject:
                 raise TypeError("TaravObject is not an opaque JSON wrapper")
-            record = _json_object(value)
-            owner._check_record_type(record)
-            record_data = self.parse_record(record)
-            result = owner._from_record(record_data)
-            if type(result) is not owner:
-                raise TypeError(f"{owner.__name__}._from_record() must return exact class")
-            result._record = record
-            return result
+            context = RecordLoadingContext(
+                config=config, record=_json_object(value), record_type=owner
+            )
+            return raise_failure(run_steps(context, TYPED_STEPS))
 
     records = _RecordsDescriptor()
+
+    # tarav.breadcrumb 2fbe52f6eb5f
+    # tarav.breadcrumb 15038c3ddd24
+    # A storage-shaped Type keeps where it was loaded from; others never see it.
+    keeps_source: ClassVar[bool] = False
 
     @property
     def workflow(self) -> TaravWorkflow:
@@ -274,8 +289,8 @@ class TaravObject(TaravType):
         self.source: Path | None = None
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        """Build an instance; subclasses override when represented data is state."""
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        """Build an instance from a loaded Record; subclasses fill their state from it."""
 
         result = cls.__new__(cls)
         TaravObject.__init__(result)
@@ -376,8 +391,8 @@ class TaravEntity(TaravObject):
         return self._id
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        return cls(id=record_data.id)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        return cls(id=loaded.data.id)
 
     def _to_record(self) -> Mapping[str, object]:
         return {**super()._to_record(), "id": str(self.id)}
@@ -429,13 +444,13 @@ class TaravClass(TaravEntity):
         self._workflow = selected_workflow
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         result = cls.__new__(cls)
-        TaravEntity.__init__(result, record_data.id)
+        TaravEntity.__init__(result, loaded.data.id)
         result._target = None
-        result._python_class = record_data.python_class
-        result._name = record_data.name
-        result._workflow = record_data.workflow
+        result._python_class = loaded.data.python_class
+        result._name = loaded.data.name
+        result._workflow = loaded.data.workflow
         return result
 
     class Records(TaravEntity.Records):
@@ -537,8 +552,8 @@ class TaravSystem(TaravEntity):
         super().__init__(Ship("e5ff87ed-c382-49c8-855e-e04191dcf4c8"))
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
-        retained = _record_model_json(record_data)
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
+        retained = _record_model_json(loaded.data)
         if retained != cls._canonical_record():
             raise InvalidRecordJSON("TaravSystem Record does not match Tarav identity")
         return cls()
@@ -640,6 +655,8 @@ DIRECTORY_ENTRY_PATH = (
 
 
 class FileRecord(TaravObject):
+    keeps_source = True
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -650,6 +667,8 @@ class FileRecord(TaravObject):
 
 
 class DirectoryRecord(TaravObject):
+    keeps_source = True
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -701,30 +720,49 @@ def _load_record(
     registry: TypeRegistry[RecordT],
     expected_type: type[RecordT] | None = None,
     entry_paths: tuple[str, ...] | None = None,
+    config: RecordLoadingConfig = DEFAULT_LOADING,
 ) -> RecordT:
+    return raise_failure(_load_context(
+        path, registry=registry, expected_type=expected_type,
+        entry_paths=entry_paths, config=config,
+    ))
+
+
+def _load_context(
+    path: str | Path,
+    *,
+    registry: TypeRegistry[RecordT],
+    expected_type: type[RecordT] | None = None,
+    entry_paths: tuple[str, ...] | None = None,
+    config: RecordLoadingConfig = DEFAULT_LOADING,
+) -> RecordLoadingContext:
+    if expected_type is not None and (
+        not isinstance(expected_type, type) or not issubclass(expected_type, TaravObject)
+    ):
+        raise TypeError("expected_type must be a TaravObject class")
     source = entry_file(path, candidates=entry_paths)
-    with source.open(encoding="utf-8") as stream:
-        payload = _json_load_record(stream)
-    authority = registry.resolve(payload)
-    if expected_type is not None:
-        if not isinstance(expected_type, type) or not issubclass(
-            expected_type, TaravObject
-        ):
-            raise TypeError("expected_type must be a TaravObject class")
-        if authority is not expected_type:
+
+    def expect(context: RecordLoadingContext) -> None:
+        authority = context.record_type
+        if expected_type is not None and authority is not expected_type:
             raise RecordTypeMismatch(
                 f"Record resolves to {authority.__name__}, expected exact Type "
                 f"{expected_type.__name__}"
             )
-    if (
-        entry_paths is None
-        and Path(path).expanduser().is_dir()
-        and not issubclass(authority, DirectoryRecord)
-    ):
-        raise RecordTypeMismatch(f"{source} does not declare a DirectoryRecord")
-    result = registry._construct(payload, authority)
-    result.source = source
-    return result
+        if (
+            entry_paths is None
+            and Path(path).expanduser().is_dir()
+            and not issubclass(authority, DirectoryRecord)
+        ):
+            raise RecordTypeMismatch(f"{source} does not declare a DirectoryRecord")
+
+    return run_steps(RecordLoadingContext(config=config), (
+        ("read", read_step(source)),
+        ("resolve type", resolve_step(registry)),
+        ("expect type", expect),
+        *TYPED_STEPS,
+        ("bind loader", bind_loader_step(registry)),
+    ))
 
 
 TARAV = TaravSystem()

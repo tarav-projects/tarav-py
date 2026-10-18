@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Self
 from uuid import uuid4
 
-from pydantic import BaseModel
 
 from tarav.l0.kernel import TaravClass, TypeRegistry, current_records, entity
 from tarav.l0.kernel import FileRecord, Ship, TaravEntity, TaravObject, TypeShip
@@ -37,6 +36,7 @@ from .presentation import (
     render_document_result,
 )
 from tarav.l1.references import Reference
+from tarav.l0.kernel import LoadedRecord
 
 
 class DocumentRecord(FileRecord):
@@ -155,9 +155,9 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
             lines(self._record["content"])
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         return cls(
-            record_data.model_dump(mode="json", exclude_unset=True, by_alias=True)
+            loaded.data.model_dump(mode="json", exclude_unset=True, by_alias=True)
         )
 
     def __getitem__(self, key: str) -> object:

@@ -12,13 +12,14 @@ from datetime import UTC, datetime
 from typing import Any, Literal, Mapping, Self, Sequence
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import Field, ValidationError
 
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import FileRecord, InvalidRecordJSON, Ship, TaravEntity, TaravObject, TypeShip
 from tarav.l0.kernel.records import _json_object
 from tarav.l2.scoring.identity import SCORING_WORKFLOW_SHIP
 from .assertions import AssertionReferenceInterface
+from tarav.l0.kernel import LoadedRecord
 
 
 JsonObject = dict[str, Any]
@@ -121,9 +122,9 @@ class ScoringRecord(TaravEntity, Mapping[str, object]):
         _validate_record_semantics(self._record)
 
     @classmethod
-    def _from_record(cls, record_data: BaseModel) -> Self:
+    def _from_record(cls, loaded: LoadedRecord) -> Self:
         return cls(
-            record_data.model_dump(mode="json", exclude_unset=True, by_alias=True)
+            loaded.data.model_dump(mode="json", exclude_unset=True, by_alias=True)
         )
 
     def __getitem__(self, key: str) -> object:
@@ -186,8 +187,8 @@ class ScoringReference(FileRecord):
         return {'type': entity(type(self)).name, 'reference': self.reference}
 
     @classmethod
-    def _from_record(cls, data):
-        return cls(data.reference)
+    def _from_record(cls, loaded: LoadedRecord):
+        return cls(loaded.data.reference)
 
     class Records(FileRecord.Records):
         def record_example(self):
