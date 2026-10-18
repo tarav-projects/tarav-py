@@ -579,6 +579,8 @@ def create_runtime(
                            ("diagram", DiagramConfig), ("git", GitConfig)):
         register_config_section(section, model)
     register_git_hook_handler(TaravChange())
+    from tarav.l1.git.gitleaks import Gitleaks
+    register_git_hook_handler(Gitleaks())
     if config is not None:
         config = config.expanduser().resolve()
         settings = json.loads(config.read_text(encoding="utf-8"))

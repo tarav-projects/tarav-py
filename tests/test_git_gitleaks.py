@@ -193,3 +193,91 @@ def test_the_system_project_checks_scanned_repositories_no_project_owns(repo: Pa
     assert [check.root for check in unowned_checks()] == [repo.resolve()]
     _marker(repo.parent, "7c2e8d3f-4a5b-4c9d-8e0f-2a3b4c5d6e7f")
     assert unowned_checks() == []
+
+
+# --- the hook and the default handlers (slice 3)
+
+import os  # noqa: E402
+import sys  # noqa: E402
+
+from tarav.l1.git.hooks import (  # noqa: E402
+    DEFAULT_HANDLERS, GitHooksCheck, HooksNotInstalled, git_hook_checks, install,
+)
+from tarav.l1.poi.actionable import BlessablePOI  # noqa: E402
+
+PROJECT_ID = "9d3e7a1c-5b2f-4c8d-a6e0-3f1b2c4d5e6a"
+
+
+@pytest.fixture
+def hooked(repo: Path, tmp_path: Path, monkeypatch) -> Path:
+    """A Project repository whose hooks are installed with the default handlers."""
+    create_runtime()
+    monkeypatch.setenv("PATH", os.pathsep.join([str(Path(sys.executable).parent), os.environ["PATH"]]))
+    monkeypatch.setenv("TARAV_RECORDS", str(tmp_path / "records"))
+    _marker(repo, PROJECT_ID)
+    (repo / ".tarav" / "config.json").write_text("{}", encoding="utf-8")
+    assert install(repo).handlers == list(DEFAULT_HANDLERS) == ["gitleaks"]
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "Install the hooks")
+    return repo
+
+
+def _stage_token(root: Path) -> None:
+    (root / "settings.py").write_text(f'TOKEN = "{_token()}"\n', encoding="utf-8")
+    _git(root, "add", "settings.py")
+
+
+def _commit(root: Path, **environment: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "Settings"],
+                          capture_output=True, text=True, env={**os.environ, **environment})
+
+
+def _staged_actions(tmp_path: Path) -> list:
+    from tarav.l1.actions import ActionRunStore
+    from tarav.l1.records import RecordRegistry
+
+    runs = ActionRunStore(RecordRegistry(tmp_path / "records", create_runtime().records))
+    return [run for run in runs.list()
+            if run.data["event"]["poi"]["type"] == "Tarav.Git.Gitleaks.Staged"]
+
+
+def test_a_staged_secret_stops_the_commit_and_opens_an_action(hooked: Path, tmp_path: Path) -> None:
+    head = _git(hooked, "rev-parse", "HEAD")
+    _stage_token(hooked)
+    stopped = _commit(hooked)
+    assert stopped.returncode == 1 and "gitleaks stopped pre-commit" in stopped.stderr
+    assert "TARAV_GIT_HOOKS_OVERRULE=gitleaks" in stopped.stderr
+    assert _git(hooked, "rev-parse", "HEAD") == head
+    (action,) = _staged_actions(tmp_path)
+    assert action.data["project"]["id"] == PROJECT_ID
+    assert action.data["event"]["poi"]["details"]["overruled"] is False
+
+
+def test_the_overrule_lets_it_through_and_is_recorded(hooked: Path, tmp_path: Path) -> None:
+    _stage_token(hooked)
+    assert _commit(hooked, TARAV_GIT_HOOKS_OVERRULE="tarav-change,gitleaks").returncode == 0
+    (action,) = _staged_actions(tmp_path)
+    assert action.data["event"]["poi"]["details"]["overruled"] is True
+
+
+def test_a_clean_commit_passes_and_a_missing_gitleaks_only_warns(hooked: Path, tmp_path: Path) -> None:
+    (hooked / "notes.md").write_text("Nothing secret.\n", encoding="utf-8")
+    _git(hooked, "add", "notes.md")
+    assert _commit(hooked).returncode == 0
+    _stage_token(hooked)
+    path = os.pathsep.join([str(Path(sys.executable).parent), "/usr/bin", "/bin"])
+    passed = _commit(hooked, PATH=path)
+    assert passed.returncode == 0 and "gitleaks is not on PATH" in passed.stderr
+    assert _staged_actions(tmp_path) == []
+
+
+def test_projects_get_the_default_hooks_check_and_may_bless_it_away(repo: Path) -> None:
+    create_runtime()
+
+    class _Project:
+        root = repo
+
+    checks = list(git_hook_checks(_Project()))
+    assert [type(check).__name__ for check in checks] == ["GitHooksCheck", "GitleaksCheck"]
+    assert isinstance(checks[0], GitHooksCheck) and checks[0].config.handlers == ["gitleaks"]
+    assert issubclass(HooksNotInstalled, BlessablePOI)

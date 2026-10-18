@@ -94,15 +94,17 @@ def path_with(*folders: str) -> dict:
 
 def test_install_writes_the_scripts_the_handlers_need_and_points_git_there(tmp_path: Path) -> None:
     target = project(tmp_path)
-    assert found(target) == []  # no `git` section: nothing to keep
+    # no `git` section: the default handlers, reported until installed (request 920)
+    assert found(target) == [("HooksNotInstalled", {"hooks_path": None}),
+                             ("HookStale", {"hook": "pre-commit"})]
 
     config = install(tmp_path, add=["test-recorder"])
 
-    assert config.handlers == ["test-recorder"]
+    assert config.handlers == ["gitleaks", "test-recorder"]
     assert json.loads((tmp_path / ".tarav/config.json").read_text()) == {
-        "git": {"hooks": {"handlers": ["test-recorder"]}}}
+        "git": {"hooks": {"handlers": ["gitleaks", "test-recorder"]}}}
     assert sorted(path.name for path in (tmp_path / HOOKS_FOLDER).iterdir()) == [
-        "commit-msg", "post-commit"]
+        "commit-msg", "post-commit", "pre-commit"]
     assert os.access(tmp_path / HOOKS_FOLDER / "commit-msg", os.X_OK)
     assert git(tmp_path, "config", "core.hooksPath").stdout.strip() == HOOKS_FOLDER
     assert (tmp_path / ".gitattributes").read_text() == "*.rec merge=union\n"
@@ -227,7 +229,7 @@ def test_the_cli_installs_a_handler_the_runtime_registers(tmp_path: Path) -> Non
         [str(Path(sys.executable).parent / "tarav"), "git", "hooks", "install",
          "--project", str(tmp_path), "--handler", "tarav-change", "--json"],
         capture_output=True, text=True, check=True).stdout
-    assert json.loads(printed) == {"project": str(tmp_path.resolve()), "handlers": ["tarav-change"],
-                                   "chain": None}
+    assert json.loads(printed) == {"project": str(tmp_path.resolve()),
+                                   "handlers": ["gitleaks", "tarav-change"], "chain": None}
     assert sorted(path.name for path in (tmp_path / HOOKS_FOLDER).iterdir()) == [
         "commit-msg", "post-commit", "post-rewrite", "pre-commit"]

@@ -32,6 +32,7 @@ from tarav.l1.actions.pois import POIResolutionAction
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.poi.actionable import BlessablePOI
 
+from .hooks import OVERRULE_ENV_VAR, GitHookCall, GitHookHandler, GitHookRefusal
 from .workflow import GIT_WORKFLOW_SHIP
 
 DEPOT_ENV_VAR = "TARAV_GITLEAKS_ROOT"
@@ -340,6 +341,81 @@ class GitleaksCheck(Check):
         return CheckResult(self, status="completed", pois=pois)
 
 
+class GitleaksStagedCheck(Check):
+    """Raises the hook's Staged POIs. It never runs in a suite, so their actions stay open
+    until closed by hand."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("4bb94504-da07-4a10-b933-b5d6f4dd383a"),
+                          name="Tarav.Git.Gitleaks.StagedCheck", workflow=GIT_WORKFLOW_SHIP)
+
+    def __init__(self, root: Path | str) -> None:
+        super().__init__()
+        self.root = Path(root).resolve()
+
+    def _run(self) -> CheckResult:
+        return CheckResult(self, status="completed", pois=[])
+
+
+# tarav.breadcrumb 91ec1d57d64a
+def register_staged(root: Path | str, run: GitleaksRun, *, overruled: bool) -> dict:
+    """Open the action of a staged report on the repository's owner."""
+    from tarav.l1.actions.project import ProjectActions
+
+    root = Path(root).resolve()
+    check = GitleaksStagedCheck(root)
+    findings = [{"rule": item["RuleID"], "file": item["File"], "line": item["StartLine"]}
+                for item in GitleaksDepot().report(run)]
+    poi = GitleaksStaged(
+        check, f"gitleaks found {run.findings} secrets in changes staged in {root}"
+        + (", committed by overrule" if overruled else ", and stopped the commit"),
+        situation={"repository": run.key, "run": run.report},
+        details={"path": str(root), "findings": findings, "overruled": overruled})
+    suite = CheckSuite([CheckResult(check, status="completed", pois=[poi])],
+                       name="gitleaks hook").run()
+    return ProjectActions(owner_of(root)).register(suite)
+
+
+# tarav.breadcrumb 88f957d5a028
+# tarav.breadcrumb 732bc027224b
+class Gitleaks(GitHookHandler):
+    """Scans the staged changes before each commit and stops it when gitleaks finds secrets."""
+
+    name = "gitleaks"
+    hooks = frozenset({"pre-commit"})
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("8ac1296c-0150-4af1-973f-5a4afe26f26d"),
+                          name="Tarav.Git.Gitleaks", workflow=GIT_WORKFLOW_SHIP)
+
+    def run(self, call: GitHookCall) -> None:
+        if gitleaks_binary() is None:
+            raise RuntimeError("gitleaks is not on PATH; the staged changes were not scanned")
+        run = run_gitleaks(call.root, kind=STAGED)
+        if not run.findings:
+            return
+        overruled = call.overrules(self.name)
+        note = ""
+        try:
+            register_staged(call.root, run, overruled=overruled)
+        except Exception as exc:  # the stop must not depend on the action registry
+            note = f" The Project action could not be registered: {exc}."
+        if overruled:
+            return
+        files = sorted({item["File"] for item in GitleaksDepot().report(run)})
+        shown = ", ".join(files[:3]) + (", ..." if len(files) > 3 else "")
+        raise GitHookRefusal(
+            f"{run.findings} secrets in the staged changes ({shown}). Remove them, add the "
+            f"reviewed fingerprints to {IGNORE_FILE}, or commit again with "
+            f"{OVERRULE_ENV_VAR}={self.name}; either way the report is an action of the "
+            f"Project.{note}")
+
+    def check(self, project) -> Check:
+        return GitleaksCheck(project.root)
+
+
 def system_project_root() -> Path:
     """Where the System Project lives; the fallback owner of repositories no Project owns."""
     return default_tarav_data_root() / "system"
@@ -389,9 +465,10 @@ def unowned_checks(depot: GitleaksDepot | None = None) -> list[GitleaksCheck]:
 GIT_GITLEAKS_RECORD_TYPES = (GitleaksRun, GitleaksPOI, GitleaksFinding, GitleaksStaged,
                              GitleaksNeverScanned, GitleaksMissing)
 
-__all__ = ["DEPOT_ENV_VAR", "GIT_GITLEAKS_RECORD_TYPES", "GitleaksCheck", "GitleaksDepot",
+__all__ = ["DEPOT_ENV_VAR", "GIT_GITLEAKS_RECORD_TYPES", "Gitleaks", "GitleaksCheck", "GitleaksDepot",
            "GitleaksFinding", "GitleaksFindingResolution", "GitleaksMissing",
            "GitleaksNeverScanned", "GitleaksPOI", "GitleaksRun", "GitleaksStaged",
+           "GitleaksStagedCheck", "register_staged",
            "GitleaksUnavailable", "HISTORY", "IGNORE_FILE", "STAGED", "gitleaks_binary",
            "ignored", "owner_of", "register_run", "repository_key", "run_gitleaks",
            "system_project_root", "unowned_checks"]

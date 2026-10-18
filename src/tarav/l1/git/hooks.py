@@ -26,6 +26,7 @@ from tarav.l0._core.errors import CliError
 from tarav.l0._core.git_repository import GitError, git_result, run_git
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
+from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.project.config import ProjectConfig
 
 from .workflow import GIT_WORKFLOW_SHIP
@@ -37,6 +38,9 @@ STDIN_HOOKS = frozenset({"post-rewrite", "pre-push", "reference-transaction"})
 # The exit status of `tarav git hook` when a handler stopped the operation; no other stops Git.
 REFUSED_EXIT = 75
 OVERRULE_ENV_VAR = "TARAV_GIT_HOOKS_OVERRULE"
+# tarav.breadcrumb f89d4fccd8dc
+# The handlers a Project whose config names none uses; its checks report them until installed.
+DEFAULT_HANDLERS = ("gitleaks",)
 
 
 # tarav.breadcrumb f7391cbd2d28
@@ -190,7 +194,7 @@ def install(root: Path | str, *, add: Sequence[str] = ()) -> GitHooksConfig:
                        f"known: {', '.join(sorted(handlers)) or 'none'}")
     project_config = ProjectConfig(root)
     git = project_config.section("git", GitConfig) or GitConfig()
-    config = git.hooks or GitHooksConfig()
+    config = git.hooks or GitHooksConfig(handlers=list(DEFAULT_HANDLERS))
     config = config.model_copy(update={"handlers": list(dict.fromkeys([*config.handlers, *add]))})
     project_config.write_section("git", git.model_copy(update={"hooks": config}))
 
@@ -267,8 +271,11 @@ class GitHooksPOI(CheckPOI):
                           name="Tarav.Git.Hooks.POI", workflow=GIT_WORKFLOW_SHIP)
 
 
-class HooksNotInstalled(GitHooksPOI):
-    """The repository does not run the Project's hooks: `core.hooksPath` is elsewhere."""
+class HooksNotInstalled(GitHooksPOI, BlessablePOI):
+    """The repository does not run the Project's hooks: `core.hooksPath` is elsewhere.
+
+    A Project that wants no hooks blesses it.
+    """
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -356,7 +363,8 @@ class GitHooksCheck(Check):
 
 
 def git_hook_checks(project) -> Iterable[Check]:
-    """The checks of a Project's Git hooks; none when its config selects none.
+    """The checks of a Project's Git hooks: those its config selects, or the default
+    handlers when it selects none and its root is a repository root.
 
     An invalid `git` section yields nothing here; the Project files check reports it.
     """
@@ -365,7 +373,9 @@ def git_hook_checks(project) -> Iterable[Check]:
     except CliError:
         return ()
     if config is None:
-        return ()
+        if repository_root(project.root) != Path(project.root).resolve():
+            return ()
+        config = GitHooksConfig(handlers=list(DEFAULT_HANDLERS))
     handlers = git_hook_handlers()
     extra = (handlers[name].check(project) for name in config.handlers if name in handlers)
     return (GitHooksCheck(project, config), *(check for check in extra if check is not None))
@@ -379,7 +389,7 @@ GIT_HOOKS_RECORD_TYPES = (GitHooksPOI, HooksNotInstalled, HookStale, UnknownHook
                           HookAttributesMissing)
 
 __all__ = [
-    "GIT_HOOKS_RECORD_TYPES", "GitConfig", "GitHookCall", "GitHookHandler", "GitHookRefusal",
+    "DEFAULT_HANDLERS", "GIT_HOOKS_RECORD_TYPES", "GitConfig", "GitHookCall", "GitHookHandler", "GitHookRefusal",
     "GitHooksCheck", "OVERRULE_ENV_VAR", "REFUSED_EXIT", "overrule_from_environment",
     "GitHooksConfig", "GitHooksPOI", "HOOKS_FOLDER", "HookAttributesMissing", "HookStale",
     "HooksNotInstalled", "UnknownHookHandler", "dispatch", "expected_scripts",

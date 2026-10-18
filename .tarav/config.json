@@ -8,7 +8,8 @@
   "git": {
     "hooks": {
       "handlers": [
-        "tarav-change"
+        "tarav-change",
+        "gitleaks"
       ]
     }
   }
