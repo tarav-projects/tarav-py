@@ -28,11 +28,32 @@ An object's own state is its source of truth, never its loaded Record. Every
 construction path, whether a constructor, a factory, or `_from_record`, fills
 that state; objects may be partial, because a Record need not hold every fact
 (a location in particular), and a missing part fails where it is used.
-`_record` keeps what was read and is not consulted as state; `to_record()`
-projects state. The kernel's `_to_record()` fallback to `_record` remains only
-for Types not yet migrated, which `tests/kernel/test_object_record_contract.py`
-lists and lets only shrink.
+Nothing of a loaded Record stays on the instance; `to_record()` projects
+state.
 <!-- tarav.breadcrumb 020e9873510e -->
+
+Loading a Record is the record loading workflow (`tarav.l0.kernel.loading`),
+the official road from a Record to an instance. One `RecordLoadingContext`
+carries the `RecordLoadingConfig` and is filled step by step: read (from a
+file, or the given dict), resolve the Type, check the Type reference, parse,
+build. Parsing is one strict pass of the Type's `RecordInterface` over the
+given dict (`Type.records.parse_record`), without copies or a comparison of
+the result. The builder, `_from_record(loaded)`, receives a `LoadedRecord`:
+the parsed pydantic model, not copied, and `LoadingMetadata` (by default
+`source`, which only Types declaring `keeps_source`, such as `FileRecord`,
+`DirectoryRecord` and Projects, keep). `TypeRegistry.load_context()` returns
+the context of a failed load; the public paths raise the original error with
+a note naming the step. `RecordLoadingConfig.level` selects how much parsing
+checks: `none` builds without checks, `lite` and `full` are the Type's own
+`Records._parse_lite` / `_parse_full`, `default` its RecordInterface; the
+level never reaches the builder. Writing checks the Record the Type provides
+with the same parse. Types whose whole state is their typed data use the
+`TypedState` mixin, which keeps the parsed model as `typed` and writes it
+back; Types whose state is a JSON document (Skillware blocks, References,
+scoring and Diagram records) keep that document as their own `_fields`.
+<!-- tarav.breadcrumb 7282e7b6e826 -->
+<!-- tarav.breadcrumb cb24741cb86d -->
+<!-- tarav.breadcrumb fa2aeb9f5a96 -->
 
 The main concepts are:
 
@@ -405,12 +426,12 @@ The Kernel establishes only the common contracts needed for interoperability:
   evolve without changing identity.
 - Every Object inherits a Pydantic `RecordInterface`. Classes may extend or
   deliberately replace representation ancestry.
-- A Record is a projection, not the Object's runtime data model. `_record`
-  retains loader-supplied material when it exists; runtime-created Objects need
-  not populate it.
+- A Record is a projection, not the Object's runtime data model. No Object
+  keeps the Record it was loaded from (`tests/test_architecture.py`).
 - `obj.records.to_record()` calls the class-owned `_to_record()` hook, then
-  validates and detaches the result. `Type.records.from_record()` validates
-  input before calling the class-owned `_from_record()` construction hook.
+  detaches and parses the result. `Type.records.from_record()` parses input
+  in the record loading workflow before calling the class-owned
+  `_from_record()` builder.
   When a Record supplies a Type reference, both boundaries require it to
   identify the object's exact class;
   a direct class call may also accept a Record without that reference. Dynamic

@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready, 2026-10-18.
+Status: complete, 2026-10-18.
 Knowledge.Surface: wiki.
 Alignment.Mode: autonomous.
 
@@ -167,7 +167,7 @@ Inspected 2026-10-18:
 - Relevant note: `tarav-py/notes/wiki/record-interfaces.md` (Record
   interfaces), `tarav-md/notes/wiki/chatlas-normal-model.md`.
 - Supporting chat: `claude-code:2bff854f-66a0-4e8c-8f96-9078af34c479`.
-- Capture status: pending.
+- Capture status: see Impl.Log.
 
 ## Execution.Plan
 
@@ -177,17 +177,17 @@ Core data shape: `RecordLoadingConfig`, `RecordLoadingContext`,
 1. Performance/refactor — the parse step only. `parse_record` replaces
    `validate_record` (callers migrated); no copies or comparison on loading;
    Chatlas rows parsed once. Check: full suite; micro-benchmark before and
-   after. Status: pending.
+   after. Status: done (cbf7d60).
 2. Feature — the loading pipeline. `tarav.l0.kernel.loading`; builders
    receive `LoadedRecord`; `source` through metadata. Check: new
-   `tests/kernel/test_record_loading.py`; full suite. Status: pending.
+   `tests/kernel/test_record_loading.py`; full suite. Status: done (d0f6845, 9e4cf79).
 3. Feature — check levels on `RecordLoadingConfig`. Check: tests for
-   `none`, `default`, a Type-defined `lite`/`full`. Status: pending.
+   `none`, `default`, a Type-defined `lite`/`full`. Status: done (bb64f64).
 4. Refactor — `_record` removed. Types migrated to own state; the record
    contract test drives the list; architecture test forbids `._record`.
-   Check: full suite. Status: pending.
+   Check: full suite. Status: done (ba5d9d6).
 5. Docs — ARCHITECTURE, AGENTS (Skillware source) if the contract text
-   changes, Wiki capture. Status: pending.
+   changes, Wiki capture. Status: done.
 
 Deviation triggers: a Type whose round trip cannot hold without the stored
 record; consumers outside tarav-py reading `_record`.
@@ -195,3 +195,49 @@ record; consumers outside tarav-py reading `_record`.
 ## Impl.Log
 
 - 2026-10-18: request written by the designing Agent in the session above.
+- 2026-10-18, Execute (same session, cold reload). Start checkpoints:
+  tarav-py c91b595, tarav-md 2089246 (empty).
+- Slice 1: `parse_record` replaces `validate_record` (15 files);
+  assertions of the removed transformation check dropped from
+  `test_entity.py`, `test_record_interface.py`. Normal Model rows parsed once.
+  A 40 KB turn row read: 1,623 µs before, 230 µs after (machine slower that
+  run: `json.loads` 94 µs against 54 µs). Real search: messages 30.6 s →
+  12.9 s, turns 88.3 s → 24.8 s. Suite 349 passed. Commit cbf7d60.
+- Slice 2: `tarav.l0.kernel.loading`; 53 files' builders migrated to
+  `loaded.data` by script. Removing the loader's `source` injection broke 24
+  tests: DirectoryRecords whose `TaravEntity` builder skips `super()`, and
+  Projects. Deviation: instead of a `DirectoryRecord` builder, storage-shaped
+  Types declare `keeps_source` (`FileRecord`, `DirectoryRecord`,
+  `TaravProject`) and the build step gives them the metadata source.
+  `tests/kernel/test_record_loading.py` 4 passed. Commit d0f6845.
+- Found: `pyproject.toml` `testpaths` lists test files explicitly, so the
+  tests added by requests 919–921 had not run in the default suite (they had
+  been run separately each time). Added; the Search runtime test now checks
+  independence instead of an empty engine registry (broken by request 920's
+  registration, found with a worktree bisect). Two `test_project_dev.py`
+  failures and three `tests/scoring/test_assertion_objects.py` failures come
+  from other commits (2a5eab5 and earlier) and are outside `testpaths`.
+  Commit 9e4cf79; suite 373 passed.
+- Slice 3: `RecordLoadingConfig.level`; 3 level tests failed first, then 7
+  passed. Commit bb64f64; suite 376 passed.
+- Slice 4: kernel stops keeping `_record` and echoing it. A round-trip
+  script listed 73 failing Types, then 0 after the migration; a scan of all
+  `TaravObject` subclasses found 9 unregistered Diagram Types relying on the
+  echo too. Patterns: `TypedState` (Chatlas records, Normal Model,
+  breadcrumbs, decisions, Skillware annotations and reading entries, Archive
+  artifact records, scoring details and cases, Diagram capture, view and
+  draft records); own JSON document as `_fields` (`SkwBlock`, `ScoringRecord`,
+  the `Reference` family, `TypedShip`/`TypedAnnotation`), keeping References
+  constructible from unchecked input as before; attributes with an explicit
+  writer (`GitRepository`, `RankingScore`). The test-suite ratchet
+  `RECORD_STATE_DEBT` was paid off and replaced by "no object keeps its
+  Record"; an architecture test forbids `._record` in `src`. Another
+  session's unsubmitted marker in `tests/test_architecture.py` was registered
+  with its own session (`473c89a0`). Whole test tree: 520 passed, the 5
+  failures above remaining. Commit ba5d9d6.
+- Side request 922 (cached Turns in the chatlas-context audit): commits
+  ad89cc7, 1a92ab5.
+- Slice 5: ARCHITECTURE describes the loading workflow (3 Breadcrumbs; the
+  ARCHITECTURE.md audit with position refresh took 2.27 s, the 922 check);
+  Wiki `notes/wiki/record-interfaces.md` (Loading a Record — 921) and
+  `notes/wiki/daily/2026-10-18.md`. AGENTS.md needed no change.
