@@ -593,15 +593,33 @@ derived `normal-model/` directories.
 
 `tarav.l1.chatlas.search` is Chatlas's engine for the Search workflow, which
 knows nothing of Chatlas. A `ChatlasSearchQuery` names its target (turns by
-default, or messages), literal text, side, and session filters read from index
-rows (provider, project path prefix, activity window). The engine walks
-sessions newest first, builds a missing cache unless the query declines,
-searches a stale one as stored, and yields `ChatlasSearchHit`s carrying the
-session's index facts and the standing of every part read. Turn start times
-need events and are opt-in (`times`, also on `ChatlasQuery`). The runtime
-registers the engine in `runtime.search` as `chatlas`.
+default, or messages), how text matches (`text` as a phrase of words, `match`
+as an FTS5 expression, `contains` as a substring), side, and session filters
+(provider, project path prefix, activity window). The engine reads the Normal
+Models index as it is, newest session first, and yields `ChatlasSearchHit`s
+carrying the session's facts and the turn or message as the index holds them;
+full records stay in the JSON cache. Turn start times need events and are
+opt-in on `ChatlasQuery` (`times`). The runtime registers the engine in
+`runtime.search` as `chatlas`.
 <!-- tarav.breadcrumb 292f5d687a12 -->
 <!-- tarav.breadcrumb f8efe0be8a26 -->
+
+Chatlas derives three stages from the native provider folders: capture (raw,
+`chatlas_update`), the JSON Normal Model cache (`NormalModelCache`), and the
+Normal Models index, a SQLite database at `index/normal-models.sqlite`
+(`tarav.l1.chatlas.normal_models_index.NormalModelsIndex`) holding sessions,
+messages, Turns and a full-text table, but no JSON records. Each stage records
+the version of its input: the cache the `raw_version` of each part, the index
+the cache version of each part it consumed; a stage is fresh while those
+match. `NormalModelsIndex.query` and `rows` run read-only SQL for any
+consumer. `tarav.l1.chatlas.stages.ChatlasStages` lets a consumer control the
+pipeline: select sessions by Session Index facts, read each stage's standing
+(missing, stale, fresh), and update chosen stages with a policy (`missing`,
+`stale`, `all`). Nothing runs implicitly; search runs stages only when its
+`capture`, `cache` or `index` flags ask.
+<!-- tarav.breadcrumb b8e7529c17e6 -->
+<!-- tarav.breadcrumb d98c94ab0799 -->
+<!-- tarav.breadcrumb ad19e746fc5d -->
 
 `tarav.l1.programs` declares `ProgramsWorkflow` and the minimal
 `TaravProgram(TaravEntity)` family. `tarav.l2.project.programs.ProjectProgram`

@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: executing, 2026-10-18.
+Status: complete, 2026-10-18.
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -201,3 +201,6 @@ changes plain-text searches; index size far beyond the estimate.
   turns 121 ms (was 24.8 s), substring 1.5 s, first 20 turns for "cache"
   64 ms. Word matching finds 64 messages where the substring finds 33,
   because the phrase also matches "Tarav Center".
+- Slice 4: ARCHITECTURE describes the search engine on the index and the
+  three stages (3 Breadcrumbs); Wiki `tarav-md` `chatlas-normal-model.md`
+  and the daily note (commit 5e0328e).
