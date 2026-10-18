@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready, 2026-10-18.
+Status: complete, 2026-10-18; search speed needs alignment (see Impl.Log).
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -99,7 +99,7 @@ Inspected 2026-10-18:
 - Wiki owner: `tarav-md` (`notes/wiki/`).
 - Relevant note: `notes/wiki/chatlas-normal-model.md`.
 - Supporting chat: `claude-code:2bff854f-66a0-4e8c-8f96-9078af34c479`.
-- Capture status: pending.
+- Capture status: see Impl.Log.
 
 ## Execution.Plan
 
@@ -109,15 +109,15 @@ turns target and `message` a Chat.Message record for the messages target.
 
 1. Feature — `ChatlasQuery.times`. Result: a turn query without times reads no
    events. Check: test over a cached Model without `events.jsonl`; CLI JSON
-   unchanged apart from the new query field. Status: pending.
+   unchanged apart from the new query field. Status: done (ba6b177).
 2. Feature — `tarav.l1.chatlas.search`. Result: the query, hit and engine.
    Check: `tests/chatlas/test_search.py` over a temporary depot (index rows +
    caches): target, text, side, filters, order, `max_hits`, build of a missing
-   cache, stale flag. Status: pending.
+   cache, stale flag. Status: done (d4dcc5e).
 3. Feature — runtime registration. Result: `get_runtime().search` answers a
    `ChatlasSearchQuery`. Check: real search on the depot for a phrase of this
-   session; timing recorded. Status: pending.
-4. Docs — ARCHITECTURE Chatlas paragraph; Wiki capture. Status: pending.
+   session; timing recorded. Status: done (421a8b0).
+4. Docs — ARCHITECTURE Chatlas paragraph; Wiki capture. Status: done.
 
 Deviation triggers: the Search namespace pattern not fitting a long-running
 scan; `ChatlasQueryEngine` reuse forcing semantic changes to the CLI.
@@ -125,3 +125,32 @@ scan; `ChatlasQueryEngine` reuse forcing semantic changes to the CLI.
 ## Impl.Log
 
 - 2026-10-18: request written by the designing Agent in the session above.
+- 2026-10-18, Execute (same session, cold reload). Start checkpoints:
+  tarav-py 97ff7e1 (this note), tarav-md 7fbc137 (empty); external tarav-md
+  work found at the start was committed apart as 84ee2cc and 9faef09
+  (unknown session).
+- Slice 1: `ChatlasQuery.times`. `tests/chatlas/test_query_times.py` failed
+  first (TypeError, unknown `times`), then 2 passed. The CLI JSON gains
+  `"times": true` and still reports start times. The Normal Model fixture
+  moved to `tests/chatlas/_helpers.py` (`normal_model_fixture`) for the cache,
+  query and search tests. Breadcrumb on `query.py` (1). Commit ba6b177.
+- Slice 2: `tarav.l1.chatlas.search`. `tests/chatlas/test_search.py` failed
+  at collection (no module), then 9 passed. `tests/test_architecture.py`
+  lists `search.py` among the Normal Model consumers, beside `sessions.py`
+  and `references.py`; the rule for capture and index modules is unchanged.
+  Breadcrumbs on `search.py` (5). Commit d4dcc5e.
+- Slice 3: `runtime.search` registers the engine as `chatlas`; a routing test
+  (10 search tests). Real depot through the installed runtime: turns, user
+  side, "raw.version", `max_hits=5`: 3 hits in 80.5 s (fewer than five hits,
+  so the whole depot was scanned); messages, "tarav-center": 29 hits in
+  30.6 s; turns, "tarav-center": 28 hits in 88.3 s. Hits came from this
+  session (fresh) and from the live session d82f1801 (stale, correctly
+  flagged). Breadcrumb on `runtime.py` (1). Commit 421a8b0.
+- Observation, measured: a full scan costs about twice the designed estimate.
+  A profile of a turns search over 78 recent sessions (17.9 s) puts 91% of
+  it in `_validated_collection_row`, the kernel `from_record`/`to_record`
+  round trip of every cached turn and message; turns alone take 14.3 s.
+  Cached streams were validated when built. A trusted read of cache rows is
+  the main lever and needs a User decision; it is outside this request.
+- Slice 4: ARCHITECTURE paragraph; 2 Breadcrumbs, 43 shifted positions
+  refreshed, audit clean.

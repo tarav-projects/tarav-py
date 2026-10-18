@@ -570,6 +570,18 @@ derived `normal-model/` directories.
 <!-- tarav.breadcrumb 704f9f515ebc -->
 <!-- tarav.breadcrumb 0dbcd88f7c41 -->
 
+`tarav.l1.chatlas.search` is Chatlas's engine for the Search workflow, which
+knows nothing of Chatlas. A `ChatlasSearchQuery` names its target (turns by
+default, or messages), literal text, side, and session filters read from index
+rows (provider, project path prefix, activity window). The engine walks
+sessions newest first, builds a missing cache unless the query declines,
+searches a stale one as stored, and yields `ChatlasSearchHit`s carrying the
+session's index facts and the standing of every part read. Turn start times
+need events and are opt-in (`times`, also on `ChatlasQuery`). The runtime
+registers the engine in `runtime.search` as `chatlas`.
+<!-- tarav.breadcrumb 292f5d687a12 -->
+<!-- tarav.breadcrumb f8efe0be8a26 -->
+
 `tarav.l1.programs` declares `ProgramsWorkflow` and the minimal
 `TaravProgram(TaravEntity)` family. `tarav.l2.project.programs.ProjectProgram`
 provides a distinct project-oriented subtype without adding fields or behavior.
