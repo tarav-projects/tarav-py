@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
-from hashlib import sha256
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import shutil
-from typing import Literal
 from uuid import uuid4
 
 from filelock import FileLock
 
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.persistence import atomic_write_json
+from tarav.l1.chatlas.index_writer import raw_version
 from tarav.l1.chatlas.paths import default_chatlas_root
 
 from .normal_model.model import (
@@ -21,109 +20,121 @@ from .normal_model.model import (
     COLLECTION_FILES,
     JsonObject,
     MAIN_FILENAME,
-    NORMAL_MODEL_SCHEMA_VERSION,
 )
-from .normal_model.pipeline import (
-    build_normal_model_from_row,
-    normal_model_producer_commit,
-)
-from tarav.l1.chatlas.index_writer import transcript_sources
+from .normal_model.pipeline import build_normal_model_from_row
 
 
 CACHE_SCHEMA = "tarav.chatlas.normal-model-cache"
-CACHE_SCHEMA_VERSION = 4
+CACHE_SCHEMA_VERSION = 5
 CACHE_ROOT = Path("normal-model")
 LOCK_ROOT = CACHE_ROOT / "locks"
 CACHE_FILENAME = "cache.json"
-CacheStanding = Literal["FRESH", "STALE", "MISSING"]
+PART_FILES = {"main": MAIN_FILENAME, **COLLECTION_FILES}
+PARTS = tuple(PART_FILES)
 
 
-def normal_model_cache_path(
-    row: JsonObject,
-    *,
-    chatlas_root: Path | None = None,
-) -> Path:
-    return _root(chatlas_root) / CACHE_ROOT / _identity_hash(row)
+# tarav.breadcrumb 5ca16ac6a344
+@dataclass(frozen=True, slots=True)
+class CachedPart:
+    """One cached part of a Normal Model and the raw data it was built from."""
+
+    name: str
+    present: bool
+    raw_version: str | None
+    current_raw_version: str | None
+
+    @property
+    def fresh(self) -> bool:
+        return (
+            self.present
+            and self.raw_version is not None
+            and self.raw_version == self.current_raw_version
+        )
+
+    @property
+    def stale(self) -> bool:
+        return self.present and not self.fresh
 
 
 # tarav.breadcrumb 0221441d98de
-def normal_model_cache_status_from_row(
-    row: JsonObject,
-    *,
-    chatlas_root: Path | None = None,
-) -> CacheStanding:
-    path = normal_model_cache_path(row, chatlas_root=chatlas_root)
-    if not path.exists():
-        return "MISSING"
-    if not path.is_dir() or not all(
-        (path / filename).is_file()
-        for filename in (MAIN_FILENAME, *COLLECTION_FILES.values(), CACHE_FILENAME)
-    ):
-        return "STALE"
-    metadata = _read_cache_metadata(path, required=False)
-    if metadata is None or metadata.get("cache_key") != _cache_identity(row)["cache_key"]:
-        return "STALE"
-    try:
-        ChatlasNormalModel.open(path)
-    except (CliError, ValueError):
-        return "STALE"
-    return "FRESH"
+# tarav.breadcrumb 1f264fd09a1d
+# tarav.breadcrumb 0ad91b2a24d2
+class NormalModelCache:
+    """What the cache holds for one session, without policy.
+
+    Every part is judged only by the raw data it was built from: it is fresh
+    while that `raw_version` is the one the Session Index row names. Reading
+    returns what is stored, fresh or not; building rewrites every part.
+    """
+
+    def __init__(self, row: JsonObject, *, chatlas_root: Path | None = None) -> None:
+        self.row = row
+        self.chatlas_root = _root(chatlas_root)
+        self.path = self.chatlas_root / CACHE_ROOT / _identity_hash(row)
+
+    @property
+    def current_raw_version(self) -> str | None:
+        value = self.row.get("raw_version")
+        return value if isinstance(value, str) else None
+
+    def parts(self) -> dict[str, CachedPart]:
+        built_from = _read_cache_parts(self.path)
+        return {
+            name: CachedPart(
+                name=name,
+                present=(self.path / filename).is_file(),
+                raw_version=built_from.get(name),
+                current_raw_version=self.current_raw_version,
+            )
+            for name, filename in PART_FILES.items()
+        }
+
+    def fresh(self, parts: tuple[str, ...] = PARTS) -> bool:
+        standing = self.parts()
+        return all(standing[name].fresh for name in _known_parts(parts))
+
+    def model(self) -> ChatlasNormalModel:
+        """The stored Model, fresh or not; a missing collection fails when read."""
+        return ChatlasNormalModel.open(self.path)
+
+    def build(self) -> ChatlasNormalModel:
+        """Normalize the raw data again and cache every part with its version."""
+        identity = _identity_hash(self.row)
+        lock_path = self.chatlas_root / LOCK_ROOT / f"{identity}.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with FileLock(lock_path):
+            before = raw_version(self.row)
+            model = build_normal_model_from_row(self.row, include_raw=False)
+            if raw_version(self.row) != before:
+                raise CliError("chat transcript sources changed during normalization")
+            _validate_model(model, identity=identity)
+            _replace_cache_directory(
+                self.path,
+                model=model,
+                metadata={
+                    "schema": CACHE_SCHEMA,
+                    "schema_version": CACHE_SCHEMA_VERSION,
+                    "session_identity": identity,
+                    "parts": {name: before for name in PARTS},
+                },
+            )
+        return self.model()
 
 
-def open_normal_model_cache_from_row(
-    row: JsonObject,
-    *,
-    chatlas_root: Path | None = None,
-) -> ChatlasNormalModel:
-    path = normal_model_cache_path(row, chatlas_root=chatlas_root)
-    if normal_model_cache_status_from_row(row, chatlas_root=chatlas_root) != "FRESH":
-        raise CliError(f"Normal Model cache is not fresh: {path}")
-    return ChatlasNormalModel.open(path)
-
-
-def read_normal_model_cache_from_row(
-    row: JsonObject,
-    *,
-    chatlas_root: Path | None = None,
-) -> JsonObject:
-    return open_normal_model_cache_from_row(
-        row,
-        chatlas_root=chatlas_root,
-    ).load_normal_model()
-
-
-def materialize_normal_model_cache_from_row(
-    row: JsonObject,
-    *,
-    chatlas_root: Path | None = None,
-) -> ChatlasNormalModel:
-    root = _root(chatlas_root)
-    path = normal_model_cache_path(row, chatlas_root=root)
-    identity = _identity_hash(row)
-    lock_path = root / LOCK_ROOT / f"{identity}.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with FileLock(lock_path):
-        before = _cache_identity(row)
-        model = build_normal_model_from_row(row, include_raw=False)
-        after = _cache_identity(row)
-        if before != after:
-            raise CliError("chat transcript sources changed during normalization")
-        _validate_model(model, identity=identity)
-        _replace_cache_directory(path, model=model, cache_identity=after)
-    return ChatlasNormalModel.open(path)
-
-
+# tarav.breadcrumb c08df8634db5
+# tarav.breadcrumb e6ee5c5b3615
 def provide_normal_model_reader_from_row(
     row: JsonObject,
     *,
     chatlas_root: Path | None = None,
     refresh: bool = False,
+    parts: tuple[str, ...] = PARTS,
 ) -> ChatlasNormalModel:
-    if not refresh and normal_model_cache_status_from_row(
-        row, chatlas_root=chatlas_root
-    ) == "FRESH":
-        return open_normal_model_cache_from_row(row, chatlas_root=chatlas_root)
-    return materialize_normal_model_cache_from_row(row, chatlas_root=chatlas_root)
+    """The safe path: the cached Model when the requested parts are fresh, else a build."""
+    cache = NormalModelCache(row, chatlas_root=chatlas_root)
+    if not refresh and cache.fresh(parts):
+        return cache.model()
+    return cache.build()
 
 
 def provide_normal_model_from_row(
@@ -139,37 +150,11 @@ def provide_normal_model_from_row(
     ).load_normal_model()
 
 
-def _cache_identity(row: JsonObject) -> JsonObject:
-    payload: JsonObject = {
-        "session_identity": _identity_hash(row),
-        "source_fingerprints": _source_fingerprints(row),
-        "normal_model_schema_version": NORMAL_MODEL_SCHEMA_VERSION,
-        "producer_commit": normal_model_producer_commit(),
-    }
-    encoded = json.dumps(
-        payload,
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return {**payload, "cache_key": f"sha256:{sha256(encoded).hexdigest()}"}
-
-
-def _source_fingerprints(row: JsonObject) -> list[JsonObject]:
-    fingerprints: list[JsonObject] = []
-    for path in (source.path for source in transcript_sources(row)):
-        try:
-            stat = path.stat()
-        except OSError as exc:
-            raise CliError(f"cannot fingerprint chat transcript source: {path}") from exc
-        fingerprints.append(
-            {
-                "path": str(path),
-                "size_bytes": stat.st_size,
-                "modified_ns": stat.st_mtime_ns,
-            }
-        )
-    return fingerprints
+def _known_parts(parts: tuple[str, ...]) -> tuple[str, ...]:
+    unknown = set(parts) - set(PARTS)
+    if unknown:
+        raise ValueError(f"unknown Normal Model parts: {', '.join(sorted(unknown))}")
+    return parts
 
 
 def _validate_model(model: JsonObject, *, identity: str) -> None:
@@ -183,21 +168,13 @@ def _replace_cache_directory(
     path: Path,
     *,
     model: JsonObject,
-    cache_identity: JsonObject,
+    metadata: JsonObject,
 ) -> None:
     temporary = path.with_name(f".{path.name}.tmp-{uuid4().hex}")
     backup = path.with_name(f".{path.name}.old-{uuid4().hex}")
     try:
         ChatlasNormalModel.materialize(temporary, model)
-        atomic_write_json(
-            temporary / CACHE_FILENAME,
-            {
-                "schema": CACHE_SCHEMA,
-                "schema_version": CACHE_SCHEMA_VERSION,
-                **deepcopy(cache_identity),
-            },
-            ensure_ascii=False,
-        )
+        atomic_write_json(temporary / CACHE_FILENAME, metadata, ensure_ascii=False)
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             path.rename(backup)
@@ -214,23 +191,24 @@ def _replace_cache_directory(
             shutil.rmtree(temporary)
 
 
-def _read_cache_metadata(path: Path, *, required: bool) -> JsonObject | None:
-    metadata_path = path / CACHE_FILENAME
+def _read_cache_parts(path: Path) -> dict[str, str]:
+    """The raw version each part was built from; unreadable metadata records none."""
     try:
-        value = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        if required:
-            raise CliError(f"invalid Normal Model cache metadata: {metadata_path}") from exc
-        return None
+        value = json.loads((path / CACHE_FILENAME).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
     if (
         not isinstance(value, dict)
         or value.get("schema") != CACHE_SCHEMA
         or value.get("schema_version") != CACHE_SCHEMA_VERSION
+        or not isinstance(value.get("parts"), dict)
     ):
-        if required:
-            raise CliError(f"invalid Normal Model cache metadata: {metadata_path}")
-        return None
-    return value
+        return {}
+    return {
+        name: version
+        for name, version in value["parts"].items()
+        if name in PART_FILES and isinstance(version, str)
+    }
 
 
 def _identity_hash(row: JsonObject) -> str:
@@ -245,11 +223,9 @@ def _root(chatlas_root: Path | None) -> Path:
 
 
 __all__ = [
-    "materialize_normal_model_cache_from_row",
-    "normal_model_cache_path",
-    "normal_model_cache_status_from_row",
-    "open_normal_model_cache_from_row",
+    "CachedPart",
+    "NormalModelCache",
+    "PARTS",
     "provide_normal_model_from_row",
     "provide_normal_model_reader_from_row",
-    "read_normal_model_cache_from_row",
 ]

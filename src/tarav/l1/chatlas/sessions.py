@@ -26,6 +26,7 @@ from tarav.l1.chatlas.normal_model import (
     ChatlasNormalModel,
     provide_normal_model_reader,
 )
+from tarav.l1.chatlas.normal_model_cache import PARTS, NormalModelCache
 from tarav.l1.chatlas.paths import default_chatlas_root
 from tarav.l1.chatlas.session_identity import session_identity_hash
 from tarav.l1.chatlas.session_resolver import (
@@ -124,8 +125,10 @@ class ChatSession(TaravObject):
             ).records.to_record()
 
 
-    def model(self, *, refresh: bool = False) -> ChatlasNormalModel:
-        """Read/create the derived Model through the existing cache contract."""
+    def model(
+        self, *, refresh: bool = False, parts: tuple[str, ...] = PARTS
+    ) -> ChatlasNormalModel:
+        """The cached Model when the requested parts are fresh, otherwise a new build."""
         return provide_normal_model_reader(
             provider=self.provider,
             instance=self.instance,
@@ -133,7 +136,19 @@ class ChatSession(TaravObject):
             identity_hash=self.identity_hash,
             chatlas_root=self.chatlas_root,
             refresh=refresh,
+            parts=parts,
         )
+
+    # tarav.breadcrumb d46b1b89319d
+    def cache(self) -> NormalModelCache:
+        """The cached parts and their standing, read or built without policy."""
+        row = resolve_session_index_row(
+            identity_hash=self.identity_hash,
+            provider=self.provider,
+            instance=self.instance,
+            chatlas_root=self.chatlas_root,
+        )
+        return NormalModelCache(row, chatlas_root=self.chatlas_root)
 
 
 class ChatSessionEntry(ExplorerEntry):

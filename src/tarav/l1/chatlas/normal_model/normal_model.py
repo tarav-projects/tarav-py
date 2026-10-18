@@ -5,6 +5,7 @@ from pathlib import Path
 from tarav.l1.chatlas.session_resolver import resolve_session_index_row
 
 from tarav.l1.chatlas.normal_model_cache import (
+    PARTS,
     provide_normal_model_from_row,
     provide_normal_model_reader_from_row,
 )
@@ -43,6 +44,7 @@ def provide_normal_model_reader(
     instance: str | None = None,
     chatlas_root: Path | None = None,
     refresh: bool = False,
+    parts: tuple[str, ...] = PARTS,
 ) -> ChatlasNormalModel:
     row = resolve_session_index_row(
         session_id=session_id,
@@ -55,6 +57,7 @@ def provide_normal_model_reader(
         row,
         chatlas_root=chatlas_root,
         refresh=refresh,
+        parts=parts,
     )
 
 
