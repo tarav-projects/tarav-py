@@ -7,6 +7,7 @@ from pathlib import Path
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
 
 from .catalog import SKILL_MARKER_FILENAME, parse_skill_frontmatter
+from .marker import SkillMarker
 from .workflow import SKILLS_WORKFLOW_SHIP
 
 
@@ -34,6 +35,11 @@ class TaravSkill(TaravObject):
     def root(self) -> Path:
         """The skill folder."""
         raise NotImplementedError(f"{type(self).__name__} does not locate its folder")
+
+    @property
+    def skill_id(self):
+        """The UUID in the skill's `.tarav/skill.json`."""
+        return SkillMarker.of(self.root).id
 
     @property
     def entrypoint(self) -> Path:

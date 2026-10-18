@@ -70,3 +70,21 @@ def test_a_skill_not_yet_placed_has_state_but_no_root() -> None:
     assert skill.records.to_record()["files"] == ["SKILL.md", "notes.md"]
     with pytest.raises(ValueError, match="no retained source"):
         skill.root
+
+
+def test_a_skill_keeps_its_uuid_in_its_marker(tmp_path):
+    from uuid import UUID
+
+    from tarav.l1.skills import SkillMarker
+    from tarav.l1.skills.folder import FolderSkill
+
+    made = SkillMarker.create(tmp_path)
+    written = json.loads((tmp_path / ".tarav/skill.json").read_text())
+    assert written == {"type": "Tarav.Skills.Marker", "skill_id": str(made.id),
+                       "created_at": made.created_at}
+    UUID(written["skill_id"])
+    assert FolderSkill(tmp_path).skill_id == made.id
+    # a copy is the same skill; a second marker would be another one
+    with pytest.raises(FileExistsError):
+        SkillMarker.create(tmp_path)
+    assert SkillMarker.of(tmp_path).id == made.id

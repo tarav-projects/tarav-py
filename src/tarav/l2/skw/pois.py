@@ -14,7 +14,7 @@ from tarav.l1.poi import POICollector
 from tarav.l1.references import Reference
 from tarav.l1.skw.annotations import GenerationAnnotation
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
-from tarav.l1.skw.pois import ContextUnresolvable, Finding, StaleContext, StaleGeneration
+from tarav.l1.skw.pois import ContextUnresolvable, Finding, StaleContext, StaleGeneration, owner
 
 
 class SkwAnalysisCheck(Check):
@@ -59,7 +59,7 @@ class GenerationContextResolutionCheck(Check):
         self.index = index
         self.declaration = deepcopy(declaration)
         self.subject = {
-            "project": str(package.root),
+            **owner(package.root),
             "path": document.key,
             "block": block.label,
             "context_index": index,
@@ -188,7 +188,7 @@ def freshness_checks(package, *, skip_unresolved=False, documents=None):
                     f"Cannot build generation freshness Situation: {document.key}:{block}"
                 ) from exc
             subject = {
-                "project": str(package.root),
+                **owner(package.root),
                 "path": document.key,
                 "block": block,
             }
@@ -207,7 +207,7 @@ def freshness_checks(package, *, skip_unresolved=False, documents=None):
                     f"Cannot build context freshness Situation: {document.key}:{block}"
                 ) from exc
             subject = {
-                "project": str(package.root),
+                **owner(package.root),
                 "path": document.key,
                 "block": block,
             }

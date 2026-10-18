@@ -22,12 +22,14 @@ from tarav.l2.skw.pois import (
     GenerationFreshnessCheck,
 )
 from tarav.l2.skw.skills import SkwSkill
+from tarav.l1.skills import SkillMarker
 from tarav.l3.runtime import create_runtime
 
 
 def _document_source(root):
     path = root / ".skw/src/explanation.skw.json"
     path.parent.mkdir(parents=True)
+    SkillMarker.create(root)
     (root / "input.py").write_text("print(1)")
     data = {
         "type": entity(DocumentRecord).name,
@@ -210,7 +212,8 @@ def test_the_package_suite_detects_what_the_skill_command_shows(tmp_path):
     assert any(isinstance(poi, UnbundledLink) for poi in found)
     # the suite a Project runs and the skill command agree on what they find
     assert kinds(found) == kinds(skill.evaluate().pois)
-    assert skill.checks.suite().identity == {"type": "Tarav.Checks.Suite", "key": tmp_path.name}
+    assert skill.checks.suite().identity == {"type": "Tarav.Checks.Suite",
+                                             "key": str(SkillMarker.of(tmp_path).id)}
 
 
 # tarav.breadcrumb 82935932a297
@@ -297,13 +300,13 @@ def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
 
 # tarav.breadcrumb f05d8da396a5
 def test_a_declared_link_is_checked_only_by_its_prose_part(tmp_path):
-    from pathlib import Path
 
     from tarav.l1.skw.pois import MissingMarkdownLink
     from tarav.l2.skw.reading_checks import READING_CHECK_TYPES
 
     source = tmp_path / ".skw/src/explanation.skw.json"
     source.parent.mkdir(parents=True)
+    SkillMarker.create(tmp_path)
     data = identify_blocks({
         "type": entity(DocumentRecord).name, "schema_version": 1, "output": "explanation.md",
         "blocks": [
@@ -329,8 +332,9 @@ def test_a_declared_link_is_checked_only_by_its_prose_part(tmp_path):
     # the text lacks the declared link; the authored link nobody declared is not a POI
     (missing,) = reading_pois()
     assert isinstance(missing, MissingMarkdownLink)
-    assert set(missing.situation) == {"project", "block", "href"}
-    assert Path(missing.situation["project"]).resolve() == tmp_path.resolve()
+    # the skill is named by the UUID in its marker, not by where it lies
+    assert set(missing.situation) == {"skill", "block", "href"}
+    assert missing.situation["skill"] == str(SkillMarker.of(tmp_path).id)
     assert (missing.situation["block"], missing.situation["href"]) == (body["id"], href)
     assert missing.message.startswith(MissingMarkdownLink.statement)
     assert not missing.details

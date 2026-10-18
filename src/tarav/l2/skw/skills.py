@@ -215,7 +215,7 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         def suite(self) -> CheckSuite:
             # keyed, so that an action knows which skill package detected it
             return CheckSuite(lambda suite: self.obj._all_checks(), name=self.obj.root.name,
-                              key=self.obj.root.name)
+                              key=str(self.obj.skill_id))
 
     def _checks(self, *, skip_unresolved_freshness=True):
         documents = self.documents()

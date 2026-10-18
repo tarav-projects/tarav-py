@@ -5,6 +5,7 @@ How a Project selects skills and installs them is `tarav.l2.project.skills`.
 """
 # tarav.breadcrumb 5a73a00f9be6
 from .skill import TaravSkill
+from .marker import SKILL_JSON, SkillMarker
 from .workflow import SKILLS_WORKFLOW_SHIP, SkillsWorkflow
 from .catalog import (
     SKILL_MARKER_FILENAME,
@@ -21,6 +22,8 @@ __all__ = [
     "SKILLS_WORKFLOW_SHIP",
     "SkillsWorkflow",
     "TaravSkill",
+    "SKILL_JSON",
+    "SkillMarker",
     "SKILL_MARKER_FILENAME",
     "DiscoveredSkill",
     "SkillsImport",

@@ -10,11 +10,22 @@ from pathlib import Path
 from typing import ClassVar
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
+from tarav.l0.project import project_id
 from tarav.l1.checks import CheckPOI
 from tarav.l1.poi.actionable import BlessablePOI
+from tarav.l1.skills.marker import SKILL_JSON, SkillMarker
 
 from .identity import SKW_SKILLS_WORKFLOW_SHIP
 
+
+
+# tarav.breadcrumb e92c586be979
+def owner(root):
+    """Whose a document is, by UUID: a skill's by its marker, an agents file's by its Project."""
+    root = Path(root)
+    if (root / SKILL_JSON).is_file():
+        return {"skill": str(SkillMarker.of(root).id)}
+    return {"project": project_id(root)}
 
 class SkwPOI(CheckPOI):
     """A workflow-owned SKW POI explained by the bound analysis Check."""
@@ -77,7 +88,7 @@ class SkwPOI(CheckPOI):
         line: the place of the finding, plus that state. A Type that can name
         its own state overrides it.
         """
-        subject = {'project': str(root),
+        subject = {**owner(root),
                    **{k: finding[k] for k in ('block', 'path', 'target', 'delivery')
                       if k in finding}}
         held = {} if state is None else {"surface_state": state}
@@ -146,7 +157,7 @@ class MissingMarkdownLink(SkwPOI):
         return cls(
             check,
             cls.sentence(where=f"{finding['path']}: {finding['label']}", target=finding['href']),
-            situation={'project': str(root), 'block': finding['block'], 'href': finding['href']},
+            situation={**owner(root), 'block': finding['block'], 'href': finding['href']},
         )
 
 

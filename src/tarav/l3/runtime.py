@@ -373,6 +373,7 @@ def create_runtime(
     from tarav.l1.git.gitleaks import GIT_GITLEAKS_RECORD_TYPES
     from tarav.l1.project.skills import PROJECT_SKILLS_RECORD_TYPES
     from tarav.l1.skills.folder import FolderSkill
+    from tarav.l1.skills.marker import SkillMarker
     from tarav.l1.skw.generation import GenerationPOI
     from tarav.l2.skw.skills import SKILLS_RECORD_TYPES, SkwSkillsWorkflow
     from tarav.l1.skills import SkillsWorkflow
@@ -502,6 +503,7 @@ def create_runtime(
                 *LINK_PROSE_TYPES,
                 *SKILLS_RECORD_TYPES,
                 FolderSkill,
+                SkillMarker,
                 *record_types,
             )
         )
