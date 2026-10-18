@@ -35,6 +35,8 @@ class ChatlasQuery:
     text_contains: str | None = None
     order: str = "oldest"
     limit: int = 50
+    # tarav.breadcrumb e9eaed2be6c8
+    times: bool = True
 
     def __post_init__(self) -> None:
         for prefix in self.turn_hash_prefixes:
@@ -67,6 +69,7 @@ class ChatlasQuery:
             "text_contains": self.text_contains,
             "order": self.order,
             "limit": self.limit,
+            "times": self.times,
         }
 
 
@@ -134,11 +137,12 @@ class ChatlasQueryEngine:
                 )
             messages[address] = message
 
+        # Start times are the only reason to read events, the largest part.
         requested_event_addresses = {
             _event_ref(ref)[0]
             for turn in selected
             for ref in _array(turn.get("event_refs"), field="Chat.Turn.event_refs")
-        }
+        } if query.times else set()
         events: dict[str, JsonObject] = {}
         if requested_event_addresses:
             for event in self.reader.iter_events():
@@ -158,7 +162,7 @@ class ChatlasQueryEngine:
                 prefix,
                 turn,
                 _messages_for_turn(turn, messages),
-                _started_at_for_turn(turn, events),
+                _started_at_for_turn(turn, events) if query.times else None,
             )
             for prefix, turn in _match_inputs(query, selected)
         ]

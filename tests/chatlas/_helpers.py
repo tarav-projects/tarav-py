@@ -56,3 +56,65 @@ def read_jsonl_file(path: Path) -> list[Any]:
 
 def captured_json(capsys: object) -> dict[str, Any]:
     return json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+
+
+def _digest(*parts: object) -> str:
+    from hashlib import sha256
+
+    return sha256("/".join(str(part) for part in parts).encode("utf-8")).hexdigest()
+
+
+def normal_model_fixture(
+    source: Path,
+    *,
+    identity_hash: str = "f" * 64,
+    session_id: str = "session-one",
+    turns: tuple[tuple[str, str], ...] = (("user", "hello"),),
+) -> dict[str, Any]:
+    """A valid Normal Model with one event and one message per (side, text) turn."""
+    events, messages, chat_turns = [], [], []
+    for index, (side, text) in enumerate(turns, start=1):
+        event_ref = {
+            "event_address": _digest(identity_hash, "event", index),
+            "event_hash": _digest(identity_hash, "event-hash", index, text),
+        }
+        message_ref = {
+            "message_address": _digest(identity_hash, "message", index),
+            "message_hash": _digest(identity_hash, "message-hash", index, text),
+        }
+        events.append({
+            "type": "User.Event" if side == "user" else "Agent.Event",
+            **event_ref,
+            "started_at": f"2026-10-18T00:00:{index:02d}Z",
+            "origin": side,
+            "observations": [{
+                "observed_at": f"2026-10-18T00:00:{index:02d}Z",
+                "source_ref": {"source_id": "source-one", "record_index": index, "line": index},
+            }],
+            "opaque_payload_hash": _digest(identity_hash, "payload", index),
+        })
+        messages.append({"type": "Chat.Message", **message_ref, "side": side,
+                         "text": text, "event_refs": [event_ref]})
+        chat_turns.append({
+            "type": "Chat.Turn",
+            "turn_address": _digest(identity_hash, "turn", index),
+            "turn_hash": _digest(identity_hash, "turn-hash", index, text),
+            "side": side,
+            "event_refs": [event_ref],
+            "message_refs": [message_ref],
+        })
+    return {
+        "type": "Chatlas.Normal.Model",
+        "schema_version": 1,
+        "metadata": {"commit": None},
+        "session": {"provider": "codex", "session_id": session_id,
+                    "identity_hash": identity_hash},
+        "sources": [{"source_id": "source-one", "path": str(source), "role": "transcript",
+                     "raw_model_version": "codex.rollout.test", "status": "recognized"}],
+        "events": events,
+        "messages": messages,
+        "turns": chat_turns,
+        "loaded_contexts": [],
+        "counts": {"events": len(events), "messages": len(messages),
+                   "turns": len(chat_turns), "loaded_contexts": 0},
+    }

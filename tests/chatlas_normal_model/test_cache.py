@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from chatlas._helpers import normal_model_fixture
+
 from tarav.l1.chatlas import normal_model_cache as cache
 from tarav.l1.chatlas.index_writer import raw_version
 from tarav.l1.chatlas.normal_model import pipeline
@@ -23,89 +25,7 @@ def _row(source: Path) -> dict[str, object]:
 
 
 def _model(source: Path) -> dict[str, object]:
-    return {
-        "type": "Chatlas.Normal.Model",
-        "schema_version": 1,
-        "metadata": {"commit": "1" * 40},
-        "session": {
-            "provider": "codex",
-            "session_id": "session-one",
-            "identity_hash": "f" * 64,
-        },
-        "sources": [
-            {
-                "source_id": "source-one",
-                "path": str(source),
-                "role": "transcript",
-                "raw_model_version": "codex.rollout.test",
-                "status": "recognized",
-            }
-        ],
-        "events": [
-            {
-                "type": "User.Event",
-                "event_address": "1" * 64,
-                "event_hash": "2" * 64,
-                "started_at": "2026-09-20T00:00:00Z",
-                "origin": "user",
-                "observations": [
-                    {
-                        "observed_at": "2026-09-20T00:00:00Z",
-                        "source_ref": {
-                            "source_id": "source-one",
-                            "record_index": 1,
-                            "line": 1,
-                        },
-                    }
-                ],
-                "opaque_payload_hash": "3" * 64,
-            }
-        ],
-        "messages": [
-            {
-                "type": "Chat.Message",
-                "message_address": "4" * 64,
-                "message_hash": "5" * 64,
-                "side": "user",
-                "text": "hello",
-                "event_refs": [
-                    {"event_address": "1" * 64, "event_hash": "2" * 64}
-                ],
-            }
-        ],
-        "turns": [
-            {
-                "type": "Chat.Turn",
-                "turn_address": "6" * 64,
-                "turn_hash": "7" * 64,
-                "side": "user",
-                "event_refs": [
-                    {"event_address": "1" * 64, "event_hash": "2" * 64}
-                ],
-                "message_refs": [
-                    {"message_address": "4" * 64, "message_hash": "5" * 64}
-                ],
-            }
-        ],
-        "loaded_contexts": [
-            {
-                "type": "Agent.Loaded.Context",
-                "agent_event_ref": {
-                    "event_address": "1" * 64,
-                    "event_hash": "2" * 64,
-                },
-                "event_refs": [
-                    {"event_address": "1" * 64, "event_hash": "2" * 64}
-                ],
-            }
-        ],
-        "counts": {
-            "events": 1,
-            "messages": 1,
-            "turns": 1,
-            "loaded_contexts": 1,
-        },
-    }
+    return normal_model_fixture(source)
 
 
 @pytest.fixture
