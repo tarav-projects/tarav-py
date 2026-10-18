@@ -182,3 +182,10 @@ changes plain-text searches; index size far beyond the estimate.
   Schema 2 without the record columns: rebuilt in 31 s, 338 MB; phrase
   match 2 ms, substring scan 1.1 s.
   <!-- tarav.breadcrumb 9f02077f9d08 -->
+- Slice 2: `ChatlasStages` (`src/tarav/l1/chatlas/stages.py`): `select`,
+  `standing`, `capture` (wraps `chatlas_update` with provider, session ids
+  and a window from `since`), `update_cache`, `update_index`, `run`;
+  `CachedPart.state` speaks the same missing/stale/fresh as the index.
+  `tests/chatlas/test_stages.py` failed at collection, then 4 passed. Real
+  scoped run for this session: before, cache fresh and index stale; `run`
+  2.5 s (capture ok, 1 cached, 1 indexed); after, both fresh.

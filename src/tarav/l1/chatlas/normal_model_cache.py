@@ -56,6 +56,12 @@ class CachedPart:
     def stale(self) -> bool:
         return self.present and not self.fresh
 
+    # tarav.breadcrumb 2941defd8018
+    @property
+    def state(self) -> str:
+        """``missing``, ``stale`` or ``fresh``, as every Chatlas stage reports it."""
+        return "fresh" if self.fresh else "stale" if self.present else "missing"
+
 
 # tarav.breadcrumb 0221441d98de
 # tarav.breadcrumb 1f264fd09a1d
