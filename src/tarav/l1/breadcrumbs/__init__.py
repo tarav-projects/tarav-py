@@ -12,7 +12,10 @@ from .integrations import BreadcrumbCommandAdapter, BreadcrumbIntegration
 from .model import Breadcrumb, BreadcrumbId, LocatorObservation
 # tarav.breadcrumb 9cf8b90c47044379094d8f71ed551105c57120dc9a16e5e12dcc61a22910d1aa
 from .store import (
+    LABEL_PREFIX,
+    BreadcrumbAmbiguous,
     BreadcrumbError,
+    BreadcrumbNotFound,
     BreadcrumbResolutionPOI,
     BreadcrumbPositionMissing,
     BreadcrumbPositionAmbiguous,
@@ -37,7 +40,10 @@ from .workflows import (
 )
 
 __all__ = [
+    "LABEL_PREFIX",
     "Breadcrumb",
+    "BreadcrumbAmbiguous",
+    "BreadcrumbNotFound",
     "BreadcrumbAnnotationWorkflow",
     "BreadcrumbAnnotationWorkflowRegistry",
     "BreadcrumbAuditContext",

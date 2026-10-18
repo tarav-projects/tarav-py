@@ -29,17 +29,36 @@ from .model import Breadcrumb, LocatorObservation
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
 
 
+# tarav.breadcrumb b8fcfd6a5d2ba6aec2875292d403b218f93593b0e3b06b696480766e351e4b2b
+# A surface carries the first LABEL_PREFIX characters of a Breadcrumb ID, or
+# more when that is not unique; the registry keeps the full 64.
+LABEL_PREFIX = 12
 _BREADCRUMB_ID = re.compile(r"[0-9a-f]{64}")
-_CORE_LABEL = re.compile(r"tarav\.breadcrumb\s+([0-9a-f]{64})")
+_PREFIX = re.compile(rf"[0-9a-f]{{{LABEL_PREFIX},64}}")
+_CORE_LABEL = re.compile(rf"tarav\.breadcrumb\s+([0-9a-f]{{{LABEL_PREFIX},64}})")
 
 
 class BreadcrumbError(ValueError):
     pass
 
 
+class BreadcrumbNotFound(BreadcrumbError):
+    """No retained Breadcrumb ID starts with the prefix."""
+
+
+# tarav.breadcrumb 792e5d16a3d58a12210640edf1ac40fa43dbbe1899d266cca6841079d211a93d
+class BreadcrumbAmbiguous(BreadcrumbError):
+    """Several retained Breadcrumb IDs start with the prefix; none is chosen."""
+
+    def __init__(self, prefix: str, candidates: tuple[str, ...]) -> None:
+        self.prefix, self.candidates = prefix, candidates
+        super().__init__(f"Breadcrumb prefix {prefix} matches {len(candidates)} Breadcrumbs: "
+                         + ", ".join(candidates))
+
+
 # tarav.breadcrumb 85e87dcfa1700c3a8b9826302e8eac01b86075ec63efc6d71e022edc31542f3c
 class BreadcrumbResolutionPOI(SituationPOI):
-    """Family of failures to locate a Breadcrumb's canonical label."""
+    """Family of failures to locate a Breadcrumb's label."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -52,7 +71,7 @@ class BreadcrumbResolutionPOI(SituationPOI):
 
 
 class BreadcrumbPositionMissing(BreadcrumbResolutionPOI):
-    """No recorded position contains the Breadcrumb's canonical label."""
+    """No recorded position contains the Breadcrumb's label."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -121,17 +140,20 @@ def default_breadcrumbs_root() -> Path:
     return Path.home() / "Documents" / "tarav" / "breadcrumbs"
 
 
-def breadcrumb_label(breadcrumb_id: str) -> str:
-    return f"tarav.breadcrumb {_validated_id(breadcrumb_id)}"
+def breadcrumb_label(prefix: str) -> str:
+    """The label text for an ID prefix; `BreadcrumbStore.label` picks the prefix."""
+    return f"tarav.breadcrumb {_validated_prefix(prefix)}"
 
 
 def parse_breadcrumb_label(value: str) -> str:
+    """The ID prefix a label or bare prefix carries, 12 to 64 characters."""
     candidate = value.strip()
-    if _BREADCRUMB_ID.fullmatch(candidate):
+    if _PREFIX.fullmatch(candidate):
         return candidate
     match = _CORE_LABEL.fullmatch(candidate)
     if match is None:
-        raise BreadcrumbError("Breadcrumb label must be an ID or 'tarav.breadcrumb <id>'")
+        raise BreadcrumbError("Breadcrumb label must be an ID prefix of 12 to 64 lowercase "
+                              "hexadecimal characters, bare or as 'tarav.breadcrumb <prefix>'")
     return match.group(1)
 
 
@@ -169,8 +191,32 @@ class BreadcrumbStore:
             return self.load(selected)
         return self.create(selected)
 
+    def find(self, label: str) -> str:
+        """The one full ID a label's prefix names; several or none is an error."""
+        prefix = parse_breadcrumb_label(label)
+        if len(prefix) == 64:
+            if (self.records_root / prefix).is_dir():
+                return prefix
+            raise BreadcrumbNotFound(f"No Breadcrumb matches {prefix}")
+        candidates = tuple(sorted(
+            path.name for path in self.records_root.glob(f"{prefix}*")
+            if _BREADCRUMB_ID.fullmatch(path.name)))
+        if not candidates:
+            raise BreadcrumbNotFound(f"No Breadcrumb matches {prefix}")
+        if len(candidates) > 1:
+            raise BreadcrumbAmbiguous(prefix, candidates)
+        return candidates[0]
+
+    def label(self, breadcrumb_id: str) -> str:
+        """The label a surface carries: the 12-character prefix, which must be unique."""
+        selected = _validated_id(breadcrumb_id)
+        prefix = selected[:LABEL_PREFIX]
+        if self.find(prefix) != selected:
+            raise BreadcrumbNotFound(f"No Breadcrumb matches {selected}")
+        return breadcrumb_label(prefix)
+
     def load(self, label: str) -> Breadcrumb:
-        breadcrumb_id = parse_breadcrumb_label(label)
+        breadcrumb_id = self.find(label)
         source = self.records_root / breadcrumb_id / "main.json"
         try:
             payload = json.loads(source.read_text(encoding="utf-8"))
@@ -238,7 +284,7 @@ class BreadcrumbStore:
             commit=commit,
             line=line,
         ).records.to_record()
-        reference["check"] = {"contains": breadcrumb_label(breadcrumb_id)}
+        reference["check"] = {"contains": breadcrumb_label(breadcrumb_id[:LABEL_PREFIX])}
         record = {
             "type": entity(LocatorObservation).name,
             "breadcrumb_id": breadcrumb_id,
@@ -303,7 +349,8 @@ class BreadcrumbStore:
 
     def resolve(self, label: str) -> BreadcrumbResolution:
         breadcrumb = self.load(label)
-        core_label = breadcrumb_label(str(breadcrumb.records.to_record()["id"]))
+        # Every valid label of this Breadcrumb contains its 12-character one.
+        core_label = breadcrumb_label(str(breadcrumb.records.to_record()["id"])[:LABEL_PREFIX])
         positions: dict[
             tuple[object, ...], FilePositionTarget | GitCommitMessagePositionTarget
         ] = {}
@@ -340,16 +387,22 @@ class BreadcrumbStore:
             return BreadcrumbResolution(breadcrumb, "resolved", next(iter(positions.values())))
         if not positions:
             poi = BreadcrumbPositionMissing(
-                "No recorded file position contains the Breadcrumb's exact canonical label.",
+                "No recorded position contains the Breadcrumb's label.",
                 situation={"breadcrumb_id": breadcrumb.records.to_record()["id"]},
             )
             return BreadcrumbResolution(breadcrumb, "unresolvable", pois=(poi,))
         poi = BreadcrumbPositionAmbiguous(
-            f"{len(positions)} recorded file positions contain the Breadcrumb's canonical label.",
+            f"{len(positions)} recorded positions contain the Breadcrumb's label.",
             situation={"breadcrumb_id": breadcrumb.records.to_record()["id"]},
             positions=len(positions),
         )
         return BreadcrumbResolution(breadcrumb, "ambiguous", pois=(poi,))
+
+
+def _validated_prefix(value: str) -> str:
+    if not isinstance(value, str) or _PREFIX.fullmatch(value) is None:
+        raise BreadcrumbError("Breadcrumb ID prefix must be 12 to 64 lowercase hexadecimal characters")
+    return value
 
 
 def _validated_id(value: str) -> str:
@@ -402,7 +455,10 @@ def _position_json(
 
 
 __all__ = [
+    "LABEL_PREFIX",
+    "BreadcrumbAmbiguous",
     "BreadcrumbError",
+    "BreadcrumbNotFound",
     "BreadcrumbResolutionPOI",
     "BreadcrumbPositionMissing",
     "BreadcrumbPositionAmbiguous",
