@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: needs-alignment, 2026-10-18 (two open questions below).
+Status: executing, 2026-10-18.
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -100,7 +100,16 @@ database answers in milliseconds and supports richer queries.
 - **On demand.** `chatlas update` keeps capturing only; nothing indexes
   implicitly.
 
-### Open questions (User)
+### Clarification (User), at execution
+
+The interface is expressive, even allowing direct SQL queries. The executing
+Agent reads it as: word matching through FTS5, substring matching through
+plain SQL over message text, and read-only SQL for anything else; agent
+messages are indexed with `side` as a column. This answers the two questions
+below.
+<!-- tarav.breadcrumb 24d4e731069b -->
+
+### Open questions (User), answered above
 
 1. Text matching: by **words** (FTS5 default tokenizer: compact, ranked,
    phrases and prefixes, no search inside a word), or by **substring**
