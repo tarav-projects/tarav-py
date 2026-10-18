@@ -6,7 +6,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Impl.Abstract
 
-Status: in execution (Develop, Autonomous), 2026-10-18.
+Status: complete, 2026-10-18.
 Knowledge.Surface: wiki.
 
 Integrate gitleaks, the secret scanner, into Tarav as a workflow under Git (`tarav.l1.git.gitleaks`). Gitleaks detects; Tarav keeps its reports in a depot, verifies their findings in Project checks, and turns them into actions of the owning Project, falling back to the System Project for repositories no Project owns. Gitleaks also runs as a default Git hook handler that stops commits with staged secrets.
@@ -70,7 +70,7 @@ Data shape:
 1. **Feature — runs and depot.** Done. `scan(root)` runs a history scan and records a run; `tarav git gitleaks scan --repo PATH`. Check: a temporary repository with a committed token yields a run whose report lists it; a repository whose fingerprint is in `.gitleaksignore` yields none.
 2. **Feature — verification, POIs and actions.** Done. The check, the owner resolution, registration after a scan, the System Project's checks for unowned repositories, and blessing that appends to `.gitleaksignore`. Check: a finding raises one POI; ignoring it, rewriting the commit away, or a later clean report removes it; blessing appends the fingerprint and closes the action as blessed; an unowned repository's actions land in the System Project.
 3. **Feature — hook handler and defaults.** Done. The `gitleaks` handler on pre-commit, default handlers, blessable `HooksNotInstalled`, tarav-py enabling it. Check: a commit with a staged token is stopped and opens a Staged action; the overrule lets it through; a clean commit passes; without gitleaks on PATH the hook warns and Git continues.
-4. **Documentation.** AGENTS.md (SKW source), ARCHITECTURE.md, the Wiki.
+4. **Documentation.** Done. AGENTS.md (SKW source), ARCHITECTURE.md, the Wiki.
 
 Tests build tokens at run time so no literal secret enters the repository. Run `uv run pytest tests/test_git_gitleaks.py`, then the full suite and ruff.
 
@@ -83,3 +83,6 @@ Tests build tokens at run time so no literal secret enters the repository. Run `
 - Slice 3 (hook and defaults): the `gitleaks` handler scans staged changes on pre-commit (`run_gitleaks(kind=staged)`, inheriting Git's `GIT_INDEX_FILE`); findings open a `Staged` action on the owner through `GitleaksStagedCheck`, a check that never runs in a suite, so the action stays open until closed by hand; without an overrule the commit is stopped. A missing binary is a warning and Git continues. `DEFAULT_HANDLERS = ("gitleaks",)`: install starts from it when the config has no `git.hooks`, and `git_hook_checks` uses it for Projects without that section whose root is a repository root. `HooksNotInstalled` is blessable. Two `test_git_hooks.py` assertions encoded the old "no section, nothing to check" behavior and were updated for the new default. Four new tests (stop and action, overrule recorded, clean commit and missing binary, default checks and blessable POI). Full suite 349 passed; ruff clean. tarav-py now runs `tarav-change` and `gitleaks`; this slice's own commit is the first through the gitleaks hook.
 - User, mid-slice: do not scan `~/Documents/tarav/chatlas` for now; it is dealt with later. Nothing in this request scans it: checks only read the depot, and a repository is scanned only by an explicit `tarav git gitleaks scan`.
 - Defect found after slice 3: with gitleaks a default handler, the suite's hooked commits (tarav-change and hooks tests) wrote 27 staged runs into the machine's depot. `tests/conftest.py` now points `TARAV_GITLEAKS_ROOT` at a temporary folder, as it does for records and the run registry; rerunning those tests leaves the depot with tarav-py's own run only. The 27 leaked runs, all from pytest temporary repositories, were deleted.
+- Slice 4 (documentation): tarav-py `8de81e8`: AGENTS.md (SKW source; Breadcrumb submitted on the product, copied back, rebuild byte-identical) and ARCHITECTURE.md, both audited clean.
+- Wiki capture: tarav-md, `notes/wiki/gitleaks.md` (new) and `notes/wiki/daily/2026-10-18.md`; 9 Breadcrumbs, audits clean.
+- Open: run the cleanup scan from Tarav over the project repositories (Chatlas excluded for now), and triage the findings.
