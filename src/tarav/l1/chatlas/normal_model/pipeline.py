@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -9,7 +8,7 @@ import subprocess
 from typing import Any
 
 from tarav.l0._core.errors import CliError
-from tarav.l1.chatlas.index_writer import archive_versions_for
+from tarav.l1.chatlas.index_writer import transcript_sources
 from tarav.l1.chatlas.session_resolver import resolve_session_index_row
 
 from .claude import (
@@ -31,12 +30,6 @@ from .message_ref import chat_message_ref
 from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record
 from .turn_ref import compute_chat_turn_hash
 from .turns import build_chat_turn_candidates
-
-
-@dataclass(frozen=True, slots=True)
-class _TranscriptSource:
-    path: Path
-    current: bool
 
 
 def _build_normal_model(
@@ -80,7 +73,7 @@ def build_normal_model_from_row(
     raw_fragments: list[JsonObject] = []
     recognized_source_count = 0
 
-    for transcript_source in _transcript_sources(row):
+    for transcript_source in transcript_sources(row):
         path = transcript_source.path
         source_id = _source_id(path)
         raw_model_version = versioner.version(path)
@@ -219,45 +212,6 @@ def build_normal_model_from_row(
     if include_raw:
         model["raw"] = raw_fragments
     return model
-
-
-def transcript_paths(row: dict[str, Any]) -> tuple[Path, ...]:
-    return tuple(source.path for source in _transcript_sources(row))
-
-
-def _transcript_sources(row: dict[str, Any]) -> tuple[_TranscriptSource, ...]:
-    current_paths = _version_transcript_paths(row)
-    all_paths: dict[str, Path] = {}
-    for version in archive_versions_for(row):
-        for path in _version_transcript_paths(version):
-            all_paths[str(path)] = path
-    for path in current_paths:
-        all_paths[str(path)] = path
-    current_keys = {str(path) for path in current_paths}
-    return tuple(
-        _TranscriptSource(path=path, current=key in current_keys)
-        for key, path in sorted(
-            all_paths.items(),
-            key=lambda item: (item[0] in current_keys, item[0]),
-        )
-    )
-
-
-def _version_transcript_paths(version: dict[str, Any]) -> tuple[Path, ...]:
-    artifacts = version.get("backing_artifacts")
-    if not isinstance(artifacts, list):
-        artifacts = []
-    candidates = [*artifacts, version.get("primary_backing_artifact")]
-    paths: dict[str, Path] = {}
-    for artifact in candidates:
-        if not isinstance(artifact, dict) or artifact.get("role") != "transcript":
-            continue
-        path_text = artifact.get("path")
-        if not isinstance(path_text, str) or not path_text:
-            continue
-        path = Path(path_text).expanduser().resolve()
-        paths[str(path)] = path
-    return tuple(paths[key] for key in sorted(paths))
 
 
 def _source_id(path: Path) -> str:
@@ -444,5 +398,4 @@ __all__ = [
     "NORMAL_MODEL_SCHEMA_VERSION",
     "build_normal_model_from_row",
     "normal_model_producer_commit",
-    "transcript_paths",
 ]

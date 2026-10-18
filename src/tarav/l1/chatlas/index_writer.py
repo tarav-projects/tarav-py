@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -233,6 +234,48 @@ def archive_versions_for(row: dict[str, Any]) -> list[dict[str, Any]]:
             if isinstance(version, dict)
         ]
     return [plain_index_version(row)]
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptSource:
+    path: Path
+    current: bool
+
+
+def transcript_sources(row: dict[str, Any]) -> tuple[TranscriptSource, ...]:
+    """The transcript artifacts a session is normalized from, current ones last."""
+    current_paths = _version_transcript_paths(row)
+    all_paths: dict[str, Path] = {}
+    for version in archive_versions_for(row):
+        for path in _version_transcript_paths(version):
+            all_paths[str(path)] = path
+    for path in current_paths:
+        all_paths[str(path)] = path
+    current_keys = {str(path) for path in current_paths}
+    return tuple(
+        TranscriptSource(path=path, current=key in current_keys)
+        for key, path in sorted(
+            all_paths.items(),
+            key=lambda item: (item[0] in current_keys, item[0]),
+        )
+    )
+
+
+def _version_transcript_paths(version: dict[str, Any]) -> tuple[Path, ...]:
+    artifacts = version.get("backing_artifacts")
+    if not isinstance(artifacts, list):
+        artifacts = []
+    candidates = [*artifacts, version.get("primary_backing_artifact")]
+    paths: dict[str, Path] = {}
+    for artifact in candidates:
+        if not isinstance(artifact, dict) or artifact.get("role") != "transcript":
+            continue
+        path_text = artifact.get("path")
+        if not isinstance(path_text, str) or not path_text:
+            continue
+        path = Path(path_text).expanduser().resolve()
+        paths[str(path)] = path
+    return tuple(paths[key] for key in sorted(paths))
 
 
 def plain_index_version(row: dict[str, Any]) -> dict[str, Any]:

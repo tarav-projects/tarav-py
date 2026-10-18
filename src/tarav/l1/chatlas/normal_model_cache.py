@@ -26,8 +26,8 @@ from .normal_model.model import (
 from .normal_model.pipeline import (
     build_normal_model_from_row,
     normal_model_producer_commit,
-    transcript_paths,
 )
+from tarav.l1.chatlas.index_writer import transcript_sources
 
 
 CACHE_SCHEMA = "tarav.chatlas.normal-model-cache"
@@ -157,7 +157,7 @@ def _cache_identity(row: JsonObject) -> JsonObject:
 
 def _source_fingerprints(row: JsonObject) -> list[JsonObject]:
     fingerprints: list[JsonObject] = []
-    for path in transcript_paths(row):
+    for path in (source.path for source in transcript_sources(row)):
         try:
             stat = path.stat()
         except OSError as exc:
