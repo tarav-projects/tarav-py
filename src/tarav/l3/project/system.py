@@ -3,6 +3,7 @@
 The System Project is an ordinary Project at `~/Documents/tarav/system/`:
 `.tarav/project.json`, its own Type subclassing `TaravSystemProject` in its
 harness, its environment, and a Git repository. There is one per machine.
+[#NOTE/TODISCUSS we discussed of making the sytem project to comprise ~/Documents/tarav itself, I think]
 """
 
 from __future__ import annotations

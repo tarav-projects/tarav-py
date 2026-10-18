@@ -1,3 +1,4 @@
+import json
 from uuid import uuid4
 
 import pytest
@@ -104,17 +105,30 @@ def test_object_context_entry_point():
 def test_models_fail_before_side_effects(tmp_path):
     from tarav.l2.models.model import Model
     from tarav.l2.models.errors import ToImplementError
-    from tarav.l2.project.models import ProjectModels
+    from tarav.l2.project import Project
     from tarav.l2.unsorted.storage import DiagramNamespace
+
+    root = tmp_path / "project"
+    (root / ".tarav").mkdir(parents=True)
+    (root / ".tarav/project.json").write_text(json.dumps({
+        "type": "Tarav.Project", "project_id": str(uuid4()),
+        "created_at": "2026-10-16T00:00:00Z",
+        "harness": {"environment": "env", "type": "tarav.l2.project:Project"}}))
+    (root / ".tarav/config.json").write_text("{}")
+    written = sorted(tmp_path.rglob("*"))
 
     with pytest.raises(ToImplementError):
         Model("anything", None, "edition")
+    # A Project exposes its Models and lists their names without storage;
+    # only resolving a Model fails.
+    models = Project.from_path(root).models
+    assert models.ls() == ()
     with pytest.raises(ToImplementError):
-        ProjectModels(None)
+        models.main()
     namespace = object.__new__(DiagramNamespace)
     with pytest.raises(ToImplementError):
         namespace.create_model()
-    assert list(tmp_path.iterdir()) == []
+    assert sorted(tmp_path.rglob("*")) == written
 
 
 @pytest.mark.parametrize('method,args,kwargs', [
