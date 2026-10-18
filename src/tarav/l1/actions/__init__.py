@@ -288,8 +288,8 @@ class ActionRun(TaravEntity, FileRecord):
                 "locator": {"run": str(self.id), "action": self.data["action"]}}
 
     class Records(TaravEntity.Records):
-        def validate_record(self, value):
-            data = super().validate_record(value)
+        def parse_record(self, value):
+            data = super().parse_record(value)
             if not data.tape or data.tape[0].get("type") != tape.OPENED:
                 raise ValueError("The tape of an action starts with its opening")
             for item in data.tape:

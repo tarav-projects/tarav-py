@@ -153,8 +153,8 @@ class Blessing(Closing, Assertable):
         return _score_provider(self, repository)
 
     class Records(Closing.Records):
-        def validate_record(self, value):
-            data = super().validate_record(value)
+        def parse_record(self, value):
+            data = super().parse_record(value)
             poi = value["poi"]
             try:
                 TypeShip(poi["class_id"])

@@ -128,14 +128,14 @@ def test_record_namespace_preserves_specialized_validation_and_examples() -> Non
     from tarav.l1.decisions.records import Decision
 
     assert Combined.records.record_example() == {"type": "Test.Combined"}
-    assert Combined.records.validate_record({"type": "Test.Combined"})
+    assert Combined.records.parse_record({"type": "Test.Combined"})
 
     decision = Decision.records.record_example()
     assert decision["type"] == "Tarav.Decisions.Decision"
-    assert Decision.records.validate_record(decision).created_at == decision["created_at"]
+    assert Decision.records.parse_record(decision).created_at == decision["created_at"]
     without_timezone = {**decision, "created_at": "2026-10-07T12:00:00"}
     with pytest.raises(ValueError, match="timezone"):
-        Decision.records.validate_record(without_timezone)
+        Decision.records.parse_record(without_timezone)
     with pytest.raises(ValueError, match="timezone"):
         Decision.records.from_record(without_timezone)
 
@@ -144,4 +144,4 @@ def test_record_namespace_preserves_specialized_validation_and_examples() -> Non
     assert issubclass(Blessing.Records, Closing.Records)
     assert type(Blessing.records.from_record(blessing)) is Blessing
     with pytest.raises(ValueError, match="reason"):
-        Blessing.records.validate_record({**blessing, "reason": " "})
+        Blessing.records.parse_record({**blessing, "reason": " "})

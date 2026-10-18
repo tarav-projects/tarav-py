@@ -50,7 +50,7 @@ class RankingScore(Score, Mapping[str, object]):
             raise ValueError('A score row must not supply its Type')
         self._row = json.loads(json.dumps(dict(row), allow_nan=False))
         self._record = {'type': entity(type(self)).name, **self._row}
-        type(self).records.validate_record(self._record)
+        type(self).records.parse_record(self._record)
 
     def __getitem__(self, key: str) -> object:
         return deepcopy(self._row[key])

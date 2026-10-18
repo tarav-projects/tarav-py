@@ -5,7 +5,6 @@ from __future__ import annotations
 import inspect
 import json
 import math
-from copy import deepcopy
 from pathlib import Path
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, BinaryIO, Self, TextIO, TypeVar
@@ -211,20 +210,17 @@ class TaravObject(TaravType):
             return self.obj if isinstance(self.obj, type) else type(self.obj)
 
         # tarav.breadcrumb 2c1992f27b7e
-        def validate_record(self, value: object) -> BaseModel:
-            """Validate without transforming supplied JSON data."""
-            record = _json_object(value)
-            model = self._owner.RecordInterface.model_validate(
-                deepcopy(record), strict=True
-            )
-            represented = model.model_dump(mode="json", exclude_unset=True, by_alias=True)
-            if json.dumps(represented, sort_keys=True) != json.dumps(
-                record, sort_keys=True
-            ):
-                raise InvalidRecordJSON(
-                    "RecordInterface must not transform or discard supplied data"
-                )
-            return model
+        # tarav.breadcrumb 442d0d53638d
+        # tarav.breadcrumb dd22e0b42afb
+        def parse_record(self, value: object) -> BaseModel:
+            """Parse a Record into the Type's typed data, or reject it.
+
+            One strict pass of the RecordInterface over the given dict; the
+            dict itself is neither copied nor changed.
+            """
+            if not isinstance(value, Mapping):
+                raise InvalidRecordJSON("Tarav JSON root must be an object")
+            return self._owner.RecordInterface.model_validate(value, strict=True)
 
         # tarav.breadcrumb 195ac6bd926a
         def record_example(self) -> dict[str, object]:
@@ -236,7 +232,7 @@ class TaravObject(TaravType):
                 raise TypeError("Record projection requires an object instance")
             record = _json_object(self.obj._to_record())
             type(self.obj)._check_record_type(record)
-            self.validate_record(record)
+            self.parse_record(record)
             return record
 
         # tarav.breadcrumb fe4ebb28de64
@@ -248,7 +244,7 @@ class TaravObject(TaravType):
                 raise TypeError("TaravObject is not an opaque JSON wrapper")
             record = _json_object(value)
             owner._check_record_type(record)
-            record_data = self.validate_record(record)
+            record_data = self.parse_record(record)
             result = owner._from_record(record_data)
             if type(result) is not owner:
                 raise TypeError(f"{owner.__name__}._from_record() must return exact class")
@@ -313,7 +309,7 @@ class TaravObject(TaravType):
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        direct_record_api = {"from_record", "to_record", "validate_record", "record_example"}
+        direct_record_api = {"from_record", "to_record", "parse_record", "record_example"}
         misplaced = direct_record_api.intersection(cls.__dict__)
         if misplaced:
             name = sorted(misplaced)[0]

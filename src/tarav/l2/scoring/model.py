@@ -117,7 +117,7 @@ class ScoringRecord(TaravEntity, Mapping[str, object]):
     def __init__(self, record: Mapping[str, object]) -> None:
         super().__init__(Ship(record['id']))
         self._record = _json_object(record)
-        type(self).records.validate_record(self._record)
+        type(self).records.parse_record(self._record)
         _validate_record_semantics(self._record)
 
     @classmethod

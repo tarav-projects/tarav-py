@@ -106,7 +106,7 @@ def test_tarav_owns_the_public_record_loading_boundary() -> None:
                 return cls()
 
 
-@pytest.mark.parametrize("name", ("to_record", "validate_record", "record_example"))
+@pytest.mark.parametrize("name", ("to_record", "parse_record", "record_example"))
 def test_record_extensions_must_use_the_selected_namespace(name: str) -> None:
     with pytest.raises(TaravTypeDeclarationError, match="selected Records namespace"):
         type(

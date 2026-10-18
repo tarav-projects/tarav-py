@@ -34,8 +34,8 @@ class PairwiseRankingCase(AssessmentCase):
         tribunal_type_id: str
 
     class Records(AssessmentCase.Records):
-        def validate_record(self, value):
-            data = super().validate_record(value)
+        def parse_record(self, value):
+            data = super().parse_record(value)
             TypeShip(data.tribunal_type_id)
             return data
 

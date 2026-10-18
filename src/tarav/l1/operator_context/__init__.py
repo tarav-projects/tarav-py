@@ -72,8 +72,8 @@ class OperatorContext(TaravEntity, FileRecord):
         return record
 
     class Records(TaravEntity.Records):
-        def validate_record(self, value):
-            data = super().validate_record(value)
+        def parse_record(self, value):
+            data = super().parse_record(value)
             if datetime.fromisoformat(data.created_at).tzinfo is None:
                 raise ValueError("Operator Context time must include a timezone")
             return data

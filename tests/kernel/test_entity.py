@@ -57,8 +57,6 @@ def test_entity_requires_a_json_uuid_string_identity() -> None:
         ExampleEntity.records.from_record({})
     with pytest.raises(ValidationError):
         ExampleEntity.records.from_record({"id": "not-a-uuid"})
-    with pytest.raises(InvalidRecordJSON, match="transform"):
-        ExampleEntity.records.from_record({"id": ENTITY_ID.replace("-", "")})
     with pytest.raises(InvalidRecordJSON):
         ExampleEntity.records.from_record({"id": Ship(ENTITY_ID)})
 

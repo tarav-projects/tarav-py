@@ -18,7 +18,7 @@ from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import DirectoryRecord, TypeShip
 from tarav.l1.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 
-from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record
+from .records import AgentLoadedContext, ChatMessage, ChatTurn, event_record_type
 
 
 JsonObject = dict[str, Any]
@@ -228,14 +228,15 @@ class ChatlasNormalModel(DirectoryRecord):
 
 
 
+# tarav.breadcrumb 56915edbc548
 def _validated_collection_row(name: str, value: object) -> JsonObject:
+    """Parse one stream row once with its Type and return the row as read."""
     if name == "events":
-        return event_record(value).records.to_record()
-    if name == "messages":
-        return ChatMessage.records.from_record(value).records.to_record()
-    if name == "turns":
-        return ChatTurn.records.from_record(value).records.to_record()
-    return AgentLoadedContext.records.from_record(value).records.to_record()
+        record_type = event_record_type(value)
+    else:
+        record_type = {"messages": ChatMessage, "turns": ChatTurn}.get(name, AgentLoadedContext)
+    record_type.records.parse_record(value)
+    return value
 
 
 def _write_jsonl(path: Path, values: list[JsonObject]) -> None:

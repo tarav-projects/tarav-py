@@ -67,7 +67,7 @@ class ProjectDecisions:
             if not issubclass(cls, decision_type):
                 continue
             try:
-                cls.records.validate_record(record)
+                cls.records.parse_record(record)
                 if path.stem != record["id"]:
                     raise ValueError("Decision filename disagrees with identity")
             except (ValueError, TypeError, KeyError) as exc:

@@ -64,7 +64,7 @@ def test_a_blessing_with_an_invalid_poi_is_rejected(field, value):
     record = deepcopy(Blessing.records.record_example())
     record["poi"][field] = value
     with pytest.raises(ValueError):
-        Blessing.records.validate_record(record)
+        Blessing.records.parse_record(record)
 
 
 def test_runtime_collector_and_blessings_workflow(tmp_path):

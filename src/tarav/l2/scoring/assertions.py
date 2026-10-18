@@ -113,11 +113,11 @@ class AssessmentCase(TaravObject):
         }
         # The scorer receives a snapshot, even if the producer later edits its inputs.
         self._record = json.loads(json.dumps(record, allow_nan=False))
-        type(self).records.validate_record(self._record)
+        type(self).records.parse_record(self._record)
 
     class Records(TaravObject.Records):
-        def validate_record(self, value):
-            data = super().validate_record(value)
+        def parse_record(self, value):
+            data = super().parse_record(value)
             if not data.question.strip() or not data.presentation.strip():
                 raise IncompleteCaseScope('Assessment case needs a question and supplied material')
             return data
@@ -180,9 +180,9 @@ class Assertion(TaravAssertion):
         return Ship(uuid5(UUID(str(entity(cls).id)), key))
 
     class Records(TaravAssertion.Records):
-        def validate_record(self, value):
+        def parse_record(self, value):
             cls = self._owner
-            data = super().validate_record(value)
+            data = super().parse_record(value)
             subject = cls.validate_subject(data.subject_ref)
             if data.id != cls.subject_identity(subject):
                 raise ValueError('Assertion identity disagrees with its subject')

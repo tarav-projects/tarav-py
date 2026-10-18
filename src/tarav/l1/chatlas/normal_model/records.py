@@ -254,17 +254,22 @@ CHATLAS_SEMANTIC_RECORD_TYPES = (
 )
 
 
-def event_record(value: object) -> TaravObject:
+def event_record_type(value: object) -> type[TaravObject]:
     if not isinstance(value, dict):
         raise ValueError("Chatlas Event Record must be an object")
     label = value.get("type")
     record_type = EVENT_RECORD_TYPES.get(label) if isinstance(label, str) else None
     if record_type is None:
         raise ValueError(f"unknown Chatlas Event Type: {label!r}")
-    return record_type.records.from_record(value)
+    return record_type
+
+
+def event_record(value: object) -> TaravObject:
+    return event_record_type(value).records.from_record(value)
 
 
 __all__ = [
+    "event_record_type",
     "AgentEvent",
     "AgentLoadedContext",
     "CHATLAS_SEMANTIC_RECORD_TYPES",

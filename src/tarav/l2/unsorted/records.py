@@ -109,7 +109,7 @@ class TypedShip(FileRecord):
             retained = _object(record, field="Ship.Record")
         super().__init__()
         self._record = _json_object(retained)
-        type(self).records.validate_record(self._record)
+        type(self).records.parse_record(self._record)
         self._validate_record()
 
     @classmethod
@@ -240,7 +240,7 @@ class TypedAnnotation(FileRecord):
             retained = _object(record, field="Annotation.Record")
         super().__init__()
         self._record = _json_object(retained)
-        type(self).records.validate_record(self._record)
+        type(self).records.parse_record(self._record)
         self._validate_record()
 
     @classmethod

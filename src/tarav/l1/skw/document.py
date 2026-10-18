@@ -148,7 +148,7 @@ class SkwBlock(TaravEntity, Mapping[str, object]):
         self._registry: TypeRegistry[TaravObject] | None = None
         self._objects_index: dict[str, TaravObject] = {}
         self._annotations: tuple[BlockAnnotation, ...] = ()
-        type(self).records.validate_record(self._record)
+        type(self).records.parse_record(self._record)
         if not isinstance(self._record.get("label"), str) or not self._record["label"]:
             raise ValueError("Blocks require non-empty labels")
         if self._record.get("content") is not None:
@@ -562,7 +562,7 @@ class Document:
         content = lines(block.produce(self))
         original = block.records.to_record()
         updated = {**original, "content": content}
-        type(block).records.validate_record(updated)
+        type(block).records.parse_record(updated)
         index = next(i for i, value in enumerate(self.data["blocks"])
                      if value["id"] == str(block.id))
         self.data["blocks"][index] = updated

@@ -48,8 +48,8 @@ class Decision(TaravEntity, FileRecord, Assertable):
         )
 
     class Records(TaravEntity.Records):
-        def validate_record(self, value):
-            data = super().validate_record(value)
+        def parse_record(self, value):
+            data = super().parse_record(value)
             stamp = datetime.fromisoformat(data.created_at)
             if stamp.tzinfo is None:
                 raise ValueError("Decision time must include a timezone")

@@ -2,7 +2,7 @@ from tarav.l0.kernel import TaravClass
 
 
 import pytest
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from tarav.l0.kernel import (
     InvalidRecordJSON,
@@ -199,28 +199,11 @@ def test_no_coercion_discard_or_default_insertion():
             count: int = 1
 
     obj = Defaults.records.from_record({"name": "x", "unknown": [1]})
-    assert Defaults.records.validate_record(obj.records.to_record()).count == 1
+    assert Defaults.records.parse_record(obj.records.to_record()).count == 1
     assert obj.records.to_record() == {"name": "x", "unknown": [1]}
     with pytest.raises(InvalidRecordJSON):
         A.records.from_record({"name": "x", "hints": {1: "a", "1": "b"}})
 
-    class Transform(A):
-        @classmethod
-        def class_entity(cls) -> TaravClass:
-            return TaravClass(
-                target=cls,
-                id=TypeShip("292636da-45ce-4861-a8ab-cf328782f5c2"),
-                name='Test.Transform',
-            )
-
-        class RecordInterface(A.RecordInterface):
-            @field_validator("name")
-            @classmethod
-            def uppercase(cls, value):
-                return value.upper()
-
-    with pytest.raises(InvalidRecordJSON, match="transform"):
-        Transform.records.from_record({"name": "x"})
     assert obj._record is not None
     obj._record["name"] = 1
     with pytest.raises(ValidationError):
