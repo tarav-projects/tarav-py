@@ -31,6 +31,8 @@ from tarav.l1.breadcrumbs.workflows import (
     SurfaceMarker,
 )
 from tarav.l1.chatlas.normal_model import compute_normal_model, provide_normal_model_reader
+from tarav.l1.chatlas.normal_model_cache import NormalModelCache
+from tarav.l1.chatlas.session_resolver import resolve_session_index_row
 from tarav.l1.chatlas.normal_model import resolve_chat_turn_ref
 from tarav.l1.chatlas.query import ChatlasQuery, ChatlasQueryEngine, ChatlasQueryError
 from tarav.l1.chatlas.references import ChatlasTurnReference
@@ -159,7 +161,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             )
         )
 
-        models: dict[str, JsonObject] = {}
+        sessions: dict[str, tuple[list[JsonObject], bool]] = {}
         for breadcrumb in context.breadcrumbs:
             attachments = [
                 value
@@ -203,17 +205,7 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                 identity = locator.get("session_identity")
                 if not isinstance(identity, str):
                     raise TypeError("Chatlas Turn locator has no session identity")
-                model = models.get(identity)
-                if model is None:
-                    model = compute_normal_model(
-                        identity_hash=identity,
-                        chatlas_root=request.chatlas_root,
-                    )
-                    models[identity] = model
-                turns = model.get("turns")
-                if not isinstance(turns, list):
-                    raise TypeError("Chatlas Normal Model has no Turns collection")
-                resolution = resolve_chat_turn_ref(turns, locator)
+                resolution = _resolve_turn(locator, identity, request.chatlas_root, sessions)
                 standing = resolution.get("standing")
                 if standing != "MATCHED":
                     concerns.append(
@@ -245,6 +237,47 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
                     )
                 )
         return tuple(concerns)
+
+
+# tarav.breadcrumb e65762db7f80
+# tarav.breadcrumb 6a6b1be84e86
+def _resolve_turn(
+    locator: JsonObject,
+    identity: str,
+    chatlas_root: Path | None,
+    sessions: dict[str, tuple[list[JsonObject], bool]],
+) -> JsonObject:
+    """Resolve a Turn from its session's cached Turns, rebuilding only to confirm a miss.
+
+    A stale cache is good enough for a Turn it still holds; only a Turn it
+    does not confirm, or a session with no readable cache, costs one rebuild
+    from raw, kept in memory for the rest of the audit and never written.
+    """
+    if identity not in sessions:
+        sessions[identity] = (_cached_turns(identity, chatlas_root), False)
+    turns, rebuilt = sessions[identity]
+    resolution = resolve_chat_turn_ref(turns, locator) if turns else None
+    if (resolution is None or resolution.get("standing") != "MATCHED") and not rebuilt:
+        model = compute_normal_model(identity_hash=identity, chatlas_root=chatlas_root)
+        computed = model.get("turns")
+        if not isinstance(computed, list):
+            raise TypeError("Chatlas Normal Model has no Turns collection")
+        sessions[identity] = (computed, True)
+        resolution = resolve_chat_turn_ref(computed, locator)
+    return resolution
+
+
+def _cached_turns(identity: str, chatlas_root: Path | None) -> list[JsonObject]:
+    """The cached Turns of a session, whatever their standing; none when unreadable."""
+    try:
+        row = resolve_session_index_row(identity_hash=identity, chatlas_root=chatlas_root)
+        cache = NormalModelCache(row, chatlas_root=chatlas_root)
+        parts = cache.parts()
+        if not (parts["main"].present and parts["turns"].present):
+            return []
+        return list(cache.model().iter_turns())
+    except (CliError, OSError, TypeError, ValueError):
+        return []
 
 
 def provisional_markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:

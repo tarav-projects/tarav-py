@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready, 2026-10-18.
+Status: complete, 2026-10-18.
 Knowledge.Surface: wiki.
 Alignment.Mode: autonomous.
 
@@ -71,9 +71,14 @@ which rebuilds the whole Normal Model from raw for every referenced session
 1. Performance — cached Turns first, rebuild only when needed. Check:
    `tests/chatlas/test_context_audit_turns.py` (stale match, stale miss
    rebuilds, no cache computes without writing); the ARCHITECTURE.md audit
-   timed before (34 s) and after. Status: pending.
+   timed before (34 s) and after. Status: done.
 
 ## Impl.Log
 
 - 2026-10-18: request written in the session above. Baseline: 33.78 s for
   `tarav breadcrumbs audit chatlas-context --surface ARCHITECTURE.md --json`.
+- Slice 1: `_resolve_turn` and `_cached_turns` beside the audit;
+  `tests/chatlas/test_context_audit_turns.py` failed first (no
+  `_resolve_turn`), then 3 passed; added to `testpaths`. The ARCHITECTURE.md
+  audit went from 33.78 s to 1.82 s with the same result (ok, 79 Breadcrumbs,
+  no POIs); `src/tarav/l0/kernel/loading.py` from 5.27 s to 0.62 s.
