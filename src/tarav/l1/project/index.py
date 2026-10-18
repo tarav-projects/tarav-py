@@ -21,7 +21,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# tarav.breadcrumb 0e66eab5c87f861bfac9ef3798c0590939d3a00372471dab7bf1b9355fb80ad7
+# tarav.breadcrumb 0e66eab5c87f
 class ProjectIndex:
     """An observed-location index; Project markers remain the authority."""
 

@@ -35,7 +35,7 @@ def _kinds(names: Counter) -> dict[str, int]:
             for name, count in names.most_common()}
 
 
-# tarav.breadcrumb 3446182e512cb14d72e0d0723c61f422cf477188941e37f8a33ee995f2f3b66a
+# tarav.breadcrumb 3446182e512c
 def status_result(status) -> dict:
     """One result for both presentations: the open actions, the changes, the checks."""
     from tarav.l1.actions import RUNNING
@@ -93,7 +93,7 @@ def _relative(root: str) -> str:
     return root if path.startswith("..") else path
 
 
-# tarav.breadcrumb f471278512c23b2ee3730f222ab7c06977752fce1caef397a397df18ab39f5e8
+# tarav.breadcrumb f471278512c2
 def status_text(result: dict, *, limit: int = 20) -> str:
     """The readable form: what is open first, then what changed, then where to look."""
     projects = result["projects"]
@@ -114,7 +114,7 @@ def status_text(result: dict, *, limit: int = 20) -> str:
                      f"{change['message'] or ''}  [{change['action'][:13]}]")
     if len(result["changes"]) > limit:
         lines.append(f"  and {len(result['changes']) - limit} more; --json has them all.")
-    # tarav.breadcrumb 5d77656c0afa839bef501240fd6ab0f67d8a7bd9a6f3be70d2091123f73b1935
+    # tarav.breadcrumb 5d77656c0afa
     dirty = [item for item in result.get("git", ()) if not item["clean"]]
     if dirty:
         lines.append("Not committed: " + ", ".join(
@@ -139,7 +139,7 @@ def status_text(result: dict, *, limit: int = 20) -> str:
     return "\n".join(lines)
 
 
-# tarav.breadcrumb b77381085b45b5e826e7f08317777064e7312a0df66cae2449e9357aad0d962d
+# tarav.breadcrumb b77381085b45
 def report_project_status(project, *, json_output: bool = False, limit: int = 20,
                           everything: bool = False) -> int:
     """Run a Project's checks, hand the results to its actions, and say how it stands.
@@ -169,7 +169,7 @@ def _status(args: argparse.Namespace) -> int:
                           "everything": args.all})
 
 
-# tarav.breadcrumb 57673eca9d40366b9e6e700ef34c8f5c2d56c082afc220e89f4751b6702cb66c
+# tarav.breadcrumb 57673eca9d40
 def register_status_command(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "status",

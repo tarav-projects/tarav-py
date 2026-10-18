@@ -62,12 +62,12 @@ def _source(project: TaravProject, *, tarav=True, authored=True) -> dict:
     return data
 
 
-# tarav.breadcrumb 6e006a6f448fa394d527a3ce332f1ef7b2a91d9c2be646fa165df4c2e84f38d8
+# tarav.breadcrumb 6e006a6f448f
 def _pois(project: TaravProject):
     return tuple(project.agents.agents_md.checks.run().pois())
 
 
-# tarav.breadcrumb 7356d12f7524e6827f2a3d5459a86ed97566793b82d37fef9bd9367eeb16e93a
+# tarav.breadcrumb 7356d12f7524
 def test_default_bootstrap_reports_missing_source_and_opt_out(tmp_path: Path) -> None:
     project = _project(tmp_path)
     agents = project.agents.agents_md

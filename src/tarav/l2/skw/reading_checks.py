@@ -16,7 +16,7 @@ from tarav.l1.skw.pois import (
 from .pois import surface_state
 
 
-# tarav.breadcrumb 0172e2d45dbdb798abc6c154643755217d95a7ff03a42343a5378cd3c75fd586
+# tarav.breadcrumb 0172e2d45dbd
 class ReadingGraphCheck(Check):
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -34,7 +34,7 @@ class ReadingGraphCheck(Check):
     def _analysis(self):
         return self.graph.analyze() if self.analysis is None else self.analysis
 
-# tarav.breadcrumb 15c7f0c5dc4cf892b31d5923a4c1aae4594dbf3283bf2431bc95b9dcab2f78ba
+# tarav.breadcrumb 15c7f0c5dc4c
     def _poi(self, finding):
         block = finding.get("block")
         binding = self.graph.bindings.get(block)
@@ -119,7 +119,7 @@ class ReadingCoverageCheck(ReadingGraphCheck):
                                        if found.poi in mine))
 
 
-# tarav.breadcrumb d17fbd7e081f48d2f76cb4c84eba6e25be68e4d1c355123fb41edf8496f232ac
+# tarav.breadcrumb d17fbd7e081f
 class LinkProseCheck(ReadingGraphCheck):
     """Checks the text of each block against the prose parts of the links it declares.
 

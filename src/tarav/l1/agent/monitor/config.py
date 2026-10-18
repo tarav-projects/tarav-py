@@ -33,7 +33,7 @@ from tarav.l1.agent.monitor.models import (
 )
 from tarav.l1.agent.monitor.workflows import build_monitor_workflows
 
-# tarav.breadcrumb 59253674199cb28ccf9536f012a35645bfef42fdbff1ffb4d95f19fc2b2c1285
+# tarav.breadcrumb 59253674199c
 AUTO_PRIME_SUPPORTED_PROVIDERS = ("codex", "claude-code")
 
 MONITOR_CONFIG_SOURCE = AgentConfigSource(

@@ -70,7 +70,7 @@ class TestLabelledSettingsContract(SettingsContractTests):
         return Labelled()
 
 
-# tarav.breadcrumb 77df5a5a02c79ba1787e0adee765c5c75fdaadd570ca51cd7a0af33f1f1cfa9b
+# tarav.breadcrumb 77df5a5a02c7
 def test_values_arrive_at_construction_and_can_be_written_afterwards() -> None:
     obj = Tracking(settings=SettingsValues.of(Tracking, enabled=False))
     assert obj.settings.get("enabled") is False
@@ -97,7 +97,7 @@ def test_the_standard_path_checks_keys_partitions_and_value_types() -> None:
     assert obj.settings.get("enabled") is True
 
 
-# tarav.breadcrumb 8e6c32510cfdbb25aa73e32b02352f1914ec905bf5dd42401aaa59eb0dead1bb
+# tarav.breadcrumb 8e6c32510cfd
 def test_a_parent_partition_is_included_only_explicitly() -> None:
     labelled = Labelled()
     assert set(type(labelled).settings_partitions()) == {
@@ -128,7 +128,7 @@ def test_a_setting_without_a_default_is_a_declaration_error() -> None:
                 size: int
 
 
-# tarav.breadcrumb 906e2365423e710052436667a3def8f21dd7d7eb8cdd682490868e5f46adb38f
+# tarav.breadcrumb 906e2365423e
 def test_settings_can_be_loaded_from_a_file_through_the_record_machinery(tmp_path: Path) -> None:
     path = tmp_path / "tracking.settings.json"
     path.write_text(json.dumps({"type": "Tarav.Settings.Values",
@@ -150,7 +150,7 @@ def test_the_runtime_registers_the_workflow() -> None:
     assert runtime.workflows.get("Tarav.Workflow.Settings") is SettingsWorkflow
 
 
-# tarav.breadcrumb 6fd463b6ff2194bdb4a80e5046b6d3cb143ce867a490c38b270132417860a8e0
+# tarav.breadcrumb 6fd463b6ff21
 def test_the_agents_file_switches_are_settings_read_from_the_config(tmp_path: Path) -> None:
     from tarav.l0._core.errors import CliError
     from tarav.l1.project import TaravProject

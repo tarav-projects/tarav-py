@@ -17,22 +17,22 @@ Non-goals: tracked POIs and the notification log; turning Diagram validation int
 ### What the User decided
 
 POI Types are atomic. Each Type describes one situation with no further degeneracy, and the typing system expresses the semantics.
-<!-- tarav.breadcrumb d04272ba67bd05364fc8fea2a20244cc70788ec9a5b536bc5e7c2b3f6a8aca23 -->
+<!-- tarav.breadcrumb d04272ba67bd -->
 
 The `code` field is to be eliminated.
-<!-- tarav.breadcrumb 3774872722dbce615f2be9ae8209edb7dc270ad8c5b7c1dd1e33e5c40ceae60b -->
+<!-- tarav.breadcrumb 3774872722db -->
 
 The POIs that still carry a code after request 877 must follow the same pattern: no code, a Type derived from the core POI tree.
-<!-- tarav.breadcrumb de3733c888b51c9c104bbd091b370eb506b7e2273e0342fddac4946b9560797c -->
+<!-- tarav.breadcrumb de3733c888b5 -->
 
 "Finding" is a legacy name for POIs. There is no finding anymore; every such situation is modelled with the current POI tree.
-<!-- tarav.breadcrumb d431275eb4320c9a321b8dc83fed5dfa321e7b3d807111741f2aeb30851fa98e -->
+<!-- tarav.breadcrumb d431275eb432 -->
 
 Tarav should converge on fewer primitives: everything that looks like a POI is implemented as a POI, end to end, from the command line to the mechanics. It need not be perfect in the first iteration.
-<!-- tarav.breadcrumb 27855a8327f71712962c273e89724d4a0d6adbe1c973e2b60d91993196064b3a -->
+<!-- tarav.breadcrumb 27855a8327f7 -->
 
 The Diagram family was the remaining exception. The User asked for this request, self-contained and with its references, to be executed by another agent.
-<!-- tarav.breadcrumb a4e12a3f1a798e61465a17b4c0964850956e0622c4cfecbd0a2797b3ad1fd0d5 -->
+<!-- tarav.breadcrumb a4e12a3f1a79 -->
 
 ### What earlier requests decided that binds this one
 
@@ -273,7 +273,7 @@ Stop rule: finish the slice in hand, leave the suite passing, commit that slice 
 <!-- tarav.sessions
 473c89a0 = codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8 @473c89a00e2367fb827193af74a6375c60a96b0be110f21df0aff49360ca972f
 -->
-<!-- tarav.breadcrumb c60eecb54575e6de557f1ad8baf41979ce8e34599f17c0d73e53d1d8ead01361 -->
+<!-- tarav.breadcrumb c60eecb54575 -->
 - 2026-10-08, paused as incomplete at the User's request. The atomic Types, Draft migration, and core command integration have landed; all 53 retained Drafts are at schema version 2, with 13,347 POIs preserved. The integrated Python suite passed 222 tests and Ruff passed. The root check completed 365 Checks with zero TestSuite POIs and 151 other reported POIs. The migration dry run now reports 53 already-v2 Drafts, zero new rows, and zero unmapped rows.
 - **Work identified at the pause, subsequently completed or scoped out:** Characterization tests for all twelve families, CLI renderer/level/JSON coverage, the Diagram content-render audit and fix, root harness sync, CLI reinstall, and repeated Project and Skillware checks. Existing Project and Skillware POIs were left for their owning work because repairing them is outside this request.
 - 2026-10-08, Execute recheck. Isolated worktree at `8fb8efa` because the shared checkout holds active unrelated edits and its CLI is temporarily broken. AST scan still finds 84 `Finding(...)` calls; 72 literal codes at calls plus 9 dynamic cases matches the 81-case catalog. Fresh retained-data scan still finds exactly 13,347 coded rows in `drafts/` and none elsewhere; all rows have `class`, `code`, `message`, `path` and the same eight-code distribution recorded below. All six linked User Turns were opened through their Breadcrumbs. Start checkpoint: `571d450`.

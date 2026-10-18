@@ -18,7 +18,7 @@ class ProjectRunnerError(CliError):
     """Project launch configuration is invalid or incomplete."""
 
 
-# tarav.breadcrumb ad5d8401295ef4fd18a2af8bbe529014df0fd1e15b946d8ca7550c4fe98e355a
+# tarav.breadcrumb ad5d8401295e
 class ProjectLaunchConfiguration(TaravObject):
     """What starts a Project, read from the `harness` of its project.json before
     its Type is known: the environment, and the Project Type to import there.
@@ -51,7 +51,7 @@ class ProjectLaunchConfiguration(TaravObject):
     @classmethod
     def from_path(cls, path: Path | str = ".") -> ProjectLaunchConfiguration:
         """Read the harness of the Project at `path` without loading its Type."""
-        # tarav.breadcrumb 107c07cf7367ba3ad134140f1f42a8363577cd049754ee4d009d37107becb3d5
+        # tarav.breadcrumb 107c07cf7367
 
         handler = require_agentos_project(path)
         raw = handler.project_json.get("harness")

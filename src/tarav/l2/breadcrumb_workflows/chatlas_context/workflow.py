@@ -291,7 +291,7 @@ def provisional_markers(text: str, language: str) -> tuple[ChatlasContextMarker,
     raise BreadcrumbError(UNSUPPORTED_LANGUAGE)
 
 
-# tarav.breadcrumb 1677d0a1c26b714ef963c31f1e9ecd5146361c363859b1af7152a3e616ade229
+# tarav.breadcrumb 1677d0a1c26b
 def _code_comments(text: str, language: str):
     """A code surface's comments that can hold a marker, and the marker pattern."""
     if language == "python":
@@ -361,7 +361,7 @@ def _markdown_sessions(text: str) -> dict[str, SessionDeclaration]:
     return declarations
 
 
-# tarav.breadcrumb bd346b29e65ff0f3772f5d10187407df56e206c24fb9717b8b4f7f5af8ed45a8
+# tarav.breadcrumb bd346b29e65f
 def _resolve_chatlas_turns(
     markers: tuple[ChatlasContextMarker, ...],
     *,

@@ -8,7 +8,7 @@ from tarav.l2.project.harness import ProjectHarness
 from tarav.l1.project.index import observe_project
 
 
-# tarav.breadcrumb c8dbdc6986b799d4697cac330d2e82c8f7f9c383b22ac2bae4ed933c37755e03
+# tarav.breadcrumb c8dbdc6986b7
 def _inspect(args):
     harness = ProjectHarness.from_path(path=args.project)
     result = harness.inspect()
@@ -37,7 +37,7 @@ def _sync(args):
     return 0
 
 
-# tarav.breadcrumb cda75bb67890cd0689bc23663933587045238f15701eae9a828e453d6dffe3df
+# tarav.breadcrumb cda75bb67890
 def register_harness_commands(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "harness",

@@ -8,7 +8,7 @@ import json
 import subprocess
 from pathlib import Path
 
-# tarav.breadcrumb 9ee2de194318b587fcdfbeb75d823a011a17076105c68522c51f07b27bf92c8b
+# tarav.breadcrumb 9ee2de194318
 import tarav_bypass  # noqa: F401
 
 

@@ -15,7 +15,7 @@ from tarav.l1.cli import Command, CommandUse, CliWorkflow, commands_from_parser
 from tarav.l1.live_help import LiveHelpArgumentParser, render_live_help
 
 
-# tarav.breadcrumb 8cfb049f976bf5d0c8301867ec935b6d5f92fe49ede680ad62dfb5361cf93985
+# tarav.breadcrumb 8cfb049f976b
 def _describe_use(command: Command, args: argparse.Namespace | None) -> object:
     """Ask the command to describe its own call; impose no representation."""
     describe = command.usage_descriptor
@@ -27,7 +27,7 @@ def _describe_use(command: Command, args: argparse.Namespace | None) -> object:
         return None
 
 
-# tarav.breadcrumb d5c2c85ac9548726cf6c417c56b639efeda056143548f190e445113aafbb9cd1
+# tarav.breadcrumb d5c2c85ac954
 def build_parser(
     *,
     runtime: TaravRuntime | None = None,

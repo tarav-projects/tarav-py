@@ -10,7 +10,7 @@ from .catalog import SKILL_MARKER_FILENAME, parse_skill_frontmatter
 from .workflow import SKILLS_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb 50bc3738bfe076fd02c3f4baed97954256f557cb7afc353109b763474794b9dc
+# tarav.breadcrumb 50bc3738bfe0
 class TaravSkill(TaravObject):
     """A skill: a folder an agent harness loads through its `SKILL.md`.
 

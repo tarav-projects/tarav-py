@@ -74,7 +74,7 @@ def run_python(
     ``stdin`` replays input the caller already consumed; by default the child
     inherits the caller's standard input.
     """
-    # tarav.breadcrumb f342326ee3e6fed178a6d6ed8cf66adf548b7a87b8ed42d841bf4efa853edfad
+    # tarav.breadcrumb f342326ee3e6
 
     if not isinstance(configuration, RunnerConfiguration):
         raise TypeError("configuration must be a RunnerConfiguration")

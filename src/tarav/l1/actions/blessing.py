@@ -102,8 +102,8 @@ class BlessingInputCheck(SituationCheck):
         return CheckResult(self, status="completed", pois=pois)
 
 
-# tarav.breadcrumb 63c7d5fd87c8a0c3f766c40dd61a2ca4f1acf559427b3490a780b1238ee81567
-# tarav.breadcrumb 0e5a757eeb2c8fc966625261321583680b2aa03a38505f9e71758dd7ea0878eb
+# tarav.breadcrumb 63c7d5fd87c8
+# tarav.breadcrumb 0e5a757eeb2c
 class Blessing(Closing, Assertable):
     """The record of an action closed although its POI's situation still exists.
 

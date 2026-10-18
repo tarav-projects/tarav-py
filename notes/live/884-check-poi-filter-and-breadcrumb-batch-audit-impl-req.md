@@ -9,21 +9,21 @@
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: complete. Phase: Execute complete.
 
 Improve two general Tarav CLI primitives: filter a Project check report by POI Type including subtypes, and audit or refresh Breadcrumb positions for a declared set of files in one invocation. These are independent conveniences for existing workflows; no implementation-specific checkpoint command is introduced.
-<!-- tarav.breadcrumb 8517f1975c0259313635bd92d7d282feb5cdea15e764eace5203419a21c3da95 -->
-<!-- tarav.breadcrumb 459e47ac0ac22a5c1cb4d9b787900219cabc5e49f18444eef1f133bc0ac233c7 -->
+<!-- tarav.breadcrumb 8517f1975c02 -->
+<!-- tarav.breadcrumb 459e47ac0ac2 -->
 
 ## Design narrative
 
 The User found repeated broad check reports noisy and repeated per-file Breadcrumb audits costly. Following relevant User Turns still requires judgment; mechanically applying the same audit to a known file list does not. The User explicitly rejected a combined `tarav impl checkpoint` as overfitted.
-<!-- tarav.breadcrumb 089081a819cc89da8e6a7559c6a2888a71a81b6add473cde0d1ce28579a81f1c -->
+<!-- tarav.breadcrumb 089081a819cc -->
 
 Current `tarav check --type NAME` filters only exact emitted Type names. `CheckRun.report()` groups after filtering but keeps the full run summary, while the text renderer does not state the selected POI count. `--check` also filters reported POIs by exact Check Type name; it does not narrow which checks run. The CLI retains and tracks the whole run and exits according to `run.clean()`.
 
 Extend `--type` to match the named POI Type or any subtype, based on the emitted object's Python Type ancestry and Tarav Type names. Preserve full-run summary, retention, tracking and exit behavior. Add a selected-POI count and an explicit “showing X of Y POIs” line when report filters are active; JSON must expose the same counts and applied filters. Group limit/offset remain pagination over matching groups. Path/project filtering and baseline comparisons are deferred.
-<!-- tarav.breadcrumb 9d811918c53293dee85c9df4726caf6bbb5b36d9c6c6c061f3e36dd91f3b2efc -->
+<!-- tarav.breadcrumb 9d811918c532 -->
 
 Current `tarav breadcrumbs audit chatlas-context --surface FILE [--refresh-positions]` audits one file. The generic Breadcrumb audit command owns file auditing; the Chatlas Context command also dispatches commit audits. Add a repeatable `--surface` and `--files-from MANIFEST` to file audits. A manifest is plain UTF-8, one path per line; blank lines are ignored and relative paths resolve from the command's working directory, matching `--surface` and the output of `git diff --name-only`. Combine and deduplicate paths in input order. Reject an empty selection and prohibit file-selection options with `--commit`. Run each file through the existing audit, continue after one file fails, and return per-file JSON results and an aggregate status. `--refresh-positions` applies independently to each selected file; it still never edits source files. Preserve the current single-file JSON response when exactly one `--surface` is used without a manifest. These format and path choices are Agent implementation decisions.
-<!-- tarav.breadcrumb ecdaa8248522da04ba9c4b2a01672421ecea10f1d98299ab938219661aafb193 -->
+<!-- tarav.breadcrumb ecdaa8248522 -->
 
 ## Impl.Req.Wiki
 

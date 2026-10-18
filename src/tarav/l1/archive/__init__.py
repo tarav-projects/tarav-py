@@ -297,7 +297,7 @@ class Archive:
             recorded_at=recorded_at,
         )
         if skipped_count:
-            # tarav.breadcrumb 73bbbd2f1a9c94a38a20356a3dd57f3c52701fa317c80ea4f6c6e2451b02fd37
+            # tarav.breadcrumb 73bbbd2f1a9c
             emit_notification(
                 ArchiveNotificationPOI(
                     f"skipped {skipped_count} suspicious or unsupported Git remote locator(s)",

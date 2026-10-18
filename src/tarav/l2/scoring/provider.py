@@ -9,7 +9,7 @@ from .repository import ScoringRepository
 
 class ScoringProvider(FilesystemProvider):
     """Expose typed Scoring Records without moving or rewriting them."""
-    # tarav.breadcrumb 470475f6f6f8efb3d7acdc9f8d8bc22ea9b5d68ea2bf6da46fd77d3f972e9c61
+    # tarav.breadcrumb 470475f6f6f8
 
     def __init__(self, root: Path, records: object) -> None:
         repository = ScoringRepository(root).open()

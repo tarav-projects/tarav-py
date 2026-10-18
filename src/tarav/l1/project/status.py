@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from tarav.l1.checks import CheckSuite
 
 
-# tarav.breadcrumb 9ea03b213fa06c650029b7c469cf4605672c9ddf1415140f3013f3a7c4a61e6f
+# tarav.breadcrumb 9ea03b213fa0
 @dataclass(frozen=True)
 class ProjectStatus:
     """One Project's suite that ran, what its actions did with it, and the same for its members."""

@@ -49,7 +49,7 @@ an object is distinct from what is done with it. They doubted that the suite
 is needed as a concept; what is needed is that the machinery of the actions
 can tell whether a situation is happening now, and that something knows how
 to run the checks again in an equivalent context.
-<!-- tarav.breadcrumb 8cb0c4d036d658c3bbce4541355ee113cd5ae22a15f774f60e95ecd363ae61be -->
+<!-- tarav.breadcrumb 8cb0c4d036d6 -->
 
 The agent answered that the Project is that runner, and that request 897 had
 carried the Project through the check code as an owner, which is the wrong
@@ -59,29 +59,29 @@ actions necessary. Objects may hold builders of other objects; a further
 layer integrates them with larger systems. The Project runs a loop that
 gives the check results to every registered action, and each action does
 what it needs: ignore them, close itself, or change its status.
-<!-- tarav.breadcrumb 0aeb23ca24760528ba7c224055bb417ca9f092405b3b6a5728809fb116adadee -->
+<!-- tarav.breadcrumb 0aeb23ca2476 -->
 
 Builders on objects are a modeling pattern to use when it fits, not a rule;
 redundant paths are allowed. The user asked for a clear picture of the
 actors and whether the arrangement is balanced.
-<!-- tarav.breadcrumb 34f41714deb044c946dfc70f829b95a94d0131a1c705446618da9fe24963b17e -->
+<!-- tarav.breadcrumb 34f41714deb0 -->
 
 `project.suite` is to be eliminated. A cache of a run, if ever needed, goes
 inside `project.checks`.
-<!-- tarav.breadcrumb 82da1ff17e35b3484efd8fc11a812a6ad203cf7d963f35e64708de430d35f26f -->
+<!-- tarav.breadcrumb 82da1ff17e35 -->
 
 `project.checks` holds the checks of a Project, can run the checks of
 subprojects, and only runs checks. Its results are passed to the action
 workflow to update any action and, in the same way, to start any action.
-<!-- tarav.breadcrumb c9a3f8f4771aa71969a5b9367c1bb4c560b4e111793a1f1fee61047dd16d0395 -->
+<!-- tarav.breadcrumb c9a3f8f4771a -->
 
 The separation comes first and a compound command later; `project actions`
 is a bad name for something that also runs checks; one command is needed
 that an agent can run repeatedly.
-<!-- tarav.breadcrumb 665a994e2bb7fa4a3ef731fb474d0eeb54dc5473ac7e4c48aa94dbf4ba109161 -->
+<!-- tarav.breadcrumb 665a994e2bb7 -->
 
 Do the split in the code and use `tarav project status` for now.
-<!-- tarav.breadcrumb 3e71bda5133dc6696563953b730cefa770933f02f39d7c09694f595eb9425212 -->
+<!-- tarav.breadcrumb 3e71bda5133d -->
 
 ### Current behavior (inspected)
 

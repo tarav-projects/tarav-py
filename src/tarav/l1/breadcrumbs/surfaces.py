@@ -11,7 +11,7 @@ from .store import BreadcrumbError, BreadcrumbStore
 from .workflows import BreadcrumbAnnotationWorkflow, PreparedAnnotation
 
 
-# tarav.breadcrumb 8e22d670e075d8eceaa677a0914244d8c923b6bc3364e4f80e11a60e07f8da9b
+# tarav.breadcrumb 8e22d670e075
 SURFACE_LANGUAGES = ("markdown", "python", "typescript")
 TYPESCRIPT_SUFFIXES = frozenset({".ts", ".tsx", ".mts", ".cts"})
 UNSUPPORTED_LANGUAGE = "Breadcrumb surface language must be markdown, python or typescript"

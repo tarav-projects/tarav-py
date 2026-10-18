@@ -40,13 +40,13 @@ Follow-up in another repository:
 ### User decisions
 
 The status command took a very long time because of the test suite check.
-<!-- tarav.breadcrumb 9e227f4fffda735b9202df7da95bf37706d3bdd72a485721b95c323f25688fd0 -->
+<!-- tarav.breadcrumb 9e227f4fffda -->
 
 Each failing test as one POI is good. The problem is convenience: the
 status command is called constantly by agents as the mechanical feedback
 about the Project, so it cannot be that slow. Agents can focus on a subset;
 the full suite does not need to run all the time.
-<!-- tarav.breadcrumb 1456ec11e90b40344e075fb2b529bfaa587b53b42f5648957978aa2773d6eeb2 -->
+<!-- tarav.breadcrumb 1456ec11e90b -->
 
 A check result cannot say which situations it covered: the situations that
 disappeared cannot be listed. So the concept of a suite returns: tests are
@@ -54,40 +54,40 @@ put in compartments, and it is known which suites ran completely. Actions
 know which suites they belong to, and those that need to detect a missing
 POI look at complete suite runs. Suites are recursive and subsets of them
 can be run.
-<!-- tarav.breadcrumb ac01f2ad8cde62e5d35f8e7bb5bbb9759e6bef1a871f07c106dbfc8a703c9a0a -->
+<!-- tarav.breadcrumb ac01f2ad8cde -->
 
 A suite has an identity, not a path: simpler, and no migration when it
 moves. A suite is a container that groups checks and their run information.
 It can be run partially or completely, for instance filtered by check Type.
-<!-- tarav.breadcrumb fecc93ee3da5330282079e9c1ef5084d0aa21b37448f63b3a1579ea12486e3d4 -->
+<!-- tarav.breadcrumb fecc93ee3da5 -->
 
 All the data lives on the suite, the run results included. Every suite is a
 class, as every check is a class, and it contains the method that runs the
 checks.
-<!-- tarav.breadcrumb a1088c58d55161dffb728d8ae3251c5c6717f720b4b82d71f88ad337e24e07c9 -->
+<!-- tarav.breadcrumb a1088c58d551 -->
 
 One suite instance holds one run, or its results can be reset. A check only
 returns its result. Fewer object Types is fine when clarity does not
 suffer. No history of runs: whoever wants one keeps an old instance.
-<!-- tarav.breadcrumb f47fbbc78d12d335b8fdae56776fa19068b9bbd69875d5657011f630f9c4eb5d -->
+<!-- tarav.breadcrumb f47fbbc78d12 -->
 
 A correction the user asked to state explicitly: a suite does not contain
 checks, and the checks cannot be enumerated, because many depend on
 situations and situations cannot be enumerated. A suite contains code that
 runs the checks, and which ones run can change from run to run.
-<!-- tarav.breadcrumb f31418e924922e447b122760803e71f6ebcb2e3b2f3d345c9538eed15433b11b -->
+<!-- tarav.breadcrumb f31418e92492 -->
 
 The closing rule: the signal is gone when the detector no longer detects it.
-<!-- tarav.breadcrumb 1f85b6dfe1ac25479cc484862f29ffcb1a29d067e8fd306ba09b1464ec734ff9 -->
+<!-- tarav.breadcrumb 1f85b6dfe1ac -->
 
 One bound suite per test file. Any default is fine to start with; what
 matters is a flag that runs everything. Selection inside pytest is left
 out; a minimal filter on the whole pytest suite, and a `PyTestSuite` base
 type. No legacy code: old data is deleted or migrated.
-<!-- tarav.breadcrumb 9db2d03c908010205751d032c661a6acdb070ae879cc7d79e2d2118ae8392057 -->
+<!-- tarav.breadcrumb 9db2d03c9080 -->
 
 Write the request and build it; delete the existing records and reopen.
-<!-- tarav.breadcrumb 0598e2403be5cad4b33b6ccfea72cd28c69b1e382797d72665405e26968003e1 -->
+<!-- tarav.breadcrumb 0598e2403be5 -->
 
 ### Current behavior (inspected)
 

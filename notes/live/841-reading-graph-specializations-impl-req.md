@@ -27,28 +27,28 @@ A standard Project should eventually expose a code-controlled onboarding route
 from the generic agent, through Tarav's agent context, into the project agent.
 AGENTS.md, Tarav's skill, and a project skill are reader-facing entry surfaces
 into that route.
-<!-- tarav.breadcrumb 9fd16506eef948105d2532c07761282228e7665a138df87bbaa1821bfb18e6b9 -->
+<!-- tarav.breadcrumb 9fd16506eef9 -->
 
 The route has the same structural problem as SKW Skills reading paths: authored
 content declares what it contains and what a reader needs, while static tooling
 analyzes the probable paths designed for that reader.
-<!-- tarav.breadcrumb ae3295c1e1b7031ac50f129fa0a64330dd3be334e7d78af3d3a10cb2d1dfc6f0 -->
+<!-- tarav.breadcrumb ae3295c1e1b7 -->
 
 The requested bootstrap order is intentionally conservative: first establish a
 nearly empty common reading-graph Type, then Skill and Project specializations,
 and only then extract mechanics demonstrated by both applications. The base is
 an extension point, not an excuse to predict every future graph.
-<!-- tarav.breadcrumb 38cee166b5ba30b82b311e7850f1f2c7d307334bdaffd3272c3fd3489fb2c57c -->
+<!-- tarav.breadcrumb 38cee166b5ba -->
 
 `ReadingGraph` is the selected name. Its semantics are static analysis of a
 declared probable reading route, not control of the agent's actual runtime
 behavior. Agents may deviate; the graph helps authors determine whether the
 route they designed supplies the context its blocks declare.
-<!-- tarav.breadcrumb c8912cdfa5d809b202441882175a59dac96aad106e575abe5fdbb1bedd2809f3 -->
-<!-- tarav.breadcrumb 0bd81c65424a91a48bc0e0fe7e6cba308a802a1c16a295cf72853e793f7d07ae -->
+<!-- tarav.breadcrumb c8912cdfa5d8 -->
+<!-- tarav.breadcrumb 0bd81c65424a -->
 
 The user authorized this first implementation slice through the Develop path.
-<!-- tarav.breadcrumb 9f6129f3b666f2bd58b29153ad0ec6ec82a08337ec3554e06d563e725b9dd68f -->
+<!-- tarav.breadcrumb 9f6129f3b666 -->
 
 ## Current implementation observations
 

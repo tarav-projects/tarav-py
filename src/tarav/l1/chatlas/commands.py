@@ -350,7 +350,7 @@ def _reference(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
-# tarav.breadcrumb 77e8947e08844ffbf0be40cd72d8dd24aaecba5382e7450c26624fbae15ca08a
+# tarav.breadcrumb 77e8947e0884
 def _resolve_current_session(provider: str | None) -> tuple[str, str]:
     """Ask the Agents workflow; keep this command's own error wording."""
     try:
@@ -409,7 +409,7 @@ def _cmd_query(args: argparse.Namespace) -> int:
     )
 
 
-# tarav.breadcrumb 2a02bd8be13fa9ec70c84f2d7435ba6d016d952a6070c9b0d9606c18d2a73910
+# tarav.breadcrumb 2a02bd8be13f
 def _cmd_render(args: argparse.Namespace) -> int:
     return _run_query_renderer(
         args,

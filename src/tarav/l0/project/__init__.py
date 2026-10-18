@@ -45,8 +45,8 @@ def project_config_path(project_root: Path) -> Path:
     return project_agentos_dir(project_root) / PROJECT_CONFIG_FILENAME
 
 
-# tarav.breadcrumb aed40d92e487eb75dfcf10d3b8d0e1b374ae522139bc117b9a8e31c19f1a0490
-# tarav.breadcrumb 18fbfa2c450bc9e373371129b0c82beed15204c89b6507b23e95bfb55de8a5ec
+# tarav.breadcrumb aed40d92e487
+# tarav.breadcrumb 18fbfa2c450b
 class ProjectHarnessConfig(BaseModel):
     """How a Project starts: the environment that runs it and its Type there.
 

@@ -41,7 +41,7 @@ class POIRenderSummaryMissing(CheckPOI):
                           workflow=CHECKS_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 048bb8a3c9906c28ad55f6c9705d200f2c6c9ff7d44078ad35ac0fa96bc7adee
+# tarav.breadcrumb 048bb8a3c990
 class POIRenderCoverageCheck(Check):
     """Every loaded local POI Type can contribute a meaningful rendered line."""
 

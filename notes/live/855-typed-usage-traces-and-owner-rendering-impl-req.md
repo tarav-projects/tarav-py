@@ -17,7 +17,7 @@ others subtype, and each type's owner renders its own traces. Live Help
 selects traces by type and subject and prints only what a type renders.
 Deploy it to the Tarav CLI: a CLI trace type, and descriptors on a few
 commands.
-<!-- tarav.breadcrumb 5211296600238f305dedc0b841cf9cf90562ee4e57fe1afd4ee510d90be95220 -->
+<!-- tarav.breadcrumb 521129660023 -->
 
 Non-goals: help for methods or classes; any non-CLI trace type; descriptors
 for every command; session ids in traces; changing storage or the window.
@@ -30,7 +30,7 @@ After 853 the Agent reported that the code was not fully aligned with the
 design: Live Help's renderer reads the specific fields the CLI writes and
 labels every subject "command", so a trace left by another workflow would
 show almost nothing.
-<!-- tarav.breadcrumb a152fedef0809e61e5cb0a057e56a06957a5ac92a3c863e0f9b6ae50977374e8 -->
+<!-- tarav.breadcrumb a152fedef080 -->
 
 Current code (inspected): `render_live_help` in
 `src/tarav/l1/live_help/__init__.py` reads `payload["exit_code"]`,
@@ -45,24 +45,24 @@ The emitter should not need to know its consumers; it knows only the
 semantic, that the trace will contextualize Agents. So the record must be
 typed, and the type must have a render method, so that the type's owner does
 the rendering.
-<!-- tarav.breadcrumb 12c4b3131c269fa2622ab1e4462de5863d68b2c32f6d9a11a209a5610887f447 -->
+<!-- tarav.breadcrumb 12c4b3131c26 -->
 
 Help filters by type. When the command line recorded a command, the
 command's help shows the most recent traces of that nature. A trace recorded
 inside a method, describing how that method was called, is a different type
 and belongs to that method's help, which is a later topic. Types give a known
 rendering that makes sense for each case.
-<!-- tarav.breadcrumb 75f4f064a2642862338577f0a110ed0b46898fff78b7dbef22cd2f70b888a47b -->
+<!-- tarav.breadcrumb 75f4f064a264 -->
 
 Help must not print whatever blob it finds. If nothing of the right type was
 recorded, it shows nothing of that kind.
-<!-- tarav.breadcrumb 0008cb614877a3c4c89488438290e3c0883598c7bea68471b359ca3f03e99af2 -->
+<!-- tarav.breadcrumb 0008cb614877 -->
 
 Subtyping carries it: a base type describes the base record of the usage
 registry, and everybody can subtype it, the command line records among them.
 The minimum viable product is the command line: before any other user of the
 registry exists, deploy it in the Tarav CLI on at least a few commands.
-<!-- tarav.breadcrumb b45dcb58686b25f2f7338c44006f304f95bfe36d4e236c4e5956e78c5d0e89f4 -->
+<!-- tarav.breadcrumb b45dcb58686b -->
 
 ### Agent proposal
 
@@ -88,7 +88,7 @@ registry exists, deploy it in the Tarav CLI on at least a few commands.
   `render_trace`. Other and legacy untyped rows are outside that view; there
   is no skipped count. Live Help no longer mentions any CLI field. This is the
   User's explicit clarification during execution.
-<!-- tarav.breadcrumb ac61c5ca4c30c57ad56ea108ea8c2b0780084c78468419500e9f6cc9fe106242 -->
+<!-- tarav.breadcrumb ac61c5ca4c30 -->
 - Rows written before this change have no type. They remain queryable without
   a type filter and age out of the seven-day window; new writes require a
   trace type. No migration.

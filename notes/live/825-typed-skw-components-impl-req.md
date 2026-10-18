@@ -17,7 +17,7 @@
 This implementation request applies the recent typed-block discussion to SKW.
 The implementation plan below proposes a bounded first slice; supporting user
 decisions and implementation proposals are distinguished in the narrative.
-<!-- tarav.breadcrumb ab5c2350050e6246a66eb2076d7836fc79bd7658c6d38df9bd9d98def7b2e0ab -->
+<!-- tarav.breadcrumb ab5c2350050e -->
 
 ## Design narrative and decisions
 
@@ -26,29 +26,29 @@ specialization under `tarav.l<X>.skw.skills`; Batchy is an application/style of
 that support and should live directly under `tarav.l<X>.batchy_skills`, not
 inside `skw.skills.batchy_skills`. Conceptual specialization does not force
 package nesting. Exact layers and workflow-parent declarations were not settled.
-<!-- tarav.breadcrumb 0e3b94ff2272fe3e67cb573c5b419f79e6abb1737777f0be82c1cdd5641af793 -->
+<!-- tarav.breadcrumb 0e3b94ff2272 -->
 
 Skills need reusable typed authoring components, not only opaque generated
 prose. A SkillLink directs the consuming agent toward a target. It belongs to
 skill support, distinct from the general engine's internal generation-context
 and dependency references. Code can produce it through a shared template so
 occurrences have homogeneous presentation; agent generation is not required.
-<!-- tarav.breadcrumb 3fc21f86b65c03c0712908e92fd74ba79ad2ee8d7e92db326bf16e951a8bd496 -->
-<!-- tarav.breadcrumb f9ca82671e9a676a09af88ccb2ff4bf693aa86816ebcd8108b9721c0ef2b9245 -->
+<!-- tarav.breadcrumb 3fc21f86b65c -->
+<!-- tarav.breadcrumb f9ca82671e9a -->
 
 Every retained block should declare its concrete type and derive from SkwBlock.
 The base should carry minimal common data, suggested as id and output. Use
 trusted Tarav type registration rather than expanding a hardcoded kind switch.
 Do not infer arbitrary import paths from retained data.
-<!-- tarav.breadcrumb 0e612deb8ee8dc600a61f92605c5eb4c7dbfa9bd82fd84f542b1264abd96b602 -->
+<!-- tarav.breadcrumb 0e612deb8ee8 -->
 
 Crucially, output is retained data in `.skw.json`, not just a method that renders
 on demand. Both code-produced and agent-produced blocks keep their current
 output there. The user considered `return` and selected `output`. The earlier
 assistant suggestion that SkillLink need not store output is rejected by this
 clarification. Production and assembly must respect this retained-source model.
-<!-- tarav.breadcrumb 00c93d3359caf6107021f354ad6a6f433c57f633cd11156803c02336e1e6eb47 -->
-<!-- tarav.breadcrumb 9c4bc7d5bca2aabb0e1f9896a8da932455fa6d616a04ad3b6dd0f87fbb5e2c52 -->
+<!-- tarav.breadcrumb 00c93d3359ca -->
+<!-- tarav.breadcrumb 9c4bc7d5bca2 -->
 
 ## Impl.Req.Wiki
 

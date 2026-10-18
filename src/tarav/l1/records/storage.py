@@ -1,5 +1,5 @@
 """Small typed-Record write boundary shared by independent stores."""
-# tarav.breadcrumb 6e33376507445ceab0202a893f7e29c9e5c0564d7cf2ea17e870844afcc4927a
+# tarav.breadcrumb 6e3337650744
 
 from pathlib import Path
 

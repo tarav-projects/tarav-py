@@ -25,7 +25,7 @@ Request 002 of the Tarav Center extension reported that its TypeScript
 files carry no Breadcrumbs because no convention exists for TypeScript. The
 User asked the agent to draft one itself and to run it as an autonomous
 Develop pass.
-<!-- tarav.breadcrumb 7949294907652d4a2aa267228f0bef23ed3265abb5b42a374f1e73cd606839a3 -->
+<!-- tarav.breadcrumb 794929490765 -->
 
 ### Current behavior
 

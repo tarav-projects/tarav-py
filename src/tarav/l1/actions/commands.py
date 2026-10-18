@@ -26,8 +26,8 @@ def _runner(args) -> StepRunner:
     return StepRunner(runs=ActionRunStore(registry), contexts=OperatorContextStore(registry))
 
 
-# tarav.breadcrumb 1ea07b83144bcb2238da113334351069a288c230af6885369e4962cf32e1d84d
-# tarav.breadcrumb a2d9d5a4e505423b4010ff8dff501c7d59a97ab5d3a53f21b6739a860dbf8f37
+# tarav.breadcrumb 1ea07b83144b
+# tarav.breadcrumb a2d9d5a4e505
 def _emit(args, value: dict, render, code: int = 0) -> int:
     """Present one result: in full as JSON, or as the command's readable summary."""
     if args.json:
@@ -125,7 +125,7 @@ def _cmd_types(args) -> int:
     return _emit(args, {"status": "ok", "types": rows}, render)
 
 
-# tarav.breadcrumb 250f9a54c802d27f7c66d23affbb1120a16fa5c1c22e97034c20edd4b54af5d7
+# tarav.breadcrumb 250f9a54c802
 def _cmd_start(args) -> int:
     """Start an action and tell the operator where its instructions are."""
     action_type = resolve_action(args.type)

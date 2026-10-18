@@ -15,12 +15,12 @@ Non-goals: changing which POIs are blessable, requiring evidentiary perfection b
 ## Design narrative
 
 Detection and acceptance are separate: a check may continue emitting the same POI while a blessing states that the detected situation is currently acceptable. Multiple attributed blessings can accumulate for that exact situation. A blessing is a claim-bearing object, not a truth verdict. Its existing actor, time, rationale, support, and retained POI snapshot remain inspectable. Its `main` Assertion describes the acceptance claim precisely enough for case producers to present the POI, the triggering data edition, and the offered grounds. Other typed Assertions may expose assessable factual grounds; free-text rationale alone must not silently become trusted fact. A blessing with weak or missing evidence can still be recorded, while assessment and POIs surface the weakness. Human authorship is one possible support signal, not 100% certainty.
-<!-- tarav.breadcrumb 701f25246e3d66f2a6b636ff0321dce1443cd01833f0fed608df07f40a245fe7 -->
-<!-- tarav.breadcrumb 357aa9a6bff44ae11ecc5dc9214d08122777c562ef488c9f8b16e1a6701c62f0 -->
+<!-- tarav.breadcrumb 701f25246e3d -->
+<!-- tarav.breadcrumb 357aa9a6bff4 -->
 
 The score view is an aggregation of independent named results retrieved by Assertion identity from scoring workflows. It keeps unscored, weakly scored, and well-supported distinct. Scoring data remains owned by each scorer. The blessing provides navigation; consumers may choose how much attention to give its continuing POI. This request stops before changing the agent-facing attention policy in request 849.
-<!-- tarav.breadcrumb 2d70358c7403c690d095db727883e7c80c54c18dae7211efb7343e69c2025d0f -->
-<!-- tarav.breadcrumb 744bd0c16366a14fae5e8014b71b1a56aeae6450e574070c0c9d448e0d3d4b64 -->
+<!-- tarav.breadcrumb 2d70358c7403 -->
+<!-- tarav.breadcrumb 744bd0c16366 -->
 
 Current `tarav.l1.blessings.store.BlessingRecord` and `BlessingAssessmentRecord` are append-only, and `BlessingStore.standing()` currently reports blessed/unblessed using POI identity. Reconcile their records and existing assessments with the new Assertion view; do not silently reinterpret retained records or change physical partitions. The user said “blessing ... can have many assertions” and that a later agent should be able to ask the blessing for scores attached directly or indirectly to those Assertions.
 

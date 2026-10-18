@@ -25,7 +25,7 @@ class BenchCheck(Check):
                           name="Tarav.Test.Bench.Check", workflow=ACTIONS_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 37944529d175a9df0e9a7957c4208bdf869bd89efc72c8d22bc61a40768392e0
+# tarav.breadcrumb 37944529d175
 class Bench:
     def __init__(self, root, records) -> None:
         registry = RecordRegistry(root, records)

@@ -9,12 +9,12 @@
 **Knowledge.Surface:** wiki. **Status:** complete.
 
 Move the Record API and its extension methods into the selected `Records` namespace. Maintained Tarav callers should use `obj.records.to_record()` and `Type.records.from_record()`, `.validate_record()`, and `.record_example()`. Remove the duplicate direct API on `TaravObject`; keep distinct APIs such as `TypeRegistry.from_record()` and storage adapters. Keep `_record`, `_from_record()`, and `_to_record()` as object state and protected construction/projection hooks in this migration.
-<!-- tarav.breadcrumb c9021145029cd49a4c173a8569ab93e29309dab1b64c7c4b18179c8b7ad6834d -->
+<!-- tarav.breadcrumb c9021145029c -->
 
 ## Design
 
 Today `TaravObject.Records` performs projection and loading, but `validate_record()` and `record_example()` forward to classmethods on the Object Type. Concrete Types override those classmethods; some extend them with `super()`. This creates two public Record paths and leaves the extension mechanism outside the namespace. Move each override into a nested `Records` subclass that inherits its parent Type's `Records` class. The namespace method can use `self._owner` for the concrete Type; `super()` then follows the corresponding namespace inheritance. The user explicitly observed that calling `super()` was already necessary before the migration, so preserving that relationship is the requirement, not a new burden.
-<!-- tarav.breadcrumb 8caa4a4d0f61e19bbe076a750fb61b8cf8607d1079398859e413a52bdbb9a9e5 -->
+<!-- tarav.breadcrumb 8caa4a4d0f61 -->
 
 Use the existing `NamespaceBase` selection and composition check. Do not add automatic namespace merging or compatibility wrappers. Keep the exact Record validation, type matching, construction, and copy semantics. A class that specializes a Record example or validator owns that specialization in its `Records` class; inherited behavior should remain bound to the concrete Object Type.
 

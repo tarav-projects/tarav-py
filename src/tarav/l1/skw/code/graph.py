@@ -12,7 +12,7 @@ class ReadingGraph(TaravType, ABC):
     A ReadingGraph describes a route that surface authors intend readers to
     follow. It does not observe or constrain an agent's actual navigation.
     """
-    # tarav.breadcrumb 52e07fb3575af6dda9407ec605785cf8835116b08c805ce0069f25d8c50820ce
+    # tarav.breadcrumb 52e07fb3575a
 
     @classmethod
     def class_entity(cls) -> TaravClass:

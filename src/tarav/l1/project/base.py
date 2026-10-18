@@ -12,11 +12,11 @@ from tarav.l1.loading import LoadingProfile
 from .workflow import PROJECT_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb 5cd4a1370534e180f82d31b551d9eb10ad12fe288b712dc707a8bb4faf489d2d
+# tarav.breadcrumb 5cd4a1370534
 class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
     """A Project with shared bootstrap checks and subtype-specific checks."""
 
-    # tarav.breadcrumb 2493391ddebfa2966685ca8cf21006aa0fe701329a5dc3bfe27dc78d238a31ba
+    # tarav.breadcrumb 2493391ddebf
     class Agents(NamespaceBase["TaravProject"]):
         @property
         def agents_md(self):
@@ -24,7 +24,7 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
 
             return AgentsMd(self.obj)
 
-        # tarav.breadcrumb 54df434f7c894a8c84736fa05c502a8697a1293f2bb1fc6aebdf4d9745c09c90
+        # tarav.breadcrumb 54df434f7c89
         @property
         def skills(self):
             from .skills import ProjectSkills
@@ -36,7 +36,7 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
         return type(self).Agents(self)
 
     class Checks(CheckProvider.Checks):
-        # tarav.breadcrumb c1c38799380f065d088e5c7e704ac0e46755ff33a8171e0247bd531f899012ce
+        # tarav.breadcrumb c1c38799380f
         def suite(self) -> CheckSuite:
             from tarav.l1.git.hooks import git_hooks_suite
 
@@ -48,12 +48,12 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
                                git_hooks_suite(self.obj)],
                               name=self.obj.name, repositories=self.obj.repositories())
 
-        # tarav.breadcrumb 47c83896e2f3b52b8445023094aea20efa16beb513be9c96d448cf803024086a
+        # tarav.breadcrumb 47c83896e2f3
         def own(self) -> CheckSuite:
             """The checks of this Project alone, without those of its member Projects."""
             return self.suite()
 
-    # tarav.breadcrumb a0b3336717d2a701c4ffecb72778440cc9c4df2a0cf9eff07400b3edd5aa6e49
+    # tarav.breadcrumb a0b3336717d2
     def repositories(self) -> tuple[Path, ...]:
         """Folders in the Git repositories this Project's checks read; its suites declare them.
 
@@ -66,7 +66,7 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
         """The Projects this one contains and can load here. None for a plain Project."""
         return ()
 
-    # tarav.breadcrumb 023d66755f096ecc913a16d886cbe2725017dbda9b4e3b368e0214517b04eb23
+    # tarav.breadcrumb 023d66755f09
     @property
     def actions(self):
         """The actions registered under this Project."""
@@ -74,7 +74,7 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
 
         return ProjectActions.for_project(self)
 
-    # tarav.breadcrumb c480857f3a5c1669df7d3f312f134b4771e05dc92cfcc7f954c10e7c2caa87b4
+    # tarav.breadcrumb c480857f3a5c
     def status(self, *, select=None, on_result=None):
         """Run this Project's checks and hand the suite that ran to its actions.
 
@@ -104,7 +104,7 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
             workflow=PROJECT_WORKFLOW_SHIP,
         )
 
-    # tarav.breadcrumb 953bd0d528d7c78f1597eca6306b387b67d6ebbd0bf3d3340aae6f89f2095192
+    # tarav.breadcrumb 953bd0d528d7
     class RecordInterface(TaravEntity.RecordInterface):
         """`.tarav/project.json`: the Project's Record and the Project workflow's
         own configuration. Other workflows configure a Project in config.json."""
@@ -114,7 +114,7 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
         project_name: str | None = None
         harness: ProjectHarnessConfig | None = None
 
-    # tarav.breadcrumb 930bba78649d17898a6bca5d00e460d43d0678ec801b51ed10e0541f79a3f0ea
+    # tarav.breadcrumb 930bba78649d
     @classmethod
     def load_project(cls, *, path: Path | str = "."):
         """Load a Project as its harness says.

@@ -4,7 +4,7 @@
 Skill mechanics that know nothing of Projects (finding skills, reading their
 frontmatter) live in `tarav.l1.skills`.
 """
-# tarav.breadcrumb 15e4efa9777939e0da206e606ab8e38e719b6e4f760e4b41e067b1a4e9429403
+# tarav.breadcrumb 15e4efa97779
 from .commands import (
     _cmd_skills_import,
     _cmd_skills_list,

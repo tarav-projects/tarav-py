@@ -100,7 +100,7 @@ class RecordsFolder(ExplorerFolder):
 
 class RecordsRoot(RecordsFolder):
     """The source mounts visible to this Records service."""
-    # tarav.breadcrumb b020facda37fee75c0e6d0f365a79e2489617fdc80f08911e1593d447dc53bf6
+    # tarav.breadcrumb b020facda37f
 
     @classmethod
     def class_entity(cls) -> TaravClass:

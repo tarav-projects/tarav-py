@@ -7,7 +7,7 @@ _ENTRY_MARK = "_TARAV_IMPORT_ENTRY"
 os.environ.setdefault(_ENTRY_MARK, "bypass")
 
 
-# tarav.breadcrumb d29310dbbd6386cbe6cda3f35b489b102ff1076a385c74c1700514e9034e684a
+# tarav.breadcrumb d29310dbbd63
 def cli_main() -> int:
     """Enter the ordinary Tarav CLI before importing its guarded package."""
     os.environ[_ENTRY_MARK] = "cli"

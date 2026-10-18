@@ -15,7 +15,7 @@
 - **Out of scope:** Diagram's own legacy `class` envelopes, provider-native raw payload fields, and the separate Breadcrumb POI representation.
 
 The invocation authorizes this bounded design and implementation.
-<!-- tarav.breadcrumb eac1ad9551a7554ad3e8d19a51feeaf049a55c1cfec1d4d93182a6e3d405cbea -->
+<!-- tarav.breadcrumb eac1ad9551a7 -->
 
 ## Impl.Req.Diagram
 

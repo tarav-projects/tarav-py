@@ -40,7 +40,7 @@ from tarav.l1.agent.ping import AgentPingResult
 from tarav.l1.agent.providers.registry import resolve_account_runtime_agent
 
 
-# tarav.breadcrumb cbc3ba5f3f3c2affd0fed5e810999a20d14f9d7d1ec104a66503854d17253d22
+# tarav.breadcrumb cbc3ba5f3f3c
 class AutoPrimeZeroLimitsWorkflow:
     """Every interval, ping each target whose burst window is not running.
 

@@ -147,7 +147,7 @@ class WorkspaceCheck(Check):
         self.workspace = workspace
         self.setup = setup
 
-# tarav.breadcrumb 740c4ce061415bc689eb4ff993a4798c527c0bd17642fa38e48299cb21d27fcd
+# tarav.breadcrumb 740c4ce06141
     def _poi(self, case: type[WorkspacePOI], path: str, message: str,
                  **details) -> WorkspacePOI:
         return case(
@@ -157,7 +157,7 @@ class WorkspaceCheck(Check):
         )
 
 
-# tarav.breadcrumb 703f434472a801b6b4efe8e15c531fdacc712654766ed7118e9f81197123c2c8
+# tarav.breadcrumb 703f434472a8
 class WorkspaceIntegrityCheck(WorkspaceCheck):
     """Inspect the declared setup without preventing any workspace use."""
 
@@ -295,7 +295,7 @@ class WorkspaceRemovalCheck(WorkspaceCheck):
         return CheckResult(self, status="completed", pois=findings)
 
 
-# tarav.breadcrumb 78296941a115dbb68a0f8267930317269994eaf8d984d3055514cc1a244e0435
+# tarav.breadcrumb 78296941a115
 class WorkspaceReferenceCheck(Check):
     """Check one supplied file reference; no global reference scan is inferred."""
 

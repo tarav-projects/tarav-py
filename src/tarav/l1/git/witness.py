@@ -26,8 +26,8 @@ from .workflow import GIT_WORKFLOW_SHIP
 WITNESS_ENV_VAR = "TARAV_GIT_CHANGES_ROOT"
 
 
-# tarav.breadcrumb 709971905b10414ecfc544600efabf0e4005830a12db46eb5c9ede95cb20d92c
-# tarav.breadcrumb 46dd1f5a78f36f386ffffe57fc2e56b95ad1bc91c6df5cd07f0acfcbff53677e
+# tarav.breadcrumb 709971905b10
+# tarav.breadcrumb 46dd1f5a78f3
 class ChangeWitness(TaravObject):
     """The tarav-change IDs one branch of one Project had at its last commit."""
 
@@ -65,7 +65,7 @@ class ChangeWitness(TaravObject):
                     "at": "2026-10-16T00:00:00+00:00"}
 
 
-# tarav.breadcrumb 38a87f208df1faeab2b0b2e8a1347827dc3c6540cda92745a7d89c33a1e80b03
+# tarav.breadcrumb 38a87f208df1
 class ChangeOverrule(TaravEntity):
     """A commit that went through although IDs the witness held were gone."""
 

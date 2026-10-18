@@ -13,7 +13,7 @@ def _git(root, *args):
     ).stdout.strip()
 
 
-# tarav.breadcrumb 7182ea5e5121dd5481ec275799590d31cc0ce18d85cffc346983a5801daf2bce
+# tarav.breadcrumb 7182ea5e5121
 def test_branch_worktree_lifecycle(tmp_path):
     repository_root = tmp_path / "source"
     repository_root.mkdir()

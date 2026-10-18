@@ -1,5 +1,5 @@
 from .core import chatlas_raw_sources, chatlas_update
-# tarav.breadcrumb 4654578f861aec75ee792d93c36bcdd8e1e80029aff80de57c05bf527d533fcd
+# tarav.breadcrumb 4654578f861a
 from .query import (
     ChatlasQuery,
     ChatlasQueryEngine,

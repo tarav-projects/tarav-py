@@ -111,7 +111,7 @@ report contract, and mechanical report checks. This makes it a useful test of
 the operational-library model without inventing a synthetic task. The User
 delegated the concrete choice for execution. The implementation belongs to
 `g70203-py`; Tarav supplies the existing Check and POI primitives.
-<!-- tarav.breadcrumb 8ae0da6513d7fd2fd0e54b575800b6cd0397e4c009ce18e68a0b425a63f57bf3 -->
+<!-- tarav.breadcrumb 8ae0da6513d7 -->
 
 Implement a small project-local API that opens a typed Version and its
 Transcript projections, gives the caller the stable report path, writes an
@@ -208,10 +208,10 @@ fabricated, and no alternative store was created to bypass that boundary.
 Breadcrumb stores. Exact User turns now ground the library-interface criteria:
 code carries precise formats and checks, results must return POIs, and the
 learning path should connect agent instructions, examples, and relevant code.
-<!-- tarav.breadcrumb c053836b76317d1e568db87520636de13de2b3462ad0651a5a07eaa34b854c22 -->
-<!-- tarav.breadcrumb 953db4a041b98548b0ba3637cdb71314ef8e0105d8cb37e46274677a524c8a6f -->
-<!-- tarav.breadcrumb 3f749d1fdcb55d8128bdc48752eda6ab8f727545de88ea4d1695c9cd97210c53 -->
-<!-- tarav.breadcrumb f5682c3a2bc630350b52594aa24f9ba27ec62c69fb803160649922c9bc63d0f8 -->
+<!-- tarav.breadcrumb c053836b7631 -->
+<!-- tarav.breadcrumb 953db4a041b9 -->
+<!-- tarav.breadcrumb 3f749d1fdcb5 -->
+<!-- tarav.breadcrumb f5682c3a2bc6 -->
 
 2026-10-02 — Implemented the pilot in `g70203-py`. Product commit
 `107f684a45d0967fcd66f54de219b0b1a5056449`; Wiki capture commit

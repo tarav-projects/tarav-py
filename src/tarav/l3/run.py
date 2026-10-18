@@ -19,8 +19,8 @@ from tarav.l2.project.runner import ProjectRunnerConfigurator
 _LOG = logging.getLogger(__name__)
 
 
-# tarav.breadcrumb 327c61e63acb8b7e699f39d0eb3ffac13cac61e1dd52413836a84e381a15e68a
-# tarav.breadcrumb e5466e3d2fb01caf5e627fe841e58c75386403e2a929000ae221074e913de4a1
+# tarav.breadcrumb 327c61e63acb
+# tarav.breadcrumb e5466e3d2fb0
 def _run(args: argparse.Namespace) -> int:
     if not args.arguments or args.arguments[0] != "--" or len(args.arguments) == 1:
         raise CliError("Expected Python arguments after -- (for example: tarav run -- script.py)")
@@ -81,7 +81,7 @@ def _project_identity(path: Path) -> dict[str, object] | None:
     return None
 
 
-# tarav.breadcrumb ea483ff850b7cec80b8d88df15a2319f70739fefedd126453c228652b6435299
+# tarav.breadcrumb ea483ff850b7
 def _registry_input(
     args: argparse.Namespace, words: list[str], *, cwd, interpreter,
 ) -> tuple[str | None, dict[str, object], bytes | None, bytes | None]:
@@ -123,7 +123,7 @@ def _registry_input(
     return (project["id"] if project else None), metadata, source, stdin
 
 
-# tarav.breadcrumb 69070277f687bea34fd6bbe79dcbf6c5ceaab496e1362cf5a376f49616dec4d1
+# tarav.breadcrumb 69070277f687
 def _describe_run(args: argparse.Namespace) -> dict[str, object]:
     words = list(args.arguments[1:]) if args.arguments[:1] == ["--"] else []
     use: dict[str, object] = {}
@@ -167,7 +167,7 @@ def register_run_command(subparsers: argparse._SubParsersAction) -> None:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    # tarav.breadcrumb f2341073c5f386a76ab6c6b07e20d1e5befb8dce1d1e3957320b8a5a7f60c4db
+    # tarav.breadcrumb f2341073c5f3
     parser.add_argument(
         "--project",
         type=Path,

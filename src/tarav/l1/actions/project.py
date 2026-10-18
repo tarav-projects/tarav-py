@@ -25,8 +25,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# tarav.breadcrumb 2e1b9af1c741842d056370e1564523ecd73419a67819a81e503c1a1ca1ddcdce
-# tarav.breadcrumb c95725410973be077485242e93ae92ce1e0ff1ec061084a3825575e62a9ea14f
+# tarav.breadcrumb 2e1b9af1c741
+# tarav.breadcrumb c95725410973
 class ProjectActions:
     """The actions of one Project: register them, and hand them the Project's check results."""
 
@@ -41,7 +41,7 @@ class ProjectActions:
     def for_project(cls, project, runs: ActionRunStore | None = None) -> "ProjectActions":
         return cls({"id": project.id, "name": project.name, "root": project.root}, runs)
 
-    # tarav.breadcrumb 336868a1e89c9f58f6cdf9c7c60fbfef6e13cd94e8afa3ac093a31bbbb18c0f2
+    # tarav.breadcrumb 336868a1e89c
     def list(self, *, state: str | None = None, own: bool = False) -> list[ActionRun]:
         """The actions this Project can see, newest first.
 
@@ -54,7 +54,7 @@ class ProjectActions:
         roots = (self.project["root"],) if own else project_scope(self.project["root"])
         return self.runs.list(state=state, project_root=roots)
 
-    # tarav.breadcrumb cedddeb57d590fc2537bbcc49eb1fe8dc4b2772b6db38749ef34405862beea65
+    # tarav.breadcrumb cedddeb57d59
     def of(self, poi: POI) -> ActionRun | None:
         """The action of one POI, when it has one registered under this Project."""
         if next(iter(raised((poi,))), None) is None:

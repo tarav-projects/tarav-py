@@ -18,7 +18,7 @@ def _project(root: Path, identity: str) -> None:
                                   "created_at": "2026-10-15T00:00:00Z"}) + "\n")
 
 
-# tarav.breadcrumb 20a0ae09ee0e838a6f0838fa113fcc9916254499815ad1baf33c6a9464c78b9b
+# tarav.breadcrumb 20a0ae09ee0e
 def test_move_preserves_old_location_and_recovers_same_identity(tmp_path: Path) -> None:
     identity = str(uuid4())
     old = tmp_path / "old"

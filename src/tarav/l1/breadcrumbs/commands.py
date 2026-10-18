@@ -73,8 +73,8 @@ def _cmd_submit(args: argparse.Namespace) -> int:
     )
 
 
-# tarav.breadcrumb 2d4af9cff1b5cabef0d26e33b28eaf190d5357966a99bb674918d7f2d4fa3e71
-# tarav.breadcrumb 9e49acb899c176065d1264621e9cdff046c88b559b59623850df69e4f21d0aef
+# tarav.breadcrumb 2d4af9cff1b5
+# tarav.breadcrumb 9e49acb899c1
 def _audit_paths(args: argparse.Namespace) -> tuple[Path, ...]:
     paths = list(args.surface or ())
     if args.files_from:

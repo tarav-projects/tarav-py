@@ -15,7 +15,7 @@ from tarav.l0.kernel import (
     TypeShip, entity,
 )
 from tarav.l1.assertions import Assertable as Assertable, TaravAssertion
-# tarav.breadcrumb 7c3445f11b528770c4bb7b112e1680f83f09ee16cdd421db955b3f5eb77f13a8
+# tarav.breadcrumb 7c3445f11b52
 from .identity import SCORING_WORKFLOW_SHIP
 
 
@@ -83,7 +83,7 @@ class AssertionReferenceInterface(ScoringDetails.RecordInterface):
 
 class AssessmentCase(TaravObject):
     """Typed, self-contained scorer input; subtypes own their payload schema."""
-    # tarav.breadcrumb fe2d8ede0b40fa05c752b4ed4ed02f4668169a4da1f913dc22a216aa0c394da7
+    # tarav.breadcrumb fe2d8ede0b40
 
     @classmethod
     def class_entity(cls):

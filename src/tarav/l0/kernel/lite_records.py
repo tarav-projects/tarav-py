@@ -35,7 +35,7 @@ class LiteRecordSerializer:
             raise TypeError("LiteRecord serializer encode must be callable")
 
 
-# tarav.breadcrumb 637336c585877b67e9a86784e9ce25a44b3b9ae2546e0422db0c69a1da0c8d1b
+# tarav.breadcrumb 637336c58587
 class LiteRecord(Mapping[str, object]):
     """A detached mapping with deterministic JSON-compatible encoding.
 

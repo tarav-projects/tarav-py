@@ -16,15 +16,15 @@ from tarav.l1.poi import SituationPOI, plain
 from tarav.l1.references.identity import REFERENCES_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb 3c3e9e1c1b19de808006014b3cf685ebb28509c8865341fa023223530d94ba77
-# tarav.breadcrumb de146a92d0c7301624402ae9cb446816fba032e65301d5e5a4ad47fa3ef76a45
+# tarav.breadcrumb 3c3e9e1c1b19
+# tarav.breadcrumb de146a92d0c7
 class ReferenceResolutionPOI(SituationPOI):
     """Family of failed Reference resolutions.
 
     `hints` is what the resolver offers to find the target another way.
     """
 
-    # tarav.breadcrumb 0131ae27b3d64039d03d9b404f7602cdd573d02d7d970dd3a563e8c3a8a2897a
+    # tarav.breadcrumb 0131ae27b3d6
     def __init__(self, message: str, *, situation, hints: object = None) -> None:
         super().__init__(message, situation=situation)
         self.hints = hints

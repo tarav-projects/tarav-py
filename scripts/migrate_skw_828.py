@@ -11,13 +11,13 @@ import json
 from pathlib import Path
 from uuid import UUID, uuid5
 
-# tarav.breadcrumb c0e8f313eb8931681e48ad154be5a755b84a1c775a3bbe2e2fbb174b0cfe0b2d
+# tarav.breadcrumb c0e8f313eb89
 import tarav_bypass  # noqa: F401
 
 from tarav.l1.skw.generation import _hash
 
 
-# tarav.breadcrumb b7de631151abf5d81088f8615fc88443663402ea0c3a75a0bc29ead062094dcb
+# tarav.breadcrumb b7de631151ab
 NAMESPACE = UUID("77469b44-708f-4bac-bf4d-2b2792558072")
 READING_TYPES = {
     "links": "Tarav.SKW.Reading.ExpectedLink",

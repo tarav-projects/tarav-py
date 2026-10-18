@@ -212,7 +212,7 @@ def test_the_runtime_knows_the_workflows_and_the_poi_action():
 
 
 def test_a_taken_object_carries_the_hash_of_what_was_read(stores):
-    # tarav.breadcrumb 721c8b57e1adbd42e01cb5267892243a59aef78bb1cd62942c2268bc46a3ea80
+    # tarav.breadcrumb 721c8b57e1ad
     context = OperatorContext.new(project={"id": "p", "root": "/p"}, note="one")
     key = stores.contexts.put(context)
     first = stores.contexts.take(key)
@@ -238,7 +238,7 @@ def test_a_failed_opening_test_leaves_a_closed_run(stores):
 
 
 def test_a_step_closes_only_when_its_exit_tests_pass(stores):
-    # tarav.breadcrumb 21a75ed1831ee17e871b40284505d161a5ec01268617686b1cdfaee269fcb2d8
+    # tarav.breadcrumb 21a75ed1831e
     context = OperatorContext.new(ready=True, note="hello")
     key = stores.contexts.put(context)
     run = stores.runner.start(FlagStep, key)
@@ -273,7 +273,7 @@ def test_a_running_step_can_be_aborted_with_a_reason(stores):
 
 
 def test_sessions_that_work_on_a_run_are_appended(stores):
-    # tarav.breadcrumb 6ea37587042bdf2185f50448fabf14db76767a2736c27dcfca860f11931ef249
+    # tarav.breadcrumb 6ea37587042b
     stores.sessions.append({"provider": "claude-code", "session_id": "one"})
     run = stores.runner.start(FlagStep, stores.contexts.put(OperatorContext.new(ready=True)))
     stores.runner.operate(str(run.id), "note")
@@ -284,7 +284,7 @@ def test_sessions_that_work_on_a_run_are_appended(stores):
 
 
 def test_a_step_with_several_exits_closes_by_the_one_that_is_met(stores, tmp_path):
-    # tarav.breadcrumb f52d8915de2fb1003a5e67d356044d5d47bdb09a0353e48ce12413df8d4e5987
+    # tarav.breadcrumb f52d8915de2f
     flag = tmp_path / "arrived"
     by_loop = stores.runner.start(TwoExitStep, stores.contexts.put(
         OperatorContext.new(waits_for=str(flag))))
@@ -304,7 +304,7 @@ def test_a_step_with_several_exits_closes_by_the_one_that_is_met(stores, tmp_pat
 
 
 def test_a_poi_opens_its_action_and_raising_it_again_lands_on_the_same_one(stores):
-    # tarav.breadcrumb 085585c2b4426856a37dbd5cc22cd9c1a70800b3b32d0406aefcc2676dbbc3ac
+    # tarav.breadcrumb 085585c2b442
     poi = LampCheck("hall", 3).run().pois()[0]
     first = stores.lamps(hall=3, porch=0)
     assert (first["opened"], first["gone"], first["signals"]) == (1, 0, [])
@@ -326,7 +326,7 @@ def test_a_poi_opens_its_action_and_raising_it_again_lands_on_the_same_one(store
 
 
 def test_checks_that_no_longer_produce_a_poi_close_its_action(stores):
-    # tarav.breadcrumb 05f443cee465f2b2678f7b9e493826763320279641a49bdd4c29fe0c5da458be
+    # tarav.breadcrumb 05f443cee465
     poi = LampCheck("hall", 3).run().pois()[0]
     stores.lamps(hall=3, porch=2)
     result = stores.lamps(hall=0, porch=2)
@@ -346,7 +346,7 @@ def test_checks_that_no_longer_produce_a_poi_close_its_action(stores):
 
 
 def test_a_situation_that_returns_reopens_the_same_action(stores):
-    # tarav.breadcrumb 205846dc556e5de648b84fa4ab4133f4228dc2fe0b03cd271450f578cbb4b7a1
+    # tarav.breadcrumb 205846dc556e
     poi = LampCheck("hall", 3).run().pois()[0]
     stores.lamps(hall=3)
     stores.lamps(hall=0)
@@ -377,7 +377,7 @@ def test_a_changed_situation_closes_the_old_action_and_opens_another(stores):
 
 
 def test_a_check_that_is_present_and_failed_leaves_its_action_and_says_so(stores):
-    # tarav.breadcrumb 5adbc5645414b39ecec29fb69f86bb9b8550830ccfa4cd1a44917f52e36159f4
+    # tarav.breadcrumb 5adbc5645414
     poi = LampCheck("hall", 3).run().pois()[0]
     stores.lamps(hall=3)
 
@@ -392,7 +392,7 @@ def test_a_check_that_is_present_and_failed_leaves_its_action_and_says_so(stores
 
 
 def test_each_project_updates_its_own_actions_from_its_own_checks(stores):
-    # tarav.breadcrumb 7835dc20420dc97f0dd9fa997369c442a4159213f4af5f122da6524645e5c2ad
+    # tarav.breadcrumb 7835dc20420d
     hall = LampCheck("hall", 3).run().pois()[0]
     bench = LampCheck("bench", 2).run().pois()[0]
     stores.lamps(HOME, hall=3)
@@ -412,7 +412,7 @@ def test_each_project_updates_its_own_actions_from_its_own_checks(stores):
 
 
 def test_an_action_belongs_to_the_project_whose_checks_produce_its_poi(stores):
-    # tarav.breadcrumb 78e2e229759dc12c3e71d4acfaf20ae34a96162e375611f5c9da8c67499bfe3a
+    # tarav.breadcrumb 78e2e229759d
     bench = LampCheck("bench", 2).run().pois()[0]
     stores.lamps(HOME, bench=2)  # first produced by the home's checks
     assert stores.pois.of(bench).data["project"] == HOME
@@ -423,7 +423,7 @@ def test_an_action_belongs_to_the_project_whose_checks_produce_its_poi(stores):
 
 
 def test_starting_and_refreshing_are_separate_and_write_nothing_by_themselves(stores):
-    # tarav.breadcrumb 1b3481cce255b8f95a689e7bde070e4096294c2e4b75bb56c31e1c7e48739d31
+    # tarav.breadcrumb 1b3481cce255
     home = ProjectActions(HOME, stores.runs)
     checks = lamp_suite(hall=3).run()
     started = home.start(checks)
@@ -440,7 +440,7 @@ def test_starting_and_refreshing_are_separate_and_write_nothing_by_themselves(st
 
 
 def test_an_action_type_without_a_rule_ignores_the_checks(stores):
-    # tarav.breadcrumb 749768306516532bc94e843bf68abce0b89dc8589bbcc8273f29359d683aed0d
+    # tarav.breadcrumb 749768306516
     context = stores.contexts.put(OperatorContext.new(ready=True))
     run = stores.runner.start(FlagStep, context)
     run.data["project"] = HOME
@@ -482,7 +482,7 @@ def without_rooms(item) -> bool:
     return not isinstance(item, RoomSuite)
 
 
-# tarav.breadcrumb 79d19e4065cd76291571203a11a2e5860be817c4e3652107a2b73bd068130c5f
+# tarav.breadcrumb 79d19e4065cd
 def test_only_a_detector_that_ran_can_say_a_situation_is_gone(stores):
     hall = LampCheck("hall", 3).run().pois()[0]
     attic = LampCheck("attic", 2).run().pois()[0]
@@ -509,7 +509,7 @@ def test_only_a_detector_that_ran_can_say_a_situation_is_gone(stores):
     assert stores.pois.of(attic).exit == GONE
 
 
-# tarav.breadcrumb d7307e455da5c2d85ebecefa75a9fda470be82b430a88a823f9cba349bcb5cea
+# tarav.breadcrumb d7307e455da5
 def test_a_suite_that_is_no_longer_yielded_closes_its_actions(stores):
     attic = LampCheck("attic", 2).run().pois()[0]
     stores.update(HOME, house(0, 2).run())
@@ -527,14 +527,14 @@ def test_a_suite_that_is_no_longer_yielded_closes_its_actions(stores):
 
 
 def test_a_run_that_nobody_hands_over_changes_nothing(stores):
-    # tarav.breadcrumb 43eea1c8000377f3432ab8923433bdb1df71868ded9e8edca4399f9764b46079
+    # tarav.breadcrumb 43eea1c80003
     momentary = CheckSuite([LampCheck("hall", 3)]).run()
     assert [type(poi) for poi in momentary.pois()] == [LampOn]
     assert not stores.runs.exists()
 
 
-# tarav.breadcrumb 12324a92e406d21751c0840926d26105666df6f9f701313bce82a9a25b15922e
-# tarav.breadcrumb a9917108740744d28b1b59bccbf468521cfe730fe919232973e8064aece194d0
+# tarav.breadcrumb 12324a92e406
+# tarav.breadcrumb a99171087407
 def test_a_blessed_action_stays_closed_while_its_poi_is_still_raised(stores):
     poi = LampCheck("hall", 3).run().pois()[0]
     stores.lamps(hall=3)
@@ -579,7 +579,7 @@ def test_a_blessed_action_stays_closed_while_its_poi_is_still_raised(stores):
     assert stores.pois.of(poi).closing_record()["id"] == record["id"]
 
 
-# tarav.breadcrumb 95f611786d834315821c4e6a7296150d2caa44f8a0fa25208e71fae43f2b3225
+# tarav.breadcrumb 95f611786d83
 def test_a_blessing_declares_assertions_and_scores_stay_with_the_scorer(stores, tmp_path):
     from tarav.l2.blessings import BlessingAcceptanceAssertion, BlessingGroundsAssertion
     from tarav.l2.scoring.repository import ScoringRepository
@@ -607,7 +607,7 @@ def test_a_blessing_declares_assertions_and_scores_stay_with_the_scorer(stores, 
 
 
 def test_an_action_keeps_the_record_of_its_poi_and_reads_its_types_from_the_code(stores):
-    # tarav.breadcrumb 312c3b09cec0df8a66862ce78f1ef41f245d6192129da92c441553c428de3905
+    # tarav.breadcrumb 312c3b09cec0
     from tarav.l1.actions.views import ActionResolver
     from tarav.l1.context.query import ContextQueryService
 
@@ -697,7 +697,7 @@ def registry(tmp_path, monkeypatch):
     set_runtime(None)
 
 
-# tarav.breadcrumb 44282e11e5c1d9d9198c44b17465611161f7dc5d0d810bf6be4f99f62e029e89
+# tarav.breadcrumb 44282e11e5c1
 def test_the_status_command_updates_each_projects_actions(tmp_path, registry, capsys):
     from tarav.l1.actions import ActionRunStore
 
@@ -752,7 +752,7 @@ def test_the_status_command_updates_each_projects_actions(tmp_path, registry, ca
     assert json.loads(capsys.readouterr().out)["actions"]["gone"] == 1
 
 
-# tarav.breadcrumb 168d36cc70f0a264902c387c83087156504d2f1664bf259d740ca732597b0f28
+# tarav.breadcrumb 168d36cc70f0
 def test_the_routine_run_leaves_slow_suites_out_and_all_runs_them(tmp_path, registry, capsys):
     from tarav.l1.actions import ActionRunStore
 
@@ -794,7 +794,7 @@ def test_the_routine_run_leaves_slow_suites_out_and_all_runs_them(tmp_path, regi
     assert json.loads(capsys.readouterr().out)["summary"]["pois"] == 2
 
 
-# tarav.breadcrumb 6f3eab2f58651c0c5a35842be50959fb11b8a9305bbd276f386ed8e5f870bba3
+# tarav.breadcrumb 6f3eab2f5865
 def test_the_check_command_only_runs_the_checks(tmp_path, registry, capsys):
     from tarav.l1.actions import ActionRunStore
 
@@ -825,7 +825,7 @@ def test_a_poi_that_is_not_a_failure_does_not_make_the_run_unclean(registry, cap
 
 
 def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry, capsys):
-    # tarav.breadcrumb d5f905bd09bfb1b361caa0a2bcb681d8695d155576ca37d7e5466a33c4555cad
+    # tarav.breadcrumb d5f905bd09bf
     from tarav.l1.actions import ActionRunStore
     from tarav.l1.operator_context import OperatorContextStore as Contexts
 
@@ -855,7 +855,7 @@ def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry,
 
 def test_commands_print_a_summary_by_default_and_the_full_result_as_json(
         tmp_path, registry, capsys):
-    # tarav.breadcrumb 2153aeae924e85646cc11799aea3bb1a5398314de35fea3884dbf4a1b29e2563
+    # tarav.breadcrumb 2153aeae924e
     import argparse
 
     from tarav.l1.actions.commands import register_action_commands
@@ -948,7 +948,7 @@ def _commit_all(repo: Path, message: str) -> str:
     return git("rev-parse", "HEAD")
 
 
-# tarav.breadcrumb e37bdaa213b9a3147fabe940d9f75b3668541a1867fdd7d49dff82b3619c0631
+# tarav.breadcrumb e37bdaa213b9
 def test_an_action_logs_the_git_state_of_its_repositories_at_its_changes(stores, tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

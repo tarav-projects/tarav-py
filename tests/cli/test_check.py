@@ -66,7 +66,7 @@ class _Mixed(Check):
         ])
 
 
-# tarav.breadcrumb 1c3211e4813cc9462c4d94f77ac404645ccf0c232bc8b4e184bccb4426600fa9
+# tarav.breadcrumb 1c3211e4813c
 def test_a_project_is_a_check_provider_and_a_bare_provider_has_no_checks() -> None:
     # the base Project has its shared bootstrap checks; only a bare provider has none
     assert issubclass(TaravProject, CheckProvider)
@@ -153,7 +153,7 @@ def test_many_project_pois_render_as_one_type_group(capsys) -> None:
     assert report["matching"] == 1  # all 25 checks found the same situation
 
 
-# tarav.breadcrumb ff8a74613bbe43b5b554a34f8bad4b6a4d4e2d9ede3e357ab9a983dbb8f5135e
+# tarav.breadcrumb ff8a74613bbe
 def test_type_filter_includes_subtypes_and_preserves_full_run_status(capsys) -> None:
     project = _Project(_Mixed())
     assert report_project_checks(project, poi_type="Tarav.Checks.POI", json_output=True) == 1

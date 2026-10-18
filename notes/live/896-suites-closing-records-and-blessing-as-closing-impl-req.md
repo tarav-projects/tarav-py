@@ -36,7 +36,7 @@ Follow-up request in another repository:
 
 The blessing code left beside dismissal by request 895 has to be
 reimplemented with the new primitives.
-<!-- tarav.breadcrumb aa735b651678bbacf23ab7ed428ae1c07c607be5096e6580d7ce873ef093299a -->
+<!-- tarav.breadcrumb aa735b651678 -->
 
 An action is running and a blessing is just one way of closing it; it is not
 different in kind from other closings. The action defines how it can be
@@ -44,7 +44,7 @@ closed. The POI can still appear: a blessed action is a suppressed one. The
 blessing is a record, it can carry evidence or a reason, and so it can be
 scored; that is why it hooks into the assertion system. A Blessing is a type
 of closing constructor for a POI action.
-<!-- tarav.breadcrumb de1fe4ddd2b4bccab78f7030b9d1d29683c8806560027988246622cf0a084682 -->
+<!-- tarav.breadcrumb de1fe4ddd2b4 -->
 
 The scoring system is independent: it assigns scores to declared
 assertions. Scores attach to assertions, and the Blessing, like any object,
@@ -52,41 +52,41 @@ declares assertions. The chain Situation, SituationCheck, SituationPOI,
 SituationAction, SituationBlessing is one particular implementation; others
 can come later. The word Blessing stays, defined mechanically: the action is
 closed even though the situation still exists.
-<!-- tarav.breadcrumb 266084a945ad25757f20aab6f5ef212015ff181fe879deba139bd5eab75fc4ba -->
+<!-- tarav.breadcrumb 266084a945ad -->
 
 Closing an action produces a record of some Type; it is not a plain status.
 An action can close automatically (a check passes) and can have several
 closing paths, for instance the situation disappears, or it is blessed. An
 action can be reopened, and that can depend on how it was closed. Status is
 a vector with several axes, not one value.
-<!-- tarav.breadcrumb bf16774289a7bb66417a8b686e97735b6230c1046a95b8da82008e16ef0d264d -->
+<!-- tarav.breadcrumb bf16774289a7 -->
 
 The User asked what the "subject" was. The agent had added a per-check
 subject key in request 894 without approval, to tell "the check looked again
 and found nothing" from "the check did not look".
-<!-- tarav.breadcrumb 34185fabaa018e012518a60f1121d0b5ceb0a5c2fbaffcabc3b13c077079749e -->
+<!-- tarav.breadcrumb 34185fabaa01 -->
 
 A suite replaces that. A suite targets checks run on targets and has a
 hardcoded UUID. Its meaning: if you run me, you are testing the same thing.
 A situation has disappeared when the suite no longer detects it.
-<!-- tarav.breadcrumb d01e90ba46ae0febcb29e173293add94c93e49d868118cc0e25b812e81746dc7 -->
+<!-- tarav.breadcrumb d01e90ba46ae -->
 
 A suite can be very general, for instance one Projects suite. If it did not
 produce the POI, the action is closed. No finer scoping is needed.
-<!-- tarav.breadcrumb d8ce414098de54a5ee77dfa6a6eb3fc58ae2c9075c85eefa3a7e0944e8129d77 -->
+<!-- tarav.breadcrumb d8ce414098de -->
 
 A check does not carry a suite. The caller names it: `tarav check` says
 which suite the run is, and attaches it where documentation needs it. The
 suite is like the operating system: it knows all the actions that belong to
 it, and after a run it closes those that the results allow.
-<!-- tarav.breadcrumb 9438d401c2cb9056e87a00e9df96c6a491b07de20d7127c6211f92e03a5fb1f4 -->
+<!-- tarav.breadcrumb 9438d401c2cb -->
 
 Identity is apart: an action's identity comes from its Type and its POI. The
 suite is who manages the action.
-<!-- tarav.breadcrumb 0a4700743d346b3b117d618d6af8e268da7d1a36925cfce57c6cb67cedab8b79 -->
+<!-- tarav.breadcrumb 0a4700743d34 -->
 
 The User asked to run this as a Develop pass.
-<!-- tarav.breadcrumb 500491ddd147288efab29dda7b19fb19c8f162fb9dc504b2f183936ef3bf91fc -->
+<!-- tarav.breadcrumb 500491ddd147 -->
 
 ### Current behavior (observed 2026-10-11, `tarav-py` at `1688419`)
 

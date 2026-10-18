@@ -74,7 +74,7 @@ def test_acceptance_and_empty_results_are_distinct() -> None:
     assert declined_engine.checked == 1
 
 
-# tarav.breadcrumb b560e0cad1b012f580e6151b1268b50a4e699b717df45de0cd22f4c4cc7ad031
+# tarav.breadcrumb b560e0cad1b0
 def test_meta_search_selection_provenance_and_global_limit() -> None:
     first = MemoryEngine("a1", "a2", "a3")
     second = MemoryEngine("a4", "a5")

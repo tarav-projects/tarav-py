@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
-# tarav.breadcrumb 177b3e326f5b5032c1aaf47168fb5dbecc7c177c61781d2dbc8fdad7e4599c29
+# tarav.breadcrumb 177b3e326f5b
 import tarav_bypass  # noqa: F401
 
 from tarav.l0._core.persistence import atomic_write_json

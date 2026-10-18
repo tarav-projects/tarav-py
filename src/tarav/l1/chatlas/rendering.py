@@ -98,7 +98,7 @@ class ChatlasRendererRegistry:
         return tuple(self._renderers.values())
 
 
-# tarav.breadcrumb e6bad0e15d2bd92d4da898aae6f4fdf554811bdba84ae566e9b5939abf7e34d6
+# tarav.breadcrumb e6bad0e15d2b
 def _default_renderer(result: ChatlasQueryResult, options: RenderOptions) -> str:
     if options:
         names = ", ".join(sorted(options))

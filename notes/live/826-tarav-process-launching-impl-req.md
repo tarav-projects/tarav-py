@@ -24,7 +24,7 @@
 The user selected this refined Design after inspecting the original 826
 proposal. This request replaces its earlier factory-driven child bootstrap with
 a configured Python runner and workflow-owned configurator subtypes.
-<!-- tarav.breadcrumb 1dfb0ef9cc1dbd452d7c54483498e0d47f0b8b740ec1eadce51997c06388d68e -->
+<!-- tarav.breadcrumb 1dfb0ef9cc1d -->
 
 ## Design narrative
 
@@ -33,7 +33,7 @@ Ordinary Type dispatch remains local: a missing Type fails rather than causing
 Tarav to search for or launch another environment. Environment selection is an
 explicit operation performed by caller code or a workflow, not a hidden part of
 Record loading.
-<!-- tarav.breadcrumb 19e82d971b0bba8ef425df4ad6e8252ef615d60ec4de7e0cad8e7dae7876c1cf -->
+<!-- tarav.breadcrumb 19e82d971b0b -->
 
 Tarav already has the required execution primitive in
 `tarav.l1.python_env`: it runs a file, inline source, or stdin with the Python
@@ -41,14 +41,14 @@ interpreter currently running Tarav. Generalize that primitive so it consumes
 an explicit runner configuration. The runner's responsibility remains small:
 run Python with the supplied configuration and arguments, inherit ordinary
 process streams, and return the exit status.
-<!-- tarav.breadcrumb 6000934c2349057a49618f4509eb2a5943c56a2f0ec36dc2567e2311774f1616 -->
+<!-- tarav.breadcrumb 6000934c2349 -->
 
 Workflows decide which configuration to use. The Python Workflow supplies the
 default current-environment configurator. The Project Workflow supplies a
 subtype that reads the Project's common launch configuration and selects its
 interpreter. This is the same runner and configuration contract; the generated
 `.tarav` harness is only the default Project configuration.
-<!-- tarav.breadcrumb 0bd238f6fb2aed684bd0a0acf45436e95f1f50e6ae718d21a26704b36c7637ff -->
+<!-- tarav.breadcrumb 0bd238f6fb2a -->
 
 The launcher never imports a configured runtime factory and never injects a
 Project or working runtime merely because an environment was selected. It runs
@@ -56,7 +56,7 @@ the Python operation provided by the caller. A script can construct its own
 runtime; a Project workflow operation can supply Python code or a module
 invocation that constructs a runtime and loads the concrete Project. Those are
 caller behaviors layered over the runner.
-<!-- tarav.breadcrumb 1cf5554045456734cbc1f5b0441b7302e33874aaf83c9c580b2326f0ce3bc6fd -->
+<!-- tarav.breadcrumb 1cf555404545 -->
 
 ### Bootstrap and working roles
 
@@ -66,14 +66,14 @@ the command. That bootstrap runtime contains the Project Workflow. The workflow
 reads the stable Project launch fields and produces a runner configuration. If
 that configuration names another interpreter, the runner starts a fresh Python
 process there.
-<!-- tarav.breadcrumb aafa86b8cf2afab50a5654f523486c49279b6b989b1a3487329c01b6d5860e21 -->
+<!-- tarav.breadcrumb aafa86b8cf2a -->
 
 The launched code may construct a working Tarav runtime in the selected
 environment. The bootstrap and working roles do not require new runtime
 subclasses, and the generic runner does not require that a working runtime be
 created at all. Direct Python invocation from an already suitable environment
 continues to work without a bootstrap transition.
-<!-- tarav.breadcrumb 62f59d33819ba3fe9a7fbcfcb486003d7dfc894303c4f97cc0a3fcf10b4066d9 -->
+<!-- tarav.breadcrumb 62f59d33819b -->
 
 ## Typed Python Workflow contract
 
@@ -116,7 +116,7 @@ The base Type's class entity belongs to Python Workflow. The subtype's class
 entity belongs to Project Workflow. Python inheritance states the reusable
 behavioral contract while workflow ownership states which domain supplies the
 specialization.
-<!-- tarav.breadcrumb a46af47c1e299f531a0601de28705f40ec0c93db8b1f9bb18a8f1b92acd65d57 -->
+<!-- tarav.breadcrumb a46af47c1e29 -->
 
 The runner consumes the resolved value rather than knowing the workflow that
 produced it:
@@ -132,7 +132,7 @@ the common launch fields. It does not call `TaravProject.load_project()` or ask
 the Type registry to resolve the marker's concrete Project class. This keeps the
 bootstrap boundary usable when that class exists only in the selected Project
 environment.
-<!-- tarav.breadcrumb f92c76b7c422ef9c1668c99d27e885c1eb7f223587ac45b45ba4126cefe53a01 -->
+<!-- tarav.breadcrumb f92c76b7c422 -->
 
 Keep configuration selection and execution separate. `run_file()` and
 `run_source()` must not call Project discovery or choose a configurator.

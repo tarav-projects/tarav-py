@@ -8,7 +8,7 @@ from .primitives import POI
 from .workflow import POI_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb 0657ffdfb85fecb0bd4cf27fc287767cbdd1722a20010ee9bf1862a6d21ef0fc
+# tarav.breadcrumb 0657ffdfb85f
 class ActionablePOI(POI):
     """Capability: a POI of an extending Type also spins one action.
 
@@ -26,8 +26,8 @@ class ActionablePOI(POI):
                           name="Tarav.POI.Actionable", workflow=POI_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 51eb2b0b1a45b063a05bc60031c6c07ba2b6e50c2d22dba73b69f138821a1c21
-# tarav.breadcrumb bb495f3ee057fc5f0d07777f28ca5bf13f04120072de1d10e4623a6301550776
+# tarav.breadcrumb 51eb2b0b1a45
+# tarav.breadcrumb bb495f3ee057
 class BlessablePOI(ActionablePOI):
     """Capability: the action of a POI of an extending Type may be blessed.
 

@@ -9,7 +9,7 @@ Its `manifest.json` describes what to create; `setup.json` records the last
 setup's observed hashes, exact commits, and workspace-specific branches. The
 folder may contain copied documents, live symlinks, seeded new documents, and
 Git worktrees. Git operations use the user's configured `git` command.
-<!-- tarav.breadcrumb 5602ec90ef8e38c54e71928a413ce53a0ff8dcd6a4b60af90254d0c043c72c7d -->
+<!-- tarav.breadcrumb 5602ec90ef8e -->
 
 The library is the primary interface. Create a `WorkspaceManifest` with typed
 entries and pass it to `WorkspaceDepot.create()`. A featured Project offers

@@ -12,8 +12,8 @@ class ProjectReadingGraph(ReadingGraph):
     Concrete Project Types decide which surfaces form the graph and how their
     declared routes are analyzed. The base only establishes Project ownership.
     """
-    # tarav.breadcrumb e2ef05c1dc360fdd7626ed17df6961b28da53b184275d26bbd093aee25a8e521
-    # tarav.breadcrumb f5337864b808cfecf8266d13760dd1ab8dc6dc20879b7e4b3cf694a8264a50bb
+    # tarav.breadcrumb e2ef05c1dc36
+    # tarav.breadcrumb f5337864b808
 
     @classmethod
     def class_entity(cls) -> TaravClass:

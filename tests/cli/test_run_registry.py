@@ -30,7 +30,7 @@ def registry(tmp_path: Path, monkeypatch) -> Path:
     return root
 
 
-# tarav.breadcrumb dfcdb298fb34d4217164fcb8a2b10f807ceff034f6023956189cd6c8ff944d88
+# tarav.breadcrumb dfcdb298fb34
 def test_inline_code_is_retained_with_its_outcome(registry: Path, capfd) -> None:
     code = "print('hello'); raise SystemExit(3)"
 
@@ -121,7 +121,7 @@ def test_an_unusable_registry_never_changes_the_run(tmp_path: Path, monkeypatch,
     capfd.readouterr()
 
 
-# tarav.breadcrumb efdd4a8e8070b72baf93a746feffa5a5121c600346ac7c0f5c46593cde9423c7
+# tarav.breadcrumb efdd4a8e8070
 def test_large_source_is_cut_and_marked(tmp_path: Path) -> None:
     registry = RunRegistry(tmp_path, entry_limit=10)
 

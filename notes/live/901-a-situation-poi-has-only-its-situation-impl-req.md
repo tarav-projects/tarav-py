@@ -38,15 +38,15 @@ Follow-up in another repository:
 
 Fixing a drift made 28 actions close and 28 open although two things had
 changed. The agent proposed a three-part POI: subject, state, evidence.
-<!-- tarav.breadcrumb dd4a33b00b80b1ee70266e34b1cd8d3207edc1d245b9c574107e8bfb783ba8fe -->
+<!-- tarav.breadcrumb dd4a33b00b80 -->
 
 The user did not recognise that as the POI model and asked for the current
 one from first principles.
-<!-- tarav.breadcrumb 24911fafb82564e442560c8a2455db7591ec7789326c1874a8738d58ccee5719 -->
+<!-- tarav.breadcrumb 24911fafb825 -->
 
 A particular implementation line of POIs must be told apart from a general
 principle. The user asked for a tree of the lines.
-<!-- tarav.breadcrumb 7aaa662011c7be1712cddff859384f75f0af3f54f7aa1b6237741e02bdd654a1 -->
+<!-- tarav.breadcrumb 7aaa662011c7 -->
 
 `IdentifiedPOI` is renamed `SituationPOI`. It only prescribes that the
 situation is a `LiteRecord`. More can be modeled inside a situation, but the
@@ -54,11 +54,11 @@ fundamental philosophy does not care: an object describing the situation is
 put there. The situation needs no structure that is common across POIs.
 A blessing does more than close an action: it can also suppress a POI from
 showing.
-<!-- tarav.breadcrumb 8df20c46efd8d7019b2f8130272d8194a8ad626f4419715511131657cc02e639 -->
+<!-- tarav.breadcrumb 8df20c46efd8 -->
 
 `subject` and `evidence` should not be part of the base model, at least not
 without clear fundamentals.
-<!-- tarav.breadcrumb c2b89e0a68a23bb75e54e343e89943a650ac7d41ee0cf1480688227fcc96e39d -->
+<!-- tarav.breadcrumb c2b89e0a68a2 -->
 
 At the level of a `SituationPOI` only a situation field is required, plus
 what comes from the other base, like the message. Other Types or
@@ -66,14 +66,14 @@ specializations can add other fields: POIs are subtypes, and the whole
 expressivity of the Python type system is there. The base is Type, message
 and situation. What is wanted is a clear and simple model without
 ambiguities.
-<!-- tarav.breadcrumb 510ea9812b87e15684ad22fdd8d399f630042955348a520a33887c689f195750 -->
+<!-- tarav.breadcrumb 510ea9812b87 -->
 
 The user asked whether `subject`, `evidence` and `coordinate` were well
 defined.
-<!-- tarav.breadcrumb a07cc6e1a3ea23befe2ee4883b766fdff8d4fd6b8915428d6d5dbf08746ec16d -->
+<!-- tarav.breadcrumb a07cc6e1a3ea -->
 
 Write the request and build it.
-<!-- tarav.breadcrumb 63e37beec4d78000d4333b72b99c578f9fa1a36db2a935dd41342e8735bb6e2b -->
+<!-- tarav.breadcrumb 63e37beec4d7 -->
 
 ### Current behavior (inspected)
 

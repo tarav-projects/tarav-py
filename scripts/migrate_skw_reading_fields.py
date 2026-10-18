@@ -6,14 +6,14 @@ import argparse
 import json
 from pathlib import Path
 
-# tarav.breadcrumb 2779e1bf04acb64e27cd87a2e0ff8fc52e9ad8b94b9fc16b0f6d7ee9c5dc2598
+# tarav.breadcrumb 2779e1bf04ac
 import tarav_bypass  # noqa: F401
 
 from tarav.l1.skw.reading import Contains, ReadingDependency, ReadingLink, declaration_from_record
 
 
 def migrate(data):
-    # tarav.breadcrumb 3ac4bc17367a4de23c82b12f0c71921c5976b4397c82d46e0b43088f23bfc915
+    # tarav.breadcrumb 3ac4bc17367a
     changed = False
     for block in data.get('blocks', []):
         if 'reading' not in block:

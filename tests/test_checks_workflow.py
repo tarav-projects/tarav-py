@@ -48,7 +48,7 @@ class ExampleProvider(CheckProvider):
         self.subjects = subjects
         self.runs = runs
 
-    # tarav.breadcrumb 49dfd66b8b659cca0b7b1bf975a0d0e68d95074082d73d912c36a1086278a601
+    # tarav.breadcrumb 49dfd66b8b65
     class Checks(CheckProvider.Checks):
         def suite(self):
             return CheckSuite(
@@ -102,7 +102,7 @@ class MismatchedSituationCheck(SituationCheck):
         return CheckResult(self, status="completed", pois=(poi,))
 
 
-# tarav.breadcrumb deba349a12b1413c1a834413f6ac1640a9cbeffe4e9972aa2940b6bf96548484
+# tarav.breadcrumb deba349a12b1
 def test_check_results_are_snapshots_and_poi_emission_is_explicit():
     runs = []
     check = ExampleCheck("one", runs)
@@ -170,7 +170,7 @@ def test_suite_catches_crashing_check_and_keeps_later_results():
     assert not result.clean()
 
 
-# tarav.breadcrumb c1d8e1fc5d14330556280f20990a300b3f0ce01766b40e42602933df7a7be80d
+# tarav.breadcrumb c1d8e1fc5d14
 def test_run_groups_pois_by_type_and_identity_without_codes():
     check = ExampleCheck("one", [])
     first = ExamplePOI(check, "First", situation={"subject": "one"})
@@ -222,7 +222,7 @@ def test_run_pages_distinct_identities_after_grouping():
     assert run.report(by="check", sort="count")["items"][0]["checks"] == 25
 
 
-# tarav.breadcrumb f80da43bcc2b842c5857008fb9145baf66db8ca4efdd591b34e9a69f8e7f0ad0
+# tarav.breadcrumb f80da43bcc2b
 def test_situation_checks_snapshot_validate_and_bind_poi_identity():
     source = {"before": 1, "after": 2}
     check = DifferenceCheck(situation=source)
@@ -239,7 +239,7 @@ def test_situation_checks_snapshot_validate_and_bind_poi_identity():
         MismatchedSituationCheck(situation={"value": 1}).run()
 
 
-# tarav.breadcrumb e73444ba05e865201671436a374aa312fd999aa1cf64d4b89f76f2f60138980b
+# tarav.breadcrumb e73444ba05e8
 def test_neutral_and_bound_pois_share_collection_without_blessing_metadata():
     from tarav.l3.runtime import get_runtime
 
@@ -290,7 +290,7 @@ class SlowSuite(KeptSuite):
                           name="Test.Checks.SlowSuite")
 
 
-# tarav.breadcrumb 70319c686e0b870849756c043ded64102d407771a8c2dbf716e1c4e478c8d499
+# tarav.breadcrumb 70319c686e0b
 def test_a_suite_holds_its_one_run_and_a_new_run_replaces_it():
     runs = []
     suite = CheckSuite([ExampleCheck("one", runs)])
@@ -303,7 +303,7 @@ def test_a_suite_holds_its_one_run_and_a_new_run_replaces_it():
     assert (suite.ran, suite.results) == (False, [])
 
 
-# tarav.breadcrumb fc1800cb2561bc56815b9e1a33aabdf7f03242145276bed14fc6b2197fc8654d
+# tarav.breadcrumb fc1800cb2561
 def test_a_suite_has_an_identity_from_its_type_and_key_and_a_grouping_has_none():
     assert CheckSuite([]).identity is None
     assert CheckSuite([], key="docs").identity == {"type": "Tarav.Checks.Suite", "key": "docs"}
@@ -316,7 +316,7 @@ def test_a_suite_has_an_identity_from_its_type_and_key_and_a_grouping_has_none()
     assert outer.suites()[-1] is inner
 
 
-# tarav.breadcrumb c251c964c8d8bd667e4dbc6d75de2488d88efca85294cf02dba64444084c49ab
+# tarav.breadcrumb c251c964c8d8
 def test_a_filtered_run_is_not_complete_and_keeps_what_it_refused_as_not_run():
     runs = []
     slow = SlowSuite([ExampleCheck("slow", runs)], key="slow")
@@ -370,7 +370,7 @@ def _repository(root):
     return root.resolve(), head
 
 
-# tarav.breadcrumb 2819e8466736b2204fd2921522446e29ab3a0142afedde54ae55ccc363b1e3ad
+# tarav.breadcrumb 2819e8466736
 def test_a_suite_records_the_git_state_of_the_repositories_it_declares(tmp_path):
     repo, head = _repository(tmp_path / "repo")
     elsewhere = tmp_path / "elsewhere"

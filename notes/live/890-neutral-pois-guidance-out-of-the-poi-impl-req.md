@@ -25,29 +25,29 @@ A POI connects above all to the code and the situation that produced it. Its
 job is to narrow the gap between producer and reader so the reader can judge
 with all the available information. The producer cannot know the reader's
 goal, and the design does not pretend otherwise.
-<!-- tarav.breadcrumb c3a3d1556fd7712749d0968b034ee39af86117ec95f10a28742cdc75a9ddb58a -->
+<!-- tarav.breadcrumb c3a3d1556fd7 -->
 
 Perhaps the mistake is that "what to do" is on the POI at all: that belongs to
 the skill contextualizing the agent. The POI gives evidence and clear producer
 intention, plus tooling for getting more context. Its wording is descriptive,
 not imperative (`Workflow.Neutral`).
-<!-- tarav.breadcrumb 523e4e6a51157249c2c77b8685822ccc700fc87152e43bc7e36eae844f8169bd -->
-<!-- tarav.breadcrumb 233a28074d104064dfdc1adc38d459c3b10693f5e54caef64f25af6c7fc3047f -->
+<!-- tarav.breadcrumb 523e4e6a5115 -->
+<!-- tarav.breadcrumb 233a28074d10 -->
 
 `may_do` must move out of the POI and can be part of the context. The POI is
 concerned with the immediate producer description: the triggered check and the
 situation. The agent goes to the context and decides. A skill can prime the
 agent on what to look for and can provide a typed Context view.
-<!-- tarav.breadcrumb 00726a1656bb88e2637fbd0eb8a3e0c5dc5b8eeeeb583bd2071549212058a575 -->
+<!-- tarav.breadcrumb 00726a1656bb -->
 
 The User also raised a typed Message: the POI has a message, and guidance
 could be modelled on the Message Type, freeing the POI from it. The User said
 this is the point of least clarity: the structure must be simple and primitive
 enough to fit every scenario and must not mislead agents.
-<!-- tarav.breadcrumb aa8834332d6005badbea9abeea00f182403b1c29cb6c6e1631bf37fb824f60e7 -->
+<!-- tarav.breadcrumb aa8834332d60 -->
 
 `Workflow.Neutral` is the good practice when the reader's context is unknown.
-<!-- tarav.breadcrumb 374bf0223d351ca034669eaffb65ee8e9f5b4ea173e3615e9f0aac11cd0172fb -->
+<!-- tarav.breadcrumb 374bf0223d35 -->
 
 ### Current behavior (observed 2026-10-09)
 

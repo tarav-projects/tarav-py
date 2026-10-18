@@ -1,5 +1,5 @@
 """Workflow-neutral Git repository mutations, and the state of a repository."""
-# tarav.breadcrumb 0ac8bc9208042292276044ca003c83913b57e2f2251282c2a7ee8fc0a56e50b2
+# tarav.breadcrumb 0ac8bc920804
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def run_git(
     return result
 
 
-# tarav.breadcrumb 4779a9beedc524e919dbb5117d45cfd86f319fbcebd30506d08554718dbb3c6a
+# tarav.breadcrumb 4779a9beedc5
 def repository_states(folders: Iterable[str | Path]) -> dict[str, dict[str, object]]:
     """The state of the repository each folder is in, keyed by repository root.
 

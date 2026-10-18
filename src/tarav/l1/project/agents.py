@@ -113,11 +113,11 @@ class AgentsConfig(BaseModel):
         return value
 
 
-# tarav.breadcrumb 8b97ed485eccff4720809b740f11215ef20ae593f5a29f0051b472138ef64c30
+# tarav.breadcrumb 8b97ed485ecc
 class AgentsMd(TaravObject, CheckProvider, SettingsProvider):
     """A Project's main Skillware-produced agents file and declared aliases."""
 
-    # tarav.breadcrumb 8a30ced371d61e9dcca3930e1297a64fd5e9872dc8ba4fffa8901835f3a8ab48
+    # tarav.breadcrumb 8a30ced371d6
     class SettingsInterface(BaseModel):
         """Controls of the bootstrap checks; the `agents` section of the config stores them."""
 
@@ -430,7 +430,7 @@ class AgentsMdProductCheck(_AgentsCheck):
             findings = document.lint()
         except (OSError, ValueError, TypeError, KeyError) as exc:
             findings = [skw.Finding(skw.InvalidSource, detail=str(exc))]
-        # tarav.breadcrumb 774da0f859f206730f229473c73f2a6ce3e7b8d32299b76d0daa715235dc5a7f
+        # tarav.breadcrumb 774da0f859f2
         # the agents file is a Skillware document: what its lint finds is said by the
         # Skillware POI Types themselves, as it is for a document of a skill package
         root = Path(self.agents.project.root)
@@ -445,7 +445,7 @@ class AgentsMdProductCheck(_AgentsCheck):
         return CheckResult(self, status="completed", pois=pois)
 
 
-# tarav.breadcrumb 0e97a77903e3f10987cb5e0de86ce10987cc5d1b101d7807a63215d18a5a511f
+# tarav.breadcrumb 0e97a77903e3
 class AgentsAliasCheck(_AgentsCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:

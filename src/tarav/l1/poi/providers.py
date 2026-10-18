@@ -5,7 +5,7 @@ from tarav.l0.kernel import TaravClass, TaravType, TypeShip
 from .workflow import POI_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb b36fb9bdd6212304c5d49c891134e726ddb4a1a1b2efac64ae0ac0bb75552580
+# tarav.breadcrumb b36fb9bdd621
 class POIProvider(TaravType):
     """Expose POIs without collecting, persisting, or raising them."""
 

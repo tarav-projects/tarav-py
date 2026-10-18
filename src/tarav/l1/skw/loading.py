@@ -11,7 +11,7 @@ from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.references.structured import StructuredFileReference
 from .document import Document, read, write
 from .skills import SkillLink
-# tarav.breadcrumb 1b91190ba3c46ec2a8d828da9b596086e9b950234134ca26c90d95eb0dca37fb
+# tarav.breadcrumb 1b91190ba3c4
 from .code import (BlockEntry, Contains, ExpectedLink, FileEntry,
                    IncludesBlock, ReadingGraph, ReadingLink, ReadingDependency)
 from .generation import _hash
@@ -61,10 +61,10 @@ class SkillDocument(Document):
         return result
 
 
-# tarav.breadcrumb f4d2fd588176b0f1faadd7a1173874ad992004685b107fa4d1fb52f55c4e97a5
+# tarav.breadcrumb f4d2fd588176
 class SkillReadingGraph(ReadingGraph):
     """Skill-package binding, rendering, and reading-path analysis."""
-    # tarav.breadcrumb f3128c51a3704497ef0342eead63829fff1db828630a02c4c04ac0c77ce3a836
+    # tarav.breadcrumb f3128c51a370
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -77,7 +77,7 @@ class SkillReadingGraph(ReadingGraph):
 
     def __init__(self, package, documents):
         self.package = package
-        # tarav.breadcrumb 1f2a5d756e2d5656f99872c4ef20e28c188475e20fd9454ac3ef0f4753e314a0
+        # tarav.breadcrumb 1f2a5d756e2d
         self.source = package.path(package.loading_file or '.skw/main.json')
         if package.loading_file is not None:
             self.data = read(self.source)
@@ -245,12 +245,12 @@ class SkillReadingGraph(ReadingGraph):
             return matches[0]
         raise TypeError('Unsupported reading entry')
 
-    # tarav.breadcrumb 3345174f24aecf669f77659006724d7a9d999a8760cff229661e7eefb1bbdeb6
+    # tarav.breadcrumb 3345174f24ae
     def report(self, poi, block, **extra):
         self.diagnostics.append(Finding(poi, block=block, **extra))
 
-    # tarav.breadcrumb b51cf1b5125ad0509724463bcb6a572c5c547f04e6c0ccbac83a1f07ce59a4c4
-    # tarav.breadcrumb b12c36d82f34814d160e8c847240232341457362536894b8c6d27702938ffe09
+    # tarav.breadcrumb b51cf1b5125a
+    # tarav.breadcrumb b12c36d82f34
     def analyze(self, *, limit=10000, entry=None):
         """Accumulate content on declared routes; links only supply references.
 
@@ -386,7 +386,7 @@ class SkillReadingGraph(ReadingGraph):
         label = block['caption'].replace('\\', '\\\\').replace('[', '\\[').replace(']', '\\]')
         return f'[{label}]({self.href(target, output)})'
 
-    # tarav.breadcrumb 7f13a0d4e0cb6be5e1972fffe7f7924aa7bda67b6c88eef97c2a38c43060268e
+    # tarav.breadcrumb 7f13a0d4e0cb
     def prose_findings(self):
         """What the prose parts of the declared links find in the text of their blocks.
 

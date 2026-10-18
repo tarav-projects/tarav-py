@@ -17,22 +17,22 @@ Non-goals: a manual disposition axis; a discussion thread on a record; links bet
 ### What the User decided
 
 Tracking is a capability. There is no reason not to track every check POI by default, because a check POI is defined by its situation. The trackable class has a setting that can disable a particular instance. POI tracking is its own workflow; the name "POI tracking workflow" is provisional.
-<!-- tarav.breadcrumb f09275f080616b61f08ebcb87ebf32339076ac490536593fc176251fb1ae48e0 -->
+<!-- tarav.breadcrumb f09275f08061 -->
 
 The check run is the place where tracking integrates. A run starts from the beginning each time, so it gives the tracking system a new data point. It must register the positive sign, a POI was raised, and the negative sign, the owning check finished and did not raise that POI: "the check passed". The thing is not a board; it is a record system that tracks the state of POIs.
-<!-- tarav.breadcrumb aaff7c9b610c0a61487576c2a54f442b792712022e1f6139b215bfae528ecc5b -->
+<!-- tarav.breadcrumb aaff7c9b610c -->
 
 Status must not collapse into a single value. It is a vector of statuses on separate axes. "Passed" is one status on one axis; it does not prevent closing a POI or saying more about it. The system is a database of every POI that has ever been tracked, like the issues of a GitHub repository: records stay for documentation and reference, and can be discussed indefinitely.
-<!-- tarav.breadcrumb 2e8b8e8b0e514d03ad489e8db54445bc520ece4b7f59079425b76ff671265e5f -->
+<!-- tarav.breadcrumb 2e8b8e8b0e51 -->
 
 The existing tracking code is inspiration only. It may be redesigned from the ground up when that gives a better product.
-<!-- tarav.breadcrumb ebb857740a54d4f2143f3bbe804a73075a8bff3ff1427e74fb2db02e284883dc -->
+<!-- tarav.breadcrumb ebb857740a54 -->
 
 Blessing fits into the status as an axis. Workflows can add their own axes, more than one axis may speak about related things, and that overlap is allowed. The priority is a system flexible enough to express everything; it can be formalized and simplified later.
-<!-- tarav.breadcrumb 2ab0227a441da56b2a9eaf33bef2377d03d527e47adb84e7a2ab2776331a9567 -->
+<!-- tarav.breadcrumb 2ab0227a441d -->
 
 The User asked for this request to be designed and executed.
-<!-- tarav.breadcrumb b85ec1ab8ba2588a007571f916ee431640aec8553255d910934af7663582d81d -->
+<!-- tarav.breadcrumb b85ec1ab8ba2 -->
 
 ### First version the User accepted
 

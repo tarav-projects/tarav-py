@@ -88,9 +88,9 @@ def register_chatlas_context_audit(
         parser.set_defaults(commit=None, repo=None)
 
 
-# tarav.breadcrumb 1e8258ee6485cebe0f7d899a1c691162632236275a5acb2388a9a94e56c621e7
+# tarav.breadcrumb 1e8258ee6485
 def _audit_dispatch(args: argparse.Namespace) -> int:
-    # tarav.breadcrumb 2fca27c41ee9a7bc4256a20ada664c0e38406ef56fb1dc2147899e0493733868
+    # tarav.breadcrumb 2fca27c41ee9
     if args.commit is None:
         if (not args.surface and not args.files_from) or args.repo is not None:
             raise CliError("File audit requires --surface or --files-from and does not accept --repo")

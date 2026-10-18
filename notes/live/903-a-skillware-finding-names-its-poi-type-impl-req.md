@@ -35,22 +35,22 @@ analysis with no finding in between.
 
 The user saw both names on one status row and asked what the lowercase one
 is.
-<!-- tarav.breadcrumb 4f80c0450291887bf1bf429f978bae6f837044418792258f54692944541a3be9 -->
+<!-- tarav.breadcrumb 4f80c0450291 -->
 
 The agent explained the table and offered two levels of cleanup: the surface
 only, or the root. The user answered that this is stupid and to eliminate
 it.
-<!-- tarav.breadcrumb 6793a754d44d1b4794a4f14de7e8524a842d88c5b3868f7cacab9aacd8b101d0 -->
+<!-- tarav.breadcrumb 6793a754d44d -->
 
 The agent proposed the six points above and asked for approval. The user
 invoked the Develop route with those six points as its input.
-<!-- tarav.breadcrumb 5696878ccaa0595a4b02ff41cfd1aabb7b0003069b9b9c79c0c72abea8cdad11 -->
+<!-- tarav.breadcrumb 5696878ccaa0 -->
 
 Earlier the same day the user had fixed two rules that this request has to
 keep: a Tarav object becomes data only through the Record system, and no
 code decides anything from the details of a POI.
-<!-- tarav.breadcrumb b5b7f07f31d3c3fdf76981af949f7cce3dbf00c943bc6a2da47a2a29b502ee23 -->
-<!-- tarav.breadcrumb c6b6c5b0f988281163fd8c2a83817efac3ff318b37d10e1409549da07992782b -->
+<!-- tarav.breadcrumb b5b7f07f31d3 -->
+<!-- tarav.breadcrumb c6b6c5b0f988 -->
 
 ### Current behavior (inspected)
 

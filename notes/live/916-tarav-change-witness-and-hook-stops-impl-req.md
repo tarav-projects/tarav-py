@@ -31,26 +31,26 @@ the file exists: the change-id file must be append-only, so that even
 surgery cutting parts of history must cut the file itself, which survives
 many modes of change; and proposed a global registry under
 `~/Documents/tarav` recording change-ids and commits outside the repository.
-<!-- tarav.breadcrumb 4e47f2e80797e47fec8168b7e7a895b6e2c86feb8713787256e8f51c2c6118c6 -->
+<!-- tarav.breadcrumb 4e47f2e80797 -->
 
 The User then weighed the registry: knowing which change-id matched which
 commit does not find the new commit once the repository's ID was cut or
 amended; the strength of the file is that it sits next to the edits it
 tracks.
-<!-- tarav.breadcrumb f5ab9cc27d7810c621079581608dda2ae62766fbe3afdec316b6907b26dadc6b -->
+<!-- tarav.breadcrumb f5ab9cc27d78 -->
 
 The User set the bar: this is best effort to make references more robust,
 not a system that fills the last 5% of cases; whoever rewrites Git owns the
 consequences, and references carry other hints about their subject. Knowing
 when a loss happened is worth having.
-<!-- tarav.breadcrumb 52b3819de20c1152d340ad4deb8ca39f3291c4335e5078b0a5bd0c6f888fd15e -->
+<!-- tarav.breadcrumb 52b3819de20c -->
 
 On the claim that only what remains in history can be checked, the User
 corrected it: the external registry can track the change-id file and test
 that it stays append-only, and the hook can stop the commit when that is
 broken, with an overrule (for instance an environment variable) as a
 speedbump.
-<!-- tarav.breadcrumb 144f1caab6d30066f818999c1524aaa832b8596265794e7c413d82fa28bd55c5 -->
+<!-- tarav.breadcrumb 144f1caab6d3 -->
 
 User decisions for this request: every stop or overrule is recorded and
 sensed by the tarav hook and handed to the Project as an Action registered
@@ -58,7 +58,7 @@ on it; the hook contract is relaxed to "hooks stop, with an overrule flag",
 to give an agent the opportunity to respond and rethink what it is doing;
 the witness is stored as Records, one per Project and branch, under
 `~/Documents/tarav/git-changes/`, machine-local.
-<!-- tarav.breadcrumb 9688fe6ae6840e3362c8960ffdb509597f42f0072ef3f694c6b32a01f18625fe -->
+<!-- tarav.breadcrumb 9688fe6ae684 -->
 
 ## Current behavior (after 915)
 

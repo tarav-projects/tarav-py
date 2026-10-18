@@ -19,7 +19,7 @@ from .identity import SKW_SKILLS_WORKFLOW_SHIP
 class SkwPOI(CheckPOI):
     """A workflow-owned SKW POI explained by the bound analysis Check."""
 
-    # tarav.breadcrumb 4d33a68da40966a0089b5dbed2e67a73af39a003f06f3a37b5a819aa76e8e120
+    # tarav.breadcrumb 4d33a68da409
     #: What a POI of this Type says, as one literal sentence without a full stop.
     statement: ClassVar[str] = ""
 
@@ -43,7 +43,7 @@ class SkwPOI(CheckPOI):
         return " ".join(parts)
 
     @classmethod
-    # tarav.breadcrumb 358f9776a4d31e8930d727fec6ccb95407790af6d2893c204b16cb9cb572cde9
+    # tarav.breadcrumb 358f9776a4d3
     def poi(cls, check, *, situation, finding=None, details=None, where=None):
         """Build one SKW POI from what the analysis found.
 
@@ -84,8 +84,8 @@ class SkwPOI(CheckPOI):
         return cls.poi(check, situation={"subject": subject, **held}, finding=finding)
 
 
-# tarav.breadcrumb d745f68d7e9441efda0d3f5e255e9a09840c5b55a3aace602b3a188c481ef66c
-# tarav.breadcrumb 34fac1a4d5bb2a797d5b30b3b8c092c283f84a2ac3b4475f81e36c26bf2066f5
+# tarav.breadcrumb d745f68d7e94
+# tarav.breadcrumb 34fac1a4d5bb
 class Finding:
     """What the analysis found, before a check raises it: the POI Type that states it,
     and the place and observations as plain data.
@@ -123,7 +123,7 @@ class Finding:
         return f"Finding({self.poi.__name__}, {self.data!r})"
 
 
-# tarav.breadcrumb 9b73451a9adc72fe2252cb4681bcc46e333a6430db8f453e6378902e892b7aa4
+# tarav.breadcrumb 9b73451a9adc
 class MissingMarkdownLink(SkwPOI):
     """A block declares a link whose prose part is Markdown, and its text holds no Markdown link
     to the declared target. Either the declaration or the text is wrong.
@@ -597,7 +597,7 @@ class StaleContext(SkwPOI, BlessablePOI):
         )
 
 
-# tarav.breadcrumb 76d1a306cd3cd7ae489248cd3809e96b6bad28beb76e10c3d94c7bebae7a6444
+# tarav.breadcrumb 76d1a306cd3c
 class StaleGeneration(SkwPOI, BlessablePOI):
     """Document.lint found changed generation inputs against recorded provenance.
 
@@ -696,8 +696,8 @@ class ProductDrift(SkwPOI):
         )
 
     @classmethod
-    # tarav.breadcrumb 3eb40ba8c8c58e9e0ce65142bc077c76f435c823ae1a3d357edfcc3c1e7ade5c
-    # tarav.breadcrumb f41a5d6353932a38b2690134f9db371f0f2e6d656baf7b5079d954337e68520f
+    # tarav.breadcrumb 3eb40ba8c8c5
+    # tarav.breadcrumb f41a5d635393
     def from_finding(cls, check, finding, *, root, state=None):
         """The situation is what was compared: the file, its text and the text its source produces."""
         root = Path(root)

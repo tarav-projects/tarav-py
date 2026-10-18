@@ -102,7 +102,7 @@ def _project_list_record(project_root: Path) -> dict[str, object]:
     }
 
 
-# tarav.breadcrumb b025c64790062efc8b9cb6944ba269dbb2591c78daf3cdb0898371bdbe431bbb
+# tarav.breadcrumb b025c6479006
 def _cmd_project_list(args: argparse.Namespace) -> int:
     if args.global_index:
         if args.root is not None:

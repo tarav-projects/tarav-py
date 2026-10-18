@@ -11,7 +11,7 @@ case Types and incomplete scope are distinct errors. Subtypes own their payload
 schema, so no universal evidence format is imposed. The Line grounding
 Assertion demonstrates grounding and support-inventory cases while retaining
 its existing identity and ranking adapter.
-<!-- tarav.breadcrumb 7b05d770fd43c89ea4d4f59f69f662e595e2b17db978b545f3328199dc407c43 -->
+<!-- tarav.breadcrumb 7b05d770fd43 -->
 `LinesWorkflow` owns `LineGroundingAssertion(Assertion)`: the claim that a
 particular Line edition is supported by its declared Support.Set.
 
@@ -73,7 +73,7 @@ win/tie support and shows comparison count,
 abstentions, opponent count, and coverage separately. One case has no relative
 score. `TribunalScoreCheck` surfaces unassessed, sparse, or weak support as POIs
 without treating low relative rank as a falsity verdict.
-<!-- tarav.breadcrumb 964976f03c0e4fc414063cb418332d74ace9066971845c9099bc3d4d8a1d95ba -->
+<!-- tarav.breadcrumb 964976f03c0e -->
 
 Blessing Records expose the same Assertable interface through a lower-layer
 capability and a runtime-composed Blessings producer. Their `main` Assertion
@@ -83,7 +83,7 @@ retained POI and grounds; unresolved source references yield incomplete scope.
 `blessing.score_vector(repository)` reads named tribunal assessments from
 ScoringRepository by Assertion reference, without copying scores into the
 Blessing. Detection remains unchanged.
-<!-- tarav.breadcrumb 5a29a5247ba8f886c1f9c8d31820023fc0f323edee9e15bd073f06aa96c8ecee -->
+<!-- tarav.breadcrumb 5a29a5247ba8 -->
 
 
 The prior `IndexLineGroundingAssertionType` adapter was replaced by the actual

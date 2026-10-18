@@ -22,7 +22,7 @@ CLI_WORKFLOW_SHIP = WorkflowShip("66ab1312-5e49-4849-8503-1315f461b4bd")
 _COMMAND_NAMESPACE = UUID("568520b3-d876-43cb-8bfd-6c2e4f13d5a0")
 
 
-# tarav.breadcrumb 4d74d3599852862caba881695d886f0407039f0012b353ce9cafe7e9777b2daa
+# tarav.breadcrumb 4d74d3599852
 class CliWorkflow(TaravWorkflow):
     constitution = "Expose the installed Tarav command tree as inspectable objects."
 
@@ -39,7 +39,7 @@ class CliWorkflow(TaravWorkflow):
         return CLI_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb eb43ccb7c351be1beb0d5a32309a91ae213fae45eaeeef4f3ebd058a705dcc0c
+# tarav.breadcrumb eb43ccb7c351
 class CommandUse(UsageTrace):
     """A CLI invocation, rendered by the workflow that knows its payload."""
 
@@ -60,7 +60,7 @@ class CommandUse(UsageTrace):
         lines = [f"  {stamp}  exit {values.get('exit_code', '?')}"]
         descriptor = values.get("use")
         if isinstance(descriptor, dict):
-            # tarav.breadcrumb fb608dd92ba41875a2f55c310ff6a0f64a71a9fc510d9508f72346e5933211f4
+            # tarav.breadcrumb fb608dd92ba4
             for key, value in descriptor.items():
                 shown = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
                 lines.append(f"                    {key}: {shown}")
@@ -93,7 +93,7 @@ class Command(TaravEntity, CheckProvider, LiveHelpProvider):
         self.path = path
         self.parser = parser
         self.handler = parser.get_default("handler")
-        # tarav.breadcrumb 82aaddbb87253228672ab53ea85d0f081d8c5f17ad5ccedefd507eff630406fa
+        # tarav.breadcrumb 82aaddbb8725
         # A command owner may declare `set_defaults(usage_descriptor=fn)`, where
         # fn(args) returns a small mapping describing that call for later readers.
         self.usage_descriptor = parser.get_default("usage_descriptor")
@@ -139,7 +139,7 @@ class Command(TaravEntity, CheckProvider, LiveHelpProvider):
         except (OSError, TypeError, ValueError):
             return None
 
-    # tarav.breadcrumb e0231acfee1ff85bd8138a210682a65196161d27071407447bee1049931a07c5
+    # tarav.breadcrumb e0231acfee1f
     class Checks(CheckProvider.Checks):
         def suite(self) -> CheckSuite:
             return CheckSuite((CommandMetadataCheck(self.obj),))

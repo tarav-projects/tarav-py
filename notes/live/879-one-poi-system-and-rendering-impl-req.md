@@ -17,16 +17,16 @@ Non-goals: tracked POIs and the notification log; repairing any POI raised on a 
 ### What the User asked
 
 Tarav grows, becomes somewhat chaotic, and is then formalized and integrated. This request is an integration pass: most POI or POI-like objects and scenarios should converge on fewer primitives and workflows. Everything in Tarav that exposes something that looks like a POI should be revised and implemented as a POI, integrated end to end from the command line to the mechanics. The design does not have to be perfect in the first iteration.
-<!-- tarav.breadcrumb 1203b1cc808fa9d1de215ede3fee3c5620e6c359eff6a4cc3212d1c46a0415cd -->
+<!-- tarav.breadcrumb 1203b1cc808f -->
 
 "Finding" is a legacy name for POIs and should disappear. All such situations are modelled with the current POI types or subtypes of them, with no `code` field.
-<!-- tarav.breadcrumb 931b13db49ca54a818d3acb7c36e24756324c7c3b1295ca90d5d503b31405e02 -->
+<!-- tarav.breadcrumb 931b13db49ca -->
 
 On rendering, the User asked how to formalize the POI life cycle further and named two options: a universal renderer, or at least a universal renderer type that formalizes the visual aspect of POIs, versus independent workflows that render for different consumers, many of which could expose a renderer flag.
-<!-- tarav.breadcrumb 759b771a5d809e113254b02b67c7b62ceabcd4786beff358f8cd5414e79c2478 -->
+<!-- tarav.breadcrumb 759b771a5d80 -->
 
 The agent proposed the middle path below and the User accepted it ("Very nice, yes") while asking for this request.
-<!-- tarav.breadcrumb 811913d1c2a66041ce33d1489730542a65580ad777731651147ac0a96a31e6c2 -->
+<!-- tarav.breadcrumb 811913d1c2a6 -->
 
 ### Rendering design (proposed by the agent, accepted by the User)
 
@@ -108,13 +108,13 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `poi-sy
 ## Develop revision — 2026-10-08
 
 The User resumed this request through Develop with autonomous alignment and sharpened the order: establish the shared primitives first, then visit as many POI-like Tarav systems as practical and unify their producers and presentations. The existing Diagram `Finding` family is therefore an integration target to inspect and attempt, rather than a blanket deferral. The earlier non-goals on tracked POI policy, notification-log redesign, repairing reported POIs and other repositories still stand. The User also required visits to the exact User Turns behind referenced design; the three distinct Turns already attached above, and the related context and atomic-POI Turns in the Wiki, were rendered before this revision.
-<!-- tarav.breadcrumb e857fcaeeed0e00fdbf9ae71e1b0c99ec3c0d111d9636e9d03b6de6b613423b1 -->
+<!-- tarav.breadcrumb e857fcaeeed0 -->
 
 Revised order: (1) one POI renderer interface, registry, selection value and default/JSON-lines instances, with check-report integration and a resolvable context instruction; (2) Breadcrumb and Reference resolution POIs and the common command presentation; (3) migrate remaining POI-shaped SKW and Diagram outputs through those primitives, including their retained/context paths where a command exposes them; (4) rename data that only resembles a POI without forcing an `l0` to `l1` dependency; (5) test each integration slice, perform a fresh whole-library inventory, and record any cases that cannot be safely integrated in this pass with a concrete reason. The renderer selects no POIs; the POI Type owns its one-line meaning. The old plan above is provenance where this revision changes it.
-<!-- tarav.breadcrumb 98855066aa8890ffdff7db3f3e6e9df756027fdd023358149e4351e2391463d5 -->
+<!-- tarav.breadcrumb 98855066aa88 -->
 
 Bounded implementation choices under autonomous alignment: keep the POI root in `l1`; `l0` observations become POIs when an `l1` consumer actually surfaces them. Use `occurrence` for the reported-POI view. A JSON-lines renderer is the second named layout because scripts can consume it; `--json` continues to produce structured records independently. A family parent may group atomic cases but must never be raised. Changing a retained record schema or dynamically allocating POI Types from observed codes would need a compatibility design, so inspect those boundaries before converting the Diagram cases.
-<!-- tarav.breadcrumb aed0ab0d58c1ed9baa6e4b8d1c59047fcb6703a2f2cad970a2c902e84c22caa4 -->
+<!-- tarav.breadcrumb aed0ab0d58c1 -->
 
 Start checkpoint for this resumed Develop pass: `141da47307f4e48e6ad641eeb9b7373095255753`. No product source had been changed by request 879 at this point; the shared worktree carries unrelated edits across Tarav layers. Inlined Capture and commits must stay scoped to this request.
 

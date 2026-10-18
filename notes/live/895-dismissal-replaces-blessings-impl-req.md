@@ -22,21 +22,21 @@ as "provided"; Directives; Tarav Center.
 
 The User asked for the consequences of the day's design to be turned into
 as many requests as needed and executed.
-<!-- tarav.breadcrumb 54d64105d3d26a63819eb988ee2c42ac8d9aa4771e6a152bd13b25d31c550970 -->
-<!-- tarav.breadcrumb 64a8a02277d1a9429e52acca11da53dbb137ac009fc0ea619edfc79f0aa78148 -->
+<!-- tarav.breadcrumb 54d64105d3d2 -->
+<!-- tarav.breadcrumb 64a8a02277d1 -->
 
 A blessing answers a specific question about a POI; its general meaning is
 that the POI's claim is attenuated or dismissed, an overrule of the check.
-<!-- tarav.breadcrumb 6cbc87f5a27e88aae97a22f6c6170cc7bb5116443bbe2aca1755a83f2db86ed5 -->
-<!-- tarav.breadcrumb 2988467a6903c75375ecceb2d0733a29d42e3e267e9e57bdc78e86b45b5f18a0 -->
+<!-- tarav.breadcrumb 6cbc87f5a27e -->
+<!-- tarav.breadcrumb 2988467a6903 -->
 
 A POI can be resolved in several typed ways and dismissal is the softest; the
 word "blessing" need not survive, and the design is free of earlier inertia.
-<!-- tarav.breadcrumb 860aedf41ce6cbd34319326717e3b2cb1815add9c2324ad153b51fc9cde43b11 -->
-<!-- tarav.breadcrumb fee84f8f2342f2882338c5b891ad0b5da5195ec5383062a96b0deaeb0faed9b5 -->
+<!-- tarav.breadcrumb 860aedf41ce6 -->
+<!-- tarav.breadcrumb fee84f8f2342 -->
 
 A blessing is a way to finish the action a POI started.
-<!-- tarav.breadcrumb 179d173b669953b1406b0e4c99bce2eda815dbacd9956a44f8c91a37ea920457 -->
+<!-- tarav.breadcrumb 179d173b6699 -->
 
 ### Current behavior (observed 2026-10-09)
 

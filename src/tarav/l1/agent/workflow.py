@@ -4,7 +4,7 @@ from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip
 from tarav.l1.agent.identity import AGENTS_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb 3895998adfc2738344639236b2fb2168692d109b5ddcebc30a3ec651909b4939
+# tarav.breadcrumb 3895998adfc2
 class AgentsWorkflow(TaravWorkflow):
     workflow_name = "agents"
     constitution = (

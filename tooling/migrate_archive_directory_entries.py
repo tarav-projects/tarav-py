@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 import subprocess
 
-# tarav.breadcrumb 1522a0472cb2ccdb4a82ede5e68b926ffd1cfd9dc1580ced95aa1ca413fc854d
+# tarav.breadcrumb 1522a0472cb2
 import tarav_bypass  # noqa: F401
 
 from tarav.l1.archive import Archive

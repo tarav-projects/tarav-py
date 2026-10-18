@@ -22,33 +22,33 @@ Non-goals, all of them brainstormed in the same session and not decided:
 ### Why
 
 The User describes a pandas analogy. Asked for a plot, an agent writes a script that imports pandas and lets the library manipulate the data; it does not read the files with its own tools, and a wrong use produces an error that points to the right one. Operating a Tarav project should largely work the same way: agents write scripts against the Tarav library. The primary documentation is then the code base itself and recent uses of it, with skills in a secondary place because they go stale.
-<!-- tarav.breadcrumb 6d25eeb178b5276ede1d59842a319cd8bc7a35f45ba870b7e8cb1d48edea7bff -->
+<!-- tarav.breadcrumb 6d25eeb178b5 -->
 
 `tarav run` is the intended way to run such scripts. Tarav should complain when it is imported in a process that `tarav run` did not start, using a flag in the environment that `tarav run` populates, and the testing infrastructure should be able to override it. The purpose is only to push agents toward `tarav run`.
-<!-- tarav.breadcrumb 6636ce230788fa8fe34c1a17982d70a43418ba2c71b0229af0ef53f82c0cc70b -->
+<!-- tarav.breadcrumb 6636ce230788 -->
 
 ### Decisions by the User
 
 The complaint is an error, not a warning, but one that can be controlled: whatever needs to import Tarav outside this route must be able to do so. The Constitution's preference for informing over forbidding is a general principle and not an invariant; a strong rule is acceptable here. If the hard version proves too complicated it can be downgraded to a warning later.
-<!-- tarav.breadcrumb bf03f3fc608b84a549b10ff70c8a0c4f950eae6dcf1c3123b6b44f11dcff99da -->
+<!-- tarav.breadcrumb bf03f3fc608b -->
 
 The mechanics use an environment variable, but the error message does not mention it. The message only says that the process was started the wrong way.
-<!-- tarav.breadcrumb 53b4c0ea2122380d4f8d65d0f936a72327d1c3e2096ada4d17884ed17702be6d -->
+<!-- tarav.breadcrumb 53b4c0ea2122 -->
 
 The guard is a speed bump for agents that casually import Tarav. A developer who uses Tarav directly must be able to pass it as easily and ergonomically as possible.
-<!-- tarav.breadcrumb 98cb4207ac0511579d84171cacc2723e04789d689d020d15f4145942bdfb4367 -->
+<!-- tarav.breadcrumb 98cb4207ac05 -->
 
 There should be different ways to pass, and one of them is a second entry point to the same library: an import layer with the rest of the system below it.
-<!-- tarav.breadcrumb 67caf3a3530ee779bc0b6a5a15136ea1f01c5d97cde8012e8f77c1fa5602c82a -->
+<!-- tarav.breadcrumb 67caf3a3530e -->
 
 Only the different entry points are to be done now. Plain `tarav` is what regular agents use and is where the speed bump sits.
-<!-- tarav.breadcrumb 235551827d7a7a98478e12d59f03379f8c4fbdbf7ce0c2a60b646569766e8674 -->
+<!-- tarav.breadcrumb 235551827d7a -->
 
 The name of the second entry should read like a warning, in the spirit of flags that say the user is leaving the sandbox.
-<!-- tarav.breadcrumb b920aae58128a6719332a37281b407e6f0396897f49658c5785df617c6dbccbe -->
+<!-- tarav.breadcrumb b920aae58128 -->
 
 The name is `tarav_bypass`, settled "for a while". This request covers the split of the entry point and its adoption in every application that requires it, such as the command line interface itself and the test engines.
-<!-- tarav.breadcrumb 1be44394d281d6993e0ba1de641bfdff8b31cce01a8221e34a1c8a2dd37b9052 -->
+<!-- tarav.breadcrumb 1be44394d281 -->
 
 ### Current behavior (inspected 2026-10-08)
 
@@ -128,9 +128,9 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `tarav-
 - Design note capture: nine User-Turn Breadcrumbs submitted, audit clean; design commit `99693f65c311f5d24bea7b65041832e47f0978ae`.
 - Wiki capture in `tarav-md`: new topical note `notes/wiki/tarav-scripts-and-entry-points.md` (19 Breadcrumbs, audit clean) and two sections appended to daily `2026-10-08.md` (4 Breadcrumbs, no new POIs; the note keeps its 13 earlier `breadcrumb-position-missing` POIs). Start checkpoint `bcb0436cd7d6fe67f61bcb8bd9ab9df9fae528ca`, completion commit `7abcfd990e8dbcd25223475debdee5bdb6ebfdff`.
 - Alignment (2026-10-08): the User decided that other repositories are not this request's concern. They will see the error and their maintainers will resolve it. The design section, open question 1 and plan step 4 were updated in place; the request now changes `tarav-py` only.
-<!-- tarav.breadcrumb 80e625feceb21dce105d9b6e1a989dc920e6a1077e58305bb1add9f15cf06fa9 -->
+<!-- tarav.breadcrumb 80e625feceb2 -->
 - Execute (2026-10-08): reviewed the topical Wiki, daily entry, and ten relevant User turns before editing. Started with scoped checkpoint `b90e097190c84b54121514f7480bf336c10e7470`. Implemented `tarav_bypass`, guarded root import, console doors, test collection setup, direct-import maintenance script adoption, and guidance. The internal mark's door value and maintenance-script adoption are bounded implementation choices, not additional User decisions.
-<!-- tarav.breadcrumb 747964ca6058b11dc21535850732de12117cfe52e1a7f17ac598ab5b59a816e8 -->
+<!-- tarav.breadcrumb 747964ca6058 -->
 - Product verification: isolated committed tree passed 178 tests and Ruff; shared worktree passed 188 tests and Ruff. Built wheel includes `tarav_bypass`. Reinstalled the CLI; plain and Project `tarav run` imports passed. Root `tarav check --project .` completed 362 checks with 65 POIs from existing Project state. Restarted the installed daemon through the CLI and launchd; it returned running with a new PID. Product completion commit `4629dd90ad45e1ac35e9b2b915dae6a9304c9a05`, commit evidence audit clean.
 - Product Inlined Capture linked the changed Python and Markdown surfaces to the design turns. TOML and generated JSON have no registered native inline convention; their changes are covered by the scoped commit evidence. Pre-existing Breadcrumb position POIs remain in some older edited surfaces; new labels audit in place. Other repositories and historical `dev/live` scripts were not edited.
 
@@ -139,4 +139,4 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `tarav-
 -->
 
 - Wiki capture appended implementation and verification to the topical note and daily log. Topical audit is clean; daily retains its 13 pre-existing position POIs without new findings. Scoped Wiki start checkpoint `bb26076828a678b0b90c962538806a28d64b0842` and completion commit `60deb3892d1e34885f864f9a8e3f0da3c772a3fd`.
-<!-- tarav.breadcrumb ff6558343c58d392e816727457738cb02c545d2f6a09f9b5c4e3047b92afe2e4 -->
+<!-- tarav.breadcrumb ff6558343c58 -->

@@ -47,7 +47,7 @@ def _agent_default_ping_model(family_name: str) -> str | None:
     if family_name == "claude-code":
         return "haiku"
     if family_name == "codex":
-        # tarav.breadcrumb 80e2a23a44697f68e0486de4b348c0db06b8373ca542abe89ad0922f5f556abe
+        # tarav.breadcrumb 80e2a23a4469
         return "gpt-6-luna"
     return None
 

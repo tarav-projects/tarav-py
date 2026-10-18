@@ -67,7 +67,7 @@ class RunnerConfiguration(PythonObject):
 
 class RunnerConfigurator(PythonObject, ABC):
     """Behavioral contract for selecting one Python runner configuration."""
-    # tarav.breadcrumb 8930a4c61accc47dc1236cde58f7616d34c0c375ce53e5678289a4cb65f0b423
+    # tarav.breadcrumb 8930a4c61acc
 
     @classmethod
     def class_entity(cls):

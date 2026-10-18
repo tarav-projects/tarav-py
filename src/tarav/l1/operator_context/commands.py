@@ -22,8 +22,8 @@ def _store(args) -> OperatorContextStore:
     return OperatorContextStore(registry)
 
 
-# tarav.breadcrumb d327cf8f91136c724a21dc15d37c17556f83668dae155e184dc1c9bf68f65ea6
-# tarav.breadcrumb 0836d4ab13e43fc8c9b6a13fafded10e3e9d49aa325c99038cfb557c10333a00
+# tarav.breadcrumb d327cf8f9113
+# tarav.breadcrumb 0836d4ab13e4
 def _emit(args, value: dict, render) -> int:
     """Present one result: in full as JSON, or as the command's readable summary."""
     if args.json:
@@ -68,7 +68,7 @@ def _fields(args) -> dict:
     return fields
 
 
-# tarav.breadcrumb a6efd61c89a948edb23f371d068306f354421850a857b82ff015281bcff2245b
+# tarav.breadcrumb a6efd61c89a9
 def _cmd_put(args) -> int:
     """Place a new object, or replace the fields of an existing one."""
     store = _store(args)

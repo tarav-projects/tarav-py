@@ -11,8 +11,8 @@ from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 from tarav.l2.project.dev import PythonPackageProject
 
 
-# tarav.breadcrumb 024fb771c964b23f4803012c45369261721c22451aeb28c8947f26c29f5beb85
-# tarav.breadcrumb ea4b090e3e6e28473491e2665ab4d8745672356f8f2bfd7181881fd644cb5ed6
+# tarav.breadcrumb 024fb771c964
+# tarav.breadcrumb ea4b090e3e6e
 class TaravPyProject(PythonPackageProject):
     """tarav-py: the Python package of Tarav, developed in the Taravangian workspace."""
 

@@ -42,39 +42,39 @@ ships, not for the reading graph.
 
 The user pasted an open `UnannotatedOutputLink` action of `tarav-hugentics`
 and asked for an explanation from first principles.
-<!-- tarav.breadcrumb d044e0f35e812ea57db70989904690d4eaef0144604fd225be238e4d1e6576e9 -->
+<!-- tarav.breadcrumb d044e0f35e81 -->
 
 The user did not like the model of two kinds of link, declared and authored,
 and asked for its grounding in user input.
-<!-- tarav.breadcrumb 38df70dbc6f4c881f589513d7203f891f4922dd9b94926f68fbbe3fc32c78851 -->
+<!-- tarav.breadcrumb 38df70dbc6f4 -->
 
 A link is declared only: the block declares that it contains a link. Links
 can be typed, and a link Type can carry a check that validates part of that
 on the prose. The base Type tests nothing; a specific Type does. The SKW
 system does not care about the prose and trusts the declaration; the
 maintainers care about the prose actually holding the link.
-<!-- tarav.breadcrumb 1eae22b407b7eae447a80224953dbd924d2e0c8376893e61fb333b231b0fb73d -->
+<!-- tarav.breadcrumb 1eae22b407b7 -->
 
 Most relationships between SKW blocks are declared, to keep the model
 simple: a block declares, the system checks that the declarations make sense
 with each other, and other mechanisms may later check or score the
 declarations.
-<!-- tarav.breadcrumb 5c58f87c5650b3423be8798a5ca25d8009aac634798a69d8bb892f069dac1b6e -->
+<!-- tarav.breadcrumb 5c58f87c5650 -->
 
 The user confirmed the three layers below. How a link interacts with the
 prose is the link's concern; it works by declaring checks and raising POIs.
 There can be several link Types, each with its own mechanism, starting with
 one that checks that `[text](target)` exists in the prose.
-<!-- tarav.breadcrumb f2e6a596ff9b1878fec13ac0e377bdd436a821a029142104c72e0335fa1e129d -->
+<!-- tarav.breadcrumb f2e6a596ff9b -->
 
 `SkillLink`, a block whose whole purpose is to be a link, is another way to
 build output, like blocks inside blocks in LaTeX. It is not decided; keep the
 declare-only model for now.
-<!-- tarav.breadcrumb b1959e36a841ac25d692828bde205fcf2e8e0acfb4481d88bc8fa420d7b8eaa0 -->
+<!-- tarav.breadcrumb b1959e36a841 -->
 
 Composition, not subtypes, for the prose part; keep `SkillLink`; write the
 request and execute it.
-<!-- tarav.breadcrumb 866d400ed2e9122f53dedbcf05f62114bb0e34d4cdafd829fea9fef5bfafb948 -->
+<!-- tarav.breadcrumb 866d400ed2e9 -->
 
 ### The three layers
 

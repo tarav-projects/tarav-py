@@ -18,8 +18,8 @@ from tarav.l1.records import RecordRegistry
 from .workflow import OPERATOR_CONTEXT_WORKFLOW_SHIP, OperatorContextWorkflow
 
 
-# tarav.breadcrumb 7b34e9c3c7d0e552293a3845cfe191172ecd8a7000e5615b930d76dbbfd5cb16
-# tarav.breadcrumb 4090ac5315ff80ce1a6c4d354eb80b936c2fd466134c37c73d81ec4e91ae6b5b
+# tarav.breadcrumb 7b34e9c3c7d0
+# tarav.breadcrumb 4090ac5315ff
 class OperatorContext(TaravEntity, FileRecord):
     """One input object. It may name a Project, a session, both or neither.
 
@@ -97,7 +97,7 @@ class Intake:
         return str(self.context.id)
 
 
-# tarav.breadcrumb c0bf38cbd139088b904be549c34320307ba75eb75f8e0cef8d2df3818de00825
+# tarav.breadcrumb c0bf38cbd139
 class OperatorContextStore:
     """The workflow's partition of the Record Registry: one record per object."""
 

@@ -42,39 +42,39 @@ storing diffs or snapshots.
 The user turned one `OutputChanged` case into a question about the action
 model: an action remains after it closes, so its closing must keep a record,
 and what happened must be traceable later.
-<!-- tarav.breadcrumb 965aeea22fcd4e25ea293ba8ba7e17e5c4fc435df74345f43b9208d18f31b71f -->
+<!-- tarav.breadcrumb 965aeea22fcd -->
 
 Checks can be run on HEAD, which records which commit they saw, or on the
 working folder, which decouples them from Git history; trackability must
 not be lost. Rerunning the checks is always possible: the model is not
 wrong, a working-folder run and a commit run say different things. Storing
 snapshots or diffs is too expensive; Git is the store.
-<!-- tarav.breadcrumb eaaab24ed2bbf161deb344ff75f4e36bce68e277e4cde9b0a086fa6d672e903e -->
+<!-- tarav.breadcrumb eaaab24ed2bb -->
 
 A check records the commit it was run on; Workspaces may later produce a
 folder to run checks in.
-<!-- tarav.breadcrumb 295e5260257af0a8a6e3b76e2d7ca9631c175243069752041caff53ea69cab6f -->
+<!-- tarav.breadcrumb 295e5260257a -->
 
 A run can give commit provenance to checks: the checks themselves can see
 whether the relevant repositories are dirty.
-<!-- tarav.breadcrumb cf6ee81cdc8b2eb3a0ea560d5922cbb1729e379a1c9d99a5907036977ffd18c7 -->
+<!-- tarav.breadcrumb cf6ee81cdc8b -->
 
 Make it good to have. Checks detect automatically, at the level of the whole
 repository first, whether they ran on a committed state. Actions record the
 best commit data they can: the commit when triggered and when closed, HEAD
 when the repository is dirty. Agents are advised to keep things clean.
-<!-- tarav.breadcrumb 741d5bf28516cdcb410c6c7ebe5ba176ebb363f068d8092919e9cabb75d4da81 -->
+<!-- tarav.breadcrumb 741d5bf28516 -->
 
 Check suites declare the repositories involved; it is a declaration, and the
 maintainers are responsible for it. Actions keep a log of the Git state at
 some events: open; still open and the first clean state; every status
 change, recording HEAD when dirty; the first clean state since a status
 change.
-<!-- tarav.breadcrumb 97fa87f94ad0030502102e720f222da269f711b39f4211a23bbf82a57b367dc6 -->
+<!-- tarav.breadcrumb 97fa87f94ad0 -->
 
 Clean states are logged per repository. Write the request and build it,
 integrated well with the rest of Tarav.
-<!-- tarav.breadcrumb 34f723014c5f11aa784b8bca2aa3b7fbe940a84eedd3d54a9ac2d827e54aea56 -->
+<!-- tarav.breadcrumb 34f723014c5f -->
 
 ### Current behavior (inspected)
 

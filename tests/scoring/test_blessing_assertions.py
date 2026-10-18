@@ -96,7 +96,7 @@ def test_optional_grounds_require_resolved_passage_and_do_not_fake_evidence(tmp_
 
 
 def test_distinct_blessings_keep_identity_and_score_view_reads_tribunal(tmp_path):
-    # tarav.breadcrumb 40fb7f57dc70ff6a251bc53eb76c7df45b2e0c64f6eb7eec6c0c8455cb849ac1
+    # tarav.breadcrumb 40fb7f57dc70
     create_runtime(archive_root=tmp_path / 'archive')
     repository = ScoringRepository.initialize(tmp_path / 'scoring')
     registry = TribunalRegistry((BlessingAcceptanceTribunal(),))

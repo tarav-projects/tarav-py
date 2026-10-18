@@ -28,7 +28,7 @@ def _project(root: Path, project_type):
     return project_type.from_path(root)
 
 
-# tarav.breadcrumb b5384665de6e46322ba6f6efbc7d38426123dc56f6d99c709ab99e869ef8fde6
+# tarav.breadcrumb b5384665de6e
 def test_project_capabilities_have_explicit_paths(tmp_path: Path) -> None:
     project = _project(tmp_path, Project)
 
@@ -38,7 +38,7 @@ def test_project_capabilities_have_explicit_paths(tmp_path: Path) -> None:
     assert not hasattr(project, "wiki")
 
 
-# tarav.breadcrumb f06862ef757467e4e4b496ae060e210681d5410b3ec99b7aa5b8c907f2aa9713
+# tarav.breadcrumb f06862ef7574
 def test_a_failing_test_is_a_poi_named_by_its_test(tmp_path: Path) -> None:
     (tmp_path / "test_sample.py").write_text(
         "def test_passes():\n    assert True\n\n"
@@ -52,7 +52,7 @@ def test_a_failing_test_is_a_poi_named_by_its_test(tmp_path: Path) -> None:
     assert "1 failed, 1 passed" in result.data["summary"]
 
 
-# tarav.breadcrumb 84c55d0bb2d42dbe612d0a92ddc8785ca6e6f03f6b4b7b1d1dc462831cc1149b
+# tarav.breadcrumb 84c55d0bb2d4
 def test_pytest_runs_once_and_each_test_file_is_a_suite_of_its_own(tmp_path: Path) -> None:
     (tmp_path / "test_one.py").write_text(
         "def test_passes():\n    assert True\n\n"

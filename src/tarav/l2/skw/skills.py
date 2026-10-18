@@ -73,7 +73,7 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         loading: str | None = None
         publications: list[str] | None = None
 
-    # tarav.breadcrumb 70b9905101eac9da4b5e4fab7ab0196b58d7f7ae1812e7d8c22d5ea3bfee3be6
+    # tarav.breadcrumb 70b9905101ea
     def __init__(self, *, entrypoint='SKILL.md', sources=(), files=None,
                  dependencies=(), loading=None, publications=None, root=None):
         """A skill built in code; `root` may stay unknown until it is placed."""
@@ -200,12 +200,12 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
                 'block': selected.records.to_record()}
 
     def loading(self):
-        # tarav.breadcrumb 59cbf4641ecead3861c7589cc4925175b947f7cbb3c2df4adbb1eabef3901e5e
+        # tarav.breadcrumb 59cbf4641ece
         return SkillReadingGraph(self, self.documents())
 
-    # tarav.breadcrumb 2ceb31c9cf7073c74811cdb0fa857cc9cf09d51c80b4c776c5785c49bd3e1691
-    # tarav.breadcrumb a751a7e31ab0fa605fefa90ae5d354f9c70250be88ab4a7024eefb094f29d08e
-    # tarav.breadcrumb 923a65026ef70a0de363e3265111f35eaf46390daf1e42c4d75888a117aeffb3
+    # tarav.breadcrumb 2ceb31c9cf70
+    # tarav.breadcrumb a751a7e31ab0
+    # tarav.breadcrumb 923a65026ef7
     class Checks(CheckProvider.Checks):
         def suite(self) -> CheckSuite:
             # keyed, so that an action knows which skill package detected it
@@ -224,7 +224,7 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
             *reading_checks(self.loading()),
         )
 
-    # tarav.breadcrumb b0bae46a04141e9db359a62ff88f12ccf785d462c83a64a33be8cb7f0610913c
+    # tarav.breadcrumb b0bae46a0414
     def _all_checks(self):
         """Every check of this package, the same for its suite and for `evaluate()`.
 
@@ -386,7 +386,7 @@ class SkwSkillsWorkflow(TaravWorkflow):
         return SKW_SKILLS_WORKFLOW_SHIP
     constitution = "Compile and inspect deployable SKW skills and their loading context."
 
-    # tarav.breadcrumb c03940fca432ca394b3ae2cc2ed6699cffdaa96186efaa11a94790027b056e6c
+    # tarav.breadcrumb c03940fca432
     @property
     def workflow(self):
         return CodeWorkflow()
@@ -401,7 +401,7 @@ def load_skill(root, *, registry: TypeRegistry[TaravObject]) -> SkwSkill:
     return depot
 
 
-# tarav.breadcrumb 6d845a3dd724e27d5cd388eb4da30b722ef0cbe70f9683ed09d6b7083038c4f9
+# tarav.breadcrumb 6d845a3dd724
 def skill_document(source, *, project=None, depot=".skw",
                    registry: TypeRegistry[TaravObject]):
     document = project_document(source, project=project, depot=depot, registry=registry)

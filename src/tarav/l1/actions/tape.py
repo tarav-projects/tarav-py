@@ -22,8 +22,8 @@ from tarav.l0.kernel import TaravClass, TaravObject, TypeRegistry, TypeShip, ent
 from .workflow import ACTIONS_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb 0da79fa1ca3deaca995671d88fe244f2ddcfe4b8a6d14faf689ef396f0598748
-# tarav.breadcrumb 68adbb4e9eecebaf5614c03047ee6b51ac2fc2e87abf18cdf36aa7cce50360a8
+# tarav.breadcrumb 0da79fa1ca3d
+# tarav.breadcrumb 68adbb4e9eec
 class TapeEntry(TaravObject):
     """One event on an action's tape: when it happened, and what its Type adds."""
 
@@ -120,7 +120,7 @@ class Clean(TapeEntry):
                 "/example": {"commit": "0" * 40, "clean": True}}}
 
 
-# tarav.breadcrumb 5144aff51cd9ae9bb4642468776a1364e8e8231112a422c5a8566850fc9f9dc0
+# tarav.breadcrumb 5144aff51cd9
 class ClosingAttempt(TapeEntry):
     """An operator or the loop tried an exit; its tests passed or did not."""
 

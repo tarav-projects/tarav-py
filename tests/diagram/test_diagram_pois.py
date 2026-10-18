@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# tarav.breadcrumb 4e11fb069eb91ffd415a438bd11e5f8d4da9df54a2d761736968bc3626305c14
+# tarav.breadcrumb 4e11fb069eb9
 
 import json
 import argparse
@@ -71,7 +71,7 @@ def test_diagram_uses_shared_poi_renderer(tmp_path: Path, monkeypatch: pytest.Mo
     assert "tarav context" not in output  # a printed POI points at no stored context
 
 
-# tarav.breadcrumb f9d73a04c65058c13ecb61dd49bfdfe6e1d728b2d1dc2eca6fa3f5b212cc61f6
+# tarav.breadcrumb f9d73a04c650
 def test_diagram_render_presents_and_retains_pois_in_text_and_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
 ) -> None:

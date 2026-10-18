@@ -13,7 +13,7 @@ def _python(source: str) -> subprocess.CompletedProcess[str]:
                           capture_output=True, text=True, check=False)
 
 
-# tarav.breadcrumb ef4fff2d8e46c0d99d286f6bbda3c6fa6e1023bcb54fd1451d2a8e8bdc2b348e
+# tarav.breadcrumb ef4fff2d8e46
 def test_plain_import_errors_with_the_run_route() -> None:
     result = _python("import tarav")
     assert result.returncode != 0

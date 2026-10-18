@@ -15,12 +15,12 @@ Non-goals: changing detection, granting permanent certainty, rescheduling mechan
 ## Design narrative
 
 A blessing is an attributed, revisable statement that a still-detected POI needs no action for now. It does not remove the sensor signal. The user distinguished this from a mechanically resolved POI: if the check no longer detects “file missing” after the file is created, there is nothing to revisit. For a still-detected judgment call, present a compact standing with available score-vector entries, prior review count, last review time, and a next-attention signal. The presentation layer can select a bounded attention window for an agent; direct inspection can always reveal all detections and their blessing history.
-<!-- tarav.breadcrumb 19031ee131f3658f4e3711951207c9f02dda88958614e97402b291eaad619195 -->
-<!-- tarav.breadcrumb 5c64033a04859cdb946969626b7566e81402048213f9e024fe1cd1ac74eb2e65 -->
+<!-- tarav.breadcrumb 19031ee131f3 -->
+<!-- tarav.breadcrumb 5c64033a0485 -->
 
 Use an intentionally simple first policy, with parameters chosen in implementation after inspecting consumers: a first blessing defers briefly; later distinct reassessments may extend deferral within a cap; elapsed time and weak/missing assessment make the POI due again. Do not treat five correlated agents or repeated votes on one faulty source as independent proof. Retain each decision. A changed POI situation follows existing Tarav identity rules and must not inherit old standing accidentally. Distinguish score of support from confidence/sampling of that score. Policy consumes the vector or selected named assessments; it must not convert the whole vector into a canonical Tarav-wide truth scalar. Existing consumers may retain their present binary standing as a compatibility view until deliberately adapted; the new attention view is separate.
-<!-- tarav.breadcrumb dbb2c2d659866f8ad012ddfb0ee1cddb526fb70cd7eaa038ed0d836f2932d015 -->
-<!-- tarav.breadcrumb 3f4a9dbdb726c09ebc3a41832afaff726b83402599d636bca0f5fd9c3fd2e203 -->
+<!-- tarav.breadcrumb dbb2c2d65986 -->
+<!-- tarav.breadcrumb 3f4a9dbdb726 -->
 
 The user said blessings “do not make the POI disappear,” that trust can increase with work and time but “should never be a 100% trust,” and proposed aging and bounded resurfacing to balance agent resources. They explicitly disliked “priority” as the primitive: the point is whether prior judgment warrants deferring attention.
 

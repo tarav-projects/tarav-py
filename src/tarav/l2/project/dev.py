@@ -85,7 +85,7 @@ def _pytest(root: Path, arguments: tuple[str, ...] = ()) -> dict:
             "summary": lines[-1] if lines else ""}
 
 
-# tarav.breadcrumb 10a6704ec38a59d5b0c7192e4d0759df90e57d0356f0f31db97b4f29d286c53e
+# tarav.breadcrumb 10a6704ec38a
 class PyTestCheck(Check):
     """The tests of one file as pytest ran them: one POI per test that did not pass.
 
@@ -137,7 +137,7 @@ class PyTestFileSuite(CheckSuite):
                           name="Tarav.Project.Dev.PyTest.File", workflow=PROJECT_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 39431af614faa314ce80d70ea47cb8ee80bdb2bc2c9a11add96468927082a80b
+# tarav.breadcrumb 39431af614fa
 class PyTestSuite(CheckSuite):
     """A folder's pytest tests: pytest runs once, and each test file is a suite of its own.
 
@@ -190,7 +190,7 @@ class SkillLoadCheck(Check):
         return CheckResult(self, status="incomplete", reason=f"{self.skill.name}: {self.reason}")
 
 
-# tarav.breadcrumb 50c81a4342d120bd04f087a5730da94f160ab922273343bb113503bc9f580cbb
+# tarav.breadcrumb 50c81a4342d1
 class PythonPackageProject(Project):
     """A folder that develops a Python package; its first check is its test suite."""
 
@@ -199,15 +199,15 @@ class PythonPackageProject(Project):
         return TaravClass(target=cls, id=TypeShip("a9433958-371f-473d-bfdb-9a90f5d4c682"),
                           name="Tarav.Project.PythonPackage", workflow=PROJECT_WORKFLOW_SHIP)
 
-    # tarav.breadcrumb 3e2e1259e794f34ab722d40e3c964d52b00420a699c0d5da986870bcc1fbcb43
-    # tarav.breadcrumb deb8671fb2a6493d1541d891423fd388109ce31d67e9811515cc80828f5b4660
+    # tarav.breadcrumb 3e2e1259e794
+    # tarav.breadcrumb deb8671fb2a6
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
             return CheckSuite([super().suite(), PyTestSuite(self.obj.root),
                                *self.obj._poi_contract_checks()], name=self.obj.name,
                               repositories=self.obj.repositories())
 
-# tarav.breadcrumb d72b348467b8de83b8b8de698550a5382b36011821f0192de499492b38bb2e7d
+# tarav.breadcrumb d72b348467b8
     def _poi_contract_checks(self) -> list[Check]:
         """Where the POI base Type itself is developed, check the POI contract."""
         from tarav.l1.checks.poi_contract import POIRenderCoverageCheck, defined_under

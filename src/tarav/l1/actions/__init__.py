@@ -48,7 +48,7 @@ class SkillLink:
         return {"skill": self.skill, "path": self.path}
 
 
-# tarav.breadcrumb b8628a0e0a514433769345b9a4179f65f995d09f4057318e3af577edafd1bfbd
+# tarav.breadcrumb b8628a0e0a51
 class Closing(TaravEntity, FileRecord):
     """The record a closing path leaves on its run: which exit, when, and taken by whom.
 
@@ -100,8 +100,8 @@ class Closing(TaravEntity, FileRecord):
                     "at": "2026-10-11T00:00:00+00:00", "by": OPERATOR}
 
 
-# tarav.breadcrumb 172bd4f5f4e23e808f5494a5f027e73f698c95cde8cb01634728d6d12ff891df
-# tarav.breadcrumb 617b0622a666a1e907b34944e42378b34d9fdff085f1af740f310d6cbe468309
+# tarav.breadcrumb 172bd4f5f4e2
+# tarav.breadcrumb 617b0622a666
 @dataclass(frozen=True)
 class Exit:
     """One way a step can close: who may take it, and the Type of the record it leaves.
@@ -140,7 +140,7 @@ class ChecksUpdate:
     memo: dict = field(default_factory=dict)
 
 
-# tarav.breadcrumb 6d5ab498c22e8990eeb3104cce5e7dca21024f8aa62fc4e951e0c9f14056ff20
+# tarav.breadcrumb 6d5ab498c22e
 class Action(TaravType):
     """Root of every Action Type. It prescribes only the link to its instructions."""
 
@@ -161,8 +161,8 @@ class Action(TaravType):
         return None
 
 
-# tarav.breadcrumb 9653fbc6c09471fe85885cd12a4a103d86fba2aba9efab0ac507c2dd94cd3942
-# tarav.breadcrumb 211a93166d7c38a5177f8e8030e591f12be1bd619048d46bf285556f282d24e1
+# tarav.breadcrumb 9653fbc6c094
+# tarav.breadcrumb 211a93166d7c
 class StepAction(Action):
     """One step of work between an opening test and its exits.
 
@@ -245,7 +245,7 @@ class ActionRun(TaravEntity, FileRecord):
     def _to_record(self):
         return {**super()._to_record(), **self.data}
 
-    # tarav.breadcrumb 252e69173cb617f89ab59fa55ff0fd91b32b969c21befed08b2c490baf1c3a4b
+    # tarav.breadcrumb 252e69173cb6
     @property
     def state(self) -> str:
         return CLOSED if tape.last_status(self)["type"] == tape.CLOSED else RUNNING
@@ -353,7 +353,7 @@ class ActionRunStore:
             raise TypeError(f"Record {key} is not an action run")
         return loaded
 
-    # tarav.breadcrumb 83a58759d5febdca43d99b02dbd6392dd01a85053c7fe4f266a7af3bce768c5b
+    # tarav.breadcrumb 83a58759d5fe
     def list(self, *, state: str | None = None, exit: str | None = None,
              project_root: str | Iterable[str] | None = None) -> list[ActionRun]:
         """Runs, newest first, optionally by state, exit or the Projects they name.
@@ -431,7 +431,7 @@ def close_run(action: StepAction, run: ActionRun, exit: str, *, by: str, at: str
     return record
 
 
-# tarav.breadcrumb 62e07db35eaffe474b99d33dde9b515e77434163e739c5cd378ad6848eca3465
+# tarav.breadcrumb 62e07db35eaf
 def axes(run: ActionRun) -> dict[str, str | None]:
     """The status of a run as separate axes: the situation, the action, the closing.
 
@@ -462,7 +462,7 @@ def _results(checks: Iterable[Check]) -> tuple[bool, list[dict]]:
     return passed, rows
 
 
-# tarav.breadcrumb b28e1fd55c6190c26e3501773aa9f51ac39cc40e790570ff36a2e3e1e801685b
+# tarav.breadcrumb b28e1fd55c61
 class StepRunner:
     """Start, operate and close runs of Step actions.
 
@@ -560,7 +560,7 @@ class StepRunner:
         self.runs.save(run, f"Exit {exit} attempted on run {run.id}")
         return run
 
-    # tarav.breadcrumb ba6c7adbc1a559e7a2e2c49ed9032edd4edf4ae1565ab448b5bc9018932e2496
+    # tarav.breadcrumb ba6c7adbc1a5
     def sweep(self) -> list[ActionRun]:
         """Ask every running run whether an exit the loop may take is met; close those.
 

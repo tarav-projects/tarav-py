@@ -42,50 +42,50 @@ Follow-up in another repository:
 The status hint named a POI and a view. The interface must be more action
 centric: POI actions are one type of action, and what the status lists are
 open actions. An `--id` should find the object, an action or a POI.
-<!-- tarav.breadcrumb 0d22dad7770b8ba03ed1e99e4cd26179d90ca4999180f18dd249758f630df7cb -->
+<!-- tarav.breadcrumb 0d22dad7770b -->
 
 The context workflow is independent and receives a contextualizer, a view
 for instance. The status only promotes how the agent can go further.
-<!-- tarav.breadcrumb f7c15836181bcd323b67e2d110487a5e9c156f023ea978c4e967b9842b8db947 -->
+<!-- tarav.breadcrumb f7c15836181b -->
 
 It is useful to say which system consumes the POIs. A linter can use the POI
 system without hooking into the Project's status; there the POI has another
 escalation path, maybe only printing. The Project status is closely
 integrated with the Project's actions and checks, and its checks escalate to
 actions by design.
-<!-- tarav.breadcrumb 9feb4d22d4029606fc0d164d0abf55817b3a6fec9967b4b0b6fbac85053f62a1 -->
+<!-- tarav.breadcrumb 9feb4d22d402 -->
 
 The user then questioned printing as a path of its own: what is the point of
 a POI if not to demand action, and should all execution not go through
 actions, which are how agents are harnessed on specific steps.
-<!-- tarav.breadcrumb e1d4a84132e72b2297de15cb3a0d94f27ed6f227117693666ed1af596bfd168a -->
+<!-- tarav.breadcrumb e1d4a84132e7 -->
 
 Settled as fundamental: a POI is a flag, a notification. It can be escalated
 by starting an action; actions can also start without a POI; actions are the
 unit of work in Tarav. An action needs a place to be registered and a way to
 end, which a bare POI does not have. Printing is only how a person looks at
 checks directly.
-<!-- tarav.breadcrumb bfb0c99206342c62938e53c7ee65830ac18438e9d86952e8ac7e29bbbe3e31ac -->
+<!-- tarav.breadcrumb bfb0c9920634 -->
 
 The POI is the interface between detecting and working. The store of
 reported POIs must go, at least for now: make a simple system first and
 test what is really needed. A POI is momentary and owns nothing.
-<!-- tarav.breadcrumb 90cdfb857d9ae708025bdec1e887f214101dc47ae05fbb18487ce412d598566a -->
+<!-- tarav.breadcrumb 90cdfb857d9a -->
 
 `POI.throw()` stays: it is conceptually clean. Blessing through POIs and the
 attention report are probably to be removed from POI. A Type can still
 declare capabilities: the caller triggers one, but an object can say what
 it can do.
-<!-- tarav.breadcrumb 406f09ed039a104a3e3d64748719cfccf5967986fe0a7ce8c1380c6e401293e9 -->
+<!-- tarav.breadcrumb 406f09ed039a -->
 
 Complex things such as blessing and filtering are modeled only at the level
 of a Project or a similar system, because they integrate several workflows
 and primitives. Objects may hold parts of the integration, but it is
 managed by something larger and well defined: the Project, for now.
-<!-- tarav.breadcrumb eae6d230e2d5fb52fcc24760e607991b78b44bc2a8029c812158960c05607949 -->
+<!-- tarav.breadcrumb eae6d230e2d5 -->
 
 Commit the pending work, then write this request and build it.
-<!-- tarav.breadcrumb b37bcfd5bcb6acbe7a24013142116005ba5dc119eb79d04f34644b2de6c18cc9 -->
+<!-- tarav.breadcrumb b37bcfd5bcb6 -->
 
 ### Current behavior (inspected)
 

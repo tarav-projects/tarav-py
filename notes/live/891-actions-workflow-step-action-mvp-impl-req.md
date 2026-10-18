@@ -27,25 +27,25 @@ request 888's wider scope, which this request supersedes in its minimal part.
 Design the action workflow and let the Operator Context emerge from it.
 Blessing a POI is an action: a Type represents what blessing a POI means, and
 holds state and validation tests.
-<!-- tarav.breadcrumb a42bc22a73f145c8ad766ae3322831d466d7b066bc9ec0c86fb39138c4976319 -->
+<!-- tarav.breadcrumb a42bc22a73f1 -->
 
 There is a blessing action that is the root of all actions aiming to bless.
-<!-- tarav.breadcrumb f7f9fd56d4ce984207fc1512ca61718effd8c9518ffbe2db1ac7ceb4ac968f84 -->
+<!-- tarav.breadcrumb f7f9fd56d4ce -->
 
 POIs, checks, situations and now actions are typed objects that relate to
 each other; actions can be narrowly specialized, for instance to bless only
 one Type of POI. Agents interact through well-defined objects, with checks to
 detect deviation early.
-<!-- tarav.breadcrumb 4d66d491eadfd09438bb456fc37e1235180e11fba1787c8cf2e1abf4bcb91e33 -->
+<!-- tarav.breadcrumb 4d66d491eadf -->
 
 Not everything must be an action, and nothing says work must be action-free
 either. Tarav is expressive: it provides elemental primitives and packaged
 bundles, and a bundle may require its parts, as a `CheckPOI` requires its
 check.
-<!-- tarav.breadcrumb 1e222280e0441a6196ef0eb9a23a4433f468370f24368fce776307eac52b6526 -->
-<!-- tarav.breadcrumb a4050fcd1e8042431a92063957ebc9b9b9e95ed9136fdeb2fed77cf59ea28ed4 -->
-<!-- tarav.breadcrumb d6a4e8ca01ef8de4d21e98a1e85294058d7e9c97c3299e39df212323b68d6745 -->
-<!-- tarav.breadcrumb 47813e78cfef9a08c878faf6ce2fbdc101ceab0e3b235847e24b873c7aa2d4c2 -->
+<!-- tarav.breadcrumb 1e222280e044 -->
+<!-- tarav.breadcrumb a4050fcd1e80 -->
+<!-- tarav.breadcrumb d6a4e8ca01ef -->
+<!-- tarav.breadcrumb 47813e78cfef -->
 
 The action workflow starts with base Types that have almost no
 functionality. An action has an identity as a Type and as an instance, like
@@ -54,44 +54,44 @@ stopped, stopped with an error. Every action is linked to a skill, or a
 subpath inside one, where the agent's instructions are; starting an action
 tells the agent which to load. It should be more minimal than Iterante:
 starting tests, the agent's work, a validation test.
-<!-- tarav.breadcrumb c93cd0a6f189ffa924e30bab44b23e0417049223f2aa44494d0d8449bf90db83 -->
+<!-- tarav.breadcrumb c93cd0a6f189 -->
 
 The first action to implement is a Step action: it closes a piece of the
 agent's work into a step, with an initial test and closing tests. "Batchy"
 (typed input, typed output, exit code) is a capability an action may have,
 not the name of the first action.
-<!-- tarav.breadcrumb 5ee0a71ec05c2b3b7d5e25c8c8aeb674c94faef15ed7c6d8efdc51faaeb3b6c7 -->
+<!-- tarav.breadcrumb 5ee0a71ec05c -->
 
 A Step is given an input object that lives in the Operator Context. Its
 closing tests are typed and can be Checks. It has an output object so steps
 can be stacked. A step may be as large as wanted.
-<!-- tarav.breadcrumb a450d0d6e219467c23cb54ec4651e5a7e234ebab051bd120e64590463574405f -->
+<!-- tarav.breadcrumb a450d0d6e219 -->
 
 On the Operator Context: objects are produced for whatever consumer needs
 them, not one per session; they need not be immutable, and a consumer that
 cares detects changes with a hash. It is a place where agents put the typed
 arguments of pipelines.
-<!-- tarav.breadcrumb f524a3115742f6ebe62cb8ea5f789781414055f66f05c76471130e40bea00552 -->
-<!-- tarav.breadcrumb 8002498e0ecfc3700656099231480ef91dfbd9fbbb5fa02bc6820368d17019e9 -->
-<!-- tarav.breadcrumb 97f18625aadce047a670f2583a2889c05d1f40caf6f8e4dbda021be7f8dd6852 -->
+<!-- tarav.breadcrumb f524a3115742 -->
+<!-- tarav.breadcrumb 8002498e0ecf -->
+<!-- tarav.breadcrumb 97f18625aadc -->
 
 The agent puts the starting input there and the workflow takes it from there:
 the taking is under Tarav's control, so it can be checked and snapshotted.
 Execution is stored elsewhere, and sessions working on an action are appended
 to it. An object may name a Project, a session, both or neither.
-<!-- tarav.breadcrumb d5563cd638626623a15e096fcc76e3b2eb8b6e49d7da920d73f399cd827d6434 -->
-<!-- tarav.breadcrumb b43d2fa6a9cd7c74484751fbc46b23fc7cda9d98391f4a0298b2779cd0d18ae6 -->
+<!-- tarav.breadcrumb d5563cd63862 -->
+<!-- tarav.breadcrumb b43d2fa6a9cd -->
 
 Everything is tracked and centralized: Tarav provides standard places for the
 Operator Context and for the actions' durable data, using Records and the
 Record Registry with its Git configuration, outside the Project's folder.
-<!-- tarav.breadcrumb 7bfe7b5d4cd437155c9d453291b2770a08026bba593132feb6539669890766bb -->
-<!-- tarav.breadcrumb 10661652faf84dda8d562b80e254bdd0b2046944e00d84366ec3ac6f83204df1 -->
+<!-- tarav.breadcrumb 7bfe7b5d4cd4 -->
+<!-- tarav.breadcrumb 10661652faf8 -->
 
 The User asked for a minimal viable product built with common sense, tried on
 one of the test workflows with POI Types and blessings controlled by an
 action.
-<!-- tarav.breadcrumb 30bf9beac924947e02da6e006c011adb3efc9bd36024d2404caa5e8b29ff9e82 -->
+<!-- tarav.breadcrumb 30bf9beac924 -->
 
 ### Current behavior (observed 2026-10-09)
 

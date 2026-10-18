@@ -22,27 +22,27 @@ Non-goals:
 ### Why
 
 Reviewing today's bootstrap POIs showed that `tarav check` prints one-line summaries and an identity hash that no command accepts; the full record was only reachable by writing a script. The User took this as evidence that any presentation of data must give the agent a clear way to escalate to full context, because an agent should not act on limited context, and that guards may come later.
-<!-- tarav.breadcrumb c91750dd57a92f4f60ebfb88c0daec7eb947cccd32ff273984675a17a7ca0a1e -->
+<!-- tarav.breadcrumb c91750dd57a9 -->
 
 The User wants this centralized instead of each surface implementing its own expansion, with the check output advertising it, and wants the connection itself to be checkable: when it is missing, that is a POI.
-<!-- tarav.breadcrumb d07ce6a95ac583d38948b5237833bbaf2352ebf1f9079f4167a87881a9aedada -->
+<!-- tarav.breadcrumb d07ce6a95ac5 -->
 
 ### Decisions by the User
 
 It is not a POI-only command. An agent holding an identifier asks Tarav for its context through one common entry point. This is the existing `.context` system: the CLI finds the identity and lets the agent navigate, and search may be what finds it. The context can be qualified, so that a surface which showed the identifier can recommend the view suited to how the agent arrived there.
-<!-- tarav.breadcrumb 1e90a92dfe28965823e9fa95072b1702e5690743f132cd709e4d5ed72e53be52 -->
+<!-- tarav.breadcrumb 1e90a92dfe28 -->
 
 The request is a query object, similar to Search: by default an identifier is looked up as the identity of something, with a typed and extensible query system that can start basic. It hooks into `.context`; scripts and the CLI are two doors to the same mechanic.
-<!-- tarav.breadcrumb 6df009889260c62d9ec18aaef7f1d3ee1b8ec53760d78f8122000de7cdd2c13f -->
+<!-- tarav.breadcrumb 6df009889260 -->
 
 The qualifier is a context view type. For POIs the life cycle is: the POI is shown with its identifier and a small message, and the agent is told explicitly that before doing anything with any POI it must check its context, and how.
-<!-- tarav.breadcrumb b2b8ae97c2c4b859279a7280ab1441488e3044fed1b8e8afc7f320aacd9ad89d -->
+<!-- tarav.breadcrumb b2b8ae97c2c4 -->
 
 The instruction is stated once per output, as a header or footer, with the explicit command using placeholders, usage examples, and a prompt to read the command's help.
-<!-- tarav.breadcrumb 6f5fca28e62ce06d5c6a7ce040b650ce8086a4963a319ef02c29f6637cb4174d -->
+<!-- tarav.breadcrumb 6f5fca28e62c -->
 
 Tarav CLI arguments are always explicit key/value, so the identifier has a key. The view needs a clearer name than "poi": it is a POI that has been presented. Context may be added to POI instances and classes as needed. None of the POIs currently reported is to be repaired. The work follows the implementation Develop path.
-<!-- tarav.breadcrumb 535e09c3f02fb5d5be89756f0ffc00356e0e5c1d4d72562f41247da685a7afb9 -->
+<!-- tarav.breadcrumb 535e09c3f02f -->
 
 ### Current behavior (inspected 2026-10-08)
 

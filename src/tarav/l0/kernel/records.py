@@ -103,8 +103,8 @@ class TaravType:
             )
         check_namespace_composition(cls)
 
-    # tarav.breadcrumb 0989202cb613e8944a0ef489b8da99f37acfdd9570fe39d836a30d115407f322
-    # tarav.breadcrumb 057f6334bd2a0439741a54d218d08b4452b5c690ebc72fea3b885272ff3b0b4c
+    # tarav.breadcrumb 0989202cb613
+    # tarav.breadcrumb 057f6334bd2a
     class Context(NamespaceBase["TaravType"]):
         """Build an object's context, or open an Explorer over it.
 
@@ -167,7 +167,7 @@ class TaravType:
         return result
 
 
-# tarav.breadcrumb 925bef28324b122a6586a10881867798f2cc80325f6349389a7752be8fab96d9
+# tarav.breadcrumb 925bef28324b
 class _RecordsDescriptor:
     """Bind one selected Record namespace to an object or its concrete class."""
 
@@ -203,14 +203,14 @@ class TaravObject(TaravType):
 
     class Records(NamespaceBase["TaravObject | type[TaravObject]"]):
         """Record projection and loading for one object or concrete class."""
-        # tarav.breadcrumb 515f098669710f4039af3cc0e7aa358bb097ab1bce7d5a6451ae8ef3850697dc
-        # tarav.breadcrumb 3798a3aa52c91ae8a762c4d0ac4d26a737636fcdf02723d934665e30dc13367e
+        # tarav.breadcrumb 515f09866971
+        # tarav.breadcrumb 3798a3aa52c9
 
         @property
         def _owner(self) -> type[TaravObject]:
             return self.obj if isinstance(self.obj, type) else type(self.obj)
 
-        # tarav.breadcrumb 2c1992f27b7e7d4a5654511f96daae71ec6ac32d3fc3df264a3776ec5f1b82e5
+        # tarav.breadcrumb 2c1992f27b7e
         def validate_record(self, value: object) -> BaseModel:
             """Validate without transforming supplied JSON data."""
             record = _json_object(value)
@@ -226,7 +226,7 @@ class TaravObject(TaravType):
                 )
             return model
 
-        # tarav.breadcrumb 195ac6bd926aadf2a3e426441e7834a38b9d139ae284bc1a6f282c16d096789d
+        # tarav.breadcrumb 195ac6bd926a
         def record_example(self) -> dict[str, object]:
             """Return a minimal storage-independent example for the bound Type."""
             return {"type": entity(self._owner).name}
@@ -239,7 +239,7 @@ class TaravObject(TaravType):
             self.validate_record(record)
             return record
 
-        # tarav.breadcrumb fe4ebb28de64e5b877ab6930e1e8e60757b1348684e02906a633c888afebe087
+        # tarav.breadcrumb fe4ebb28de64
         def from_record(self, value: object) -> TaravObject:
             """Construct the bound Type through its hook and retain the Record."""
 
@@ -363,7 +363,7 @@ class TaravEntity(TaravObject):
             name="Tarav.Entity",
         )
 
-    # tarav.breadcrumb c9406d280c0ed391e7dd1e3383dcb2fccc11d0035a328fc08094b3d62efbef0e
+    # tarav.breadcrumb c9406d280c0e
     class RecordInterface(TaravObject.RecordInterface):
         id: Ship
 
@@ -386,7 +386,7 @@ class TaravEntity(TaravObject):
     def _to_record(self) -> Mapping[str, object]:
         return {**super()._to_record(), "id": str(self.id)}
 
-    # tarav.breadcrumb 7bee6ef26e7535506b183141e1c64a350158086a1bac36fd6fecf7e5724bb93d
+    # tarav.breadcrumb 7bee6ef26e75
     def ships(self) -> tuple[Ship, ...]:
         return (*super().ships(), self.id)
 

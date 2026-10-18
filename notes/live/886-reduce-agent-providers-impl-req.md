@@ -20,11 +20,11 @@ how the three kept providers behave; migrating retained data.
 
 The User wants fewer supported providers: Claude, Codex and Copilot. The rest
 are not in use, introduce noise, and can be recovered from Git history.
-<!-- tarav.breadcrumb 6a50dbfe1601692271b87befd14493f4930e32fe1d82bb767000850355a6d643 -->
+<!-- tarav.breadcrumb 6a50dbfe1601 -->
 
 This is also the first step toward an explicit Agents workflow (request 887):
 the code to organize becomes smaller.
-<!-- tarav.breadcrumb 731d8b251682bf3a655734a729df80880571e224e53ecbd2bce5817f8ab693be -->
+<!-- tarav.breadcrumb 731d8b251682 -->
 
 ### Current behavior (observed 2026-10-09)
 
@@ -79,7 +79,7 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 
 - Designed 2026-10-09. Not executed.
 - Executed 2026-10-09 at the User's request.
-<!-- tarav.breadcrumb 39a437c8efcc6c9b0b7314a8f440e285005d205cf832531753bbcfbf9ab3f44d -->
+<!-- tarav.breadcrumb 39a437c8efcc -->
 - Start checkpoint `d7cc634` (empty: the scope held no changes of this
   request). Baseline: 244 tests passed, Ruff clean.
 - Removed `src/tarav/l1/agent/providers/{gemini_cli,openclaw,opencode,pi}`

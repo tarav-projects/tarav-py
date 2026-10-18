@@ -3,7 +3,7 @@
 The Models backend is currently disconnected. `project.models.ls()` reads the
 Project marker, while `get()` and `main()` retain their intended paths and
 raise until Model resolution is restored.
-<!-- tarav.breadcrumb ba10a290f359faf092c50285d8be388af2adc8e98d990809fc6ce17b7466a285 -->
+<!-- tarav.breadcrumb ba10a290f359 -->
 
 `ModelsWorkflow` owns `Model`, `ModelShipRecord`, and `ModelEditionRecord`.
 Lines, Blocks, and Collections retain their own LinesWorkflow ownership.

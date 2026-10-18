@@ -17,8 +17,8 @@ and new documents, each with its place in the workspace tree. Workspaces live
 in `~/Documents/tarav/workspaces/`. The Git workflow gains worktree
 operations, the workspace workflow uses them, and the Project workflow opens
 an interface to create and list workspaces for a project.
-<!-- tarav.breadcrumb 43e4f013b52406c442653d418d9f7705a41e25b4a6e58c8afd316a585419c46e -->
-<!-- tarav.breadcrumb 2b53f5c83a365421ac704d7e19f544e8303c269628a9f9ec8c1212d6f57e6498 -->
+<!-- tarav.breadcrumb 43e4f013b524 -->
+<!-- tarav.breadcrumb 2b53f5c83a36 -->
 
 Non-goals: the self-improvement loop itself; merge-back tooling; running a
 candidate Tarav from a workspace (environment and data-root isolation);
@@ -33,7 +33,7 @@ The User wants a basic self-improvement system in Tarav and sees isolated
 working copies as one of its foundations: Tarav provides Git workflows tied to
 a project, Agents create working copies outside the project under the Tarav
 folder in Documents, and work there.
-<!-- tarav.breadcrumb 71460fe8a6e0bf937ba747061503dfbe05785583644e0d216b216122d6ebbbf9 -->
+<!-- tarav.breadcrumb 71460fe8a6e0 -->
 
 A bare worktree depot is not enough because a project can be an umbrella
 folder holding several repositories. The User moved to a larger unit, the
@@ -42,19 +42,19 @@ description of the initial condition that created it. Agents work there and
 commit to the repositories. The complex work is moved up to the Agent and
 happens only at merge-back: adding new Breadcrumb locations and any other
 migration. Merging is allowed to cost computation.
-<!-- tarav.breadcrumb d28a062fa3680e64bf64a9a95d2fd6e2137830b9bf33614864d66d8c6a8b6203 -->
+<!-- tarav.breadcrumb d28a062fa368 -->
 
 Workspaces are kept for a while after merging, so migration leftovers found
 later can be checked against them. They are removed only when space is needed
 or during a garbage collection.
-<!-- tarav.breadcrumb a374be907e14f814693994fc840785d0d346119cf71dad7f8f8574d6e4fd00aa -->
+<!-- tarav.breadcrumb a374be907e14 -->
 
 ### Git is a caller interface
 
 Tarav does not duplicate Git machinery. It models the minimum the workflows
 need, and every Git operation is a call to the user's `git` as configured in
 the folder. Tarav does not touch independent configuration.
-<!-- tarav.breadcrumb 8128ce45e4680f4a681b406403d89239f6485d2154a55735c4bb29012fed18e4 -->
+<!-- tarav.breadcrumb 8128ce45e468 -->
 
 Inspected: `GitRepository` in `src/tarav/l1/git/repository.py` already
 calls `git -C <repo>` through subprocess and has no worktree operations.
@@ -65,7 +65,7 @@ The manifest is JSON, a proper Tarav object with identity, not a section of
 `AGENTS.md`. It describes the initial configuration precisely enough to set
 the workspace up, reset it, or clone it into another workspace. It also gives
 the tree structure: where each copied file and each worktree goes.
-<!-- tarav.breadcrumb 843a06c68a6d4467808d08f81d059968ce712251bced14b092fc123def81a3e5 -->
+<!-- tarav.breadcrumb 843a06c68a6d -->
 
 Four entry primitives:
 
@@ -75,19 +75,19 @@ Four entry primitives:
 - worktree of a repository, defined precisely (repository, commit, and what
   else defines the worktree), so that checks can verify it exists;
 - new document.
-<!-- tarav.breadcrumb d69c55fa2dfad7bc5154eb6c5edf87ace1ceb36c7c8aa864b86571c9bcf42fc1 -->
-<!-- tarav.breadcrumb eebe42647b200bc682642df39d0574259654362f8046060ece23077c1bc0b7ff -->
+<!-- tarav.breadcrumb d69c55fa2dfa -->
+<!-- tarav.breadcrumb eebe42647b20 -->
 
 A symlink is used when the workspace should react to changes of the file. Its
 hash at creation is still stored, only as information for whoever wants to
 know what changed.
-<!-- tarav.breadcrumb a68e96f96a0915f1fdd90d44171bfc973a59b56c4331d6878670052bed6475a6 -->
+<!-- tarav.breadcrumb a68e96f96a09 -->
 
 The description is split in two files. The manifest says how a reset creates
 the workspace. A second file describes the last reset: the hashes and other
 initial conditions actually found. This is a minimal provenance
 infrastructure.
-<!-- tarav.breadcrumb 32f832ae4780b2ce5d8a94e30d74b9b607cda66ee5290c48ebf05d1e3ecaf90a -->
+<!-- tarav.breadcrumb 32f832ae4780 -->
 
 Agent proposal: the manifest is a recipe without observed state, so a
 worktree entry may name a branch and the setup record pins the commit it
@@ -101,7 +101,7 @@ of a new document lives in a seed folder beside the manifest.
 A workspace may carry documentation in `AGENTS.md`. A small vocabulary of
 states, such as active or closed, gives basic filtering. Nothing more complex
 is wanted.
-<!-- tarav.breadcrumb 27a60ffd4e85fe41473d1d1d868d4816ec4c6ea13a421cdcbabbf14994e977d0 -->
+<!-- tarav.breadcrumb 27a60ffd4e85 -->
 
 Agent proposal: the JSON manifest owns status; keep the existing values
 `open`, `harvested`, `abandoned` and the `extracted` field. `AGENTS.md`
@@ -112,14 +112,14 @@ becomes prose that points to the manifest.
 Real Git worktrees are required, so that a project or a set of projects can
 be worked on independently. The workspace must have checks, for example that
 its worktrees actually exist.
-<!-- tarav.breadcrumb 1b1cecddf61c816382f096e88fb924c53af25c3d14f929ea36b14b4f179307a4 -->
+<!-- tarav.breadcrumb 1b1cecddf61c -->
 
 The August rule that nothing stable may reference a path inside a workspace
 no longer holds as a prohibition. Stable-to-stable references remain a goal.
 A reference into a workspace is allowed and raises a reminder POI: link it
 properly when you finish. Tarav must breathe and stay open; it cannot be a
 prison that adds friction to development.
-<!-- tarav.breadcrumb 8217932fae1d18f5fb07b93f6a09129dacf06ede9959024a39a7ea5b652fab87 -->
+<!-- tarav.breadcrumb 8217932fae1d -->
 
 Agent proposal, checks through the existing Checks workflow, each a POI and
 none blocking: a worktree entry missing on disk or not registered in its
@@ -137,13 +137,13 @@ list workspaces. Project access is an interface the Project workflow opens
 onto the workspace workflow, an integration between two independent
 workflows, for organization: a project can create workspaces and be aware of
 those created under its link.
-<!-- tarav.breadcrumb 10c76e9c3462aa5f8a9d929ae79ff100887dc2e59545e7bd3d9c180e7e7b0a96 -->
-<!-- tarav.breadcrumb b6a478f9f103b32f4feff02f9cd5e2e0513cff05efc2d97b46e7fad5b2bbfd47 -->
+<!-- tarav.breadcrumb 10c76e9c3462 -->
+<!-- tarav.breadcrumb b6a478f9f103 -->
 
 An earlier idea in the same discussion was a worktree depot with one folder
 per project, organized with core Tarav objects and exposed through a depot
 class inherited from the standard project base type.
-<!-- tarav.breadcrumb e969942f62105ab8fc7279a7fe6a544e784994b106cd5a85257f14bb9199e5f4 -->
+<!-- tarav.breadcrumb e969942f6210 -->
 
 Agent proposal:
 
@@ -232,7 +232,7 @@ hand raises a POI; removal through the depot leaves no stale registration.
   `WorkspacesWorkflow` and its Record/Check Types are registered in runtime.
   The configured suite passed 156 tests, Ruff passed, and the reinstalled CLI
   returned the new workspace help and an empty-depot listing.
-  <!-- tarav.breadcrumb 1681c692b9c97c3604719a0ccb14aee4e896329aa00145e150c3b4afb8853911 -->
+  <!-- tarav.breadcrumb 1681c692b9c9 -->
 - 2026-10-03 Product inlined capture: Git, Workspace, Project, runtime,
   architecture, guidance, and test surfaces received exact User-Turn
   Breadcrumbs. Audits passed; moved pre-existing positions in `AGENTS.md`,

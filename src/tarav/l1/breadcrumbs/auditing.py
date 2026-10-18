@@ -289,7 +289,7 @@ class BreadcrumbPositionUpdated(NotificationPOI):
                           name='Tarav.Breadcrumbs.Audit.PositionUpdated', workflow=BREADCRUMBS_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 43e2d650575b47a3589da47e2f062ae65d74c9238883b59137993caa52c4f0fd
+# tarav.breadcrumb 43e2d650575b
 class BreadcrumbAuditCheck(Check):
     """Run the owning workflow's audit and report its bounded concerns."""
 
@@ -325,7 +325,7 @@ class BreadcrumbAuditCheck(Check):
         ))
 
 @dataclass(frozen=True, slots=True)
-# tarav.breadcrumb f30f87cf9b4f99e5814636176c19237fd190cd53e646284c2c3430dbfcf6cfe6
+# tarav.breadcrumb f30f87cf9b4f
 class BreadcrumbAuditResult:
     context: BreadcrumbAuditContext
     workflow: str

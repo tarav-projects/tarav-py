@@ -20,8 +20,8 @@ from .harness import ProjectHarness
 from .runner import ProjectLaunchConfiguration, ProjectRunnerError
 
 
-# tarav.breadcrumb 21a58e45c152521ac93f0ff0957d825ba966f6fd39858553439d7b6cc6527828
-# tarav.breadcrumb a36e9974ecedf7230bd7a4bf01d17a42fc2eec20a81ae33048e398a1403345a7
+# tarav.breadcrumb 21a58e45c152
+# tarav.breadcrumb a36e9974eced
 class RootProject(Project):
     """A folder whose Projects are listed children; its checks are theirs.
 
@@ -62,8 +62,8 @@ class RootProject(Project):
     def children(self) -> tuple[TaravProject, ...]:
         return tuple(self.child(relative) for relative in self.child_paths())
 
-    # tarav.breadcrumb fce5f1a0129b44b625e1de501793625ea4f9b2d0778224beb59c68e5a28fd8c9
-    # tarav.breadcrumb 2b6fe56e6a9feeb5ea9ac5ce7cd3d4036cda1f0c9e630e4cd823cfc6af0e3a1f
+    # tarav.breadcrumb fce5f1a0129b
+    # tarav.breadcrumb 2b6fe56e6a9f
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
             """The root's checks and, in the listed order, those of every child."""
@@ -75,7 +75,7 @@ class RootProject(Project):
                 name=self.obj.name, repositories=self.obj.repositories(),
             )
 
-        # tarav.breadcrumb 4b1c6c97e9897f50cef03fe30204629ef05594185c36dc0c472ac32a121f2e99
+        # tarav.breadcrumb 4b1c6c97e989
         def own(self) -> CheckSuite:
             """The root's checks: its own, and one for each child that does not load here."""
             return CheckSuite(
@@ -102,7 +102,7 @@ class RootProject(Project):
             launch = ProjectLaunchConfiguration.from_path(path)
             if launch.environment != Path(sys.prefix).resolve():
                 return check
-            # tarav.breadcrumb cb92d76e1f46320d091af8cfedeebf7bf6b328d732e6b388968cd44459a3bd4f
+            # tarav.breadcrumb cb92d76e1f46
             return self.child(relative)
         except NotImplementedError as exc:
             return CheckResult(check, status="incomplete", reason=str(exc))

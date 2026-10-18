@@ -36,7 +36,7 @@ GONE = "gone"
 PRESENT, ABSENT, CHECK_FAILED, NOT_RUN = "present", "absent", "check failed", "not run"
 
 
-# tarav.breadcrumb 7025ef0587c66a6d14f2ea5252a2442b77d086f0c0875f3031a32b72650786f5
+# tarav.breadcrumb 7025ef0587c6
 class GoneClosing(Closing):
     """The record of an action closed because its Project's checks no longer produce its POI."""
 
@@ -59,9 +59,9 @@ class GoneClosing(Closing):
                                 "name": "example", "root": "/example"}}
 
 
-# tarav.breadcrumb 66447b514cbe8113e679498308f85202d9091297afcc05a728d1cdffa9ff3b19
-# tarav.breadcrumb e2ef906ba9d261e12b8eb7df9f7387f374e995076befb02acc3a8b599844b624
-# tarav.breadcrumb fcc647ba041a791d3ee820ca5920cbc53a53235822a446126b369e6f5313fa1f
+# tarav.breadcrumb 66447b514cbe
+# tarav.breadcrumb e2ef906ba9d2
+# tarav.breadcrumb fcc647ba041a
 class POIResolutionAction(StepAction):
     """The action a POI spins: open while the POI stands, closed when it is gone or blessed.
 
@@ -90,7 +90,7 @@ class POIResolutionAction(StepAction):
             return (BlessingInputCheck(run, context),)
         return ()
 
-    # tarav.breadcrumb c5db1b346c8b5ff563c654bb294079f0d167cfcdabea9a4e04cf10d35bceed8d
+    # tarav.breadcrumb c5db1b346c8b
     @classmethod
     def opened(cls, poi: SituationPOI, *, project: dict, at: str,
                suites: tuple[dict, ...] = (), git: dict | None = None) -> ActionRun:
@@ -109,7 +109,7 @@ class POIResolutionAction(StepAction):
         tape.opened(run, at=at, states=git)
         return run
 
-    # tarav.breadcrumb 5aeb4d2196d479937f983178eac99642a65b42c34a2354a1900172f2c8ae2961
+    # tarav.breadcrumb 5aeb4d2196d4
     @classmethod
     def on_checks(cls, run: ActionRun, update: ChecksUpdate) -> str | None:
         """Follow the POI through a suite of the Project's checks that ran.
@@ -153,8 +153,8 @@ class POIResolutionAction(StepAction):
                 change = "updated"
             if run.state == CLOSED and run.exit != EXIT_ERROR:
                 if cls.exit_named(run.exit).closing.reopens(run.closing_record(), poi):
-                    # tarav.breadcrumb a41daa65b5b4f45c6cb26b121bdfcef6877db6f89bb4732ef1a88e40a81f1a5a
-                    # tarav.breadcrumb a16bb5e9dc95eabab9db1b40353502eab0842da9551db52c010c20e3a159e880
+                    # tarav.breadcrumb a41daa65b5b4
+                    # tarav.breadcrumb a16bb5e9dc95
                     # the closing stays on the tape; the action opens again
                     run.data.update(output=None, event=fresh)
                     tape.reopened(run, at=update.at, states=git)
@@ -226,7 +226,7 @@ class POIActionClosed(SituationPOI):
                           name="Tarav.Actions.POI.Closed", workflow=ACTIONS_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 41d2f8ae4aa84337dc50a80be7140b1e8cda502096313cd5a5cc002c0d5ecb0f
+# tarav.breadcrumb 41d2f8ae4aa8
 def action_id(poi: SituationPOI) -> Ship:
     """The action instance of a POI: its Action Type and the POI's identity, hashed."""
     action_type = resolve_action(type(poi).action)

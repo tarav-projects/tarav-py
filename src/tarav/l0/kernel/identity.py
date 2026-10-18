@@ -53,7 +53,7 @@ class Ship:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({str(self._uuid)!r})"
 
-    # tarav.breadcrumb c58277426e85b85952a206f19af4c26488ea6fbdd1e9451e6345c212f83aff08
+    # tarav.breadcrumb c58277426e85
     @classmethod
     def __get_pydantic_core_schema__(
         cls,

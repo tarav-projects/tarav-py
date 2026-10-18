@@ -274,7 +274,7 @@ def register_commit(
     return RegisteredCommit(selected.root, exact, expected_ids)
 
 
-# tarav.breadcrumb 99b7ba51eb7aee2aaa5c4e5603c2995fd5e479c5dbe1ef090d8f42a842193ee1
+# tarav.breadcrumb 99b7ba51eb7a
 def audit_commit(
     repository: str | Path,
     commit: str,

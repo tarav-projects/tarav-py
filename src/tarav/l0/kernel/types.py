@@ -109,7 +109,7 @@ class RecordTypeReference:
 
 
 @dataclass(frozen=True, slots=True)
-# tarav.breadcrumb 8d46544023e1aece5d966c8221591fe88e7c9f95ae79bfd29ede11a5d3a5bf82
+# tarav.breadcrumb 8d46544023e1
 class TypeReferenceObservation:
     """One deterministic observation about a retained Type reference."""
 
@@ -325,7 +325,7 @@ class TypeRegistry(Generic[RecordTypeT]):
     ) -> RecordTypeT:
         """Construct with an already checked Type and bind nested Record loading."""
 
-        # tarav.breadcrumb 468893297110bc212d846527957d628e8b9f195279e1411a7eb08e766a6c5d92
+        # tarav.breadcrumb 468893297110
         result = authority.records.from_record(record)
         bind_loader = getattr(result, "_bind_record_loader", None)
         if bind_loader is not None:

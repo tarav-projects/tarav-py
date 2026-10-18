@@ -15,8 +15,8 @@ Introduce SituationCheck as an optional specialization of Check. It evaluates
 only a supplied Situation snapshot and constructs CheckPOIs using that same
 situation for identity. Retain the current CheckProvider.checks property.
 Use SKW generation freshness as the first bounded application.
-<!-- tarav.breadcrumb dd35e70d6289463afa2751d51961f0f093cc1307abef8f460daf388247e93c9d -->
-<!-- tarav.breadcrumb bbd656c8673357cb4c364ea06eeb6dea28a372922219e04ca8f3895115763562 -->
+<!-- tarav.breadcrumb dd35e70d6289 -->
+<!-- tarav.breadcrumb bbd656c86733 -->
 
 Non-goals: replacing every Check; named check selection; a new provider registry;
 sandboxing Python; automatic blessing; semantic correctness scoring; Models
@@ -31,24 +31,24 @@ needs additional data, that data belongs in the situation prepared before
 evaluation. This couples the information used for detection with the information
 used to identify the resulting POI, rather than independently constructing two
 potentially inconsistent descriptions.
-<!-- tarav.breadcrumb dbd1a9499f712e3fbc683f8b90629c989efc56bc25aaab4ac2b1e160249cc61a -->
+<!-- tarav.breadcrumb dbd1a9499f71 -->
 
 Use a shared Situation based on LiteRecord. Do not require a GenerationSituation
 class for the first example. A specialized check may optionally declare its own
 SituationType with application-specific validation. This is the explicit-input
 mechanism, not a demand that every caller hand-build a dictionary.
-<!-- tarav.breadcrumb e0b7f1e8714212c5a895d780989163bc22a758d5c8b508ab41283fecda231847 -->
+<!-- tarav.breadcrumb e0b7f1e87142 -->
 
 Checks can be attached to objects when that is a useful organizational choice.
 The object constructs the situation and exposes a bound check. Checks/POIs are
 workflows that can integrate in other ways too: direct construction, explicit
 pools and multi-subject orchestration remain valid. No universal requirement
 that a check be owned or exposed by its subject is introduced.
-<!-- tarav.breadcrumb aee891fb1f1f40e9e12295b77a434da3acba22d905fffdc702d0356e15c73ed2 -->
+<!-- tarav.breadcrumb aee891fb1f1f -->
 
 Keep the existing property interface: `run_checks(obj.checks)` or iteration
 over `obj.checks`. Do not add `obj.checks("name")` in this request.
-<!-- tarav.breadcrumb c2e96d2827b424bf0450ef0eb9e1bfe9fcd9c61a37d4b097fa139eff79000f47 -->
+<!-- tarav.breadcrumb c2e96d2827b4 -->
 
 ### Proposed minimal mechanics
 
@@ -80,14 +80,14 @@ when conservative resurfacing is intentional; Situation descriptions need not
 be minimal. Choose granularity deliberately and use the whole situation without
 subset projection or a second state fingerprint. Repeated same-situation
 emissions retain 834's collector indexing semantics.
-<!-- tarav.breadcrumb 87386b4de7ea5b024c566150dfee68fd5cbc2765761e952df432379c1ac700db -->
+<!-- tarav.breadcrumb 87386b4de7ea -->
 
 Generation freshness and context freshness are independently assessable
 concerns, so implement them as separate bound checks. The generation Situation
 contains its baseline and current generation-input fingerprints; the context
 Situation contains its baseline and current tracked-context fingerprints.
 Each also carries the subject coordinate needed to distinguish its occurrence.
-<!-- tarav.breadcrumb 83c87cc71208c5ff2b4ab22199558cc748b587fbf1f70e2708e4a30b0d5bcee1 -->
+<!-- tarav.breadcrumb 83c87cc71208 -->
 
 ### Illustrative public usage
 
@@ -105,7 +105,7 @@ results = run_checks(provider.checks)
 
 The example expresses the approved shape, not currently available classes.
 Concrete Tarav Check/POI types still declare their ordinary class entities.
-<!-- tarav.breadcrumb 6d52be0dbadea8423a88c4b19bf311b6826290c7961c6ec9bf75e550ca5e584d -->
+<!-- tarav.breadcrumb 6d52be0dbade -->
 
 ### Current code and the motivating defect
 

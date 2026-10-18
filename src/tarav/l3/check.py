@@ -32,8 +32,8 @@ class Progress:
             print("\r" + " " * 24 + "\r", end="", file=sys.stderr, flush=True)
 
 
-# tarav.breadcrumb a671fcec806bcecf6adccaf70a7f2c991f04b2685ea24f7056aa3cf53f820f8e
-# tarav.breadcrumb 31d6a87727d93d79dc92f3804e9916b37f4a8d7639862d3ef2fe9144dc778ee1
+# tarav.breadcrumb a671fcec806b
+# tarav.breadcrumb 31d6a87727d9
 def report_project_checks(
     project, *, json_output: bool = False, by: str = "type", sort: str = "run",
     limit: int = 20, offset: int = 0, poi_type: str | None = None,
@@ -47,7 +47,7 @@ def report_project_checks(
     progress = Progress()
     try:
         run = project.checks.run(select=None if everything else routine, on_result=progress)
-        # tarav.breadcrumb ad61e17278a7f87bdbe6bba00b7195dd5389a8f9423618314b32ae8fa446c9e2
+        # tarav.breadcrumb ad61e17278a7
     except NotImplementedError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -76,8 +76,8 @@ def in_harness(args: argparse.Namespace, *, command: str, module: str, function:
         f"raise SystemExit({function}(project, **{options!r}))\n"))
 
 
-# tarav.breadcrumb 1778a37c1707becb0bed583cc5d2ee8f8a4b3047975fb3b90d1c61a0a8065481
-# tarav.breadcrumb 4b3f33142574c7e094be452c0a7de4cc97f4dbc30b66eece4c5fe6c788af4622
+# tarav.breadcrumb 1778a37c1707
+# tarav.breadcrumb 4b3f33142574
 def _check(args: argparse.Namespace) -> int:
     return in_harness(args, command="tarav check", module="tarav.l3.check",
                       function="report_project_checks", options={
@@ -103,7 +103,7 @@ def _report_arguments(parser: argparse.ArgumentParser) -> None:
                         help="Sort groups by first occurrence or descending count.")
     parser.add_argument("--limit", type=int, default=20, help="Maximum groups to show.")
     parser.add_argument("--offset", type=int, default=0, help="First group to show.")
-    # tarav.breadcrumb 1c56bfc2a3f025dba4e39391246e2c9ff6b82badb41849082dabe55687cf7e92
+    # tarav.breadcrumb 1c56bfc2a3f0
     parser.add_argument("--type", dest="poi_type", help="Show this POI Type and its subtypes.")
     parser.add_argument("--check", dest="check_type", help="Filter by exact Check Type name.")
     parser.add_argument("--renderer", choices=tuple(item.name for item in renderers()),

@@ -26,15 +26,15 @@ fields.
 
 Tarav as a library and the harness used to maintain and improve that library
 are different objects, and Tarav must be able to express both.
-<!-- tarav.breadcrumb 89838ebc05f9e29b9b74fcc1e270ea777d1d5c76fa4e6ac7da83b45a2fff3e20 -->
+<!-- tarav.breadcrumb 89838ebc05f9 -->
 
 A development harness can live in the same code base as the library, under a
 namespace such as `.dev`, for the same reason a library ships its tests.
-<!-- tarav.breadcrumb 2b8d32bf459bb29310bf03554bec555478c3d69b443ac88acc71b57d61be1639 -->
+<!-- tarav.breadcrumb 2b8d32bf459b -->
 
 The root pattern described for md-library should be implemented in Taravangian
 as well.
-<!-- tarav.breadcrumb 28590df078527100b70da44c42222336dd542d9acc5ba266c001accfd3de2645 -->
+<!-- tarav.breadcrumb 28590df07852 -->
 
 ### Observed (inspected)
 
@@ -91,7 +91,7 @@ Capture status: done, tarav-md 0ea3b6e (`projects.md`, daily 2026-10-05).
 
 Executed after 861 in the same session, by the User's `/goal` invocation of
 `tarav-hugentics --impl --exec`.
-<!-- tarav.breadcrumb fe3f7aa1ca6b17e11f603005ec68eb66022d2aa7578f268264ab6c650c25d247 -->
+<!-- tarav.breadcrumb fe3f7aa1ca6b -->
 
 - Classes (deviation from "tarav.dev"): the general classes live in
   `tarav.l2.project.dev`: `PythonPackageProject` (`Tarav.Project.PythonPackage`,

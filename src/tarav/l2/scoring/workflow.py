@@ -22,7 +22,7 @@ class ScoringWorkflow(TaravWorkflow):
 
     @classmethod
     def provider(cls, root, records):
-        # tarav.breadcrumb 530e96e33eeddd3f67ddfa11f935401172ced777a6c7085b4b666b907934869c
+        # tarav.breadcrumb 530e96e33eed
         from .provider import ScoringProvider
 
         return ScoringProvider(root, records)

@@ -32,12 +32,12 @@ g70203 request will pilot this).
 
 The User asked that what was learned in the g70203 redesign be documented in
 Tarav and turned into an implementation request here.
-<!-- tarav.breadcrumb 46f4dc0b62ef196cebeea8c75cb944ddb21efeeaf2d913f82d8a28ff7f0be7dd -->
+<!-- tarav.breadcrumb 46f4dc0b62ef -->
 
 A Tarav system is a superposition of workflows, each aimed at one problem,
 sharing a significant amount of primitives. md-library's lint and co-reading
 passes are the reference: both express their work to the agent as POIs.
-<!-- tarav.breadcrumb caf30a4893ac78cb1cc5493eb1b8e0e40ad71f064b2655f627cf93923d06cb72 -->
+<!-- tarav.breadcrumb caf30a4893ac -->
 
 ### Decisions are never permanent
 
@@ -46,7 +46,7 @@ mistaken decision would never resurface. Detection is separated from
 decision, and every recorded decision is re-evaluated at different
 priorities (the User's example: about a month, then three months after a
 reapproval, up to about a year).
-<!-- tarav.breadcrumb d950a736331552c0cd83c1a6599b9568db012da4029814431ca6814f978adf9e -->
+<!-- tarav.breadcrumb d950a7363315 -->
 
 ### Blessing is one kind of Decision
 
@@ -56,7 +56,7 @@ Some are only reported, so an action can be traced later; such a decision
 captures its context, for instance the Git commits and the diffs they
 produce. Like the blessing implementation, a decision is assertable and can
 hook into automatic scoring.
-<!-- tarav.breadcrumb 3f422eee5ff2a2809b34b50d500461e423b36bc18e8f20e03132db48ca9a00c7 -->
+<!-- tarav.breadcrumb 3f422eee5ff2 -->
 
 ```text
 Decision: an intervention in the system, recorded and asserted over time
@@ -74,7 +74,7 @@ suppresses it. Decisions without a live POI need their own priority policy,
 to be worked out later. Decisions are typed so each situation can be handled
 differently by scheduling; when some show up too early, more workflows can
 modify the order. The present work defines the main scaffolding.
-<!-- tarav.breadcrumb 81a84025363bf7c71791ec088f15e861f4559f294217bddea0e01c7d02926cb0 -->
+<!-- tarav.breadcrumb 81a84025363b -->
 
 ### Decisions are not scores
 
@@ -84,7 +84,7 @@ agent can. The system that orders reassessment and spends resources (user
 attention, agent tokens) may still give user decisions more authority than
 agent decisions, quantitatively. Users as judges of a scoring system is a
 separate conversation.
-<!-- tarav.breadcrumb e92c30715b294644db3a98b39d967d098d9db69e8ea055235a76a69106920189 -->
+<!-- tarav.breadcrumb e92c30715b29 -->
 
 ### Tracked POIs, the board, and attention
 
@@ -95,19 +95,19 @@ others are introduced by agents. A board lets agents and any workflow see and
 filter POIs, e.g. the unresolved POIs of their own workflow. Decisions attach
 to recorded POIs. Generating POIs and prompting agents to resolve them is
 already a driving force; with scoring the system starts to run by itself.
-<!-- tarav.breadcrumb 1051e9b40278b4ac7c5ca5d091d32f149bbf335dde427ab33f7bdb749f2ba6eb -->
+<!-- tarav.breadcrumb 1051e9b40278 -->
 
 Not every POI is recorded; that is the workflow implementer's choice.
 Notifications, for example, still use the POI system for contextualization
 and Diagram integration. The recorded ones are **tracked POIs**, a name the
 agent proposed and the User chose.
-<!-- tarav.breadcrumb 4d9962d2349678fb3168941878047b566842d0e9b2b21c924128309e62bfbb6c -->
-<!-- tarav.breadcrumb a962a28a157ce334f78f1bd3564f2fc173c15230aced274123be3523c705e6a9 -->
+<!-- tarav.breadcrumb 4d9962d23496 -->
+<!-- tarav.breadcrumb a962a28a157c -->
 
 POIs are typed and can express any axes. `CheckPOI` forces a companion Check
 class; `NotificationPOI` is raised text; more types will come. Being tracked
 is an axis independent of those types.
-<!-- tarav.breadcrumb 94a31d633228e327eb64243b8f60259266329497e242c05014052fab0adf87cf -->
+<!-- tarav.breadcrumb 94a31d633228 -->
 
 ### Current behavior (inspected 2026-10-03)
 
@@ -188,7 +188,7 @@ Supporting chat: Claude Code session `9da4cef5-68b7-4d17-8a06-1351ca51e82f`
 
 Executed as a bounded first slice after the User authorized execution and
 asked the Agent to resolve the remaining alignment choices.
-<!-- tarav.breadcrumb d76d35ebf17aba06251e4499b41155382039db71dbef26e8e004b38cb8d7dabb -->
+<!-- tarav.breadcrumb d76d35ebf17a -->
 
 1. Cold-read `l1/poi`, `l1/blessings`, `l1/scoring`, `l2/blessings` and
    their tests; confirm Record loading of retained blessings.
@@ -219,8 +219,8 @@ asked the Agent to resolve the remaining alignment choices.
   never-permanent decisions requirement, so detection and disposition are
   now separate; (3) storage root and workflow ownership are separate
   decisions. All three points were checked against the code and accepted.
-<!-- tarav.breadcrumb f1b000250df40c007fd11d821f4c81350786e29699299c10cc4124333c4deaff -->
-<!-- tarav.breadcrumb 5fc8429030c9375526217ab5c30104679e989f3b0e991448495161e4a8da23ec -->
+<!-- tarav.breadcrumb f1b000250df4 -->
+<!-- tarav.breadcrumb 5fc8429030c9 -->
 - 2026-10-03 Execute: chose in-place `BlessingRecord` inheritance from
   `Decision`, preserving its Type Ship and stored schema. The shared role is
   still stored as `actor`, with `decider` as an accessor. `Order` and

@@ -24,34 +24,34 @@ operator. Those build on this and are still under discussion.
 
 Agents should act with their intention at hand so they can hook into the
 machinery; otherwise the system knows nothing about the caller's intention.
-<!-- tarav.breadcrumb 1bc150c325d5b876d9b29277a973d9e2cb3ceebdc9588ea563e1b3bcfc6725ce -->
+<!-- tarav.breadcrumb 1bc150c325d5 -->
 
 The User described it as a typed context object for the operator: the operator
 establishes its context and the code reacts. It is a communication protocol.
-<!-- tarav.breadcrumb 3389b2be8700bbfde19137a27197783b17085ccd1914c45c88deca7cdd6c215f -->
+<!-- tarav.breadcrumb 3389b2be8700 -->
 
 The realization that matters: the operator context is an explicit object, so
 the code finally knows who is calling. Define it and its mechanics first, then
 see what follows.
-<!-- tarav.breadcrumb 7abf3250fec2ee9342864f7537df914814ca440c83f7a2811d6f213379fd37ce -->
+<!-- tarav.breadcrumb 7abf3250fec2 -->
 
 What the User fixed about it: it holds what the agent puts there for the code
 to contextualize; it is linked to the session ID; it lives in the Project's
 `.tarav/` and the agent maintains it; every run can read it; workflows
 implement inside it what they need and can require it to be well set up;
 standard checks follow, such as a session with open actions.
-<!-- tarav.breadcrumb a94d14f8c0d186128d348ab45ec3da389c508e7ee2e3ba5c07cf28435853879e -->
+<!-- tarav.breadcrumb a94d14f8c0d1 -->
 
 It is a folder with a main record, described by a class. The Operator Context
 is itself a workflow that others integrate with: they demand things or put
 things there themselves. Each space's internal organization belongs to its
 workflow.
-<!-- tarav.breadcrumb 978ed0a419d8d103128c3a0a71eb9cb80e4192430a06887ad489985e38fff629 -->
+<!-- tarav.breadcrumb 978ed0a419d8 -->
 
 It is its own workflow, not a part of Agents. It formalizes the first node of
 any pipeline: the context is prepared, the pipeline runs only on the stated
 context, and when something is missing the pipeline says what to configure.
-<!-- tarav.breadcrumb 18e8324bb454a0c4a6d514ee8fbdf62e80f20ab112feee5f0f6bb8a20c2f3d1d -->
+<!-- tarav.breadcrumb 18e8324bb454 -->
 
 ### Current behavior (observed 2026-10-09)
 

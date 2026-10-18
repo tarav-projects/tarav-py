@@ -19,8 +19,8 @@ def _describe_node(explorer: ContextExplorer, value) -> dict[str, object]:
     return {"node": explorer.node(value).n3(), "type": shown}
 
 
-# tarav.breadcrumb bf3dacc3977903e5c373e142f5942adca5b966ddf5b9611c1024700e3119614b
-# tarav.breadcrumb af0818fd1d7726e95c9c36296ca3c4a544c4ce42284521178afb61b92436a53f
+# tarav.breadcrumb bf3dacc39779
+# tarav.breadcrumb af0818fd1d77
 def _context(args: argparse.Namespace, *, service: ContextQueryService, opener) -> int:
     if args.views:
         raise CliError(

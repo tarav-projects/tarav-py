@@ -31,7 +31,7 @@ class SamplePOI(CheckPOI):
                           name="Tarav.Test.POIRenderPOI")
 
 
-# tarav.breadcrumb 7f3e537008bba2d8b00cca281777ea6643149f0b16f3dbf4c11e2e27c384cf13
+# tarav.breadcrumb 7f3e537008bb
 def test_every_named_renderer_shows_the_poi_and_points_at_no_stored_context():
     run = CheckSuite()
     run.add(SampleCheck().run())

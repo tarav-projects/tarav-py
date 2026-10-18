@@ -85,7 +85,7 @@ class ProviderFamilySpec:
         return self.provider_family.family
 
 
-# tarav.breadcrumb 85f1bf9a6372fbbfcab103ba4160dd3ca691504f707ddcc39f70fe8c40fec8eb
+# tarav.breadcrumb 85f1bf9a6372
 _CANONICAL_PROVIDER_FAMILIES = tuple(
     ProviderFamily(family=family_name)
     for family_name in (

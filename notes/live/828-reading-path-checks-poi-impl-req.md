@@ -13,7 +13,7 @@ Implement the discussed chain as one coherent feature: typed declarations on
 SKW blocks → declared reader-context paths → shared executable Checks →
 CheckResults providing contextual POIs → explicit POI raising. Include the
 necessary block identity migration and integrate the existing skill checker.
-<!-- tarav.breadcrumb 5af14522c3cc566d4d60c315b78084b95d70d081d41e88641eafd1424ba63612 -->
+<!-- tarav.breadcrumb 5af14522c3cc -->
 
 Non-goals: semantic scoring of content claims, agent execution, automatic
 content collection or repair, Batchy routing-table generation, universal
@@ -29,7 +29,7 @@ from a declared route, not everything an agent actually knows. A route may
 start at Skill.Description, enter SKILL.md, follow a link to file A, and read
 preceding blocks before X. Authors can avoid repetition by declaring what X
 expects the reader already to have encountered.
-<!-- tarav.breadcrumb 31a1db653fa71fc8a236d684a669f563f09b8cc152ffd1d6b37f969a973d8376 -->
+<!-- tarav.breadcrumb 31a1db653fa7 -->
 
 Keep per-path availability and expose its intersection and union. A dependency
 can hold on one route and fail on another. Report the dependency and a path
@@ -37,7 +37,7 @@ that misses it. Typed links distinguish expected traversal from optional
 consultation; dependencies distinguish inlined content from referenced
 content. Link entry semantics matter: starting a file and jumping to a block
 do not supply the same preceding context.
-<!-- tarav.breadcrumb 9ec5de7abd593e06ddddc8b18571b76395308a730d6659f9dc59ef86bb63eb6a -->
+<!-- tarav.breadcrumb 9ec5de7abd59 -->
 
 ### Block declarations and identity
 
@@ -46,7 +46,7 @@ entities, and required reader context. Specialized link/inline blocks expose
 the same declarations; an embedded link need not become a separate block.
 Consume explicit declarations uniformly, without inferring semantics from
 headings or prose. These declarations are claims, not proof of their truth.
-<!-- tarav.breadcrumb 2a3f6927518288b2757755b8893ef91690db16a9c2e2aa8f7c557a26c7087e96 -->
+<!-- tarav.breadcrumb 2a3f69275182 -->
 
 Targets require only `TaravEntity`, including entities from other workflows.
 Do not introduce a `SemanticEntity` base. Blocks are themselves TaravEntities:
@@ -56,12 +56,12 @@ ambiguous labels must not resolve silently. Prefer base types and semantic
 subtypes to a general object with mode strings, so the Type Graph exposes the
 distinctions. Reading-path mechanics neither collect nor render the entities'
 content.
-<!-- tarav.breadcrumb 95f65c1404ad6489ffddfe0b3c9da18891ebb36e8b43dfe49fd1149fc842b253 -->
+<!-- tarav.breadcrumb 95f65c1404ad -->
 
 Structural checks judge whether declarations supply the required entities in
 the required form. They do not judge whether output substantiates those
 claims. Semantic checks and scoring are separate future consumers.
-<!-- tarav.breadcrumb 0fa55e6db86a3355b2e889c4dfdaf6733d91b7f4bbea311be8e7694a9bc1dbfe -->
+<!-- tarav.breadcrumb 0fa55e6db86a -->
 
 ### Checks are independently usable capabilities
 
@@ -69,16 +69,16 @@ claims. Semantic checks and scoring are separate future consumers.
 `CheckProvider` exposes appropriate instances through `obj.checks`; do not
 add this obligation to every TaravObject. Providers can live on objects,
 types, or workflows. Their definitions belong where the semantics fit.
-<!-- tarav.breadcrumb dce0914ef0f97cbe02966a0c63e967f38949c613f6b07c38fd18edd102538603 -->
+<!-- tarav.breadcrumb dce0914ef0f9 -->
 
 Runners and linters select, execute, and aggregate checks. They may collect
 object-supplied checks, use explicit pools, and construct cross-subject checks
 that do not belong naturally to one object. All share the same Check contract.
-<!-- tarav.breadcrumb 34a0fbee1dcf95e248b306db525cab756901398f89acc2a05ba6b61402282827 -->
+<!-- tarav.breadcrumb 34a0fbee1dcf -->
 
 One check or one object's checks must run without a linter, enabling targeted
 experiments. A larger orchestrator is an optional consumer, not a prerequisite.
-<!-- tarav.breadcrumb 3929f8aac6db66ef5baa7ff78045feeae20cfdcb443961c2b51966a6121d7352 -->
+<!-- tarav.breadcrumb 3929f8aac6db -->
 
 ### Results provide POIs; POIs own raising
 
@@ -86,13 +86,13 @@ experiments. A larger orchestrator is an optional consumer, not a prerequisite.
 to produce POI instances, alongside whatever result data the check needs.
 Do not introduce another finding model duplicating POIs. “Findings” may name
 the POIs, but the objects describing check findings are POIs themselves.
-<!-- tarav.breadcrumb a04ae03f10180928f28eac89ebc0d152d3c9795ce3fa1d7940361b7933d14ca7 -->
+<!-- tarav.breadcrumb a04ae03f1018 -->
 
 POIs are an agent-facing communication surface with investigation context,
 including the check and occurrence. Producing/inspecting them and raising
 them are separate actions. Raising semantics belong to the POI workflow,
 not a second mechanism in Checks. A result can be lighter than its POIs.
-<!-- tarav.breadcrumb 00bd204c02751fbe691af51198b504a6f1b13cb6c71a30690b14f352b48b0932 -->
+<!-- tarav.breadcrumb 00bd204c0275 -->
 
 ## Inspected implementation — 2026-09-30
 
@@ -338,7 +338,7 @@ SKW reading Checks turn that data into contextual POIs, and the skill/CLI
 check paths consume those results. A two-route regression verifies the missing
 inline dependency, witness path, passive inspection, explicit emission, and
 POI-owned raising.
-<!-- tarav.breadcrumb b6f70bdb2661fc1dbbf81d64fa2336b87cbfbeefef33ac8dcd482c7a77da7bd1 -->
+<!-- tarav.breadcrumb b6f70bdb2661 -->
 
 Dry-run inventory found 101 blocks in `tarav-hugentics` and 13 in `tarav-pkg`.
 Both source/product locks and the hugentics loading baseline were clean before
@@ -349,7 +349,7 @@ baselines changed solely because their referenced Record identities changed.
 Generation standing remains clean. Current `tarav-pkg` check is clean; current
 `tarav-hugentics` check retains three undeclared authored links and one
 attachment cycle. These are structural POIs, not migration or lock drift.
-<!-- tarav.breadcrumb 2a20db701cc5bd5e2961be39ba92b7e95dbd2cb76072a3cf0cdea2fc115798d4 -->
+<!-- tarav.breadcrumb 2a20db701cc5 -->
 
 Verification: focused architecture/SKW/Checks/POI suite 105 passed. Full
 `tarav-py` suite initially reached 1402 passed, one failure in newly registered

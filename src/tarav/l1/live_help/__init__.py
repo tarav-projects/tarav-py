@@ -15,7 +15,7 @@ from tarav.l1.usage import UsageRegistry, UsageTrace
 LIVE_HELP_WORKFLOW_SHIP = WorkflowShip("259a5d90-44a9-4dad-a8fa-8fcb704ed6c1")
 
 
-# tarav.breadcrumb a81b81424414448e696f428f87a1cf998e05674cc337d204ea17582132908cfe
+# tarav.breadcrumb a81b81424414
 class LiveHelpWorkflow(TaravWorkflow):
     constitution = "Offer mechanically sourced code and recent-usage leads when help is requested."
 
@@ -109,7 +109,7 @@ def render_live_help(
         path, line = source
         lines.append(f"source:   {path}:{line}")
     try:
-        # tarav.breadcrumb 5217c2e01194ba4df73a01a761799164d5926d2a4e12423d2d4c1b6dee0abe18
+        # tarav.breadcrumb 5217c2e01194
         uses = registry.query(
             workflow=provider.help_workflow,
             subject=provider.help_subject,

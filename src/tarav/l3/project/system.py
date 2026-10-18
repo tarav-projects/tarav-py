@@ -25,8 +25,8 @@ IGNORED = ("/.tarav/env/", "/.tarav/state/", "/.tarav/tmp/", "/.tarav/indexes/",
            "__pycache__/", "*.egg-info/", ".DS_Store")
 
 
-# tarav.breadcrumb f2fc7bc4e6a1e4c678bbab02408fed02c93171b1660984f4d834968d5f8743fb
-# tarav.breadcrumb a694f14a69787c74311760484d3eaa569e38a4b7b426477fecee95b81c557f05
+# tarav.breadcrumb f2fc7bc4e6a1
+# tarav.breadcrumb a694f14a6978
 def init_system(*, tarav_source: Path | str, sync: bool = True) -> ProjectHarness:
     """Create the System Project; refuse when this machine already has one."""
     root = system_root()

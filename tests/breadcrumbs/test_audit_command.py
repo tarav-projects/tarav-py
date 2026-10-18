@@ -8,7 +8,7 @@ from pathlib import Path
 from tarav.l3.cli.cli import main
 
 
-# tarav.breadcrumb bd69fa5f753c55e09acfa12ec810c7c7e3eac5d7686ea4b6abe2114132345f79
+# tarav.breadcrumb bd69fa5f753c
 def test_audit_manifest_reports_each_file_and_continues_after_error(
     tmp_path: Path, monkeypatch, capsys,
 ) -> None:

@@ -22,7 +22,7 @@ class PY(NamespaceBase[TaravObject]):
 
 class PXY(PX, PY):
     pass
-# tarav.breadcrumb 8c030914f2f144c4f81e7d88b30508b45efb6f9c1faca0eb4c1ccf2ecd6c95be
+# tarav.breadcrumb 8c030914f2f1
 
 
 class BaseX(TaravObject):
@@ -88,7 +88,7 @@ def test_inherited_namespace_needs_no_redeclaration() -> None:
 
 
 def test_missing_explicit_composition_is_rejected_at_class_creation() -> None:
-    # tarav.breadcrumb f3eec17fb3f9840eaf1bbde76248ab08595a9fdb91a03aee8a4af6c1f972e585
+    # tarav.breadcrumb f3eec17fb3f9
     with pytest.raises(TypeError, match="P drops namespace contribution"):
 
         class Dropped(BaseX, BaseY):
@@ -107,7 +107,7 @@ def test_record_namespace_uses_the_existing_projection() -> None:
     assert obj.records.to_record() == {"type": "Test.Combined"}
 
 
-# tarav.breadcrumb 39175d7f24002b4b04f89a0ad24c150174cabd1fa53a8de58b495e0445549778
+# tarav.breadcrumb 39175d7f2400
 def test_record_namespace_binds_inherited_class_loading() -> None:
     assert Combined.records.obj is Combined
     loaded = Combined.records.from_record({"type": "Test.Combined"})
@@ -120,9 +120,9 @@ def test_record_namespace_binds_inherited_class_loading() -> None:
         TaravObject.records.from_record({})
 
 
-# tarav.breadcrumb f4ec8f4bcffb99b7116dd27486141b249dbfb1a4151c3d635fc3961c56204184
+# tarav.breadcrumb f4ec8f4bcffb
 def test_record_namespace_preserves_specialized_validation_and_examples() -> None:
-    # tarav.breadcrumb a3b9281034cb89b3ee020c4e3ac2e95717556d214885396afd08c48a7c81dabf
+    # tarav.breadcrumb a3b9281034cb
     from tarav.l1.actions import Closing
     from tarav.l1.actions.blessing import Blessing
     from tarav.l1.decisions.records import Decision

@@ -15,7 +15,7 @@ was used, model the `tarav` command line as Tarav objects that register each
 call there, and add a Live Help workflow
 that makes a reactive section a standard part of every `--help`: where the
 command's source is, how it was recently used, and a hint for its history.
-<!-- tarav.breadcrumb eefda0f30a44054db611f85bbf620cb401bb140a461362d5e6ace5dd6068e0d0 -->
+<!-- tarav.breadcrumb eefda0f30a44 -->
 
 Non-goals: instrumenting workflows other than the CLI in this request;
 recording non-`tarav` shell commands; a Git query workflow;
@@ -29,21 +29,21 @@ changing existing command behavior, arguments, or exit codes.
 Modifying a skill in this session cost far more in learning the mechanics than
 in writing content. The User's diagnosis: Tarav is developed without a minimal
 contextualization path for understanding how Tarav itself works.
-<!-- tarav.breadcrumb 9e8227d724114acba647438fa631a2a646215b70bbf0547a6f585518e87ee8d4 -->
-<!-- tarav.breadcrumb 610ee664e5aaf45f42b2b9acc1fde7a9385a1557f51d8263efb17ee10922e754 -->
+<!-- tarav.breadcrumb 9e8227d72411 -->
+<!-- tarav.breadcrumb 610ee664e5aa -->
 
 Contextualization paths are workflows, and several can exist. The User's
 preferred one is to learn from live material: go to the source code, and to
 active examples, meaning data recently used by that code, not samples dumped
 into a skill that go stale. Written documentation is a last resource because
 nothing yet raises a POI when the code it describes changes.
-<!-- tarav.breadcrumb 8a365623e707d8112efd0a6ca0fd2ec76f0ffabb3496d687e3f893adc66efea9 -->
+<!-- tarav.breadcrumb 8a365623e707 -->
 
 The code must stay dumb. Agents are smart; Tarav's job is to remove the
 unprofitable work of searching a large code base and to hand over leads:
 here are the declarations, here are recent uses and their paths. The Agent
 navigates from there.
-<!-- tarav.breadcrumb 29edd53063647765391efbc6602a63147c5eac8d5cbd02f68eb9ebf85df14cd0 -->
+<!-- tarav.breadcrumb 29edd5306364 -->
 
 ### CLI as Tarav objects
 
@@ -51,7 +51,7 @@ The User asked to model the CLI in Tarav so there is something typed to attach
 tests, checks, and other workflows to, without being pedantic: the command
 line as a workflow, and commands as objects that can be referred to. This is
 how Tarav grows: type things, then hook workflows to each other.
-<!-- tarav.breadcrumb c5553fcc1a424cfea73c9591350f9e02e87b8651aaa5e573a9b24e47f65689fa -->
+<!-- tarav.breadcrumb c5553fcc1a42 -->
 
 Current code (inspected): all commands pass through `main()` in
 `src/tarav/l3/cli/cli.py`. `build_parser()` composes one argparse tree via
@@ -69,7 +69,7 @@ Agent proposal:
 - Checks on `Command` through the existing Checks workflow, raising POIs such
   as missing help text or a handler whose source cannot be located. The User
   named missing help as an example of what the model should let us detect.
-<!-- tarav.breadcrumb dea81d367d616c86b877b4d15f763cfc9702a28d755b22cea286d565cf6e92fc -->
+<!-- tarav.breadcrumb dea81d367d61 -->
 
 ### Usage Registry
 
@@ -79,9 +79,9 @@ whose length is a parameter, in the central storage partition of its owning
 workflow (`ArchivePartition(root, workflow_ship)` in
 `src/tarav/l1/archive/records/navigation.py`, rooted at
 `~/Documents/tarav/archive/<workflow-ship>/`).
-<!-- tarav.breadcrumb 37cbdfc3fdd868f7927aa3560a609467aae9438b16ba8c464fa28c9f6b7a2d16 -->
-<!-- tarav.breadcrumb 7f23ddd8cd4c44a51a4d9e625819a28e79e27832f0fa9ecb202ff3a0412b457d -->
-<!-- tarav.breadcrumb 18dab50bc9bd2d818bed4d77b591ad1eb2af6e7becd4f90e5344fddbfc3dc3e9 -->
+<!-- tarav.breadcrumb 37cbdfc3fdd8 -->
+<!-- tarav.breadcrumb 7f23ddd8cd4c -->
+<!-- tarav.breadcrumb 18dab50bc9bd -->
 
 The User then generalized it. The registry is its own workflow with one clear
 semantic: a place where you put your usage trace so Agents can discover fresh
@@ -90,13 +90,13 @@ specific meaning, which is why it is a workflow. It does not care what is
 registered. Each workflow is responsible for knowing what to store so an Agent
 can see how it was used; the registry provides only the minimal shape, handles
 storage, and provides the query.
-<!-- tarav.breadcrumb 41cfc576f94ac8ee2e3b6b7c5a11327a1f66e5eb3837c2225dc804ae3572f90d -->
+<!-- tarav.breadcrumb 41cfc576f94a -->
 
 It is not tied to the CLI. Tarav's main interface is the library and the CLI
 is only a consumer, so a trace can be left from inside any method. A CLI
 command is an obvious good point, since a public command marks a typical or
 important path, but it is one client among others.
-<!-- tarav.breadcrumb 0178c821187df29350b75528dad7385100e4b854a237bf2c5efae38c0af153b0 -->
+<!-- tarav.breadcrumb 0178c821187d -->
 
 Organization is minimal: each registering workflow may have its own partition
 inside the registry. General metadata such as the project and the workflow of
@@ -104,7 +104,7 @@ the call lets Agents query back by those native Tarav objects; those queries
 are built in. Beyond them, Agents send a general query: Tarav databases are by
 default a set of JSON records, so the model is to iterate the records and
 query their JSON.
-<!-- tarav.breadcrumb 1d4db68395b52f43f2ef65dd4585e93b8c05f83e91f07661cbf20a89f9c4b005 -->
+<!-- tarav.breadcrumb 1d4db68395b5 -->
 
 Agent proposal:
 
@@ -140,18 +140,18 @@ recent uses (3 of 17 in the last 7 days):
                     cwd tarav-md/skills/tarav-hugentics
 history:  git -C <repo> log -5 -L412,450:src/tarav/l2/skw/document.py
 ```
-<!-- tarav.breadcrumb 384234849baa7e56e61562e91f5890fbe816cd2f88309b4ad2e07fc4cc0099fd -->
+<!-- tarav.breadcrumb 384234849baa -->
 
 Git is not integrated. The history line is a printed, ready-to-run command
 built from the source location. A Git query workflow that objects hook into
 was considered and deferred.
-<!-- tarav.breadcrumb f0e947dddb6bc5e514b169b79d18aa55a44e90ebb1b51492a714b83f1cb074fc -->
+<!-- tarav.breadcrumb f0e947dddb6b -->
 
 Live Help is a contextualization workflow of its own. It exposes types that
 the CLI workflow subtypes to declare that it takes part. Its working name
 moved from "live context" to "live help".
-<!-- tarav.breadcrumb 3069ba74a2b8c02ffc0a00bf59d29ab6d225b4aee375902ffbbb210eb893c780 -->
-<!-- tarav.breadcrumb aa9560e5f28922fc2c963129e4b224f7cb5d252289a127689025a373e0b4720f -->
+<!-- tarav.breadcrumb 3069ba74a2b8 -->
+<!-- tarav.breadcrumb aa9560e5f289 -->
 
 Agent proposal: `LiveHelpWorkflow` defines one small capability type, a
 provider that returns a source location, a Usage Registry subject, and
@@ -172,8 +172,8 @@ that source-location mechanism for handlers and stay consistent with it.
 A cold review of this request raised four specification gaps. The claims were
 checked against the code and the User asked for these resolutions to be
 written here.
-<!-- tarav.breadcrumb 19e2cde98cbab2c39464d5804bfb343541e582d9a426f84ff4e187751fd7af8c -->
-<!-- tarav.breadcrumb 67faff12225e18b121735bc9247249fed6eae258667edda05d4be2f3dde0f378 -->
+<!-- tarav.breadcrumb 19e2cde98cba -->
+<!-- tarav.breadcrumb 67faff12225e -->
 
 1. Safe CLI trace. Raw arguments must not be retained or shown in help:
    `tarav run -- ...` can carry arbitrary code. The CLI client stores the
@@ -201,8 +201,8 @@ written here.
    UUIDv5 of that path under a fixed CLI namespace. A renamed command gets a
    new Ship and its old usage records keep the old key. Aliases are out of
    scope.
-<!-- tarav.breadcrumb b7b856bc84ed9afe6f93384724dad9b935a8c54a4e1ddce569fb499df9817a53 -->
-<!-- tarav.breadcrumb 2947768d6ca6eea25c3d93446ed31a9951f9973d33e554e527dac0355198b64c -->
+<!-- tarav.breadcrumb b7b856bc84ed -->
+<!-- tarav.breadcrumb 2947768d6ca6 -->
 
 ### Trace content, superseding review decision 1
 
@@ -213,8 +213,8 @@ and not to weigh privacy or security in this feature: the traces are local to
 each workflow is responsible for what it stores for an Agent to see how it
 was used. The CLI client now records the complete argument list, including
 words after `--`, and Live Help prints it as a runnable `tarav ...` line.
-<!-- tarav.breadcrumb aa143a761a6a4adf921983801203f19a870fa2e011e095fa6a4507ecb124bf2a -->
-<!-- tarav.breadcrumb 56067a441a0b08a4b102d6e65800ab5db654e58a9cdbf4a83884a1a4251f3666 -->
+<!-- tarav.breadcrumb aa143a761a6a -->
+<!-- tarav.breadcrumb 56067a441a0b -->
 
 ### Provisional follow-ups
 

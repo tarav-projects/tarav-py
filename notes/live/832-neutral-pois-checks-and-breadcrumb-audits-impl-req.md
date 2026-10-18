@@ -16,9 +16,9 @@ Checks/POI contracts, co-developing those WIP foundations. Keep the base POI
 almost empty. NotificationPOI belongs to the POI workflow; CheckPOI belongs
 to Checks. This request covers Breadcrumb audits and minimal shared-consumer
 adaptation. The User deferred migration of SKW's finding model to another run.
-<!-- tarav.breadcrumb 6fbf723b71c1035940b4a8c8acce1b2bb5d7c0002fddf864141d6bbd4d16d06d -->
-<!-- tarav.breadcrumb 33bf30bbef04eb67ae5e2dd98a6957b1588fc429eb8286a2a905bc2f8473f08d -->
-<!-- tarav.breadcrumb e92387dd92b3e8612133bff440107b94b8638676fc544a5eb7ed89bbd8273010 -->
+<!-- tarav.breadcrumb 6fbf723b71c1 -->
+<!-- tarav.breadcrumb 33bf30bbef04 -->
+<!-- tarav.breadcrumb e92387dd92b3 -->
 
 Non-goals: mandatory CheckProvider adoption; automatic fixing inside a Check;
 new notification persistence or logging framework; mandatory stack capture;
@@ -29,25 +29,25 @@ new blessing policy; Wiki restructuring; unrelated diagnostic migrations.
 A POI is a point-of-interest claim, not inherently negative and not itself
 evidence of failure. Check code raises failure POIs by default, but that
 convention does not prohibit positive or informational POIs.
-<!-- tarav.breadcrumb c0ec70fe97110d9ff0ed02c475d942e1851f994f7e2633506017bdc9109922d8 -->
-<!-- tarav.breadcrumb c5193360cd63707b7c21f7a803807036aef5a62aed7861b83a58ba7cc16d2836 -->
+<!-- tarav.breadcrumb c0ec70fe9711 -->
+<!-- tarav.breadcrumb c5193360cd63 -->
 
 CheckPOI couples an occurrence to its bound Check object. Checks may
 be instantiated directly by the audit: the optional provider interface is
 for exposing checks from objects, not a prerequisite for running them.
 NotificationPOI reports an operation worth making visible, such as appending
 a Breadcrumb position observation, without fabricating a Check.
-<!-- tarav.breadcrumb ba42b5bd22dd88d2238b5a196d3b8f2f2d2ae627f97f75ec43b51c5b39532845 -->
-<!-- tarav.breadcrumb b10de143a269f2e7931cd6d6410799c0977a92b419f657308642d33549ad8827 -->
-<!-- tarav.breadcrumb f5ba63037754ac8df27df5d7f3663580d0bb2db67f4685bffc167c7f37e10c39 -->
+<!-- tarav.breadcrumb ba42b5bd22dd -->
+<!-- tarav.breadcrumb b10de143a269 -->
+<!-- tarav.breadcrumb f5ba63037754 -->
 
 Keep the shared POI base almost empty: ordinary Tarav object/entity facilities
 and the minimum shared handling contract demonstrated by these consumers.
 Do not make Check references, check versions, evidence fingerprints, blessings,
 severity, timestamps, location capture, or retained storage mandatory base
 fields. NotificationPOI is owned by the POI workflow itself for now.
-<!-- tarav.breadcrumb 812ade2fbd26d7ee133fb03902709579bae565a00447b81eea964cb51269b623 -->
-<!-- tarav.breadcrumb c8f3081c55a6ac4748a185a5a2a3e307f149172e670125e3891cb3bb395c0325 -->
+<!-- tarav.breadcrumb 812ade2fbd26 -->
+<!-- tarav.breadcrumb c8f3081c55a6 -->
 
 ### Inspected implementation and proposed adaptation
 
@@ -80,7 +80,7 @@ The execution proposal is a neutral POI occurrence base and a bound CheckPOI.
 Existing POICheck/POIInstance declarations stay operational until SKW's separate
 migration. Resolve the POI declaration-name collision through explicit imports;
 do not add aliases or silently reinterpret old Records.
-<!-- tarav.breadcrumb 97c7272a55d020325c35bf98d9c8b6caf4a3fb8ce99ab4702005c898060da049 -->
+<!-- tarav.breadcrumb 97c7272a55d0 -->
 Preserve existing Type Ships and concern/state identities where semantics
 remain unchanged. Inspect retained Record impact before changing schemas;
 if a retained migration is necessary, document and implement an explicit,

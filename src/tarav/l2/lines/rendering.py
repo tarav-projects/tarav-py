@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# tarav.breadcrumb 8e914a5074394f39389423522894bcc518dcee781d7dd3a84613200afcd0c4c8
+# tarav.breadcrumb 8e914a507439
 
 import tarav.l2.unsorted.pois as diagram_pois
 

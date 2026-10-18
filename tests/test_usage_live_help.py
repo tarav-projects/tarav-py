@@ -15,7 +15,7 @@ from tarav.l3.cli import cli as cli_adapter
 from tarav.l3.runtime import create_runtime
 
 
-# tarav.breadcrumb 8c6b363d7fdc570627db715abd9522cdd6b19a283c6473be28cd4d1b83c53a8e
+# tarav.breadcrumb 8c6b363d7fdc
 def test_usage_registry_filters_queries_and_trims_day_files(tmp_path: Path) -> None:
     create_runtime(archive_root=tmp_path)
     registry = UsageRegistry(tmp_path, window_days=7)
@@ -62,7 +62,7 @@ def test_command_model_is_stable_and_raises_missing_help_poi() -> None:
     assert isinstance(command, Command)
     assert command.help_subject == "probe"
     assert command.records.to_record()["path"] == ["probe"]
-    # tarav.breadcrumb d65d6209603feceafaec80acbf3cd7d966cb0d478418dd279d3ee8c532f89bd6
+    # tarav.breadcrumb d65d6209603f
     assert [type(poi).__name__ for poi in command.checks.run().pois()] == [
         "CommandHelpMissing", "CommandUsageDescriptorMissing",
     ]
@@ -164,7 +164,7 @@ def test_usage_write_failure_preserves_cli_outcome(tmp_path: Path, monkeypatch, 
     assert capsys.readouterr().out.strip() == "[]"
 
 
-# tarav.breadcrumb a956247074a219aaa7d81d6fe5c7cf42e31154490244e7cf9ae6c302673773b6
+# tarav.breadcrumb a956247074a2
 def test_run_describes_code_without_storing_it(tmp_path: Path, monkeypatch, capsys) -> None:
     runtime = create_runtime(archive_root=tmp_path)
     monkeypatch.setattr(cli_adapter, "create_runtime", lambda: runtime)

@@ -12,8 +12,8 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
-# tarav.breadcrumb bbd582b062040e5ec212d86d72680b8f1b6405acce4f97efbabea5d5766d7887
-# tarav.breadcrumb bb18dc7c211d763d2d64ba186774ecf9709d0f9652468e3cc8e7c2cee6b9f45b
+# tarav.breadcrumb bbd582b06204
+# tarav.breadcrumb bb18dc7c211d
 def test_project_capabilities_use_bound_semantic_paths() -> None:
     from tarav.l0.kernel import NamespaceBase
     from tarav.l1.checks import CheckProvider
@@ -29,7 +29,7 @@ def test_project_capabilities_use_bound_semantic_paths() -> None:
     assert not hasattr(Project, "wiki")
 
 
-# tarav.breadcrumb 7211da22c6b149eacceffb125752d5822078f3a4714caefd83aa20834f10bab5
+# tarav.breadcrumb 7211da22c6b1
 def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
     from tarav.l0.kernel import NamespaceBase, TaravObject
 
@@ -40,14 +40,14 @@ def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
     assert callable(TaravObject.context)
     assert not callable(NamespaceBase(TaravObject))
     assert TaravObject.records.obj is TaravObject
-    # tarav.breadcrumb 6756f126eb6b4468aadc15dfb56e2e4b2c712811699c4bdfe5913f5b47fe60c1
+    # tarav.breadcrumb 6756f126eb6b
     assert TaravObject.records.record_example() == {"type": "Tarav.Object"}
     assert not hasattr(TaravObject, "record_example")
     assert not hasattr(TaravObject, "validate_record")
     assert not hasattr(TaravObject, "from_record")
     assert not hasattr(TaravObject, "to_record")
     assert "l1.records" not in _top_level_import_graph()["l0.kernel"]
-    # tarav.breadcrumb bece7d874166e00ed8162186de9a880d068a99e6e2baeb13f0a5783afe3485c6
+    # tarav.breadcrumb bece7d874166
 
 
 def test_project_ownership_and_consumer_direction():
@@ -77,7 +77,7 @@ def test_loading_workflow_configures_kernel_without_reverse_imports():
     assert not any(name.startswith("loading") for name in graph["l0.kernel"])
 
 
-# tarav.breadcrumb b28351625fdfd6e99329fb66c0610f238c7b0bc4a1b86770ff68c2194b0078f6
+# tarav.breadcrumb b28351625fdf
 def test_cli_usage_and_live_help_workflows_are_separate() -> None:
     from tarav.l1.cli import CliWorkflow, Command, CommandUse
     from tarav.l1.live_help import LiveHelpProvider, LiveHelpWorkflow
@@ -120,7 +120,7 @@ def test_git_workflow_spans_mechanics_integration_and_process_adapters():
     assert runtime.records.resolve_ship(entity(CommitManifest).id) is CommitManifest
 
 
-# tarav.breadcrumb 20e20b4bfd9e7a19c97838ed9e3f372ce80e8b3fcc948f2b0cd672c792818782
+# tarav.breadcrumb 20e20b4bfd9e
 def test_workspaces_own_their_entities_and_project_only_integrates():
     from tarav.l1.workspaces import Workspace, WorkspacesWorkflow
     from tarav.l2.project import Project
@@ -158,7 +158,7 @@ def test_poi_workflow_ownership_and_runtime_composition():
 
 
 def test_assertion_foundation_and_line_specialization_are_separate():
-    # tarav.breadcrumb 73c1e18245d93a9476d49b977aa509c06e1ef721a4f3ff39b7b0398c5011349a
+    # tarav.breadcrumb 73c1e18245d9
     from tarav.l2.lines.assertions import (
         LineGroundingAssertion, LineGroundingCase, LineSupportInventoryCase,
     )
@@ -202,7 +202,7 @@ def test_assertion_foundation_and_line_specialization_are_separate():
 
 
 def test_blessing_assertions_compose_without_reverse_layer_imports():
-    # tarav.breadcrumb 1fd36ba300aee30852e066b39cfe3bde2c2dd89a285d41e3ca14f9fbb69f9574
+    # tarav.breadcrumb 1fd36ba300ae
     from tarav.l1.actions import Closing
     from tarav.l1.actions.blessing import Blessing
     from tarav.l1.blessings import BlessingsWorkflow
@@ -334,7 +334,7 @@ def test_type_graph_ownership_is_separate_from_represented_ownership():
     assert entity(ArchiveFolder).workflow_ship != entity(TaravClass).workflow_ship
 
 
-# tarav.breadcrumb bd4584d1e7974ead6d170e3f1fb7b07e02be84eddbde0850ba86c9ff21c4e2d6
+# tarav.breadcrumb bd4584d1e797
 def test_skw_code_owns_common_source_and_skills_specializes_it():
     from tarav.l1.skw.annotations import GenerationAnnotation
     from tarav.l1.skw.code import CodeWorkflow, Contains, DocumentRecord, SkwBlock
@@ -627,7 +627,7 @@ def test_kernel_is_a_dependency_clean_application_base() -> None:
 
 
 def test_records_workflow_owns_navigation_without_owning_contributed_storage() -> None:
-    # tarav.breadcrumb b38987be170681c8355be449b609785866a0b4737bb4a6bd634113e9d43179b7
+    # tarav.breadcrumb b38987be1706
     from tarav.l1.records import RecordsRoot, TaravRecords
     from tarav.l3.runtime import create_runtime
 
@@ -871,7 +871,7 @@ def test_consumers_import_the_normal_model_package_not_its_submodules() -> None:
     )
 
 
-# tarav.breadcrumb 8962bfcd4c9671173cf77da9e7b532e2cb05f2d326407656ce21db8b4cdf897a
+# tarav.breadcrumb 8962bfcd4c96
 def test_project_mechanics_live_in_the_project_namespace() -> None:
     # Layers only relax dependencies; the Project namespace spans them, and its
     # lowest part is tarav.l0.project. _core holds no Project mechanics.
@@ -882,7 +882,7 @@ def test_project_mechanics_live_in_the_project_namespace() -> None:
     assert imports["l0.project"] <= {"l0._core"}
 
 
-# tarav.breadcrumb 7db2362b422eae20f9b232d0c26435b712f356f54f3f692c1c3b415b9b50ad98
+# tarav.breadcrumb 7db2362b422e
 def test_skill_mechanics_know_nothing_of_projects() -> None:
     # How a Project selects and installs skills is a Project integration.
     imports = _top_level_import_graph()
@@ -891,7 +891,7 @@ def test_skill_mechanics_know_nothing_of_projects() -> None:
     assert (PACKAGE_ROOT / "l2" / "project" / "skills" / "routing.py").is_file()
 
 
-# tarav.breadcrumb 56810d2b44380634cc17abe006666e235be6aa3168c35377077ac05e4f943abb
+# tarav.breadcrumb 56810d2b4438
 def test_project_skill_availability_stays_in_project_workflow() -> None:
     from tarav.l0.kernel import entity
     from tarav.l1.project.skills import ProjectSkills
@@ -903,7 +903,7 @@ def test_project_skill_availability_stays_in_project_workflow() -> None:
     assert entity(FolderSkill).workflow_ship == SKILLS_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb f38fded0c826624e04780a3a2e18a014ded9311ab856a1384350d68acfefb6dd
+# tarav.breadcrumb f38fded0c826
 def test_bypass_entry_is_outside_the_guarded_import_graph() -> None:
     for path in PACKAGE_ROOT.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))

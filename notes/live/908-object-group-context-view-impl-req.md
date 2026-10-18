@@ -41,24 +41,24 @@ The Workflows graphs on the extension are ad hoc: why the action and the
 POI, and not the check and other objects? Formalize it: an object declares
 related objects, through a context view the extension uses, with names and
 a proper model.
-<!-- tarav.breadcrumb a5479ba1f2864a3ffb0c98d0fe8b6d4a812960ea4a3ae279b58ea43f9785732c -->
+<!-- tarav.breadcrumb a5479ba1f286 -->
 
 No new method on top of objects: it is a Context workflow, reached as
 `obj.context(SomeView)`; subclasses still extend through inheritance. The
 object returns the whole chain, Situation → Check → POI → Action, peeking
 at the other objects as needed. "related" is too broad a word.
-<!-- tarav.breadcrumb 53fb923a7236dfdf8ef66a832c2a81b8678003fa52f27e574bc370fdf166d122 -->
+<!-- tarav.breadcrumb 53fb923a7236 -->
 
 The User accepted the agent's model (below: contributors per workflow, the
 view closing over direct links, the suites and closing records included,
 the Project left out) and named the view `ObjectGroup`, to be renamed later
 if a better name comes.
-<!-- tarav.breadcrumb 624c46a91638b83f7210395c0d32ec9d5d28ca60502b52ed458415ee51bcfd2d -->
+<!-- tarav.breadcrumb 624c46a91638 -->
 
 Build it, after the agent's last two points: members are entries named by
 role, carrying Type and id; a member that is not a live object is its Type
 and key, and a view never runs checks.
-<!-- tarav.breadcrumb 70b33a45acc22c713ebf15c4809690037d288a926b05ab7c44699fcef4565bcc -->
+<!-- tarav.breadcrumb 70b33a45acc2 -->
 
 ### Current behavior (inspected)
 

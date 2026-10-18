@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 
-# tarav.breadcrumb 2984c95d83d09439bda9ea84044a7b80eaad842f4d13068684a46eb05ed2fde6
+# tarav.breadcrumb 2984c95d83d0
 class ReportsCurrentSession:
     """Capability: the harness tells the processes it starts which session they run in.
 

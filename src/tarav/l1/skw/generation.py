@@ -63,8 +63,8 @@ class Output:
     invocation: str
 
 
-# tarav.breadcrumb 4b43d55059fb05aa7715826b8ba7ff6dd20358261d63637de0766aef86c39765
-# tarav.breadcrumb 761a547484e330286e3bc9e3cbab88e035e8700c14e8a03f0837c2c137bae58e
+# tarav.breadcrumb 4b43d55059fb
+# tarav.breadcrumb 761a547484e3
 class GenerationPOI(SituationPOI):
     """Family, never raised: a recorded generation no longer matches its inputs or output."""
 

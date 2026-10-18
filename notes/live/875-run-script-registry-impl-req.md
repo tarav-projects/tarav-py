@@ -23,21 +23,21 @@ Non-goals:
 ### Why
 
 The User's pandas analogy: operating a Tarav project should largely mean agents writing scripts against the Tarav library. The primary documentation is then the code base and recent uses of it, because skills go stale. Agents should be able to find examples of how Tarav has been used recently.
-<!-- tarav.breadcrumb 19eddffe1131777cc09f16a246655f420ee9b15de78f2f60cb72596b0392e5d7 -->
+<!-- tarav.breadcrumb 19eddffe1131 -->
 
 Live help already implements this principle for the command line interface. The registry here is a separate, similar workflow for scripts: `tarav run` itself owns a store of the code it has been running. It is not the record of how the `run` command was called, which live help already keeps. It can be very simple: a place where the files are copied, kept bounded in size, with metadata such as the project and the commit so that contextualization can find things later.
-<!-- tarav.breadcrumb 7423cecf783a58ee0b0a0e681016c781ad6bec51bcf3249acbad44a9f4bf5b4e -->
+<!-- tarav.breadcrumb 7423cecf783a -->
 
 The store is central, so that an agent can see how other projects use the same things. Scripts from other projects may contain better patterns, and agents can be prompted to study them, which lets practice improve over time.
-<!-- tarav.breadcrumb 6fc1d94b25c60fca50c065dbee32a92633f4587f1f0361b007822b47806d26f8 -->
+<!-- tarav.breadcrumb 6fc1d94b25c6 -->
 
 ### Decisions by the User
 
 The registry is another registry like the help one, in its own folder. `tarav run` keeps the path, and copies the file into the registry when a script path is given; source given as text or on standard input is kept as well. It should be very simple; some deduplication is fine, and space efficiency does not matter at first. It is partitioned at least by Project: a run with the `--project` flag is stored under that Project's partition, and a plain run goes to a global partition. Metadata is left to common sense, for example the calling folder and the date; what is useful will be discovered later.
-<!-- tarav.breadcrumb 6c5c9a86a99c0b8e7e5e442015b816a01d835a7584963557ece3604966a2a578 -->
+<!-- tarav.breadcrumb 6c5c9a86a99c -->
 
 Retention exists only to bound size, so size is the rule: an allocation per partition, for example 50 MB, and a limit per entry, for example 1 or 2 MB, beyond which the copy is simply cut. This is a best-effort system that only increases contextualization power; nothing in it is critical. The User accepted the agent's other proposed choices and asked for common sense on the rest.
-<!-- tarav.breadcrumb 22398abdca267af863438dc73c6273f30034ff0b256325ab8ac22837f3c2cdaf -->
+<!-- tarav.breadcrumb 22398abdca26 -->
 
 ### Current behavior (inspected 2026-10-08)
 
@@ -121,7 +121,7 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `tarav-
 - Design note capture: five User-Turn Breadcrumbs submitted, audit clean; design commit `cf8adf1b99515ddda0985e53f7f832aceb689d9c`.
 - Wiki capture in `tarav-md`: two sections appended to `notes/wiki/tarav-scripts-and-entry-points.md` (4 new Breadcrumbs, 23 total, audit clean) and one to daily `2026-10-08.md` (3 new, 27 total; only the 13 earlier `breadcrumb-position-missing` POIs). Start checkpoint `f32bd1a7e28099afaeca1271f7482d7716296118`, completion commit `edbe4ec63649ad95a3344f37f218d6850ff9d759`.
 - Execute (2026-10-08): the User asked to start implementing while the two open questions were unanswered. Both were resolved with the agent's recorded recommendations, which remain agent choices: the registry lives under `~/.tarav/run-registry/`, and `tarav run -- -` reads standard input fully before starting the child. Scoped start checkpoint `475639557aa3884ffc3b88658faa0e336a8824b2`.
-<!-- tarav.breadcrumb 32ca8c35fe3770635738d3b7910c68b19071361192dc321a56d472e0e41011ea -->
+<!-- tarav.breadcrumb 32ca8c35fe37 -->
 - Implemented `RunRegistry` in `src/tarav/l1/python_env/registry.py`, wired `tarav run` in `src/tarav/l3/run.py`, added optional standard-input replay to `run_python()`, and added `TARAV_RUN_REGISTRY` so the test suite and the commands it spawns stay out of the machine registry. Repeated code is shared by hard link, so pruning the older entry cannot orphan the newer one. The `run` usage trace carries `registry_entry`, and `tarav run --help` prints the registry path.
 - Two deviations from the design, both forced by an uncommitted refactor in the shared worktree that moves `tarav.l0._core.project` to `tarav.l0.project` and `tarav.l0._core.home`: the registry resolves the Tarav home itself, and `tarav run` reads the Project marker file directly to get the Project id. Each imports cleanly in both the committed tree and the worktree.
 - Verification: ten new tests in `tests/cli/test_run_registry.py`. The exact committed tree passed 188 tests in an isolated checkout; the shared worktree passed 198; Ruff clean. CLI reinstalled. A real `tarav run --project -- <script>` produced an entry under the `tarav-py` Project id with source, Git commit, dirty flag and exit status, and a heredoc through `tarav run -- -` ran and was retained under `global`.

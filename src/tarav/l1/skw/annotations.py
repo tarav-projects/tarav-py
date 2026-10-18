@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     from .document import SkwBlock
 
 
-# tarav.breadcrumb 36e63e0918480b3fc017de48822356d3f4950cfd2af394c5aca20f3e0d156ad0
-# tarav.breadcrumb 050e6956d3f26ba471c5a1b911983e9d6557428b5a96b7ac916beb90e19f85b9
+# tarav.breadcrumb 36e63e091848
+# tarav.breadcrumb 050e6956d3f2
 class BlockAnnotation(TaravObject):
     """A typed workflow contribution attached to one SKW block."""
 
@@ -31,7 +31,7 @@ class BlockAnnotation(TaravObject):
         )
 
 
-# tarav.breadcrumb 8dbf062ea70375059968b0138f0b6cc678b292c9f1760b2483084b6e0148967f
+# tarav.breadcrumb 8dbf062ea703
 class GenerationAnnotation(BlockAnnotation):
     """Instructions and typed context declared for agent generation."""
 
@@ -75,8 +75,8 @@ class GenerationAnnotation(BlockAnnotation):
         )
 
 
-# tarav.breadcrumb 19de67db6f4f6dc380b323a5801982087474feaf3f747b69f1a8b89273ae1c87
-# tarav.breadcrumb aa683304362a81877b7e28537e9ad7839f48e9b72c58604c85237fce9ac72fd1
+# tarav.breadcrumb 19de67db6f4f
+# tarav.breadcrumb aa683304362a
 class ObjectIndexReference(Reference):
     """Resolve one local identifier through its containing SKW block."""
 

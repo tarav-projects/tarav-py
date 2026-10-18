@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# tarav.breadcrumb 80a3fc11cbf05abab3ddcd94e3a2a11a6f7d5d7af418e0b2853c4dd3b5d40b42
+# tarav.breadcrumb 80a3fc11cbf0
 
 import argparse
 import json
@@ -806,7 +806,7 @@ def _cmd_diagram_renderer_show(args: argparse.Namespace) -> int:
     )
 
 
-# tarav.breadcrumb de29d63548186d64cdbcc61ad67d893c28f69ecb149ff9150fd71967eb82da08
+# tarav.breadcrumb de29d6354818
 def _cmd_diagram_render(args: argparse.Namespace) -> int:
     try:
         diagram = _diagram_configuration(args.diagram_config).diagram()

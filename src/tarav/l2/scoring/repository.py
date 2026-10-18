@@ -112,7 +112,7 @@ class ScoringRepository:
     def save(
         self, record: Mapping[str, object], *, message: str | None = None
     ) -> JsonObject:
-        # tarav.breadcrumb 898d2a78acf1426b0160b966b8d2c4f18fd7b23a8241316766b0f5779e254780
+        # tarav.breadcrumb 898d2a78acf1
         payload = dict(record)
         validate_record(payload)
         if payload["type"] == SCORING_EVENT_TYPE:

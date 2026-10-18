@@ -71,7 +71,7 @@ def test_assertable_namespace_is_label_addressed_and_immutable():
 
 
 def test_line_produces_two_distinct_closed_case_types_and_roundtrips(tmp_path):
-    # tarav.breadcrumb 647f31107b139fbad032a514075544672fb07773ad50b5f63e0189f8cf1fe8ae
+    # tarav.breadcrumb 647f31107b13
     assertion, projection, evidence = _line_case_material()
     runtime = create_runtime(archive_root=tmp_path)
     cases = [assertion.assessment_case(case_type, projection=projection, evidence=evidence)

@@ -125,7 +125,7 @@ def test_bounded_report_counts_all_and_retains_evidence():
     assert len(collector.get(report["items"][0]["id"]).observed["payload"]) == 500
 
 
-# tarav.breadcrumb 60ad34642493726fbf971cf722a95e7eaeda0049c5dd3660a97ca55f7692c6e2
+# tarav.breadcrumb 60ad34642493
 def test_pois_are_atomic_and_carry_no_code():
     import inspect
 
@@ -146,7 +146,7 @@ def test_pois_are_atomic_and_carry_no_code():
             assert "code" not in inspect.signature(poi_type.__init__).parameters, poi_type
 
 
-# tarav.breadcrumb 3412dc1bc71d3a44a4afba8328b173c8b241bb66f6738f123df2f0d851444ba4
+# tarav.breadcrumb 3412dc1bc71d
 def test_any_poi_can_be_thrown_and_the_error_carries_it():
     from tarav.l1.poi import NotificationPOI, POIError
 
@@ -160,7 +160,7 @@ def test_any_poi_can_be_thrown_and_the_error_carries_it():
         review.throw()
 
 
-# tarav.breadcrumb 3fa8f026ab9acb15efdf4281afae2cc1c176ea7b9f2f6aa94e832bab8a1da8b3
+# tarav.breadcrumb 3fa8f026ab9a
 def test_a_situation_poi_has_a_type_a_message_and_a_situation_and_nothing_else():
     poi = AppError.finding({"file": "a"})
     assert (poi.message, poi.situation) == ("Application error", {"file": "a"})

@@ -22,7 +22,7 @@ c6489f81 = claude-code:7f975c3c-3c91-4175-9071-0d132b06c356 @c6489f818b92448026b
   bracketing commits; per-hunk evidence; a git hook; message-content hashing.
 
 The user asked for this implementation-request design in `tarav-py`.
-<!-- tarav.breadcrumb 74645a096cba7cd7a40f9eeb3d4a5dd1a477dc4d064a4e52e96575f1436d3479 -->
+<!-- tarav.breadcrumb 74645a096cba -->
 
 ## Design narrative
 
@@ -36,8 +36,8 @@ agents from long reasoning chains that drift from user intent by making them
 attach evidence to what they do. Commit evidence runs in parallel with the
 existing Wiki and Product.Surface Breadcrumbs; none of these layers needs to
 be complete on its own.
-<!-- tarav.breadcrumb 3bf2bce1b1b767522dd4dd96ef7814ad8483b245d2023600dd01d03b1f3d2776 -->
-<!-- tarav.breadcrumb 85a3223b17e06120c1bfdab8a2cef1fe7fc129648df7b5c1a911827f7b2d6159 -->
+<!-- tarav.breadcrumb 3bf2bce1b1b7 -->
+<!-- tarav.breadcrumb 85a3223b17e0 -->
 
 Proposal (agent): the author only points; it does not prove. An audit then
 reduces to a narrow question — "does this turn support this change group?" —
@@ -49,12 +49,12 @@ which is cheaper and less error-prone than an open review.
   committer records what it knows. If the committing session did not do some
   of the work, it says so with a standardized marker. Large changes may be
   split into commits by evidence group.
-<!-- tarav.breadcrumb 0193c926823265a86ab898e6a819bb2367dba0581e9aedf0bbee31a5f76a0f7a -->
+<!-- tarav.breadcrumb 0193c9268232 -->
 - The message format resembles the draft shown in chat and is compatible with
   Breadcrumbs. The original discussion proposed a temporary message file;
   the follow-up below refines this into a temporary JSON manifest, with Tarav
   preparing and checking the message before committing.
-<!-- tarav.breadcrumb 2107b5f6d0ad9d6214033f4e86feecd9af6452ee0f22fac3a3adaa6c1b4d09d3 -->
+<!-- tarav.breadcrumb 2107b5f6d0ad -->
 - The commit message is its own surface, distinct from files inside the
   commit, and needs an explicit Breadcrumb workflow because Breadcrumbs are
   registered records, not only inline labels. Instead of a file position, the
@@ -62,7 +62,7 @@ which is cheaper and less error-prone than an open review.
   (three to five) commit hashes, so agents can later research the repository.
   The goal is to leave as much evidence as practical of which discussion
   triggered or justified each modification.
-<!-- tarav.breadcrumb 12d4d5ecb166f018aa93ecfb8878a7948c1d9b9df371f35e8870831fb9431257 -->
+<!-- tarav.breadcrumb 12d4d5ecb166 -->
 - The message is full of Breadcrumb IDs and therefore easy to find; hashing
   its content is optional. The critical concern is cost-benefit: the agent
   that did the work should commit it. Skills that modify things — capture and
@@ -70,7 +70,7 @@ which is cheaper and less error-prone than an open review.
   commit is a checkpoint. The original proposal swept up earlier uncommitted
   work; the follow-up replaces that with agent-declared scope. An empty start
   is fine; broader direct commits remain a separate action.
-<!-- tarav.breadcrumb 0eaaeb77ed0beed728cb35fa8f242a0343ba0d75bbdc60f808711b849c33d213 -->
+<!-- tarav.breadcrumb 0eaaeb77ed0b -->
 
 ### Message shape
 

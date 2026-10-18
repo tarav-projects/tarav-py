@@ -12,7 +12,7 @@ from .git import GitCommitMessagePositionReference, GitFileReference
 from .structured import StructuredFileReference
 
 
-# tarav.breadcrumb 386ae4a7c75e0a6e4680a64282a25d0a3c5bf3701b9dda39b9706efb7f1ba037
+# tarav.breadcrumb 386ae4a7c75e
 REFERENCE_RECORD_TYPES = (
     Reference,
     ReferenceResolutionPOI,

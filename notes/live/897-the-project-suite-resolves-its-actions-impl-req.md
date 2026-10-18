@@ -38,7 +38,7 @@ Follow-up in another repository:
 
 The agent explained that an action had one manager and one target, the
 Project a command started from, so a run on a child alone closed nothing.
-<!-- tarav.breadcrumb 50e9a89a367bd319df95e392129df4ed2705f2cf8bdbead7241efc89e82cd300 -->
+<!-- tarav.breadcrumb 50e9a89a367b -->
 
 A check must belong to something, because otherwise we do not know whether
 it is no longer happening. The model is suite/check. If others want those
@@ -49,34 +49,34 @@ momentary check whose only footprint is printing needs none of it. The suite
 is an organization of a Project's action system, not something fundamental
 to POIs and checks. The question it answers: who can tell me whether this
 check disappeared?
-<!-- tarav.breadcrumb da57c9758a1cfef6939c0f302aacb0f3d3f5006872e84a35d2e3496fe02b6b81 -->
+<!-- tarav.breadcrumb da57c9758a1c -->
 
 The suite is something Projects have, identified from its Project, like
 `<project>.suite`. It represents a set of checks. A check that is no longer
 produced because it was removed from the code is no longer in the suite,
 which is not very different from a check that is no longer triggered. The
 suite is where we go to define the current set of active checks.
-<!-- tarav.breadcrumb 8a6cedb128fa888e39b066cc57e85276f699daee5fc1d0097064814997f8d0fe -->
+<!-- tarav.breadcrumb 8a6cedb128fa -->
 
 A check that crashed is a result of the test, so the test is present. Some
 checks are always created and run, others are not explicitly defined and can
 occur once and never again; those are the ones that can be missing from the
 suite. The two kinds are not tracked differently: they emerge. We run a
 suite, we have the results, and we resolve the status of checks and actions.
-<!-- tarav.breadcrumb acdeaf57127d02b4a59f638ad35969fdb6ba240d5edbecbfd61aa0e4d13ce3c4 -->
+<!-- tarav.breadcrumb acdeaf57127d -->
 
 `project.checks.suite()` is the suite: the place where actions go to resolve
 the current status of checks. The status must be clear when a check failed.
-<!-- tarav.breadcrumb cb60022aa57df47999552ac488631cbc5647e151f9b93296fe243c31634b22d4 -->
+<!-- tarav.breadcrumb cb60022aa57d -->
 
 The User asked for the request to be written and executed.
-<!-- tarav.breadcrumb cb0d81e4b536b7fa2e72962f0aea0542fe0ba6063c8fc41e5e3c5630bbb59a95 -->
+<!-- tarav.breadcrumb cb0d81e4b536 -->
 
 About command output, decided just before: Tarav commands render their
 output by default and `--json` dumps it; there is one model for both, and
 the command decides what to present.
-<!-- tarav.breadcrumb 172076a0f343a0ed666f5600452a5c7d0d82b288656ed2fcd54536b71fa59255 -->
-<!-- tarav.breadcrumb 8dad8d01853c69283145d54227bd6aad9b7258cd30bd1183147a897b7431d975 -->
+<!-- tarav.breadcrumb 172076a0f343 -->
+<!-- tarav.breadcrumb 8dad8d01853c -->
 
 ### Current behavior (`tarav-py` at `7f74882`)
 

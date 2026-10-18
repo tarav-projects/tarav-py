@@ -27,8 +27,8 @@ def system_root() -> Path:
     return default_tarav_data_root() / "system"
 
 
-# tarav.breadcrumb 54db358d862b223c5add4db4e4eb2d78c2d2d33915c1e8fe183b0f2c23fdaf0a
-# tarav.breadcrumb 564dd5d64c3d1e2fe24ac2f711643e278b7fa5679254aa675956ded48775c4ee
+# tarav.breadcrumb 54db358d862b
+# tarav.breadcrumb 564dd5d64c3d
 class TaravSystemProject(Project):
     """A machine's Tarav System Project; its own Type subclasses this one.
 
@@ -86,7 +86,7 @@ class ActiveProjectDoesNotLoad(ActivePOI):
                           workflow=PROJECT_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 002f3f48f20e7e18848a42e3045367942c0b82be9b72a79fb36190d4f18baade
+# tarav.breadcrumb 002f3f48f20e
 class ActiveProjectCheck(Check):
     """Loads one active Project from outside, in its own environment, and nothing more."""
 

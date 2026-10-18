@@ -37,7 +37,7 @@ class TypeScriptComment:
     span: SourceSpan
 
 
-# tarav.breadcrumb ba7f5984d4ab2cebcbeded42e6894c671818dcbaf4671ac7b4f64a628eb347eb
+# tarav.breadcrumb ba7f5984d4ab
 @dataclass
 class TypeScriptNormalModel(TaravObject):
     """The TypeScript facts current consumers need: comments and diagnostics."""

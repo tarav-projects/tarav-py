@@ -62,7 +62,7 @@ tarav run --project /path/to/project -- /path/to/script.py --flag value
 tarav run --project /path/to/project -- -c 'import my_project; print(my_project.__file__)'
 tarav run --project -- /path/to/script.py --flag value
 ```
-<!-- tarav.breadcrumb 0f7d6215f010aefa07f9d8348928517983aebaa49b460465e501da996b4d8aaf -->
+<!-- tarav.breadcrumb 0f7d6215f010 -->
 
 The Project directory must already exist. `--tarav-source` explicitly selects
 a local Tarav checkout or wheel. An existing base/untyped marker requires
@@ -85,10 +85,10 @@ the current Tarav interpreter is used, including inside a Project. All arguments
 to Python, whose exit status is returned. Scripts use library APIs explicitly;
 the general runner does not inject `project` or `runtime`. An absent Project
 environment requires explicit sync.
-<!-- tarav.breadcrumb 183d55ff0858594084c5e551bf83b4d9788e9818c421b999213507943e110eab -->
+<!-- tarav.breadcrumb 183d55ff0858 -->
 
-<!-- tarav.breadcrumb 1f33fc2cc1912ac21a4a5c3220643c174e55b2118d9cd1f65f1b04471bc9fdbe -->
-<!-- tarav.breadcrumb 47efea5cf58185d9d74fb13d441a72089b4132b654842bb36dfa26ccf822b215 -->
+<!-- tarav.breadcrumb 1f33fc2cc191 -->
+<!-- tarav.breadcrumb 47efea5cf581 -->
 
 The same filesystem operations are available through
 `tarav.l2.project.harness.ProjectHarness`; runtime bootstrap and subprocess
@@ -109,7 +109,7 @@ environment and Git repository. Its `.tarav/project.json` lists the Projects
 it works on, by hand: `"active": ["~/projects/my-project", …]`.
 `tarav status --project ~/Documents/tarav/system` loads each one through its
 own harness and reports those that are missing or do not load.
-<!-- tarav.breadcrumb 13ce5fe0f9a85d8170df5351149a085f7979f9bfb7ba8af03b5f30ad9b608345 -->
+<!-- tarav.breadcrumb 13ce5fe0f9a8 -->
 
 ### Root Projects and shared environments
 
@@ -132,8 +132,8 @@ naming it, and that environment installs the child's package:
 a child with its own environment runs there and is reported as one result
 with a POI per type and its count. A listed child that is missing or cannot
 be loaded is an incomplete result.
-<!-- tarav.breadcrumb 396afee40c0c1101e8fe83ebfe4839d1f6bc8d6dbebeccf53f1b64f23fc5ede2 -->
-<!-- tarav.breadcrumb 94e2da75af3ba6fe18d0a7856543ebee9ca7c253a013f5859d5b02a196933892 -->
+<!-- tarav.breadcrumb 396afee40c0c -->
+<!-- tarav.breadcrumb 94e2da75af3b -->
 
 ## Main systems
 

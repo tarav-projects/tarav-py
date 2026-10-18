@@ -12,7 +12,7 @@ from .identity import (
 )
 from .lite_records import LiteRecord, LiteRecordSerializer
 from .namespaces import NamespaceBase, check_namespace_composition
-# tarav.breadcrumb 2ba7b744a82791df277c38ce55a693a28bf49a403c7f2f15e533790cbc6a8473
+# tarav.breadcrumb 2ba7b744a827
 from .records import (
     DIRECTORY_ENTRY_PATH,
     DirectoryRecord,
@@ -33,7 +33,7 @@ from .records import (
     isrecordsubclass,
     issubrecord,
 )
-# tarav.breadcrumb 7be348cc12560b61f6b1265cc055f341098f0fe390abd3f523b7aa37f7cd207f
+# tarav.breadcrumb 7be348cc1256
 from .types import (
     TYPE_RESOLUTION_PATH,
     DuplicateTypeRegistration,

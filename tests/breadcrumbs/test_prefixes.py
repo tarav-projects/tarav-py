@@ -36,7 +36,7 @@ def test_a_unique_prefix_finds_its_full_id(store: BreadcrumbStore) -> None:
     assert store.find(SHARED + "dd") == THIRD
 
 
-# tarav.breadcrumb 6123e20d5ea255adb67656414eda766897f7cc1aa3906d03de1d79cdfeba9df5
+# tarav.breadcrumb 6123e20d5ea2
 def test_a_shared_prefix_is_an_error_naming_every_candidate(store: BreadcrumbStore) -> None:
     with pytest.raises(BreadcrumbAmbiguous) as raised:
         store.find(SHARED)

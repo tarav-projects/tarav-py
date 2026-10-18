@@ -17,25 +17,25 @@ Non-goals: POI tracking; a notification log; migrating Tarav's configuration fil
 ### What the User decided
 
 A type may extend many capability classes, and each capability's controls could then be custom and messy. One shared, namespaced place for them, comparable to Visual Studio Code's dotted settings keys, makes Tarav more predictable and more extensible.
-<!-- tarav.breadcrumb ea6da3185aa7cb75dce7bcd217c10e3f24e01de831fd3154fa9ddd9e5115747a -->
+<!-- tarav.breadcrumb ea6da3185aa7 -->
 
 Settings are for configuration and not for object data, which is a typical failure point. Each type that uses them declares a template of expected keys in the spirit of the record system, and the type controls it. The rules stay as simple as possible: every type has its own partition, and inheriting a parent's settings is explicit, like including the parent's checks. The system is type-internal. A capability may also have no settings.
-<!-- tarav.breadcrumb 71da207d2e9f674147ae27326949a260de6cec5c8adac5fef1a782616fbf3289 -->
+<!-- tarav.breadcrumb 71da207d2e9f -->
 
 Instances receive values through two standard entry points: a settings object passed at construction, and a write operation on a settings namespace afterwards. They are conventions; a type may do otherwise. The standard path gives key checking for free and connects the settings to the object's context. How a value is used is not regulated, and locking is the business of the workflow that reads the setting.
-<!-- tarav.breadcrumb b0db33633368b372690b397dfb4da3d72504f5d8db27d6fd1d832a352c8cc602 -->
+<!-- tarav.breadcrumb b0db33633368 -->
 
 Object settings and files are one workflow: settings may be loaded from a file, and how defaults are created and settings loaded stays flexible.
-<!-- tarav.breadcrumb d1bd7ed0c9b6542a90342546dda275d535150f6bb96cf10346845a55387f43ce -->
+<!-- tarav.breadcrumb d1bd7ed0c9b6 -->
 
 Data and settings are different. Loading a record does not put its data in `.settings`. A class may represent settings as its data and still have `.settings` of its own that configure how it behaves.
-<!-- tarav.breadcrumb 73ad51657cf67ae54204cf1730c68edb3a9841a05c7a481ecd8544cdd666380f -->
+<!-- tarav.breadcrumb 73ad51657cf6 -->
 
 Settings is itself a capability. An object has `.settings` only when something it extends needs it.
-<!-- tarav.breadcrumb 94487046a5285846b9522860ab1f140863bed4fd771fead913fcd2ff184222c6 -->
+<!-- tarav.breadcrumb 94487046a528 -->
 
 The User asked for this to be captured and implemented.
-<!-- tarav.breadcrumb 2af83667a5586883ca74f6c98de44518a8997470494fe4786747b6ac3b9ffbb1 -->
+<!-- tarav.breadcrumb 2af83667a558 -->
 
 The Wiki note `tarav-md/notes/wiki/settings-capability.md` records the convention in full; `capabilities-by-subtyping.md` records the principle behind it.
 

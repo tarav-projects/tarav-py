@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from tarav.l0._core.git_repository import initialize_repository as _initialize_repository
-# tarav.breadcrumb be55aa1795b6cd35b1a97c77d00706182d212063250726b8198935df93fe53cd
+# tarav.breadcrumb be55aa1795b6
 
 
 GIT_CONFIG_FILENAME = "git-config.json"

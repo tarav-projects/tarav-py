@@ -27,36 +27,36 @@ scoring; changes to Tarav Center.
 A blessing answers a specific question about a POI, and the types should carry
 that semantic. Its general meaning is that the POI's claim is attenuated or
 dismissed, an overrule of the check.
-<!-- tarav.breadcrumb 848aa3b4b7e8594ecdd1adedc88b7a34df000000de5d0695a376e73c22792640 -->
-<!-- tarav.breadcrumb c128b7897e8f00d7d1ca09dbb8e4c7439c5c6dc2c3ebdfa004f064a94dfd6d06 -->
+<!-- tarav.breadcrumb 848aa3b4b7e8 -->
+<!-- tarav.breadcrumb c128b7897e8f -->
 
 More generally a POI can be resolved in typed ways: the situation was changed,
 something the POI asks for was done, or it was dismissed. The word "blessing"
 need not be kept.
-<!-- tarav.breadcrumb 1c7b053efd891d419c29581ab494b6bbb3567fbf7b76ffabd65449bc083d1632 -->
+<!-- tarav.breadcrumb 1c7b053efd89 -->
 
 A POI is only the event of a situation being raised. It can activate an
 action, and a blessing is a way to finish that action.
-<!-- tarav.breadcrumb ae56f759003a95ba68a0e635e8949886474232d23e1fee1cfb15f9a05343dc7a -->
+<!-- tarav.breadcrumb ae56f759003a -->
 
 A tracked POI is an action triggered when the POI is first raised and closed
 automatically when a later check no longer raises it. An action has several
 close paths, as a program has. Earlier designs need not be kept.
-<!-- tarav.breadcrumb c9b6ee7279d88c0f213e292e2fbc45d8f2bf7d25c6f1e9f34e1b24072606f1cc -->
+<!-- tarav.breadcrumb c9b6ee7279d8 -->
 
 One action per POI. Other workflows may later attach their own independent
 actions, and actions may close when others close.
-<!-- tarav.breadcrumb c74fa25ad8915f73b54ceedf526df69d4c8e8d3530ed07401328aae083e878a2 -->
+<!-- tarav.breadcrumb c74fa25ad891 -->
 
 The POI that spins an action is, for now, an actionable POI. A loop owned by
 the Actions workflow asks each running action whether a close path is met and
 closes it if so; that is preferred to hooking into the checks.
-<!-- tarav.breadcrumb 5b89eacbcdb76899c10af83df17e48eb83dfbb0888357fd075a98545341bea31 -->
+<!-- tarav.breadcrumb 5b89eacbcdb7 -->
 
 What the chain from check to action looks like was discussed against the
 current code: raising a POI does nothing by itself, and the caller that ran
 the checks decides what follows (retain, report, track, render).
-<!-- tarav.breadcrumb 88d0d4ca8d432bf86d09beebba243bacde5cc690314f48a1ddc982d7a14da7bc -->
+<!-- tarav.breadcrumb 88d0d4ca8d43 -->
 
 The start of the action attaches to the POI, and the check result can
 interact with the active actions. A POI's action is a single instance: as the
@@ -64,13 +64,13 @@ same POI can be created many times and is the same POI because its identity
 is its situation, the action's instance identity follows the same rule, a name
 plus the situation, hashed. A check that finds nothing says so with a POI of a
 different Type, whose action closes the other; the same machinery is used.
-<!-- tarav.breadcrumb efd828c3ce1ecf1ccc3a0090ab5429d1d70e0fa13413b78e6578c67bd751c0d0 -->
+<!-- tarav.breadcrumb efd828c3ce1e -->
 
 When a POI triggers its action: if it is open it stays open, if it is closed
 it reopens, if it does not exist in the central registry it is created open.
 The history is the Git history of the record; nothing duplicates what Git
 does.
-<!-- tarav.breadcrumb 012d2905a4402bdcdd5a7fce9a738ae856d769695fef853ee52c0a6bed029742 -->
+<!-- tarav.breadcrumb 012d2905a440 -->
 
 All of this is an example for this first implementation, a design for one use
 case, not a set of general principles. The clear POI is to be built: a POI is
@@ -78,7 +78,7 @@ the general way to declare an event, positive or negative, and what is shown
 is decided afterwards; positive POIs are suppressed by default. A positive POI
 that closes a previously open action is itself a useful signal to the agent
 that the situation is gone.
-<!-- tarav.breadcrumb b9e32ce16ace9f7ece090a1968dbd4b6928f928be0c780dcfefc10b66f469af0 -->
+<!-- tarav.breadcrumb b9e32ce16ace -->
 
 ### Current behavior (after request 891)
 

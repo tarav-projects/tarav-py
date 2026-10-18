@@ -15,12 +15,12 @@ Migrate existing active POI-like reporting into workflow-owned types that
 subtype the neutral POI base. Establish a separate Blessings workflow with
 BlessablePOI. This first pass changes type/ownership infrastructure while
 preserving existing detection and operation semantics.
-<!-- tarav.breadcrumb f4178f9253ffd731e3cae5f4c0397dc53af7974910859e84ea702a5d4e6e5a67 -->
+<!-- tarav.breadcrumb f4178f9253ff -->
 
 Dependency: [832](832-neutral-pois-checks-and-breadcrumb-audits-impl-req.md)
 landed first. This implementation extends its POI foundation and leaves its
 Breadcrumb migration intact.
-<!-- tarav.breadcrumb e11158fe65b434b1a29f74675836a5a68f9429bbe1486b6b6b4fa27b39ba23de -->
+<!-- tarav.breadcrumb e11158fe65b4 -->
 
 Non-goals: replacing every engine with Checks; requiring CheckProvider;
 inventing new checks or notifications; redesigning blessing scoring;
@@ -33,18 +33,18 @@ The minimum integration is that actual POIs are defined in their producing
 workflows and inherit the shared POI base. Existing analysis may remain as
 it is. Shared typing makes those outputs part of the same system without
 forcing an orchestration or producer abstraction on each caller.
-<!-- tarav.breadcrumb 03c4312bac3c7a0e3a4fe52f5cff33f61e69e2efad1598c5448b5c6683394b09 -->
+<!-- tarav.breadcrumb 03c4312bac3c -->
 
 Blessability belongs to another workflow with its own BlessablePOI base.
 Ordinary POIs must not acquire required blessing fields or semantics.
 Concrete types retain their own workflow ownership even when inheriting
 capabilities from Checks and Blessings.
-<!-- tarav.breadcrumb c292279b14b06d76bf0031057508c0074441528293259a812bdd2a2185abd72d -->
+<!-- tarav.breadcrumb c292279b14b0 -->
 
 Blessability is expressed only by inheriting `BlessablePOI`. The refactor does
 not retain an occurrence-level boolean, an older generic occurrence type, or
 compatibility behavior for that discarded ontology.
-<!-- tarav.breadcrumb 2ce2c79238e586d22fb4f3f97d5296e6bb23c7143296b524df45182035b1a843 -->
+<!-- tarav.breadcrumb 2ce2c79238e5 -->
 
 ### Composition
 
@@ -53,7 +53,7 @@ CheckPOI and BlessablePOI. Checking and blessability are composable aspects,
 not competing ownership declarations. The example establishes the pattern;
 it does not newly authorize blessing every stale-generation condition.
 Existing per-kind blessing policy must be preserved.
-<!-- tarav.breadcrumb a6c505e9a81bbcd50d18bc5b3ada8239acaa07f0e180206da4eed04a3af511ec -->
+<!-- tarav.breadcrumb a6c505e9a81b -->
 
 ### Current-code survey and proposed migration scope
 
@@ -124,7 +124,7 @@ warnings.warn(): a producer emits a typed notification and continues its
 ordinary operation. Delivery belongs to shared POI mechanics, not to an
 Archive-specific output protocol. Creating a notification without delivering
 it is insufficient.
-<!-- tarav.breadcrumb a0cdd483a5acbd138ae4ac17764c97666338f44999d1fbdff65715b86e9151c0 -->
+<!-- tarav.breadcrumb a0cdd483a5ac -->
 
 For Archive's existing skipped-remote warning, emit an Archive-owned
 NotificationPOI through the shared emission path and continue returning the
@@ -241,4 +241,4 @@ environment both resolve the new Blessings module.
 not a reason to redesign Archive's return contract. Expanded the implementation
 proposal with the minimal BlessablePOI contract and an explicit no-relocation
 storage policy. These are design amendments; no product code changed.
-<!-- tarav.breadcrumb 9ae73348c0294cad3fe3e22c656abfd2584930a512275bf433e01ca207c8f040 -->
+<!-- tarav.breadcrumb 9ae73348c029 -->

@@ -9,13 +9,13 @@
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Complete. Phase: Develop (Execute).
 
 Make Project capabilities readable as `project.docs.wiki.daily(date)`, `project.models.ls()`, and `project.checks.run()`. Migrate maintained callers and declarations so these are actual paths, not examples beside the old method API.
-<!-- tarav.breadcrumb b82908d4b73c1eea771d28f975b7058003e01cce5326ac865b6e3421b921edc1 -->
+<!-- tarav.breadcrumb b82908d4b73c -->
 
 ## Design narrative
 
 The User wants top-level objects to carry concrete meaning while abstract or shared capabilities sit under semantic namespaces. `docs` is the Project documentation namespace; `models` is its own bound capability and should be accessed as an attribute; `checks` is a shared namespace on `CheckProvider`, not a Project-only method. The suite remains constructible without running, and `checks.run()` performs execution.
-<!-- tarav.breadcrumb 3fc92308fc3e7f3a55165015e7c9d497302efd577936e4343fcb6af1536563db -->
-<!-- tarav.breadcrumb 343d75f062f5db6a0407eb3efff114b6e57ded1d79c8b59aa77fc5e1b6e7caa7 -->
+<!-- tarav.breadcrumb 3fc92308fc3e -->
+<!-- tarav.breadcrumb 343d75f062f5 -->
 
 Current code has `Project.models()` returning `ProjectModels`, `Project.wiki()` returning `Wiki`, and `CheckProvider.checks()` returning a `CheckSuite`. Concrete providers override that method. The CLI, tests, and documentation use the old calls. Design: expose a bound `Project.Docs` view with a `wiki` property, expose `ProjectModels` at `project.models`, and put `suite()` plus `run()` on `CheckProvider.Checks`. Providers specialize `Checks.suite()` and callers use `checks.suite()` or `checks.run()` as appropriate. There is no automatic suite merger; a composed provider defines it explicitly.
 

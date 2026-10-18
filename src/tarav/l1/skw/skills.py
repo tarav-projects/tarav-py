@@ -8,7 +8,7 @@ from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
 from tarav.l1.skw.pois import Finding, InvalidProducedOutput, StaleProducedOutput
 
 
-# tarav.breadcrumb b7587610e2af5af9ea51dfbddae8571e0b452713dbb757dac8bf38698f7299f3
+# tarav.breadcrumb b7587610e2af
 class SkillLink(SkwBlock):
     """One retained link output with one authoritative loading target."""
 

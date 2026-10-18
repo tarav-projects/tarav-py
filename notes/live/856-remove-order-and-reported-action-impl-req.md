@@ -24,20 +24,20 @@ no replacement subtypes.
 `Order` and `ReportedAction` were discussed as hypothetical kinds of decision
 and were never explicitly designed. They do not belong yet in a workflow as
 core as Decisions.
-<!-- tarav.breadcrumb 2ca425b8e7646851ebc6c26f64011d90cdf0308a50db685c1c860dd018440302 -->
+<!-- tarav.breadcrumb 2ca425b8e764 -->
 
 They are deleted. Nothing is over-implemented without a clear need or a clear
 design; other Decision types can be defined later, and the system is not
 biased now.
-<!-- tarav.breadcrumb 82badfb9185421154ec1783fba03de18a23f6c9da6952009093f398f56879ca6 -->
+<!-- tarav.breadcrumb 82badfb91854 -->
 
 A Decision is a point in the ontology that says the object exists; it is not
 forced to have storage. Storage is still to be designed. It may depend on the
 workflow or on the project. A single store for all the Decisions of one
 project, linked to the Project workflow, is the arrangement that makes most
 sense to establish first; other stores can come later.
-<!-- tarav.breadcrumb 11337b483106eca7d7c11b2757d71d882814db7e395064038c4c874467cff4f4 -->
-<!-- tarav.breadcrumb edfe792727643e1e68b099b10a419902b0359f23d3d6c2b15a90fe433eab0c44 -->
+<!-- tarav.breadcrumb 11337b483106 -->
+<!-- tarav.breadcrumb edfe79272764 -->
 
 ### Current behaviour (inspected)
 

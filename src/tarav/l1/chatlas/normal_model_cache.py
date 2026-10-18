@@ -46,7 +46,7 @@ def normal_model_cache_path(
     return _root(chatlas_root) / CACHE_ROOT / _identity_hash(row)
 
 
-# tarav.breadcrumb 0221441d98de41950b96fa7dae8da102cbfbba80964204c02c362cbc6946a248
+# tarav.breadcrumb 0221441d98de
 def normal_model_cache_status_from_row(
     row: JsonObject,
     *,

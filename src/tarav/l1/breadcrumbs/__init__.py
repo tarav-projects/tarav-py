@@ -10,7 +10,7 @@ from .auditing import (
 )
 from .integrations import BreadcrumbCommandAdapter, BreadcrumbIntegration
 from .model import Breadcrumb, BreadcrumbId, LocatorObservation
-# tarav.breadcrumb 9cf8b90c47044379094d8f71ed551105c57120dc9a16e5e12dcc61a22910d1aa
+# tarav.breadcrumb 9cf8b90c4704
 from .store import (
     LABEL_PREFIX,
     BreadcrumbAmbiguous,

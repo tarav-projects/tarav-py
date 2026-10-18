@@ -30,20 +30,20 @@ Each Project gets a storage solution for its Decisions. Everything that is a
 subtype of Decision has this place. Workflows may still put theirs elsewhere,
 but this store exists for the decisions of the Project, and what is tracked as
 the Project's decisions is what is put in it.
-<!-- tarav.breadcrumb 9749b5b4c5bf2f8a07c77413478611d7c2c798fca090da3a67f47e8e18cb7f80 -->
+<!-- tarav.breadcrumb 9749b5b4c5bf -->
 
 By default, blessings attached to a Project go to this store. The Decision
 types differ but the location is the same; nothing is reinvented per type, and
 a general filter by Type, including subtypes, serves all of them.
-<!-- tarav.breadcrumb 9faa55267ccfde887da9e9e53ce7bc0cd0be17ba72f544e5699523adf288973a -->
+<!-- tarav.breadcrumb 9faa55267ccf -->
 
 Earlier direction this builds on: a Decision is not forced to have storage and
 the Decisions workflow does not handle it; a single store per Project, linked
 to the Project workflow, is the first arrangement to establish.
-<!-- tarav.breadcrumb 88d7c93ed0c66b73af2cb9a79be52ccf1eee960372d05f3736d4bdd0a95a81b5 -->
+<!-- tarav.breadcrumb 88d7c93ed0c6 -->
 
 The request is designed and implemented in one pass.
-<!-- tarav.breadcrumb c6b86ed25d8073643c378f898f26033e6e7b181496a2bce3a8b087994c3df0a5 -->
+<!-- tarav.breadcrumb c6b86ed25d80 -->
 
 ### Current behaviour (inspected)
 

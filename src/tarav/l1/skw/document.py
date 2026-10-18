@@ -104,8 +104,8 @@ def lines(value):
     return value
 
 
-# tarav.breadcrumb 80deda12604755e5284184938385c79467c74e3295e141f969bea02ffb3b932d
-# tarav.breadcrumb 6ddf1dc4e25c0a99c0edd0a8c2afeaccbedb6bb7af60c915724db61986e77628
+# tarav.breadcrumb 80deda126047
+# tarav.breadcrumb 6ddf1dc4e25c
 class SkwBlock(TaravEntity, Mapping[str, object]):
     """One actionable block retained inline in a Skillware document."""
 
@@ -323,7 +323,7 @@ class Document:
                 raise ValueError("Source outside .skw needs project root")
             root = inferred.parent
         self.root = Path(root).resolve()
-        # tarav.breadcrumb b730537a34b4e309874cfcc5ba6aba3f6c04fe6af2cbc93987ca7dbd582ec99b
+        # tarav.breadcrumb b730537a34b4
         selected_depot = self.root / ".skw" if depot is None else Path(depot)
         if not selected_depot.is_absolute():
             selected_depot = self.root / selected_depot
@@ -337,7 +337,7 @@ class Document:
         self.target = self.path(self.data["output"])
         if self.target == self.source or self.target.is_relative_to(self.depot):
             raise ValueError("Output must be a product outside the Skillware depot")
-        # tarav.breadcrumb e1dbc0ae21389449d35926a5dcf9fe717168db8afacbe4ff94f80ae4009325ce
+        # tarav.breadcrumb e1dbc0ae2138
         self.registry = _block_registry(registry)
         self.blocks: dict[str, SkwBlock] = {}
         self.blocks_by_ship: dict[Ship, SkwBlock] = {}
@@ -556,7 +556,7 @@ class Document:
                 result.extend(block.content_lines())
         return "\n".join(result) + ("\n" if result else "")
 
-    # tarav.breadcrumb 432b274a6a49d11a9a31d381a8bad064b544a44d210397fdec9450d6d9bdea97
+    # tarav.breadcrumb 432b274a6a49
     def produce(self, identity):
         block = self.block(identity)
         content = lines(block.produce(self))
@@ -609,7 +609,7 @@ class Document:
             report(ProductUnavailable, detail=str(exc))
         else:
             if expected is not None and actual != expected:
-                # tarav.breadcrumb a999689284b97d615e42359cc326363dff9073a0cafd1d17a9882859f0a50e5c
+                # tarav.breadcrumb a999689284b9
                 places, lines, shown = _difference(actual, expected)
                 report(ProductDrift, detail=f"{places} places, {lines} lines",
                        product=str(self.target), actual=_hash(actual),

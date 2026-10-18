@@ -15,10 +15,10 @@ Non-goals: a universal case schema, one scalar truth score, automatic external r
 ## Design narrative
 
 The user selected the chain `Blessing → Assertions → Cases → Scoring workflows`, with one object potentially exposing many labeled Assertions and each Assertion potentially producing several case types. `Assertable` should provide an `.assertions` capability namespace and a way to enumerate and address Assertions by durable label; indices may help display but are not identity. An Assertion has an exact claim/subject identity. A scoring workflow asks an Assertion for its supported case type. Unsupported type and insufficient material for a supported case are distinct outcomes. The produced case owns a closed scope: claim, question, and supplied material sufficient for the consuming scorer's declared task. An agent scorer may return insufficient scope, but must not expand the packet by independent research. The assertion producer can then enrich its case construction and retry. The case's internal schema belongs to its producer and consumer; Tarav supplies only the common exchange contract. Preserve separate scoring results and vectors; no score is embedded as unquestioned truth in the Assertion.
-<!-- tarav.breadcrumb d236f517970d4eddf72215e60c90dc49f478778634c18df95ee04b5de2ad1019 -->
-<!-- tarav.breadcrumb 11bcb04aced8d458704f763bbbf40529337cb285214e815c88332fe0a53a9411 -->
-<!-- tarav.breadcrumb 1806e9cf35fc52ae83cd8ebc1ae600d5e46c63b42706c2ed0ff7ad71700c7f89 -->
-<!-- tarav.breadcrumb 29bf2ca91815f91da9630356d8b2970fc9f137e486a8bd4a705f1bf9c439a5a0 -->
+<!-- tarav.breadcrumb d236f517970d -->
+<!-- tarav.breadcrumb 11bcb04aced8 -->
+<!-- tarav.breadcrumb 1806e9cf35fc -->
+<!-- tarav.breadcrumb 29bf2ca91815 -->
 
 This is a design requirement from the current user conversation, not a claim about current code. The user explicitly said “blessing ... can have many assertions” and “each ... assertion ... can have ... many cases,” and proposed `.assertions` as a namespace gained through an `Assertable` type. They also required the scorer's scope to be complete and prohibited making the scorer a researcher.
 

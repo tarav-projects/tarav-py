@@ -29,7 +29,7 @@ from tarav.l0.kernel import (
 )
 from tarav.l0.kernel.workflows import TaravWorkflow
 from tarav.l1.records.storage import write_typed_record
-# tarav.breadcrumb a64a1925bb137ec1ec7ef10d1b432b5a3c349ffdcd505583c00cf3eb99b75b4c
+# tarav.breadcrumb a64a1925bb13
 
 from .git import (
     GIT_CONFIG_FILENAME,

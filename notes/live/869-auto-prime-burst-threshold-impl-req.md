@@ -15,20 +15,20 @@ Non-goals: no new workflow or renamed workflow; no change to limits-tracking ref
 ## Design narrative
 
 The User asked to make the monitor's ping work again with a simple workflow, originally framed as an hourly ping for each working account.
-<!-- tarav.breadcrumb 9c3485b85adc2cda97e8c61e6b27071f3dacb163c606f274ade512e85de4a7f7 -->
+<!-- tarav.breadcrumb 9c3485b85adc -->
 
 A read-only investigation found that every Codex auto-prime ping has failed since 2026-09-09 (last success 2026-09-08): the default Codex ping model `gpt-5.4-mini` (`src/tarav/l1/agent/_config_models.py`) is rejected with "not supported when using Codex with a ChatGPT account". Failures retried every 10 minutes and flooded `~/.tarav/agent/monitor-log/` and `auto-prime-events.jsonl` (≈72k lines). The current workflow is trigger-driven (`zero_usage`, `near_zero_full_window`, `sliding_reset`, `period_key_churn`), keeps period keys, primed-period memory, a 15-minute verification pass, and a retry cooldown — about 1,175 lines in `monitor/workflows/auto_prime.py`.
 
 The User rejected a new workflow and redirected to simplifying the current one: the frequency is a changeable parameter (10 minutes preferred over 1 hour); each check reads the last usage reading and pings when burst usage is below 5%.
-<!-- tarav.breadcrumb 0182cf94852a1ed5082a87530fd68ab6ca2793e8db2b5e2f37afdb3546b3b267 -->
+<!-- tarav.breadcrumb 0182cf94852a -->
 
 Targets are the accounts the monitor shows, limited to Claude and Codex, but the ping configuration stays explicit so the User can exclude accounts — for instance all monitored Claude/Codex accounts except Claude `om`.
-<!-- tarav.breadcrumb a95f1a3a01c6be4f286e9128d66303220a000ef280c16f0175f5c60a6f1b2719 -->
-<!-- tarav.breadcrumb 8c32142419b728c27d219564117017e1e2dfa63a6903d8a4a66fb32215ced60c -->
-<!-- tarav.breadcrumb 18dbf1d1008df1f0eab80b61ccb37c606aec1ba4d6ffe899bbc20cb16ce95a63 -->
+<!-- tarav.breadcrumb a95f1a3a01c6 -->
+<!-- tarav.breadcrumb 8c32142419b7 -->
+<!-- tarav.breadcrumb 18dbf1d1008d -->
 
 Codex pings should use Luna. All four Codex accounts' model caches list `gpt-6-luna` and `gpt-5.6-luna`; the agent proposed `gpt-6-luna` as the newer one.
-<!-- tarav.breadcrumb 56cbad29340fba8b65b2623f35e2cdf537e72d8a8f94ec9ec9913dff757dce25 -->
+<!-- tarav.breadcrumb 56cbad29340f -->
 
 ### Decisions
 

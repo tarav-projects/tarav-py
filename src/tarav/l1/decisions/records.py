@@ -28,7 +28,7 @@ def _reference(value):
     json.dumps(value, allow_nan=False)
 
 
-# tarav.breadcrumb a4d91364e7bd92efcd0baf818ad4a4bf7f5323014e111a6322b179fae2a8bfc3
+# tarav.breadcrumb a4d91364e7bd
 class Decision(TaravEntity, FileRecord, Assertable):
     """An attributed intervention; subclasses own its operational meaning."""
 

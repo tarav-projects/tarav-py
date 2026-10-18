@@ -151,7 +151,7 @@ class _SkillsCheck(Check):
         super().__init__()
         self.skills = skills
 
-# tarav.breadcrumb f17227c8295b7828019c505669cdf97d24ec4c48e647ea8b7e247d95e2fda204
+# tarav.breadcrumb f17227c8295b
     def poi(self, poi_type: type[CheckPOI], message: str,
                 *, scope: str = "project") -> CheckPOI:
         return poi_type(

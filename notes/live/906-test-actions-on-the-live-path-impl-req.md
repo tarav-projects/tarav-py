@@ -39,21 +39,21 @@ To help tests like the check of an action's Git log, the User proposed test
 workflows with dummy actions: files under `<project>/.tarav/tests/` whose
 presence makes a check register a test action, with different test actions
 for different workflows.
-<!-- tarav.breadcrumb 921a70ba258acd3260923cf14aa55329e2d63b340d141486acf477ca4dafc99c -->
+<!-- tarav.breadcrumb 921a70ba258a -->
 
 They are real actions. The folder is ignored by Git if possible. It is part
 of Tarav itself, not of one Project. Reuse the existing test workflows when
 one fits, and add more when necessary.
-<!-- tarav.breadcrumb 9d2200847df4a16d8dd2a45530aba42d4e387802e649b2d4dcc548c4bedffd68 -->
+<!-- tarav.breadcrumb 9d2200847df4 -->
 
 These tests are not always run: they are run to test and work on actions
 without touching the real ones. They are interactive, more natural tests
 that involve the User.
-<!-- tarav.breadcrumb eb659821f445c69685f44359ad1f6f8d83630af2f2a27bc94335209c77b2ee70 -->
+<!-- tarav.breadcrumb eb659821f445 -->
 
 They test the real live path.
-<!-- tarav.breadcrumb 87824b44867d09ee5b1399cf061221c5c4674f2476f1786f2d232827c82d4f24 -->
-<!-- tarav.breadcrumb 327a91b0f85688afe4a82120189d49ce7cf5d8ebb9874da0ba09a2bc8d821878 -->
+<!-- tarav.breadcrumb 87824b44867d -->
+<!-- tarav.breadcrumb 327a91b0f856 -->
 
 ### Current behavior (inspected)
 

@@ -32,7 +32,7 @@ def _namespace(tmp_path):
     return DiagramNamespace(tmp_path, _id(), "test", (), ())
 
 
-# tarav.breadcrumb e784d8aea43803cd5d9e334233da17545fa595bd14a384cf94caea3ae78b0838
+# tarav.breadcrumb e784d8aea438
 def test_manifest_and_annotation_emit_typed_pois(tmp_path, monkeypatch) -> None:
     namespace = _namespace(tmp_path)
     # Models is currently disconnected; Capture's validation continues past projection.

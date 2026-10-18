@@ -42,7 +42,7 @@ def poi(path="one.md"):
     )
 
 
-# tarav.breadcrumb f7a0423ffc8b7ace60117c25dced069fe711e2984aeca2b13a54b39fe369cb00
+# tarav.breadcrumb f7a0423ffc8b
 def test_decision_types(tmp_path):
     runtime = create_runtime(archive_root=tmp_path / "archive",
                              record_types=(ExamplePOI, ExampleDecision))
@@ -74,7 +74,7 @@ def _project(tmp_path):
     return Project.from_path(tmp_path)
 
 
-# tarav.breadcrumb 759580814ab6b198d65103c278d4ca330779d6de41cd9eff7fb7559b296e626c
+# tarav.breadcrumb 759580814ab6
 def test_project_store_holds_every_decision_type_and_filters_by_subtype(tmp_path):
     runtime = create_runtime(archive_root=tmp_path / "archive",
                              record_types=(ExamplePOI, ExampleDecision))

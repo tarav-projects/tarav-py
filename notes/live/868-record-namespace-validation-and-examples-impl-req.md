@@ -9,13 +9,13 @@
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Complete. Phase: Develop (Execute).
 
 Expose `Type.records.validate_record(value)` and `Type.records.record_example()` on the same class-bound Record namespace as loading. Preserve existing class-specific validation and example behavior, including `super().validate_record()` and inherited overrides. Use the new validation path inside Record projection and loading. This is a bounded API path change; it does not rewrite the dozens of concrete classmethod overrides or every caller across workflows.
-<!-- tarav.breadcrumb b79db67bea92c077dabb630f02194a27d1596fd0a5693b696f81f63b50d93feb -->
-<!-- tarav.breadcrumb 41b7c43b0e15fa25793d24623f69ba151378a28b0a02674642693cb9f58c5b75 -->
+<!-- tarav.breadcrumb b79db67bea92 -->
+<!-- tarav.breadcrumb 41b7c43b0e15 -->
 
 ## Design narrative
 
 The User accepted the next Record namespace slice after the class loading path landed. Inspection found many `record_example()` overrides and several `validate_record()` overrides that call `super()`. Moving all implementations into `Records` would touch dozens of domain Types and break the current Python override chain unless those Types migrated together. Therefore, the concrete classmethods remain the dispatch points for this slice, and the bound namespace exposes them without changing their behavior. The shared Record projection and loading logic calls the namespaced validation path, making it the common API boundary. This revises the earlier proposed source-code move while preserving the requested qualified paths.
-<!-- tarav.breadcrumb 4917943a770b1dfb7a3062ac3052de29a014564f92f84f265b382a7f823f46c3 -->
+<!-- tarav.breadcrumb 4917943a770b -->
 
 `TaravObject.Records` can derive the bound Python Type from its class or instance binding. Its new methods delegate to that Type's existing classmethods; no reflection, generated namespace classes, storage migration, or new registry is needed. Direct classmethods remain for existing callers and subclass extension. A later decision can consider migrating the override mechanism itself if the qualified API proves valuable enough to justify that larger change. This request makes no claim that all Record functionality now lives under the namespace.
 

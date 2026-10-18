@@ -14,7 +14,7 @@ from .primitives import (
 )
 from .workflow import POIWorkflow
 from .providers import POIProvider
-# tarav.breadcrumb f8f4940c1dbed778c637d49fc0fb192d994970ebd884c4492d12c3d504bbfc9a
+# tarav.breadcrumb f8f4940c1dbe
 from .rendering import (
     DEFAULT_POI_RENDERER, JSON_LINES_POI_RENDERER, POIRenderer,
     POIRendererRegistry, POIRenderError, POISelection, register_renderer,

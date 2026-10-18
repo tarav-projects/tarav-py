@@ -43,7 +43,7 @@ class UsageRegistryWorkflow(TaravWorkflow):
         return USAGE_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb 8c814524ab7806d18fc6774a923a01d4f5b22061aa7d27efc70672022b041c17
+# tarav.breadcrumb 8c814524ab78
 class UsageTrace(TaravType):
     """A trusted Type describes how its retained usage rows are presented."""
 
@@ -62,7 +62,7 @@ class UsageTrace(TaravType):
         return (f"  {stamp}  {row.get('subject', '')}",)
 
 
-# tarav.breadcrumb b6575c66c1fa47b85dc84368182072438d35f09fa8b3ff0a7b003a2017127331
+# tarav.breadcrumb b6575c66c1fa
 
 
 def _workflow_ship(workflow: type[TaravWorkflow] | TaravWorkflow | WorkflowShip) -> WorkflowShip:
@@ -232,7 +232,7 @@ class UsageRegistry:
         return tuple(rows[:limit]) if limit is not None else tuple(rows)
 
 
-# tarav.breadcrumb 49d903a04560c26555691aa1371dedd6f28f61ccb04a0d5c845c9bfd2bd89e87
+# tarav.breadcrumb 49d903a04560
 def describe_text(
     text: str, *, edge: int = 20, inline_limit: int = 80,
 ) -> str | dict[str, object]:

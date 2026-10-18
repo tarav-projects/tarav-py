@@ -34,7 +34,7 @@ def config_sections() -> dict[str, type[BaseModel]]:
     return dict(_SECTIONS)
 
 
-# tarav.breadcrumb e165cab92003978233c30d50a1b5fe7bda4205246ae2994e9043259104682369
+# tarav.breadcrumb e165cab92003
 class ProjectConfig:
     """The config file of one Project, read and written section by section."""
 

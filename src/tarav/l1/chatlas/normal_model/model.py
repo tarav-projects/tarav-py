@@ -66,7 +66,7 @@ class NormalModelCounts(_ClosedRecord):
     loaded_contexts: int = Field(ge=0)
 
 
-# tarav.breadcrumb fbcaa106132b41dfa0beda40d4dd1bf512c0dbe8ae3a8392a45aaec0037950e7
+# tarav.breadcrumb fbcaa106132b
 class ChatlasNormalModel(DirectoryRecord):
     """One provider-neutral chat tape stored as a streamable directory Record."""
 

@@ -104,7 +104,7 @@ class BlessingGroundsCase(AssessmentCase):
 
 
 
-# tarav.breadcrumb 91366f34b009b85172f86bd59fab0a34e84658851653c39b331340e0a314e17f
+# tarav.breadcrumb 91366f34b009
 class _BlessingAssertion(Assertion):
     """A claim tied to one Blessing, the closing record of a POI's action, and its POI situation."""
 
@@ -165,7 +165,7 @@ class _BlessingAssertion(Assertion):
 
 class BlessingAcceptanceAssertion(_BlessingAssertion):
     """This continuing POI situation is acceptable without immediate action."""
-    # tarav.breadcrumb 70cabc230c3391b8429af97593b2e3cfd05d5ad01a111afef1fe526b4b87a5fb
+    # tarav.breadcrumb 70cabc230c33
 
     @classmethod
     def class_entity(cls):
@@ -238,7 +238,7 @@ class BlessingGroundsAssertion(_BlessingAssertion):
 
 
 def _closed_passages(support: Sequence[dict], passages: Sequence[dict]) -> list[dict]:
-    # tarav.breadcrumb 421710242c9af1b4ae681feb0078c080b6b3dfef6767804fc27e6d67a712eeeb
+    # tarav.breadcrumb 421710242c9a
     values = list(passages)
     expected = Counter(canonical_json(item) for item in support)
     seen = Counter()
@@ -266,7 +266,7 @@ def score_vector_for_blessing(
     blessing: Blessing, repository: ScoringRepository,
 ) -> dict[str, dict]:
     """Read named assessments from scorer storage."""
-    # tarav.breadcrumb 899cfa53b02f35e7a436d35d3b60f2b1e544ddbd150d682d41901b7985474eca
+    # tarav.breadcrumb 899cfa53b02f
 
     if not isinstance(repository, ScoringRepository):
         raise TypeError('Expected a ScoringRepository')

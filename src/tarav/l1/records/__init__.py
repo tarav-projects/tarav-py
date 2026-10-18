@@ -16,7 +16,7 @@ class ProviderError(SituationPOI):
     `error` is what the provider raised: the exception's name and its text.
     """
 
-    # tarav.breadcrumb eed2a0b9b7d67e1cfde3cc88d674ea28580a7ecc6a13c96de7f2835b44359cc1
+    # tarav.breadcrumb eed2a0b9b7d6
     def __init__(self, message: str, *, situation, error: dict | None = None) -> None:
         super().__init__(message, situation=situation)
         self.error = dict(error or {})
@@ -58,7 +58,7 @@ class RecordsResult:
 
 
 class TaravRecords(TaravWorkflow):
-    # tarav.breadcrumb fd99c99a4196cf1d25b402a022670b59b1bd39145222792422d9c0aacb5b3f71
+    # tarav.breadcrumb fd99c99a4196
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(
@@ -96,7 +96,7 @@ class TaravRecords(TaravWorkflow):
 
 class RecordsService:
     """Runtime-specific source mounts; no per-Record registration."""
-    # tarav.breadcrumb 4a8b0623da410c2cb9c0530a2ad3b8d20cad023ad4bb246692c1f7afd8305804
+    # tarav.breadcrumb 4a8b0623da41
 
     def __init__(self) -> None:
         self.providers: dict[str, RecordProvider] = {}
@@ -118,7 +118,7 @@ class RecordsService:
 
     def entities(self, ship: Ship | str | None = None) -> RecordsResult:
         """Discover retained Entity occurrences in mounted sources on demand."""
-        # tarav.breadcrumb ed832bc96480596c451c72addcea0bd76be577209bb8d3eb0d89ed54a6307e5d
+        # tarav.breadcrumb ed832bc96480
         from .explorer import RecordsEntry
 
         selected = str(Ship(str(ship))) if ship is not None else None

@@ -25,24 +25,24 @@ concrete Project's checks (g70203's placeholder is g70203 request 535).
 
 The User preferred a method to a property: callers do not expect reading a
 property to take ten minutes.
-<!-- tarav.breadcrumb a7dd82d9f1192ed7f3126bfe792784678ccdc8fa2b7d9cbc3d02e82ad2c8fb1f -->
+<!-- tarav.breadcrumb a7dd82d9f119 -->
 
 Returning a generator is good design: it returns quickly, and the checks run
 only if the caller runs them.
-<!-- tarav.breadcrumb 7244c5ae69aa39236eba44f03c5f5db5ab2c1192a0c7763acf57722631be8d73 -->
+<!-- tarav.breadcrumb 7244c5ae69aa -->
 
 `project.check()` is rejected — one letter away from `checks` — so
 `project.checks()` is the place for a Project's checks, and a command-line
 interface runs them; its name is open ("run checks" to be explicit).
-<!-- tarav.breadcrumb 9bbf131b3449711f4aa0d9c247a52cd43d782ed6edc2f8e56c948521f283f495 -->
+<!-- tarav.breadcrumb 9bbf131b3449 -->
 
 All that is happening: the Project is a check provider, and there is a CLI to
 run its checks.
-<!-- tarav.breadcrumb b2ee28b6fdda20123080246a5ac386296f8f28f16cf2fe2878ef6f6f78d2a7cb -->
+<!-- tarav.breadcrumb b2ee28b6fdda -->
 
 Make sure the Tarav Project base class is a CheckProvider, then propagate it to
 g70203, with at least a placeholder if migrating its checks is too difficult.
-<!-- tarav.breadcrumb aec64f90d9dd4b0b039347dc771988fb081292adf29daff6bd89092fa8e58452 -->
+<!-- tarav.breadcrumb aec64f90d9dd -->
 
 Hooks were discussed and dropped: with a generator, any caller's loop body is
 its hook.

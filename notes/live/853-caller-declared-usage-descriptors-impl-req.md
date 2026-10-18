@@ -26,15 +26,15 @@ examples. The User first asked to remove truncation and not to weigh privacy
 or security here: the records are local to `~/Documents/tarav`, and the ruling
 principle is that each workflow is responsible for what it stores for an Agent
 to see how it was used.
-<!-- tarav.breadcrumb a80a04653641041da081638d2bbabb76126f406e80bb4de265cb6ae3d847b648 -->
-<!-- tarav.breadcrumb ecc56a5586b6825718979d21325a546443209609e9b3fc4810ea599f8bb6c1fd -->
+<!-- tarav.breadcrumb a80a04653641 -->
+<!-- tarav.breadcrumb ecc56a5586b6 -->
 
 The Agent read that as "store the whole command line" and implemented it
 (commit `719b7d9`). The User corrected this: the point is not to pass the
 whole command. The caller must know which parts are informative yet
 economical. A long file is not wanted, a path is. The trace need not be the
 exact command arguments; it is an informative descriptor.
-<!-- tarav.breadcrumb 629e12d9f1f43f0afe0e351e355dd026223a7fd99974ec94f7f989190e352d2f -->
+<!-- tarav.breadcrumb 629e12d9f1f4 -->
 
 ### The pattern
 
@@ -43,7 +43,7 @@ instance identity: the shared mechanism does not know what describes the
 situation, so the caller provides it, in the least constrained interface as a
 JSON record of key-value pairs. The caller is expected to be clever and
 brief: for a file, give its path and a hash of the content, not the content.
-<!-- tarav.breadcrumb d71d2d7d8614bb1036bc8bb60d9336e9dba0da4bf678219a6bbe9c30831cdd46 -->
+<!-- tarav.breadcrumb d71d2d7d8614 -->
 
 Applied here: the registry does not know what a command is or how it wants to
 be expressed. It lets the caller say what to record about its command or
@@ -54,7 +54,7 @@ represent that argument as, for example, its first and last 20 characters and
 a hash, and so respect everyone's space. The caller also understands it must
 not put random things there: the purpose is to inform an Agent how the
 command was used so it is better contextualized to use that workflow.
-<!-- tarav.breadcrumb 848e46651c4cced283f634032c1a7f7d2cca5157eb34b83aa6da8dd79303346f -->
+<!-- tarav.breadcrumb 848e46651c4c -->
 
 Inspected precedent: `tarav-md/notes/wiki/caller-declared-identity-inputs.md`
 states the same principle for hashed situations described as a `LiteRecord`.

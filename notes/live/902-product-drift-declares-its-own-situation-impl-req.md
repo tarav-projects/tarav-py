@@ -32,33 +32,33 @@ of the status; repairing the drift that is open in `tarav-hugentics`.
 
 The user pasted the status row of an open product drift action and asked to
 discuss it.
-<!-- tarav.breadcrumb e16e6bb243fba8f865e4b6011900870ae7fbd71859ecf1b5314c46a55ea6ea47 -->
+<!-- tarav.breadcrumb e16e6bb243fb -->
 
 The user asked what is in the situation field.
-<!-- tarav.breadcrumb f057d65565f8b1e0ed8b68ddfc58ab955bbb356c1d29a4cb1d87786fe72a6780 -->
+<!-- tarav.breadcrumb f057d65565f8 -->
 
 The user asked why the situation holds a snapshot of the whole package.
-<!-- tarav.breadcrumb 255fb87c080517af2543ccf17fc21a61c6a85835d0658bdc496e148984819a0a -->
+<!-- tarav.breadcrumb 255fb87c0805 -->
 
 A blessing targets a situation. The situation is the declared state: the
 state that is blessed and that the POI represents. This is a simple POI: it
 only means that the compiled file differs from what compiling produces.
-<!-- tarav.breadcrumb 1062a9d7484168a03214d1f8f4adfa43e3d35eef2b091f35350ffc15d57b7d58 -->
+<!-- tarav.breadcrumb 1062a9d74841 -->
 
 A situation of three fields is sufficient: the product, the hash of the file
 on disk, and the hash of the text the source produces.
-<!-- tarav.breadcrumb 242301eb328506f152e91a1a54fecd8c09c482d39fed26509bc307cee40052b2 -->
+<!-- tarav.breadcrumb 242301eb3285 -->
 
 Write the request and build it for this Type only.
-<!-- tarav.breadcrumb 2411ac1c1d3c4ea41dd30897f46fa2f84690931c8afd88979f6d466072917551 -->
+<!-- tarav.breadcrumb 2411ac1c1d3c -->
 
 Change the code of the POI; do not repair the Skillware mismatch that the
 open action reports.
-<!-- tarav.breadcrumb ce613a2486c3c75d9ffdf881a99c213635d69d0dfb9a652f296f1d2be5c34689 -->
+<!-- tarav.breadcrumb ce613a2486c3 -->
 
 A good heuristic for defining a situation is to see what the check
 actually uses.
-<!-- tarav.breadcrumb 3c42d2998fe32858a7d21f6381d55416c543c1f9136f9d5cac8bbf489d82346a -->
+<!-- tarav.breadcrumb 3c42d2998fe3 -->
 
 ### Current behavior (inspected)
 

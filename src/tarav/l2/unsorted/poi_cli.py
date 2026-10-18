@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# tarav.breadcrumb 14c09da82eb7c5ae0ab508ebc6c5f80a37274fefc7e6909ca90f0ae05106e840
+# tarav.breadcrumb 14c09da82eb7
 
 import argparse
 from pathlib import Path
@@ -28,7 +28,7 @@ def add_poi_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
-# tarav.breadcrumb e491c09c8fb58e5d2d30d9388a615ee3f8727440c41fc3263fab8268a3390641
+# tarav.breadcrumb e491c09c8fb5
 def render_pois(
     args: argparse.Namespace,
     pois: tuple[POI, ...] | list[POI],

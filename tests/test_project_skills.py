@@ -50,7 +50,7 @@ def _pois(skills: ProjectSkills):
     return tuple(skills.checks.run().pois())
 
 
-# tarav.breadcrumb f95aa1c71f879b681944b1ab8e50a616be9c4390105dbc20badb2288fa18f84f
+# tarav.breadcrumb f95aa1c71f87
 
 def test_folder_skill_identity_and_record_round_trip(tmp_path: Path) -> None:
     folder = _skill(tmp_path, "prefixed-tarav", "tarav-pkg")

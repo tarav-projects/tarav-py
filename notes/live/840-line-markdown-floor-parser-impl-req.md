@@ -32,31 +32,31 @@ The first consumer is md-library's transcript linter, designed in
 Tarav's Markdown parser is deliberately minimal because it is the base other
 parsers build on. md-library's needs are met by extending it, and Tarav is
 changed where it does not support that.
-<!-- tarav.breadcrumb 36971b13a1a97e2f3700208e919849cbbdc4d7c044f4b56fa1d1722dc6977e4e -->
+<!-- tarav.breadcrumb 36971b13a1a9 -->
 
 A higher-level parser consumes the lower-level model, never the original file:
 "you can use me as your representation of the file, and now you can further
 parse this representation".
-<!-- tarav.breadcrumb 6b29da8ffe7d9f0e3a298b899e7c2741adbcc43f8078e1a9917108f231d90e8e -->
+<!-- tarav.breadcrumb 6b29da8ffe7d -->
 
 The base parser is a line parser, named as such: block delimiters may not be
 mixed with content on a line. A single-line `$$ … $$` equation is not allowed;
 there is a single way to write an equation block. The dialect is deliberately
 restricted for formats we own, because a restricted base is easier to build on.
-<!-- tarav.breadcrumb eeea6c1422d0d5e653c2e07889bab43c4bcdc0cc006d904de4cc6396110612da -->
+<!-- tarav.breadcrumb eeea6c1422d0 -->
 
 This parser is a floor linter: minimal ground truth about structure. Its
 findings are not blessable. Above it, heuristic linting favours recall and
 accepts false positives because agents judge the long tail.
-<!-- tarav.breadcrumb 7e20c04d1292ee0de3c494399a0aa3399f06c7bdeb5b7fd8134db46ac8f190cc -->
+<!-- tarav.breadcrumb 7e20c04d1292 -->
 
 Like a compiler, it stops hard at the first violation: once fencing is not
 trusted, nothing after it can be reliably checked.
-<!-- tarav.breadcrumb 85e4b6c5ffd218c5926dda302bc329e8cacb1fbe9fd63f317df7fbd6e1296750 -->
+<!-- tarav.breadcrumb 85e4b6c5ffd2 -->
 
 To avoid disturbing existing users of the current parser, the line parser is an
 additional parser rather than a change to `MarkdownNormalModel`.
-<!-- tarav.breadcrumb ff402e90fbdf53a4b097f6fbe6f2a8e67df0134fdc25de4acd766f4f3254a070 -->
+<!-- tarav.breadcrumb ff402e90fbdf -->
 
 ### Current behaviour (inspected)
 

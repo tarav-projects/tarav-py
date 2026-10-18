@@ -10,7 +10,7 @@ from tarav.l1.decisions import Decision
 DECISIONS_PATH = Path(".tarav") / "decisions"
 
 
-# tarav.breadcrumb 544b4812a29cde0185b634ce3fa3acd98f68daaf3e33ca64d46b79cff0f2f8df
+# tarav.breadcrumb 544b4812a29c
 class ProjectDecisions:
     """Every Decision subtype of one Project, one file per Record.
 
@@ -42,7 +42,7 @@ class ProjectDecisions:
             handle.write("\n")
         return decision
 
-    # tarav.breadcrumb b87f901e5e8fc1cfbe90a587a3be5868e6b782d3c6bb4250176c399d5d8de9ee
+    # tarav.breadcrumb b87f901e5e8f
     def snapshot(self, *, decision_type=Decision):
         """Records of `decision_type` or any subtype; other registered Records are skipped."""
         if not (isinstance(decision_type, type) and issubclass(decision_type, Decision)):

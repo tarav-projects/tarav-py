@@ -19,7 +19,7 @@ from tarav.l0.kernel import (
 SEARCH_WORKFLOW_SHIP = WorkflowShip("c5f5d32b-b903-469a-a6b5-e6956ae11348")
 
 
-# tarav.breadcrumb 6cbe95bad425ad4be7c9316a8f805db003e6d8645aada3496f03c2c25679efd0
+# tarav.breadcrumb 6cbe95bad425
 class SearchQuery(TaravObject):
     """Typed search request with controls for the dispatch that runs it."""
 
@@ -69,7 +69,7 @@ class SearchResult:
         return not self.accepted
 
 
-# tarav.breadcrumb 2fc0f3565f4dc4d9bffc43fd4855978a257f9e55ae7a3093bfb3e46412b87fd0
+# tarav.breadcrumb 2fc0f3565f4d
 class SearchStream(Iterator[SearchHit]):
     """Closable iterator that keeps decline separate from an empty search."""
 
@@ -116,7 +116,7 @@ class SearchStream(Iterator[SearchHit]):
                 close()
 
 
-# tarav.breadcrumb b00e7efd22d136a79d085c7bc4fbec2b6a5f00448d7e6ac4ce0cc357c929ad9b
+# tarav.breadcrumb b00e7efd22d1
 class SearchEngine(TaravType):
     """Capability for a Type that can answer some typed queries."""
 
@@ -160,7 +160,7 @@ class SearchEngine(TaravType):
         return type(self).Search(self)
 
 
-# tarav.breadcrumb 87764ef9d09822feebcf2c1171f3fc45eb90be93c7d19b9da433278c4671d3f1
+# tarav.breadcrumb 87764ef9d098
 class SearchService(SearchEngine):
     """A registry-backed meta engine, independent of any one search domain."""
 

@@ -15,13 +15,13 @@ Non-goals: an absolute truth probability, universal semantic comparability, mand
 ## Design narrative
 
 Every ranking case follows the same small exchange protocol, regardless of tribunal or internal payload. The Assertion produces the case, which names its tribunal and can present its bounded claim/evidence. A tribunal may be a typed object or registered type. It supplies the shared comparison question and instructions, and may define admission checks; it need not be predeclared in a central list before compatible cases can be enrolled. The generic ranker supplies the pairwise procedure and constrained outcomes. It must only pair cases inside one tribunal. The scorer receives ranker instructions, tribunal instructions, then two self-contained cases; it may choose A, B, tie, or abstain/insufficient scope. It must not research outside those cases. Preserve the exact presented material and result enough for agent audit, without making prompt versioning a prerequisite for the MVP.
-<!-- tarav.breadcrumb 31be72a25f120d82a43e29754242cbd2020cc9dfc4eca00121d99a33ae56b6a6 -->
-<!-- tarav.breadcrumb 989387f3d410065017e3395a9f2ecbc0d5ac71ee6e2ab8cc89da05dd17943ee4 -->
-<!-- tarav.breadcrumb 43b14003cfcfde97cd02dee362f560b02dc133f4863010373e55dcb1f44eb325 -->
-<!-- tarav.breadcrumb 9d542c6a7fad306b7a21a16cfa56ccd7cb1f17d2fbaf1aba85650071969d4eda -->
+<!-- tarav.breadcrumb 31be72a25f12 -->
+<!-- tarav.breadcrumb 989387f3d410 -->
+<!-- tarav.breadcrumb 43b14003cfcf -->
+<!-- tarav.breadcrumb 9d542c6a7fad -->
 
 When the first case arrives, the tribunal has a population but no relative score. Comparisons begin with at least two. Retain each pairwise result with case/Assertion identities, judge, outcome, and available rationale/evidence. Derive an initial simple relative ranking from retained outcomes and expose mechanical support information such as comparison count and sparse coverage separately from the relative score. Repeated weak ranking or missing assessment can surface scoring-owned POIs; low relative support means weaker support within that tribunal, not falsehood. New tribunals should require a new tribunal type or instance, not a rewrite of the ranker.
-<!-- tarav.breadcrumb d9d18ea1b9c2e16284830fb6569cb679c07305ed07d706043ee301b07eb063ec -->
+<!-- tarav.breadcrumb d9d18ea1b9c2 -->
 
 The user requested “a first kind ... always a ranking process,” comparing equivalent cases in pairs, and emphasized that cases choose their tribunal while the ranker remains generic. The user explicitly rejected premature rigidity and preferred usage data before sophisticated controls.
 

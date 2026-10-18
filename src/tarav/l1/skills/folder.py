@@ -11,7 +11,7 @@ from .skill import TaravSkill
 from .workflow import SKILLS_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb 1b535cbde91fec1c608a2878266547bf8a3ee88ad9e78b78831c9938392038a0
+# tarav.breadcrumb 1b535cbde91f
 class FolderSkill(TaravSkill):
     """A concrete skill whose only supplied state is its folder."""
 

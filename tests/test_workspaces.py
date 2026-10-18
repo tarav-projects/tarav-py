@@ -35,7 +35,7 @@ def _repository(root):
     return GitRepository(root)
 
 
-# tarav.breadcrumb 53e7ef5a6e65f1dbee18a31a98f98f452d697a72ff805b884a87e8238c287f62
+# tarav.breadcrumb 53e7ef5a6e65
 def test_workspace_reproduces_seeded_files_and_unique_worktree_branches(tmp_path):
     repository = _repository(tmp_path / "repo")
     source = tmp_path / "source.txt"
@@ -57,7 +57,7 @@ def test_workspace_reproduces_seeded_files_and_unique_worktree_branches(tmp_path
     assert (workspace.root / "draft.txt").read_text() == "draft"
     assert (workspace.root / "live.txt").read_text() == "first"
     assert setup.entries["code"].commit == repository.exact_commit("HEAD")
-    # tarav.breadcrumb d77eb158c06f8b4b41f1aec87d54bf5d487e27146a3baca7d93d55a6b7df1257
+    # tarav.breadcrumb d77eb158c06f
     assert not workspace.checks.run().pois()
 
     source.write_text("second", encoding="utf-8")
@@ -100,7 +100,7 @@ def test_missing_worktree_produces_poi(tmp_path):
         depot.reset(workspace)
 
 
-# tarav.breadcrumb aa7ddb5c6a2ff71cb03ce1fa70ea9847b09bf10025a5157c5730bb55ee71d096
+# tarav.breadcrumb aa7ddb5c6a2f
 def test_project_workspace_discovers_two_nested_repositories(tmp_path):
     umbrella = tmp_path / "umbrella"
     umbrella.mkdir()

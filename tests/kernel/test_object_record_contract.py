@@ -209,7 +209,7 @@ def _reads_state_from_its_record(object_type, registry) -> bool:
 
 
 def test_objects_project_their_state_not_their_loaded_record() -> None:
-    # tarav.breadcrumb c3e31a009b49cbde790ecc45f474cde8a6238d340b7e6e2eb67c6d104642dfa2
+    # tarav.breadcrumb c3e31a009b49
     registry = create_runtime().records
     debt = {
         f"{object_type.__module__}.{object_type.__qualname__}"

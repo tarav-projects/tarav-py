@@ -25,25 +25,25 @@ no discovery of children by scanning folders; no parallel execution.
 
 Tarav does not model the Python library. A Tarav Project is an object inside a
 Python library, and a library can hold several Project objects.
-<!-- tarav.breadcrumb 15693ee16b125dcab5738b06de3099f2dcd30a6092cb27efddc1a6e671e8d485 -->
+<!-- tarav.breadcrumb 15693ee16b12 -->
 
 Where the code of a Project sits is a packaging choice: the development
 harness can share the code base of the library it harnesses, for example under
 `.dev`, or live apart. Tarav only needs to know how to find the Project object
 that harnesses a folder.
-<!-- tarav.breadcrumb cdfbc3c57c27d6d733e35730d4326474c2d2c0589adfeedb43ebf233e9ec65c0 -->
+<!-- tarav.breadcrumb cdfbc3c57c27 -->
 
 A development folder is a small graph of Projects: a root Project that, asked
 to run the checks, runs the checks of the Projects below it; the Projects below
 use the same Python environment, kept at the root.
-<!-- tarav.breadcrumb c27bcb83fddaecee0c14268adbf4a4c9733bfa675530ef286af554b5acfef40c -->
+<!-- tarav.breadcrumb c27bcb83fdda -->
 
 The root pattern is general and is wanted in Taravangian as well.
-<!-- tarav.breadcrumb fc246e4bb8e8964304a440fe1caa3a7fec0b111f5cc7d5975f123b2b97a4c6c6 -->
+<!-- tarav.breadcrumb fc246e4bb8e8 -->
 
 Produce the requests needed for this design; design only.
-<!-- tarav.breadcrumb 4c8b87f05d5d3f3e336a9a70727c1140d94f128c54b454aa644ddd381321166a -->
-<!-- tarav.breadcrumb fccfa63c77a8663a1ae68e7d382c93d1c16e9c07dfa4bd4a3cfd7fc8c00bf1a2 -->
+<!-- tarav.breadcrumb 4c8b87f05d5d -->
+<!-- tarav.breadcrumb fccfa63c77a8 -->
 
 ### Observed (inspected)
 
@@ -124,7 +124,7 @@ Capture status: done, tarav-md 0ea3b6e (`projects.md`, daily 2026-10-05).
 Executed in the same Claude Code session that designed it, by the User's
 `/goal` invocation of `tarav-hugentics --impl --exec` over requests 861, 862
 and md-library-py 621–623.
-<!-- tarav.breadcrumb 2276f08d3cf9a0213c5a85782c5acf7e45c629510b57e0a80950f5a8486884f5 -->
+<!-- tarav.breadcrumb 2276f08d3cf9 -->
 
 - Checkpoint: the declared scope was clean at b341761; no empty commit made.
 - Several Types per environment: `ProjectHarness.project_types()` reads

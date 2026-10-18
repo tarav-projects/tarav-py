@@ -41,7 +41,7 @@ def _line_comments(text: str) -> list[tuple[int, str]]:
     return [(item.span.start_line, item.text) for item in model.comments if item.kind == "line"]
 
 
-# tarav.breadcrumb 4410faf72d338db67f784063310687d6a41d266dacb28ac0673e61c501613ba0
+# tarav.breadcrumb 4410faf72d33
 def test_lexer_finds_only_real_comments() -> None:
     assert _line_comments(TRICKY) == [
         (1, "// head comment"),

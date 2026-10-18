@@ -191,7 +191,7 @@ def render_loading_context(result: dict[str, Any]) -> str:
     return "\n".join(rows)
 
 
-# tarav.breadcrumb cbdad46c901e98a6e0cd55696e3cebc0712f8b25281094227a47d13f5c9ae1c7
+# tarav.breadcrumb cbdad46c901e
 def render_poi_report(result: dict[str, Any], *, operation: str,
                       renderer_name: str = DEFAULT_POI_RENDERER,
                       level: str = "line") -> str:

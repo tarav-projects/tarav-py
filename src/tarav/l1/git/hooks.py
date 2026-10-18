@@ -39,7 +39,7 @@ REFUSED_EXIT = 75
 OVERRULE_ENV_VAR = "TARAV_GIT_HOOKS_OVERRULE"
 
 
-# tarav.breadcrumb f7391cbd2d285b21a9ece290e050180b3092461f83c8b7a82691a32b0ddb321e
+# tarav.breadcrumb f7391cbd2d28
 class GitHooksConfig(BaseModel):
     """The handlers a Project uses, and a hooks folder whose same-named hooks run first."""
 
@@ -57,7 +57,7 @@ class GitConfig(BaseModel):
     hooks: GitHooksConfig | None = None
 
 
-# tarav.breadcrumb 7336e756890d1dd0e16b3b04c3968867219198d280f5de764e70450dfbe41e81
+# tarav.breadcrumb 7336e756890d
 class GitHookRefusal(Exception):
     """A handler stops the Git operation; its message says why and how to overrule it."""
 
@@ -243,7 +243,7 @@ def dispatch(call: GitHookCall) -> tuple[list[str], list[str]]:
     return warnings, refusals
 
 
-# tarav.breadcrumb 98cfc9f168e70dae1b1d4cee5bbe5cc58d4d52fdb3d9444f91217de8687dfd47
+# tarav.breadcrumb 98cfc9f168e7
 def run_hook(hook: str, arguments: Sequence[str]) -> int:
     """The `tarav git hook` entry: one hook run in the current repository."""
     root = repository_root(Path.cwd())
@@ -303,7 +303,7 @@ class HookAttributesMissing(GitHooksPOI):
                           name="Tarav.Git.Hooks.AttributesMissing", workflow=GIT_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 3047e0efeccec2cacd38072d4129047d2b72616c15c508c32084cac8b481e3f1
+# tarav.breadcrumb 3047e0efecce
 class GitHooksCheck(Check):
     """Checks that a Project's repository runs the hooks its config selects."""
 

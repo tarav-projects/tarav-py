@@ -86,7 +86,7 @@ class InvalidConfigSection(ProjectFilesPOI):
                           workflow=PROJECT_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 7409c52b5dadbe615a73a15cf96beac82363d5cb12b565426185c9ce4032cfa6
+# tarav.breadcrumb 7409c52b5dad
 class ProjectFilesCheck(Check):
     """Checks a Project's project.json and config.json against their models."""
 

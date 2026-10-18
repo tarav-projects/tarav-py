@@ -48,63 +48,63 @@ environment per child.
 `PythonPackageProject` and `DocsProject` are the Types of some Projects of
 this harness; that is not right. Types must be local: they may extend those,
 not be those. Each Project must be of a unique Type.
-<!-- tarav.breadcrumb 909d44615c7b87f42e06a7f8ef5db38caf581688e9b9a748f0add127ef2207c4 -->
+<!-- tarav.breadcrumb 909d44615c7b -->
 
 Every Tarav Project has a code base, at least the code of its harness;
 whether it shares a code base with the rest of the system is an
 organization decision. A Project configures where its harness and its
 environment are.
-<!-- tarav.breadcrumb 600bd8f10276d571b1c32a192aefff1d738998129fd7b01e3f575f736a426b35 -->
+<!-- tarav.breadcrumb 600bd8f10276 -->
 
 The target is one local Type per Project, each extending a generic class
 with its own Ship and name, all named `*Project`. The root should be
 tracked by Git; how it interacts with the child repositories was to be
 discussed.
-<!-- tarav.breadcrumb 8987299ebb498d2a856ebc0f9dfe61f3b01d078a5c236eb92affada41411eece -->
+<!-- tarav.breadcrumb 8987299ebb49 -->
 
 The root tracks only its own files, the child repositories ignored. What
 else the root tracks is decided later; focus on bootstrapping the root
 Project and its repository.
-<!-- tarav.breadcrumb bd83231bb5e6e3487a2eb38b54b590370dfebad81bd03fb1b36b40a174c373b9 -->
+<!-- tarav.breadcrumb bd83231bb5e6 -->
 
 The child Projects' Types are not defined in the root: each in its own
 Project's package.
-<!-- tarav.breadcrumb ce5fb0324f6f5a224c2d7d11ac80e3d6edcfbd5b39d3fafd8ceab317f8cc5a75 -->
+<!-- tarav.breadcrumb ce5fb0324f6f -->
 
 Folders such as `.tarav/src` are only defaults: bootstrapping needs a path,
 inside the Project's environment, to the Project Type.
-<!-- tarav.breadcrumb b61378ec1e5d4060bc8e952182125dbce88c4031b64e45861446c63249d427a4 -->
+<!-- tarav.breadcrumb b61378ec1e5d -->
 
 There is no reason to declare the Types in the manifest rather than the
 marker. The marker is just configuration, where the loading process is
 configured; loading a Project is a bootstrapping act, and explicit
 configuration and paths are fine. There is no rule against it.
-<!-- tarav.breadcrumb 76a1b6d6bc96458a39193725d09f393c830945650af212dc874bea0ee636fc25 -->
-<!-- tarav.breadcrumb 221057dd44ec16ff9f3e1023cfb1d27edbd45a7d266f8591993719495fb4db04 -->
+<!-- tarav.breadcrumb 76a1b6d6bc96 -->
+<!-- tarav.breadcrumb 221057dd44ec -->
 
 The launcher needs two things only: an environment and a path to the Project
 Type, loaded from a package installed in the environment with ordinary uv.
-<!-- tarav.breadcrumb c1db11410ea9aed4f801726e6f3709e13e0303c7f684fe60dc102e6ada2c829e -->
-<!-- tarav.breadcrumb 83e25e8ccc3384017689b8ee5b7da97fd2589341fe4ec9b2a5e8faa81d040741 -->
-<!-- tarav.breadcrumb ce28cdec5d36bfe1b10fda38d1433fd6c36c140d6d1bdf5a1b8991cb223e246c -->
+<!-- tarav.breadcrumb c1db11410ea9 -->
+<!-- tarav.breadcrumb 83e25e8ccc33 -->
+<!-- tarav.breadcrumb ce28cdec5d36 -->
 
 `"class": "agentos.project"` is legacy and must go. A pydantic object must
 describe the marker, and a check must check Project markers. The
 `harness` with `environment` and `type` makes sense.
-<!-- tarav.breadcrumb a6a70637134aecd3d8371dcf257a8ad2ce12b3080d0848d1b22cad3d4cde4dc3 -->
+<!-- tarav.breadcrumb a6a70637134a -->
 
 The marker being the whole Record is a problem: split it into
 `project.json`, the Project Record with only the Project's core
 configuration, and `config.json`, the rest.
-<!-- tarav.breadcrumb a594f26dd9c9142c1f15eb10ed4bdc54d1bc27775f27fa62f9a57dcfefd21ccd -->
+<!-- tarav.breadcrumb a594f26dd9c9 -->
 
 `harness` stays in `project.json`: `config.json` exists so that other
 workflows can add their configuration; `project.json` is where the Project
 workflow keeps its core configuration.
-<!-- tarav.breadcrumb 37bf015764c68d1338baa1097c3ed47de9ecc7290daddb197ffb28bcc20fcc89 -->
+<!-- tarav.breadcrumb 37bf015764c6 -->
 
 Keep both the Record's `type` tag and `harness.type`. Build it.
-<!-- tarav.breadcrumb 592460cac0423783ed7f8e10cec06756ff948eb566fc0f72f44dbdf66acfda20 -->
+<!-- tarav.breadcrumb 592460cac042 -->
 
 ### Current behavior (inspected)
 

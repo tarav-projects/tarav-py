@@ -11,7 +11,7 @@ from tarav.l1.workspaces import (
 )
 
 
-# tarav.breadcrumb 60a7e544f019d908ff6d8d8729146b558440d52f9626bf41d02593fbbbb318ab
+# tarav.breadcrumb 60a7e544f019
 class ProjectWorkspaces:
     def __init__(self, project, *, depot: WorkspaceDepot | None = None):
         self.project = project

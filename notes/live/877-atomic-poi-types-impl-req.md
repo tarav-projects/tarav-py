@@ -21,19 +21,19 @@ Non-goals:
 ### Why
 
 While reading a reported POI through the new context command, the User met `code: "no-source"` and asked what the field is for.
-<!-- tarav.breadcrumb 8f32b9c93fedf8868ecbcac86e00f2980d855704a73c857b853224fbd4e4e4b6 -->
-<!-- tarav.breadcrumb 416dbd41e7e46cbe2422a0594c53599b66bc46dac7e0e291116acb0873c696b2 -->
+<!-- tarav.breadcrumb 8f32b9c93fed -->
+<!-- tarav.breadcrumb 416dbd41e7e4 -->
 
 The User asked for it to be eliminated and for a report on whether anything they had said justifies it.
-<!-- tarav.breadcrumb db9e30bd2cf92be8f2f0a8e6086bc76283a8798ac91d62e36a0fb974c066a1df -->
+<!-- tarav.breadcrumb db9e30bd2cf9 -->
 
 The report found no such justification. The field began in the index linter (commit `c888d31`, 2026-05-22) as a linter-style rule label. Request 832 (commit `5a28361`, 2026-09-30) made it a required constructor argument of the neutral POI base without discussing it, and request 834 moved identity to "type plus situation" while leaving `code` outside identity. No User turn in the five sessions declared on `tarav-md/notes/wiki/poi-system.md` asks for a POI code. The nearest is turn `7b53cdbe73f54d75` in `codex:01a0d86c-9538-7be1-af96-014cd4203d61`, where the User confirmed that identity policy belongs to the kind of POI being modeled.
 
 The User agreed that the field is an inherited linter habit duplicating the type system, and decided: POIs are atomic, each type describes one situation, and there is no further degeneracy inside a type.
-<!-- tarav.breadcrumb f66f9f57f5bee2ab3cc470aa642d938f1367288b25fd0268fb6f251061f2f3d7 -->
+<!-- tarav.breadcrumb f66f9f57f5be -->
 
 A family parent class that is never raised itself may remain, so related cases belong to one family and can be selected together. In Tarav the typing system expresses semantics. The User approved the three parts of the change: the base type loses the argument and the record, retained report and context view lose the field; every type that uses several codes is split into one class per case, with checks no longer copying the code into the situation; and the report drops `--by code` and `--code` in favour of the existing type grouping.
-<!-- tarav.breadcrumb 08ccea5d0c0327c6ef7ae4ee5e82267cf5a8f657af2c490ff838a33d2253e4f1 -->
+<!-- tarav.breadcrumb 08ccea5d0c03 -->
 
 ### Inventory (inspected 2026-10-08)
 

@@ -45,11 +45,11 @@ class CheckProvider(TaravType):
         return TaravClass(target=cls, id=TypeShip("fb89da94-f920-47a1-979e-1ed8e521ea13"),
                           name="Tarav.Checks.Provider", workflow=CHECKS_WORKFLOW_SHIP)
 
-    # tarav.breadcrumb 03380d96ad2b3416cfcf50b86c09190ccafb830186ad79d9ea47a34bd84c18e3
+    # tarav.breadcrumb 03380d96ad2b
     class Checks(NamespaceBase["CheckProvider"]):
         """Bound access to a provider's Checks."""
 
-        # tarav.breadcrumb 64a1988372d66010f27742f66c4dbd78874dd238958e97a63b93cfecd6fefa9a
+        # tarav.breadcrumb 64a1988372d6
         def suite(self) -> "CheckSuite":
             """Build the provider's Checks without executing them."""
             raise NotImplementedError(
@@ -65,7 +65,7 @@ class CheckProvider(TaravType):
         return type(self).Checks(self)
 
 
-# tarav.breadcrumb 8f9efe635d3ac2a87d8d913d499580f8a2fc652d3424a6c5b5df282dd09714c5
+# tarav.breadcrumb 8f9efe635d3a
 class Check(TaravObject):
     """Reusable behavior bound to the inputs of one execution."""
 
@@ -95,7 +95,7 @@ class Situation(LiteRecord):
     """The detached input and acceptance scope of a SituationCheck."""
 
 
-# tarav.breadcrumb 0fbb6aeabe9a6b2dfb9a5f0b09d35e49a271b44f1cce37d88557bf09e452092f
+# tarav.breadcrumb 0fbb6aeabe9a
 class CheckPOI(SituationPOI, ActionablePOI):
     """A POI explained by the bound Check object that produced it; it spins an action by default.
 
@@ -238,10 +238,10 @@ class CheckResult(TaravObject, POIProvider):
         return self._pois
 
 
-# tarav.breadcrumb bd06b988e162e226589d99af66360d1d8cabff4416e3467793331678eff4cc98
-# tarav.breadcrumb a99d78902f0b314cddb487a06fe912eb513c6d03a7b5da3a3a8b21534ac68802
-# tarav.breadcrumb 187a0de2c6388a20c78433829fe87d2a0dc9c8df4c93515e846b813724854891
-# tarav.breadcrumb e8a9613020d9d01c514464079be745e2211a69b633b56f6ea5005e23991749ff
+# tarav.breadcrumb bd06b988e162
+# tarav.breadcrumb a99d78902f0b
+# tarav.breadcrumb 187a0de2c638
+# tarav.breadcrumb e8a9613020d9
 class CheckSuite(TaravObject, POIProvider):
     """A detector: the code that runs checks, and the results of its one run.
 
@@ -292,7 +292,7 @@ class CheckSuite(TaravObject, POIProvider):
         whole.ran = True
         return whole
 
-    # tarav.breadcrumb 292068630e668cebc44b4c49570344d5f1a1263cf5b1b7c9fdb057652d47d92d
+    # tarav.breadcrumb 292068630e66
     @property
     def identity(self) -> dict | None:
         """What this suite is: its Type and its key. A plain grouping has none.
@@ -318,7 +318,7 @@ class CheckSuite(TaravObject, POIProvider):
         """
         return self.source(self) if callable(self.source) else self.source
 
-    # tarav.breadcrumb 0957344ced509d1d0237945f09a405e985bdc7222b4f01f51043cc531db4262f
+    # tarav.breadcrumb 0957344ced50
     def run(
         self, *, select: Callable[[object], bool] | None = None,
         on_result: Callable[[CheckResult], object] | None = None,
@@ -337,8 +337,8 @@ class CheckSuite(TaravObject, POIProvider):
             raise TypeError("on_result must be callable")
         self.reset()
         self.ran = True
-        # tarav.breadcrumb 646320d9df89a53c1ab51fa1adfd01176f4d14b449d1634db183fdcc952f03d1
-        # tarav.breadcrumb 62668358e7f205b4b5bf318d0eae1e8b8aac2f13e2ab52122d248739cf04ec1d
+        # tarav.breadcrumb 646320d9df89
+        # tarav.breadcrumb 62668358e7f2
         self.git = repository_states(self.repositories) if self.repositories else git
         for item in self.produce():
             if isinstance(item, CheckSuite):
@@ -375,7 +375,7 @@ class CheckSuite(TaravObject, POIProvider):
         self.ran = True
         return result
 
-    # tarav.breadcrumb 5815e018a2d0dccc212f073206d962cc8ea7f9f109dc60f9882b330ea67e76c1
+    # tarav.breadcrumb 5815e018a2d0
     @property
     def complete(self) -> bool:
         """It ran, nothing was refused, and every check and nested suite completed."""
@@ -391,7 +391,7 @@ class CheckSuite(TaravObject, POIProvider):
             elif item.identity is None:
                 yield from item.own_results()
 
-    # tarav.breadcrumb b4ea07ac1bcf4e22778f334dd461c4fca0e352d44d3c1864f73b373ec328f46c
+    # tarav.breadcrumb b4ea07ac1bcf
     @property
     def exhausted(self) -> bool:
         """This suite's own code ran to its end and nothing in it was refused.
@@ -483,7 +483,7 @@ class CheckSuite(TaravObject, POIProvider):
             "by_type": dict(by_type),
         }
 
-    # tarav.breadcrumb d96e22c81cc727200ea256c3e9af4d895e1d1842e4d7ac7861e3279bee041f3b
+    # tarav.breadcrumb d96e22c81cc7
     def clean(self) -> bool:
         """Every check completed and none left a finding.
 
@@ -493,7 +493,7 @@ class CheckSuite(TaravObject, POIProvider):
         return (all(result.status == "completed" for result in self.results)
                 and not self.findings())
 
-    # tarav.breadcrumb cb1a5772a23d17b22aa60b8bb37e1a3015cff629e44c47640e8886c7fe49d6e0
+    # tarav.breadcrumb cb1a5772a23d
     def report(
         self, *, by: str = "type", sort: str = "run", offset: int = 0, limit: int = 20,
         type: str | None = None, check: str | None = None,
@@ -561,7 +561,7 @@ class CheckSuite(TaravObject, POIProvider):
         }
 
 
-# tarav.breadcrumb f1a2ea68b964b6f2337f39c07640ed590bab9deea67d99884bc6b8d99b4e1901
+# tarav.breadcrumb f1a2ea68b964
 def routine(item: object) -> bool:
     """A filter for the run that is repeated often: leave out suites that are not routine."""
     return not (isinstance(item, CheckSuite) and not item.routine)

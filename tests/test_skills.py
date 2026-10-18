@@ -9,7 +9,7 @@ from tarav.l2.skw.skills import SkwSkill, load_skill
 from tarav.l3.runtime import create_runtime
 
 
-# tarav.breadcrumb adc147a6df5ac47a591d2013774affafe1b1bde317330ac8dd8b95b99657357d
+# tarav.breadcrumb adc147a6df5a
 class _GivenFolderSkill(TaravSkill):
     """A test-only kind of skill that is handed its folder."""
 
@@ -51,7 +51,7 @@ def test_the_base_skill_is_abstract_and_skw_skills_are_skills() -> None:
 
 
 def test_a_skill_built_in_code_and_one_loaded_from_disk_agree(tmp_path: Path) -> None:
-    # tarav.breadcrumb 5529d6d817113524ad90b2cceb99dbc16f562d253dfde18fd0d83ece960c463f
+    # tarav.breadcrumb 5529d6d81711
     root = _folder(tmp_path, "made", "name: made\n")
     made = SkwSkill(root=root, entrypoint="SKILL.md")
     (root / ".skw").mkdir()

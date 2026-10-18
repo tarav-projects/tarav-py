@@ -26,7 +26,7 @@ ACTIONS_TESTS_WORKFLOW_SHIP = WorkflowShip("f73c1415-a100-48f4-be13-4d2d7e61980e
 MARKER = "TODO"
 
 
-# tarav.breadcrumb 4cce8a468688a3cb9289b0d96ee80b4e44094df1b0b37a70f6c2b4bb5fa67e62
+# tarav.breadcrumb 4cce8a468688
 class ActionsTestsWorkflow(TestsWorkflow):
     """Synthetic workspace for trying Actions over POIs and blessings."""
 
@@ -105,8 +105,8 @@ def workspace_pois(workspace: str | Path) -> list[POI]:
 FIXTURES = ".tarav/tests"
 
 
-# tarav.breadcrumb 1363e5fa344cfda35d062f885c1fa885edb16b5788572b1994d402a695de7edf
-# tarav.breadcrumb ecb8f5c2a800deede6276e60252778ce933792b707f22771cd51af2793e98d6c
+# tarav.breadcrumb 1363e5fa344c
+# tarav.breadcrumb ecb8f5c2a800
 class TestFixturesSuite(CheckSuite):
     """The test fixtures of a Project: the files of `.tarav/tests/`, checked on the live path.
 
@@ -135,7 +135,7 @@ class TestFixturesSuite(CheckSuite):
         return [cls(project_root)] if (Path(project_root) / FIXTURES).is_dir() else []
 
 
-# tarav.breadcrumb 206abf4474ef638d58b0cb83951ece731a4f7c7ca76bd05a90c4f79cc5aee019
+# tarav.breadcrumb 206abf4474ef
 def workspace_project(workspace: str | Path) -> dict:
     """The workspace as the Project its actions are registered under."""
     return {"id": "test-workspace", "name": "test-workspace", "root": str(Path(workspace))}

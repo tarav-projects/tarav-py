@@ -38,7 +38,7 @@ class SkwAnalysisCheck(Check):
         return CheckResult(self, status="completed", pois=_analysis_pois(self))
 
 
-# tarav.breadcrumb 815517b13112101af47d38a935d2224f1a3b870950ba20bb5e375a605704cfa3
+# tarav.breadcrumb 815517b13112
 class GenerationContextResolutionCheck(Check):
     """Resolve one declared generation-context entry when explicitly run."""
 
@@ -126,7 +126,7 @@ def _freshness_result(check, *, poi_type, baseline_key, current_key):
     return CheckResult(check, status="completed", pois=(poi,))
 
 
-# tarav.breadcrumb 9374fbc4f10a36ba669026abe718b0960fad540c45bd1d08d5760beedd90f0c4
+# tarav.breadcrumb 9374fbc4f10a
 class GenerationFreshnessCheck(SituationCheck):
     """Compare retained and current generation inputs from one bound snapshot."""
 
@@ -243,7 +243,7 @@ def surface_state(package):
     return state
 
 
-# tarav.breadcrumb d778cc4afbface8f928a900a27e39525052bfef9b06d5b3fcddf5282fa1d1c9e
+# tarav.breadcrumb d778cc4afbfa
 def _analysis_pois(check):
     state = surface_state(check.package)
     for finding in check.findings:

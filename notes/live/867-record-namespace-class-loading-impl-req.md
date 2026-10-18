@@ -9,16 +9,16 @@
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Complete. Phase: Develop (Execute).
 
 Complete the shared Record namespace boundary: `obj.records.to_record()` projects an instance and `SomeType.records.from_record(record)` loads that concrete Type. Keep the established validation, exact-Type checks, `_from_record()` hook, and `_record` retention behavior. Migrate the kernel's dynamic loading call to the new path and exercise both paths through public tests. Broad call-site migration across every domain remains a later slice; this request does not change storage or TaravRecords navigation.
-<!-- tarav.breadcrumb 1288ecfac9497d43d48ae24b34ecf98a5a7f3e002fda927285c26c0f1a37146d -->
-<!-- tarav.breadcrumb 36b96153a66364ece90f1720da80058059c33e0dac2bc054a29f3865cd149580 -->
+<!-- tarav.breadcrumb 1288ecfac949 -->
+<!-- tarav.breadcrumb 36b96153a663 -->
 
 ## Design narrative
 
 The User wants Record behavior under an object namespace without changing its behavior. The first namespace slice introduced `TaravObject.Records` and `obj.records.to_record()`, but class loading still has only `Type.from_record()`. The current instance `records` property cannot bind a class. The simplest class-side spelling consistent with the object path is `Type.records.from_record()`: one descriptor binds the selected `Records` class to either the object or its Python class. `Type.Records` remains the class-level namespace definition and composition point. The class-side view holds the same base loading implementation; the established top-level method delegates during the broader caller migration.
-<!-- tarav.breadcrumb 2f462a2a5a0149e344dbbb0ddeb87d5951893522e4c987be1841b7cf02ef4290 -->
+<!-- tarav.breadcrumb 2f462a2a5a01 -->
 
 The kernel's `TypeRegistry.from_record()` is a first-class dynamic loading consumer and should use the new concrete class path. Preserve rejection of an abstract `TaravObject`, exact Type mismatch, strict Record validation, exact constructed class, and retention of the supplied Record. Avoid a new registry, reflection-based owner lookup, or per-subclass generated namespace classes. Tests should show inherited `Records` binds to the actual subclass and that a class view cannot project an absent instance.
-<!-- tarav.breadcrumb 57dbb943c98c521a9cb6b77ddf250b298474da462189c7772ec86b2bec539715 -->
+<!-- tarav.breadcrumb 57dbb943c98c -->
 
 ## Impl.Req.Wiki
 

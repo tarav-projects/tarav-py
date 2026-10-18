@@ -35,10 +35,10 @@ testing code: these are the checks of the whole project. The Project class
 should have an entry point that runs whatever was put there. Linter, checker
 and test mean more or less the same thing to the User; the only semantic for
 now is that this entry point runs when someone asks for the project's checks.
-<!-- tarav.breadcrumb 21f4e6352977f16d87b1ff9e929f190057c795c1083d3ac18acc28fab6f7a6bd -->
+<!-- tarav.breadcrumb 21f4e6352977 -->
 
 This is Tarav-level, not specific to g70203.
-<!-- tarav.breadcrumb 2d06173e832534f5fb9f1f1854f8a21ed676ff6035f884baaa56fc48d2487723 -->
+<!-- tarav.breadcrumb 2d06173e8325 -->
 
 Every Project class has a check method that subtypes implement; the
 implementation runs the checks and may use every primitive Tarav already has
@@ -46,8 +46,8 @@ for checks and POIs. It is an entry point to establish now. The User chose
 the name "project checks", not "project tests", called it simple to
 implement, and asked for this request to be designed and executed through
 the Develop path.
-<!-- tarav.breadcrumb e8e0abaddc2eaf0ab0e3d0162009e88f0f248861cc1dcdd5cc93a47fa958ee22 -->
-<!-- tarav.breadcrumb 7f8164ba52ed2e5c0c558a4a274dce1f0ac27c4d98194e01e41ff8f286c435c8 -->
+<!-- tarav.breadcrumb e8e0abaddc2e -->
+<!-- tarav.breadcrumb 7f8164ba52ed -->
 
 ### Naming (agent rationale, accepted by the User)
 

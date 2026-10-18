@@ -48,7 +48,7 @@ def _cmd_show(args) -> int:
 def _cmd_check(args) -> int:
     workspace = _depot(args).open(args.id)
     findings = [poi.records.to_record() for poi in workspace.checks.run().pois()]
-    # tarav.breadcrumb 8206fc5f20434c003d9aa84010e6d890c9b517734fdcb02549be007b7fdf4bd6
+    # tarav.breadcrumb 8206fc5f2043
     return _output({"status": "ok", "pois": findings})
 
 
@@ -120,7 +120,7 @@ def _cli(handler):
     return run
 
 
-# tarav.breadcrumb 54bd6029de76f231667e75b7325a4b2a30fd9c4421a118f1d64f60839ae95e9f
+# tarav.breadcrumb 54bd6029de76
 def register_workspace_commands(subparsers) -> None:
     parser = subparsers.add_parser("workspace", help="Manage manifest-backed workspaces.")
     commands = parser.add_subparsers(dest="workspace_command", required=True)

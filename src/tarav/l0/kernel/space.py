@@ -26,7 +26,7 @@ class RecordProvider:
 
 class FilesystemProvider(RecordProvider):
     """Browse an explicitly registered local collection, including JSONL Records."""
-    # tarav.breadcrumb 562d460901f4d003db3171818529b9326fc9065b3f64aff56a2f4d90f5c0c294
+    # tarav.breadcrumb 562d460901f4
 
     def __init__(self, root: Path, records: TypeRegistry[TaravObject]) -> None:
         self.root = root.expanduser().resolve()

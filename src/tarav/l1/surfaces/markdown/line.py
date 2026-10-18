@@ -48,7 +48,7 @@ class MarkdownMathBlock:
     end: SourceSpan
 
 
-# tarav.breadcrumb 1edb1d87642308cb9ec4cf88ed9dde325976cd0a6cd987ca43a4d8352e470ac9
+# tarav.breadcrumb 1edb1d876423
 class LineMarkdownViolation(ValueError):
     """The first place where text leaves the LineMarkdown dialect."""
 
@@ -63,7 +63,7 @@ class LineMarkdownViolation(ValueError):
         return self.span.start_line
 
 
-# tarav.breadcrumb d706674492039e1d0080488162fe69a4f2d76c93c57e420eb497ce98dba24f5e
+# tarav.breadcrumb d70667449203
 @dataclass
 class LineMarkdownModel(MarkdownNormalModel):
     """Markdown facts of a text that conforms to the LineMarkdown dialect."""
@@ -123,7 +123,7 @@ def _has_math_delimiter(text: str) -> bool:
     return _UNESCAPED_MATH_DELIMITER_RE.search(text) is not None
 
 
-# tarav.breadcrumb 1ab6790c91527fff68edfc57175edba07ca373661044c7f37e246393dffa4bc9
+# tarav.breadcrumb 1ab6790c9152
 def _parse_line_markdown(
     text: str, *, model_type: type[LineMarkdownModel]
 ) -> LineMarkdownModel:

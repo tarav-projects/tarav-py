@@ -43,7 +43,7 @@ class _ChildA(TaravProject):
         return TaravClass(target=cls, id=TypeShip("7f2e9b1c-0d4a-4c8e-b6f3-1a9d2e5c7b80"),
                           name="Test.Tree.ChildA", workflow=PROJECT_WORKFLOW_SHIP)
 
-    # tarav.breadcrumb c22244b13cabc011727f7988826e4fb7519474b21bedc3e0353411fb1e61c4ab
+    # tarav.breadcrumb c22244b13cab
     class Checks(TaravProject.Checks):
         def suite(self):
             return CheckSuite([_Found("a")])
@@ -135,7 +135,7 @@ def test_each_project_loads_as_the_type_its_harness_names(tree: Path,
         TaravProject.load_project(path=tree / "b")
 
 
-# tarav.breadcrumb 1b5c7c000bf93d1e3722395822537ab241bac4b01adf08fb5edc3684eabaca03
+# tarav.breadcrumb 1b5c7c000bf9
 def test_the_root_runs_its_listed_children_and_nothing_else(tree: Path,
                                                             in_root_environment) -> None:
     run = in_root_environment.checks.run()
@@ -188,7 +188,7 @@ def test_listed_children_must_lie_below_the_root(tree: Path, in_root_environment
         in_root_environment.child("link")
 
 
-# tarav.breadcrumb 31b79ffae1aafbd075e9ea96757d902a9b7cb0cb485f88ec9e127d26bf691988
+# tarav.breadcrumb 31b79ffae1aa
 def test_a_root_status_lets_each_project_update_its_own_actions(tree: Path,
                                                                 in_root_environment) -> None:
     root = in_root_environment
@@ -216,7 +216,7 @@ def test_a_root_status_lets_each_project_update_its_own_actions(tree: Path,
     assert again.actions["opened"] == 0 and found(a) == [{"where": "a"}]
 
 
-# tarav.breadcrumb 088a6a09cea670f4d80324c13057d6f3d26c811a8fedd1ca0e85622303f0f27c
+# tarav.breadcrumb 088a6a09cea6
 def test_a_root_sees_the_actions_of_the_projects_it_lists(tree: Path, in_root_environment,
                                                           capsys) -> None:
     from tarav.l1.actions.commands import register_action_commands

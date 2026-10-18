@@ -80,8 +80,8 @@ def _missing(witness: ChangeWitness | None, present: list[str]) -> list[str]:
     return [change for change in witness.changes if change not in kept] if witness else []
 
 
-# tarav.breadcrumb efca261f7a0e27f57fc4fb2cde52b901369ef3fd7c573b1a7bcaedd7fc0855d3
-# tarav.breadcrumb 329f9ebba15c1612d87d4caa8c439881711069b7c076554b672da23d872124b7
+# tarav.breadcrumb efca261f7a0e
+# tarav.breadcrumb 329f9ebba15c
 class TaravChange(GitHookHandler):
     """Writes a new ID into each commit, in its trailer and in `.tarav/changes`."""
 
@@ -110,8 +110,8 @@ class TaravChange(GitHookHandler):
         _git_path(call.root, "tarav/change").parent.mkdir(parents=True, exist_ok=True)
         _git_path(call.root, "tarav/change").write_text(change, encoding="utf-8")
 
-    # tarav.breadcrumb e2716a51587169731b1c97198d0e32a2ad0e02efe892d8c792a220af4d671240
-    # tarav.breadcrumb 4cb67df5d920856b1eaf7c7318048a5df6b908789e8a55e86fbac79a509889b0
+    # tarav.breadcrumb e2716a515871
+    # tarav.breadcrumb 4cb67df5d920
     def _compare(self, call: GitHookCall, present: list[str]) -> None:
         """Stop the commit when IDs the witness holds are gone, unless overruled."""
         key = _witnessed(call.root)
@@ -194,7 +194,7 @@ class TaravChange(GitHookHandler):
         return TaravChangeCheck(project.root)
 
 
-# tarav.breadcrumb 598b3bc14abe93125131b71d14e1fc61de685f3e4ce53092f321a68a3e256d5d
+# tarav.breadcrumb 598b3bc14abe
 def find(root: Path | str, change: str) -> tuple[str, ...]:
     """The commits on any branch that gained ``change``, in its file or its trailer, oldest first."""
     if _ID.fullmatch(change) is None:
@@ -222,7 +222,7 @@ class TaravChangeMissing(CheckPOI):
                           name="Tarav.Git.Change.Missing", workflow=GIT_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 7d2b4065a2e05297316bf9a0f21bb7960eebcdc7c37efecffe3a32b9389072ae
+# tarav.breadcrumb 7d2b4065a2e0
 class TaravChangeRemoved(CheckPOI):
     """IDs the witness holds for a branch are gone from its `.tarav/changes`."""
 
@@ -256,7 +256,7 @@ def _overruled(check: Check, overrule: ChangeOverrule) -> TaravChangeOverruled:
                    "commit": overrule.commit}, details={"missing": overrule.missing})
 
 
-# tarav.breadcrumb 6d5eab772e44844a1a883bb7339a1a765b4b77c8b1fa91d2b0e8da0c2d5acdcf
+# tarav.breadcrumb 6d5eab772e44
 def _hand_to_project(root: Path, build) -> None:
     """Register the action of one POI on the Project at ``root``, raised by the check Type
     that raises it in the Project's checks, so its status reconciles it.

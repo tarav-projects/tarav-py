@@ -71,7 +71,7 @@ class ChatlasQuery:
 
 
 @dataclass(frozen=True, slots=True)
-# tarav.breadcrumb 2dc9224fb6c140d75772053bcc581dd0794f9157464ad4eaef81b7d74f94f2a8
+# tarav.breadcrumb 2dc9224fb6c1
 class ChatlasTurnMatch:
     prefix: str
     turn: JsonObject

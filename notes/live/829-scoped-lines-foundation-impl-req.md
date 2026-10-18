@@ -14,7 +14,7 @@ Build a storage-independent Lines foundation around `Line(TaravEntity)` with
 identity, natural-language text and required interpretive scope. Scope accepts
 `TaravEntity`, including another Line. Deliver construction, explicit scope
 navigation and record round-tripping without a required Model.
-<!-- tarav.breadcrumb 4572a6ed3c8418f3ebbd59d622a161d750409ccf6398d31de63c283cfd4a46fe -->
+<!-- tarav.breadcrumb 4572a6ed3c84 -->
 
 This first slice establishes Line and the foundational workflow declaration.
 The earlier Block proposal remains relevant, but a new Block container,
@@ -30,13 +30,13 @@ semantic contribution within an explicit scope. It decomposes larger material
 into minimally complex statements; it is not designed to stand alone. Scope
 is constitutive of interpretation, not merely optional background evidence.
 Lines can scope other Lines and participate in a larger semantic graph.
-<!-- tarav.breadcrumb 814dd69b014d39d19d649fd19e78fd24e1778929126d4b4c17d717b8dda6d067 -->
+<!-- tarav.breadcrumb 814dd69b014d -->
 
 For example, “it is red” can contribute a color statement within a scope
 describing the exterior of a particular car. The scope supplies what the
 statement need not repeat. Changing scope can change meaning without changing
 text. Do not conflate scope with the places where the statement is displayed.
-<!-- tarav.breadcrumb 606d568377f549fc598df94cfcf8bba9a4946b6016f26dfcbb669d79c551dc2b -->
+<!-- tarav.breadcrumb 606d568377f5 -->
 
 Lines model no authority. One fact is an authoring aim, not a truth guarantee.
 They are a modeling tool for decomposition, encapsulation and maximal practical
@@ -44,17 +44,17 @@ orthogonality. They need not be completely independent: the aim is local edits,
 so a changed car color affects one or a few statements rather than the entire
 account. Do not reject a Line because it is false, uncertain, compound, or
 overlapping with another Line.
-<!-- tarav.breadcrumb 3332aaae4b190f5edbdf6a6dfe1c18b8dd3fc09801725f0976f06faf532dacd2 -->
+<!-- tarav.breadcrumb 3332aaae4b19 -->
 
 Evidence, editions, approval and scoring stay optional. Interpretive scope is
 basic, while Block-specific interpretation could later be expressed by a
 BlockLine subtype. A Line can attach semantically to other kinds of subjects;
 neither scope nor orthogonality requires a mandatory Block container.
-<!-- tarav.breadcrumb 275643b370790304924952f8f4ee7102a9600963741f127c0e8beadfde40cde5 -->
+<!-- tarav.breadcrumb 275643b37079 -->
 
 The user selected `TaravEntity` as the current scope boundary. Do not widen it
 to arbitrary strings/dictionaries or require a new Scope-specific entity type.
-<!-- tarav.breadcrumb 02cee6edca44ff2ab829440b01c7c3fae28688aa0a6e9e207c61f5fdce882310 -->
+<!-- tarav.breadcrumb 02cee6edca44 -->
 
 ## Current implementation observed
 

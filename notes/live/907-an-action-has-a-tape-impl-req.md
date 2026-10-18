@@ -36,24 +36,24 @@ every other change.
 
 A reopened action had a closing record; the User asked where it is now and
 how all this should be interfaced.
-<!-- tarav.breadcrumb 4aec507c47fac2e090bafc3a8a72c0f667e5f98679728c52d4f57a28e7b8c6bb -->
+<!-- tarav.breadcrumb 4aec507c47fa -->
 
 Git is how history is kept, and infrastructure must not be duplicated; some
 knowledge about the history of closing records would be nice, perhaps an
 append-only list beside the current record.
-<!-- tarav.breadcrumb 15af8bda1f3c3949ee292254efa59122adb34426ce2f98c1bf33aa14365cbdc9 -->
+<!-- tarav.breadcrumb 15af8bda1f3c -->
 
 The User preferred the agent's option of one status log in the action, with
 the closings included: a single log, with different entry Types for
 different events.
-<!-- tarav.breadcrumb ab3aad1c2203150d38e2f9a0bc0360e59114ef16a4b9345e6bc7e9507e0acfb0 -->
+<!-- tarav.breadcrumb ab3aad1c2203 -->
 
 Fold the operator's attempts into it, and read the state from it. Name it
 `tape`: actions have a tape on which important events are recorded.
-<!-- tarav.breadcrumb 39e24f9471b889fa005344fc645734691b67626ac54d7d8de14e34c8361bd7c2 -->
+<!-- tarav.breadcrumb 39e24f9471b8 -->
 
 Build it.
-<!-- tarav.breadcrumb e439ba3be0888c7dc29fddbb3895b12a5b72fbd819d44cfb17e7316bdb049d9e -->
+<!-- tarav.breadcrumb e439ba3be088 -->
 
 ### Current behavior (inspected)
 

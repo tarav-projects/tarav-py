@@ -38,7 +38,7 @@ and `_DEPRECATED/ansible-lab`) are left untouched; markers outside
 
 Migrate the other Projects, with a configuration similar to Taravangian's,
 across all of `~/projects`; first a read-only check.
-<!-- tarav.breadcrumb 01c5fce36a6550042db285ef3ba20c1cbc411a2aa6c79608be05dadff0f39642 -->
+<!-- tarav.breadcrumb 01c5fce36a65 -->
 
 All Projects under `~/projects` become Tarav Projects with an architecture
 like Taravangian's. Child Types move into each child's own package: Types
@@ -46,7 +46,7 @@ are, by default, in the Project's own harness. Roots become Git
 repositories, conservatively: ignore most of what is there except obvious
 things such as notes. Archival Projects are ignored. Commits in the other
 repositories: yes.
-<!-- tarav.breadcrumb 48dbc956c32c15edc360c2dd822da6995d8681eeeff5f5bd52a4e394890e6aec -->
+<!-- tarav.breadcrumb 48dbc956c32c -->
 
 ### Current behavior (inspected, read-only survey of 2026-10-15)
 

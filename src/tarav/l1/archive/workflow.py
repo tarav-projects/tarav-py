@@ -13,7 +13,7 @@ from .artifact_records import record_registry
 
 
 class ArchiveProvider(FilesystemProvider):
-    # tarav.breadcrumb 8bc3009f9a9cde6fd8bb069351528cf67a33e2880c8ce371237f717fe7714a0e
+    # tarav.breadcrumb 8bc3009f9a9c
     def __init__(self, root: Path) -> None:
         self.archive = Archive.open(root)
         super().__init__(self.archive.records_root, record_registry())

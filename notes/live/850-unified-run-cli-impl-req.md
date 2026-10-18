@@ -9,15 +9,15 @@
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Implemented and verified. Phase: Develop.
 
 Make `tarav run [--project [PATH]] -- <python arguments>` the single user-facing Python runner. The separator assigns all following words to Python, including `script.py`, `-c`, `-m`, `-`, and their arguments. Without `--project`, use Tarav's current interpreter even inside a Project. Bare `--project` discovers the nearest Project from the current directory upward and errors if none exists; `--project PATH` starts discovery at PATH. A selected Project supplies its configured interpreter and working directory. Remove the `tarav project harness run` and `tarav python run` CLI leaves. Keep `tarav project harness` setup/inspection commands and `tarav python path`.
-<!-- tarav.breadcrumb 40f0c902aa010a0b870d59f4c5d5e74cc1f7efc54d731d49d2a6bd8b2adc27c3 -->
-<!-- tarav.breadcrumb 7b2eee03f6813a0f8a058588e82328d87c156c0d1f70e47cf1691d09c0978434 -->
+<!-- tarav.breadcrumb 40f0c902aa01 -->
+<!-- tarav.breadcrumb 7b2eee03f681 -->
 
 This is a CLI composition change. Preserve the existing runner, Project configuration, and trusted typed-Project bootstrap library APIs. Do not add implicit `project` or `runtime` globals to the general runner, change Project records, or alter environment installation.
 
 ## Design narrative
 
 The user chose a single short command with `--` separating Tarav options from the Python invocation, then explicitly asked to remove `project harness run` and defer library restructuring. Today root `tarav run` already chooses current or Project configuration but requires `--file`/`--src`; two other run leaves expose overlapping UI. Root `run` should hand the exact post-separator argument vector to the existing `run_python` primitive. It should reject a missing separator or empty Python invocation rather than guessing whether a word is a Tarav option or script argument. A relative script path is interpreted from the runner's selected working directory, as Python normally does.
-<!-- tarav.breadcrumb a6f6b104fb42728c3cf4a3198f4217f95a4101a59465d15795c306bdc5570b57 -->
+<!-- tarav.breadcrumb a6f6b104fb42 -->
 
 The Project flag selects environment and cwd, not a specialized injected namespace. Scripts may import and use library operations directly. The existing typed Project bootstrap remains available as a library API and can be reconsidered separately.
 

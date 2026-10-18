@@ -35,7 +35,7 @@ SETTINGS_WORKFLOW_SHIP = WorkflowShip("07c04e06-a861-4ecf-b07d-ab4a03cf75ce")
 _STATE = "_settings_state"
 
 
-# tarav.breadcrumb 808882a33ca3fc19336d38801b8a42d73e8eaae3322de8fe307cc7e1a986c8b3
+# tarav.breadcrumb 808882a33ca3
 class SettingsWorkflow(TaravWorkflow):
     constitution = "Give capabilities one declared, checked place for their controls."
 
@@ -57,7 +57,7 @@ def _partition_name(partition: type | str) -> str:
     return partition if isinstance(partition, str) else entity(partition).name
 
 
-# tarav.breadcrumb 9d1c5048aa7cba67b04943a323fb8aa3a4e0ff49fc0cbc0d4df919d892a0ef12
+# tarav.breadcrumb 9d1c5048aa7c
 class SettingsValues(FileRecord):
     """Values for one or more partitions, as passed at construction or loaded from a file."""
 
@@ -124,7 +124,7 @@ def _template(interface: type[BaseModel]) -> dict[str, dict[str, object]]:
     }
 
 
-# tarav.breadcrumb 8cc10c10b66ee1d4a052a8dba96a6a6b81d7a76d602e74190348eae42592b913
+# tarav.breadcrumb 8cc10c10b66e
 class SettingsProvider(TaravType):
     """Capability: objects of an extending Type have a bound `.settings`.
 
@@ -141,7 +141,7 @@ class SettingsProvider(TaravType):
         return TaravClass(target=cls, id=TypeShip("dddd2b80-88e9-4a87-8f4a-69f75610b5a0"),
                           name="Tarav.Settings.Provider", workflow=SETTINGS_WORKFLOW_SHIP)
 
-    # tarav.breadcrumb dd7ed41d200933245f90a2ac1b1f19ce88940114e6400ce41dfa140634208220
+    # tarav.breadcrumb dd7ed41d2009
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         interface = cls.__dict__.get("SettingsInterface")
@@ -171,7 +171,7 @@ class SettingsProvider(TaravType):
                 result.setdefault(name, other)
         return result
 
-    # tarav.breadcrumb 0d26ccdceb3f246057aa2822a58dcfea867c57759d7df38c6c7ae39d76b793a5
+    # tarav.breadcrumb 0d26ccdceb3f
     class Settings(NamespaceBase["SettingsProvider"]):
         """Read and write an object's settings against its declared template."""
 

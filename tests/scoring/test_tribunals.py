@@ -19,7 +19,7 @@ from tarav.l3.runtime import create_runtime
 
 
 def test_ranking_workflow_and_tribunal_have_distinct_class_and_object_identities(tmp_path):
-    # tarav.breadcrumb a9435c4bc997322c773e21e48e34e069347b23475f3ad82d5d5801c80d5f7410
+    # tarav.breadcrumb a9435c4bc997
     assert issubclass(RankingWorkflow, ScoringWorkflow)
     assert RankingWorkflow().workflow is ScoringWorkflow()
     assert EvidenceTribunal() is EvidenceTribunal()
@@ -132,7 +132,7 @@ def _case(case_type, *, claim, material):
 
 
 def test_two_tribunals_share_ranker_but_not_population(tmp_path):
-    # tarav.breadcrumb 62350a7fa04268d941d05b6266c573c608af1754b451ef04d6bbc91dbf5e1188
+    # tarav.breadcrumb 62350a7fa042
     repository = ScoringRepository.initialize(tmp_path / 'scoring')
     registry = TribunalRegistry((EvidenceTribunal(), StyleTribunal()))
     first = enroll_case(repository, _case(EvidenceCase, claim='Claim one', material='Source A'),

@@ -22,28 +22,28 @@ are dropped.
 
 The User asked for the consequences of the day's design to be turned into
 as many requests as needed and executed.
-<!-- tarav.breadcrumb e1b238fb7d1c658ae1ba8070e4ee048fd59a4fd38f96e1ef6e4b713ce12723e4 -->
-<!-- tarav.breadcrumb ca092f0acadd49686ecd414d6f3ffef214c9504797d081b423e78e1ef475b39b -->
+<!-- tarav.breadcrumb e1b238fb7d1c -->
+<!-- tarav.breadcrumb ca092f0acadd -->
 
 A tracked POI is an action triggered when the POI is first raised; the name
 for now is an actionable POI. What is happening in a Project is asked as
 "which actions are active?".
-<!-- tarav.breadcrumb 9fc2b87d85688f228b71776ebeb4a0a214a278feeaeeb0712dbbbd1122b1a868 -->
-<!-- tarav.breadcrumb 71aaef9ccb5ad237166a65f15f933170fcc0df10abd6d1ef34e9fce309e0492c -->
+<!-- tarav.breadcrumb 9fc2b87d8568 -->
+<!-- tarav.breadcrumb 71aaef9ccb5a -->
 
 Everything is centralized: tracking moves out of the Project's folder.
-<!-- tarav.breadcrumb aa8b4fd11da9807d3237b8ed35ffc57f94062703436dd5b4d9c0b87beac08ae2 -->
+<!-- tarav.breadcrumb aa8b4fd11da9 -->
 
 The action instance follows the POI's identity; triggered again it stays
 open, reopens, or is created. History is the Git history of the record.
-<!-- tarav.breadcrumb 3b1476e7155fe81631d6bbf5ef02e8b73df6dd69823fdd751992b8dddbaad591 -->
-<!-- tarav.breadcrumb 5d67a1b802d3b9853035134d9526fe4dc63d066397df2700d336039d516c4f4a -->
+<!-- tarav.breadcrumb 3b1476e7155f -->
+<!-- tarav.breadcrumb 5d67a1b802d3 -->
 
 Positive and negative results are modelled the same way, as POIs; positive
 ones are suppressed by default, and a positive POI that closes an open action
 is a signal worth showing. What to do with any POI is the caller's choice.
-<!-- tarav.breadcrumb 27c7053af4d28afd741b4b40ed9d05d0c823612886ac8c248b93e59827414cfd -->
-<!-- tarav.breadcrumb b4e5c7255a3242347813ba71f86f9746f3944c250d607ec43ac90b346e6c9c58 -->
+<!-- tarav.breadcrumb 27c7053af4d2 -->
+<!-- tarav.breadcrumb b4e5c7255a32 -->
 
 ### Current behavior (observed 2026-10-09)
 

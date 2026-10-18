@@ -9,17 +9,17 @@
 **Knowledge.Surface:** wiki. **Alignment.Mode:** Interactive. **Status:** complete. **Phase:** Develop (Execute).
 
 Introduce a general `SearchWorkflow` with a typed query, a `SearchEngine` capability exposed as `obj.search`, and a registry-backed meta engine. An engine may accept or decline a query; several engines may answer the same query. The primary result path yields hits incrementally so query flow controls can stop after the first or Nth hit. This request establishes the common contract and a small in-memory demonstration, without migrating Records or other domain-specific search code.
-<!-- tarav.breadcrumb df6f421109ab4cb7d2c423e340eb68785f31bc73ae5547c4a8d7b97d25304359 -->
-<!-- tarav.breadcrumb 73bfd4c5b9ab6be99bfb6d211faa5a5ff9518c53fecca604a328bb65fe6d3170 -->
-<!-- tarav.breadcrumb 4ac8e74d31110cdf57282cfb32c027f93111544583d6dcc9f96243afde74b18b -->
+<!-- tarav.breadcrumb df6f421109ab -->
+<!-- tarav.breadcrumb 73bfd4c5b9ab -->
+<!-- tarav.breadcrumb 4ac8e74d3111 -->
 
 ## Design
 
 `SearchEngine` follows the existing bound namespace convention used by Checks. A concrete engine implements `Search.accepts(query)` and its incremental hit producer. The public `Search.iter_hits(query)` checks `accepts()` and exposes a declined status separately from an accepted search that found zero hits. `Search.run(query)` uses the same gate and collects up to the query's limit. Failure after acceptance remains an error, not a decline.
-<!-- tarav.breadcrumb 630b172b05320f3a43f887f3542602d466eefc00b28d096f9c5eb62c22f52b56 -->
+<!-- tarav.breadcrumb 630b172b0532 -->
 
 `SearchQuery` is a typed TaravObject whose ordinary Record projection remains optional for persistence. It carries a positive `max_hits` or no limit and an optional selected set of engine names. The meta engine registers engines by name, retains registration order, dispatches only to selected engines, and tags yielded hits with their engine path. The limit counts individual hits globally and closes an active iterator when reached. Unknown selected engine names are errors; multiple accepting engines can each contribute hits. There is no cross-engine ranking.
-<!-- tarav.breadcrumb e0bdd3c28c109403bc63087e724d1ccd5525d10b1d68df693f7719541d184ea2 -->
+<!-- tarav.breadcrumb e0bdd3c28c10 -->
 
 The current code has `NamespaceBase` and `CheckProvider.Checks` but no Search workflow. `TaravRecords` already has a runtime-specific provider map; Search should use a parallel engine registry without coupling to Records. This first slice provides manual engine registration and a reusable meta engine. The installed runtime composes one SearchService and registers SearchWorkflow. Domain adapters may follow when their query and result semantics are selected.
 

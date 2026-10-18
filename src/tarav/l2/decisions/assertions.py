@@ -8,7 +8,7 @@ from tarav.l1.decisions.workflow import DECISIONS_WORKFLOW_SHIP
 from tarav.l2.scoring import Assertion, AssertionNamespace
 
 
-# tarav.breadcrumb 92020c47c5c65c923a09633219ebf4b6c15e2fa3a67434addb4185c6f484cc86
+# tarav.breadcrumb 92020c47c5c6
 class DecisionReportAssertion(Assertion):
     """The retained account accurately describes this intervention.
 

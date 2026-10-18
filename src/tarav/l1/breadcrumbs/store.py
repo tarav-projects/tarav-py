@@ -29,7 +29,7 @@ from .model import Breadcrumb, LocatorObservation
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb b8fcfd6a5d2ba6aec2875292d403b218f93593b0e3b06b696480766e351e4b2b
+# tarav.breadcrumb b8fcfd6a5d2b
 # A surface carries the first LABEL_PREFIX characters of a Breadcrumb ID, or
 # more when that is not unique; the registry keeps the full 64.
 LABEL_PREFIX = 12
@@ -46,7 +46,7 @@ class BreadcrumbNotFound(BreadcrumbError):
     """No retained Breadcrumb ID starts with the prefix."""
 
 
-# tarav.breadcrumb 792e5d16a3d58a12210640edf1ac40fa43dbbe1899d266cca6841079d211a93d
+# tarav.breadcrumb 792e5d16a3d5
 class BreadcrumbAmbiguous(BreadcrumbError):
     """Several retained Breadcrumb IDs start with the prefix; none is chosen."""
 
@@ -56,7 +56,7 @@ class BreadcrumbAmbiguous(BreadcrumbError):
                          + ", ".join(candidates))
 
 
-# tarav.breadcrumb 85e87dcfa1700c3a8b9826302e8eac01b86075ec63efc6d71e022edc31542f3c
+# tarav.breadcrumb 85e87dcfa170
 class BreadcrumbResolutionPOI(SituationPOI):
     """Family of failures to locate a Breadcrumb's label."""
 
@@ -158,7 +158,7 @@ def parse_breadcrumb_label(value: str) -> str:
 
 
 class BreadcrumbStore:
-    # tarav.breadcrumb 7c694b6086890f17f29ecb680fa492cef54312d463ec11243594fb7bc5c15598
+    # tarav.breadcrumb 7c694b608689
     def __init__(self, root: str | Path | None = None) -> None:
         self.root = Path(root or default_breadcrumbs_root()).expanduser().resolve()
         self.records_root = self.root / "records"

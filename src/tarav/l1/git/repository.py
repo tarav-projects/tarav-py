@@ -16,7 +16,7 @@ from tarav.l0._core.git_repository import (
     repository_states,
     run_git as _run_git,
 )
-# tarav.breadcrumb 748e430a920a826d8c69df0ccf0cd18353e8665d899ec7b1bbea01cf3b5f4c61
+# tarav.breadcrumb 748e430a920a
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip, entity
 
 from .workflow import GIT_WORKFLOW_SHIP
@@ -117,7 +117,7 @@ class GitRepository(GitObject):
         )
         return tuple(output.splitlines()[1:])
 
-    # tarav.breadcrumb b564516ed6ef50cde4a78994d64ef119985a150dfa5fa294382bea1ad588cc49
+    # tarav.breadcrumb b564516ed6ef
     def worktrees(self) -> tuple[GitWorktree, ...]:
         """Ask Git for its registered worktrees, including missing paths."""
         raw = git_bytes(self.root, "worktree", "list", "--porcelain", "-z")

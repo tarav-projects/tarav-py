@@ -142,7 +142,7 @@ class LineGroundingAssertion(Assertion):
 
     @classmethod
     def assessment_case_types(cls):
-        # tarav.breadcrumb 69595ba12bd1b514fb8c74d10be475f0f194ee8751724df9f79deac07bc818ce
+        # tarav.breadcrumb 69595ba12bd1
         return (LineGroundingCase, LineSupportInventoryCase)
 
     def _build_assessment_case(self, case_type, *, projection=None, evidence=None):

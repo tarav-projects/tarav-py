@@ -16,7 +16,7 @@ from tarav.l1.search import SearchEngine, SearchHit, SearchQuery, SearchService
 from . import CONTEXT_WORKFLOW_SHIP
 
 
-# tarav.breadcrumb d128fb8aa9f239546a23d18b6e3f7eb3520bc13a1b888977dacf0f64a4c0f489
+# tarav.breadcrumb d128fb8aa9f2
 class ContextQuery(SearchQuery):
     """A request to find the subject of a Context."""
 

@@ -19,12 +19,12 @@ exception classes per POI Type; changing what a POI carries (request 890).
 
 The User planned to give POIs a `.throw()` method that raises the POI as an
 exception, in case somebody wants to use it.
-<!-- tarav.breadcrumb a232779b7953c0d4e9d5f3ab89661ca9be49a396373c7306f00cdd13584079de -->
+<!-- tarav.breadcrumb a232779b7953 -->
 
 It should be general to POI. The exception carries the whole POI, so a caller
 that decides to stop still hands the next reader the situation, the code
 location and the context.
-<!-- tarav.breadcrumb 4607be0967fb8d330ee9c24ce591351aaeba55324ba9d1e79cf43780ea7ee194 -->
+<!-- tarav.breadcrumb 4607be0967fb -->
 
 ### Current behavior (observed 2026-10-09)
 
@@ -63,7 +63,7 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 
 - Designed 2026-10-09. Not executed.
 - Executed 2026-10-09 at the User's request.
-<!-- tarav.breadcrumb c46dfa62f1b5a41db1c0e56913f6d91f2f1dc9cf7982f558a903c69383297d96 -->
+<!-- tarav.breadcrumb c46dfa62f1b5 -->
 - Start checkpoint `9dd0697` (empty).
 - `POI.throw()` added on the base class in `src/tarav/l1/poi/primitives.py`;
   it raises `POIError(self)`. `CheckPOI.error()` and its now unused import

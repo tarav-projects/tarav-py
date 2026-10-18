@@ -17,7 +17,7 @@ identity derived from its concrete Type Ship and explicit caller-supplied
 `situation`. Introduce a reusable LiteRecord supporting controlled serialization
 of accepted native values. Update Checks, Blessings, collectors, and active
 producers together. Preserve neutral POIs and optional blessing capabilities.
-<!-- tarav.breadcrumb 622bc08f3ef71f3f8ba5348456d915149f5542df6b24ab8045ca96adf78f5342 -->
+<!-- tarav.breadcrumb 622bc08f3ef7 -->
 
 Non-goals: legacy blessing-data migration or compatibility readers; changing
 Archive placement; a general object persistence engine; automatic inference of
@@ -32,7 +32,7 @@ identify the same situation across runs, or represent a fresh occurrence.
 The producer decides what equivalence means. Discovery does not itself imply
 random identity. An occurrence-specific token can distinguish intentionally
 fresh situations without a separate identity policy engine.
-<!-- tarav.breadcrumb 4afe64ff98376eb982f502913e864de5a0332c4123f8dd62c52d18287a034efe -->
+<!-- tarav.breadcrumb 4afe64ff9837 -->
 
 The selected model is conceptually:
 
@@ -47,9 +47,9 @@ under the same identity. If a changed input should require another blessing,
 the producer must include that distinguishing input in its situation. Prefer
 resurfacing and reblessing to accidentally grouping a new concern with an old
 blessed situation. Do not silently include evidence or message text in identity.
-<!-- tarav.breadcrumb dd5b2bbea5e857be4fd2d58bd63f41a9131de99d2693188e6bf2352813a8e928 -->
-<!-- tarav.breadcrumb 9f0c9403496aee195ae091ca789090f4643af5f063b5776c34cd4b2169af4688 -->
-<!-- tarav.breadcrumb f2c6a130dfbc85474b1b65823bd8f2641daeaabe1a51ea4102c06452132a155a -->
+<!-- tarav.breadcrumb dd5b2bbea5e8 -->
+<!-- tarav.breadcrumb 9f0c9403496a -->
+<!-- tarav.breadcrumb f2c6a130dfbc -->
 
 ### LiteRecord is controlled serializability, not primitives-only input
 
@@ -59,7 +59,7 @@ may pass supported native values directly, including dates and Tarav Types.
 Established serializers define the accepted nonprimitive types. Unsupported
 objects must fail explicitly, rather than falling back to `str()` or arbitrary
 object introspection. This is a general foundation, not a POI-specific payload.
-<!-- tarav.breadcrumb 73435f0849aee190784624c597929303af2613f9017e5dbe9980f337e495ee30 -->
+<!-- tarav.breadcrumb 73435f0849ae -->
 
 Agent implementation proposal: put the foundational value/codec mechanics at
 `tarav.l0.kernel.lite_records`, exported from the Kernel as appropriate. Keep
@@ -88,7 +88,7 @@ order, is not part of POI identity or blessing matching, and is exposed when
 several observations share an identity. Identity-prefix resolution happens
 before index selection. A lookup without an index succeeds only for one
 observation and otherwise requires the caller to select the index explicitly.
-<!-- tarav.breadcrumb f15d65be0d76e00ce37feef816d9f13e5b3f44059b725f8fbca5a2497dd79d8a -->
+<!-- tarav.breadcrumb f15d65be0d76 -->
 
 ### Minimal integration, not another identity framework
 
@@ -194,7 +194,7 @@ documentation only. Unrelated worktree changes remain outside this request.
 2026-10-01 — Execute added the approved two-level collector address: stable
 situation identity plus a zero-based, evaluation-local emission index. Product
 execution was explicitly requested after the design inspection.
-<!-- tarav.breadcrumb b20357468251338bd191f5344c21a12cbd573578742fc3340acc7fdb6b73e9fc -->
+<!-- tarav.breadcrumb b20357468251 -->
 
 Implemented `LiteRecord` in Kernel with deterministic JSON-compatible encoding,
 native dates, Ships and Tarav Type references, reserved-tag escaping, cycle and
@@ -225,4 +225,4 @@ Breadcrumbs resolved with no POIs. Wiki implementation capture landed in
 `tarav-md` as `bd5cc7af428e929682549e7b0d98b490555d7fca`; both Wiki surfaces and
 all three commit-evidence Breadcrumbs resolved with no POIs. Unrelated dirty
 work in both repositories remained outside the scoped commits.
-<!-- tarav.breadcrumb eb9e8eb9360e2151b525b00449a147addc580e3d7b37b1d843b2687c86c2a795 -->
+<!-- tarav.breadcrumb eb9e8eb9360e -->

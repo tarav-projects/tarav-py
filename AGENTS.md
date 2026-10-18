@@ -51,8 +51,8 @@
   retains built results and whose graph only grows. Identifier resolvers
   are composed in `TaravRuntime.context_queries()`. Kernel delegates through
   host callbacks without importing Context or RDFLib. Named views still fail.
-  <!-- tarav.breadcrumb ad0f4807b92fcc359c084cc69e7966cba5579b315e690981d7f52748b89856bb -->
-  <!-- tarav.breadcrumb 0094f5ae9193c13bbbd28788ad4a2cb23d873dd94c4bd39237357af38be25256 -->
+  <!-- tarav.breadcrumb ad0f4807b92f -->
+  <!-- tarav.breadcrumb 0094f5ae9193 -->
 - Provider-neutral orchestration belongs in `tarav.l1.agent`; concrete adapters
   belong in `tarav.l1.agent.providers.<provider>`.
 - Shared infrastructure enters `tarav.l0._core` only after multiple consumers have
@@ -75,7 +75,7 @@
   never provisions. `tarav project harness` scaffolds, inspects, and syncs
   `.tarav/env`; `tarav run [--project [PATH]] -- <python arguments>` is the sole
   Python execution CLI.
-  <!-- tarav.breadcrumb 62f9b9610c90a49367930ec4ceb23870ff8317959192d9ffba572c3d1d2a409c -->
+  <!-- tarav.breadcrumb 62f9b9610c90 -->
 
 - This folder is a `Tarav.Project.PythonPackage` child of the Taravangian
   root (`../.tarav/project.json`) and uses the root's environment
@@ -83,37 +83,37 @@
   tests as a `PyTestSuite`, one suite per test file; each failing test is a POI.
   Without `--all` the tests are left out. Development still uses this folder's own
   `.venv` through `uv run`.
-  <!-- tarav.breadcrumb 2407cd94597e19dd391e332b269374527b2c4be897c48078f7d31ae1d691c845 -->
+  <!-- tarav.breadcrumb 2407cd94597e -->
 - A harness manifest may list several trusted Project Types
   (`[tool.tarav.harness] projects`), started through `tarav.l3.project.launch`.
   `RootProject` (`tarav.l2.project.root`) lists child Projects in its marker
   and its `checks` are theirs; a child may declare `harness.project` to use
   the environment of an ancestor that lists it. Tarav does not model the
   Python library; a Project Type is an object inside one.
-  <!-- tarav.breadcrumb d310f661f8f7879f3921034bdf5fde72b44b06fc86b842b082a64c57cf5ce6d8 -->
+  <!-- tarav.breadcrumb d310f661f8f7 -->
 - `.tarav/project.json` is the canonical project marker. It stores portable
   project identity and metadata, not machine-local paths.
 - The featured `Project.workspaces()` interface delegates to the independent
   Workspaces workflow; minimal `TaravProject` does not import it. Workspace
   manifests live under `~/Documents/tarav/workspaces/` and are not Project
   marker fields. Git worktrees are created and removed through `GitRepository`.
-  <!-- tarav.breadcrumb 974d29f6f10401aa7ea49d4165f6cb29d198adc956fff1f28f085109dcad2bff -->
+  <!-- tarav.breadcrumb 974d29f6f104 -->
 - `Project.decisions()` is the Project's Decision store, `.tarav/decisions/`:
   one append-only file per Record, any `Decision` subtype, filtered by Type
   including subtypes. Project blessings live there through
   `Project.decisions().blessings()`. The Decisions workflow owns no storage,
   and other workflows may still keep Decisions elsewhere.
-  <!-- tarav.breadcrumb 8f4344f85bcaecfe7ab8c9fc47cddb92f71f93869fd489846ad5bc69136ad845 -->
+  <!-- tarav.breadcrumb 8f4344f85bca -->
 - For `tarav run`, a bare `--project` discovers the nearest Project from the
   current directory upward, and fails when there is none. Without the flag,
   `tarav run` uses the installed Tarav interpreter even inside a Project.
-  <!-- tarav.breadcrumb a063022465541b6bdc1076d3a5ad853099d0c2c8f01eb8243e32c7b976917a5f -->
+  <!-- tarav.breadcrumb a06302246554 -->
 - `TaravProject` is a `CheckProvider`: base checks cover its agents file and
   the skill bootstrap; a subtype adds its suite in `Checks.suite()` and calls
   `super().suite()`. `project.checks.run()` executes the composed suite.
-  <!-- tarav.breadcrumb e975fb22535bf1b80fc7ee95b2b15fb340d677036ab7ba55adbba1f3c064deaf -->
-  <!-- tarav.breadcrumb f1b6c4d85568e1afc1b76afc02983662c5d2be806b568698cd7b28b853a639e6 -->
-  <!-- tarav.breadcrumb 2cad01bfc733b3b450e3908f187d06d110c511dd5329d9b74e0165b87839fbc9 -->
+  <!-- tarav.breadcrumb e975fb22535b -->
+  <!-- tarav.breadcrumb f1b6c4d85568 -->
+  <!-- tarav.breadcrumb 2cad01bfc733 -->
 - A Project whose root is a Git repository selects Tarav Git hook handlers in
   the `git` section of its config (`tarav.l1.git.hooks`). `tarav git hooks
   install --project [PATH] [--handler NAME]` writes `.tarav/git-hooks/` and
@@ -123,22 +123,22 @@
   `tarav-change:` trailer and a line of `.tarav/changes`, so `tarav git change
   find --id <id>` finds the commit after a history rewrite. This repository
   uses it.
-  <!-- tarav.breadcrumb 3ac71846f72a6a9632d30bfe3a73cfd107bb0cd34eb6539f7428fa690a94e9c0 -->
-  <!-- tarav.breadcrumb 1e1e0a27ff6ad6e419e9317087e988a49b106cd6494a4a888e07f3ffec8731ed -->
+  <!-- tarav.breadcrumb 3ac71846f72a -->
+  <!-- tarav.breadcrumb 1e1e0a27ff6a -->
   A handler may also stop Git on purpose (`GitHookRefusal`, exit 75), so
   whoever commits rethinks; `TARAV_GIT_HOOKS_OVERRULE=<handler>` overrules it.
   tarav-change stops a commit whose `.tarav/changes` lost IDs that the
   witness (`tarav.l1.git.witness`, under `~/Documents/tarav/git-changes/`, per
   Project and branch) saw at the branch's last commit; stops and overrules
   become actions of the Project.
-  <!-- tarav.breadcrumb 1413fcedc6ffd4d8a10e9416bda015b20e328a738611e646ebd91c144b1418dd -->
+  <!-- tarav.breadcrumb 1413fcedc6ff -->
 - `project.agents.skills` discovers skill folders in Project and home
   `.agents/skills`, using each `SKILL.md` declared name. Set
   `agents.package_skill` in `.tarav/project.json`; the built-in Tarav skill
   name is `tarav-pkg`. Project and home must each have `.agents/skills`
   and `.claude/skills` resolving to the same directory. Checks report
   missing skills and folder structure through typed POIs.
-  <!-- tarav.breadcrumb cf13f560fbda5e4ee266ba51759419ed3ae8d3bd3e954f8b6b0f3d8b9f33ef7c -->
+  <!-- tarav.breadcrumb cf13f560fbda -->
 - `CheckProvider.checks.suite()` returns a `CheckSuite`. A suite does not contain
   checks: it holds the code that runs them (`produce()`), because which checks
   exist is only known while it runs. `run(select=...)` runs it whole or filtered
@@ -149,7 +149,7 @@
   `tarav check --project [PATH] [--json]` runs the suite in the
   Project harness and reports grouped POIs (20 groups by default). It exits
   0 only when all Checks completed without findings. It knows nothing of actions.
-  <!-- tarav.breadcrumb 1b6aa81a76ec0d6ff43faa8d080ab26dd80ab3a9098cf814f141182b5e2ff406 -->
+  <!-- tarav.breadcrumb 1b6aa81a76ec -->
 - Environment variables and machine-state paths retain the names encoded by
   their current storage contracts until an explicit migration changes them.
 
@@ -160,7 +160,7 @@
   contracts. Compiled products are ordinary reader-facing surfaces; readers do
   not interpret SKW Records. `skw.skills` specializes this workflow for skill
   package layout, components, loading analysis, deployment, and checks.
-  <!-- tarav.breadcrumb 2d3d132a3afb327f527fb79ac581c93e13fc762438dff57a3948de0fc14da6f7 -->
+  <!-- tarav.breadcrumb 2d3d132a3afb -->
 
 - Skill packages with a `loading` declaration use `tarav.l1.skw.loading` for
   declared slot composition and `tarav.l1.skw.skills` for typed components.
@@ -168,11 +168,11 @@
   `SkillReadingGraph` owns the existing package binding, rendering, and path
   analysis. `ProjectReadingGraph` is only a Project-owned specialization point
   until concrete Project onboarding routes establish shared mechanics.
-  <!-- tarav.breadcrumb db4b6b30bfab0d34c188dea34dfea40b0dc9cd0eff9908b7bee01f5cedf08ad5 -->
+  <!-- tarav.breadcrumb db4b6b30bfab -->
   SKW blocks are Entities with UUID Ships and separate local labels. Typed
   reading declarations belong to source blocks; the loading Record binds
   blocks and routes, while l2 reading Checks interpret path analysis into POIs.
-  <!-- tarav.breadcrumb 9ec8816777a876da7cc365666a9b4796b3c702774e5e9936a9c4f266212d0ddb -->
+  <!-- tarav.breadcrumb 9ec8816777a8 -->
   The installed `skw document` CLI receives this specialization
   through runtime composition. Plain `Document` is the generic engine, not a
   substitute for compiling skill primitives. Loading graphs are declared data;
@@ -291,7 +291,7 @@ Importing `tarav` alone initializes no services or layered modules.
   `tarav run --project -- <script>`. Plain `import tarav` raises an error
   outside a Tarav-started process. Deliberate direct callers import
   `tarav_bypass` first; it is the explicit alternative entry point.
-  <!-- tarav.breadcrumb 0319d00f271187db1c68b562c9b9e9cf8d775c549d5e9d8b0113fa24d30a42c0 -->
+  <!-- tarav.breadcrumb 0319d00f2711 -->
 - `tarav run` retains the code it executes in a best-effort registry under
   `~/.tarav/run-registry/`, one folder per Project id plus `global`, bounded by
   size. Browse it for recent examples of Tarav scripts, including other

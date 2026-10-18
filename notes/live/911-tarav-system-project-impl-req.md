@@ -36,24 +36,24 @@ Projects under it without their knowing; a way to work on all Projects, as
 in the migration, but formalized. Start minimal: information about the
 Projects, a list of active ones, basic operations such as running checks,
 and checks of its own over the others.
-<!-- tarav.breadcrumb cc593e68554a3c9642c95d9c6ad701eb2bbcbe8c02e0b023772b045bc4b2f179 -->
+<!-- tarav.breadcrumb cc593e68554a -->
 
 It is a Project with a Git repository, skills and documentation, the top of
 the user's Tarav system, named `TaravSystemProject`. The active list is
 manual only: just a list in its configuration.
-<!-- tarav.breadcrumb 1818491be691cb45b11a81eb3b6c090ab2758b150b7c77262da2a54690251b1e -->
+<!-- tarav.breadcrumb 1818491be691 -->
 
 It lives at `~/Documents/tarav/system/`; it is created by `tarav init
 --system`, which needs Tarav already installed; how Tarav itself is
 installed and bootstrapped is parked.
-<!-- tarav.breadcrumb 963ebaf256503b8e95f00e77da83f935d638c650ffd99b65737ac7ada73a1df8 -->
+<!-- tarav.breadcrumb 963ebaf25650 -->
 
 A Project means a place, as a project does in Claude or Codex. Keep it
 simple and explicit.
-<!-- tarav.breadcrumb 96eb4367a3fbd315ecdd358dd3438e2fdf024e3dca8f9de85c2badadb05b37a9 -->
+<!-- tarav.breadcrumb 96eb4367a3fb -->
 
 Nothing new: just a new Project at `~/Documents/tarav/system/`. Build it.
-<!-- tarav.breadcrumb 6db58ca92b8a6a7e478da2425420da9ee6270b83bc1045024dabb94cf161354f -->
+<!-- tarav.breadcrumb 6db58ca92b8a -->
 
 A discussion of making the System Project the owner of all workflows (in
 place of `Tarav.Workflow`) and of Projects having library and harness roles

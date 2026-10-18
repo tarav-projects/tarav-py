@@ -14,7 +14,7 @@ from tarav.l0.kernel.workflows import TaravWorkflow
 from . import UsageRegistry
 
 
-# tarav.breadcrumb eed9e202f400d354c3cfe3e29b7388c1478bbba38eacec8371ec5f6f50dc3ada
+# tarav.breadcrumb eed9e202f400
 def register_usage_commands(
     subparsers: argparse._SubParsersAction,
     *,
@@ -56,7 +56,7 @@ def register_usage_commands(
         print(json.dumps(rows, indent=2))
         return 0
 
-    # tarav.breadcrumb f9d50eaccb67efc0d04bc1cde8c35e5e6a804bc17aa931746e87301b86d7c917
+    # tarav.breadcrumb f9d50eaccb67
     query.set_defaults(
         handler=run,
         usage_descriptor=lambda args: {

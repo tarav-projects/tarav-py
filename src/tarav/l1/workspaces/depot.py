@@ -41,7 +41,7 @@ def _write_json(path: Path, value: dict) -> None:
     temporary.replace(path)
 
 
-# tarav.breadcrumb c1bdbcdaed7f73d3e33254249413d3aed237f8a32f1ffe4ddbfe59062e061270
+# tarav.breadcrumb c1bdbcdaed7f
 class WorkspaceDepot:
     """One configured root; reads never create it."""
 

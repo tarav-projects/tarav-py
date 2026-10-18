@@ -115,7 +115,7 @@ def test_generation_context_resolution_is_independent_and_repairable(tmp_path):
     assert not any(isinstance(poi, InvalidLoadingModel) for poi in emitted)
 
 
-# tarav.breadcrumb 6b9be7810af01872f85ffccc2c271b21ce3fab37b6ebd82f0fada50386a36f7f
+# tarav.breadcrumb 6b9be7810af0
 def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
     tmp_path, monkeypatch
 ):
@@ -182,7 +182,7 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
     assert any(isinstance(poi, StaleContext) for poi in changed)
 
 
-# tarav.breadcrumb 7f528a5c259b365f5e59cb23ce3be218a54766baf7d0e473f2d2379ef58c5d8f
+# tarav.breadcrumb 7f528a5c259b
 def test_the_package_suite_detects_what_the_skill_command_shows(tmp_path):
     from tarav.l1.skw.pois import ProductDrift, UnbundledLink
 
@@ -213,7 +213,7 @@ def test_the_package_suite_detects_what_the_skill_command_shows(tmp_path):
     assert skill.checks.suite().identity == {"type": "Tarav.Checks.Suite", "key": tmp_path.name}
 
 
-# tarav.breadcrumb 82935932a297a50ab9c5849ee8aa5a7723673f80895d916211bab92cff53fbcf
+# tarav.breadcrumb 82935932a297
 def test_a_product_drift_declares_what_was_compared(tmp_path):
     from tarav.l1.skw.pois import ProductDrift
 
@@ -257,7 +257,7 @@ def test_a_product_drift_declares_what_was_compared(tmp_path):
     assert drift() == []
 
 
-# tarav.breadcrumb f38c67b3208d0992bd9f3fdb72418be0d592ab312e0f8c8a328aa47db2bb4cf4
+# tarav.breadcrumb f38c67b3208d
 def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
     from tarav.l1.skw import pois as skw
 
@@ -295,7 +295,7 @@ def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
                 type(poi).statement)
 
 
-# tarav.breadcrumb f05d8da396a57b6a29eaa13c03eaf6566a43a142b26b04753cadea456fdd02cd
+# tarav.breadcrumb f05d8da396a5
 def test_a_declared_link_is_checked_only_by_its_prose_part(tmp_path):
     from pathlib import Path
 

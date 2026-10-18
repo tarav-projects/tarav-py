@@ -16,7 +16,7 @@ def standing(run: ActionRun) -> str:
     return run.exit if run.state == CLOSED else "open"
 
 
-# tarav.breadcrumb 800d9e604f294f79cac459869ee807a71c74f36c0661a1e6466357a28dba6d32
+# tarav.breadcrumb 800d9e604f29
 class ActionResolver(SearchEngine):
     """Find an action by its own id, or by the id of the POI it follows.
 

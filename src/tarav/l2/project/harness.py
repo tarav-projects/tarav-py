@@ -295,7 +295,7 @@ members = []
 """
 
 
-# tarav.breadcrumb d6ba8cb735d3af7f6f1877c97fa39b76945f91ef13cab93971e91dbcfe147568
+# tarav.breadcrumb d6ba8cb735d3
 def _project_source(class_name: str, type_ship: str, type_name: str, base: str) -> str:
     base_module, _, base_name = base.partition(":")
     return f'''"""This Project's code-owned specialization; extend it with Project operations."""

@@ -9,8 +9,8 @@
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: Complete. Phase: Develop (Execute).
 
 Introduce `TaravRecords` as the workflow for reusable Record storage primitives and basic discovery and navigation across storage solutions contributed by other workflows. A contributing source must be able to expose its Records without registering every Record in a central index. Tarav should also offer standard Record storage locations, while workflows remain free to use the same primitives in their own storage.
-<!-- tarav.breadcrumb 20afcba0227f4eeb35a648765a9dd1172c5cf15d76d1ab9a33b29059fc815fb1 -->
-<!-- tarav.breadcrumb 31c9342f314b83fb558f4dd02e53cc05929bc7c8187c0294923723a9dc5da3d1 -->
+<!-- tarav.breadcrumb 20afcba0227f -->
+<!-- tarav.breadcrumb 31c9342f314b -->
 
 This request captures the intended architecture and a proposed first implementation boundary. It does not assert that the proposed API, storage layout, or migration order has been approved.
 
@@ -19,13 +19,13 @@ This request captures the intended architecture and a proposed first implementat
 ### User decisions and direction
 
 Archive and Registry have different semantics. Archive identifies Artifacts, retains descriptive Records, and has long-term preservation and DOI-like responsibilities. A Registry stores Records; Archive could use one for its own Records. Whether Records are append-only or have a changing current edition belongs to the storage policy, not to the meaning of Registry. Shared primitives must support both. The existing Record Archive is a candidate source of Registry mechanics, not an automatically approved generic contract.
-<!-- tarav.breadcrumb b49f45c1c243c75b9f95aa96041b658fbb29bd2022eb5b46c06f8809334c7e08 -->
-<!-- tarav.breadcrumb 973561d7af371d2eab2a0814e84d02564a1b8f38768f9fd68d45cb37595bc8a6 -->
+<!-- tarav.breadcrumb b49f45c1c243 -->
+<!-- tarav.breadcrumb 973561d7af37 -->
 
 An Entity view should not require a second repository. The desired global workflow lets other workflows hook their storage solutions into a navigable Record graph, potentially using JSON registries, class subtyping, or other discovery mechanisms. There must be no central enumeration of every Record as a prerequisite for reachability. `TaravRecords` is the chosen workflow name and includes both primitives and basic navigation and discovery.
-<!-- tarav.breadcrumb 7b3743b705e6bb691763ce2056adcc573680962970d39ebe63353fee204ad12b -->
-<!-- tarav.breadcrumb a934e11731cd1dede9643f3b238af28ab54ca4b47c81eddf1515b4fe30751ab1 -->
-<!-- tarav.breadcrumb e00200904b1c6fc37f8345f7637a451269576fb31849662e65ef7617e70e7d64 -->
+<!-- tarav.breadcrumb 7b3743b705e6 -->
+<!-- tarav.breadcrumb a934e11731cd -->
+<!-- tarav.breadcrumb e00200904b1c -->
 
 The immediately preceding recovered discussion in `tarav-md/notes/live/864-entity-registry-and-storing-workflow-recovered-discussion.md` additionally distinguishes ordinary file/path references, a Git `HEAD` reference, and an exact edition. Their precise contracts remain to be designed.
 
@@ -52,7 +52,7 @@ Archive keeps Artifact and preservation semantics. Adopting Registry primitives 
 Choose the first execution boundary: **A.** introduce `TaravRecords` discovery/navigation and generic primitives around current stores, with adapters demonstrating Archive and Scoring reachability, then migrate Record Archive storage in a later request; or **B.** include renaming/refactoring the current Record Archive into the standard RecordRegistry and any required data migration in this request. A is the recommended first slice because it tests the extension contract against distinct real stores before changing retained layouts. This choice affects scope, tests, documentation, and the worktree conflict.
 
 The User selected the incremental first boundary: establish the workflow organization and extract common or easily migrated primitives now; workflows may retain custom storage and further alignment follows later. This authorizes A and a bounded standard Registry without a Record Archive data migration.
-<!-- tarav.breadcrumb 8c6ea8fd95ab9394630db8ad490c2ba05a82da870ab504292d45ecdd09fe6111 -->
+<!-- tarav.breadcrumb 8c6ea8fd95ab -->
 
 ## Impl.Req.Wiki
 

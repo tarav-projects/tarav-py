@@ -15,12 +15,12 @@ Non-goals: changing Project markers, automatic whole-machine scans, moving direc
 ## Design narrative
 
 The User wants a holistic view of Projects, including Projects whose folders moved. They suggested Project commands and `tarav run --project` notify Tarav in the background, with identity by ID and a global list.
-<!-- tarav.breadcrumb 2ab0f539fc4ec52727e320fdcca07e5f6d33223da58c84d74248c62deadafeb7 -->
+<!-- tarav.breadcrumb 2ab0f539fc4e -->
 
 The existing `tarav project list` requires `--root` and scans that directory. Project markers already carry a UUID `project_id`. Project initialization and explicit run/check/harness commands can observe a validated marker without changing the command outcome if the index write fails. An ID alone cannot discover a new path after a move; a subsequent observation or explicit root scan is needed. A global index must expose that uncertainty rather than claim a stale path is current.
 
 The User selected Wiki-backed Develop with autonomous alignment.
-<!-- tarav.breadcrumb 39a11fb469f222f6918e131dfde45774822a6df8eaade5993a3550863f235a5f -->
+<!-- tarav.breadcrumb 39a11fb469f2 -->
 
 ### Agent choices
 

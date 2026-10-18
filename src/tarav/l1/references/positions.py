@@ -18,7 +18,7 @@ from . import FileReference, Reference
 class FilePositionLocator(TaravObject.RecordInterface):
     """Mechanical locator; richer file identity remains optional."""
 
-    # tarav.breadcrumb 6ef7a9f004286661577a2eec94c89187a44099fa2007019daa7707edff58420d
+    # tarav.breadcrumb 6ef7a9f00428
     model_config = ConfigDict(strict=True, extra="forbid")
 
     file: str | FileReference.RecordInterface
@@ -39,7 +39,7 @@ class FilePositionTarget:
 
 
 class FilePositionReference(Reference):
-    # tarav.breadcrumb 87a69f83f5a3abd468c5e47ee04225622e066ec4eab4cf2d6ce479c7427ed40a
+    # tarav.breadcrumb 87a69f83f5a3
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

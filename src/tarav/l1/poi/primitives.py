@@ -52,7 +52,7 @@ def plain(value):
     return json.loads(json.dumps(value, allow_nan=False))
 
 
-# tarav.breadcrumb 0e47f7f09769ba32c37969a636c8480ceef794d03f21b3306cfed321b6c1bdf7
+# tarav.breadcrumb 0e47f7f09769
 class POI(TaravObject):
     """A point of interest: the statement that an event happened.
 
@@ -62,7 +62,7 @@ class POI(TaravObject):
     fields of its own Type.
     """
 
-    # tarav.breadcrumb fbce893f8a509ccd3120c6f50be4e69a32ff924ed42d9cef1af7857d8dc86efb
+    # tarav.breadcrumb fbce893f8a50
     #: Descriptive sentences this Type adds to its POIs' context: what the POI
     #: means, where its producer's documentation is, what is known to make it
     #: stop being raised. They are not part of the POI's record.
@@ -76,7 +76,7 @@ class POI(TaravObject):
             workflow=POI_WORKFLOW_SHIP,
         )
 
-    # tarav.breadcrumb 17627641c140831a58058d274ae60618c5ddcfb654b3f2d8b748518b3d76c0bd
+    # tarav.breadcrumb 17627641c140
     def __init__(self, message: str) -> None:
         super().__init__()
         if not isinstance(message, str):
@@ -106,14 +106,14 @@ class POI(TaravObject):
             return self.message.strip()
         return (type(self).__doc__ or "").strip() or entity(type(self)).name
 
-    # tarav.breadcrumb 0216682f0099c00e834aa725e6214609154e74337b7c0ea50bf53d32d5b6948e
-    # tarav.breadcrumb 2f1b1fe8f260aab8fdc6686a018c0a67690193baef77db8ad977f39e23e73a84
+    # tarav.breadcrumb 0216682f0099
+    # tarav.breadcrumb 2f1b1fe8f260
     def throw(self) -> None:
         """Raise this POI as a `POIError` that carries it, for a caller that wants to stop."""
         raise POIError(self)
 
 
-# tarav.breadcrumb f79017e17d4716cf2da6b9734b2c2a6737ed9facccf0ad524505fda4a9d8cc10
+# tarav.breadcrumb f79017e17d47
 class SituationPOI(POI):
     """A POI about a situation: an object that describes what was found, and where.
 
@@ -240,7 +240,7 @@ class POICollector:
         self.pois.append(poi)
         return poi
 
-    # tarav.breadcrumb 5eb40a749da9400fa0e6bc5526e6fb65f0e3004d7cf6193ba742b4ff9a4bac8f
+    # tarav.breadcrumb 5eb40a749da9
     def get(self, identity: str, *, index: int | None = None) -> SituationPOI:
         if not isinstance(identity, str) or not identity:
             raise ValueError("Expected a nonempty POI ID or prefix")

@@ -31,8 +31,8 @@ separate inline declaration is unnecessary for this semantic relationship.
 Targets may be TaravEntities from other workflows; recursive annotation
 expansion initially applies to SKW blocks. The mechanics trust declarations;
 checking that prose substantiates them is a separate responsibility.
-<!-- tarav.breadcrumb 17bb4674fb1b45214a25be3538ba4523422d7b04cca6b5522c4a321bf314a530 -->
-<!-- tarav.breadcrumb 778ae63ee3e6220f95e1eb849e443f350d6c0521d7e59dc3342d1e1c651ad35f -->
+<!-- tarav.breadcrumb 17bb4674fb1b -->
+<!-- tarav.breadcrumb 778ae63ee3e6 -->
 
 The link stopping rule belongs to reading-path availability analysis, not
 to all graph traversal. Agents may choose to follow links, and other analyses
@@ -58,7 +58,7 @@ contain B. Containment expands supplied context; the reading path accumulates
 that context before checking later blocks. Preserve that distinction and do
 not introduce a new sibling-order contract. Requirements remain checks on
 incoming path context, not on a block's own newly supplied content.
-<!-- tarav.breadcrumb 71b057d08790a528640bc4f92535b38f5112a384e776830c9fbed40966e6a55b -->
+<!-- tarav.breadcrumb 71b057d08790 -->
 
 ## Impl.Req.Wiki
 

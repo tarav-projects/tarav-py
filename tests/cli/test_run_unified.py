@@ -13,7 +13,7 @@ from tarav.l1.python_env import RunnerConfiguration
 from tarav.l3.cli.cli import build_parser, main
 
 
-# tarav.breadcrumb ecc883a43a33125759cbe88a8d3b097c85530a730def75ae1cf7d91fda869dca
+# tarav.breadcrumb ecc883a43a33
 def test_run_forwards_python_arguments_and_exit_code(capfd) -> None:
     code = "import json, sys; print(json.dumps(sys.argv[1:])); raise SystemExit(7)"
 
@@ -46,7 +46,7 @@ def test_run_selects_project_configuration_and_project_working_directory(
     assert json.loads(capfd.readouterr().out) == [str(tmp_path), ["a b"]]
 
 
-# tarav.breadcrumb 70beef8929bbe958cefd19ad34327c28e909d2e4063eb2cd93299a438dfa203b
+# tarav.breadcrumb 70beef8929bb
 def test_bare_project_discovers_parent_project(tmp_path: Path, monkeypatch) -> None:
     from tarav.l3 import run as command
 

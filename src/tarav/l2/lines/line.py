@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# tarav.breadcrumb 1971b7f26c84defa5ee933ec78260722e70556090baaaee36f33cc564e0cfc7c
+# tarav.breadcrumb 1971b7f26c84
 
 from tarav.l2.unsorted.contracts import _object_assertions
 from dataclasses import dataclass

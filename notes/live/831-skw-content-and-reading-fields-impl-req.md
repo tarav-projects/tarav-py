@@ -21,8 +21,8 @@ The user chose `contains` for claims that output contains entities and
 paths can be computed from position, rather than stored in a compulsory
 registry. This is not a request to remove useful explicit cross-file routes.
 Links remain separate reference claims, not implicit target loading.
-<!-- tarav.breadcrumb 7e34d11a475a44549c38e6bb1f36f6b2838ac934d71f9d6ad0a708fda7103539 -->
-<!-- tarav.breadcrumb 2f19bad06dff02ff9c49d030d6c6f79f35e555169134e41c30b9f2e1e2740961 -->
+<!-- tarav.breadcrumb 7e34d11a475a -->
+<!-- tarav.breadcrumb 2f19bad06dff -->
 
 Keep typed declaration records to preserve delivery distinctions and current
 composition fields. `links` is the implementation choice for existing links.

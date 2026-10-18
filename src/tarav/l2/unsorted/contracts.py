@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# tarav.breadcrumb 5a32dd5b546e0507abdc5dac5302cc2c51a8a31283f247e57d2aabfbaca85d13
+# tarav.breadcrumb 5a32dd5b546e
 
 from pydantic import ConfigDict
 from tarav.l2.unsorted.primitives import DiagramModelError

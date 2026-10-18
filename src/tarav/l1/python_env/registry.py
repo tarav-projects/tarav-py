@@ -66,11 +66,11 @@ def _size(directory: Path) -> int:
     return sum(path.stat().st_size for path in directory.iterdir() if path.is_file())
 
 
-# tarav.breadcrumb 93544869b38e1f8ae47cea5b6d2c8d456479b880f26a295c84295316796f5805
+# tarav.breadcrumb 93544869b38e
 class RunRegistry:
     """Retain what ran, partitioned by Project, bounded by size."""
 
-    # tarav.breadcrumb 5dde5c0363aa3d3ff4088b8264bcb5d375ed69af7492866cb5a8b6d034ce4af6
+    # tarav.breadcrumb 5dde5c0363aa
     def __init__(
         self, root: Path | None = None, *,
         entry_limit: int = ENTRY_LIMIT_BYTES,

@@ -74,7 +74,7 @@ Entry = Annotated[
 ]
 
 
-# tarav.breadcrumb af6b8f157d1d3962a7f35f697219c998eddc1dfa9f91bb01f8881aaa26313fc7
+# tarav.breadcrumb af6b8f157d1d
 class WorkspaceManifest(TaravEntity.RecordInterface):
     """One workspace identity and its reproducible setup recipe."""
 
@@ -126,7 +126,7 @@ class Workspace(TaravEntity, CheckProvider):
     def _to_record(self):
         return self.manifest.model_dump(mode="json")
 
-    # tarav.breadcrumb 0371eb7b22afd1b0b505ded202313dcdf9e765e46bc7abff8e71e135f94dc78c
+    # tarav.breadcrumb 0371eb7b22af
     class Checks(CheckProvider.Checks):
         def suite(self) -> CheckSuite:
             if self.obj.root is None:

@@ -154,7 +154,7 @@ def _matches(cargo: object, query: Query) -> bool:
 
 
 @dataclass(frozen=True)
-# tarav.breadcrumb 2a7c4e9da1202027309f2678befde740ee323008677ac3ba4fbd85fbb4ad4d58
+# tarav.breadcrumb 2a7c4e9da120
 class UnreadableRecord:
     """One record that does not parse. `path` is depot-relative, for a human to open."""
 

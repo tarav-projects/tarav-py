@@ -26,33 +26,33 @@ identity or blessings.
 A Project's `checks()` is the standard place to look for checks, not the only
 one, and it need not be about the whole Project. The check machinery can sit
 on individual objects, in their own `checks()`, and be collected elsewhere.
-<!-- tarav.breadcrumb a681ceed94db7372cd9899e1b124bca0b9ceb27378bca94fb3edd6769dc1f368 -->
+<!-- tarav.breadcrumb a681ceed94db -->
 
 Everything is defined through the check-provider interface. The Checks
 workflow should provide basic collecting tools: a place where results
 accumulate, with summaries and sorting. Results are not all dumped on screen:
 show 20 by default and report the amounts and the types.
-<!-- tarav.breadcrumb 7da22cffa975bd4f8b4c980851dedada1d2f6acff981e3304142bd71d089c79a -->
+<!-- tarav.breadcrumb 7da22cffa975 -->
 
 `checks()` should return a typed object that unifies more than a generator of
 checks does: it can be told to run them, and it is the place where control
 over a run is added later. The name is open; "check suite" was offered. The
 design is left to the agent.
-<!-- tarav.breadcrumb b5ce132017bf5cd08b021300ae55c28e61be7d3f8daaac8b0193a6ff99c526d7 -->
+<!-- tarav.breadcrumb b5ce132017bf -->
 
 Review of the first design: iterating a suite conflicts with suites whose
 next Checks depend on earlier results; not every POI has an identity; identity
 and code are different axes.
-<!-- tarav.breadcrumb 632f3d18dd200374e262f95ab0609c496b6fe62c3b31c85596010b2311baaa13 -->
+<!-- tarav.breadcrumb 632f3d18dd20 -->
 
 The report is not one row per identity: that would be a very long list. POIs
 can be grouped and sorted in several ways, and a sensible default is one row
 per type of POI.
-<!-- tarav.breadcrumb 2849e81d092a657e1825069a2d82a2b269408d501c7f7ddc2a7b08e8bccf01cc -->
+<!-- tarav.breadcrumb 2849e81d092a -->
 
 A POI type captures the kind of situation its Check found; different Check
 types produce their own types of POI.
-<!-- tarav.breadcrumb 5cd02f9b868820487d2322b7a214adb5e130dee76da304028599c949abcbfc0e -->
+<!-- tarav.breadcrumb 5cd02f9b8688 -->
 
 ### Observed (inspected)
 

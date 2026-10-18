@@ -23,34 +23,34 @@ Non-goals:
 ### Why
 
 The User wants the minimal, "operating-system loading" level of contextualization: the thing that must be in place in a Project so that an arriving agent can hook into the harness even with no other context. The chosen first stop is the agents file, because existing agent harnesses already load it unconditionally. Every Project should carry built-in checks, inherited from the base class, that the file holds the minimal Tarav instructions; the User calls this section a Tarav system prompt and wants the root agents file to be configurable.
-<!-- tarav.breadcrumb 7570c0677be3e8402bc36abac3a65310966f3c5002c823de4354e4754d79db69 -->
+<!-- tarav.breadcrumb 7570c0677be3 -->
 
 The section is not a short pointer. The User wants roughly one to two pages that explain core Tarav and how to get more context ("if you need this, do that"), identical across all Projects so there is homogeneity. Projects may add their own material, but Tarav does not prescribe it inside the bootstrap part.
-<!-- tarav.breadcrumb 92085fbda37159cc071417b26176ad3229966260c7e3bf6da1cfc962543ea971 -->
+<!-- tarav.breadcrumb 92085fbda371 -->
 
 ### Mechanics decided by the User
 
 The object is named the Tarav System Prompt. Its text is maintained in the Tarav code base like any other code. The minimal machinery is a document plus a check: when the section is not found identical in a Project, a POI is raised that points to the source file or command where the current text can be found. The same mechanics are duplicated one level down as a Project System Prompt, and a Project that defines none has a POI. The whole agents file is under Tarav control and is developed with Skillware, with its source in a skillware folder inside `.tarav/`.
-<!-- tarav.breadcrumb bfed4104931c823692641ed07568808cb5b5259b41089124c03bf334fa6b6760 -->
+<!-- tarav.breadcrumb bfed4104931c -->
 
 Several agents files are supported in one way only: one main file under Skillware control, and every other declared file a symlink to it.
-<!-- tarav.breadcrumb 915cd29cbe0f4fcdfd603cc9e8218f81420cd1eb7b96f70b60e27019c532495a -->
+<!-- tarav.breadcrumb 915cd29cbe0f -->
 
 Skillware is the only path; there is no plain-text fallback tier. Bootstrap here means bootstrapping the arriving agent, not the Tarav engine. Maintaining the file is work for an agent that already has Tarav context, with the User in the loop, and a POI may say that it should be raised to the User.
-<!-- tarav.breadcrumb 3d9262d078aff6f05aefcc00fe5930ae3bed24959439257ab4020e25616fcb21 -->
+<!-- tarav.breadcrumb 3d9262d078af -->
 
 Findings are typed check POIs through the existing Check machinery. The agents file is a property of the Project: the Project can be asked for its path and its Skillware source, the file has its own checks, and those checks are hooked into the general Project checks run from the CLI.
-<!-- tarav.breadcrumb 5a32244560f8fe7814519699963751849d33a2c186b198be84dbb769b4f948a4 -->
+<!-- tarav.breadcrumb 5a32244560f8 -->
 
 Every Project carries the bootstrap prompt, children included; nothing is inherited from a root. A Project may explicitly disable it in its configuration. By default a missing or stale prompt is reported.
-<!-- tarav.breadcrumb bf94edede315b9931510d39b68d9c588bd588572347069d8ae7ad3db430a5227 -->
+<!-- tarav.breadcrumb bf94edede315 -->
 
 The access path is a `project.agents` namespace containing an explicitly named agents-file member, with a configuration that lists the files, one of them main. More checks, such as alias equivalence, can be added there over time.
-<!-- tarav.breadcrumb 2d04a531072144d36c34530dbb489ce79c36a13434bed80eeacd2be6ac39f2e6 -->
-<!-- tarav.breadcrumb 1bf101129849b033865ec45821225588235d61a6a9bbc8cd4915c75ab21cc8f4 -->
+<!-- tarav.breadcrumb 2d04a5310721 -->
+<!-- tarav.breadcrumb 1bf101129849 -->
 
 The agents file is a class object built on Skillware primitives. Its interior modeling is left to implementation judgement, and prompt wording is out of scope for this request.
-<!-- tarav.breadcrumb 33fad22efcf1faf974223caf9ab7dc15b121175dcd21c073cccedc3056923339 -->
+<!-- tarav.breadcrumb 33fad22efcf1 -->
 
 ### Current behavior (inspected 2026-10-08)
 
@@ -153,6 +153,6 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes: `projec
 - Product Inlined Capture: submitted new Chatlas-context Breadcrumbs in 13 Python/Markdown code, test, and architecture surfaces. New submissions succeeded. Audits of large pre-existing surfaces report older `breadcrumb-position-missing` POIs where retained positions no longer match moved labels; the workflow has no reobserve operation. The generated JSON source has no supported native comment convention; the code-owned prompt source is shared across every Project, so embedding a Breadcrumb in its text would replicate one source-file observation into every compiled product. Neither received a new inline marker; their implementation remains covered by this note, the surrounding code, and tests.
 - Handoff for prompt review: the first shared prompt is staged in `src/tarav/l1/project/tarav-system-prompt.md` and compiled into the local agents file. Impl.Req 872 explicitly asks that its first text be presented to the User before landing it. Code and tests are prepared; no completion commit or Wiki completion capture has been made yet.
 - The User then authorized landing the prompt as a draft (`codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8`, User Turn `a4118d621d8c9f13`). A clean checkout containing only the 872 product scope passed 172 tests and Ruff; its Skillware document lint returned no findings. Product commit `0c33d71eb81d95aabdedbce771938e4bb123634c` was moved onto `main` without changing shared worktree bytes or unrelated staged paths. Its five commit Breadcrumbs were registered at the actual `tarav-py` repository path and audit clean.
-<!-- tarav.breadcrumb f020252e5f454eb35e56ffc60de2465d7fcc2bec15e6e3efa697a9773e13c26f -->
+<!-- tarav.breadcrumb f020252e5f45 -->
 - Wiki completion capture updated `tarav-md/notes/wiki/agents-bootstrap.md` and daily `2026-10-08.md`. Scoped start checkpoint `316abb61a27d6153121dfa37f461103a288a5a37`; completion commit `1e405f71e1cb1680e9f1de14263c7286f5454bb1`, two commit Breadcrumbs audit clean. The topical Note's 25 inlined Breadcrumbs audit clean. The daily Note retains 13 earlier `breadcrumb-position-missing` POIs from its prior declaration insertion; the new approval Breadcrumb resolves.
 - Scope and status: the first shared prompt is landed as a maintained draft. Root and `tarav-md` Projects have not adopted the Skillware source, so their default bootstrap POIs remain expected. Per-prompt opt-out switches were an Agent choice, not a separately recorded User decision. The 873 skills bootstrap request remains separate follow-up work.

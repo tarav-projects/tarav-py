@@ -10,7 +10,7 @@ ObjectT = TypeVar("ObjectT")
 
 class NamespaceBase(Generic[ObjectT]):
     """A stateless view over an object, selected by the object's class."""
-    # tarav.breadcrumb 3cc628c57d71d6c0514781e1c43d1e08803bdce35839ba6febca60bdba0c9d4c
+    # tarav.breadcrumb 3cc628c57d71
 
     def __init__(self, obj: ObjectT) -> None:
         self.obj = obj
@@ -23,7 +23,7 @@ def check_namespace_composition(cls: type) -> None:
     independent bases contribute the same namespace, the host must select a
     namespace subclassing both contributions explicitly.
     """
-    # tarav.breadcrumb 14f5a85ca8f89e7351ec63e3b8d4d77298fff6b0151e5111ebc539c487192509
+    # tarav.breadcrumb 14f5a85ca8f8
 
     contributions: dict[str, set[type[NamespaceBase]]] = {}
     for base in cls.__bases__:

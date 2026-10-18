@@ -11,8 +11,8 @@ from ..identity import SKW_CODE_WORKFLOW_SHIP
 from ..pois import Finding, MissingMarkdownLink
 
 
-# tarav.breadcrumb effa713807d1ea29a6b5be34a2603c55ef4c72643a9b9f129d7c2e6a35520365
-# tarav.breadcrumb c97cc9fa0b5eb251d2f2dc91036f5294d75e5c3cc8bb06e5f62b6db045c290c1
+# tarav.breadcrumb effa713807d1
+# tarav.breadcrumb c97cc9fa0b5e
 class ReadingDeclaration(BlockAnnotation):
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -80,9 +80,9 @@ class FileEntry(ReadingEntry):
 
 
 
-# tarav.breadcrumb 7a8dc39912a8499d231b58a1b0532d3eb8ad195d19c6b5b0c9012e5f16ce897a
+# tarav.breadcrumb 7a8dc39912a8
 class Contains(BlockAnnotation):
-    # tarav.breadcrumb 2d50f5b52886ca9a118de057c82531820bc2821854395253e767b0922c81bd13
+    # tarav.breadcrumb 2d50f5b52886
     """Claim content is co-loaded; expand annotations of contained SKW blocks."""
 
     class RecordInterface(BlockAnnotation.RecordInterface):
@@ -108,8 +108,8 @@ class Contains(BlockAnnotation):
                           workflow=SKW_CODE_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb cc5ae810d7c36b9115f0e8341df7977a974903db6cab59151f8665fa8609b71a
-# tarav.breadcrumb 5d4e0d6cc8a3f9b5952622540e4050b146a5526ddfe70805bdd15cf6c5d43e5d
+# tarav.breadcrumb cc5ae810d7c3
+# tarav.breadcrumb 5d4e0d6cc8a3
 class LinkProse(TaravObject):
     """How a declared link appears in the text of its block.
 
@@ -144,7 +144,7 @@ class MarkdownProse(LinkProse):
         return [] if unquote(href) in written else [Finding(MissingMarkdownLink, href=href)]
 
 
-# tarav.breadcrumb bb711d9c3ade0dd1b7b6e6d8ed8eb1d3b44236371c63595d7f90d157ed4892d3
+# tarav.breadcrumb bb711d9c3ade
 class ReadingLink(ReadingDeclaration):
     """A reference to an entity, with a separately declared reading entry.
 
@@ -169,7 +169,7 @@ class ReadingLink(ReadingDeclaration):
         value = self._record.get("entry")
         return dict(value) if isinstance(value, dict) else None
 
-    # tarav.breadcrumb cd646a3168c40dec240403b69648b58d59a443811d5a5074bf42befa1d2991fc
+    # tarav.breadcrumb cd646a3168c4
     @property
     def prose(self) -> LinkProse | None:
         if self._record is None:

@@ -480,7 +480,7 @@ class TribunalPairRecord(ScoringRecord):
 
 class TribunalJudgmentRecord(ScoringRecord):
     """One attributed A/B/tie/abstain result for a frozen pair."""
-    # tarav.breadcrumb d4b75cd5d386e8c3e6c5f44b2825198339da96c987c684f75da1c69547fb1b07
+    # tarav.breadcrumb d4b75cd5d386
 
     @classmethod
     def class_entity(cls) -> TaravClass:

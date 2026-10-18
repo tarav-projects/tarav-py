@@ -29,7 +29,7 @@ def _cmd_path(args: argparse.Namespace) -> int:
     return 0
 
 
-# tarav.breadcrumb 301a46f1f2fea8453e61253f9beb750a7d61cc60f73e3cfac6553f075fa34742
+# tarav.breadcrumb 301a46f1f2fe
 def register_python_commands(subparsers: argparse._SubParsersAction) -> None:
     python = subparsers.add_parser(
         "python",

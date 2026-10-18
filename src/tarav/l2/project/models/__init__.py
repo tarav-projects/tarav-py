@@ -36,7 +36,7 @@ class ProjectModels(TaravType):
         self.project = project
         self._diagram = diagram
 
-    # tarav.breadcrumb 79087186b939e0612e8a6f9c198406337d11580d134c7f9b2407fb4433577b85
+    # tarav.breadcrumb 79087186b939
     def _resolver(self):
         from tarav.l2.models.errors import require_models
 

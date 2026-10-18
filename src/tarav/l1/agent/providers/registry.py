@@ -34,7 +34,7 @@ PROVIDER_ADAPTERS: dict[str, type[AgentConfig]] = {
     "copilot-cli": CopilotAgent,
 }
 
-# tarav.breadcrumb 0fb5b63712994b126870bcc61452540f671b831182e10816f9ca34efd5f1c233
+# tarav.breadcrumb 0fb5b6371299
 DEFAULT_RUN_PROVIDER_FAMILIES = ("claude-code", "codex", "copilot-cli")
 
 

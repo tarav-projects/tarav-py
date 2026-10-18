@@ -24,14 +24,14 @@ reach its current session ID. Tarav has no workflow for running agents:
 Chatlas is an archive concerned with transcripts. The earlier agent code
 should be gathered so that "give me the current session" belongs to a
 workflow, not only to a command.
-<!-- tarav.breadcrumb f2641f1dd13b7cf123bae03c2498c684ce128a6fdf21c8475f82f1536a8e3aeb -->
+<!-- tarav.breadcrumb f2641f1dd13b -->
 
 The User wants an Agents workflow that gathers how Tarav interfaces with the
 providers, with a submodule per provider as the code is already organized.
 Chatlas keeps its functionality and focuses on transcripts. The code is old
 but working: organize it, make it an explicit workflow, find its integration
 points, bring it to the current philosophy. Do not remove it.
-<!-- tarav.breadcrumb 0f4ca54b86d4943d617b94eac0206025f741258f309e67c59c8a4194f3a28e44 -->
+<!-- tarav.breadcrumb 0f4ca54b86d4 -->
 
 ### Current behavior (observed 2026-10-09)
 
@@ -98,7 +98,7 @@ Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/`. Relevant notes:
 
 - Designed 2026-10-09. Not executed.
 - Executed 2026-10-09 at the User's request, after request 886.
-<!-- tarav.breadcrumb 13d03e891cc1032938e9be5050709564672d9060768a39fb0e9b117d97536be8 -->
+<!-- tarav.breadcrumb 13d03e891cc1 -->
 - Start checkpoint `a61114f` (empty).
 - Slice 1, inventory: a section of `tarav-md/notes/wiki/agents-workflow.md`
   with the ten areas of the package, their size, purpose and users outside

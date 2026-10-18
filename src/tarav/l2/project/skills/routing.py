@@ -44,7 +44,7 @@ DEFAULT_PROJECT_SKILLS_DIRNAME = "skills"
 SKILLS_GLOBAL_DEPOTS_DIR = ("skills", "depots")
 
 
-# tarav.breadcrumb e8be7be5df9b96494f51817765fab8116dfd08f00afc0e32616ecdc40e4203c2
+# tarav.breadcrumb e8be7be5df9b
 class SkillsSelectionNotification(NotificationPOI):
     """A skills selection changed and its new targets may need inspection."""
 
@@ -65,7 +65,7 @@ class SkillsStatusPOI(SituationPOI):
     it was expected to point, and what is actually there.
     """
 
-    # tarav.breadcrumb aaa528bbe08ddedbfe3487235c0209cf28d98819108f630f1fb91249b230c6eb
+    # tarav.breadcrumb aaa528bbe08d
     def __init__(self, message: str, *, situation, entry: dict | None = None) -> None:
         super().__init__(message, situation=situation)
         self.entry = dict(entry or {})

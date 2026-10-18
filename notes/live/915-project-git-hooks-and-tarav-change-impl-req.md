@@ -32,14 +32,14 @@ changed 488 commit hashes and left notes citing commits that no longer
 exist. The User proposed Tarav-controlled stable markers kept in the
 repository, in a tracked `.tarav` file whose lines are appended over time,
 so that the commit where a marker first appears can be found in any history.
-<!-- tarav.breadcrumb a90ed2c6822d42d79e23862a3d2dc211af83800a16b8ba3f0cccec20460919e0 -->
+<!-- tarav.breadcrumb a90ed2c6822d -->
 
 Gerrit's `Change-Id` trailer is the proven precedent: a `commit-msg` hook
 adds an ID that survives amend and rebase. Tarav is an external harness, so
 the User chose to require Tarav Git hooks in a Project, calling the `tarav`
 CLI with the context Git gives, and handling the rest internally.
-<!-- tarav.breadcrumb 9469ca8cc85e6978e868310e15ee2f31bfb73bf13b64d6509369a30dbaa000ae -->
-<!-- tarav.breadcrumb 76331b3ca36d9ea2d1c02e0f2b4fa14793dfb9de05cce27a544670d3fc788e96 -->
+<!-- tarav.breadcrumb 9469ca8cc85e -->
+<!-- tarav.breadcrumb 76331b3ca36d -->
 
 User decisions: both the trailer and the file carry the ID; hooks are not a
 guarantee and that is accepted, more systems are added over time to make
@@ -48,8 +48,8 @@ carry; a missing `tarav` warns and lets the commit through; the hooks belong
 to the Project configuration, with checks that maintain them; the trailer
 key is lowercase `tarav-change`. The User split the work into these two
 levels and asked for it to be developed.
-<!-- tarav.breadcrumb 4c0477783babdf9f2b6ea74968f90d171a0d21d6582919c6d4dd5ebb31387bb0 -->
-<!-- tarav.breadcrumb fc8cbd0666af11d2fcdd7eb978fd14bdf94f6fbc644a220fe0ad7e561e95d6cb -->
+<!-- tarav.breadcrumb 4c0477783bab -->
+<!-- tarav.breadcrumb fc8cbd0666af -->
 
 ## Current behavior
 

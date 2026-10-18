@@ -57,9 +57,9 @@ class PairwiseRankingCase(AssessmentCase):
 
 class Tribunal(TaravEntity):
     """One identified comparison context per concrete Tribunal class."""
-    # tarav.breadcrumb bf84293588c4eed3e274b4d351175a02b8e46f8969df6a4631bfe74cbf92888d
-    # tarav.breadcrumb 6993f6372ad3872a03601ef784fe0daf1dc67d96e55e5ec3abb5e06ddb0ef200
-    # tarav.breadcrumb 5a75d5a01ed4541406dee6cd09582893ac6b64c27faa1bec7a39ace2c61af00d
+    # tarav.breadcrumb bf84293588c4
+    # tarav.breadcrumb 6993f6372ad3
+    # tarav.breadcrumb 5a75d5a01ed4
 
     _instances: dict[type, 'Tribunal'] = {}
     _instance_lock = RLock()
@@ -197,7 +197,7 @@ def render_pair(
     tribunal: Tribunal, a: Mapping[str, object], b: Mapping[str, object],
 ) -> str:
     """Generic ranker, tribunal question, then two closed case presentations."""
-    # tarav.breadcrumb e9cf546c037a329c25b626eb3e592674e642d20d99e98e6695d3c06cf533ef30
+    # tarav.breadcrumb e9cf546c037a
 
     question = tribunal.comparison_question().strip()
     instructions = tribunal.instructions().strip()
@@ -259,7 +259,7 @@ def judge_pair(
 
 def tribunal_scores(repository: ScoringRepository, tribunal_type_id: str) -> tuple[RankingScore, ...]:
     """Derived relative support plus sampling, keyed by exact Assertion reference."""
-    # tarav.breadcrumb 8d68e5873d281106ba1cf7f65cb59c8cd6cbd6fd668cdc47e8cbfa804f83b3e9
+    # tarav.breadcrumb 8d68e5873d28
 
     cases = [item for item in repository.records(TRIBUNAL_CASE_TYPE)
              if item['tribunal_type_id'] == tribunal_type_id]

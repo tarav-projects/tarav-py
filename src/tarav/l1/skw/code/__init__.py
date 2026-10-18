@@ -45,7 +45,7 @@ from .reading import (
 )
 
 
-# tarav.breadcrumb c12b9bda23cefae56440cca5f9a5f78f02fd8b3ee3d608fe40ad58fd22a215e2
+# tarav.breadcrumb c12b9bda23ce
 class CodeWorkflow(TaravWorkflow):
     """Own the source model and common mechanics used to build SKW surfaces."""
 

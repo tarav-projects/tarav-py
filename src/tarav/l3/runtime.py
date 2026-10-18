@@ -37,7 +37,7 @@ from tarav.l0.kernel.workflows import TaravWorkflow, WorkflowRegistry
 from tarav.l1.loading import LoadingProfile, profile_paths
 from tarav.l1.records import RECORDS_TYPES, RecordsService, TaravRecords
 from tarav.l1.search import SearchQuery, SearchService, SearchWorkflow
-# tarav.breadcrumb d21dbd1bb68d43440be82f23b46100f9559dfb7f2d7470826bb94c9a1861139c
+# tarav.breadcrumb d21dbd1bb68d
 from tarav.l1.references.workflow import ReferenceWorkflow, ReferenceService
 from tarav.l1.breadcrumbs.workflow import BreadcrumbService
 from tarav.l1.usage import UsageRegistry
@@ -227,7 +227,7 @@ class TaravRuntime:
         register_operator_context_commands(subparsers)
         register_action_commands(subparsers)
         register_skw_commands(subparsers, registry=self.records)
-        # tarav.breadcrumb ad568a3bc811a526540d9a6106f706ed2ff8e77d3d823d93cb82d67fcbe98568
+        # tarav.breadcrumb ad568a3bc811
         register_usage_commands(
             subparsers, registry=self.usage,
             workflow_resolver=self.workflows.get,
@@ -286,7 +286,7 @@ def create_runtime(
     from tarav.l1.lines import Block, Line, LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
-    # tarav.breadcrumb 35548ca6fdf72e93e3a5008225dcf66e71eb81faeaa264535405ebd242768a7a
+    # tarav.breadcrumb 35548ca6fdf7
     from tarav.l1.workspaces import (
         WORKSPACE_RECORD_TYPES, WorkspaceIntegrityCheck, WorkspacePOI,
         WorkspaceReferenceCheck, WorkspaceRemovalCheck, WorkspaceResetCheck,
@@ -364,7 +364,7 @@ def create_runtime(
     )
     from tarav.l1.skw.document import SkillwareWorkflow
     from tarav.l1.project.agents import PROJECT_AGENTS_RECORD_TYPES
-    # tarav.breadcrumb c5d54c7649438c13a2949da87599cf3b307a97aa3a4bba56d4b9629006ad8a14
+    # tarav.breadcrumb c5d54c764943
     from tarav.l1.project.files import PROJECT_FILES_RECORD_TYPES
     from tarav.l1.git.hooks import GIT_HOOKS_RECORD_TYPES
     from tarav.l1.git.change import GIT_CHANGE_RECORD_TYPES
@@ -434,7 +434,7 @@ def create_runtime(
                 WikiNote,
                 Project,
                 TaravProject,
-                # tarav.breadcrumb e413721d29ed9388d54184a6a29e121226d402b0561e3b98b101b9e8b4ab3309
+                # tarav.breadcrumb e413721d29ed
                 *PROJECT_AGENTS_RECORD_TYPES,
                 *PROJECT_SKILLS_RECORD_TYPES,
                 *PROJECT_FILES_RECORD_TYPES,
@@ -468,7 +468,7 @@ def create_runtime(
                 TypeScriptNormalModel,
                 *SCORING_RECORD_TYPES,
                 TaravAssertion,
-                # tarav.breadcrumb c0353f7338306168e94150267e651c46257eff0e611e7f8bb2e59a7d50fe4067
+                # tarav.breadcrumb c0353f733830
                 Assertion,
                 AssessmentCase,
                 Score,
@@ -509,7 +509,7 @@ def create_runtime(
     )
     registrations = WorkflowRegistry()
     navigation = TaravRecords.service()
-    # tarav.breadcrumb 62297208d649cb6d9101c2e75061f5637bdc22d0150e28dc7b6e0576fb5c52d2
+    # tarav.breadcrumb 62297208d649
     search = SearchWorkflow.service()
     references = ReferenceWorkflow.service(records)
     breadcrumbs = BreadcrumbWorkflow.service(composed_breadcrumb_integrations)
@@ -552,7 +552,7 @@ def create_runtime(
         ScoringWorkflow,
         RankingWorkflow,
         SkillwareWorkflow,
-        # tarav.breadcrumb eae69a7746f4a20cd6a37196b1384f6e615b348574b6791f791ca6baa9ce96ab
+        # tarav.breadcrumb eae69a7746f4
         CodeWorkflow,
         SkwSkillsWorkflow,
         TaravRecords,
@@ -595,7 +595,7 @@ def create_runtime(
         lambda record_type: registrations.get(entity(record_type).workflow_ship)
     )
     bind_blessing_assertion_services(
-        # tarav.breadcrumb 5762311d941885cac4ff5fb89e21189d84007f35dc2d4c7560fa4630b9653ea4
+        # tarav.breadcrumb 5762311d9418
         assertions=assertions_for_blessing,
         scores=score_vector_for_blessing,
     )

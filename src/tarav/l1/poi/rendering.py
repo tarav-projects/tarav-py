@@ -20,7 +20,7 @@ class POIRenderError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
-# tarav.breadcrumb ef2e7d65f93f837cebcf2f4ff40ef8b4c95a742675cf2a3e309ad7bb6204c519
+# tarav.breadcrumb ef2e7d65f93f
 class POISelection:
     """An already selected page; renderers cannot filter or page it."""
 
@@ -35,7 +35,7 @@ class POISelection:
     filters: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
-    # tarav.breadcrumb c99138a07b283e9b2a371bd4e3b7f82c5c3d0f277b0ac73d16e3003ca37b1c70
+    # tarav.breadcrumb c99138a07b28
     def from_check_report(cls, report: Mapping[str, object]) -> POISelection:
         summary = report["summary"]
         if not isinstance(summary, Mapping):

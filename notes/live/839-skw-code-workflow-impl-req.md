@@ -25,30 +25,30 @@ The motivating use case is to reuse the content/generated-block and reading
 path primitives outside deployable skills, first for project-agent onboarding.
 The shared mechanics therefore cannot remain semantically owned by
 `skw.skills`.
-<!-- tarav.breadcrumb ba1abfd8abb917b189f7b82e5524b37de4ccf558f570856f98efb32b82b55dd5 -->
+<!-- tarav.breadcrumb ba1abfd8abb9 -->
 
 The selected name is `skw.code`: SKW is already the family for developing
 generated surfaces with software-like structure, and this workflow is the
 common base rather than another top-level “agentware” abstraction.
-<!-- tarav.breadcrumb 1ce1f8f1a47f4fa65bf3a1dd1f7071519af74d78c78b361d22056843ab4b1aeb -->
-<!-- tarav.breadcrumb a5374f6eeb929e7e9b64464e1349398ec5413ee1816a420c1d1415f4b239cb76 -->
+<!-- tarav.breadcrumb 1ce1f8f1a47f -->
+<!-- tarav.breadcrumb a5374f6eeb92 -->
 
 “Code” describes the developer-side source and tooling. A reader agent may see
 only compiled text or instructions. The conceptual route is therefore
 `SKW.Code source → compile/render → ordinary surface → reader`, analogous to
 source, compiler, and interpreter without claiming that the product is Python
 or that the reader understands SKW Records.
-<!-- tarav.breadcrumb b6a33ea553a80b060db5fd854be56aa6568de21ce67b74a4ee51abb7558e5a32 -->
-<!-- tarav.breadcrumb 501b543511752be470cbf482fcde441baa8a03f0f1c8ddc15a249f0820d30f93 -->
+<!-- tarav.breadcrumb b6a33ea553a8 -->
+<!-- tarav.breadcrumb 501b54351175 -->
 
 Compilation remains part of `skw.code`; do not create `skw.compiler`. The
 workflow provides a base that later specializations can extend, while
 `skw.skills` keeps skill-package layout, deployment, and skill-specific
 components.
-<!-- tarav.breadcrumb f5a447e306157cda85cb1deb564ae9d0c67eee890bebfbfa25cdf8397c8c78a3 -->
+<!-- tarav.breadcrumb f5a447e30615 -->
 
 The user explicitly requested implementation through Hugentics Develop.
-<!-- tarav.breadcrumb 6b5facfb1957680e8f85db72c942f3844cf2610f32e1da636e714e8b3cc00f7e -->
+<!-- tarav.breadcrumb 6b5facfb1957 -->
 
 ## Current implementation observations
 

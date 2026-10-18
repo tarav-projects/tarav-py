@@ -11,7 +11,7 @@ from tarav.l2.project.reading import ProjectReadingGraph
 from tarav.l2.skw.skills import SkwSkillsWorkflow
 
 
-# tarav.breadcrumb dfbdeb52726ec48e74c2a2a0632f3095db177928131dfd87e9922e29c7f3eec8
+# tarav.breadcrumb dfbdeb52726e
 def test_reading_graph_specializations_declare_distinct_ownership() -> None:
     assert issubclass(SkillReadingGraph, ReadingGraph)
     assert issubclass(ProjectReadingGraph, ReadingGraph)

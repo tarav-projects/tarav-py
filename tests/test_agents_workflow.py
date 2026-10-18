@@ -21,7 +21,7 @@ from tarav.l1.chatlas import commands as chatlas_commands
 from tarav.l3.runtime import create_runtime
 
 
-# tarav.breadcrumb 6a2eafa70b86e126d56067368c4b40385fd69691800c609628b0ccbc848032fa
+# tarav.breadcrumb 6a2eafa70b86
 def test_runtime_registers_the_agents_workflow():
     runtime = create_runtime()
 

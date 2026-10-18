@@ -30,12 +30,12 @@ def workspace(tmp_path):
 
 
 def test_the_workspace_raises_one_poi_per_marked_file(workspace):
-    # tarav.breadcrumb 88c6596bc475015b69873c1dd8c9115b2e9dfb77fcdc4cd4f2daccaaa2a13b40
+    # tarav.breadcrumb 88c6596bc475
     assert [type(poi) for poi in workspace_pois(workspace)] == [TestMarkerPOI, TestMarkerPOI]
 
 
 def test_fixing_a_file_closes_its_action_and_blessing_closes_the_other(stores, workspace):
-    # tarav.breadcrumb c7523381ecd002e3baef2446d9bef9e6b668aa5f6c2df15a39cce253908c361f
+    # tarav.breadcrumb c7523381ecd0
     a, b = workspace_pois(workspace)
     first = update_workspace(workspace, stores.runs)
     assert (first["opened"], first["actions"]) == (2, 2)
@@ -56,7 +56,7 @@ def test_fixing_a_file_closes_its_action_and_blessing_closes_the_other(stores, w
     assert stores.runs.list(state=RUNNING) == []
 
 
-# tarav.breadcrumb 17424fc546c8fbd42d1b63e81b7ec777bcb8c45e6dbac5d23e723543fed44498
+# tarav.breadcrumb 17424fc546c8
 @pytest.mark.usefixtures("registry")
 def test_a_projects_test_fixtures_open_real_actions_on_the_live_path(tmp_path):
     import shutil

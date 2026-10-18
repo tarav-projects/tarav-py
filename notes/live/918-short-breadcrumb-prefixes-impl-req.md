@@ -7,12 +7,12 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Impl.Abstract
 
-Status: in execution (Develop, Interactive), 2026-10-18.
+Status: complete, 2026-10-18.
 Knowledge.Surface: wiki.
 
 Make Breadcrumb markers on product surfaces default to 12 hexadecimal characters while retaining full 64-character IDs in the registry. Support longer prefixes when a collision requires them. This request records the design for later execution.
-<!-- tarav.breadcrumb bb6cbe68ee4249ed84b93ff89c238503709c4ac393dd1146d3181c252dc99f53 -->
-<!-- tarav.breadcrumb bd1b6b025809dd56d6a276a01bee9232c8acfb96bc2dabcdfddf7dfcf05724d1 -->
+<!-- tarav.breadcrumb bb6cbe68ee42 -->
+<!-- tarav.breadcrumb bd1b6b025809 -->
 
 ## Design
 
@@ -25,27 +25,27 @@ Resolve a supplied prefix against the selected Breadcrumb registry:
 - Multiple matches: raise an ambiguity error and show the colliding full IDs.
 
 Never choose a candidate using surface location, attachments, hints, or other contextual metadata. Such data may help an agent or user investigate, but the system must only report the collision. No automatic disambiguation or marker repair.
-<!-- tarav.breadcrumb c1e4e622c2d1f958c5edd0111669b44549c2b399f5bff906a8f37c2b948651f5 -->
+<!-- tarav.breadcrumb c1e4e622c2d1 -->
 
 After explicitly selecting the intended Breadcrumb, an agent or user extends its prefix one character at a time—13, 14, 15, and so on—until unique. Use 12 characters by default. Submission must not write a marker known to be ambiguous; report the collision rather than silently extending it. Resolution and audit must also detect a formerly unique prefix made ambiguous by a later registry addition.
-<!-- tarav.breadcrumb a6a17793816d8c95d3b167c2b4690add7939db409957248c5ce85292b8489b28 -->
-<!-- tarav.breadcrumb b1e8672728c9b82b37340fe05b9ad2345c6be688bc0705c0900bd6be9ad3491e -->
+<!-- tarav.breadcrumb a6a17793816d -->
+<!-- tarav.breadcrumb b1e8672728c9 -->
 
 Do not shorten registry identities or Chatlas session/Turn references. These are implementation boundaries, not changes to those identity contracts.
 
 ### Review decisions, 2026-10-18
 
 The draft excluded a bulk rewrite of existing surfaces. In the review session the User confirmed the design (12 characters on surfaces, full IDs in the registry; a prefix matching several IDs raises an error listing them) and that "no automatic disambiguation" concerns markers already registered. Tarav, not the Agent, writes `tarav.breadcrumb` markers at submission.
-<!-- tarav.breadcrumb 18e1b0121ae54694decb58f6034efc0fe1cf6e42f8b51bcf1f5c486362c0587a -->
+<!-- tarav.breadcrumb 18e1b0121ae5 -->
 
 An alternative was proposed and declined: drawing a new random ID whenever its first 12 characters are taken, so that 12-character prefixes stay unique by construction. The chance of a collision is low (about 1 in 17 million at today's 5,736 Breadcrumbs) and its effect narrow, so the system stays simple: submission reports a collision as the draft says.
-<!-- tarav.breadcrumb 38383b84b4815b82d4f09094b2b6ffa268ea2957e0a092357ae7adb998ec9da6 -->
+<!-- tarav.breadcrumb 38383b84b481 -->
 
 This request now also migrates every full-length marker found on surfaces to its 12-character prefix, superseding the draft's exclusion.
-<!-- tarav.breadcrumb 053d3fd180d868f726a349d97a66d0ded539c00b63b58ab53377d10870fdbdca -->
+<!-- tarav.breadcrumb 053d3fd180d8 -->
 
 Scope of that migration: all 29 places that carry markers, inside and outside the workspace, each Git repository with a start checkpoint of the work found there and a migration commit.
-<!-- tarav.breadcrumb f73c62384c7b981f925a0b3df970b413079bb1230085df7fba008953ae0f994f -->
+<!-- tarav.breadcrumb f73c62384c7b -->
 
 Found while reviewing (an Agent observation, not a User decision): resolution checks that the observed line *contains* `tarav.breadcrumb <full id>`, for files (`BreadcrumbStore.resolve`) and commit messages (`_resolve_commit_label`, and the check `observe_commit_position` stores). A short marker never contains the full label, so these checks must look for the 12-character label, which every valid marker of that Breadcrumb contains.
 
@@ -81,10 +81,10 @@ Data shape: retain full `BreadcrumbId`; distinguish a surface prefix (12–64 lo
 
 1. **Feature — prefix lookup.** Done. Implement unique/missing/ambiguous resolution and explicit candidate diagnostics. Verify controlled IDs sharing 12 characters, including cases needing 13 and 14 characters, plus full-ID lookup. Ensure metadata cannot select a candidate.
 2. **Feature — surface integration.** Done. Default newly emitted labels to 12 characters and route CLI, submission, audit, commit messages and position lookup through the shared resolution rule. Cover Markdown, Python, and TypeScript native conventions, existing full labels, and a later registry addition causing ambiguity (a new audit POI naming the colliding IDs). Verify collision failure leaves existing markers untouched and does not leave a partially replaced surface.
-3. **Documentation — usage contract.** Update maintained instructions and examples through SKW sources. Explain explicit extension after collision and preserve full-label support. Compile affected packages and verify real submission → resolution → audit with an isolated registry.
-4. **Migration — existing markers.** In each of the 29 places: start checkpoint, rewrite every registered full label to its 12-character prefix (`.skw.json` sources together with their products, then recompile and verify the products unchanged by compilation), audit a sample of surfaces, commit. Check: no full label remains outside commit messages and fixtures; audits of migrated surfaces resolve as before.
+3. **Documentation — usage contract.** Done. Update maintained instructions and examples through SKW sources. Explain explicit extension after collision and preserve full-label support. Compile affected packages and verify real submission → resolution → audit with an isolated registry.
+4. **Migration — existing markers.** Done. In each of the 29 places: start checkpoint, rewrite every registered full label to its 12-character prefix (`.skw.json` sources together with their products, then recompile and verify the products unchanged by compilation), audit a sample of surfaces, commit. Check: no full label remains outside commit messages and fixtures; audits of migrated surfaces resolve as before.
 
-All slices pending. Run the focused Breadcrumb tests first (`uv run pytest tests/breadcrumbs`), then affected Chatlas-context and Git integration tests discovered during execution. Use deterministic synthetic collisions; do not search for accidental real collisions. Recheck current code before editing and surface any design mismatch rather than silently adapting the contract.
+All slices done. Run the focused Breadcrumb tests first (`uv run pytest tests/breadcrumbs`), then affected Chatlas-context and Git integration tests discovered during execution. Use deterministic synthetic collisions; do not search for accidental real collisions. Recheck current code before editing and surface any design mismatch rather than silently adapting the contract.
 
 ## Impl.Log
 
@@ -93,3 +93,7 @@ All slices pending. Run the focused Breadcrumb tests first (`uv run pytest tests
 - 2026-10-18 (claude-code `abd0372d`): Develop started from the review decisions above. Start checkpoints: tarav-py `0794820` (this note and work found uncommitted), tarav-md `9ab40be` (Constitution and skill edits found uncommitted). The other repositories get theirs in slice 4.
 - Slice 1 (prefix lookup): `BreadcrumbStore.find`, `label`, `BreadcrumbNotFound`, `BreadcrumbAmbiguous` (carrying `prefix` and sorted `candidates`); `load` and everything built on it take prefixes; resolution checks contain the 12-character label. `tests/breadcrumbs/test_prefixes.py` (6 tests, added to testpaths) failed at import before the change and passes after; it covers prefixes needing 13 and 14 characters, a later addition, and retained observations and attachments not selecting a candidate. `uv run pytest tests/breadcrumbs`: 21 passed; ruff clean. Breadcrumbs on `store.py` (2) and the test (1); audits ok. Submission still writes full labels until slice 2.
 - Slice 2 (surface integration): submission settles every label through `BreadcrumbStore.label` before observing or writing, so a collision raises `BreadcrumbAmbiguous` with the surface and the new Breadcrumbs' positions untouched. Audits read 12–64 character labels, resolve each to its full ID once (`find_label`), and raise the new `Tarav.Breadcrumbs.Audit.POI.LabelAmbiguous` naming the colliding IDs. Commit messages carry `store.label` output; `_label_lines` maps each message label to exactly one envelope ID by prefix (the envelope keeps full IDs); the commit-message check contains the 12-character label. `tests/breadcrumbs/test_short_labels.py` (7 tests): 6 failed before (full labels written, no ambiguity POI) and the full-label case passed; all pass after. Full suite: 330 passed; ruff clean. Real CLI with an isolated registry: submit wrote `tarav.breadcrumb 51335b338b37`, audit resolved it, `show`/`resolve` took the prefix, and after adding a colliding directory `show` failed naming both IDs. Breadcrumbs: `surfaces.py` (1), `auditing.py` (1), the test (2); audits of the touched modules ok after refreshing moved positions. `l2/git/breadcrumbs.py` carries no new Breadcrumb: the commit-message check was an Agent finding, not a User Turn.
+- Slice 3 (documentation): tarav-md `a2b277e`. `inline-capture` and `wiki-capture` (SKW sources, rebuilt) describe 12-character labels, reported collisions, lengthening by hand and valid full labels. The inline-capture product carries one Breadcrumb, submitted on the product and copied into the source; the rebuild was byte-identical. `wiki-capture.md` keeps a `LabelMalformed` POI on a prose example of the label form, present at HEAD before this change.
+- Slice 4 (migration): 4,264 registered full labels in 621 files, in 29 places, rewritten to their 12-character prefixes (no registered ID shares 12 characters, so none needed more). Skipped: commit messages, `.skw/generations` snapshots, `_DEPRECATED`, symlinked depots. Each Git repository got a start checkpoint of the work found there (`unknown-session`; the untracked `.agents/` and `.claude/` link folders left out; the earlier staged untracking of skill-depot links committed on its own first where present) and a migration commit. Audits of every rewritten Markdown, Python and TypeScript file before and after matched in 28 places; tarav-md differed only where another session removed Constitution paragraphs and two labels' lines moved during the run (positions refreshed). SKW products (tarav-md's tarav-pkg and AGENTS.md, md-library-md's transcript-developer skill, the root's, tarav-py's and tarav-md's AGENTS.md) rebuilt byte-identical. tarav-py: the machine was force-restarted (power button, after it became unresponsive; one ~390 MB audit process among 615) during the after-audit, so tarav-py was checked by the full test suite (337 passed), ruff, the AGENTS.md rebuild and a sample audit of six files (30 labels, all resolved, no POIs) instead.
+- Found (Agent observation): audits spend about 98% of their time rebuilding Chatlas Normal Models; the chatlas-context audit calls `compute_normal_model` instead of the fresh-checked cache and shares nothing across a batch. Proposed as a separate request.
+- Wiki capture: tarav-md `6917d36` (`notes/wiki/breadcrumbs.md` "Short labels — 2026-10-18"; `notes/wiki/daily/2026-10-18.md`).

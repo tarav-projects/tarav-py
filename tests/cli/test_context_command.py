@@ -63,8 +63,8 @@ def _service(opened) -> ContextQueryService:
     return service
 
 
-# tarav.breadcrumb 818a901104c6130a1a3802829620962e62f290ac7b7202ba84b1465c834e9825
-# tarav.breadcrumb 7d1ed0ce36ce5a6522313fae4015436f8bbe952d270165c1a37f05d158db2018
+# tarav.breadcrumb 818a901104c6
+# tarav.breadcrumb 7d1ed0ce36ce
 def test_an_action_is_found_by_its_id_and_by_the_id_of_its_poi(opened) -> None:
     poi = opened[0]
     by_action = _service(opened).find(str(action_id(poi))[:13])
@@ -105,7 +105,7 @@ def test_queries_validate_their_parts() -> None:
         IdentityContextQuery("  ")
 
 
-# tarav.breadcrumb fae0e168d36f1e4818647e0f437ee4772014d06bb618074c67240e5ef86bf888
+# tarav.breadcrumb fae0e168d36f
 def test_a_pois_record_holds_the_occurrence_and_nothing_of_its_type(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("TARAV_RECORDS", str(tmp_path / "records"))
     poi = GuidedPOI(SampleCheck(), "Something was found", situation={"where": "a"})

@@ -90,7 +90,7 @@ def test_runtime_lazily_loads_an_external_class_from_its_environment(
         runtime.load_object(path)
 
 
-# tarav.breadcrumb a34ef57b15b3383f01fed464c4fbc975fde35cfa070931f6c40c6a1bf11dbe59
+# tarav.breadcrumb a34ef57b15b3
 def registry_observations(runtime, path):
     return runtime.records.record_observations(json.loads(path.read_text()))
 

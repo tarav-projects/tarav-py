@@ -56,7 +56,7 @@ class VersionedEntity(TaravEntity):
 
 
 def test_records_workflow_explores_mounted_sources_and_entity_occurrences(tmp_path):
-    # tarav.breadcrumb 2b9eaf3c981b3e51f8247714c7fc865ccef4a87852d26039d75a08b8a13664d4
+    # tarav.breadcrumb 2b9eaf3c981b
     runtime = create_runtime()
     assert runtime.workflows.get("Tarav.Workflow.Records") is TaravRecords
     root = tmp_path / "typed"
