@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -222,6 +223,8 @@ def _merged_session_index_row(versions: list[dict[str, Any]]) -> dict[str, Any]:
             deduped,
             key=lambda row: _version_sort_key(row),
         )
+    # tarav.breadcrumb a0b9d5828486
+    active["raw_version"] = raw_version(active)
     return active
 
 
@@ -278,9 +281,32 @@ def _version_transcript_paths(version: dict[str, Any]) -> tuple[Path, ...]:
     return tuple(paths[key] for key in sorted(paths))
 
 
+# tarav.breadcrumb a33ff887a607
+# tarav.breadcrumb 8c6ba02ca44e
+def raw_version(row: dict[str, Any]) -> str | None:
+    """The version of the raw data a session is normalized from.
+
+    It hashes the path, size and modification time of every transcript source,
+    so a derived artifact recording it is fresh while that data is unchanged.
+    A missing source leaves no version.
+    """
+    fingerprints: list[list[object]] = []
+    for source in transcript_sources(row):
+        try:
+            stat = source.path.stat()
+        except OSError:
+            return None
+        fingerprints.append([str(source.path), stat.st_size, stat.st_mtime_ns])
+    if not fingerprints:
+        return None
+    encoded = json.dumps(fingerprints, separators=(",", ":")).encode("utf-8")
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
 def plain_index_version(row: dict[str, Any]) -> dict[str, Any]:
     version = dict(row)
     version.pop("archive_versions", None)
+    version.pop("raw_version", None)
     return version
 
 
