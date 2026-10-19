@@ -77,7 +77,7 @@ scaffold writes `harness` into project.json. The environment's manifest
 The launcher, `python -I -m tarav.l3.project.launch`, imports `harness.type`
 and loads project.json as its Record, whose type tag must name the same
 class. Other workflows configure a Project in `.tarav/config.json`, one
-section each (`agents`, `skills`, `diagram`). `tarav run` selects the Project
+section each (`agents`, `skills`). `tarav run` selects the Project
 interpreter and working directory when `--project` is present. A bare
 `--project` searches the current directory and its parents, failing if no
 Project marker exists; a path starts the search there. Without `--project`,
@@ -141,7 +141,7 @@ be loaded is an incomplete result.
 - `tarav chatlas` — retained chat data, lossless normalization, and queries.
 - `tarav breadcrumbs` — opaque surface anchors, locator observations, and
   workflow-owned typed attachments.
-- `tarav diagram` — semantic Models, Ships, Annotations, Views, and Drafts.
+- `tarav.l1.lines` — identified Lines in recursive typed Blocks with bounded authoring context.
 - `tarav scoring` — Assertion-owned candidate adaptation, explicitly enrolled
   concrete Ranking Pool Types, frozen Ranking Runs, retained experiment evidence, live
   derived scores, compact per-Assertion scoring histories, and graph tracing.

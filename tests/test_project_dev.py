@@ -20,7 +20,6 @@ from tarav.l2.project.dev import (
 )
 from tarav.l2.breadcrumb_workflows.chatlas_context.checks import UnsubmittedMarkersCheck
 from tarav.l2.project import Project
-from tarav.l2.project.models import ProjectModels
 
 
 def _project(root: Path, project_type):
@@ -35,8 +34,7 @@ def test_project_capabilities_have_explicit_paths(tmp_path: Path) -> None:
     project = _project(tmp_path, Project)
 
     assert project.docs.wiki.daily(date(2026, 10, 7)).path.name == "2026-10-07.md"
-    assert isinstance(project.models, ProjectModels)
-    assert project.models.ls() == ()
+    assert not hasattr(project, "models")
     assert not hasattr(project, "wiki")
 
 

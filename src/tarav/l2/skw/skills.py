@@ -13,7 +13,6 @@ from tarav.l1.skw.depot import SkwDepot
 from tarav.l0.kernel import Ship
 from tarav.l0.project import find_agentos_project_root
 from tarav.l1.skw.document import DEFAULT_DEPOT, Document, project_document
-from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
 from tarav.l1.skw.loading import LoadingRecord, SkillDocument, SkillReadingGraph
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
 from tarav.l1.checks import CheckProvider, CheckSuite
@@ -72,11 +71,10 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         files: list[str]
         dependencies: list[dict[str, object]] = []
         loading: str | None = None
-        publications: list[str] | None = None
 
     # tarav.breadcrumb 70b9905101ea
     def __init__(self, *, skill_id=None, product=None, entrypoint='SKILL.md', sources=(),
-                 files=None, dependencies=(), loading=None, publications=None, depot=None):
+                 files=None, dependencies=(), loading=None, depot=None):
         """A skill built in code; its `depot` may stay unknown until it is placed."""
         super().__init__()
         self.schema_version = 1
@@ -87,7 +85,6 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         self.files = list(files) if files is not None else [entrypoint]
         self.dependencies = [dict(d) for d in dependencies]
         self.loading_file = loading
-        self.publications = list(publications) if publications is not None else None
         if depot is not None:
             self.source = Path(depot) / 'main.json'
 
@@ -96,7 +93,7 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         skill = cls(skill_id=loaded.data.skill_id, product=loaded.data.product,
                     entrypoint=loaded.data.entrypoint, sources=loaded.data.sources,
                     files=loaded.data.files, dependencies=loaded.data.dependencies,
-                    loading=loaded.data.loading, publications=loaded.data.publications)
+                    loading=loaded.data.loading)
         skill.schema_version = loaded.data.schema_version
         return skill
 
@@ -108,8 +105,6 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
                   'dependencies': [dict(d) for d in self.dependencies]}
         if self.loading_file is not None:
             record['loading'] = self.loading_file
-        if self.publications is not None:
-            record['publications'] = list(self.publications)
         return record
 
     class Records(SkwDepot.Records):
@@ -181,7 +176,7 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
         return _relative(self.root, value, "Package path escapes root")
 
     def depot_path(self, value):
-        """A path inside the depot: a source, the loading record, a publication."""
+        """A path inside the depot: a source or the loading record."""
         return _relative(self.depot, value, "Depot path escapes the depot")
 
     def documents(self):
@@ -255,18 +250,12 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
     def report(self, **selection):
         return self.evaluate().report(**selection)
 
-    def publications(self):
-        self._validate()
-        return [ModelPublication(self.depot_path(p), root=self.root, depot=self.depot)
-                for p in self.publications or []]
-
     def check(self):
         """The POIs of this package as it is on disk."""
         return tuple(self.evaluate().pois)
 
     def build(self):
         documents = self.documents()
-        # Model publications are not automatically executed during package builds.
         products = documents
         if len({d.target for d in products}) != len(products):
             raise ValueError("Duplicate outputs cannot be compiled")
@@ -306,8 +295,6 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
 SKILLS_RECORD_TYPES = (
     SkwDepot,
     SkwSkill,
-    ModelPublicationRecord,
-    PublicationLockRecord,
     LoadingRecord,
     *SKILL_COMPONENT_TYPES,
     *SkwPOI.__subclasses__(),  # its atomic cases

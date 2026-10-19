@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from . import Line
 
 
+# tarav.breadcrumb 80b50b40f0e3
 class Block(TaravEntity):
     """A Line context whose parent adds inherited interpretive context."""
 

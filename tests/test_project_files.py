@@ -39,8 +39,7 @@ def _found(project: Project) -> list[tuple[str, dict]]:
 def test_a_project_whose_files_match_their_models_raises_nothing(tmp_path: Path) -> None:
     (tmp_path / "env").mkdir()
     (tmp_path / "env/pyvenv.cfg").write_text("")
-    project = _project(tmp_path, config={"agents": {"package_skill": "tarav-pkg"},
-                                         "diagram": {"main_model": "m"}})
+    project = _project(tmp_path, config={"agents": {"package_skill": "tarav-pkg"}})
     assert _found(project) == []
 
 

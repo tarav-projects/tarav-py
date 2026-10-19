@@ -2,7 +2,7 @@
 
 A skill's Suite (`SkwSkillSuite`) loads the package once (`SkillLoad`), finds
 its situations — the skill, each source, product, block, consumer file, link,
-dependency and publication, and in its reading graph each declared node,
+and dependency, and in its reading graph each declared node,
 declaration, requirement, reading path and prose link — and runs the Check of
 each one's chain with the situation it built. The rules stay in the native analysis (`tarav.l1.skw`),
 split per subject: a Check runs the rules of its one subject and raises POIs
@@ -29,7 +29,7 @@ from tarav.l1.skw.pois import (
     ContextUnresolvable, DuplicateOutput, Finding, InvalidAnnotation, InvalidLoadingModel,
     InvalidProducedOutput, InvalidSource, LoadingDeclarationStale, LoadingRenderError,
     MissingConsumerFile, MissingContent, MissingDependency, MissingLinkTarget, OutputChanged,
-    OutputNotDeployed, ProductDrift, ProductUnavailable, PublicationDisconnected,
+    OutputNotDeployed, ProductDrift, ProductUnavailable,
     SkillMarkerMismatch, SkillMarkerMissing, SourceUncompiled, StaleContext, StaleGeneration,
     StaleProducedOutput, UnbundledLink, UndeclaredConsumerLink,
 )
@@ -114,19 +114,6 @@ class SkillLoadingCheck(SituationCheck):
         if self.load.error is None:
             return _result(self, [])
         return _result(self, [Finding(InvalidLoadingModel, detail=self.load.error)])
-
-
-class PublicationCheck(SituationCheck):
-    """A declared Model publication: none is connected while publications await a redesign."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("24504ebc-9ac4-411d-b26b-f256b9ee28c0"),
-                          name="Tarav.SKW.Check.Publication", workflow=SKW_SKILLS_WORKFLOW_SHIP)
-
-    def _run(self):
-        return _result(self, [Finding(PublicationDisconnected,
-                                      detail="Models publication is disconnected pending redesign.")])
 
 
 # --- sources, products and blocks ---------------------------------------------
@@ -383,17 +370,6 @@ class SkillLoadingChain(SituationChain):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("ba80de3d-9659-4096-a776-50ef0a4e7e93"),
                           name="Tarav.SKW.Chain.SkillLoading", workflow=SKW_SKILLS_WORKFLOW_SHIP)
-
-
-class PublicationChain(SituationChain):
-    """One declared Model publication."""
-    Check = PublicationCheck
-    POIs = (PublicationDisconnected,)
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("d4f59755-5fd6-4ad1-93cf-82557c7a20e9"),
-                          name="Tarav.SKW.Chain.Publication", workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class SourceChain(SituationChain):
@@ -836,7 +812,7 @@ class LinkProseChain(SituationChain):
 
 
 SKW_CHAINS = (
-    SkillMarkerChain, SkillLoadingChain, PublicationChain, SourceChain, ProductChain,
+    SkillMarkerChain, SkillLoadingChain, SourceChain, ProductChain,
     ProductDriftChain, BlockChain, GenerationContextResolutionChain, GenerationFreshnessChain,
     ContextFreshnessChain, ConsumerFileChain, ConsumerLinkChain, DependencyChain,
     ReadingGraphChain, ReadingNodeChain, ReadingDeclarationChain, BlockBindingChain,
@@ -949,8 +925,6 @@ class SkwSkillSuite(CheckSuite):
         yield SkillLoadingChain(skill).check(load=load)
         if load.error is not None:
             return
-        for source in package.publications or []:
-            yield PublicationChain({"subject": {**package.owner, "path": source}}).check()
         products = defaultdict(list)
         for document in load.documents:
             products[document.target.relative_to(package.root).as_posix()].append(document)

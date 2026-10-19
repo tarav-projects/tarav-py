@@ -8,8 +8,6 @@ from pathlib import Path
 from tarav.l0._core.errors import CliError
 
 from .model import (
-    GROUNDING_ASSERTION_TYPE,
-    GROUNDING_POOL_TYPE,
     GROUNDING_TASK_TYPE,
     POOL_ENROLLMENT_TYPE,
     RESULT_TYPE,
@@ -35,14 +33,7 @@ from .rendering import (
     render_trace_history,
 )
 from .repository import ScoringRepository, default_scoring_root
-from .runner import code_provenance, execute_run, prepare_agent_run, prepare_unknown_run
-from .tasks import (
-    DEFAULT_ASSERTION_RANKING_REGISTRY,
-    DEFAULT_RANKING_POOL_REGISTRY,
-    create_line_grounding_enrollments,
-    create_line_grounding_task,
-    line_grounding_assertion_references,
-)
+from .runner import code_provenance, execute_run, prepare_agent_run
 
 
 LIST_TYPES = {
@@ -92,69 +83,6 @@ def _cmd_init(args: argparse.Namespace) -> int:
     )
 
 
-def _cmd_pool_create(args: argparse.Namespace) -> int:
-    try:
-        repository = _repository(args)
-        if any(item.get("name") == args.name for item in repository.pools()):
-            raise ScoringError(f"Assertion Pool name already exists: {args.name}")
-        assertion_class = DEFAULT_ASSERTION_RANKING_REGISTRY.resolve(
-            args.assertion_type
-        )
-        record = repository.create(
-            assertion_class.create_pool(
-                name=args.name,
-                pool_type=args.pool_type,
-                pool_registry=DEFAULT_RANKING_POOL_REGISTRY,
-            )
-        )
-    except ScoringError as exc:
-        raise CliError(str(exc)) from exc
-    return _emit(
-        args,
-        record,
-        [
-            f"pool: {record['id']}",
-            f"name: {record['name']}",
-            f"type: {record['type']}",
-        ],
-    )
-
-
-def _cmd_pool_enroll(args: argparse.Namespace) -> int:
-    try:
-        repository = _repository(args)
-        pool = repository.resolve_pool(args.pool)
-        candidates = create_line_grounding_enrollments(
-            pool=pool,
-            project_path=Path(args.project),
-            line_ships=args.line,
-            diagram_config=Path(args.diagram_config).expanduser().resolve()
-            if args.diagram_config
-            else None,
-        )
-        assertion_keys = [
-            json.dumps(item["assertion_ref"], sort_keys=True) for item in candidates
-        ]
-        if len(assertion_keys) != len(set(assertion_keys)):
-            raise ScoringError("one enrollment request repeats an Assertion instance")
-        for candidate in candidates:
-            existing = repository.enrollment_for_assertion(
-                pool=pool, assertion_ref=candidate["assertion_ref"]
-            )
-            if existing is not None:
-                raise ScoringError(
-                    f"Assertion is already enrolled in Pool: {existing['id']}"
-                )
-        enrollments = [repository.create(candidate) for candidate in candidates]
-    except ScoringError as exc:
-        raise CliError(str(exc)) from exc
-    return _emit(
-        args,
-        {"pool": pool, "enrollments": enrollments},
-        [f"pool: {pool['id']}"] + [f"enrollment: {item['id']}" for item in enrollments],
-    )
-
-
 def _cmd_pool_show(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
@@ -172,90 +100,6 @@ def _cmd_pool_show(args: argparse.Namespace) -> int:
             f"enrollments: {len(enrollments)}",
         ],
     )
-
-
-def _create_pool_task(
-    args: argparse.Namespace,
-    repository: ScoringRepository,
-    pool: dict[str, object],
-) -> dict[str, object]:
-    enrollments = repository.enrollments_for_pool(pool)
-    task = create_line_grounding_task(
-        pool=pool,
-        enrollments=enrollments,
-        project_path=Path(args.project),
-        diagram_config=Path(args.diagram_config).expanduser().resolve()
-        if args.diagram_config
-        else None,
-        chatlas_root=Path(args.chatlas_root).expanduser().resolve()
-        if args.chatlas_root
-        else None,
-        appendix=args.appendix,
-    )
-    return repository.create(task)
-
-
-def _cmd_task(args: argparse.Namespace) -> int:
-    try:
-        repository = _repository(args)
-        pool = repository.resolve_pool(args.pool)
-        task = _create_pool_task(args, repository, pool)
-        run, prompt = prepare_unknown_run(
-            repository=repository,
-            task=task,
-            seed=args.seed,
-        )
-    except (ScoringError, CliError) as exc:
-        raise CliError(str(exc)) from exc
-    return _emit(
-        args,
-        {"task": task, "run": run, "rendered_prompt": prompt},
-        [
-            f"task: {task['id']}",
-            f"run: {run['id']}",
-            f"candidates: {len(task['candidates'])}",
-            "",
-            prompt,
-        ],
-    )
-
-
-def _cmd_pool_run(args: argparse.Namespace) -> int:
-    """Create one exact Pool Task and pass it to the generic Runner."""
-
-    try:
-        repository = _repository(args)
-        pool = repository.resolve_pool(args.pool)
-        task = _create_pool_task(args, repository, pool)
-        run, _ = prepare_agent_run(
-            repository=repository,
-            task=task,
-            provider=args.provider,
-            profile=args.profile,
-            home=Path(args.home).expanduser().resolve() if args.home else None,
-            model=args.model,
-            account=args.account,
-            cwd=Path(args.cwd).expanduser().resolve(),
-            seed=args.seed,
-        )
-        completed, result = execute_run(
-            repository=repository,
-            run=run,
-            timeout_sec=args.timeout,
-        )
-    except (ScoringError, CliError) as exc:
-        raise CliError(str(exc)) from exc
-    payload = {"pool": pool, "task": task, "run": completed, "result": result}
-    lines = [
-        f"pool: {pool['id']}",
-        f"task: {task['id']}",
-        f"run: {completed['id']}",
-        f"status: {completed['status']}",
-    ]
-    if result is not None:
-        lines.append(f"result: {result['id']}")
-    _emit(args, payload, lines)
-    return 0
 
 
 def _cmd_render(args: argparse.Namespace) -> int:
@@ -410,26 +254,6 @@ def _cmd_score(args: argparse.Namespace) -> int:
     return _emit(args, payload, rendered.splitlines())
 
 
-def _cmd_assertion(args: argparse.Namespace) -> int:
-    try:
-        repository = _repository(args)
-        references = line_grounding_assertion_references(
-            project_path=Path(args.project),
-            line_ships=[args.line],
-            diagram_config=Path(args.diagram_config).expanduser().resolve()
-            if args.diagram_config
-            else None,
-        )
-        trace = repository.trace_reference(references[0])
-    except ScoringError as exc:
-        raise CliError(str(exc)) from exc
-    return _emit(
-        args,
-        trace,
-        [json.dumps(trace, indent=2, ensure_ascii=False, sort_keys=True)],
-    )
-
-
 def _cmd_list(args: argparse.Namespace) -> int:
     try:
         repository = _repository(args)
@@ -510,62 +334,12 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     pool = commands.add_parser("pool", help="Manage explicit Assertion populations.")
     pool_commands = pool.add_subparsers(dest="pool_command", required=True)
 
-    pool_create = pool_commands.add_parser("create", help="Create a named Pool.")
-    pool_create.add_argument("name")
-    pool_create.add_argument("--assertion-type", default=GROUNDING_ASSERTION_TYPE)
-    pool_create.add_argument("--pool-type", default=GROUNDING_POOL_TYPE)
-    _add_common(pool_create)
-    pool_create.set_defaults(handler=_cmd_pool_create)
-
-    pool_enroll = pool_commands.add_parser(
-        "enroll", help="Explicitly enroll Assertion instances in a Pool."
-    )
-    pool_enroll.add_argument("pool")
-    pool_enroll.add_argument("--project", default=".")
-    pool_enroll.add_argument(
-        "--line", action="append", required=True, help="Line Ship UUID; repeatable."
-    )
-    pool_enroll.add_argument("--diagram-config")
-    _add_common(pool_enroll)
-    pool_enroll.set_defaults(handler=_cmd_pool_enroll)
-
     pool_show = pool_commands.add_parser(
         "show", help="Show a Pool and its explicit enrollments."
     )
     pool_show.add_argument("pool")
     _add_common(pool_show)
     pool_show.set_defaults(handler=_cmd_pool_show)
-
-    pool_run = pool_commands.add_parser(
-        "run", help="Create a Task from enrolled Assertions and run it."
-    )
-    pool_run.add_argument("pool")
-    pool_run.add_argument("--project", default=".")
-    pool_run.add_argument("--appendix", action="append", default=[])
-    pool_run.add_argument("--diagram-config")
-    pool_run.add_argument("--chatlas-root")
-    pool_run.add_argument("--provider")
-    pool_run.add_argument("--profile")
-    pool_run.add_argument("--home")
-    pool_run.add_argument("--model")
-    pool_run.add_argument("--account")
-    pool_run.add_argument("--cwd", default=".")
-    pool_run.add_argument("--timeout", type=int)
-    pool_run.add_argument("--seed")
-    _add_common(pool_run)
-    pool_run.set_defaults(handler=_cmd_pool_run)
-
-    task = commands.add_parser(
-        "task", help="Create an Index.Line grounding Ranking Task."
-    )
-    task.add_argument("--pool", required=True)
-    task.add_argument("--project", default=".")
-    task.add_argument("--appendix", action="append", default=[])
-    task.add_argument("--diagram-config")
-    task.add_argument("--chatlas-root")
-    task.add_argument("--seed", help="Reproducible candidate-order seed.")
-    _add_common(task)
-    task.set_defaults(handler=_cmd_task)
 
     render = commands.add_parser(
         "render", help="Render a Task, exact Run prompt, or scoring Trace."
@@ -623,15 +397,6 @@ def register_scoring_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_common(score)
     score.set_defaults(handler=_cmd_score)
-
-    assertion = commands.add_parser(
-        "assertion", help="Trace scoring data around one Line Assertion instance."
-    )
-    assertion.add_argument("--project", default=".")
-    assertion.add_argument("--line", required=True)
-    assertion.add_argument("--diagram-config")
-    _add_common(assertion)
-    assertion.set_defaults(handler=_cmd_assertion)
 
     listing = commands.add_parser("list", help="List one kind of scoring Record.")
     listing.add_argument("kind", choices=tuple(LIST_TYPES))

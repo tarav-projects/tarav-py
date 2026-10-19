@@ -50,7 +50,7 @@ level never reaches the builder. Writing checks the Record the Type provides
 with the same parse. Types whose whole state is their typed data use the
 `TypedState` mixin, which keeps the parsed model as `typed` and writes it
 back; Types whose state is a JSON document (Skillware blocks, References,
-scoring and Diagram records) keep that document as their own `_fields`.
+and scoring records) keep that document as their own `_fields`.
 <!-- tarav.breadcrumb 7282e7b6e826 -->
 <!-- tarav.breadcrumb cb24741cb86d -->
 <!-- tarav.breadcrumb fa2aeb9f5a96 -->
@@ -484,8 +484,8 @@ beside the environment and only installs packages. Inspection and runner
 configuration read `harness` without importing anything; the launcher imports
 `harness.type`, loads project.json with it and requires its type tag to name
 the same class. `.tarav/config.json` holds one section per workflow that
-configures a Project (`tarav.l1.project.config`: `agents`, `skills`,
-`diagram`), each validated by its owner's model and registered by the
+configures a Project (`tarav.l1.project.config`: `agents`, `skills`),
+each validated by its owner's model and registered by the
 runtime. `ProjectFilesCheck` (`tarav.l1.project.files`), in every Project's
 suite, reports undeclared fields, a missing harness or environment, a
 `harness.type` that is not the Record's Type, and config sections no workflow
@@ -696,9 +696,6 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
 | `l1.git`, `l2.git`, `l3.git` | The Git Workflow spans repository mechanics, commit-message Breadcrumb integration, and installed CLI composition. |
 | `l1.lines` | LinesWorkflow owns identified natural-language Lines and recursive typed Blocks. Each Line has one authoring Block; its direct Block and parent chain bound interpretation. A Block orders its direct Lines and child Blocks. The Python class supplies Block type; external graph relationships supply uses such as specification. |
-| `l2.lines` | Retained Diagram Line/Block/Collection records, projections, rendering, and LineGroundingAssertion semantics remain a separate legacy application pending explicit retirement. |
-| `models` | ModelsWorkflow owns the Model handler, ModelShipRecord, and ModelEditionRecord. Project associations do not imply ownership; several projects may share one Model. |
-| `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `assertions` | AssertionsWorkflow owns the shallow TaravAssertion root and Assertable capability. The base imposes no case-production method. |
 | `scoring` | ScoringWorkflow owns the identified, case-producing Assertion subtype, closed AssessmentCase contract, shallow Score root, and retained evaluation mechanics. Scoring Records are entities with explicit Context reference edges. |
 | `scoring.ranking` | RankingWorkflow is a Scoring subtype and child workflow. It owns pairwise cases, singleton Tribunal entities, pairwise operations and Checks, and ephemeral RankingScore results. |
@@ -715,7 +712,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `wiki` | Folder-based Markdown Wiki and WikiNote objects, parsing through surfaces, and Wiki-scoped Git closure. No Project dependency. |
 | `project` | ProjectWorkflow owns minimal TaravProject and featured Project. Existing project_id is the Ship identity; discovered location stays outside the portable marker. Every Project has checked agents-file and skill-availability bootstrap under `project.agents`; its agents-file Skillware source is `.tarav/skillware/src/AGENTS.skw.json`. Skill checks search Project and home `.agents/skills` by declared `SKILL.md` name, require `tarav-pkg` and the Project's `agents.package_skill`, and verify `.claude/skills` resolves to the same directory at both scopes. |
 <!-- tarav.breadcrumb d3ca6d771b34 -->
-| `project.models`, `project.wiki` | Specialized child workflows own Project associations. The featured Project exposes `project.models` and `project.docs.wiki`; the minimal base imports neither integration. |
+| `project.wiki` | The featured Project exposes `project.docs.wiki`; the minimal base does not import this integration. |
 | `workspaces` | Identified manifest-backed working folders under the Tarav data root. Exact worktree commits and retained file seeds define reproducible setup; a separate setup Record retains observed hashes and allocated branches. Workspace checks report POIs. The l1 workflow calls l1 Git for every worktree operation; l2 Project offers an optional view over the independent depot. |
 <!-- tarav.breadcrumb 28d74cb87df8 -->
 | `skills` | SkillsWorkflow: the abstract base Skill type, `TaravSkill` (a folder a harness loads through its `SKILL.md`; entrypoint, frontmatter, name, description), folder-backed `FolderSkill`, and skill discovery. Independent of Projects. Every kind of skill subtypes `TaravSkill`; `skw.skills`' `SkwSkill`, with its blocks, reading relationships and checks, is the one other workflows commonly use. `SkillMarker` is `.tarav/skill.json`, the UUID a skill keeps in its folder so every copy carries it; a skill is not a Project and belongs to the one whose depot builds it. |
@@ -741,45 +738,29 @@ retained Type tag in memory without changing the file. Generic from_record()
 and load_object() retain exact Type checks. Project-local code is never
 automatically imported by discovery. Subtypes define class_entity() normally.
 
-`Project.models` exposes the bound ProjectModels handler. Its `ls()` reads named
-associations from the `diagram` section of the Project config; Model resolution through `get()` and
-`main()` remains disconnected pending the Models redesign. `Project.docs.wiki`
-returns the conventional notes/wiki folder without creating data.
+`Project.docs.wiki` returns the conventional notes/wiki folder without
+creating data.
 <!-- tarav.breadcrumb a4389802948e -->
 
 ## Integration invariants
 
 The new `l1.lines` primitives depend only on Kernel. Their `Line.scope_ship`
 names a Block, not a general entity; Block parentage is the bounded authoring
-context. The legacy `l2.lines` application consumes provisional low-level
-contracts and Record bases in Unsorted.
-Unsorted also owns the mixed legacy CLI adapters, preserving the public
-`tarav diagram` command without a `tarav.diagram` Python package.
-Higher-level Unsorted storage and capture compose Lines. These dependencies
-must remain acyclic at module level; collapsing all provisional Unsorted
-modules into one graph node would hide this distinction. Architecture tests
-therefore inspect Lines and Unsorted at module granularity.
-
-Models and Project are also checked at module granularity. Model's retained
-Record definitions depend only on provisional low-level foundations. Project
-associations belong to project.models; the public Model handler does not import
-Project or legacy storage composition. `tarav.l2.models.Model` replaces
-the old `tarav.lines.model.DiagramModel` Python path; retained TypeShips,
-Record labels, Model UUIDs, and `diagram.main_model` associations are unchanged.
+context. The former l2 Diagram application, including Models, Drafts, Views,
+and its CLI, is retired. Git history retains that implementation. The new Lines
+workflow supplies only authoring primitives; relationships between Blocks and
+other Tarav objects belong to the broader Diagram.
+<!-- tarav.breadcrumb 81853af57d52 -->
 
 Assertions owns the common Assertable and shallow TaravAssertion contracts.
 Scoring's `assertions` module supplies its identified, case-producing Assertion
 subtype and the AssessmentCase contract without
-importing consumer workflows. `lines.assertions` specializes it for exact Line
-editions and supplies two case producers with different payloads. A case is a
+importing consumer workflows. A case is a
 JSON snapshot of its claim, question, and supplied material; the scorer does
 not acquire source handles or search for further evidence. Unsupported case
 Types and supported Types lacking sufficient material fail distinctly. The
-runtime registers concrete case Types for Record round-trips. `scoring.tasks` is the existing
-ranking composition layer; it imports that specialization, while the scoring
-package's base exports do not import tasks. Import ranking adapters explicitly
-from `tarav.l2.scoring.tasks`. Architecture checks inspect Scoring at module
-granularity too, distinguishing foundations from composition.
+runtime registers concrete case Types for Record round-trips. The retired Line
+grounding adapter no longer composes a case from Diagram storage.
 <!-- tarav.breadcrumb 9d28b8a71a32 -->
 
 `scoring.ranking.tribunals` is the cross-workflow pairwise path. Each concrete
@@ -952,7 +933,7 @@ its Type adds, and `from_record()` loads it back. The record holds the
 occurrence only; what the Type says (its description, where it is defined)
 is read from the class. A consumer decides what
 happens to a POI. Printing (`tarav check`, `tarav skw skills`, the
-breadcrumbs and Diagram commands) is how a person looks at checks directly.
+breadcrumbs commands) is how a person looks at checks directly.
 The Project status escalates: each POI its checks raise becomes an action
 registered under the Project, which keeps `describe()` in `event.source`. A
 running step keeps the POIs of its tests as the reason it could not close.
@@ -983,9 +964,8 @@ layer 1. The agents file of a Project is a Skillware document, so its check
 raises those same Types. A Breadcrumb audit concern holds its POI Type in
 the same way. There is no second name for a Type.
 Reports group and filter by
-Type, check or identity. Breadcrumb, Reference resolution, and Diagram
-validation use atomic identified POI families. Diagram Draft schema 2 retains
-POI records in Capture Receipts; a Draft of another schema is refused.
+Type, check or identity. Breadcrumb and Reference resolution use atomic
+identified POI families.
 <!-- tarav.breadcrumb 0158b0cc8222 -->
 <!-- tarav.breadcrumb 0d39e5ec3a25 -->
 <!-- tarav.breadcrumb c84140acad62 -->

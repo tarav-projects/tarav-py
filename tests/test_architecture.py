@@ -22,7 +22,7 @@ def test_project_capabilities_use_bound_semantic_paths() -> None:
 
     assert issubclass(Project.Docs, NamespaceBase)
     assert issubclass(CheckProvider.Checks, NamespaceBase)
-    assert isinstance(Project.models, property)
+    assert not hasattr(Project, "models")
     assert issubclass(TaravProject.Agents, NamespaceBase)
     assert isinstance(TaravProject.agents, property)
     assert isinstance(Project.checks, property)
@@ -62,7 +62,6 @@ def test_project_ownership_and_consumer_direction():
     graph = _top_level_import_graph()
     assert not ({"wiki", "models", "runtime", "cli"} & graph["project.base"])
     assert not any(name.startswith("project") for name in graph["wiki"])
-    assert not any(name.startswith("project") for name in graph["models.model"])
     assert entity(ProjectHarness).workflow is ProjectWorkflow()
 
 
@@ -157,11 +156,8 @@ def test_poi_workflow_ownership_and_runtime_composition():
     assert 'runtime' not in _top_level_import_graph()['poi']
 
 
-def test_assertion_foundation_and_line_specialization_are_separate():
+def test_assertion_foundation_and_lines_core_are_separate():
     # tarav.breadcrumb 73c1e18245d9
-    from tarav.l2.lines.assertions import (
-        LineGroundingAssertion, LineGroundingCase, LineSupportInventoryCase,
-    )
     from tarav.l1.lines import Block, Line, LinesWorkflow
     from tarav.l1.assertions import AssertionsWorkflow, TaravAssertion
     from tarav.l2.scoring import (
@@ -171,7 +167,6 @@ def test_assertion_foundation_and_line_specialization_are_separate():
     )
     from tarav.l3.runtime import create_runtime
 
-    assert issubclass(LineGroundingAssertion, Assertion)
     assert issubclass(Assertion, TaravAssertion)
     assert entity(TaravAssertion).workflow is AssertionsWorkflow()
     assert entity(Assertion).workflow is ScoringWorkflow()
@@ -183,7 +178,6 @@ def test_assertion_foundation_and_line_specialization_are_separate():
     assert entity(RankingScore).workflow is RankingWorkflow()
     assert entity(PairwiseRankingCase).workflow is RankingWorkflow()
     assert entity(Tribunal).workflow is RankingWorkflow()
-    assert entity(LineGroundingAssertion).workflow is LinesWorkflow()
     assert entity(Block).workflow is LinesWorkflow()
     runtime = create_runtime()
     assert runtime.records.resolve_ship(entity(Block).id) is Block
@@ -191,14 +185,12 @@ def test_assertion_foundation_and_line_specialization_are_separate():
     assert runtime.records.resolve_ship(entity(TaravAssertion).id) is TaravAssertion
     for case_type in (
         AssessmentCase, Score, RankingScore, PairwiseRankingCase, Tribunal,
-        LineGroundingCase,
-        LineSupportInventoryCase, TribunalScoreCheck, TribunalScorePOI,
+        TribunalScoreCheck, TribunalScorePOI,
     ):
         assert runtime.records.resolve_ship(entity(case_type).id) is case_type
     graph = _top_level_import_graph()
     assert not any(name.startswith('lines') for name in graph['scoring.assertions'])
-    assert 'scoring.tasks' not in graph['scoring']
-    assert 'lines.assertions' in graph['scoring.tasks']
+    assert 'scoring.tasks' not in graph
 
 
 def test_blessing_assertions_compose_without_reverse_layer_imports():
@@ -426,9 +418,8 @@ def _top_level_import_graph() -> dict[str, set[str]]:
         source = parts[0] if len(parts) > 1 else Path(parts[0]).stem
         if source == "l0":
             source = ".".join(relative.parts[:2])
-        # Unsorted contains both provisional foundations and composition layers.
-        # Check their actual module dependencies, not a collapsed package cycle.
-        if source in {"lines", "unsorted", "scoring", "models", "project"}:
+        # Inspect the active domain modules without collapsing their dependencies.
+        if source in {"lines", "scoring", "project"}:
             source = ".".join(Path(*parts).with_suffix("").parts).removesuffix(".__init__")
         if relative.parts[0] == 'l1' and relative.parts[1] in {
             'scoring', 'poi', 'blessings', 'decisions',
@@ -437,7 +428,6 @@ def _top_level_import_graph() -> dict[str, set[str]]:
         # skw.skills is a composition leaf above the generic SKW document kernel.
         if Path(*parts).as_posix() in {
             "skw/skills.py",
-            "skw/publication.py",
             "skw/loading.py",
             "skw/pois.py",
         }:
@@ -454,7 +444,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 imported = tuple(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported = (node.module,)
-                if node.level and source.split(".")[0] in {"lines", "unsorted", "scoring", "models", "project"}:
+                if node.level and source.split(".")[0] in {"lines", "scoring", "project"}:
                     from importlib.util import resolve_name
 
                     package = "tarav." + ".".join(relative.parts[:-1])
@@ -467,7 +457,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                     target = ".".join(name.split(".")[:3]).removeprefix("tarav.")
                 if target in {"l1", "l2", "l3"}:
                     target = name.split(".", 3)[2]
-                if target in {"lines", "unsorted", "scoring", "models", "project"}:
+                if target in {"lines", "scoring", "project"}:
                     target = name.split(".", 2)[-1] if name.startswith("tarav.l") else name.removeprefix("tarav.")
                     if target.startswith(("l1.", "l2.", "l3.")):
                         target = target.split(".", 1)[1]
@@ -614,7 +604,7 @@ def test_kernel_is_a_dependency_clean_application_base() -> None:
     imports = _top_level_import_graph()
 
     assert imports["l0.kernel"] == set()
-    assert "l0.kernel" in imports["lines.records"]
+    assert "l0.kernel" in imports["lines.block"]
     assert "l0.kernel" in imports["archive"]
     assert "l0.kernel" in imports["records"]
     assert "poi.foundation" in imports["records"]
@@ -752,13 +742,12 @@ def test_context_and_test_workspace_stay_above_kernel() -> None:
 
 
 def test_ship_identity_is_owned_by_kernel_and_used_by_lines() -> None:
-    from tarav.l2.lines.records import LineShipRecord
-    from tarav.l2.unsorted.primitives import locate_record_type as record_type
+    from tarav.l1.lines import Line
     from tarav.l0.kernel import Ship, TypeShip, locate_record_type
 
     assert issubclass(TypeShip, Ship)
-    assert isinstance(entity(LineShipRecord).id, TypeShip)
-    assert record_type is locate_record_type
+    assert isinstance(entity(Line).id, TypeShip)
+    assert callable(locate_record_type)
 
 
 def test_python_workflow_is_foundational_and_project_specializes_it() -> None:
@@ -771,10 +760,16 @@ def test_python_workflow_is_foundational_and_project_specializes_it() -> None:
 
 
 def test_promoted_tarav_domains_have_normal_package_ownership() -> None:
+    from tarav.l3.cli.cli import build_parser
+
     assert (PACKAGE_ROOT / "l1" / "archive" / "commands.py").is_file()
     assert (PACKAGE_ROOT / "l1" / "breadcrumbs" / "commands.py").is_file()
-    assert (PACKAGE_ROOT / "l2" / "unsorted" / "commands.py").is_file()
+    assert not (PACKAGE_ROOT / "l2" / "unsorted" / "commands.py").exists()
+    assert not tuple((PACKAGE_ROOT / "l2" / "lines").rglob("*.py"))
+    assert not tuple((PACKAGE_ROOT / "l2" / "models").rglob("*.py"))
+    assert not tuple((PACKAGE_ROOT / "l2" / "project" / "models").rglob("*.py"))
     assert not tuple((PACKAGE_ROOT / "diagram").glob("*.py"))
+    assert "diagram" not in build_parser().format_help()
     assert (PACKAGE_ROOT / "l1" / "bloberia" / "hosted.py").is_file()
     assert (PACKAGE_ROOT / "l0" / "_core" / "record_depot.py").is_file()
     assert not (PACKAGE_ROOT / "tarav2").exists()

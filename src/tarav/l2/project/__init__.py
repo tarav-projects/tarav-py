@@ -1,4 +1,4 @@
-"""Featured Project integrations with Models and Wiki."""
+"""Featured Project integrations with Wiki."""
 
 from tarav.l0.kernel import NamespaceBase, TaravClass, TypeShip
 from tarav.l1.checks import CheckSuite
@@ -14,7 +14,7 @@ from .runner import (
 
 
 class Project(TaravProject):
-    """Tarav's featured project, with optional Models and Wiki access."""
+    """Tarav's featured project, with Wiki access."""
 
     @classmethod
     def class_entity(cls):
@@ -45,11 +45,6 @@ class Project(TaravProject):
     @property
     def docs(self) -> Docs:
         return type(self).Docs(self)
-
-    @property
-    def models(self):
-        from .models import ProjectModels
-        return ProjectModels(self)
 
     # tarav.breadcrumb ead5ff16cd26
     def workspaces(self):

@@ -154,7 +154,6 @@ class TaravRuntime:
         from tarav.l3.daemon.log import report_hook_delivery_failure
         from tarav.l1.forum import register_forum_commands
         from tarav.l1.hooks import register_hook_commands
-        from tarav.l2.unsorted.commands import register_diagram_commands
         from tarav.l1.stdlib.mdblocks.commands import register_mdblocks_commands
         from tarav.l1.stdlib.prefix.commands import register_prefix_commands
         from tarav.l1.project.commands import register_project_commands
@@ -195,7 +194,6 @@ class TaravRuntime:
             command_registrars=(register_breadcrumb_git_commands,),
         )
         register_git_commands(subparsers)
-        register_diagram_commands(subparsers)
         register_bloberia_commands(subparsers)
         register_project_commands(
             subparsers,
@@ -283,7 +281,7 @@ def create_runtime(
     )
     from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.l1.chatlas.search import ChatlasSearchEngine
-    from tarav.l2.unsorted.provider import DIAGRAM_RECORD_TYPES
+    # tarav.breadcrumb 3c23fe71552d
     from tarav.l1.lines import Block, Line, LinesWorkflow
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
@@ -309,12 +307,10 @@ def create_runtime(
     from tarav.l2.tests.actions import ActionsTestsWorkflow
     from tarav.l2.project.programs import ProjectProgram
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
-    from tarav.l2.models import ModelsWorkflow
     from tarav.l1.project import ProjectWorkflow, TaravProject
     from tarav.l2.project import Project
     from tarav.l2.project.runner import PROJECT_RUNNER_RECORD_TYPES
     from tarav.l2.project.system import SYSTEM_RECORD_TYPES
-    from tarav.l2.project.models import ProjectModelsWorkflow
     from tarav.l2.project.wiki import ProjectWikiWorkflow
     from tarav.l1.poi import POI_RECORD_TYPES, POICollector, POIWorkflow
     from tarav.l1.settings import SETTINGS_RECORD_TYPES, SettingsWorkflow
@@ -334,7 +330,6 @@ def create_runtime(
     from tarav.l1.surfaces.markdown import LineMarkdownModel, MarkdownNormalModel
     from tarav.l1.surfaces.python import PythonNormalModel
     from tarav.l1.surfaces.typescript import TypeScriptNormalModel
-    from tarav.l2.unsorted.workflow import UnsortedWorkflow
     from tarav.l1.references.workflow import REFERENCE_RECORD_TYPES
     from tarav.l1.archive.records import RECORD_ARCHIVE_TYPES, RecordArchiveWorkflow
     from tarav.l1.assertions import AssertionsWorkflow, TaravAssertion
@@ -345,9 +340,6 @@ def create_runtime(
         TribunalScoreCheck, TribunalScorePOI,
     )
     from tarav.l2.scoring.ranking.workflow import RankingWorkflow
-    from tarav.l2.lines.assertions import (
-        LineGroundingAssertion, LineGroundingCase, LineSupportInventoryCase,
-    )
     from tarav.l2.scoring.workflow import ScoringWorkflow
     from tarav.l2.blessings import (
         BlessingAcceptanceAssertion, BlessingAcceptanceCase,
@@ -431,7 +423,6 @@ def create_runtime(
                 ArchiveNotificationPOI,
                 *RECORD_ARCHIVE_TYPES,
                 ArchiveReference,
-                *DIAGRAM_RECORD_TYPES,
                 Wiki,
                 WikiNote,
                 Project,
@@ -487,9 +478,6 @@ def create_runtime(
                 BlessingAcceptanceTribunal,
                 BlessingGroundsAssertion,
                 BlessingGroundsCase,
-                LineGroundingAssertion,
-                LineGroundingCase,
-                LineSupportInventoryCase,
                 *SKW_CODE_RECORD_TYPES,
                 GenerationPOI,
                 *GenerationPOI.__subclasses__(),  # its atomic cases
@@ -538,9 +526,7 @@ def create_runtime(
         RecordArchiveWorkflow,
         LinesWorkflow,
         WikiWorkflow,
-        ModelsWorkflow,
         ProjectWorkflow,
-        ProjectModelsWorkflow,
         ProjectWikiWorkflow,
         SkillsWorkflow,
         POIWorkflow,
@@ -552,7 +538,6 @@ def create_runtime(
         CliWorkflow,
         LiveHelpWorkflow,
         SurfacesWorkflow,
-        UnsortedWorkflow,
         AssertionsWorkflow,
         ScoringWorkflow,
         RankingWorkflow,
@@ -584,11 +569,10 @@ def create_runtime(
     from tarav.l1.project.config import register_config_section
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig
-    from tarav.l2.unsorted.storage import DiagramConfig
     from tarav.l1.git.hooks import GitConfig, register_git_hook_handler
     from tarav.l1.git.change import TaravChange
     for section, model in (("agents", AgentsConfig), ("skills", SkillsConfig),
-                           ("diagram", DiagramConfig), ("git", GitConfig)):
+                           ("git", GitConfig)):
         register_config_section(section, model)
     register_git_hook_handler(TaravChange())
     from tarav.l1.git.gitleaks import Gitleaks

@@ -530,51 +530,6 @@ class MissingDependency(SkwPOI):
         )
 
 
-class PublicationUnresolvable(SkwPOI):
-    """A Model publication cannot be rendered."""
-
-    statement = "A Model publication cannot be rendered"
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000026'),
-            name='Tarav.SKW.POI.PublicationUnresolvable',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class PublicationStale(SkwPOI):
-    """The source or the Model of a publication changed since it was published."""
-
-    statement = "The source or the Model of a publication changed since it was published"
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000027'),
-            name='Tarav.SKW.POI.PublicationStale',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-class PublicationDrift(SkwPOI):
-    """A published file differs from what its publication renders."""
-
-    statement = "A published file differs from what its publication renders"
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000028'),
-            name='Tarav.SKW.POI.PublicationDrift',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
 class ContextUnresolvable(SkwPOI):
     """A declared context of a generated block cannot be resolved."""
 
@@ -740,37 +695,6 @@ class ProductDrift(SkwPOI):
             # what helps whoever works on it: the source to edit, and the lines
             details={'source': finding.get('source'),
                      'difference': list(finding.get('difference') or ())},
-        )
-
-
-class DiagramAssessment(SkwPOI):
-    """A Diagram renderer returned an assessment finding; inspect its evidence."""
-
-    statement = "A Diagram renderer returned an assessment finding"
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('7e309479-ccae-4780-b2f1-bd3af54f9f42'),
-            name='Tarav.SKW.POI.DiagramAssessment',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
-        )
-
-
-
-class PublicationDisconnected(SkwPOI):
-    """A declared Model publication is not connected: publications await a redesign."""
-
-    statement = "A declared Model publication is not connected: publications await a redesign"
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(
-            target=cls,
-            id=TypeShip('9a70b6c2-63ea-4b73-9273-00000000003a'),
-            name='Tarav.SKW.POI.PublicationDisconnected',
-            workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
 
