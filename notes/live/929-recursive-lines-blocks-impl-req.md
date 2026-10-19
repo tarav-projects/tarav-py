@@ -175,4 +175,8 @@ as an ordinary context Line, retaining 50 scoring candidates plus 10 context
 Lines. Mixed membership, ordering after Record binding, empty Blocks, duplicate
 Ships, and parent/scope conflicts are covered. Fourteen new Breadcrumbs across
 eight changed surfaces were submitted and audited with no failures; moved
-positions were refreshed. The umbrella Project status is running for closure.
+positions were refreshed. The umbrella Project status completed all 1,173 checks,
+with the same 75 existing open actions and no new ones. Slice commits:
+tarav-py `971dc33a`, tarav-md `36b4574c`. Concurrent checks-workflow edits
+appeared in the shared tarav-py tree during verification and were left as found;
+they are outside this amendment.
