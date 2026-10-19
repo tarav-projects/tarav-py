@@ -283,6 +283,8 @@ def create_runtime(
     from tarav.l1.chatlas.search import ChatlasSearchEngine
     # tarav.breadcrumb 3c23fe71552d
     from tarav.l1.lines import Block, Line, LinesWorkflow
+    # tarav.breadcrumb f98e9b92d186
+    from tarav.l1.notebook import Notebook, NotebookWorkflow
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
     # tarav.breadcrumb 35548ca6fdf7
@@ -393,6 +395,7 @@ def create_runtime(
                 TaravClass,
                 Block,
                 Line,
+                Notebook,
                 TaravEnvironment,
                 TaravSystem,
                 TestEntity,
@@ -525,6 +528,7 @@ def create_runtime(
         ArchiveWorkflow,
         RecordArchiveWorkflow,
         LinesWorkflow,
+        NotebookWorkflow,
         WikiWorkflow,
         ProjectWorkflow,
         ProjectWikiWorkflow,

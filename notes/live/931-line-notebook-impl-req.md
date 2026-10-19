@@ -124,6 +124,15 @@ RecordMap, GitRepository, Project integrations, runtime wiring, and source
 ship records. Data shape first and reuse of RecordMap keep storage minimal.
 No obsolete active Notebook implementation needs removal.
 
-Todo: execute slices 1–3 and closure. Product tree was clean at inspection.
+Todo: execute slices 2–3 and closure. Product tree was clean at inspection.
 tarav-md has unrelated ongoing Explain Me skill edits; preserve them under
 the evidence workflow's checkpoint rules.
+
+### Execute — slice 1
+
+Cold-reloaded this request before execution. Start checkpoints: tarav-py
+`cdc0f8d0`, tarav-md `445f1bef` (external Skillware edits retained).
+The feature test failed first because Notebook did not exist. Notebook now
+uses RecordMap without storage creation on reads, saves exact registered
+Records, and rebinds the connected context through one per-load identity map.
+Fourteen Notebook/Lines tests pass; Ruff passes. No change to Line/Block schema.
