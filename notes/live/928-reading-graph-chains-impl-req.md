@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: design ready, 2026-10-19.
+Status: complete, 2026-10-19.
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -62,7 +62,8 @@ Non-goals: the Project's agents file; the analysis algorithm itself
 
 Product project: tarav-py. Wikis: `notes/wiki/` (this repository;
 `situation-chains.md`, daily `daily/2026-10-19.md`) and
-`tarav-md/notes/wiki/reader-context-path.md` (read only). Capture: pending.
+`tarav-md/notes/wiki/reader-context-path.md` (read only). Capture: done (daily note; `situation-chains.md`
+"Implemented: the reading graph").
 
 ## Execution.Plan
 
@@ -131,3 +132,10 @@ a check needing a second `analyze()`.
   file outside chains. ARCHITECTURE `skw` row: `ReadingAnalysis` and the
   reading Checks. Checks: test_architecture, test_project_agents 54 passed;
   audits clean after position refresh.
+- Verification: `tarav status --project tarav-py --all`: 62 checks, all
+  completed, "nothing" changed. Default suite rerun: 405 passed in 153 s;
+  the SKW tests take 1.9 s in total and the machine load average was 4.4,
+  so the slower suite is not attributed to this change.
+- Outcome: slices b348b79 (1), 72d3a0f (2), 7a46b79 (3). Open: the agents
+  file as a chain consumer (it brings in the Project); the positive-result
+  POI; the remaining non-Skillware checks.
