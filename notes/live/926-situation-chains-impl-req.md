@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: needs-alignment, 2026-10-19.
+Status: in execution, 2026-10-19.
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -128,15 +128,26 @@ Inspected 2026-10-19:
   per repository for the binary and the scan (`{repository}`). Chains:
   Finding, NeverScanned, Missing, Staged.
 
-### Open questions
+### Open questions (resolved)
 
-1. Action ids change for every existing action when Action Types become
-   per-POI-Type. No action is blessed; proposal: let them close as gone and
-   reopen once (or delete the 177 records). Which?
-2. Scope: this request = chain base, per-POI Action Types, blessing as an
-   Action exit, Gitleaks as the first chain. The other ~20 checks later. OK?
-3. The general positive-result POI ("checked and found fine", no Action):
-   this request or a later one?
+The User delegated them ("do what you consider best").
+<!-- tarav.breadcrumb 9246a6c8632f -->
+
+1. Existing actions whose Action Type changes are deleted, as with request
+   925's dead records; the next check run opens them under their new ids.
+2. Scope as proposed: chain base, blessing as an Action exit, Gitleaks as the
+   first chain.
+3. The positive-result POI is a later request.
+
+Refinement at execution start: Action Types are declared explicitly, not
+derived. A chain names one per POI Type (a few lines each); POI Types not yet
+in a chain keep `Tarav.Actions.POI.Resolution` until their chain exists.
+Derivation would need a registry of every POI Type at runtime composition
+for loading records by Action name; explicit classes need none. Since
+blessing becomes an exit, the generic Resolution keeps only "gone", and the
+four blessable POI Types outside Gitleaks (`StaleContext`, `StaleGeneration`,
+`HooksNotInstalled`, the test `TestMarkerPOI`) get their own Action Type with
+the blessed exit now.
 
 ## Impl.Req.Wiki
 
@@ -150,14 +161,16 @@ Inspected 2026-10-19:
 Core data shape: `SituationChain` with class fields `Situation`, `Check`,
 `POIs`, `actions` (POI Type → Action Type); instance = one situation.
 
-1. Refactor — `SituationChain` base and its binding; a test chain (lamps) in
-   `tests/test_situation_chains.py`. Check: a chain instance's Check, POI and
-   Action identities follow hash(type, hash(situation)); a POI Type finds its
-   chain and Action Type. Status: pending.
-2. Feature — per-POI Action Types; blessing as an Action exit;
-   `BlessablePOI` and `Closing.reopens(record, poi)` removed. Check: Actions
-   workflow tests (blessing allowed only where the Action Type has the exit;
-   gone reopens, blessed does not). Status: pending.
+1. Feature — `SituationChain` base: `Check` and `POIs` fields; defining a
+   chain binds `chain` on its Check and POI Types; an instance holds one
+   situation, with identity hash(chain Type, hash(situation)); a chain's
+   `SituationCheck` raises only its chain's POI Types. Check:
+   `tests/test_situation_chains.py` (lamp chain). Status: pending.
+2. Feature — blessing as an Action exit: `BlessablePOI` removed;
+   `POIResolutionAction` exits = gone; a blessable subtype adds blessed;
+   the blessable POI Types name their own Action Types;
+   `Closing.reopens` becomes a class field. Check: Actions, POI, Gitleaks,
+   hooks, blessing tests. Status: pending.
 3. Refactor — Gitleaks as chains: a Suite over the native report producing
    atomic Checks. Check: `tests/test_gitleaks*.py` behaviour unchanged except
    identities; real `tarav status` on a repository with a scan. Status:
