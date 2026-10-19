@@ -17,7 +17,7 @@ from tarav.l1.actions import ActionRunStore
 from tarav.l1.actions.project import ProjectActions
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite, SituationCheck
 from tarav.l1.poi import POI
-from tarav.l1.poi.actionable import BlessablePOI
+from tarav.l1.actions.pois import BlessableResolution
 
 from .workflow import TestsWorkflow
 
@@ -52,16 +52,26 @@ class ActionsTestsWorkflow(TestsWorkflow):
     constitution = "Exercise Actions with a disposable workspace of files, POIs and blessings."
 
 
-class TestMarkerPOI(CheckPOI, BlessablePOI):
+class TestMarkerPOI(CheckPOI):
     """A workspace file holds marker lines."""
 
     __test__ = False
+    action = "Tarav.Test.Actions.MarkerPOI.Resolution"
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("89a7dba4-9457-4802-96fc-d703fd5ce31c"),
                           name="Tarav.Test.Actions.MarkerPOI",
                           workflow=ACTIONS_TESTS_WORKFLOW_SHIP)
+
+
+class TestMarkerResolution(BlessableResolution):
+    """The action of a TestMarkerPOI; it may be blessed."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("155d3548-d8da-491c-bbb7-589c282d51f5"),
+                          name="Tarav.Test.Actions.MarkerPOI.Resolution", workflow=ACTIONS_TESTS_WORKFLOW_SHIP)
 
 
 class TestMarkerCheck(SituationCheck):

@@ -11,7 +11,6 @@ from typing import ClassVar
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.checks import CheckPOI
-from tarav.l1.poi.actionable import BlessablePOI
 
 from .identity import SKW_SKILLS_WORKFLOW_SHIP
 
@@ -609,12 +608,14 @@ class ContextUnobserved(SkwPOI):
         )
 
 
-class StaleContext(SkwPOI, BlessablePOI):
+class StaleContext(SkwPOI):
     """Document.lint found changed maintenance context since explicit observation.
 
     An agent may accept the unchanged product after reviewing the new context.
     Blessing records that assessment; it never advances the document baseline.
     """
+
+    action = "Tarav.SKW.POI.StaleContext.Resolution"
 
     statement = "The tracked context of a generated block differs from the recorded baseline"
 
@@ -629,12 +630,14 @@ class StaleContext(SkwPOI, BlessablePOI):
 
 
 # tarav.breadcrumb 76d1a306cd3c
-class StaleGeneration(SkwPOI, BlessablePOI):
+class StaleGeneration(SkwPOI):
     """Document.lint found changed generation inputs against recorded provenance.
 
     Bless only after assessing that existing output is acceptable for the
     changed inputs. Source, output, and generation history are not rewritten.
     """
+
+    action = "Tarav.SKW.POI.StaleGeneration.Resolution"
 
     statement = "The inputs of a generated block differ from the recorded baseline"
 

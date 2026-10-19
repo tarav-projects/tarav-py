@@ -27,7 +27,7 @@ from tarav.l0._core.git_repository import GitError, git_result, run_git
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
 from tarav.l0.project import project_id
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
-from tarav.l1.poi.actionable import BlessablePOI
+from tarav.l1.actions.pois import BlessableResolution
 from tarav.l1.project.config import ProjectConfig
 
 from .workflow import GIT_WORKFLOW_SHIP
@@ -272,16 +272,27 @@ class GitHooksPOI(CheckPOI):
                           name="Tarav.Git.Hooks.POI", workflow=GIT_WORKFLOW_SHIP)
 
 
-class HooksNotInstalled(GitHooksPOI, BlessablePOI):
+class HooksNotInstalled(GitHooksPOI):
     """The repository does not run the Project's hooks: `core.hooksPath` is elsewhere.
 
     A Project that wants no hooks blesses it.
     """
 
+    action = "Tarav.Git.Hooks.NotInstalled.Resolution"
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("7b2e9c40-5d16-4f83-a0e7-3c8f1b6d2e59"),
                           name="Tarav.Git.Hooks.NotInstalled", workflow=GIT_WORKFLOW_SHIP)
+
+
+class HooksNotInstalledResolution(BlessableResolution):
+    """The action of HooksNotInstalled: a Project that wants no hooks blesses it."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("36eb6b87-0afe-4f70-a62c-20b76a8ebcd2"),
+                          name="Tarav.Git.Hooks.NotInstalled.Resolution", workflow=GIT_WORKFLOW_SHIP)
 
 
 class HookStale(GitHooksPOI):

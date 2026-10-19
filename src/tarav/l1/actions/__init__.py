@@ -88,10 +88,8 @@ class Closing(TaravEntity, FileRecord):
         """What this Type adds to the base record when its path is taken."""
         return {}
 
-    @classmethod
-    def reopens(cls, record: dict | None, poi: object) -> bool:
-        """Does raising the action's POI again reopen an action closed this way?"""
-        return False
+    #: Does raising the action's POI again reopen an action closed this way?
+    reopens: ClassVar[bool] = False
 
     class Records(TaravEntity.Records):
         def record_example(self) -> dict[str, object]:

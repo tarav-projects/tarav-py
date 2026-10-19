@@ -65,18 +65,8 @@ class BlessingWithoutReason(CheckPOI):
                           workflow=BLESSINGS_WORKFLOW_SHIP)
 
 
-class BlessingNotPermitted(CheckPOI):
-    """A blessing was attempted on the action of a POI whose Type does not allow it."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("f4c81d27-6b39-4e05-a7d2-9c1e5b8f3a64"),
-                          name="Tarav.Blessings.NotPermitted",
-                          workflow=BLESSINGS_WORKFLOW_SHIP)
-
-
 class BlessingInputCheck(SituationCheck):
-    """Does the POI's Type allow a blessing, and does the operator's input give a reason?"""
+    """Does the operator's input give a reason? Whether a blessing is allowed is the Action Type's exit."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -88,14 +78,9 @@ class BlessingInputCheck(SituationCheck):
         super().__init__(situation={"run": str(run.id), "context": str(context.id)})
         self._reason = context.fields.get("reason")
         self._support = context.fields.get("support", [])
-        self._event = run.data.get("event") or {}
 
     def _run(self) -> CheckResult:
         pois = []
-        if not self._event.get("blessable"):
-            pois.append(self.poi(
-                BlessingNotPermitted,
-                message=f"{(self._event.get('poi') or {}).get('type')} does not allow a blessing"))
         if not (isinstance(self._reason, str) and self._reason.strip()):
             pois.append(self.poi(BlessingWithoutReason,
                                  message="The blessing input gives no reason"))
@@ -135,9 +120,7 @@ class Blessing(Closing, Assertable):
                 "poi": (run.data.get("event") or {}).get("poi") or {},
                 "context": str(context.id)}
 
-    @classmethod
-    def reopens(cls, record: dict | None, poi: object) -> bool:
-        return False  # the situation is expected to still exist
+    reopens = False  # the situation is expected to still exist
 
     @property
     def assertions(self):
@@ -183,5 +166,5 @@ BLESSING_RECORD_TYPES = (Blessing, BlessingInput)
 
 __all__ = [
     "BLESSED", "BLESSING_RECORD_TYPES", "Blessing", "BlessingInput", "BlessingInputCheck",
-    "BlessingNotPermitted", "BlessingWithoutReason", "bind_blessing_assertion_services",
+    "BlessingWithoutReason", "bind_blessing_assertion_services",
 ]

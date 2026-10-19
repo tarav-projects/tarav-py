@@ -171,7 +171,7 @@ Core data shape: `SituationChain` with class fields `Situation`, `Check`,
    `POIResolutionAction` exits = gone; a blessable subtype adds blessed;
    the blessable POI Types name their own Action Types;
    `Closing.reopens` becomes a class field. Check: Actions, POI, Gitleaks,
-   hooks, blessing tests. Status: pending.
+   hooks, blessing tests. Status: done.
 3. Refactor — Gitleaks as chains: a Suite over the native report producing
    atomic Checks. Check: `tests/test_gitleaks*.py` behaviour unchanged except
    identities; real `tarav status` on a repository with a scan. Status:
@@ -193,3 +193,20 @@ check of the Actions workflow that depends on the generic Action Type name.
   first (no module), then 5 passed (one expectation fixed: the Check is the
   first link found already bound). Listed in the default suite. Suite 392
   passed before listing.
+- Slice 2: `BlessablePOI`, `BlessingNotPermitted` and the event's
+  `blessable` flag removed; `Closing.reopens` is a class field (gone True,
+  blessed False). `POIResolutionAction` exits = gone; the family
+  `BlessableResolution` adds blessed and the blessing input check. Own Action
+  Types: `StaleContext`/`StaleGeneration` (in `l2/skw/pois.py`, since `l1/skw`
+  does not import Actions; the POIs name them), `HooksNotInstalled`, the four
+  Gitleaks POIs, `TestMarkerPOI`; registered in the runtime. Tests: example
+  POIs name a bench `BlessableResolution`; blessing a POI whose Action Type
+  has no blessed exit raises `ActionError` (the refusal used to be a tape
+  attempt). First run: 2 failures, the expected Action name of lamps, now
+  their own Type. Suite 397 passed; `tests/decisions`, `tests/scoring`:
+  3 failures in `test_assertion_objects.py`, the same with this slice
+  stashed (they predate it). Action partition: deleted the 119 actions whose
+  POI Type now names its own Action Type (112 StaleContext, 3 Gitleaks
+  NeverScanned, 2 hooks NotInstalled, 2 test markers), commit ee69501. Real
+  surface, `tarav status --project tarav-md` twice: 68 open, "58 opened",
+  then "nothing"; 56 actions are `Tarav.SKW.POI.StaleContext.Resolution`.

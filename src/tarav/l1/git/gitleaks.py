@@ -28,9 +28,8 @@ from tarav.l0._core.persistence import atomic_write_json
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
 from tarav.l0.project import load_project_marker, project_marker_name
 from tarav.l1.actions.blessing import BLESSED
-from tarav.l1.actions.pois import POIResolutionAction
+from tarav.l1.actions.pois import BlessableResolution
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
-from tarav.l1.poi.actionable import BlessablePOI
 
 from .hooks import OVERRULE_ENV_VAR, GitHookCall, GitHookHandler, GitHookRefusal
 from .workflow import GIT_WORKFLOW_SHIP
@@ -225,7 +224,7 @@ class GitleaksPOI(CheckPOI):
 
 
 # tarav.breadcrumb 5cf11550e760
-class GitleaksFinding(GitleaksPOI, BlessablePOI):
+class GitleaksFinding(GitleaksPOI):
     """A finding of the latest history report that is still in the repository's history.
 
     Blessing its action appends its fingerprint to `.gitleaksignore`.
@@ -239,8 +238,10 @@ class GitleaksFinding(GitleaksPOI, BlessablePOI):
                           name="Tarav.Git.Gitleaks.Finding", workflow=GIT_WORKFLOW_SHIP)
 
 
-class GitleaksStaged(GitleaksPOI, BlessablePOI):
+class GitleaksStaged(GitleaksPOI):
     """The pre-commit hook found secrets in the changes being committed; closed by hand."""
+
+    action = "Tarav.Git.Gitleaks.Staged.Resolution"
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -248,8 +249,10 @@ class GitleaksStaged(GitleaksPOI, BlessablePOI):
                           name="Tarav.Git.Gitleaks.Staged", workflow=GIT_WORKFLOW_SHIP)
 
 
-class GitleaksNeverScanned(GitleaksPOI, BlessablePOI):
+class GitleaksNeverScanned(GitleaksPOI):
     """No history scan of the repository is in the depot: `tarav git gitleaks scan` runs one."""
+
+    action = "Tarav.Git.Gitleaks.NeverScanned.Resolution"
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -257,8 +260,10 @@ class GitleaksNeverScanned(GitleaksPOI, BlessablePOI):
                           name="Tarav.Git.Gitleaks.NeverScanned", workflow=GIT_WORKFLOW_SHIP)
 
 
-class GitleaksMissing(GitleaksPOI, BlessablePOI):
+class GitleaksMissing(GitleaksPOI):
     """The gitleaks binary is not on PATH, so neither the hook nor a scan can run."""
+
+    action = "Tarav.Git.Gitleaks.Missing.Resolution"
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -267,7 +272,7 @@ class GitleaksMissing(GitleaksPOI, BlessablePOI):
 
 
 # tarav.breadcrumb 87e22e00cff6
-class GitleaksFindingResolution(POIResolutionAction):
+class GitleaksFindingResolution(BlessableResolution):
     """The action of a finding. Its blessing is appending the fingerprint to `.gitleaksignore`."""
 
     @classmethod
@@ -287,6 +292,33 @@ class GitleaksFindingResolution(POIResolutionAction):
             separator = "" if not prior or prior.endswith("\n") else "\n"
             path.write_text(prior + separator + fingerprint + "\n", encoding="utf-8")
         return {"ignored": fingerprint, "file": str(root / IGNORE_FILE)}
+
+
+class GitleaksStagedResolution(BlessableResolution):
+    """The action of a staged report, closed by hand: it may be blessed."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("df19e3d6-615c-4b72-a77a-c47e8b922d5d"),
+                          name="Tarav.Git.Gitleaks.Staged.Resolution", workflow=GIT_WORKFLOW_SHIP)
+
+
+class GitleaksNeverScannedResolution(BlessableResolution):
+    """The action of a repository never scanned: it may be blessed."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("aae0bf0b-25b6-4b08-8db8-275f9f516272"),
+                          name="Tarav.Git.Gitleaks.NeverScanned.Resolution", workflow=GIT_WORKFLOW_SHIP)
+
+
+class GitleaksMissingResolution(BlessableResolution):
+    """The action of a missing gitleaks binary: it may be blessed."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("b4ee350f-2905-4b12-900d-1fe4289999c7"),
+                          name="Tarav.Git.Gitleaks.Missing.Resolution", workflow=GIT_WORKFLOW_SHIP)
 
 
 # tarav.breadcrumb 6dcc746ab864

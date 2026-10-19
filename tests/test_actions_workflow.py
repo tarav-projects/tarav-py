@@ -14,15 +14,14 @@ from tarav.l1.actions import (
     ActionError, ActionRunStore, Closing, Exit, StepAction, StepRunner, axes, register_action,
 )
 from tarav.l1.actions.pois import (
-    GONE, GoneClosing, POIActionClosed, POIResolutionAction, action_id,
+    GONE, BlessableResolution, GoneClosing, POIActionClosed, POIResolutionAction, action_id,
 )
 from tarav.l1.actions.project import ProjectActions
 from tarav.l1.actions.blessing import (
-    BLESSED, Blessing, BlessingInput, BlessingNotPermitted, BlessingWithoutReason,
+    BLESSED, Blessing, BlessingInput, BlessingWithoutReason,
 )
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite, SituationCheck
 from tarav.l1.operator_context import OperatorContext, OperatorContextStore
-from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.records import RecordRegistry
 from tarav.l1.project import TaravProject
 from tarav.l3.check import report_project_checks
@@ -118,8 +117,20 @@ class TwoExitStep(StepAction):
         return {"by": name}
 
 
-class LampOn(CheckPOI, BlessablePOI):
+@register_action
+class LampOnResolution(BlessableResolution):
+    """The action of a lamp found on: it may be blessed."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("00573cdb-589e-41fa-846a-f55d791ed9b4"),
+                          name="Tarav.Test.Actions.LampOn.Resolution", workflow=ACTIONS_WORKFLOW_SHIP)
+
+
+class LampOn(CheckPOI):
     """A lamp was found on."""
+
+    action = "Tarav.Test.Actions.LampOn.Resolution"
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -310,7 +321,7 @@ def test_a_poi_opens_its_action_and_raising_it_again_lands_on_the_same_one(store
     assert (first["opened"], first["gone"], first["signals"]) == (1, 0, [])
     run = stores.pois.of(poi)
     assert run.id == action_id(poi) and run.state == RUNNING
-    assert run.data["action"] == "Tarav.Actions.POI.Resolution"
+    assert run.data["action"] == "Tarav.Test.Actions.LampOn.Resolution"  # its POI Type's own
     assert run.data["project"] == HOME
     assert run.data["event"]["poi"]["id"] == poi.identity
     assert axes(run) == {"situation": "present", "action": "open", "closing": None}
@@ -620,7 +631,7 @@ def test_an_action_keeps_the_record_of_its_poi_and_reads_its_types_from_the_code
     service = ContextQueryService()
     service.register_resolver("action", ActionResolver(lambda: stores.runs))
     run = service.find(poi.identity[:12])
-    assert run.id == action_id(poi) and run.data["action"] == "Tarav.Actions.POI.Resolution"
+    assert run.id == action_id(poi) and run.data["action"] == "Tarav.Test.Actions.LampOn.Resolution"
 
 
 class _Flags(Check):
@@ -837,9 +848,10 @@ def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry,
     runner = StepRunner(runs=ActionRunStore(), contexts=Contexts(), session=lambda: None)
     reason = Contexts().put(BlessingInput.new(reason="Known and accepted."))
 
-    refused = runner.close(str(action_id(flags)), reason, exit=BLESSED)
-    assert refused.state == RUNNING
-    assert _attempts(refused)[-1]["results"][0]["pois"][0]["type"] == entity(BlessingNotPermitted).name
+    # its Action Type has no blessed exit
+    with pytest.raises(ActionError, match="Tarav.Actions.POI.Resolution has no exit 'blessed'"):
+        runner.close(str(action_id(flags)), reason, exit=BLESSED)
+    assert runner.runs.load(str(action_id(flags))).state == RUNNING
 
     assert runner.close(str(action_id(lamp)), reason, exit=BLESSED).exit == BLESSED
     assert report_project_status(home) == 1  # the plain finding is still open

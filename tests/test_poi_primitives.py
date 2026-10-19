@@ -4,11 +4,13 @@ from pathlib import Path
 import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.poi.actionable import BlessablePOI
+from tarav.l1.poi.actionable import ActionablePOI
 from tarav.l1.poi import SituationPOI, POICollector
 
 
-class AppReview(SituationPOI, BlessablePOI):
+class AppReview(SituationPOI, ActionablePOI):
+    action = "Tarav.Test.Bench.Resolution"  # it may be blessed
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(

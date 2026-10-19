@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l1.poi.actionable import BlessablePOI
+from tarav.l1.poi.actionable import ActionablePOI
 from tarav.l1.decisions import Decision
 from tarav.l1.poi import SituationPOI
 from tarav.l2.project import Project
@@ -14,7 +14,9 @@ from tarav.l2.project.decisions import ProjectDecisions
 from tarav.l3.runtime import create_runtime
 
 
-class ExamplePOI(SituationPOI, BlessablePOI):
+class ExamplePOI(SituationPOI, ActionablePOI):
+    action = "Tarav.Test.Bench.Resolution"  # it may be blessed
+
     @classmethod
     def class_entity(cls):
         return TaravClass(

@@ -5,7 +5,6 @@ import pytest
 from tarav.l0.kernel import TaravClass, TaravEntity, TypeShip, entity
 from tarav.l1.actions.blessing import Blessing
 from tarav.l1.blessings import BlessingsWorkflow
-from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.checks import Check, CheckPOI
 from tarav.l3.runtime import create_runtime
 
@@ -20,7 +19,9 @@ class ExampleCheck(Check):
         )
 
 
-class ExampleBlessablePOI(CheckPOI, BlessablePOI):
+class ExampleBlessablePOI(CheckPOI):
+    action = "Tarav.Test.Bench.Resolution"  # it may be blessed
+
     @classmethod
     def class_entity(cls):
         return TaravClass(
@@ -46,7 +47,7 @@ def poi(*, details=None, situation=None):
 
 def test_blessable_check_poi_composes_by_type():
     occurrence = poi()
-    assert isinstance(occurrence, (CheckPOI, BlessablePOI))
+    assert isinstance(occurrence, CheckPOI)
     # what a check observed is not part of the identity: the Type and the situation are
     changed = poi(details={"text": "y"})
     assert changed.identity == occurrence.identity

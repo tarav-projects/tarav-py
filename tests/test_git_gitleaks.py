@@ -203,7 +203,6 @@ import sys  # noqa: E402
 from tarav.l1.git.hooks import (  # noqa: E402
     DEFAULT_HANDLERS, GitHooksCheck, HooksNotInstalled, git_hook_checks, install,
 )
-from tarav.l1.poi.actionable import BlessablePOI  # noqa: E402
 
 PROJECT_ID = "9d3e7a1c-5b2f-4c8d-a6e0-3f1b2c4d5e6a"
 
@@ -280,4 +279,7 @@ def test_projects_get_the_default_hooks_check_and_may_bless_it_away(repo: Path) 
     checks = list(git_hook_checks(_Project()))
     assert [type(check).__name__ for check in checks] == ["GitHooksCheck", "GitleaksCheck"]
     assert isinstance(checks[0], GitHooksCheck) and checks[0].config.handlers == ["gitleaks"]
-    assert issubclass(HooksNotInstalled, BlessablePOI)
+    from tarav.l0.kernel import entity
+    from tarav.l1.git.hooks import HooksNotInstalledResolution
+    assert HooksNotInstalled.action == entity(HooksNotInstalledResolution).name
+    assert BLESSED in {exit.name for exit in HooksNotInstalledResolution.exits}

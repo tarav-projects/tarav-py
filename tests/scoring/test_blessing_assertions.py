@@ -7,7 +7,6 @@ import pytest
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.actions.blessing import Blessing
-from tarav.l1.poi.actionable import BlessablePOI
 from tarav.l1.checks import Check, CheckPOI, CheckResult
 from tarav.l1.poi import fingerprint
 from tarav.l2.blessings import (
@@ -35,7 +34,9 @@ class ExampleCheck(Check):
         ))
 
 
-class ExamplePOI(CheckPOI, BlessablePOI):
+class ExamplePOI(CheckPOI):
+    action = "Tarav.Test.Bench.Resolution"  # it may be blessed
+
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls,

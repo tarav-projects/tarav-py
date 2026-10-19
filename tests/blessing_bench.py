@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.actions import ACTIONS_WORKFLOW_SHIP, ActionRunStore, StepRunner
-from tarav.l1.actions.pois import action_id
+from tarav.l1.actions import register_action
+from tarav.l1.actions.pois import BlessableResolution, action_id
 from tarav.l1.actions.project import ProjectActions
 from tarav.l1.actions.blessing import BLESSED, Blessing, BlessingInput
 from tarav.l1.checks import Check, CheckResult, CheckSuite
@@ -23,6 +24,19 @@ class BenchCheck(Check):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("e4a90c1b-6f27-4d58-9b03-2c8d7e5f1a46"),
                           name="Tarav.Test.Bench.Check", workflow=ACTIONS_WORKFLOW_SHIP)
+
+
+@register_action
+class BenchResolution(BlessableResolution):
+    """The action of the example POIs these tests bless; they name it as `BLESSABLE`."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("e1d807a2-a5d4-4d20-9cf3-13370d83c1fa"),
+                          name="Tarav.Test.Bench.Resolution", workflow=ACTIONS_WORKFLOW_SHIP)
+
+
+BLESSABLE = "Tarav.Test.Bench.Resolution"
 
 
 # tarav.breadcrumb 37944529d175

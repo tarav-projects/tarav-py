@@ -26,20 +26,4 @@ class ActionablePOI(POI):
                           name="Tarav.POI.Actionable", workflow=POI_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 51eb2b0b1a45
-# tarav.breadcrumb bb495f3ee057
-class BlessablePOI(ActionablePOI):
-    """Capability: the action of a POI of an extending Type may be blessed.
-
-    Blessing closes the action although the situation still exists, with a
-    reason. It overrules the check for one exact situation, so a Type has to
-    allow it.
-    """
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("b21f7c50-0a4d-4e63-9c18-5d7e3f2a6b90"),
-                          name="Tarav.POI.Blessable", workflow=POI_WORKFLOW_SHIP)
-
-
-__all__ = ["ActionablePOI", "BlessablePOI"]
+__all__ = ["ActionablePOI"]

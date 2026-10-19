@@ -23,7 +23,7 @@ from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.checks import Check
 from tarav.l1.operator_context import OperatorContext
 from tarav.l1.poi import POI, SituationPOI, fingerprint, plain
-from tarav.l1.poi.actionable import ActionablePOI, BlessablePOI
+from tarav.l1.poi.actionable import ActionablePOI
 
 from .blessing import BLESSED, Blessing, BlessingInput, BlessingInputCheck
 from . import (
@@ -49,9 +49,7 @@ class GoneClosing(Closing):
         return TaravClass(target=cls, id=TypeShip("a14a7bc9-9483-4380-934a-324c53426fc1"),
                           name="Tarav.Actions.POI.Gone", workflow=ACTIONS_WORKFLOW_SHIP)
 
-    @classmethod
-    def reopens(cls, record: dict | None, poi: object) -> bool:
-        return True  # the situation is back
+    reopens = True  # the situation is back
 
     class Records(Closing.Records):
         def record_example(self) -> dict[str, object]:
@@ -64,32 +62,21 @@ class GoneClosing(Closing):
 # tarav.breadcrumb e2ef906ba9d2
 # tarav.breadcrumb fcc647ba041a
 class POIResolutionAction(StepAction):
-    """The action a POI spins: open while the POI stands, closed when it is gone or blessed.
+    """The action a POI spins: open while the POI stands, closed when it is gone.
 
     `gone` is taken by the action's Project when a suite above the POI's check
-    ran completely and did not produce the POI. `blessed` is taken by an
-    operator who
-    gives a reason: the action closes although the situation still exists.
-    Each path leaves its own record, and that record decides whether the POI
-    raised again reopens the action.
+    ran completely and did not produce the POI. Each closing path leaves its
+    own record, and its Closing Type says whether the POI raised again
+    reopens the action. An Action Type whose POI may be accepted as it stands
+    is a `BlessableResolution`.
     """
 
-    InputType: ClassVar[type[OperatorContext]] = BlessingInput
-    exits: ClassVar[tuple[Exit, ...]] = (
-        Exit(GONE, by=(PROJECT,), closing=GoneClosing),
-        Exit(BLESSED, by=(OPERATOR,), closing=Blessing),
-    )
+    exits: ClassVar[tuple[Exit, ...]] = (Exit(GONE, by=(PROJECT,), closing=GoneClosing),)
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("e1c7a9d3-5b42-4f86-b3a0-8d6f2c4e7b19"),
                           name="Tarav.Actions.POI.Resolution", workflow=ACTIONS_WORKFLOW_SHIP)
-
-    def exit_checks(self, name: str, run: ActionRun,
-                    context: OperatorContext | None) -> Iterable[Check]:
-        if name == BLESSED and context is not None:
-            return (BlessingInputCheck(run, context),)
-        return ()
 
     # tarav.breadcrumb c5db1b346c8b
     @classmethod
@@ -153,7 +140,7 @@ class POIResolutionAction(StepAction):
                 run.data["situation"] = {"state": PRESENT, "at": update.at}
                 change = "updated"
             if run.state == CLOSED and run.exit != EXIT_ERROR:
-                if cls.exit_named(run.exit).closing.reopens(run.closing_record(), poi):
+                if cls.exit_named(run.exit).closing.reopens:
                     # tarav.breadcrumb a41daa65b5b4
                     # tarav.breadcrumb a16bb5e9dc95
                     # the closing stays on the tape; the action opens again
@@ -187,6 +174,37 @@ class POIResolutionAction(StepAction):
             project=update.project,
             closed={"action": str(run.id), "exit": GONE, "poi": poi_record.get("id")}))
         return GONE
+
+
+# tarav.breadcrumb b91637159644
+# tarav.breadcrumb 10dc415d9609
+class BlessableResolution(POIResolutionAction):
+    """Family: the action of a POI that an operator may accept as it stands.
+
+    `blessed` is taken by an operator who gives a reason: the action closes
+    although the situation still exists, and stays closed while the same POI
+    is raised. A blessing is one closing path of such an action; whether a
+    POI may be blessed is whether its Action Type has this exit. Each POI Type
+    names its own subtype.
+    """
+
+    InputType: ClassVar[type[OperatorContext]] = BlessingInput
+    exits: ClassVar[tuple[Exit, ...]] = (
+        *POIResolutionAction.exits,
+        Exit(BLESSED, by=(OPERATOR,), closing=Blessing),
+    )
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("3b337bc7-1275-46ad-87f0-f4c221cd4804"),
+                          name="Tarav.Actions.POI.BlessableResolution",
+                          workflow=ACTIONS_WORKFLOW_SHIP)
+
+    def exit_checks(self, name: str, run: ActionRun,
+                    context: OperatorContext | None) -> Iterable[Check]:
+        if name == BLESSED and context is not None:
+            return (BlessingInputCheck(run, context),)
+        return ()
 
 
 class POIActionClosed(SituationPOI):
@@ -244,7 +262,7 @@ def raised(pois: Iterable[POI]) -> Iterable[SituationPOI]:
 def _event(poi: SituationPOI, suites: tuple[dict, ...] = ()) -> dict:
     """What an action keeps of the POI it follows: the POI's record, and its detectors."""
     check = getattr(poi, "check", None)
-    return {"blessable": isinstance(poi, BlessablePOI), "poi": poi.records.to_record(),
+    return {"poi": poi.records.to_record(),
             "check": {"type": entity(type(check)).name} if check is not None else None,
             "suites": [dict(suite) for suite in suites]}
 
@@ -256,7 +274,7 @@ def _suite_key(identity: dict) -> tuple:
 POI_ACTION_RECORD_TYPES = (GoneClosing,)
 
 __all__ = [
-    "ABSENT", "ActionablePOI", "BLESSED", "BlessablePOI", "CHECK_FAILED", "GONE", "GoneClosing",
+    "ABSENT", "ActionablePOI", "BLESSED", "BlessableResolution", "CHECK_FAILED", "GONE", "GoneClosing",
     "NOT_RUN",
     "POIActionClosed", "POIResolutionAction", "POI_ACTION_RECORD_TYPES",
     "PRESENT", "action_id", "raised",

@@ -322,7 +322,6 @@ def create_runtime(
         BLESSING_RECORD_TYPES, bind_blessing_assertion_services,
     )
     from tarav.l1.blessings import BlessingsWorkflow
-    from tarav.l1.poi.actionable import BlessablePOI
     from tarav.l1.decisions import (
         DECISION_RECORD_TYPES, DecisionsWorkflow, bind_decision_assertions,
     )
@@ -458,7 +457,6 @@ def create_runtime(
                 *BLESSING_RECORD_TYPES,
                 *DECISION_RECORD_TYPES,
                 DecisionReportAssertion,
-                BlessablePOI,
                 Check,
                 CheckPOI,
                 CheckResult,
@@ -572,8 +570,18 @@ def create_runtime(
     ):
         registrations.register(workflow)
     register_action(POIResolutionAction)
-    from tarav.l1.git.gitleaks import GitleaksFindingResolution
-    register_action(GitleaksFindingResolution)
+    from tarav.l1.git.gitleaks import (
+        GitleaksFindingResolution, GitleaksMissingResolution, GitleaksNeverScannedResolution,
+        GitleaksStagedResolution,
+    )
+    from tarav.l1.git.hooks import HooksNotInstalledResolution
+    from tarav.l2.skw.pois import StaleContextResolution, StaleGenerationResolution
+    from tarav.l2.tests.actions import TestMarkerResolution
+    for action_type in (GitleaksFindingResolution, GitleaksStagedResolution,
+                        GitleaksNeverScannedResolution, GitleaksMissingResolution,
+                        HooksNotInstalledResolution, StaleContextResolution,
+                        StaleGenerationResolution, TestMarkerResolution):
+        register_action(action_type)
     from tarav.l1.project.config import register_config_section
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig
