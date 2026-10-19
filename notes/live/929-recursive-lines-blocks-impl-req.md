@@ -140,3 +140,13 @@ fixture marker POIs and one gitleaks finding). The tarav-md check completed
 1,099 checks and reported 68 existing POIs in other surfaces. After the final
 test fixture and CLI boundary adjustments, the focused suite passed
 (98 tests); Ruff and Git whitespace checks passed.
+
+### Completion verification
+
+The umbrella Project status ran 1,173 checks, all completed. The retired
+`diagram` config actions for the root and tarav-md Projects closed as gone.
+Its 75 remaining open actions predate this change or concern other surfaces:
+68 in tarav-md, four in the root, and three in tarav-py. All three repository
+worktrees were clean after the implementation commits. The old code remains
+available in Git history; there is no active legacy Diagram CLI or Model
+workflow.
