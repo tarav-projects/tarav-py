@@ -104,8 +104,9 @@ class GitHookHandler(TaravObject):
     def run(self, call: GitHookCall) -> None:
         raise NotImplementedError
 
-    def check(self, project) -> Check | None:
-        """The check that keeps what this handler maintains in the Project; None when none."""
+    def check(self, project) -> Check | CheckSuite | None:
+        """The check, or suite of checks, that keeps what this handler maintains in the
+        Project; None when none."""
         return None
 
 

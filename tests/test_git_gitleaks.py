@@ -96,7 +96,8 @@ from tarav.l1.actions.blessing import BLESSED, BlessingInput  # noqa: E402
 from tarav.l1.actions.pois import action_id  # noqa: E402
 from tarav.l1.checks import CheckSuite  # noqa: E402
 from tarav.l1.git.gitleaks import (  # noqa: E402
-    GitleaksCheck, GitleaksFinding, GitleaksNeverScanned, owner_of, register_run,
+    GitleaksFinding, GitleaksFindingChain, GitleaksNeverScanned, GitleaksSuite, owner_of,
+    register_run,
 )
 from tarav.l3.runtime import create_runtime  # noqa: E402
 
@@ -109,7 +110,7 @@ def stores(tmp_path):
 
 
 def _pois(root: Path):
-    return list(GitleaksCheck(root).run().pois())
+    return list(GitleaksSuite(root).run().pois())
 
 
 def test_a_reported_finding_still_in_history_raises_one_poi(repo: Path) -> None:
@@ -120,6 +121,27 @@ def test_a_reported_finding_still_in_history_raises_one_poi(repo: Path) -> None:
     assert isinstance(poi, GitleaksFinding)
     assert poi.situation["repository"] == repository_key(repo)
     assert poi.details["commit"] == commit
+
+
+def test_each_reported_finding_is_its_own_atomic_check(repo: Path) -> None:
+    _commit_token(repo)
+    _commit_token(repo, "other.py")
+    reported = {item["Fingerprint"] for item in GitleaksDepot().report(run_gitleaks(repo))}
+    suite = GitleaksSuite(repo).run()
+    assert suite.identity == {"type": "Tarav.Git.Gitleaks.Suite", "key": repository_key(repo)}
+    findings = [result for result in suite.own_results()
+                if isinstance(result.check, GitleaksFindingChain.Check)]
+    assert len(reported) == len(findings) == 2
+    situations = []
+    for result in findings:
+        (poi,) = result.pois()
+        assert type(poi).chain is GitleaksFindingChain
+        assert poi.situation == result.check.situation.to_json_value()
+        situations.append(poi.situation)
+    # the chain's situation is the repository and the finding, nothing else
+    assert sorted(situations, key=str) == sorted(
+        ({"repository": repository_key(repo), "fingerprint": fingerprint} for fingerprint in reported),
+        key=str)
 
 
 def test_findings_go_when_ignored_rewritten_away_or_no_longer_reported(repo: Path) -> None:
@@ -153,14 +175,14 @@ def test_blessing_appends_the_fingerprint_and_closes_the_action(repo: Path, stor
     _commit_token(repo)
     run = run_gitleaks(repo)
     owner = {"id": "test-owner", "name": "test-owner", "root": str(repo)}
-    first = stores.update(owner, CheckSuite([GitleaksCheck(repo)], name="gitleaks").run())
+    first = stores.update(owner, CheckSuite([GitleaksSuite(repo)], name="gitleaks").run())
     assert first["opened"] == 1
     (poi,) = _pois(repo)
     reason = stores.contexts.put(BlessingInput.new(reason="A test token."))
     stores.runner.close(str(action_id(poi)), reason, exit=BLESSED)
     (finding,) = GitleaksDepot().report(run)
     assert (repo / ".gitleaksignore").read_text(encoding="utf-8") == finding["Fingerprint"] + "\n"
-    stores.update(owner, CheckSuite([GitleaksCheck(repo)], name="gitleaks").run())
+    stores.update(owner, CheckSuite([GitleaksSuite(repo)], name="gitleaks").run())
     assert [(item.state, item.exit) for item in stores.runs.list()] == [(CLOSED, BLESSED)]
 
 
@@ -186,13 +208,13 @@ def test_owner_is_the_enclosing_project_or_the_system_project(repo: Path, tmp_pa
 
 
 def test_the_system_project_checks_scanned_repositories_no_project_owns(repo: Path) -> None:
-    from tarav.l1.git.gitleaks import unowned_checks
+    from tarav.l1.git.gitleaks import unowned_suites
 
     _commit_token(repo)
     run_gitleaks(repo)
-    assert [check.root for check in unowned_checks()] == [repo.resolve()]
+    assert [suite.root for suite in unowned_suites()] == [repo.resolve()]
     _marker(repo.parent, "7c2e8d3f-4a5b-4c9d-8e0f-2a3b4c5d6e7f")
-    assert unowned_checks() == []
+    assert unowned_suites() == []
 
 
 # --- the hook and the default handlers (slice 3)
@@ -277,7 +299,7 @@ def test_projects_get_the_default_hooks_check_and_may_bless_it_away(repo: Path) 
         root = repo
 
     checks = list(git_hook_checks(_Project()))
-    assert [type(check).__name__ for check in checks] == ["GitHooksCheck", "GitleaksCheck"]
+    assert [type(check).__name__ for check in checks] == ["GitHooksCheck", "GitleaksSuite"]
     assert isinstance(checks[0], GitHooksCheck) and checks[0].config.handlers == ["gitleaks"]
     from tarav.l0.kernel import entity
     from tarav.l1.git.hooks import HooksNotInstalledResolution

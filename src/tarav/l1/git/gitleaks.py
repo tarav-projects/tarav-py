@@ -3,10 +3,12 @@
 Gitleaks detects; Tarav does not. Each gitleaks run, a history scan on
 request or a scan of the staged changes in the pre-commit hook, leaves its
 report in a depot outside the repository, exactly as gitleaks wrote it, with
-a Record of the run beside it. Project checks double-check the latest
-report: a finding still in the repository is the situation that raises a
-POI and opens an action. `.gitleaksignore`, shared with gitleaks, is where
-accepted findings are written.
+a Record of the run beside it. A repository's `GitleaksSuite` revisits the
+latest report: each finding is a situation, and an atomic Check says whether
+it is still in the repository, raising a POI that opens an action.
+`.gitleaksignore`, shared with gitleaks, is where accepted findings are
+written. This is the template for an external tool: run it natively, keep its
+report, and let a Suite find the situations in it.
 """
 
 from __future__ import annotations
@@ -29,7 +31,8 @@ from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
 from tarav.l0.project import load_project_marker, project_marker_name
 from tarav.l1.actions.blessing import BLESSED
 from tarav.l1.actions.pois import BlessableResolution
-from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
+from tarav.l1.checks import CheckPOI, CheckResult, CheckSuite, SituationCheck
+from tarav.l1.checks.chains import SituationChain
 
 from .hooks import OVERRULE_ENV_VAR, GitHookCall, GitHookHandler, GitHookRefusal
 from .workflow import GIT_WORKFLOW_SHIP
@@ -321,74 +324,201 @@ class GitleaksMissingResolution(BlessableResolution):
                           name="Tarav.Git.Gitleaks.Missing.Resolution", workflow=GIT_WORKFLOW_SHIP)
 
 
-# tarav.breadcrumb 6dcc746ab864
-class GitleaksCheck(Check):
-    """Double-checks the latest history report: each finding still in history raises a POI.
+class GitleaksHistory:
+    """What a repository's history holds of a report's findings, read once for all their checks."""
 
-    A finding is still there while its commit is reachable from a ref and its
-    file and lines exist in that commit; Git addresses content by hash, so
-    that commit holds exactly what gitleaks scanned. Fingerprints in
-    `.gitleaksignore` raise nothing.
-    """
+    def __init__(self, root: Path, findings: list[dict]) -> None:
+        reachable = (set(git_result(root, "rev-list", "--all").stdout.decode().split())
+                     if findings else set())
+        self._reachable = reachable
+        self._lines = _line_counts(root, sorted({f"{item['Commit']}:{item['File']}"
+                                                 for item in findings if item["Commit"] in reachable}))
+
+    def holds(self, item: dict) -> bool:
+        """Its commit is reachable from a ref and its file and lines exist in that commit.
+
+        Git addresses content by hash, so that commit holds exactly what
+        gitleaks scanned.
+        """
+        lines = self._lines.get(f"{item['Commit']}:{item['File']}")
+        return item["Commit"] in self._reachable and lines is not None and item["EndLine"] <= lines
+
+
+class GitleaksBinaryCheck(SituationCheck):
+    """Is the gitleaks binary on PATH, for the hook and the scans of a repository?"""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("bf51d49b-d7e2-4304-8478-f5d7b687b5af"),
-                          name="Tarav.Git.Gitleaks.Check", workflow=GIT_WORKFLOW_SHIP)
+        return TaravClass(target=cls, id=TypeShip("c6fdb80b-ad27-43dd-8585-c98e759b9bf1"),
+                          name="Tarav.Git.Gitleaks.BinaryCheck", workflow=GIT_WORKFLOW_SHIP)
 
-    def __init__(self, root: Path | str, depot: GitleaksDepot | None = None) -> None:
-        super().__init__()
-        self.root = Path(root).resolve()
-        self.depot = depot or GitleaksDepot()
+    def __init__(self, *, situation, root: Path) -> None:
+        super().__init__(situation=situation)
+        self.root = root
 
     def _run(self) -> CheckResult:
-        root, pois = self.root, []
-        key = repository_key(root)
-        if key is None:
-            return CheckResult(self, status="completed", pois=pois)
-        if gitleaks_binary() is None:
-            pois.append(GitleaksMissing(self, "gitleaks is not on PATH",
-                                        situation={"repository": key}, details={"path": str(root)}))
-        run = self.depot.latest(key)
-        if run is None:
-            pois.append(GitleaksNeverScanned(
-                self, f"No gitleaks history scan of {root}; run `tarav git gitleaks scan`",
-                situation={"repository": key}, details={"path": str(root)}))
-            return CheckResult(self, status="completed", pois=pois)
-        accepted = ignored(root)
-        findings = [item for item in self.depot.report(run) if item["Fingerprint"] not in accepted]
-        reachable = set(git_result(root, "rev-list", "--all").stdout.decode().split()) if findings else set()
-        findings = [item for item in findings if item["Commit"] in reachable]
-        counts = _line_counts(root, sorted({f"{item['Commit']}:{item['File']}" for item in findings}))
-        for item in findings:
-            lines = counts.get(f"{item['Commit']}:{item['File']}")
-            if lines is None or item["EndLine"] > lines:
-                continue
-            pois.append(GitleaksFinding(
-                self, f"gitleaks: {item['RuleID']} in {item['File']}:{item['StartLine']} "
-                f"at {item['Commit'][:7]}",
-                situation={"repository": key, "fingerprint": item["Fingerprint"]},
-                details={"path": str(root), "rule": item["RuleID"], "file": item["File"],
-                         "start_line": item["StartLine"], "end_line": item["EndLine"],
-                         "commit": item["Commit"], "date": item["Date"], "run": run.report}))
-        return CheckResult(self, status="completed", pois=pois)
+        if gitleaks_binary() is not None:
+            return CheckResult(self, status="completed")
+        return CheckResult(self, status="completed", pois=[self.poi(
+            GitleaksMissing, message="gitleaks is not on PATH", details={"path": str(self.root)})])
 
 
-class GitleaksStagedCheck(Check):
-    """Raises the hook's Staged POIs. It never runs in a suite, so their actions stay open
-    until closed by hand."""
+class GitleaksScanCheck(SituationCheck):
+    """Has the repository a history scan in the depot?"""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("a7deb3be-3559-4319-87e4-31b2c2cb030a"),
+                          name="Tarav.Git.Gitleaks.ScanCheck", workflow=GIT_WORKFLOW_SHIP)
+
+    def __init__(self, *, situation, root: Path, depot: GitleaksDepot) -> None:
+        super().__init__(situation=situation)
+        self.root, self.depot = root, depot
+
+    def _run(self) -> CheckResult:
+        if self.depot.latest(self.situation["repository"]) is not None:
+            return CheckResult(self, status="completed")
+        return CheckResult(self, status="completed", pois=[self.poi(
+            GitleaksNeverScanned,
+            message=f"No gitleaks history scan of {self.root}; run `tarav git gitleaks scan`",
+            details={"path": str(self.root)})])
+
+
+# tarav.breadcrumb 6dcc746ab864
+class GitleaksFindingCheck(SituationCheck):
+    """Is one finding of the latest history report still in the repository's history?"""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("dbb1b7cf-26fe-4248-ad86-7e7243abe5bc"),
+                          name="Tarav.Git.Gitleaks.FindingCheck", workflow=GIT_WORKFLOW_SHIP)
+
+    def __init__(self, *, situation, root: Path, finding: dict, history: GitleaksHistory,
+                 run: str) -> None:
+        super().__init__(situation=situation)
+        self.root, self.finding, self.history, self.run_report = root, finding, history, run
+
+    def _run(self) -> CheckResult:
+        item = self.finding
+        if not self.history.holds(item):
+            return CheckResult(self, status="completed")
+        return CheckResult(self, status="completed", pois=[self.poi(
+            GitleaksFinding,
+            message=f"gitleaks: {item['RuleID']} in {item['File']}:{item['StartLine']} "
+                    f"at {item['Commit'][:7]}",
+            details={"path": str(self.root), "rule": item["RuleID"], "file": item["File"],
+                     "start_line": item["StartLine"], "end_line": item["EndLine"],
+                     "commit": item["Commit"], "date": item["Date"], "run": self.run_report})])
+
+
+class GitleaksStagedCheck(SituationCheck):
+    """Raises the hook's Staged POI for one staged report. It never runs in a Project's
+    suite, so its action stays open until closed by hand."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("4bb94504-da07-4a10-b933-b5d6f4dd383a"),
                           name="Tarav.Git.Gitleaks.StagedCheck", workflow=GIT_WORKFLOW_SHIP)
 
-    def __init__(self, root: Path | str) -> None:
-        super().__init__()
-        self.root = Path(root).resolve()
+    def __init__(self, *, situation, root: Path, run: GitleaksRun, overruled: bool) -> None:
+        super().__init__(situation=situation)
+        self.root, self.staged, self.overruled = root, run, overruled
 
     def _run(self) -> CheckResult:
-        return CheckResult(self, status="completed", pois=[])
+        findings = [{"rule": item["RuleID"], "file": item["File"], "line": item["StartLine"]}
+                    for item in GitleaksDepot().report(self.staged)]
+        return CheckResult(self, status="completed", pois=[self.poi(
+            GitleaksStaged,
+            message=f"gitleaks found {self.staged.findings} secrets in changes staged in "
+                    f"{self.root}" + (", committed by overrule" if self.overruled
+                                      else ", and stopped the commit"),
+            details={"path": str(self.root), "findings": findings, "overruled": self.overruled})])
+
+
+# tarav.breadcrumb 99de98d10221
+class GitleaksBinaryChain(SituationChain):
+    """A repository whose hook and scans need the gitleaks binary."""
+
+    Check = GitleaksBinaryCheck
+    POIs = (GitleaksMissing,)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("72c4e7e8-3b76-444b-bed0-4101046373ba"),
+                          name="Tarav.Git.Gitleaks.BinaryChain", workflow=GIT_WORKFLOW_SHIP)
+
+
+class GitleaksScanChain(SituationChain):
+    """A repository whose history gitleaks should have scanned."""
+
+    Check = GitleaksScanCheck
+    POIs = (GitleaksNeverScanned,)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("0cef175a-17a2-4763-971e-dc89516ed597"),
+                          name="Tarav.Git.Gitleaks.ScanChain", workflow=GIT_WORKFLOW_SHIP)
+
+
+class GitleaksFindingChain(SituationChain):
+    """One finding of a repository's latest history report, by its gitleaks fingerprint."""
+
+    Check = GitleaksFindingCheck
+    POIs = (GitleaksFinding,)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("b2b2aa9f-68f0-465b-98c9-fc9dabf5c73b"),
+                          name="Tarav.Git.Gitleaks.FindingChain", workflow=GIT_WORKFLOW_SHIP)
+
+
+class GitleaksStagedChain(SituationChain):
+    """One staged report of a repository, by the report's name."""
+
+    Check = GitleaksStagedCheck
+    POIs = (GitleaksStaged,)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("2b1be100-9fdc-4c66-ae0d-f8c0b4f00b40"),
+                          name="Tarav.Git.Gitleaks.StagedChain", workflow=GIT_WORKFLOW_SHIP)
+
+
+# tarav.breadcrumb 404e179f3f15
+class GitleaksSuite(CheckSuite):
+    """A repository's Gitleaks checks: it finds the situations in the latest history report.
+
+    It yields the binary and scan checks of the repository, then one atomic
+    finding check for each reported finding its `.gitleaksignore` does not
+    accept, all reading the history once. Its key is the repository's, so it
+    is the detector that says a finding is gone.
+    """
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("a767d688-fedf-4852-b34c-f5348bcdc14b"),
+                          name="Tarav.Git.Gitleaks.Suite", workflow=GIT_WORKFLOW_SHIP)
+
+    def __init__(self, root: Path | str, depot: GitleaksDepot | None = None) -> None:
+        self.root = Path(root).resolve()
+        self.depot = depot or GitleaksDepot()
+        super().__init__(name="gitleaks", key=repository_key(self.root))
+
+    def produce(self):
+        key, root = self.key, self.root
+        if key is None:
+            return
+        yield GitleaksBinaryChain({"repository": key}).check(root=root)
+        yield GitleaksScanChain({"repository": key}).check(root=root, depot=self.depot)
+        run = self.depot.latest(key)
+        if run is None:
+            return
+        accepted = ignored(root)
+        findings = [item for item in self.depot.report(run) if item["Fingerprint"] not in accepted]
+        history = GitleaksHistory(root, findings)
+        for item in findings:
+            yield GitleaksFindingChain({"repository": key, "fingerprint": item["Fingerprint"]}).check(
+                root=root, finding=item, history=history, run=run.report)
 
 
 # tarav.breadcrumb 91ec1d57d64a
@@ -397,16 +527,9 @@ def register_staged(root: Path | str, run: GitleaksRun, *, overruled: bool) -> d
     from tarav.l1.actions.project import ProjectActions
 
     root = Path(root).resolve()
-    check = GitleaksStagedCheck(root)
-    findings = [{"rule": item["RuleID"], "file": item["File"], "line": item["StartLine"]}
-                for item in GitleaksDepot().report(run)]
-    poi = GitleaksStaged(
-        check, f"gitleaks found {run.findings} secrets in changes staged in {root}"
-        + (", committed by overrule" if overruled else ", and stopped the commit"),
-        situation={"repository": run.key, "run": run.report},
-        details={"path": str(root), "findings": findings, "overruled": overruled})
-    suite = CheckSuite([CheckResult(check, status="completed", pois=[poi])],
-                       name="gitleaks hook").run()
+    check = GitleaksStagedChain({"repository": run.key, "run": run.report}).check(
+        root=root, run=run, overruled=overruled)
+    suite = CheckSuite([check], name="gitleaks hook").run()
     return ProjectActions(owner_of(root)).register(suite)
 
 
@@ -445,8 +568,8 @@ class Gitleaks(GitHookHandler):
             f"{OVERRULE_ENV_VAR}={self.name}; either way the report is an action of the "
             f"Project.{note}")
 
-    def check(self, project) -> Check:
-        return GitleaksCheck(project.root)
+    def check(self, project) -> CheckSuite:
+        return GitleaksSuite(project.root)
 
 
 def system_project_root() -> Path:
@@ -476,14 +599,14 @@ def register_run(root: Path | str, run: GitleaksRun, *, system: Path | None = No
     """Register the actions of what the repository's check raises now on its owner."""
     from tarav.l1.actions.project import ProjectActions
 
-    suite = CheckSuite([GitleaksCheck(root)], name="gitleaks scan").run()
+    suite = CheckSuite([GitleaksSuite(root)], name="gitleaks scan").run()
     return ProjectActions(owner_of(root, system=system), runs).register(suite)
 
 
-def unowned_checks(depot: GitleaksDepot | None = None) -> list[GitleaksCheck]:
-    """Checks of the scanned repositories no Project owns, for the System Project's suite."""
+def unowned_suites(depot: GitleaksDepot | None = None) -> list[GitleaksSuite]:
+    """Suites of the scanned repositories no Project owns, for the System Project's suite."""
     depot = depot or GitleaksDepot()
-    checks = []
+    suites = []
     for key in depot.keys():
         run = depot.latest(key)
         path = Path(run.repository) if run else None
@@ -491,17 +614,20 @@ def unowned_checks(depot: GitleaksDepot | None = None) -> list[GitleaksCheck]:
             continue
         if any((folder / ".tarav" / "project.json").is_file() for folder in (path, *path.parents)):
             continue
-        checks.append(GitleaksCheck(path, depot))
-    return checks
+        suites.append(GitleaksSuite(path, depot))
+    return suites
 
 
 GIT_GITLEAKS_RECORD_TYPES = (GitleaksRun, GitleaksPOI, GitleaksFinding, GitleaksStaged,
                              GitleaksNeverScanned, GitleaksMissing)
 
-__all__ = ["DEPOT_ENV_VAR", "GIT_GITLEAKS_RECORD_TYPES", "Gitleaks", "GitleaksCheck", "GitleaksDepot",
-           "GitleaksFinding", "GitleaksFindingResolution", "GitleaksMissing",
-           "GitleaksNeverScanned", "GitleaksPOI", "GitleaksRun", "GitleaksStaged",
-           "GitleaksStagedCheck", "register_staged",
+__all__ = ["DEPOT_ENV_VAR", "GIT_GITLEAKS_RECORD_TYPES", "Gitleaks", "GitleaksBinaryChain",
+           "GitleaksBinaryCheck", "GitleaksDepot", "GitleaksFinding", "GitleaksFindingChain",
+           "GitleaksFindingCheck", "GitleaksFindingResolution", "GitleaksHistory", "GitleaksMissing",
+           "GitleaksMissingResolution", "GitleaksNeverScanned", "GitleaksNeverScannedResolution",
+           "GitleaksPOI", "GitleaksRun", "GitleaksScanChain", "GitleaksScanCheck", "GitleaksStaged",
+           "GitleaksStagedChain", "GitleaksStagedCheck", "GitleaksStagedResolution",
+           "GitleaksSuite", "register_staged",
            "GitleaksUnavailable", "HISTORY", "IGNORE_FILE", "STAGED", "gitleaks_binary",
            "ignored", "owner_of", "register_run", "repository_key", "run_gitleaks",
-           "system_project_root", "unowned_checks"]
+           "system_project_root", "unowned_suites"]

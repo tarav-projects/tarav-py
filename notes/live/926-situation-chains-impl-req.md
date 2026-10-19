@@ -175,7 +175,7 @@ Core data shape: `SituationChain` with class fields `Situation`, `Check`,
 3. Refactor — Gitleaks as chains: a Suite over the native report producing
    atomic Checks. Check: `tests/test_gitleaks*.py` behaviour unchanged except
    identities; real `tarav status` on a repository with a scan. Status:
-   pending.
+   done.
 4. Docs — ARCHITECTURE (Checks, POIs, Actions, Blessings rows),
    `l1/poi/README.md`, AGENTS POI bullets. Status: pending.
 
@@ -210,3 +210,18 @@ check of the Actions workflow that depends on the generic Action Type name.
   NeverScanned, 2 hooks NotInstalled, 2 test markers), commit ee69501. Real
   surface, `tarav status --project tarav-md` twice: 68 open, "58 opened",
   then "nothing"; 56 actions are `Tarav.SKW.POI.StaleContext.Resolution`.
+- Slice 3: `GitleaksCheck` replaced by `GitleaksSuite` (key: the
+  repository's), which yields `GitleaksBinaryCheck` and `GitleaksScanCheck`
+  over `{repository}`, then one `GitleaksFindingCheck` over `{repository,
+  fingerprint}` per reported finding `.gitleaksignore` does not accept, all
+  sharing one `GitleaksHistory` (one `rev-list` and one `cat-file --batch`).
+  `GitleaksStagedCheck` is a `SituationCheck` over `{repository, run}`. Four
+  chains bind each check to its POI. `unowned_checks` is now
+  `unowned_suites`; the hook handler's `check()` may return a suite. New test
+  `test_each_reported_finding_is_its_own_atomic_check` failed at collection
+  first (no `GitleaksSuite`), then passed; the hooks test helper accepts a
+  suite. Gitleaks, hooks, System and chain tests 31 passed; suite 398 passed.
+  Real surface: the depot holds only staged scans, so the finding path is
+  covered by the tests; `tarav status --project tarav-md` twice: 68 open,
+  "nothing"; its NeverScanned action kept its id and now records
+  `Tarav.Git.Gitleaks.ScanCheck` and the `Tarav.Git.Gitleaks.Suite` detector.

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tarav.l1.checks import CheckSuite
 from tarav.l1.git.hooks import (
     HOOKS_FOLDER,
     REFUSED_EXIT,
@@ -78,9 +79,9 @@ def project(root: Path, config: dict | None = None) -> Project:
 
 def found(target: Project) -> list[tuple[str, dict]]:
     pois = []
-    for check in git_hook_checks(target):
+    for check in git_hook_checks(target):  # checks, and the Gitleaks suite
         result = check.run()
-        assert result.status == "completed"
+        assert result.complete if isinstance(result, CheckSuite) else result.status == "completed"
         pois += [(type(poi).__name__, {key: value for key, value in poi.situation.items()
                                        if key != "project"}) for poi in result.pois()]
     return pois
