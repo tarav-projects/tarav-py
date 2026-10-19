@@ -88,6 +88,15 @@ def test_a_chains_check_raises_only_the_chains_pois():
         LampChain.Check(situation=HALL, raises=Unrelated).run()
 
 
+def test_a_chain_type_name_is_the_chain_which_one_then_what_it_is():
+    from tarav.l1.checks.chains import chain_type_name
+
+    assert chain_type_name("Tarav.Test.Chains.Lamp", "Check") == "Tarav.Test.Chains.Lamp.Check"
+    assert chain_type_name("Tarav.Test.Chains.Lamp", "POI", "On") == "Tarav.Test.Chains.Lamp.On.POI"
+    with pytest.raises(ValueError, match="'Resolution' is not a kind of chain Type"):
+        chain_type_name("Tarav.Test.Chains.Lamp", "Resolution", "On")
+
+
 def test_a_link_belongs_to_one_chain():
     with pytest.raises(TypeError, match="Tarav.Test.Chains.LampCheck already belongs to Tarav.Test.Chains.Lamp"):
         class Another(SituationChain):

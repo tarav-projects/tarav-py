@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready, 2026-10-19.
+Status: executing, 2026-10-19.
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -127,7 +127,7 @@ it, after the one-chain binding check.
 1. **Refactor — the helper and the Gitleaks names.** `chain_type_name`;
    the 4 Gitleaks chains, Checks, POIs and Actions renamed with it. Check:
    `test_git_gitleaks.py` with its literal names updated, test_situation_chains.
-   Status: pending.
+   Status: done.
 2. **Refactor — the Skillware names.** 19 chains and Checks
    (`l2/skw/chains.py`), 42 POIs (`l1/skw/pois.py`), Actions derived
    (`SkwPOI.__init_subclass__`; `l2/skw/pois.py` uses `poi_type.action`
@@ -162,3 +162,16 @@ closes on the next check run.
   names from the runtime; `ContextUnobserved` is the only Skillware POI
   outside a chain. Request 929 (another session) had removed the Publication
   chain: 19 Skillware chains.
+- Execute: start checkpoints 6173594 (tarav-py, the note) and 71557e8
+  (tarav-md, empty). Old names of the 130 chain, Check, POI and Action Types
+  of Gitleaks and Skillware, by Type id, kept before any rename in
+  `~/Documents/tarav/migrations/20261019-chain-type-names/old-names.json`.
+- Slice 1 (refactor): `CHAIN_KINDS` and `chain_type_name` in
+  `l1/checks/chains.py`; Gitleaks names built with it from four prefix
+  constants (`BINARY_CHAIN`, `SCAN_CHAIN`, `FINDING_CHAIN`, `STAGED_CHAIN`;
+  `STAGED` already names a scan kind). Tests: the four chains' names
+  literally (new, in test_git_gitleaks), the helper (new, in
+  test_situation_chains), the staged-action filter's POI name updated;
+  20 passed. Ruff: the same 24 pre-existing findings before and after
+  (file and rule). Breadcrumbs: 2 in chains.py (the kinds, the helper), 1 in
+  gitleaks.py (the prefixes); audits clean after position refresh.

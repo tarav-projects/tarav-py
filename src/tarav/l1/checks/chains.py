@@ -15,6 +15,25 @@ from tarav.l1.poi import fingerprint
 from . import CHECKS_WORKFLOW_SHIP, CheckPOI, Situation, SituationCheck
 
 
+# tarav.breadcrumb afcf1143dc66
+#: What a Type of a chain can be; its name ends on one of them.
+CHAIN_KINDS = ("Chain", "Check", "POI", "Action")
+
+
+# tarav.breadcrumb 3a8afa33228b
+def chain_type_name(chain: str, kind: str, *extras: str) -> str:
+    """The name of a Type of a chain: the chain, which one of its kind, then what it is.
+
+    `chain` is the prefix all the chain's Types share; `extras` say which one
+    when the chain has several of that kind, as the problem of a POI and of
+    the Action it opens: `chain_type_name("Tarav.Git.Gitleaks.Finding", "POI",
+    "Reported")` is `Tarav.Git.Gitleaks.Finding.Reported.POI`.
+    """
+    if kind not in CHAIN_KINDS:
+        raise ValueError(f"{kind!r} is not a kind of chain Type: {', '.join(CHAIN_KINDS)}")
+    return ".".join((chain, *extras, kind))
+
+
 # tarav.breadcrumb fca16d458df9
 # tarav.breadcrumb caab41739e07
 class SituationChain(TaravObject):
@@ -66,4 +85,4 @@ class SituationChain(TaravObject):
         return type(self).Check(situation=self.situation, **resources)
 
 
-__all__ = ["SituationChain"]
+__all__ = ["CHAIN_KINDS", "SituationChain", "chain_type_name"]

@@ -113,6 +113,29 @@ def _pois(root: Path):
     return list(GitleaksSuite(root).run().pois())
 
 
+def test_the_types_of_a_chain_are_named_after_it_and_end_on_what_they_are() -> None:
+    from tarav.l0.kernel import entity
+    from tarav.l1.actions import resolve_action
+    from tarav.l1.git.gitleaks import GitleaksBinaryChain, GitleaksScanChain, GitleaksStagedChain
+
+    create_runtime()
+    names = []
+    for chain in (GitleaksBinaryChain, GitleaksScanChain, GitleaksFindingChain, GitleaksStagedChain):
+        (poi,) = chain.POIs
+        names.append([entity(chain).name, entity(chain.Check).name, entity(poi).name,
+                      entity(resolve_action(poi.action)).name])
+    assert names == [
+        ["Tarav.Git.Gitleaks.Binary.Chain", "Tarav.Git.Gitleaks.Binary.Check",
+         "Tarav.Git.Gitleaks.Binary.Missing.POI", "Tarav.Git.Gitleaks.Binary.Missing.Action"],
+        ["Tarav.Git.Gitleaks.Scan.Chain", "Tarav.Git.Gitleaks.Scan.Check",
+         "Tarav.Git.Gitleaks.Scan.NeverScanned.POI", "Tarav.Git.Gitleaks.Scan.NeverScanned.Action"],
+        ["Tarav.Git.Gitleaks.Finding.Chain", "Tarav.Git.Gitleaks.Finding.Check",
+         "Tarav.Git.Gitleaks.Finding.Reported.POI", "Tarav.Git.Gitleaks.Finding.Reported.Action"],
+        ["Tarav.Git.Gitleaks.Staged.Chain", "Tarav.Git.Gitleaks.Staged.Check",
+         "Tarav.Git.Gitleaks.Staged.Reported.POI", "Tarav.Git.Gitleaks.Staged.Reported.Action"],
+    ]
+
+
 def test_a_reported_finding_still_in_history_raises_one_poi(repo: Path) -> None:
     assert [type(poi) for poi in _pois(repo)] == [GitleaksNeverScanned]
     commit = _commit_token(repo)
@@ -259,7 +282,7 @@ def _staged_actions(tmp_path: Path) -> list:
 
     runs = ActionRunStore(RecordRegistry(tmp_path / "records", create_runtime().records))
     return [run for run in runs.list()
-            if run.data["event"]["poi"]["type"] == "Tarav.Git.Gitleaks.Staged"]
+            if run.data["event"]["poi"]["type"] == "Tarav.Git.Gitleaks.Staged.Reported.POI"]
 
 
 def test_a_staged_secret_stops_the_commit_and_opens_an_action(hooked: Path, tmp_path: Path) -> None:

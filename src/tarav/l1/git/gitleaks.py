@@ -32,7 +32,7 @@ from tarav.l0.project import load_project_marker, project_marker_name
 from tarav.l1.actions.blessing import BLESSED
 from tarav.l1.actions.pois import BlessableResolution
 from tarav.l1.checks import CheckPOI, CheckResult, CheckSuite, SituationCheck
-from tarav.l1.checks.chains import SituationChain
+from tarav.l1.checks.chains import SituationChain, chain_type_name
 
 from .hooks import OVERRULE_ENV_VAR, GitHookCall, GitHookHandler, GitHookRefusal
 from .workflow import GIT_WORKFLOW_SHIP
@@ -40,6 +40,14 @@ from tarav.l0.kernel import LoadedRecord
 
 DEPOT_ENV_VAR = "TARAV_GITLEAKS_ROOT"
 IGNORE_FILE = ".gitleaksignore"
+
+# tarav.breadcrumb bdb845c98d11
+#: The chains of a repository's gitleaks reports; each names its Types after itself.
+BINARY_CHAIN = "Tarav.Git.Gitleaks.Binary"
+SCAN_CHAIN = "Tarav.Git.Gitleaks.Scan"
+FINDING_CHAIN = "Tarav.Git.Gitleaks.Finding"
+STAGED_CHAIN = "Tarav.Git.Gitleaks.Staged"
+
 HISTORY, STAGED = "history", "staged"
 
 
@@ -233,45 +241,45 @@ class GitleaksFinding(GitleaksPOI):
     Blessing its action appends its fingerprint to `.gitleaksignore`.
     """
 
-    action = "Tarav.Git.Gitleaks.Finding.Resolution"
+    action = chain_type_name(FINDING_CHAIN, "Action", "Reported")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("68470027-d0c6-48d6-8222-ad9bb2f9d837"),
-                          name="Tarav.Git.Gitleaks.Finding", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(FINDING_CHAIN, "POI", "Reported"), workflow=GIT_WORKFLOW_SHIP)
 
 
 class GitleaksStaged(GitleaksPOI):
     """The pre-commit hook found secrets in the changes being committed; closed by hand."""
 
-    action = "Tarav.Git.Gitleaks.Staged.Resolution"
+    action = chain_type_name(STAGED_CHAIN, "Action", "Reported")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("89113778-ee00-4879-af26-e899a63882a9"),
-                          name="Tarav.Git.Gitleaks.Staged", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(STAGED_CHAIN, "POI", "Reported"), workflow=GIT_WORKFLOW_SHIP)
 
 
 class GitleaksNeverScanned(GitleaksPOI):
     """No history scan of the repository is in the depot: `tarav git gitleaks scan` runs one."""
 
-    action = "Tarav.Git.Gitleaks.NeverScanned.Resolution"
+    action = chain_type_name(SCAN_CHAIN, "Action", "NeverScanned")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("11949f2c-848c-4e59-bd6f-8224a6ad9608"),
-                          name="Tarav.Git.Gitleaks.NeverScanned", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(SCAN_CHAIN, "POI", "NeverScanned"), workflow=GIT_WORKFLOW_SHIP)
 
 
 class GitleaksMissing(GitleaksPOI):
     """The gitleaks binary is not on PATH, so neither the hook nor a scan can run."""
 
-    action = "Tarav.Git.Gitleaks.Missing.Resolution"
+    action = chain_type_name(BINARY_CHAIN, "Action", "Missing")
 
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("587f7bb3-7e22-4a48-bcdf-bd39b2178db8"),
-                          name="Tarav.Git.Gitleaks.Missing", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(BINARY_CHAIN, "POI", "Missing"), workflow=GIT_WORKFLOW_SHIP)
 
 
 # tarav.breadcrumb 87e22e00cff6
@@ -281,7 +289,7 @@ class GitleaksFindingResolution(BlessableResolution):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("35ee9601-3c61-414d-a088-6b3c3353a7c0"),
-                          name="Tarav.Git.Gitleaks.Finding.Resolution", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(FINDING_CHAIN, "Action", "Reported"), workflow=GIT_WORKFLOW_SHIP)
 
     def output(self, name, run, context) -> dict:
         if name != BLESSED:
@@ -303,7 +311,7 @@ class GitleaksStagedResolution(BlessableResolution):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("df19e3d6-615c-4b72-a77a-c47e8b922d5d"),
-                          name="Tarav.Git.Gitleaks.Staged.Resolution", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(STAGED_CHAIN, "Action", "Reported"), workflow=GIT_WORKFLOW_SHIP)
 
 
 class GitleaksNeverScannedResolution(BlessableResolution):
@@ -312,7 +320,7 @@ class GitleaksNeverScannedResolution(BlessableResolution):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("aae0bf0b-25b6-4b08-8db8-275f9f516272"),
-                          name="Tarav.Git.Gitleaks.NeverScanned.Resolution", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(SCAN_CHAIN, "Action", "NeverScanned"), workflow=GIT_WORKFLOW_SHIP)
 
 
 class GitleaksMissingResolution(BlessableResolution):
@@ -321,7 +329,7 @@ class GitleaksMissingResolution(BlessableResolution):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("b4ee350f-2905-4b12-900d-1fe4289999c7"),
-                          name="Tarav.Git.Gitleaks.Missing.Resolution", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(BINARY_CHAIN, "Action", "Missing"), workflow=GIT_WORKFLOW_SHIP)
 
 
 class GitleaksHistory:
@@ -350,7 +358,7 @@ class GitleaksBinaryCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("c6fdb80b-ad27-43dd-8585-c98e759b9bf1"),
-                          name="Tarav.Git.Gitleaks.BinaryCheck", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(BINARY_CHAIN, "Check"), workflow=GIT_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, root: Path) -> None:
         super().__init__(situation=situation)
@@ -369,7 +377,7 @@ class GitleaksScanCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("a7deb3be-3559-4319-87e4-31b2c2cb030a"),
-                          name="Tarav.Git.Gitleaks.ScanCheck", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(SCAN_CHAIN, "Check"), workflow=GIT_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, root: Path, depot: GitleaksDepot) -> None:
         super().__init__(situation=situation)
@@ -391,7 +399,7 @@ class GitleaksFindingCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("dbb1b7cf-26fe-4248-ad86-7e7243abe5bc"),
-                          name="Tarav.Git.Gitleaks.FindingCheck", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(FINDING_CHAIN, "Check"), workflow=GIT_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, root: Path, finding: dict, history: GitleaksHistory,
                  run: str) -> None:
@@ -418,7 +426,7 @@ class GitleaksStagedCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("4bb94504-da07-4a10-b933-b5d6f4dd383a"),
-                          name="Tarav.Git.Gitleaks.StagedCheck", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(STAGED_CHAIN, "Check"), workflow=GIT_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, root: Path, run: GitleaksRun, overruled: bool) -> None:
         super().__init__(situation=situation)
@@ -445,7 +453,7 @@ class GitleaksBinaryChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("72c4e7e8-3b76-444b-bed0-4101046373ba"),
-                          name="Tarav.Git.Gitleaks.BinaryChain", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(BINARY_CHAIN, "Chain"), workflow=GIT_WORKFLOW_SHIP)
 
 
 class GitleaksScanChain(SituationChain):
@@ -457,7 +465,7 @@ class GitleaksScanChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("0cef175a-17a2-4763-971e-dc89516ed597"),
-                          name="Tarav.Git.Gitleaks.ScanChain", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(SCAN_CHAIN, "Chain"), workflow=GIT_WORKFLOW_SHIP)
 
 
 class GitleaksFindingChain(SituationChain):
@@ -469,7 +477,7 @@ class GitleaksFindingChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("b2b2aa9f-68f0-465b-98c9-fc9dabf5c73b"),
-                          name="Tarav.Git.Gitleaks.FindingChain", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(FINDING_CHAIN, "Chain"), workflow=GIT_WORKFLOW_SHIP)
 
 
 class GitleaksStagedChain(SituationChain):
@@ -481,7 +489,7 @@ class GitleaksStagedChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("2b1be100-9fdc-4c66-ae0d-f8c0b4f00b40"),
-                          name="Tarav.Git.Gitleaks.StagedChain", workflow=GIT_WORKFLOW_SHIP)
+                          name=chain_type_name(STAGED_CHAIN, "Chain"), workflow=GIT_WORKFLOW_SHIP)
 
 
 # tarav.breadcrumb 404e179f3f15
