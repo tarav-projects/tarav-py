@@ -1015,3 +1015,17 @@ def test_an_action_whose_checks_declare_no_repository_logs_nothing(stores):
     run = stores.pois.of(LampCheck("hall", 3).run().pois()[0])
     assert [set(entry) for entry in run.data["tape"]] == [{"type", "at"}]
 
+
+
+def test_the_status_names_a_chain_type_by_the_part_before_what_it_is():
+    from tarav.l3.status import status_text
+
+    project = {"name": "home", "root": "/home", "open": 4, "blessed": 0, "by_type": {
+        "Tarav.SKW.ContextFreshness.StaleContext.POI": 2,
+        "Tarav.Git.Gitleaks.Scan.NeverScanned.POI": 1,
+        "Tarav.Test.Actions.MarkerPOI": 1}}
+    result = {"project": project, "open": 4, "projects": [project],
+              "checks": {"checks": 3, "incomplete": 0},
+              "actions": {"opened": 0, "reopened": 0, "gone": 0}, "changes": []}
+    lines = status_text(result).splitlines()
+    assert "  home  4  StaleContext 2, NeverScanned 1, MarkerPOI 1" in lines

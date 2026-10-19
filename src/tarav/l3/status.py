@@ -16,6 +16,7 @@ from pathlib import Path
 
 from tarav.l0.kernel import entity
 from tarav.l1.checks import routine
+from tarav.l1.checks.chains import CHAIN_KINDS
 from tarav.l1.poi.rendering import check_header
 
 from .check import Progress, in_harness
@@ -24,8 +25,13 @@ LISTED = {"opened": "opened", "reopened": "reopened", "gone": "gone"}
 COUNTED = (("opened", "opened"), ("reopened", "reopened"), ("gone", "closed as gone"))
 
 
+# tarav.breadcrumb c9b5cc857607
 def _short(name: str) -> str:
-    return name.rsplit(".", 1)[-1]
+    """The last part of a Type name; for a Type of a chain, the part before what it is."""
+    parts = name.split(".")
+    if len(parts) > 1 and parts[-1] in CHAIN_KINDS:
+        parts.pop()
+    return parts[-1]
 
 
 def _kinds(names: Counter) -> dict[str, int]:

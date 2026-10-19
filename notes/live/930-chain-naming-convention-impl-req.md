@@ -138,7 +138,7 @@ it, after the one-chain binding check.
    commit in the records store. Check: 0 records with an old name;
    `tarav status` for tarav-py, tarav-md, taravangian-project: nothing
    opened or gone, same open counts (tarav-md 68 → 68; tarav-py 3).
-   Status: pending.
+   Status: done, with two deviations (Impl.Log).
 4. **Feature — the chain checks its names.** Validation in
    `SituationChain.__init_subclass__`; the test chain's POI declares its
    Action. Check: new tests, a chain with a misnamed Check, a POI without a
@@ -188,3 +188,31 @@ closes on the next check run.
   before and after. Breadcrumb: 1 on the derivation (`l1/skw/pois.py`);
   chains.py and l2 pois.py are mechanical renames, no new Breadcrumb; audits
   clean.
+- Slice 3 (migration): new names printed after slice 2
+  (`new-names.json`); `mapping.json` joins the 130 old and new names by
+  Type id, all distinct. `before.tar.gz` holds the store's `records/`; every
+  record round-tripped byte-identically under the Tarav writer's settings
+  (125 of 125). `migrate.py` (no Tarav import) rewrote 67 records; 66 are
+  the chains' actions (`action`, `event.check.type`, `event.poi.type`,
+  `event.poi.check`); records store commit a4b259f.
+  - Deviation 1: the 67th record is a `Tarav.Project.Root.ChildPOIs` action
+    (pereiros-projects) whose *situation* holds a child's POI Type name
+    (`src/tarav/l2/project/root.py`, `situation={"project": child, "type":
+    row["key"]}`). That POI's identity depends on a name, against the note's
+    premise. Its rewrite was reverted, so the record agrees with its id; on
+    that Project's next check run its action should close as gone and a new
+    one open under the new name. Left for the User: accept that, or give
+    ChildPOIs situations the Type id (which re-identifies every ChildPOIs
+    action once). `tarav status` was not run on pereiros-projects.
+  - Deviation 2: `tarav status` labels each Type by the last part of its
+    name (`_short`, `src/tarav/l3/status.py`), now always the kind: the
+    summary read `POI 1` and fell back to full names. Fixed: a name ending
+    on a chain kind shows the part before it. Test (new,
+    test_actions_workflow): `StaleContext 2, NeverScanned 1, MarkerPOI 1`;
+    it failed on the old `_short` and passes now.
+  - Checks: 0 records with an old name. `tarav status`: tarav-py, tarav-md
+    and taravangian-project "Changed in this run: nothing" for the chain
+    actions; tarav-md still 56 StaleContext, 6 OutputChanged, 1
+    NeverScanned open. Its run opened 2 `SurfaceWithUnsubmittedMarkers`
+    for Wiki notes of request 929 (another session), unrelated. Breadcrumb:
+    1 on `_short`.
