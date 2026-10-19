@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready, 2026-10-19.
+Status: complete, 2026-10-19.
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -94,16 +94,35 @@ Inspected 2026-10-19:
    `Blessing.reopens` compares them. Check: new test in
    `tests/test_actions_workflow.py` (a pinned detail that changes reopens a
    blessed action; one that stays does not; unpinned Types unchanged).
-   Status: pending.
+   Status: done (d93d624).
 2. Bug fix — Skillware POI identity. Situation without `surface_state`;
    relative paths in details; `SkwPOI` pins it. Check: a test that the same
    finding keeps its identity after an unrelated package edit; the existing
    `test_skw_poi.py` expectation updated; real `tarav status --project
    tarav-md` before and after, counting open Skillware actions. Status:
-   pending.
+   done (bec7bc8).
 3. Docs — ARCHITECTURE if it states the Skillware situation; Wiki daily.
-   Status: pending.
+   Status: done.
 
 ## Impl.Log
 
 - 2026-10-19: request written in the session above.
+- Execute (same session). Start checkpoint 3daed55.
+- Slice 1: `CheckPOI.pinned_details`; `Blessing.reopens` compares the pinned
+  details of the raised POI with the blessed POI's. New test failed first
+  (`(0, 0) == (0, 1)`: the blessing held although the pinned bulb changed),
+  then passed; 40 Actions and POI tests pass. Commit d93d624.
+- Slice 2: reproduction `test_a_problem_keeps_its_identity_when_another_
+  package_file_changes`: editing an unrelated package file gave the same
+  `SourceUncompiled` a new identity. `ProductDrift` was never affected (it
+  names its own state); `OutputChanged` needs a recorded generation, so the
+  test uses `SourceUncompiled`, which shares the general path. Fix:
+  `surface_state` in details, relative to the package's Project; `SkwPOI`
+  pins it. The existing assertion that details hold no `surface_state` never
+  reached the general path (only `ProductDrift` was raised there); it now
+  asserts that the situation holds none. Real surface, `tarav status
+  --project tarav-md` twice: run 1 "6 opened, 6 closed as gone" (the
+  one-time re-identification); run 2 "nothing". The re-identified action
+  402ede9b keeps only `{subject}` as its situation and 39 Project-relative
+  paths in its details. Suite 393 passed. Commit bec7bc8.
+- Slice 3: ARCHITECTURE's Blessings row states pinned details; Wiki daily.
