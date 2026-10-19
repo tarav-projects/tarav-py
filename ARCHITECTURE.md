@@ -762,8 +762,8 @@ derives from the Project Ship, while typed branch Ships derive from the root
 and their Types. These rules locate the initial objects; later reads load the
 stored membership and text without regeneration. Discussion, Model, and Archive
 are shallow typed Blocks with explanatory Lines, not alignment engines.
-<!-- tarav.context 0f5bad01:62c5e3e4c77f1cf3 -->
-<!-- tarav.context 0f5bad01:89b3bb12c584cdae -->
+<!-- tarav.breadcrumb 6b8104da86a8 -->
+<!-- tarav.breadcrumb 785a4a323c9c -->
 
 Assertions owns the common Assertable and shallow TaravAssertion contracts.
 Scoring's `assertions` module supplies its identified, case-producing Assertion

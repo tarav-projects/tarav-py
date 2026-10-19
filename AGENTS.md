@@ -166,6 +166,13 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 - Environment variables and machine-state paths retain the names encoded by
   their current storage contracts until an explicit migration changes them.
 
+- `Project.notebook()` selects its partition of the shared Line Notebook;
+  `.create()` seeds a Project Block with Discussion, Model, and Archive
+  sibling Blocks once. Reads never provision or regenerate that layout.
+  Project Types customize the initial layout with `notebook_layout()`.
+  `tarav.l1.notebook.Notebook` uses the Notebook Workflow's standard
+  Record Registry partition and supports explicit save/load and Git commits.
+
 ## Native surfaces and SKW
 
 - `tarav.l1.skw.code` is the common developer-side source workflow. It owns

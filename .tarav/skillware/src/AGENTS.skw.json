@@ -182,7 +182,6 @@
         "  Project Types customize the initial layout with `notebook_layout()`.",
         "  `tarav.l1.notebook.Notebook` uses the Notebook Workflow's standard",
         "  Record Registry partition and supports explicit save/load and Git commits.",
-        "  <!-- tarav.context 0f5bad01:62c5e3e4c77f1cf3 -->",
         "",
         "## Native surfaces and SKW",
         "",

@@ -136,3 +136,20 @@ The feature test failed first because Notebook did not exist. Notebook now
 uses RecordMap without storage creation on reads, saves exact registered
 Records, and rebinds the connected context through one per-load identity map.
 Fourteen Notebook/Lines tests pass; Ruff passes. No change to Line/Block schema.
+
+### Execute — slice 2
+
+Typed ProjectBlock, DiscussionBlock, ModelBlock, and ArchiveBlock are registered.
+Project.notebook() selects a binding; create() seeds its layout and explanatory
+Lines once. Project.notebook_layout() customizes the default Types. Detached
+Projects work because association uses identity, not folder location.
+The feature test first failed for the absent Types. The focused Notebook,
+Project, and architecture run passed (53 tests). An architecture test caught
+an unnecessarily broad import of l1.project; importing its base module keeps
+the existing module ownership graph acyclic. Ruff passed.
+
+Updated architecture and the authoritative agents-file Skillware source;
+produced and compiled AGENTS.md. JSON source has no registered native inline
+Breadcrumb convention; supported source-code, test, and Markdown surfaces
+carry the selected design Turns instead. No editing policy or check engine
+was added. Slice 1 commit: `2dc187fe`.

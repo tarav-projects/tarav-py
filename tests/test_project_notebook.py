@@ -2,8 +2,8 @@ from uuid import uuid4
 
 from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.lines import Line
-from tarav.l1.notebook import Notebook
-# tarav.context 0f5bad01:62c5e3e4c77f1cf3
+from tarav.l1.notebook import Notebook, NotebookWorkflow
+# tarav.breadcrumb 2be65786dd7c
 from tarav.l1.notebook.blocks import (
     ArchiveBlock, DiscussionBlock, ModelBlock, ProjectBlock,
 )
@@ -61,5 +61,7 @@ def test_project_type_can_choose_a_layout(tmp_path):
 
 def test_notebook_types_are_registered_without_project_dependency(tmp_path):
     runtime = create_runtime()
+    assert runtime.workflows.get("Tarav.Workflow.Notebook") is NotebookWorkflow
     for cls in (Notebook, ProjectBlock, DiscussionBlock, ModelBlock, ArchiveBlock):
         assert runtime.records.resolve_ship(entity(cls).id) is cls
+        assert entity(cls).workflow is NotebookWorkflow()

@@ -58,7 +58,7 @@ class Project(TaravProject):
 
         return ProjectDecisions(self)
 
-    # tarav.context 0f5bad01:62c5e3e4c77f1cf3
+    # tarav.breadcrumb 5497fcfeb1d2
     def notebook_layout(self):
         """The initial layout; Project subtypes may choose other Block Types."""
         from tarav.l1.notebook.blocks import ArchiveBlock, DiscussionBlock, ModelBlock

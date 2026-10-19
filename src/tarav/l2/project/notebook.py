@@ -10,8 +10,8 @@ from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
 from tarav.l1.project.base import TaravProject
 
 
-# tarav.context 0f5bad01:62c5e3e4c77f1cf3
-# tarav.context 0f5bad01:89b3bb12c584cdae
+# tarav.breadcrumb 0881a1b88687
+# tarav.breadcrumb 8eafd1f9d9e2
 class ProjectNotebook(TaravType):
     """Association and initial layout; opening never rewrites saved meaning."""
 
