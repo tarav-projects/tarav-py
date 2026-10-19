@@ -392,21 +392,27 @@ class SkillReadingGraph(ReadingGraph):
 
         This is verification for maintainers; the analysis never reads text.
         """
-        findings = []
-        for identity, links in self.links.items():
-            document, block = self.bindings[identity]
-            content = block.get('content')
-            if content is None:
-                continue
-            text = '\n'.join(block.content_lines())
-            for declaration, destination, target in links:
-                prose = declaration.prose
-                node = destination if destination is not None else self.by_ship.get(target)
-                if prose is None or node is None:
-                    continue
-                findings.extend(found.at(block=str(block.id), path=document.key, label=block.label)
-                                for found in prose.findings(text, self.href(node, document.target)))
-        return findings
+        return [found for identity, links in self.links.items() for link in links
+                for found in self.link_prose_findings(identity, link)]
+
+    def prose_href(self, identity, link):
+        """The href the text of a block should hold for one declared link, or None
+        when the link has no prose part or no block to point at."""
+        declaration, destination, target = link
+        node = destination if destination is not None else self.by_ship.get(target)
+        if declaration.prose is None or node is None:
+            return None
+        return self.href(node, self.bindings[identity][0].target)
+
+    def link_prose_findings(self, identity, link):
+        """What the prose part of one declared link finds in the text of its block."""
+        document, block = self.bindings[identity]
+        href = self.prose_href(identity, link)
+        if href is None or block.get('content') is None:
+            return []
+        text = '\n'.join(block.content_lines())
+        return [found.at(block=str(block.id), path=document.key, label=block.label)
+                for found in link[0].prose.findings(text, href)]
 
     def document_text(self, document):
         parts = []

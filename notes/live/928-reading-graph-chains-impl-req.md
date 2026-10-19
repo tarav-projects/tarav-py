@@ -80,7 +80,7 @@ Data shape (added to `l2/skw/chains.py`; `reading_checks.py` is removed):
 
 1. **Refactor — per-link prose in l1.** `SkillReadingGraph.link_prose_findings(identity,
    link)` for one declared link; `prose_findings()` composes it. Check:
-   SKW tests green. Status: pending.
+   SKW tests green. Status: done.
 2. **Feature — the reading chains.** The seven chains, `ReadingAnalysis`,
    the Suite yields them; `reading_checks.py`, `MissingMarkdownLink.from_finding`
    go. Check: new tests (MissingContext situation with its path, two
@@ -97,3 +97,10 @@ a check needing a second `analyze()`.
 - Design: inspected `l1/skw/loading.py` (`SkillReadingGraph`, `analyze`,
   `prose_findings`), `l2/skw/reading_checks.py`, `l2/skw/chains.py`, the
   tests, and the reading Wiki note above.
+- Execute: start checkpoint 30a006a (the note only).
+- Slice 1 (refactor): `prose_href(identity, link)` and
+  `link_prose_findings(identity, link)`; `prose_findings()` composes them.
+  Check: SKW tests (test_skw_poi, test_skw_chains, test_skills,
+  test_project_agents) passed, including the LinkProse test unchanged; ruff
+  clean; loading.py audit clean after position refresh. No new Breadcrumb
+  (a mechanical split).
