@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: design ready, 2026-10-19.
+Status: complete, 2026-10-19.
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -103,7 +103,8 @@ outside their chain; logged for the request that brings the Project in.
 
 Product project: tarav-py. Wiki: `notes/wiki/` (this repository). Relevant:
 `notes/wiki/situation-chains.md`; daily `notes/wiki/daily/2026-10-19.md`.
-Supporting turns: session alias 3537df0a, prefixes above. Capture: pending.
+Supporting turns: session alias 3537df0a, prefixes above. Capture: done
+(daily note and `situation-chains.md` "Implemented: the Skillware analysis").
 
 ## Execution.Plan
 
@@ -216,3 +217,10 @@ tarav-md growing past ~2× (report it).
   `tests/test_project_agents.py` 54 passed; `tarav check --project tarav-py`:
   3 POIs (NeverScanned, 2 test markers), no ProductDrift. Audits of AGENTS.md
   and ARCHITECTURE.md clean after position refresh.
+- Verification: `tarav status --project tarav-py --all`: 62 checks, all
+  completed, no test POI; 3 opened (NeverScanned and the two deliberate
+  MarkerPOI fixtures), unrelated to this request.
+- Outcome: slices 605e620 (1), f1333c9 (2), c51605c
+  (3), fea8977 (4); partition commit 14f2fd6. Open: the reading-graph checks
+  and the agents file as chains; the positive-result POI; Action Types for
+  POI Types outside Skillware and Gitleaks.
