@@ -20,6 +20,10 @@ from .identity import SKW_SKILLS_WORKFLOW_SHIP
 class SkwPOI(CheckPOI):
     """A workflow-owned SKW POI explained by the bound analysis Check."""
 
+    # tarav.breadcrumb 121bc811e514
+    #: A blessing accepts the package as it stood; a later edit reopens it.
+    pinned_details = ("surface_state",)
+
     # tarav.breadcrumb 4d33a68da409
     #: What a POI of this Type says, as one literal sentence without a full stop.
     statement: ClassVar[str] = ""
@@ -77,14 +81,14 @@ class SkwPOI(CheckPOI):
         or Project by its UUID, as `{"skill": id}` or `{"project": id}`.
         `state` is the file state
         of a package, when the check has one. This is the general Skillware
-        line: the place of the finding, plus that state. A Type that can name
-        its own state overrides it.
+        line: the place of the finding is the situation; that state is a
+        detail a blessing pins. A Type that can name its own state overrides it.
         """
         subject = {**owner,
                    **{k: finding[k] for k in ('block', 'path', 'target', 'delivery')
                       if k in finding}}
-        held = {} if state is None else {"surface_state": state}
-        return cls.poi(check, situation={"subject": subject, **held}, finding=finding)
+        held = None if state is None else {"surface_state": state}
+        return cls.poi(check, situation={"subject": subject}, finding=finding, details=held)
 
 
 # tarav.breadcrumb d745f68d7e94

@@ -52,9 +52,9 @@ class ReadingGraphCheck(Check):
         where = f"{binding[0].key}: {binding[1].label}" if binding else None
         return finding.poi.poi(
             self,
-            situation={"subject": subject, "surface_state": state},
+            situation={"subject": subject},
             finding=finding,
-            details={"loading": str(self.graph.source)},
+            details={"loading": str(self.graph.source), "surface_state": state},
             where=where,
         )
 

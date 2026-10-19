@@ -6,6 +6,7 @@ their POI Type (tarav.l1.skw.pois). The checks here bind a finding to the
 package it was found in and raise its POI.
 """
 from copy import deepcopy
+import os
 
 from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TypeShip
@@ -223,10 +224,15 @@ def freshness_checks(package, *, skip_unresolved=False, documents=None):
 FRESHNESS = (StaleContext, StaleGeneration)
 
 
+# tarav.breadcrumb f47dbffc1e5d
 def surface_state(package):
-    """Current declared source and product bytes for POI evidence editions."""
-    # Include declared source/lock bytes so an acceptance cannot float across
-    # later source edits, even when the checker emits the same compact operands.
+    """Current declared source and product bytes, by path relative to the package's Project.
+
+    A detail of the POIs, never part of their situation: it changes with any
+    file of the package, and a problem keeps its identity across unrelated
+    edits. Skillware POIs pin it, so a blessing cannot float across later
+    source edits.
+    """
     from .publication import digest
     paths = {package.depot / 'main.json', package.depot / 'lock.json'}
     paths.update(package.depot_path(s) for s in package.sources)
@@ -234,12 +240,14 @@ def surface_state(package):
     paths.update(package.path(s) for s in package.files)
     if package.loading_file is not None:
         paths.add(package.depot_path(package.loading_file))
+    project = package.project
     state = {}
     for path in sorted(paths):
+        key = os.path.relpath(path, project)
         try:
-            state[str(path)] = digest(path.read_bytes().hex())
+            state[key] = digest(path.read_bytes().hex())
         except OSError:
-            state[str(path)] = None
+            state[key] = None
     return state
 
 

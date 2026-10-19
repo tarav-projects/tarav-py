@@ -313,8 +313,9 @@ def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
     assert all("kind" not in found.to_json() for found in findings)
     for poi in _skill(root).checks.run().pois():
         if isinstance(poi, skw.SkwPOI):
-            # the details repeat nothing of the situation, and name no kind
-            assert "finding" not in poi.details and "surface_state" not in poi.details
+            # the details repeat nothing of the situation, and name no kind;
+            # the package state is a detail, never part of the situation
+            assert "finding" not in poi.details and "surface_state" not in poi.situation
             assert "kind" not in poi.records.to_record()["details"]
             assert isinstance(poi, skw.ProductDrift) or poi.message.startswith(
                 type(poi).statement)
@@ -369,3 +370,37 @@ def test_a_declared_link_is_checked_only_by_its_prose_part(tmp_path):
     body["content"] = ["Read on.", ""]
     del link["prose"]
     assert reading_pois() == []
+
+
+def test_a_problem_keeps_its_identity_when_another_package_file_changes(tmp_path):
+    from tarav.l1.skw import pois as skw
+
+    root = _layout(tmp_path)
+    source, data = _document_source(root)
+    data["blocks"][1]["content"] = ["The program prints one."]
+    source.write_text(json.dumps(data))
+    (root / "context.txt").write_text("available")
+    (root / "notes.md").write_text("notes\n")
+    skill = _skill(root)
+    main = _depot(root) / "main.json"
+    main.write_text(json.dumps({**json.loads(main.read_text()), "files": ["explanation.md", "notes.md"]}))
+    assert _document(source).compile()["written"]
+    data["blocks"][0]["content"] = ["# Explanation, edited", ""]  # the source changed after compiling
+    source.write_text(json.dumps(data))
+
+    def drift():
+        package = create_runtime().load_object(_depot(root))
+        (poi,) = [poi for poi in package.checks.run().pois() if isinstance(poi, skw.SourceUncompiled)]
+        return poi
+
+    before = drift()
+    (root / "notes.md").write_text("notes, edited\n")  # unrelated to the drifted block
+    after = drift()
+
+    assert skill is not None
+    assert after.identity == before.identity
+    assert "surface_state" not in before.situation
+    state = after.details["surface_state"]
+    assert "skills/explain/notes.md" in state and ".tarav/skillware/skills/explain/main.json" in state
+    assert state["skills/explain/notes.md"] != before.details["surface_state"]["skills/explain/notes.md"]
+    assert skw.SourceUncompiled.pinned_details == ("surface_state",)
