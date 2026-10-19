@@ -23,16 +23,17 @@ from tarav.l1.chatlas.paths import default_chatlas_root
 JsonObject = dict[str, Any]
 
 INDEX_PATH = Path("index") / "normal-models.sqlite"
-INDEX_SCHEMA_VERSION = 2
+INDEX_SCHEMA_VERSION = 3
 INDEXED_PARTS = ("messages", "turns")
 POLICIES = ("missing", "stale", "all")
-SESSION_FACTS = ("provider", "instance", "session_id", "project_path", "last_activity_at")
+SESSION_FACTS = ("provider", "instance", "session_id", "project_path", "created_at",
+                 "last_activity_at")
 
 # tarav.breadcrumb ac4e1f989ab7
 _SCHEMA = """
 create table if not exists sessions(
     identity text primary key, provider text, instance text, session_id text,
-    project_path text, last_activity_at text);
+    project_path text, created_at text, last_activity_at text);
 create table if not exists parts(
     identity text, part text, version text, primary key(identity, part));
 create table if not exists messages(
@@ -187,7 +188,7 @@ class NormalModelsIndex:
             for table in ("messages", "turns", "parts", "sessions"):
                 connection.execute(f"delete from {table} where identity = ?", (identity,))
             connection.execute(
-                "insert into sessions values (?, ?, ?, ?, ?, ?)",
+                "insert into sessions values (?, ?, ?, ?, ?, ?, ?)",
                 (identity, *(row.get(key) for key in SESSION_FACTS)))
             for position, message in enumerate(messages):
                 cursor = connection.execute(

@@ -150,3 +150,42 @@ def test_the_runtime_search_service_routes_to_chatlas(depot: Depot) -> None:
 
     assert _texts(result) == ["search the CACHE again"]
     assert result.hits[0].engines == ("chatlas",)
+
+
+def _chats(result) -> list[tuple[str, dict]]:
+    return [(hit.value.session["session_id"], hit.value.stats) for hit in result.hits]
+
+
+def test_chats_are_rows_with_their_size_and_hits(depot: Depot) -> None:
+    depot.prepare()
+
+    browsed = depot.search(target="chats")
+    assert _chats(browsed) == [
+        ("new-chat", {"turns": 2, "user_turns": 1, "hits": None}),
+        ("old-chat", {"turns": 2, "user_turns": 1, "hits": None}),
+    ]
+    assert browsed.hits[0].value.messages[0]["text"] == "search the CACHE again"
+    assert [chat for chat, _ in _chats(depot.search(target="chats", order="oldest"))] == [
+        "old-chat", "new-chat"]
+
+    matched = depot.search("cache", target="chats", order="hits")
+    assert _chats(matched) == [
+        ("old-chat", {"turns": 2, "user_turns": 1, "hits": 2}),
+        ("new-chat", {"turns": 2, "user_turns": 1, "hits": 1}),
+    ]
+    assert _chats(depot.search("cache", target="chats", side="agent")) == [
+        ("old-chat", {"turns": 2, "user_turns": 1, "hits": 1})]
+    assert _chats(depot.search(target="chats", min_turns=3)) == []
+
+
+def test_turns_without_text_page_through_newest_first(depot: Depot) -> None:
+    depot.prepare()
+
+    first = depot.search(side="user", max_hits=1)
+    second = depot.search(side="user", max_hits=1, offset=1)
+
+    assert _texts(first) == ["search the CACHE again"]
+    assert _texts(second) == ["Where is the cache?"]
+    assert _texts(depot.search("cache", order="relevance", max_hits=1)) != []
+    with pytest.raises(ValueError, match="order"):
+        ChatlasSearchQuery(target="turns", order="size")
