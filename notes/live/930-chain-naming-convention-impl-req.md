@@ -143,7 +143,7 @@ it, after the one-chain binding check.
    `SituationChain.__init_subclass__`; the test chain's POI declares its
    Action. Check: new tests, a chain with a misnamed Check, a POI without a
    problem, and a POI naming another Action each fail at definition with a
-   literal message; default suite. Status: pending.
+   literal message; default suite. Status: done.
 5. **Docs.** The convention in the chains design note, the
    `SituationChain` docstring, the tarav-md depot `AGENTS.md` line. Status:
    pending.
@@ -216,3 +216,18 @@ closes on the next check run.
     NeverScanned open. Its run opened 2 `SurfaceWithUnsubmittedMarkers`
     for Wiki notes of request 929 (another session), unrelated. Breadcrumb:
     1 on `_short`.
+- Slice 4 (feature): `SituationChain._check_names`, called by
+  `__init_subclass__` after the one-chain check and before binding, so a
+  refused chain binds nothing. The test chain is `Tarav.Test.Chains.Lamp.*`
+  and its POI declares its Action. Tests (new, parametrized): a chain not
+  ending in `.Chain`, a misnamed Check, a POI without a problem, and a POI
+  naming the generic `Tarav.Actions.POI.Resolution` each fail at definition
+  with a literal message, binding nothing. The no-problem case first failed
+  on a parsing slip (`Desk.POI` minus the prefix is `POI`, which has no
+  `.POI` to strip); fixed by slicing. Default suite 412 passed in 140 s.
+  It also showed one effect of slice 3's label fix, now expected: a plain
+  `Tarav.Checks.POI` is labelled `Checks` (the part before its kind), not
+  `POI`; older non-chain Types ending on a kind (`Tarav.Project.Files.POI`,
+  `Tarav.CLI.Command.Metadata.POI`) are labelled by their area too. Ruff:
+  the same 2 import-order findings before and after. Breadcrumb: 1 on
+  `_check_names`.

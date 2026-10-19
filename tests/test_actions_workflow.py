@@ -857,7 +857,8 @@ def test_a_poi_that_does_not_allow_a_blessing_is_not_blessed(tmp_path, registry,
     assert report_project_status(home) == 1  # the plain finding is still open
     out = capsys.readouterr().out
     assert f"{tmp_path.name}: 1 open action" in out and "Changed in this run: nothing" in out
-    assert "  1  POI 1  (1 blessed)" in out  # the open one by Type, the blessed one counted
+    # the open one by Type (Tarav.Checks.POI, by the part before what it is), the blessed one counted
+    assert "  1  Checks 1  (1 blessed)" in out
 
     # all that is raised is blessed; the checks no longer produce the flags POI, so it is gone
     assert report_project_status(_Home(tmp_path, LampCheck("hall", 3))) == 0

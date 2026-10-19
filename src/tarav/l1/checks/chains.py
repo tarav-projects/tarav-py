@@ -66,8 +66,35 @@ class SituationChain(TaravObject):
             bound = link.__dict__.get("chain")
             if bound is not None and bound is not cls:
                 raise TypeError(f"{entity(link).name} already belongs to {entity(bound).name}")
+        cls._check_names()
         for link in (cls.Check, *cls.POIs):
             link.chain = cls
+
+    # tarav.breadcrumb 6caf5bf9ea70
+    @classmethod
+    def _check_names(cls) -> None:
+        """Every Type of the chain is named after it and ends on what it is (`chain_type_name`).
+
+        A POI and the Action it opens share the problem that says which one
+        they are, so a POI Type names its own Action Type.
+        """
+        name = entity(cls).name
+        if not name.endswith(".Chain"):
+            raise TypeError(f"A chain's name ends in .Chain: {name}")
+        prefix = name.removesuffix(".Chain")
+        check = entity(cls.Check).name
+        if check != chain_type_name(prefix, "Check"):
+            raise TypeError(f"The Check of {name} is named {chain_type_name(prefix, 'Check')}, "
+                            f"not {check}")
+        for poi_type in cls.POIs:
+            poi = entity(poi_type).name
+            start, end = len(prefix) + 1, len(poi) - len(".POI")
+            problem = poi[start:end] if start < end else ""
+            if not poi.startswith(prefix + ".") or not poi.endswith(".POI") or not problem:
+                raise TypeError(f"A POI of {name} is named {prefix}.<problem>.POI, not {poi}")
+            action = chain_type_name(prefix, "Action", problem)
+            if poi_type.action != action:
+                raise TypeError(f"{poi} names {action} as its Action, not {poi_type.action}")
 
     def __init__(self, situation: Mapping[str, object] | LiteRecord) -> None:
         super().__init__()
