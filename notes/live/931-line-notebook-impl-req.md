@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: implemented; closure verification in progress. Knowledge.Surface: wiki.
+Status: complete. Knowledge.Surface: wiki.
 Alignment.Mode: Interactive. Product: tarav-py. Wiki owner: tarav-md.
 
 Implement Notebook storage over the existing Lines primitives, a Project
@@ -124,7 +124,7 @@ RecordMap, GitRepository, Project integrations, runtime wiring, and source
 ship records. Data shape first and reuse of RecordMap keep storage minimal.
 No obsolete active Notebook implementation needs removal.
 
-Todo: execute slices 2–3 and closure. Product tree was clean at inspection.
+Execution completed through slice 3 and closure. Product tree was clean at inspection.
 tarav-md has unrelated ongoing Explain Me skill edits; preserve them under
 the evidence workflow's checkpoint rules.
 
@@ -192,3 +192,27 @@ reachable from the Project root. The verification initially reloaded the
 whole tree repeatedly inside a loop; interrupted that read-only check and
 reran it using one loaded tree. The corrected check completed successfully.
 Ruff and whitespace checks pass.
+
+### Closure
+
+The umbrella status --all ran 1,175 checks, all completed, with no new actions.
+The 78 remaining actions are outside this scope: 71 in tarav-md (Skillware and
+harness/Breadcrumb findings), four in the root harness, and three in tarav-py
+(two fixture markers and a pre-existing gitleaks report). The run reported no
+Notebook or import test failures. Focused tests, source Ruff, the actual reload
+comparison, and Wiki parsing all passed.
+
+Slice 3 code commit: `57cf4da0`. Imported data commit: `a14e4955`.
+Wiki capture commit: `082750a2`, covering Notebook implementation/usage and
+the 2026-10-19 daily narrative. Fifteen new Wiki Breadcrumbs were submitted
+and audited without failures. Product Python and Markdown surfaces were
+captured and audited per slice; stale positions were refreshed. The Skillware
+JSON source has no native Breadcrumb convention, as recorded above. Registry
+data and raw retained JSON are contextualized by their evidence-backed commits
+and the source-selection report rather than invented inline JSON markers.
+
+Concurrent Attic implementation work appeared during execution, including
+request 932 and changes to runtime, agents source, architecture, dependency,
+and test surfaces. Those pending external edits remain outside the Notebook
+completion scope. Notebook did not restore legacy workflows or implement
+general Lineage, semantic alignment, mutation approvals, or new CLI commands.
