@@ -87,7 +87,7 @@ Data shape (added to `l2/skw/chains.py`; `reading_checks.py` is removed):
    undeclared blocks are two situations with a relative source, the
    produced reading Checks of a package), LinkProse test adapted, default
    suite green; tarav-md: 0 reading POIs, status "nothing". Status: done.
-3. **Docs.** ARCHITECTURE `skw` row, AGENTS source sentence, Wiki. Status: pending.
+3. **Docs.** ARCHITECTURE `skw` row, AGENTS source sentence, Wiki. Status: done.
 
 Deviation triggers: a reading POI appearing or disappearing on tarav-md;
 a check needing a second `analyze()`.
@@ -125,3 +125,9 @@ a check needing a second `analyze()`.
   ba01fcb9a242 on `ReadingPathCheck`; 0172e2d45dbd, 15c7f0c5dc4c,
   d17fbd7e081f moved from the removed module to `ReadingAnalysis`,
   `ReadingAnalysis.ship` and `LinkProseCheck`; audits clean.
+- Slice 3 (docs): AGENTS.md changed through its source
+  (`.tarav/skillware/src/AGENTS.skw.json`), compiled: written, no findings;
+  the chain sentence now names the reading graph and leaves only the agents
+  file outside chains. ARCHITECTURE `skw` row: `ReadingAnalysis` and the
+  reading Checks. Checks: test_architecture, test_project_agents 54 passed;
+  audits clean after position refresh.
