@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: in execution, 2026-10-19.
+Status: complete, 2026-10-19.
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -177,7 +177,7 @@ Core data shape: `SituationChain` with class fields `Situation`, `Check`,
    identities; real `tarav status` on a repository with a scan. Status:
    done.
 4. Docs — ARCHITECTURE (Checks, POIs, Actions, Blessings rows),
-   `l1/poi/README.md`, AGENTS POI bullets. Status: pending.
+   `l1/poi/README.md`, AGENTS POI bullets. Status: done.
 
 Deviation triggers: a link that cannot be bound without import cycles; a
 check of the Actions workflow that depends on the generic Action Type name.
@@ -225,3 +225,14 @@ check of the Actions workflow that depends on the generic Action Type name.
   covered by the tests; `tarav status --project tarav-md` twice: 68 open,
   "nothing"; its NeverScanned action kept its id and now records
   `Tarav.Git.Gitleaks.ScanCheck` and the `Tarav.Git.Gitleaks.Suite` detector.
+- Slice 4: AGENTS (Situation Chain bullet, Action Types, blessing as an
+  exit, the Gitleaks Suite), ARCHITECTURE (Gitleaks bullet; `actions`,
+  `blessings`, `checks` rows), `l1/poi/README.md` (blessing is not a POI
+  capability). `tests/test_architecture.py` 47 passed. Breadcrumbs: two on
+  the AGENTS bullet; audits of AGENTS, ARCHITECTURE and the README clean
+  after `--refresh-positions` (edits had moved later labels).
+- Outcome: `SituationChain` exists and Gitleaks is its first user; blessing
+  is an Action exit; the generic Resolution closes only as gone. Remaining
+  for later requests: regroup the other checks into chains with atomic
+  Checks (Skillware analysis first), the general positive-result POI, and an
+  Action Type per POI Type for POIs outside chains.

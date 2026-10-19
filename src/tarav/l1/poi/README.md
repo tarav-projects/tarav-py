@@ -1,4 +1,4 @@
-# POIs and blessings
+# POIs
 
 `POI` is the neutral point-of-interest base: the statement that an event
 happened, with a Type and an elementary message, as an error has. There are
@@ -28,18 +28,11 @@ available on every POI: it raises `POIError`, which carries the whole POI as
 <!-- tarav.breadcrumb 3fdc50f3f56f -->
 <!-- tarav.breadcrumb 9f6ed19f840a -->
 
-Checks and blessings are separate workflows:
-
-```python
-class StaleOutput(CheckPOI, BlessablePOI):
-    ...
-```
-
-`CheckPOI` binds an occurrence to the `Check` that explains it.
-`BlessablePOI` marks, by inheritance, a POI whose action may be closed by a
-blessing: closed although the situation still exists, with a reason. A POI
-is not blessable unless its concrete type inherits that capability. The
-`Blessing` is the closing record of the action; the POI is still raised.
+`CheckPOI` binds an occurrence to the `Check` that explains it, and names the
+Action Type its action is (`action`). Blessing is not a POI capability: it is
+an exit of the Action Type (`BlessableResolution`, `tarav.l1.actions.pois`),
+one closing path of a Situation Chain's action (`tarav.l1.checks.chains`).
+The `Blessing` is the closing record of the action; the POI is still raised.
 
 A POI is a flag between detecting and working. It is momentary and owns
 nothing: whether it is blessed, and how its action stands, is asked of the
