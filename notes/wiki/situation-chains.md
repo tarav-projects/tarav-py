@@ -69,3 +69,21 @@ re-reading the latest one); it is the template for any external tool.
 - A general positive-result POI ("checked and found fine", with no Action)
   was named as useful for every chain; not designed yet.
   <!-- tarav.breadcrumb 9824f320608c -->
+
+## Implemented so far (request 926)
+
+The User left the open choices to the Agent.
+<!-- tarav.breadcrumb ee98c2aa4a43 -->
+
+- `tarav.l1.checks.chains.SituationChain` names a chain's atomic
+  `SituationCheck` and its POI Types and binds them (`chain`); a chain's
+  Check raises only its POIs; an instance is one situation. POI Types name
+  their Action Types (`action`), so chains do not import Actions.
+- Blessing is an exit of `BlessableResolution` Action Types
+  (`tarav.l1.actions.pois`); `BlessablePOI` is gone, and the generic
+  `Tarav.Actions.POI.Resolution` closes only as gone. Each blessable POI Type
+  names its own Action Type.
+- Gitleaks is the first chain user: `GitleaksSuite` revisits the native
+  report and yields one atomic Check per situation (`l1/git/gitleaks.py`).
+- Not yet: the other checks (Skillware analysis first), the positive-result
+  POI, an Action Type for every POI Type outside chains.
