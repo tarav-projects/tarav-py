@@ -83,3 +83,25 @@ Focused tests: `tests/test_scoped_lines.py` and
 `tests/scoring/test_line_support_scenario.py` passed (18 tests before the final
 binding-order case). Ruff and `git diff --check` passed. Product Breadcrumb
 capture is pending because Chatlas refresh cannot write its cache.
+Final focused run: 19 passed. Slice commit: `222cfb65`.
+
+### Legacy Model dependency found
+
+The active Model constructor is disabled, but `l2.unsorted` still uses the
+Model handler and Model record types across storage, CLI, View, projection,
+rendering, and retained type registration. Deleting `l2.models` alone breaks
+those imports and historical record reading. Two coherent retirement scopes
+remain: remove only the active Model workflow/Project facade while retaining
+the historical Diagram application, or retire that entire application and its
+CLI/records together. This is a material scope decision in Interactive mode.
+
+Architecture contract updated for the new l1 core. Focused architecture,
+Project, scoring, and Lines suites passed (72 tests). The broader Model
+retirement and Wiki capture remain pending.
+
+Read-only `tarav check --project . --all` completed 63 checks with three
+pre-existing POIs unrelated to this slice (one gitleaks finding and two test
+fixture markers). `tarav status --project . --all` could not finish because
+its Actions registry is outside the writable sandbox; the Project index and
+usage traces likewise could not be updated. No POI was treated as an
+instruction to change unrelated code.

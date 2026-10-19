@@ -695,7 +695,8 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
 | `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
 | `l1.git`, `l2.git`, `l3.git` | The Git Workflow spans repository mechanics, commit-message Breadcrumb integration, and installed CLI composition. |
-| `lines` | LinesWorkflow owns Line, Block, Collection, their editions and relationships, projections, rendering, and LineGroundingAssertion semantics. |
+| `l1.lines` | LinesWorkflow owns identified natural-language Lines and recursive typed Blocks. Each Line has one authoring Block; its direct Block and parent chain bound interpretation. A Block orders its direct Lines and child Blocks. The Python class supplies Block type; external graph relationships supply uses such as specification. |
+| `l2.lines` | Retained Diagram Line/Block/Collection records, projections, rendering, and LineGroundingAssertion semantics remain a separate legacy application pending explicit retirement. |
 | `models` | ModelsWorkflow owns the Model handler, ModelShipRecord, and ModelEditionRecord. Project associations do not imply ownership; several projects may share one Model. |
 | `unsorted` | UnsortedWorkflow provisionally owns legacy capture, generic storage interpreters, assessment, Draft, and View types awaiting classification. |
 | `assertions` | AssertionsWorkflow owns the shallow TaravAssertion root and Assertable capability. The base imposes no case-production method. |
@@ -748,7 +749,10 @@ returns the conventional notes/wiki folder without creating data.
 
 ## Integration invariants
 
-Lines consumes provisional low-level contracts and Record bases in Unsorted.
+The new `l1.lines` primitives depend only on Kernel. Their `Line.scope_ship`
+names a Block, not a general entity; Block parentage is the bounded authoring
+context. The legacy `l2.lines` application consumes provisional low-level
+contracts and Record bases in Unsorted.
 Unsorted also owns the mixed legacy CLI adapters, preserving the public
 `tarav diagram` command without a `tarav.diagram` Python package.
 Higher-level Unsorted storage and capture compose Lines. These dependencies
