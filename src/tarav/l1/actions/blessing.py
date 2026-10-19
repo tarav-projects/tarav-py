@@ -135,17 +135,9 @@ class Blessing(Closing, Assertable):
                 "poi": (run.data.get("event") or {}).get("poi") or {},
                 "context": str(context.id)}
 
-    # tarav.breadcrumb a32478a6bb99
     @classmethod
     def reopens(cls, record: dict | None, poi: object) -> bool:
-        """The situation is expected to still exist; only a pinned detail the
-        blessing did not accept reopens the action."""
-        pinned = getattr(type(poi), "pinned_details", ())
-        if not pinned or record is None:
-            return False
-        blessed = (record.get("poi") or {}).get("details") or {}
-        current = getattr(poi, "details", None) or {}
-        return any(blessed.get(key) != current.get(key) for key in pinned)
+        return False  # the situation is expected to still exist
 
     @property
     def assertions(self):

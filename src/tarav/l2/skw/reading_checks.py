@@ -13,7 +13,6 @@ from tarav.l1.skw.pois import (
     PathDependentContext, RootHasParent, UndeclaredBlock, UnreachableBlock,
 )
 
-from .pois import surface_state
 
 
 # tarav.breadcrumb 0172e2d45dbd
@@ -47,14 +46,13 @@ class ReadingGraphCheck(Check):
             subject["path"] = [
                 str(self.graph.bindings[node][1].id) if node in self.graph.bindings else node
                 for node in finding["path"]]
-        state = surface_state(self.graph.package)
         # a reader knows a block by its document and label, not by its node id
         where = f"{binding[0].key}: {binding[1].label}" if binding else None
         return finding.poi.poi(
             self,
             situation={"subject": subject},
             finding=finding,
-            details={"loading": str(self.graph.source), "surface_state": state},
+            details={"loading": str(self.graph.source)},
             where=where,
         )
 

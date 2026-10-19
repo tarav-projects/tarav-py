@@ -105,11 +105,6 @@ class CheckPOI(SituationPOI, ActionablePOI):
     identity, and `failure`, whether it counts as a finding.
     """
 
-    # tarav.breadcrumb 7cff853acd77
-    #: The details a blessing of this POI pins: when one differs from what was
-    #: blessed, the blessing no longer covers the POI. None by default.
-    pinned_details: ClassVar[tuple[str, ...]] = ()
-
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("20ad2c76-009f-4aae-a564-70b7925664ef"),

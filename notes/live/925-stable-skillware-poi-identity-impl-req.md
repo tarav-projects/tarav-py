@@ -1,4 +1,4 @@
-# Stable Skillware POI identity; blessings pin what they accepted — implementation request
+# Stable Skillware POI identity — implementation request
 
 <!-- tarav.sessions
 3537df0a = claude-code:2bff854f-66a0-4e8c-8f96-9078af34c479 @3537df0a6015d884a94e9594478f971cb92e38df63776b87b5eea38741740d8a
@@ -12,13 +12,11 @@ Alignment.Mode: interactive.
 
 Stop putting `surface_state` (the content hashes of every file of a skill
 package) into the situation of Skillware POIs. The situation names the problem
-only; `surface_state` becomes a detail, with paths relative to the Project. A
-POI Type can name the details a blessing pins, and a blessed action reopens
-when a pinned detail differs from what was blessed. Skillware POIs pin
-`surface_state`, so an acceptance still cannot float across later edits.
-
-Non-goals: changing other POI Types' identities or blessings; migrating or
-deleting existing actions (their store is append-only history).
+only, and `surface_state` is dropped from Skillware POIs altogether. A
+blessing accepts a situation: when a fact relevant to the check changes, the
+check raises a different POI, which the blessing does not cover. Details carry
+no meaning. Audit the other POI Types for the same principle and fix what
+breaks it; delete the action records whose identities no check can raise.
 <!-- tarav.breadcrumb e1db2d92f63d -->
 <!-- tarav.breadcrumb 9e16fa1b0142 -->
 
@@ -47,21 +45,28 @@ later source edits". The goal stays; identity was the wrong place for it.
   <!-- tarav.breadcrumb ba932b0a3092 -->
 - Develop the proposed fix.
   <!-- tarav.breadcrumb 8950aa5ca626 -->
+- Correction: a blessing relates to the situation; the situation describes
+  what is relevant about the check; details are only what Agents may like to
+  have, possibly nothing. No pinning, no `surface_state` in details.
+  <!-- tarav.breadcrumb ec7edde0f2e1 -->
+- Check around for violations of that principle.
+  <!-- tarav.breadcrumb a0d923eccd1a -->
+- Delete the churned action records; fix all the violations found.
+  <!-- tarav.breadcrumb 8094892ec8ed -->
 
 ### Agent decisions
 
 - Situation of Skillware analysis and reading-path POIs: `{"subject": ...}`
-  only. `surface_state` goes into `details`, keyed by paths relative to the
-  package's Project.
-- `CheckPOI.pinned_details: ClassVar[tuple[str, ...]] = ()` names the details
-  a blessing pins; `SkwPOI` pins `("surface_state",)`.
-- `Blessing.reopens(record, poi)` returns true when any of the raised POI's
-  pinned details differs from the same detail in the blessed POI the record
-  keeps. Types without pinned details keep today's behaviour: a blessing
-  holds while the situation exists.
-- Existing actions are left as they are. On the first check run after the
-  change, the open Skillware actions close as gone and reopen under stable
-  identities, once.
+  only; no package state anywhere. These Types are not blessable, so the old
+  "acceptance cannot float" reason never applied to them.
+- Superseded (slice 1, reverted): `CheckPOI.pinned_details` and a
+  `Blessing.reopens` that compared details.
+- System Project: `ActiveProjectDoesNotLoad` names the Project by UUID; an
+  `ActiveProjectMissing` has no Project, so its situation is `{"path": ...}`.
+- Delete the action records whose identities no current check can raise:
+  situations carrying `surface_state`, and situations naming Projects by
+  absolute path (before Project UUIDs). The partition is a Git repository, so
+  the deletion is recoverable.
 
 ## Current implementation observations
 
@@ -102,7 +107,9 @@ Inspected 2026-10-19:
    tarav-md` before and after, counting open Skillware actions. Status:
    done (bec7bc8).
 3. Docs — ARCHITECTURE if it states the Skillware situation; Wiki daily.
-   Status: done.
+   Status: done, then corrected in slice 4.
+4. Correction — revert pinning, drop `surface_state`, System Project by
+   UUID, delete dead action records. Status: done.
 
 ## Impl.Log
 
@@ -126,3 +133,14 @@ Inspected 2026-10-19:
   402ede9b keeps only `{subject}` as its situation and 39 Project-relative
   paths in its details. Suite 393 passed. Commit bec7bc8.
 - Slice 3: ARCHITECTURE's Blessings row states pinned details; Wiki daily.
+- Slice 4 (User correction): slices 1 and 2's pinning reverted:
+  `pinned_details` and the detail-comparing `Blessing.reopens` removed, with
+  their test; `surface_state` removed from Skillware POIs (and its helper).
+  The identity test now asserts the situation is `{subject}` and the details
+  hold no package state. Audit for the principle: code lookups are by
+  identity; `StaleContext` churn is by design (`current_context` is relevant);
+  `ActiveProjectCheck` named Projects by absolute path, now by UUID (missing:
+  by active path). Action partition: deleted 1018 of 1190 records (116 with
+  `surface_state` in the situation, 902 naming Projects by absolute path),
+  partition commit 33b0348. `tarav status --project tarav-md` twice: 68 open,
+  "nothing" both runs. Suite 392 passed.

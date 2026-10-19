@@ -6,7 +6,6 @@ their POI Type (tarav.l1.skw.pois). The checks here bind a finding to the
 package it was found in and raise its POI.
 """
 from copy import deepcopy
-import os
 
 from tarav.l0.kernel import TaravClass
 from tarav.l0.kernel import TypeShip
@@ -224,41 +223,13 @@ def freshness_checks(package, *, skip_unresolved=False, documents=None):
 FRESHNESS = (StaleContext, StaleGeneration)
 
 
-# tarav.breadcrumb f47dbffc1e5d
-def surface_state(package):
-    """Current declared source and product bytes, by path relative to the package's Project.
-
-    A detail of the POIs, never part of their situation: it changes with any
-    file of the package, and a problem keeps its identity across unrelated
-    edits. Skillware POIs pin it, so a blessing cannot float across later
-    source edits.
-    """
-    from .publication import digest
-    paths = {package.depot / 'main.json', package.depot / 'lock.json'}
-    paths.update(package.depot_path(s) for s in package.sources)
-    paths.update(package.depot_path(s) for s in package.publications or [])
-    paths.update(package.path(s) for s in package.files)
-    if package.loading_file is not None:
-        paths.add(package.depot_path(package.loading_file))
-    project = package.project
-    state = {}
-    for path in sorted(paths):
-        key = os.path.relpath(path, project)
-        try:
-            state[key] = digest(path.read_bytes().hex())
-        except OSError:
-            state[key] = None
-    return state
-
-
 # tarav.breadcrumb d778cc4afbfa
 def _analysis_pois(check):
-    state = surface_state(check.package)
     for finding in check.findings:
         if finding.poi in FRESHNESS:
             raise ValueError("Freshness findings must be produced by SituationChecks")
         yield finding.poi.from_finding(check, finding, root=check.package.root,
-                                       owner=check.package.owner, state=state)
+                                       owner=check.package.owner)
 
 
 def collect(package, findings):

@@ -314,8 +314,9 @@ def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
     for poi in _skill(root).checks.run().pois():
         if isinstance(poi, skw.SkwPOI):
             # the details repeat nothing of the situation, and name no kind;
-            # the package state is a detail, never part of the situation
+            # the state of the rest of the package is no part of the problem
             assert "finding" not in poi.details and "surface_state" not in poi.situation
+            assert "surface_state" not in poi.details
             assert "kind" not in poi.records.to_record()["details"]
             assert isinstance(poi, skw.ProductDrift) or poi.message.startswith(
                 type(poi).statement)
@@ -399,8 +400,5 @@ def test_a_problem_keeps_its_identity_when_another_package_file_changes(tmp_path
 
     assert skill is not None
     assert after.identity == before.identity
-    assert "surface_state" not in before.situation
-    state = after.details["surface_state"]
-    assert "skills/explain/notes.md" in state and ".tarav/skillware/skills/explain/main.json" in state
-    assert state["skills/explain/notes.md"] != before.details["surface_state"]["skills/explain/notes.md"]
-    assert skw.SourceUncompiled.pinned_details == ("surface_state",)
+    assert after.situation == before.situation == {"subject": before.situation["subject"]}
+    assert "surface_state" not in after.details

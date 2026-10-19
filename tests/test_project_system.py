@@ -9,6 +9,7 @@ import sys
 
 import pytest
 
+from tarav.l0.project import project_id
 from tarav.l2.project.system import ActiveProjectCheck, TaravSystemProject
 from tarav.l3.runtime import create_runtime
 
@@ -48,6 +49,9 @@ def test_each_active_project_is_loaded_through_its_own_harness(tmp_path: Path) -
             for name, result in results.items()} == {
         "loads": [], "bare": ["ActiveProjectDoesNotLoad"], "gone": ["ActiveProjectMissing"]}
     assert "declares no harness" in results["bare"].pois()[0].details["error"]
+    # a Project is named by its UUID; a missing one only has its active path
+    assert results["bare"].pois()[0].situation == {"project": project_id(bare)}
+    assert results["gone"].pois()[0].situation == {"path": str((tmp_path / "gone").resolve())}
     assert all(result.status == "completed" for result in results.values())
 
 

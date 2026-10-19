@@ -14,7 +14,7 @@ import subprocess
 from tarav.l0._core.data_root import default_tarav_data_root
 from tarav.l0._core.errors import CliError
 from tarav.l0.kernel import TaravClass, TypeShip
-from tarav.l0.project import require_agentos_project
+from tarav.l0.project import project_id, require_agentos_project
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.git.gitleaks import unowned_checks
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
@@ -105,16 +105,18 @@ class ActiveProjectCheck(Check):
         self.system = system
         self.path = path
 
-    def _poi(self, poi_type: type[ActivePOI], message: str, **details) -> ActivePOI:
-        return poi_type(self, message, situation={"project": str(self.path)}, details=details)
+    def _poi(self, poi_type: type[ActivePOI], message: str, situation: dict, **details) -> ActivePOI:
+        return poi_type(self, message, situation=situation, details=details)
 
     def _run(self) -> CheckResult:
         try:
             if require_agentos_project(self.path).root.resolve() != self.path:
                 raise CliError("no marker")
         except CliError:
+            # no Project, so no UUID: the active path is what is missing
             return CheckResult(self, status="completed", pois=[self._poi(
-                ActiveProjectMissing, f"No Project at the active path {self.path}")])
+                ActiveProjectMissing, f"No Project at the active path {self.path}",
+                {"path": str(self.path)})])
         try:
             harness = ProjectHarness.from_path(path=self.path)
             harness.require_environment()
@@ -128,7 +130,7 @@ class ActiveProjectCheck(Check):
             error = f"{type(exc).__name__}: {exc}"
         pois = [] if error is None else [self._poi(
             ActiveProjectDoesNotLoad, f"{self.path.name} does not load through its harness",
-            error="\n".join(error.splitlines()[-5:]))]
+            {"project": project_id(self.path)}, error="\n".join(error.splitlines()[-5:]))]
         return CheckResult(self, status="completed", pois=pois)
 
 

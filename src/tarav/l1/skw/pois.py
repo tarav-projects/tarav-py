@@ -20,10 +20,6 @@ from .identity import SKW_SKILLS_WORKFLOW_SHIP
 class SkwPOI(CheckPOI):
     """A workflow-owned SKW POI explained by the bound analysis Check."""
 
-    # tarav.breadcrumb 121bc811e514
-    #: A blessing accepts the package as it stood; a later edit reopens it.
-    pinned_details = ("surface_state",)
-
     # tarav.breadcrumb 4d33a68da409
     #: What a POI of this Type says, as one literal sentence without a full stop.
     statement: ClassVar[str] = ""
@@ -73,22 +69,20 @@ class SkwPOI(CheckPOI):
         )
 
     @classmethod
-    def from_finding(cls, check, finding, *, root, owner, state=None):
+    def from_finding(cls, check, finding, *, root, owner):
         """The POI of one analysis finding, raised by `check`.
 
         `root` is the folder the analysed document belongs to: a skill
         package, or a Project for its agents file; `owner` names that skill
         or Project by its UUID, as `{"skill": id}` or `{"project": id}`.
-        `state` is the file state
-        of a package, when the check has one. This is the general Skillware
-        line: the place of the finding is the situation; that state is a
-        detail a blessing pins. A Type that can name its own state overrides it.
+        This is the general Skillware line: the situation is the place of the
+        finding, which is the whole problem. A Type whose problem is a state
+        it compared names that state in its situation by overriding this.
         """
         subject = {**owner,
                    **{k: finding[k] for k in ('block', 'path', 'target', 'delivery')
                       if k in finding}}
-        held = None if state is None else {"surface_state": state}
-        return cls.poi(check, situation={"subject": subject}, finding=finding, details=held)
+        return cls.poi(check, situation={"subject": subject}, finding=finding)
 
 
 # tarav.breadcrumb d745f68d7e94
@@ -148,7 +142,7 @@ class MissingMarkdownLink(SkwPOI):
         )
 
     @classmethod
-    def from_finding(cls, check, finding, *, root, owner, state=None):
+    def from_finding(cls, check, finding, *, root, owner):
         """The situation is what the check compares: the block and the href its text should hold."""
         return cls(
             check,
@@ -735,7 +729,7 @@ class ProductDrift(SkwPOI):
     @classmethod
     # tarav.breadcrumb 3eb40ba8c8c5
     # tarav.breadcrumb f41a5d635393
-    def from_finding(cls, check, finding, *, root, owner, state=None):
+    def from_finding(cls, check, finding, *, root, owner):
         """The situation is what was compared: the file, its text and the text its source produces."""
         root = Path(root)
         product = Path(finding['product'])
