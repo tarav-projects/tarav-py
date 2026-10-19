@@ -619,7 +619,7 @@ class Document:
         """What the source produces, or None when it cannot be rendered."""
         try:
             return self.text()
-        except ValueError:
+        except (ValueError, KeyError):
             return None
 
     def drift(self, actual, expected):

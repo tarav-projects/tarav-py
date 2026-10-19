@@ -1,9 +1,7 @@
 """Explicit skill-package compilation and consumer deployment."""
-import re
 import shutil
 from typing import Literal
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
 
 from tarav.l0.kernel import TaravClass, entity
 from tarav.l0.kernel import TaravObject, TypeRegistry, TypeShip
@@ -18,27 +16,14 @@ from tarav.l1.skw.document import DEFAULT_DEPOT, Document, project_document
 from .publication import ModelPublication, ModelPublicationRecord, PublicationLockRecord
 from tarav.l1.skw.loading import LoadingRecord, SkillDocument, SkillReadingGraph
 from tarav.l1.skw.skills import SKILL_COMPONENT_TYPES
-from tarav.l1.checks import CheckProvider, CheckSuite, run_checks
+from tarav.l1.checks import CheckProvider, CheckSuite
 from tarav.l1.poi import POICollector
 from tarav.l1.poi.rendering import DEFAULT_POI_RENDERER, renderers
-from tarav.l1.skills import SKILL_JSON, SkillMarker, TaravSkill
+from tarav.l1.skills import SKILL_JSON, TaravSkill
 from tarav.l0._core.errors import CliError
-from tarav.l1.skw.pois import (
-    DuplicateOutput, Finding, InvalidLoadingModel, InvalidSource, MissingConsumerFile,
-    SkillMarkerMismatch, SkillMarkerMissing,
-    MissingDependency, MissingLinkTarget, OutputNotDeployed, PublicationDisconnected,
-    SkwPOI, UnbundledLink, UndeclaredConsumerLink,
-)
-from .pois import (
-    FRESHNESS,
-    ContextFreshnessCheck,
-    GenerationContextResolutionCheck,
-    GenerationFreshnessCheck,
-    SkwAnalysisCheck,
-    freshness_checks,
-    generation_context_resolution_checks,
-)
-from .reading_checks import READING_CHECK_TYPES, reading_checks
+from tarav.l1.skw.pois import SkwPOI
+from .chains import SKW_CHAIN_CHECK_TYPES, SkwSkillSuite
+from .reading_checks import READING_CHECK_TYPES
 from tarav.l1.skw.presentation import (
     add_output_mode,
     emit,
@@ -258,45 +243,14 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
     # tarav.breadcrumb 923a65026ef7
     class Checks(CheckProvider.Checks):
         def suite(self) -> CheckSuite:
-            # keyed, so that an action knows which skill package detected it
-            return CheckSuite(lambda suite: self.obj._all_checks(), name=self.obj.root.name,
-                              key=str(self.obj.skill_id))
-
-    def _checks(self, *, skip_unresolved_freshness=True):
-        documents = self.documents()
-        return (
-            *generation_context_resolution_checks(self, documents=documents),
-            *freshness_checks(
-                self,
-                skip_unresolved=skip_unresolved_freshness,
-                documents=documents,
-            ),
-            *reading_checks(self.loading()),
-        )
+            return SkwSkillSuite(self.obj)
 
     # tarav.breadcrumb b0bae46a0414
-    def _all_checks(self):
-        """Every check of this package, the same for its suite and for `evaluate()`.
-
-        The analysis of the package as it is on disk comes first: a product
-        that no longer matches its source, a consumer file that links to
-        something the package does not bundle, a source that does not load.
-        Whoever runs the package's suite, a Project among them, then sees
-        what the skill command sees.
-        """
-        findings = self._check_without_reading()
-        yield SkwAnalysisCheck(self, [finding for finding in findings
-                                      if finding.poi not in FRESHNESS])
-        if not any(finding.poi is InvalidLoadingModel for finding in findings):
-            # Raw document analysis already retains explicit resolution failures;
-            # other successfully captured Situations remain independently runnable.
-            yield from self._checks(skip_unresolved_freshness=True)
-
     def evaluate(self):
+        """The POIs of this package's suite, the same suite a Project runs."""
         collector = POICollector()
-        for result in run_checks(self._all_checks()):
-            for poi in result.pois():
-                collector.emit(poi)
+        for poi in SkwSkillSuite(self).run().pois():
+            collector.emit(poi)
         return collector
 
     def report(self, **selection):
@@ -310,68 +264,6 @@ class SkwSkill(SkwDepot, TaravSkill, CheckProvider):
     def check(self):
         """The POIs of this package as it is on disk."""
         return tuple(self.evaluate().pois)
-
-    def _check_without_reading(self):
-        findings = []
-        def report(poi, path, detail=""):
-            findings.append(Finding(poi, path=str(path), detail=detail))
-        outputs = set()
-        try:
-            documents = {d.source: d for d in self.documents()}
-            self.loading()
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            report(InvalidLoadingModel, self.root, str(exc))
-            return findings
-        for source in self.publications or []:
-            report(PublicationDisconnected, source,
-                   'Models publication is disconnected pending redesign.')
-        for source in self.sources:
-            try:
-                document = documents[self.depot_path(source)]
-                if isinstance(document, SkillDocument):
-                    document.text()
-                if document.target in outputs:
-                    report(DuplicateOutput, document.target)
-                outputs.add(document.target)
-                if document.target not in {self.path(p) for p in self.files}:
-                    report(OutputNotDeployed, document.target)
-                for finding in document.lint(freshness=False):
-                    findings.append(finding.at(path=source))
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                report(InvalidSource, source, str(exc))
-        if not (self.root / SKILL_JSON).is_file():
-            report(SkillMarkerMissing, self.root / SKILL_JSON)
-        elif SkillMarker.of(self.root).id != self.skill_id:
-            report(SkillMarkerMismatch, self.root / SKILL_JSON,
-                   f"the marker names {SkillMarker.of(self.root).id}")
-        for value in self.files:
-            if not self.path(value).is_file():
-                report(MissingConsumerFile, value)
-            elif value.endswith(".md"):
-                # Output conformance only: never contributes loading edges.
-                for link in re.findall(r"\]\(([^\s)]+)\)", self.path(value).read_text()):
-                    parts = urlsplit(link.strip("<>"))
-                    if parts.scheme or parts.netloc or not parts.path:
-                        continue
-                    target = (self.path(value).parent / unquote(parts.path)).resolve()
-                    if target.is_relative_to(self.root):
-                        if target not in {self.path(p) for p in self.files}:
-                            report(UnbundledLink, value, link)
-                    else:
-                        owners = [(self.root / d["path"]).resolve()
-                                  for d in self.dependencies
-                                  if d["kind"] == "skill" and "consumer" in d["purposes"]]
-                        if not any(target.is_relative_to(owner) for owner in owners):
-                            report(UndeclaredConsumerLink, value, link)
-                    if not target.is_file():
-                        report(MissingLinkTarget, value, link)
-        for dependency in self.dependencies:
-            target = (self.root / dependency["path"]).resolve()
-            if dependency["kind"] == "skill":
-                target /= "SKILL.md"
-            if not target.is_file():
-                report(MissingDependency, target, ",".join(dependency["purposes"]))
-        return findings
 
     def build(self):
         documents = self.documents()
@@ -421,10 +313,7 @@ SKILLS_RECORD_TYPES = (
     *SKILL_COMPONENT_TYPES,
     *SkwPOI.__subclasses__(),  # its atomic cases
     *READING_CHECK_TYPES,
-    SkwAnalysisCheck,
-    GenerationFreshnessCheck,
-    ContextFreshnessCheck,
-    GenerationContextResolutionCheck,
+    *SKW_CHAIN_CHECK_TYPES,
 )
 
 

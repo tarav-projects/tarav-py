@@ -6,7 +6,7 @@ import pytest
 from skw_records import identify_blocks
 
 from tarav.l0.kernel import entity
-from tarav.l1.checks import run_checks
+from tarav.l1.checks import CheckSuite, run_checks
 from tarav.l1.skw.document import Document, DocumentRecord
 from tarav.l1.skw.annotations import GenerationAnnotation, ObjectIndexReference
 from tarav.l1.skw.document import SkwBlock
@@ -17,15 +17,25 @@ from tarav.l1.skw.pois import (
     StaleContext,
     StaleGeneration,
 )
-from tarav.l2.skw.pois import (
+from tarav.l2.skw.chains import (
     ContextFreshnessCheck,
     GenerationContextResolutionCheck,
     GenerationFreshnessCheck,
 )
+from tarav.l2.skw.chains import SkwSkillSuite
 from tarav.l2.skw.skills import SkwSkill
 from tarav.l0.testing import write_project_marker
 from tarav.l1.skills import SkillMarker
 from tarav.l3.runtime import create_runtime
+
+
+def _produced(suite):
+    """What a suite would run, nested suites opened, without running it."""
+    for item in suite.produce():
+        if isinstance(item, CheckSuite):
+            yield from _produced(item)
+        else:
+            yield item
 
 
 def _layout(tmp_path):
@@ -121,7 +131,7 @@ def test_generation_context_resolution_is_independent_and_repairable(tmp_path):
     skill = _skill(root)
 
     checks = tuple(
-        check for check in skill._checks()
+        check for check in _produced(SkwSkillSuite(skill))
         if isinstance(check, GenerationContextResolutionCheck)
     )
     assert len(checks) == 2
@@ -166,7 +176,7 @@ def test_skw_freshness_checks_snapshot_independent_acceptance_scopes(
     ]
     source.write_text(json.dumps(data))
 
-    checks = tuple(check for check in skill._checks() if isinstance(
+    checks = tuple(check for check in _produced(SkwSkillSuite(skill)) if isinstance(
         check, (GenerationFreshnessCheck, ContextFreshnessCheck)
     ))
     assert {type(check) for check in checks} == {
@@ -232,7 +242,7 @@ def test_the_package_suite_detects_what_the_skill_command_shows(tmp_path):
     assert any(isinstance(poi, UnbundledLink) for poi in found)
     # the suite a Project runs and the skill command agree on what they find
     assert kinds(found) == kinds(skill.evaluate().pois)
-    assert skill.checks.suite().identity == {"type": "Tarav.Checks.Suite",
+    assert skill.checks.suite().identity == {"type": "Tarav.SKW.Suite.Skill",
                                              "key": str(SkillMarker.of(root).id)}
 
 
@@ -255,8 +265,9 @@ def test_a_product_drift_declares_what_was_compared(tmp_path):
 
     product.write_text(compiled + "\nA line written by hand.\n")
     (first,) = drift()
-    assert set(first.situation) == {"product", "actual", "expected"}
-    assert first.situation["product"] == str(product.resolve())
+    assert set(first.situation) == {"subject", "actual", "expected"}
+    assert first.situation["subject"] == {"skill": str(SkillMarker.of(root).id),
+                                          "path": "explanation.md"}
     assert first.situation["actual"] != first.situation["expected"]
     assert first.message == (f"{root.name}: explanation.md differs from what its "
                              "source produces (1 places, 2 lines)")

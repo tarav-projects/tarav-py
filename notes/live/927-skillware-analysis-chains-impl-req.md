@@ -140,7 +140,7 @@ suite.
    analysis check by `SkwSkillSuite`. Check: new tests (one atomic Check per
    subject, identities `fingerprint([type, situation])`, relative paths, two
    bad links are two POIs, a chain's Check raises only its POIs), existing
-   SKW tests adapted, default suite green. Status: pending.
+   SKW tests adapted, default suite green. Status: done.
 3. **Feature — Action Types for every SkwPOI.** Convention in l1, table in
    l2, runtime registration; a test asserts each `SkwPOI` subclass's action
    resolves. Delete the affected records; `tarav status --project tarav-md`
@@ -167,3 +167,26 @@ tarav-md growing past ~2× (report it).
   identical before and after (81 lines, `diff` empty, script
   `/tmp/s927/lint_dump.py`); default suite 398 passed; ruff clean.
   Breadcrumb 5db8fa8e7000 on `block_findings`; a999689284b9 moved, refreshed.
+- Slice 2 (feature): `l2/skw/chains.py` holds 13 chains, their Checks,
+  `SkillLoad` and `SkwSkillSuite` (`Tarav.SKW.Suite.Skill`, keyed by skill
+  id). `l2/skw/pois.py` keeps only the two Action Types; `SkwSkill` lost
+  `_check_without_reading`, `_checks`, `_all_checks`; `evaluate()` runs the
+  Suite. Deviation, recorded: a source that cannot be rendered with the
+  loading model is now `LoadingRenderError` from its Source Check (before,
+  `InvalidSource` and no lint), and `expected_text()` also treats `KeyError`
+  as "cannot render". `SkillMarker*` and `InvalidLoadingModel` situations lost
+  their absolute `path`; `OutputNotDeployed`, `DuplicateOutput`,
+  `ProductUnavailable` and `ProductDrift` are now about the product path
+  relative to the skill folder; `MissingDependency` keeps the declared path.
+  Checks: `tests/test_skw_chains.py` (4 tests: the produced Checks and
+  subjects of a package, literal; identities; two bad links are two
+  situations; declared paths; a block POI keeps its pre-chain situation);
+  `tests/test_skw_poi.py` adapted (`_produced` helper, Suite identity
+  `Tarav.SKW.Suite.Skill`, ProductDrift situation); default suite 402
+  passed; ruff clean. Real surface: `tarav check --project tarav-md` 262 →
+  573 checks, same 68 POIs by Type, 1.37 s → 1.31 s (one load instead of
+  four); `tarav status --project tarav-md`: "Changed in this run: nothing",
+  68 open. The open OutputChanged actions recorded the old suite
+  (`Tarav.Checks.Suite`) as detector; slice 3 deletes and reopens them.
+  Breadcrumb 6878eaee3b17 on `SkwSkillSuite`; moved labels refreshed in
+  chains.py, skills.py, test_skw_poi.py; audits clean.
