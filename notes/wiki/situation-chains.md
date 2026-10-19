@@ -85,5 +85,25 @@ The User left the open choices to the Agent.
   names its own Action Type.
 - Gitleaks is the first chain user: `GitleaksSuite` revisits the native
   report and yields one atomic Check per situation (`l1/git/gitleaks.py`).
-- Not yet: the other checks (Skillware analysis first), the positive-result
-  POI, an Action Type for every POI Type outside chains.
+- Not yet: the positive-result POI, an Action Type for every POI Type
+  outside chains.
+
+## Implemented: the Skillware analysis (request 927)
+
+The User asked for it next, after Gitleaks.
+<!-- tarav.breadcrumb fd589074cc02 -->
+
+- A skill's Suite (`SkwSkillSuite`, `l2/skw/chains.py`) loads the package
+  once and runs one atomic Check per situation: the skill (marker,
+  loading), each source, product, product drift, block, context entry,
+  freshness snapshot, consumer file, link and dependency.
+- The rules stay in the native analysis, split per subject in l1
+  (`Document.block_findings`, `source_findings`, the product reading);
+  `lint()` composes them. A Check per finding would only re-raise what the
+  analysis decided; a Check per subject runs the rule.
+- Situations stay "the place", with declared relative paths; what a check
+  compares joins the situation only where that is the problem (ProductDrift,
+  freshness).
+- Every Skillware POI Type names `<its name>.Resolution`.
+- Not yet: the reading-graph checks and the Project's agents file, which
+  still raises chain POI Types from outside their chains.
