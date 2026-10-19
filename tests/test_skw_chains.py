@@ -1,6 +1,7 @@
 """The Skillware analysis as Situation Chains: one atomic Check per situation of a package."""
 
 import json
+from uuid import NAMESPACE_URL, uuid5
 
 from skw_records import identify_blocks
 
@@ -16,8 +17,8 @@ from tarav.l2.skw.skills import SkwSkill
 from tarav.l3.runtime import create_runtime
 
 
-def _skill(tmp_path, *, body):
-    """A Project building one skill from one source with a title and a body block."""
+def _skill(tmp_path, *, body, annotations=(), after=()):
+    """A Project building one skill from one source: a title, a body, and blocks after it."""
     write_project_marker(tmp_path)
     root = tmp_path / "skills/guide"
     root.mkdir(parents=True)
@@ -27,7 +28,10 @@ def _skill(tmp_path, *, body):
     source.parent.mkdir(parents=True)
     data = {"type": entity(DocumentRecord).name, "schema_version": 1, "output": "guide.md",
             "blocks": [{"type": entity(SkwBlock).name, "id": "title", "content": ["# Guide", ""]},
-                       {"type": entity(SkwBlock).name, "id": "body", "content": body}]}
+                       {"type": entity(SkwBlock).name, "id": "body", "content": body,
+                        **({"annotations": list(annotations)} if annotations else {})},
+                       *({"type": entity(SkwBlock).name, "id": label, "content": [label]}
+                         for label in after)]}
     source.write_text(json.dumps(identify_blocks(data, scope="guide")))
     (depot / "main.json").write_text(json.dumps({
         "type": entity(SkwSkill).name, "schema_version": 1,
@@ -36,6 +40,11 @@ def _skill(tmp_path, *, body):
         "dependencies": [{"kind": "skill", "path": "../absent", "purposes": ["consumer"]}]}))
     assert Document(source, root=root, depot=depot).compile()["written"]
     return create_runtime().load_object(depot)
+
+
+def _id(label):
+    """The Ship `identify_blocks` gives a block of the guide."""
+    return str(uuid5(NAMESPACE_URL, f"skw-test:guide:{label}"))
 
 
 def _produced(suite):
@@ -63,6 +72,14 @@ def test_the_skill_suite_runs_one_atomic_check_per_situation(tmp_path):
         ("Tarav.SKW.Chain.ConsumerFile", {**owner, "path": "guide.md"}),
         ("Tarav.SKW.Chain.ConsumerLink", {**owner, "path": "guide.md", "target": "one.md"}),
         ("Tarav.SKW.Chain.Dependency", {**owner, "path": "../absent"}),
+        ("Tarav.SKW.Chain.ReadingGraph", owner),
+        ("Tarav.SKW.Chain.ReadingNode", {**owner, "block": _id("title")}),
+        ("Tarav.SKW.Chain.ReadingNode", {**owner, "block": _id("body")}),
+        # the body's parent, by default the block before it
+        ("Tarav.SKW.Chain.ReadingDeclaration",
+         {**owner, "block": _id("body"), "target": _id("title")}),
+        ("Tarav.SKW.Chain.BlockBinding", {**owner, "path": "src/guide.skw.json", "block": "title"}),
+        ("Tarav.SKW.Chain.BlockBinding", {**owner, "path": "src/guide.skw.json", "block": "body"}),
     ]
     # every object of a chain is its Type and its situation, hashed
     for check in produced:
@@ -117,3 +134,42 @@ def test_every_skillware_poi_type_names_its_own_action_type():
     assert len(set(actions)) == len(poi_types) == len({entity(a).id for a in actions})
     assert [poi_type for poi_type, action in zip(poi_types, actions)
             if issubclass(action, BlessableResolution)] == [StaleContext, StaleGeneration]
+
+
+def test_a_missing_context_names_the_path_that_misses_it(tmp_path):
+    from tarav.l1.skw.pois import MissingContext, PathDependentContext
+    from tarav.l2.skw.chains import ReadingPathChain
+
+    # the body needs the late block inlined, and only the title and the body precede it
+    requires = {"type": "Tarav.SKW.Reading.InlineDependency", "target": "late"}
+    skill = _skill(tmp_path, body=["Plain."], annotations=[requires], after=["late"])
+    pois = [poi for poi in skill.check() if isinstance(poi, (MissingContext, PathDependentContext))]
+    (missing,) = pois
+    assert type(missing) is MissingContext and type(missing).chain is ReadingPathChain
+    assert missing.situation == {"subject": {
+        "skill": str(skill.skill_id), "block": _id("body"), "target": _id("late"),
+        "delivery": "inlined", "path": [_id("title"), _id("body")]}}
+    assert missing.message == ("A block needs context that its reading path does not deliver: "
+                               f"src/guide.skw.json: body to {_id('late')}")
+    assert missing.details == {"inlined": sorted([_id("title")]), "referenced": []}
+
+
+def test_each_undeclared_block_is_its_own_situation_named_by_its_source(tmp_path):
+    from tarav.l1.references.structured import StructuredFileReference
+    from tarav.l1.skw.loading import LoadingRecord
+    from tarav.l1.skw.pois import UndeclaredBlock
+
+    skill = _skill(tmp_path, body=["Plain."], after=["late"])
+    # a loading model that declares the title only
+    (skill.depot / "loading.json").write_text(json.dumps({
+        "type": entity(LoadingRecord).name, "schema_version": 1,
+        "blocks": [{"id": "title", "reference": {
+            "type": entity(StructuredFileReference).name,
+            "locator": {"path": "src/guide.skw.json", "pointer": "/blocks/0"}}}]}))
+    main = skill.depot / "main.json"
+    main.write_text(json.dumps({**json.loads(main.read_text()), "loading": "loading.json"}))
+    skill = create_runtime().load_object(skill.depot)
+    undeclared = [poi for poi in skill.check() if isinstance(poi, UndeclaredBlock)]
+    owner = {"skill": str(skill.skill_id), "path": "src/guide.skw.json"}
+    assert [poi.situation for poi in undeclared] == [
+        {"subject": {**owner, "block": "body"}}, {"subject": {**owner, "block": "late"}}]

@@ -86,7 +86,7 @@ Data shape (added to `l2/skw/chains.py`; `reading_checks.py` is removed):
    go. Check: new tests (MissingContext situation with its path, two
    undeclared blocks are two situations with a relative source, the
    produced reading Checks of a package), LinkProse test adapted, default
-   suite green; tarav-md: 0 reading POIs, status "nothing". Status: pending.
+   suite green; tarav-md: 0 reading POIs, status "nothing". Status: done.
 3. **Docs.** ARCHITECTURE `skw` row, AGENTS source sentence, Wiki. Status: pending.
 
 Deviation triggers: a reading POI appearing or disappearing on tarav-md;
@@ -104,3 +104,24 @@ a check needing a second `analyze()`.
   test_project_agents) passed, including the LinkProse test unchanged; ruff
   clean; loading.py audit clean after position refresh. No new Breadcrumb
   (a mechanical split).
+- Slice 2 (feature): `ReadingAnalysis` (one `analyze()`, findings indexed
+  by block and target) and the seven chains in `l2/skw/chains.py`;
+  `SkwSkillSuite` yields them in a nested suite named `reading`.
+  `reading_checks.py` and `MissingMarkdownLink.from_finding` removed. The
+  ids of `Tarav.SKW.Check.LinkProse` and the chain names are kept or new as
+  listed in the code. Reading POIs no longer carry `details.loading` (the
+  absolute loading path). `UndeclaredBlock` is per source block, with the
+  source relative to the depot; `MissingMarkdownLink` is
+  `{"subject": {skill, block, target: href}}`; `InvalidLoadingRoot` and
+  `RootHasParent` are about the graph (`{skill}`), the root in `detail`.
+  Checks: `tests/test_skw_chains.py` 7 passed (literal produced Checks
+  including the reading ones; MissingContext situation with its path,
+  message and details; two undeclared blocks under a loading model);
+  LinkProse test adapted; default suite 405 passed (185 s, against 108 s
+  before; rerun at completion); ruff clean. Real surface: tarav-md 573 →
+  1090 checks, same 68 POIs, 0 reading POIs; `tarav check` 1.3 s → 2.0 s
+  (below the 2× trigger); `tarav status`: "nothing". No stored action of a
+  reading POI Type (partition scan: 0), so no records deleted. Breadcrumb
+  ba01fcb9a242 on `ReadingPathCheck`; 0172e2d45dbd, 15c7f0c5dc4c,
+  d17fbd7e081f moved from the removed module to `ReadingAnalysis`,
+  `ReadingAnalysis.ship` and `LinkProseCheck`; audits clean.

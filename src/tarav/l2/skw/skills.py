@@ -23,7 +23,6 @@ from tarav.l1.skills import SKILL_JSON, TaravSkill
 from tarav.l0._core.errors import CliError
 from tarav.l1.skw.pois import SkwPOI
 from .chains import SKW_CHAIN_CHECK_TYPES, SkwSkillSuite
-from .reading_checks import READING_CHECK_TYPES
 from tarav.l1.skw.presentation import (
     add_output_mode,
     emit,
@@ -312,7 +311,6 @@ SKILLS_RECORD_TYPES = (
     LoadingRecord,
     *SKILL_COMPONENT_TYPES,
     *SkwPOI.__subclasses__(),  # its atomic cases
-    *READING_CHECK_TYPES,
     *SKW_CHAIN_CHECK_TYPES,
 )
 

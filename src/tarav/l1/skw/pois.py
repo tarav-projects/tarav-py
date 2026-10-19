@@ -146,15 +146,6 @@ class MissingMarkdownLink(SkwPOI):
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
-    @classmethod
-    def from_finding(cls, check, finding, *, root, owner):
-        """The situation is what the check compares: the block and the href its text should hold."""
-        return cls(
-            check,
-            cls.sentence(where=f"{finding['path']}: {finding['label']}", target=finding['href']),
-            situation={**owner, 'block': finding['block'], 'href': finding['href']},
-        )
-
 
 class MissingContext(SkwPOI):
     """SkillReadingGraph found a requirement without its requested delivery.

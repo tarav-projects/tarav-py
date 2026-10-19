@@ -337,7 +337,7 @@ def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
 def test_a_declared_link_is_checked_only_by_its_prose_part(tmp_path):
 
     from tarav.l1.skw.pois import MissingMarkdownLink
-    from tarav.l2.skw.reading_checks import READING_CHECK_TYPES
+    from tarav.l2.skw.chains import LinkProseChain
 
     root = _layout(tmp_path)
     source = _depot(root) / "src/explanation.skw.json"
@@ -362,15 +362,14 @@ def test_a_declared_link_is_checked_only_by_its_prose_part(tmp_path):
         source.write_text(json.dumps(data))
         _document(source).compile()
         return [poi for poi in _skill(root).checks.run().pois()
-                if isinstance(poi.check, READING_CHECK_TYPES)]
+                if type(poi).chain is LinkProseChain]
 
     # the text lacks the declared link; the authored link nobody declared is not a POI
     (missing,) = reading_pois()
     assert isinstance(missing, MissingMarkdownLink)
     # the skill is named by the UUID in its marker, not by where it lies
-    assert set(missing.situation) == {"skill", "block", "href"}
-    assert missing.situation["skill"] == str(SkillMarker.of(root).id)
-    assert (missing.situation["block"], missing.situation["href"]) == (body["id"], href)
+    assert missing.situation == {"subject": {"skill": str(SkillMarker.of(root).id),
+                                             "block": body["id"], "target": href}}
     assert missing.message.startswith(MissingMarkdownLink.statement)
     assert not missing.details
 

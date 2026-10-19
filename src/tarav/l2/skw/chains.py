@@ -2,8 +2,9 @@
 
 A skill's Suite (`SkwSkillSuite`) loads the package once (`SkillLoad`), finds
 its situations — the skill, each source, product, block, consumer file, link,
-dependency and publication — and runs the Check of each one's chain with the
-situation it built. The rules stay in the native analysis (`tarav.l1.skw`),
+dependency and publication, and in its reading graph each declared node,
+declaration, requirement, reading path and prose link — and runs the Check of
+each one's chain with the situation it built. The rules stay in the native analysis (`tarav.l1.skw`),
 split per subject: a Check runs the rules of its one subject and raises POIs
 with exactly its situation. Open a POI's Type from finding.help for policy.
 """
@@ -20,7 +21,11 @@ from tarav.l1.skills import SKILL_JSON, SkillMarker
 from tarav.l1.skw.annotations import GenerationAnnotation
 from tarav.l1.skw.generation import _hash
 from tarav.l1.skw.identity import SKW_SKILLS_WORKFLOW_SHIP
+from tarav.l1.skw.skills import SkillLink
 from tarav.l1.skw.pois import (
+    AttachmentCycle, InclusionCycle, InvalidBlockReference, InvalidContextTarget,
+    InvalidLoadingRoot, InvalidParent, LoadingAnalysisIncomplete, MissingContext,
+    MissingMarkdownLink, PathDependentContext, RootHasParent, UndeclaredBlock, UnreachableBlock,
     ContextUnresolvable, DuplicateOutput, Finding, InvalidAnnotation, InvalidLoadingModel,
     InvalidProducedOutput, InvalidSource, LoadingDeclarationStale, LoadingRenderError,
     MissingConsumerFile, MissingContent, MissingDependency, MissingLinkTarget, OutputChanged,
@@ -29,8 +34,6 @@ from tarav.l1.skw.pois import (
     StaleProducedOutput, UnbundledLink, UndeclaredConsumerLink,
 )
 
-from .reading_checks import reading_checks
-
 ANALYSIS_ERRORS = (OSError, ValueError, KeyError, TypeError)
 
 
@@ -38,19 +41,22 @@ def _where(subject):
     return ": ".join(str(subject[key]) for key in ("path", "block") if key in subject)
 
 
-def _raise(check, finding):
-    """The POI of one finding about the check's subject, with exactly its situation."""
+def _raise(check, finding, *, where=None):
+    """The POI of one finding about the check's subject, with exactly its situation.
+
+    `where` names the place for a reader when the subject only has ids for it.
+    """
     subject = check.situation["subject"]
     details = {key: value for key, value in finding.data.items()
                if key not in subject and value not in (None, "")}
     return check.poi(finding.poi, details=details or None, message=finding.poi.sentence(
-        where=_where(subject), target=finding.get("target", subject.get("target")),
+        where=where or _where(subject), target=finding.get("target", subject.get("target")),
         detail=finding.get("detail")))
 
 
-def _result(check, findings):
-    return CheckResult(check, status="completed",
-                       pois=tuple(_raise(check, finding) for finding in findings))
+def _result(check, findings, *, where=None, status="completed"):
+    return CheckResult(check, status=status,
+                       pois=tuple(_raise(check, finding, where=where) for finding in findings))
 
 
 class SkillLoad:
@@ -504,10 +510,337 @@ class DependencyChain(SituationChain):
                           name="Tarav.SKW.Chain.Dependency", workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
+# --- the reading graph -------------------------------------------------------------
+
+# tarav.breadcrumb 0172e2d45dbd
+class ReadingAnalysis:
+    """The reading analysis of one package, run once for its Suite.
+
+    It is one traversal of the whole graph: reachability, cycles and the paths
+    that reach a block cannot be decided per block. So it is the native report,
+    as Gitleaks' report is, and each reading Check reads its own subject's part.
+    """
+
+    def __init__(self, graph):
+        self.graph = graph
+        result = graph.analyze()
+        self.complete = result["complete"]
+        self.found = defaultdict(list)
+        for finding in result["diagnostics"]:
+            target = finding.get("target")
+            self.found[(finding.get("block"), None if target is None else str(target))].append(
+                finding)
+        self.observations = result["requirements"]
+
+    def findings(self, types, block=None, target=None):
+        """What the analysis found of `types` about one subject, each Type once."""
+        found = {}
+        for finding in self.found[(block, target)]:
+            if finding.poi in types:
+                found.setdefault(finding.poi, finding)
+        return list(found.values())
+
+    # tarav.breadcrumb 15c7f0c5dc4c
+    def ship(self, node):
+        """A block as a situation names it: its Ship, or the node id it was declared with."""
+        binding = self.graph.bindings.get(node)
+        return str(binding[1].id) if binding else node
+
+    def where(self, node):
+        """A block as a reader knows it: its document and label."""
+        binding = self.graph.bindings.get(node)
+        return f"{binding[0].key}: {binding[1].label}" if binding else None
+
+    def status(self):
+        return "completed" if self.complete else "incomplete"
+
+
+class ReadingGraphCheck(SituationCheck):
+    """The graph as a whole: its root, and whether the analysis visited every path."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("05bff74a-5aee-4fb2-a95d-3feace1d260d"),
+                          name="Tarav.SKW.Check.ReadingGraph", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+    def __init__(self, *, situation, analysis):
+        super().__init__(situation=situation)
+        self.analysis = analysis
+
+    def _run(self):
+        graph, findings = self.analysis.graph, []
+        if graph.root not in graph.bindings:
+            findings.append(Finding(InvalidLoadingRoot, detail=f"root: {graph.root}"))
+        elif graph.parents[graph.root]:
+            findings.append(Finding(RootHasParent, detail=f"root: {self.analysis.where(graph.root)}"))
+        findings.extend(self.analysis.findings((LoadingAnalysisIncomplete,)))
+        return _result(self, findings, status=self.analysis.status())
+
+
+class ReadingNodeCheck(SituationCheck):
+    """One declared block of the loading model: bound, reached, in no cycle."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("45292b6a-4206-43d6-87d1-80042607472f"),
+                          name="Tarav.SKW.Check.ReadingNode", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+    def __init__(self, *, situation, analysis, node):
+        super().__init__(situation=situation)
+        self.analysis = analysis
+        self.node = node
+
+    def _run(self):
+        found = self.analysis.findings(
+            (InvalidBlockReference, UnreachableBlock, AttachmentCycle, InclusionCycle), self.node)
+        return _result(self, found, where=self.analysis.where(self.node),
+                       status=self.analysis.status())
+
+
+class ReadingDeclarationCheck(SituationCheck):
+    """One target a block declares, as a parent or in a reading declaration: does it resolve?"""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("870eecfd-9186-4c46-8634-93a71158e3ec"),
+                          name="Tarav.SKW.Check.ReadingDeclaration",
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+    def __init__(self, *, situation, analysis, node):
+        super().__init__(situation=situation)
+        self.analysis = analysis
+        self.node = node
+
+    def _run(self):
+        found = self.analysis.findings((InvalidParent, InvalidContextTarget), self.node,
+                                       self.situation["subject"]["target"])
+        return _result(self, found, where=self.analysis.where(self.node))
+
+
+class BlockBindingCheck(SituationCheck):
+    """Is one block of a source declared in the loading model?"""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("aa628f66-98e4-45f9-ad19-64b1905d2aff"),
+                          name="Tarav.SKW.Check.BlockBinding", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+    def __init__(self, *, situation, graph, document):
+        super().__init__(situation=situation)
+        self.graph = graph
+        self.document = document
+
+    def _run(self):
+        label = self.situation["subject"]["block"]
+        bound = (self.document.source, label) in self.graph.by_block
+        return _result(self, [] if bound else [Finding(UndeclaredBlock)])
+
+
+class ReadingRequirementCheck(SituationCheck):
+    """One context requirement of a block, over every path that reaches it: is it
+    delivered on all of them or on none? Its caller gives the observations."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("2c4a0b22-d9e2-4118-95ee-d3558ca86bc8"),
+                          name="Tarav.SKW.Check.ReadingRequirement",
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+    def __init__(self, *, situation, analysis, node, observations):
+        super().__init__(situation=situation)
+        self.analysis = analysis
+        self.node = node
+        self.observations = tuple(observations)
+
+    def _run(self):
+        satisfied = [observation["satisfied"] for observation in self.observations]
+        mixed = any(satisfied) and not all(satisfied)
+        return _result(self, [Finding(PathDependentContext)] if mixed else [],
+                       where=self.analysis.where(self.node), status=self.analysis.status())
+
+
+# tarav.breadcrumb ba01fcb9a242
+class ReadingPathCheck(SituationCheck):
+    """One context requirement of a block on one reading path: is it delivered there?
+    The path is part of the situation: a check names the unmet dependency and the
+    path that misses it. Its caller gives what the analysis observed on that path."""
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("d299550a-b1c2-4eba-990f-9e71b3bff122"),
+                          name="Tarav.SKW.Check.ReadingPath", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+    def __init__(self, *, situation, analysis, node, observation):
+        super().__init__(situation=situation)
+        self.analysis = analysis
+        self.node = node
+        self.observation = deepcopy(observation)
+
+    def _run(self):
+        found = [] if self.observation["satisfied"] else [Finding(
+            MissingContext, inlined=self.observation["inlined"],
+            referenced=self.observation["referenced"])]
+        return _result(self, found, where=self.analysis.where(self.node),
+                       status=self.analysis.status())
+
+
+# tarav.breadcrumb d17fbd7e081f
+class LinkProseCheck(SituationCheck):
+    """Does the text of a block hold the link one of its declarations expects?
+
+    The other reading checks trust the declarations; this one is for the
+    maintainers, who care that the text holds what is declared.
+    """
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("ac970186-220f-43c4-984a-b6fd94a88227"),
+                          name="Tarav.SKW.Check.LinkProse", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+    def __init__(self, *, situation, analysis, node, link):
+        super().__init__(situation=situation)
+        self.analysis = analysis
+        self.node = node
+        self.link = link
+
+    def _run(self):
+        found = self.analysis.graph.link_prose_findings(self.node, self.link)
+        return _result(self, [Finding(finding.poi) for finding in found],
+                       where=self.analysis.where(self.node))
+
+
+def reading_checks(package, analysis):
+    """The reading Checks of one package, each with the situation built from the analysis."""
+
+    graph, owner = analysis.graph, package.owner
+    yield ReadingGraphChain({"subject": owner}).check(analysis=analysis)
+    for node in graph.nodes:
+        block = {**owner, "block": analysis.ship(node)}
+        yield ReadingNodeChain({"subject": block}).check(analysis=analysis, node=node)
+        targets = list(graph.parents.get(node, ()))
+        if node in graph.bindings:
+            targets.extend(declaration.target for declaration in graph.reading[node])
+            bound = graph.bindings[node][1]
+            if isinstance(bound, SkillLink):
+                targets.append(bound["target"])
+        for target in dict.fromkeys(str(target) for target in targets):
+            yield ReadingDeclarationChain({"subject": {**block, "target": target}}).check(
+                analysis=analysis, node=node)
+    for document in graph.documents.values():
+        for label in document.blocks:
+            yield BlockBindingChain({"subject": {**owner, "path": document.key, "block": label}}).check(
+                graph=graph, document=document)
+    for node, requirements in graph.requirements.items():
+        for declaration, target in requirements:
+            requirement = {**owner, "block": analysis.ship(node), "target": str(target),
+                           "delivery": declaration.delivery}
+            observations = [observation for observation in analysis.observations
+                            if (observation["block"], observation["target"],
+                                observation["delivery"]) == (node, str(target),
+                                                             declaration.delivery)]
+            yield ReadingRequirementChain({"subject": requirement}).check(
+                analysis=analysis, node=node, observations=observations)
+            paths = {}
+            for observation in observations:
+                paths.setdefault(tuple(analysis.ship(step) for step in observation["path"]),
+                                 observation)
+            for path, observation in paths.items():
+                yield ReadingPathChain({"subject": {**requirement, "path": list(path)}}).check(
+                    analysis=analysis, node=node, observation=observation)
+    for node, links in graph.links.items():
+        for link in links:
+            href = graph.prose_href(node, link)
+            if href is not None:
+                yield LinkProseChain({"subject": {**owner, "block": analysis.ship(node),
+                                                  "target": href}}).check(
+                    analysis=analysis, node=node, link=link)
+
+
+class ReadingGraphChain(SituationChain):
+    """The reading graph of one package as a whole."""
+    Check = ReadingGraphCheck
+    POIs = (InvalidLoadingRoot, RootHasParent, LoadingAnalysisIncomplete)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("625475a8-b78a-4d93-977b-bcb544f0f22c"),
+                          name="Tarav.SKW.Chain.ReadingGraph", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class ReadingNodeChain(SituationChain):
+    """One declared block of a loading model."""
+    Check = ReadingNodeCheck
+    POIs = (InvalidBlockReference, UnreachableBlock, AttachmentCycle, InclusionCycle)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("ff663df6-b0cc-42e0-9086-17ecf134ecce"),
+                          name="Tarav.SKW.Chain.ReadingNode", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class ReadingDeclarationChain(SituationChain):
+    """One target a block declares."""
+    Check = ReadingDeclarationCheck
+    POIs = (InvalidParent, InvalidContextTarget)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("ca2aff33-8a88-46ee-b6db-97aee73d4143"),
+                          name="Tarav.SKW.Chain.ReadingDeclaration",
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class BlockBindingChain(SituationChain):
+    """One block of a source and the loading model that should declare it."""
+    Check = BlockBindingCheck
+    POIs = (UndeclaredBlock,)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("f93600cd-4cdd-44df-a8b0-3fe20745c952"),
+                          name="Tarav.SKW.Chain.BlockBinding", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class ReadingRequirementChain(SituationChain):
+    """One context requirement of a block, over all its reading paths."""
+    Check = ReadingRequirementCheck
+    POIs = (PathDependentContext,)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("8c84935a-6c89-4631-bbe9-9178be9e48bf"),
+                          name="Tarav.SKW.Chain.ReadingRequirement",
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class ReadingPathChain(SituationChain):
+    """One context requirement of a block on one reading path."""
+    Check = ReadingPathCheck
+    POIs = (MissingContext,)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("b66a61f8-cf08-48c8-b5b3-89bf7b4cce19"),
+                          name="Tarav.SKW.Chain.ReadingPath", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
+class LinkProseChain(SituationChain):
+    """One declared link whose prose part the text of its block should hold."""
+    Check = LinkProseCheck
+    POIs = (MissingMarkdownLink,)
+
+    @classmethod
+    def class_entity(cls) -> TaravClass:
+        return TaravClass(target=cls, id=TypeShip("52bdce1d-f566-4407-8bcd-e75634dfee24"),
+                          name="Tarav.SKW.Chain.LinkProse", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+
+
 SKW_CHAINS = (
     SkillMarkerChain, SkillLoadingChain, PublicationChain, SourceChain, ProductChain,
     ProductDriftChain, BlockChain, GenerationContextResolutionChain, GenerationFreshnessChain,
     ContextFreshnessChain, ConsumerFileChain, ConsumerLinkChain, DependencyChain,
+    ReadingGraphChain, ReadingNodeChain, ReadingDeclarationChain, BlockBindingChain,
+    ReadingRequirementChain, ReadingPathChain, LinkProseChain,
 )
 
 
@@ -636,7 +969,7 @@ class SkwSkillSuite(CheckSuite):
         for dependency in package.dependencies:
             yield DependencyChain({"subject": {**package.owner, "path": dependency["path"]}}).check(
                 package=package, dependency=dependency)
-        yield from reading_checks(load.graph)
+        yield CheckSuite(reading_checks(package, ReadingAnalysis(load.graph)), name="reading")
 
 
 SKW_CHAIN_CHECK_TYPES = tuple(chain.Check for chain in SKW_CHAINS)
