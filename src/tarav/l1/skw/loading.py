@@ -39,8 +39,8 @@ class SkillDocument(Document):
     def text(self):
         return self.loading.document_text(self)
 
-    def lint(self, *, freshness=True):
-        findings = super().lint(freshness=freshness)
+    def source_findings(self):
+        findings = super().source_findings()
         if (self.lock()['documents'].get(self.key, {}).get('loading_hash')
                 != _hash(self.loading.data)):
             findings.append(Finding(LoadingDeclarationStale, path=self.key))

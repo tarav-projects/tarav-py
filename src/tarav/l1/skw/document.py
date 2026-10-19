@@ -572,52 +572,80 @@ class Document:
         write(self.source, self.data)
         return {"block": identity, "content": content}
 
-    def lint(self, *, freshness=True):
+    # tarav.breadcrumb 5db8fa8e7000
+    def block_findings(self, identity, *, freshness=True):
+        """What the analysis finds about one block of this document."""
         findings = []
-        def report(poi, block=None, detail="", **observed):
-            findings.append(Finding(poi, block=block, detail=detail, **observed))
+        def report(poi, detail=""):
+            findings.append(Finding(poi, block=identity, detail=detail))
         entry = self.lock()["documents"].get(self.key, {})
-        for identity, block in self.blocks.items():
-            generation = block.annotation(GenerationAnnotation)
-            if freshness and generation is not None:
-                baseline = entry.get("blocks", {}).get(identity)
-                if (isinstance(baseline, dict) and "input_hash" in baseline
-                        and baseline["input_hash"] != self.generation_fingerprint(identity)):
-                    report(StaleGeneration, identity)
-            if (freshness and generation is not None
-                    and (generation.typed.context
-                         or identity in entry.get("contexts", {}))):
-                try:
-                    context_hash = self._context_hash(self._resolved_context(identity))
-                except (KeyError, ValueError, TypeError, OSError) as exc:
-                    report(ContextUnresolvable, identity, str(exc))
-                else:
-                    observed = entry.get("contexts", {}).get(identity)
-                    if observed is None:
-                        report(ContextUnobserved, identity)
-                    elif observed != context_hash:
-                        report(StaleContext, identity)
-            if block.get("content") is None:
-                report(MissingContent, identity)
-            findings.extend(block.output_findings(self, entry))
+        block = self.blocks[identity]
+        generation = block.annotation(GenerationAnnotation)
+        if freshness and generation is not None:
+            baseline = entry.get("blocks", {}).get(identity)
+            if (isinstance(baseline, dict) and "input_hash" in baseline
+                    and baseline["input_hash"] != self.generation_fingerprint(identity)):
+                report(StaleGeneration)
+        if (freshness and generation is not None
+                and (generation.typed.context
+                     or identity in entry.get("contexts", {}))):
+            try:
+                context_hash = self._context_hash(self._resolved_context(identity))
+            except (KeyError, ValueError, TypeError, OSError) as exc:
+                report(ContextUnresolvable, str(exc))
+            else:
+                observed = entry.get("contexts", {}).get(identity)
+                if observed is None:
+                    report(ContextUnobserved)
+                elif observed != context_hash:
+                    report(StaleContext)
+        if block.get("content") is None:
+            report(MissingContent)
+        findings.extend(block.output_findings(self, entry))
+        return findings
+
+    def source_findings(self):
+        """What the analysis finds about the source as a whole, apart from its blocks and product."""
+        entry = self.lock()["documents"].get(self.key, {})
         if entry.get("source_hash") != _hash(self.data):
-            report(SourceUncompiled)
+            return [Finding(SourceUncompiled, block=None, detail="")]
+        return []
+
+    def product_text(self):
+        """The compiled file as it is; raises OSError or UnicodeError when it cannot be read."""
+        return self.target.read_text(encoding="utf-8")
+
+    def expected_text(self):
+        """What the source produces, or None when it cannot be rendered."""
         try:
-            expected = self.text()
+            return self.text()
         except ValueError:
-            expected = None
-        try:
-            actual = self.target.read_text(encoding="utf-8")
-        except (OSError, UnicodeError) as exc:
-            report(ProductUnavailable, detail=str(exc))
-        else:
-            if expected is not None and actual != expected:
-                # tarav.breadcrumb a999689284b9
-                places, lines, shown = _difference(actual, expected)
-                report(ProductDrift, detail=f"{places} places, {lines} lines",
+            return None
+
+    def drift(self, actual, expected):
+        """The ProductDrift finding when the compiled file differs from what the source produces."""
+        if actual == expected:
+            return None
+        # tarav.breadcrumb a999689284b9
+        places, lines, shown = _difference(actual, expected)
+        return Finding(ProductDrift, block=None, detail=f"{places} places, {lines} lines",
                        product=str(self.target), source=str(self.source), actual=_hash(actual),
                        expected=_hash(expected), difference=shown)
-        return findings
+
+    def product_findings(self):
+        """What the analysis finds about the compiled file."""
+        expected = self.expected_text()
+        try:
+            actual = self.product_text()
+        except (OSError, UnicodeError) as exc:
+            return [Finding(ProductUnavailable, block=None, detail=str(exc))]
+        found = None if expected is None else self.drift(actual, expected)
+        return [] if found is None else [found]
+
+    def lint(self, *, freshness=True):
+        findings = [finding for identity in self.blocks
+                    for finding in self.block_findings(identity, freshness=freshness)]
+        return [*findings, *self.source_findings(), *self.product_findings()]
 
     def compile(self):
         findings = self.lint()

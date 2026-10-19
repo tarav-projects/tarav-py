@@ -134,7 +134,7 @@ suite.
 1. **Refactor — per-subject analysis in l1.** Split `Document.lint` /
    `SkillDocument.lint` into per-subject parts; `lint()` composes them.
    Check: `tests/test_skw_poi.py`, `tests/test_skills.py` unchanged and green.
-   Status: pending.
+   Status: done.
 2. **Feature — the chains and the Suite.** Add `l2/skw/chains.py`, move the
    freshness and context-resolution checks into it as chains, replace the
    analysis check by `SkwSkillSuite`. Check: new tests (one atomic Check per
@@ -157,3 +157,13 @@ tarav-md growing past ~2× (report it).
   `l2/skw/reading_checks.py`, `l1/skw/document.py`, `l1/skw/loading.py`,
   `l1/skw/skills.py`, `l1/skw/pois.py`, `l1/project/agents.py`, the tests and
   the tarav-md check summary.
+- Execute: start checkpoint bc16a52 (the note only; tree was clean).
+- Slice 1 (refactor): `Document.block_findings(label)`, `source_findings()`,
+  `product_text()`, `expected_text()`, `drift(actual, expected)`,
+  `product_findings()`; `lint()` composes them. `SkillDocument` overrides
+  `source_findings()` instead of `lint()`, so its loading findings now come
+  before the product's in `lint()` (order only). Check: a dump of every
+  `lint()` and `lint(freshness=False)` finding of the tarav-md skills is
+  identical before and after (81 lines, `diff` empty, script
+  `/tmp/s927/lint_dump.py`); default suite 398 passed; ruff clean.
+  Breadcrumb 5db8fa8e7000 on `block_findings`; a999689284b9 moved, refreshed.
