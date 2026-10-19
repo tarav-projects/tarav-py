@@ -12,6 +12,24 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+# tarav.breadcrumb 2170ebdc15c6
+def test_attic_owns_its_types_and_is_an_archive_child():
+    from tarav.l1.archive.workflow import ArchiveWorkflow
+    from tarav.l1.attic import ATTIC_RECORD_TYPES, AtticWorkflow
+    from tarav.l3.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("Tarav.Workflow.Attic") is AtticWorkflow
+    assert AtticWorkflow().workflow is ArchiveWorkflow()
+    for record_type in ATTIC_RECORD_TYPES:
+        assert entity(record_type).workflow is AtticWorkflow()
+        assert runtime.records.resolve_ship(entity(record_type).id) is record_type
+    graph = _top_level_import_graph()
+    for module, imports in graph.items():
+        if module == "attic" or module.startswith("attic."):
+            assert not any(name.startswith(("project", "l2.", "l3.")) for name in imports)
+
+
 # tarav.breadcrumb bbd582b06204
 # tarav.breadcrumb bb18dc7c211d
 def test_project_capabilities_use_bound_semantic_paths() -> None:

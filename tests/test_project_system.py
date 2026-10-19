@@ -15,9 +15,12 @@ from tarav.l3.runtime import create_runtime
 
 
 @pytest.fixture(autouse=True)
-def _runtime(monkeypatch):
+def _runtime(monkeypatch, tmp_path):
     create_runtime()
     monkeypatch.setenv("_TARAV_IMPORT_ENTRY", "1")  # a launched child imports tarav
+    # System checks must never inspect the real machine's Attic in a unit test.
+    from tarav.l1.attic import model as attic_model
+    monkeypatch.setattr(attic_model, "default_tarav_data_root", lambda: tmp_path / "tarav-data")
 
 
 def _marker(root: Path, **fields) -> None:
@@ -78,3 +81,47 @@ def test_init_creates_the_system_project_once(tmp_path: Path, monkeypatch) -> No
     assert isinstance(project, TaravSystemProject) and type(project) is not TaravSystemProject
     with pytest.raises(CliError, match="already has a System Project"):
         init_system(tarav_source=source, sync=False)
+
+
+# tarav.breadcrumb 5ca1143617e7
+def test_system_composes_attic_checks_and_actions_close_after_metadata_repair(tmp_path, monkeypatch):
+    from tarav.l1.attic import model as attic_model
+    from tarav.l1.attic.checks import ManifestMissing
+
+    monkeypatch.setattr(attic_model, "default_tarav_data_root", lambda: tmp_path)
+    missing = tmp_path / "attic/deposits/unfinished"
+    missing.mkdir(parents=True)
+    system = tmp_path / "system"
+    _marker(system)
+    project = TaravSystemProject.from_path(system)
+    project.status()
+    actions = project.actions.list()
+    attic_actions = [run for run in actions
+                    if run.data["event"]["poi"]["type"] == "Tarav.Attic.Manifest.Missing.POI"]
+    assert len(attic_actions) == 1
+    action = attic_actions[0]
+    assert action.state == "running"
+    assert action.data["action"] == "Tarav.Attic.Manifest.Missing.Action"
+    assert action.data["event"]["poi"]["situation"] == {
+        "root": str(tmp_path / "attic"), "deposit": "unfinished"}
+    original = Path.iterdir
+
+    def unavailable(path):
+        if path == tmp_path / "attic/deposits":
+            raise PermissionError("Attic temporarily unavailable")
+        return original(path)
+
+    with monkeypatch.context() as unavailable_depot:
+        unavailable_depot.setattr(Path, "iterdir", unavailable)
+        project.status()
+    still_open = next(run for run in project.actions.list() if run.id == action.id)
+    assert still_open.state == "running"
+    (missing / "deposit.json").write_text(json.dumps({
+        "class": "tarav.attic.deposit", "schema_version": 1,
+        "uuid": "21cfc4b7-3c13-4d76-ad6a-63ef98c1929f", "deposited_at": "2026-10-19T00:00:00Z",
+        "sources": ["/old"], "material": "material", "reason": "Displaced files",
+        "dependency_status": "disconnected"}))
+    project.status()
+    assert not [poi for poi in project.checks.run().pois() if isinstance(poi, ManifestMissing)]
+    updated = next(run for run in project.actions.list() if run.id == action.id)
+    assert updated.state == "closed" and updated.exit == "gone"

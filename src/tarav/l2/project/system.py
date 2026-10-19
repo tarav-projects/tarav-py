@@ -16,6 +16,7 @@ from tarav.l0._core.errors import CliError
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l0.project import project_id, require_agentos_project
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
+from tarav.l1.attic import AtticWorkflow
 from tarav.l1.git.gitleaks import unowned_suites
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 
@@ -59,7 +60,9 @@ class TaravSystemProject(Project):
                             name=f"{self.obj.name} active Projects"),
                  # tarav.breadcrumb 23b1e2b1c68b
                  CheckSuite(lambda _suite: unowned_suites(),
-                            name="gitleaks: repositories no Project owns")],
+                            name="gitleaks: repositories no Project owns"),
+                 # tarav.breadcrumb d9daf0086d0e
+                 AtticWorkflow.open().checks.suite()],
                 name=self.obj.name, repositories=self.obj.repositories())
 
 

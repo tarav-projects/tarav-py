@@ -475,6 +475,22 @@ relationships, storage policies, or interpretation of domain payloads.
 
 ## Domain ownership
 
+`tarav.l1.attic` owns cheap conservation of opaque displaced material.
+`AtticWorkflow` is an explicit Archive child, separate from Artifact
+registration. `Attic` and `Deposit` are path handlers with ordinary Tarav
+Records; `deposit.json` is a separate, self-declared orientation format, and
+its UUID does not identify an Archive Artifact or promise an available Entity.
+The identified `AtticSuite` reads immediate deposit directories and manifests
+only. Situation Chains report listing failure, missing/unreadable/invalid
+metadata, and duplicate UUID declarations through Attic-owned resolution
+actions. Format validation never inspects, traverses, hashes, or requires the
+existence of retained contents, verifies depositor claims, or repairs metadata.
+`TaravSystemProject` composes this suite; incomplete discovery cannot establish
+that previously reported deposit situations disappeared. Agents perform
+depositing and recovery under `tarav-pkg --attic`; no payload operation is
+implicit in workflow discovery or checking.
+<!-- tarav.breadcrumb c1e8d482d837 -->
+
 Project's optional Python harness spans `tarav.l2.project.harness` (inspection,
 scaffolding, uv sync) and `tarav.l3.project` (trusted runtime bootstrap and child
 launch). A Project's `.tarav/project.json` is its Record and the Project

@@ -310,6 +310,8 @@ def create_runtime(
     from tarav.l2.tests.actions import ActionsTestsWorkflow
     from tarav.l2.project.programs import ProjectProgram
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
+    # tarav.breadcrumb 40a71d141d26
+    from tarav.l1.attic import ATTIC_ACTION_TYPES, ATTIC_RECORD_TYPES, AtticWorkflow
     from tarav.l1.project import ProjectWorkflow, TaravProject
     from tarav.l2.project import Project
     from tarav.l2.project.runner import PROJECT_RUNNER_RECORD_TYPES
@@ -412,6 +414,7 @@ def create_runtime(
                 *BREADCRUMB_RECORD_TYPES,
                 *GIT_RECORD_TYPES,
                 *WORKSPACE_RECORD_TYPES,
+                *ATTIC_RECORD_TYPES,
                 WorkspaceIntegrityCheck,
                 WorkspaceReferenceCheck,
                 WorkspaceRemovalCheck,
@@ -528,6 +531,7 @@ def create_runtime(
         GitWorkflow,
         WorkspacesWorkflow,
         ArchiveWorkflow,
+        AtticWorkflow,
         RecordArchiveWorkflow,
         LinesWorkflow,
         NotebookWorkflow,
@@ -570,7 +574,8 @@ def create_runtime(
     from tarav.l2.tests.actions import TestMarkerResolution
     for action_type in (GitleaksFindingResolution, GitleaksStagedResolution,
                         GitleaksNeverScannedResolution, GitleaksMissingResolution,
-                        HooksNotInstalledResolution, *SKW_ACTION_TYPES, TestMarkerResolution):
+                        HooksNotInstalledResolution, *SKW_ACTION_TYPES, TestMarkerResolution,
+                        *ATTIC_ACTION_TYPES):
         register_action(action_type)
     from tarav.l1.project.config import register_config_section
     from tarav.l1.project.agents import AgentsConfig
