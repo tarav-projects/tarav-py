@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: executing, 2026-10-19.
+Status: complete, 2026-10-19.
 Knowledge.Surface: wiki.
 Alignment.Mode: interactive.
 
@@ -99,7 +99,8 @@ notes, which record the names as they were.
 
 Product project: tarav-py. Wiki: `notes/wiki/` in this repository
 (`situation-chains.md`, daily `daily/2026-10-19.md`). Companion edit:
-tarav-md's hugentics depot `AGENTS.md` (one name). Capture: pending.
+tarav-md's hugentics depot `AGENTS.md` (one name). Capture: done (`situation-chains.md`
+"Naming: a chain's Types end on what they are"; daily note).
 
 ## Execution.Plan
 
@@ -240,3 +241,12 @@ closes on the next check run.
   Checks: test_architecture, test_project_agents, test_situation_chains 64
   passed; `tarav status --project tarav-md` unchanged (68 open). No new
   Breadcrumb: the docs restate the code and its decisions, which carry them.
+- Verification: `tarav status --project tarav-py --all`: 63 checks, all
+  completed, nothing changed; the Gitleaks finding's action keeps its id
+  (2da38d17) under `Tarav.Git.Gitleaks.Finding.Reported.POI`.
+- Outcome: slices 2b5335a (1), f0ceb5b (2), ceb4a7d (3), 347cc2e (4),
+  86e3e42 (5); tarav-md 71557e8 (checkpoint), 810d49b (depot AGENTS.md);
+  records store a4b259f. Open: the ChildPOIs situation holding a Type name
+  (deviation 1); problem names that repeat their chain
+  (`SkillMarker.SkillMarkerMissing`, `ProductDrift.ProductDrift`) could be
+  shortened, which this request did not do.
