@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready for execution. Knowledge.Surface: wiki.
+Status: implemented; closure verification in progress. Knowledge.Surface: wiki.
 Alignment.Mode: Interactive. Product: tarav-py. Wiki owner: tarav-md.
 
 Implement Notebook storage over the existing Lines primitives, a Project
@@ -153,3 +153,42 @@ produced and compiled AGENTS.md. JSON source has no registered native inline
 Breadcrumb convention; supported source-code, test, and Markdown surfaces
 carry the selected design Turns instead. No editing policy or check engine
 was added. Slice 1 commit: `2dc187fe`.
+
+### Execute — slice 3 and actual recovery
+
+Slice 2 commit: `07815f86`. The bounded recovery script is
+`scripts/import_legacy_notebook.py`. Its first tests failed for the absent
+script. Tests now cover latest-edition selection independent of array order,
+verbatim text, retained Ships, labels-as-Lines, inherited Archive context,
+byte-identical raw source retention, rejection of overwriting reruns, and
+missing source membership before writes.
+
+The real invocation exposed a missing runtime bootstrap in the standalone
+script; fixed main() to initialize get_runtime() and added a fresh-process
+regression test. All three recovery tests pass.
+
+Provisioned the live Tarav root Project (85c304e9-a3f9-4093-abc3-ee10a32743bf),
+not the retired Tara workspace. Its notebook is the standard Record Registry
+partition `~/Documents/tarav/records/92338514-6f87-4dad-8a41-3148020f90d4`.
+Data start commit: `4213906a`. Project root:
+`f6c673d6-88e7-5071-8533-ab0a6450c6e6`; Archive:
+`3ed966a8-aeda-5f14-96df-236590db4958`.
+
+Imported 1,581 legacy Lines, 269 Blocks and nine former Model groupings as
+ordinary Blocks. Including generated context/label Lines and the Project's
+eight initial Records, the notebook contains 2,149 Records. All 38 legacy
+Collection records remain retained as raw source rather than being interpreted
+as authoring ancestry. Both source repositories were clean:
+Diagram.Attic `1baf6789b23e5621d742a3196d5ad29989e0f6ab` and
+User.Touched.Chatlas.Index `caf59454702f65726292d7594a530a91ec561ce9`.
+The import report and source copies live under
+`imports/ee7c5865-2209-516f-8be2-361eea2d8f18/` in that partition.
+
+Verified by reopening the real notebook through Project.notebook().root:
+all 1,581 selected legacy texts and scope Ships match; all 1,859 selected
+source records have matching retained hashes; original labels survive as
+Lines; every legacy Line inherits Archive context; all 2,149 Records are
+reachable from the Project root. The verification initially reloaded the
+whole tree repeatedly inside a loop; interrupted that read-only check and
+reran it using one loaded tree. The corrected check completed successfully.
+Ruff and whitespace checks pass.
