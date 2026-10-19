@@ -145,7 +145,7 @@ suite.
    l2, runtime registration; a test asserts each `SkwPOI` subclass's action
    resolves. Delete the affected records; `tarav status --project tarav-md`
    twice: same open counts, second run "nothing". Status: done.
-4. **Docs.** AGENTS.md (source) / ARCHITECTURE.md / Wiki. Status: pending.
+4. **Docs.** AGENTS.md (source) / ARCHITECTURE.md / Wiki. Status: done.
 
 Deviation triggers: a per-subject split that changes `lint()` output; a
 reading check needing the package loaded differently; check count or time on
@@ -204,3 +204,15 @@ tarav-md growing past ~2× (report it).
   68 open; again: "nothing", 68 open. A reopened action records
   `Tarav.SKW.POI.OutputChanged.Resolution`, `Tarav.SKW.Check.Block` and the
   same situation. Breadcrumb ccf024a804b7 on `__init_subclass__`; audits clean.
+- Slice 4 (docs): found that request 926 slice 4 (f695597) edited the
+  compiled AGENTS.md instead of its source: `tarav skw document lint
+  --source AGENTS.skw.json --depot .tarav/skillware` reported ProductDrift
+  (4 places, 25 lines). Synced the `project-system-prompt` block from the
+  product, added the chain sentence (Gitleaks and the Skillware analysis are
+  chains; reading checks and the agents file are not yet), compiled:
+  written, no findings; the AGENTS.md diff is that sentence only. The
+  ARCHITECTURE.md `skw` row describes `l2.skw.chains`, the per-subject split
+  and the Action Types. Checks: `tests/test_architecture.py`,
+  `tests/test_project_agents.py` 54 passed; `tarav check --project tarav-py`:
+  3 POIs (NeverScanned, 2 test markers), no ProductDrift. Audits of AGENTS.md
+  and ARCHITECTURE.md clean after position refresh.

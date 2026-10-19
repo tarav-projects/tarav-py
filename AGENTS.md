@@ -335,8 +335,12 @@ Importing `tarav` alone initializes no services or layered modules.
   (`tarav.l1.checks.chains.SituationChain`): a class naming its atomic
   `SituationCheck` and its POI Types, and binding them (`chain`). The caller
   creates the situation; a Suite finds situations and runs one Check per
-  situation. Identities are a Type and a situation, hashed. Gitleaks is the
-  first chain; other checks still raise POIs outside chains.
+  situation. Identities are a Type and a situation, hashed. Gitleaks
+  (`tarav.l1.git.gitleaks`) and the Skillware package analysis
+  (`tarav.l2.skw.chains`: `SkwSkillSuite` loads a skill once and runs one
+  Check per skill, source, product, block, consumer file, link and
+  dependency) are chains; the reading-graph checks and a Project's agents
+  file still raise POIs outside chains.
   <!-- tarav.sessions
   3537df0a = claude-code:2bff854f-66a0-4e8c-8f96-9078af34c479 @3537df0a6015d884a94e9594478f971cb92e38df63776b87b5eea38741740d8a
   -->
