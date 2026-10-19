@@ -3,26 +3,26 @@ from uuid import uuid4
 
 import pytest
 
-from tarav.l0.kernel import Ship, TaravEntity
+from tarav.l0.kernel import Ship, TaravClass, TypeShip
 from tarav.l1.context import ContextExplorer
 from tarav.l1.lines import Block, Line
 
 
 def make_line():
-    scope = TaravEntity(Ship(str(uuid4())))
+    scope = Block(id=Ship(str(uuid4())), topic="The car")
     return Line(id=Ship(str(uuid4())), text="It is red.", scope=scope)
 
 
 def test_block_topic_order_and_binding():
     block = Block(id=Ship(str(uuid4())), topic="The car")
     color = Line(id=Ship(str(uuid4())), text="It is red.", scope=block)
-    finish = Line(id=Ship(str(uuid4())), text="The finish is matte.", scope=color)
+    finish = Line(id=Ship(str(uuid4())), text="The finish is matte.", scope=block)
     block.append(color)
     block.append(finish)
 
     assert block.lines == (color, finish)
     assert block.line_ships == (color.id, finish.id)
-    assert finish.scope is color  # Block membership does not assign scope.
+    assert finish.scope is block
     assert block.ships()[-2:] == block.line_ships
 
     restored = Block.records.from_record(block.records.to_record())
@@ -37,7 +37,7 @@ def test_block_topic_order_and_binding():
 
 def test_block_rejects_invalid_membership():
     block = Block(id=Ship(str(uuid4())), topic="A topic")
-    line = make_line()
+    line = Line(id=Ship(str(uuid4())), text="A detail.", scope=block)
     with pytest.raises(ValueError):
         Block(id=Ship(str(uuid4())), topic=" ")
     with pytest.raises(TypeError):
@@ -47,6 +47,8 @@ def test_block_rejects_invalid_membership():
     block.append(line)
     with pytest.raises(ValueError):
         block.append(line)
+    with pytest.raises(ValueError):
+        block.append(make_line())
 
 
 def test_line_roundtrip_and_binding():
@@ -56,7 +58,7 @@ def test_line_roundtrip_and_binding():
     with pytest.raises(LookupError):
         _ = restored.scope
     with pytest.raises(ValueError):
-        restored.bind_scope(TaravEntity(Ship(str(uuid4()))))
+        restored.bind_scope(Block(id=Ship(str(uuid4())), topic="Other"))
     restored.bind_scope(line.scope)
     assert restored.scope is line.scope
     identity = restored.id
@@ -65,21 +67,71 @@ def test_line_roundtrip_and_binding():
     assert restored.scope is line.scope
 
 
-def test_nested_scope():
-    line = make_line()
-    detail = Line(id=Ship(str(uuid4())), text="The finish is matte.", scope=line)
-    assert detail.scope is line
+def test_recursive_block_context():
+    root = Block(id=Ship(str(uuid4())), topic="Project")
+    child = Block(id=Ship(str(uuid4())), topic="Class", parent=root)
+    leaf = Block(id=Ship(str(uuid4())), topic="Method", parent=child)
+    root.append_child(child)
+    child.append_child(leaf)
+    line = Line(id=Ship(str(uuid4())), text="It returns a result.", scope=leaf)
+    leaf.append(line)
+    assert line.scope is leaf
+    assert leaf.ancestors() == (child, root)
+    assert root.children == (child,)
+    assert child.child_ships == (leaf.id,)
+    assert Block.records.from_record(leaf.records.to_record()).parent_ship == child.id
+    restored = Block.records.from_record(root.records.to_record())
+    with pytest.raises(LookupError):
+        _ = restored.children
+    restored.bind_children((child,))
+    assert restored.children == (child,)
+
+
+def test_scope_must_be_a_block():
+    block = Block(id=Ship(str(uuid4())), topic="Topic")
+    line = Line(id=Ship(str(uuid4())), text="A statement.", scope=block)
     with pytest.raises(TypeError):
         Line(id=Ship(str(uuid4())), text="x", scope="not an entity")
+    with pytest.raises(TypeError):
+        Line(id=Ship(str(uuid4())), text="x", scope=line)
 
 
-def test_scope_cycles_are_serialized_as_edges():
-    identity = Ship(str(uuid4()))
-    line = Line.records.from_record({"id": str(identity), "text": "self scoped",
-                             "scope_ship": str(identity)})
-    line.bind_scope(line)
-    assert line.scope is line
-    assert line.records.to_record()['scope_ship'] == str(identity)
+def test_block_parent_cycles_and_conflicts_are_rejected():
+    root = Block(id=Ship(str(uuid4())), topic="Root")
+    child = Block(id=Ship(str(uuid4())), topic="Child", parent=root)
+    with pytest.raises(ValueError):
+        root.bind_parent(child)
+    with pytest.raises(ValueError):
+        root.append_child(Block(id=Ship(str(uuid4())), topic="Other"))
+    with pytest.raises(ValueError):
+        child.append_child(root)
+    root.append_child(child)
+    with pytest.raises(ValueError):
+        root.append_child(child)
+
+
+def test_loaded_parent_can_bind_before_its_own_parent():
+    root = Block(id=Ship(str(uuid4())), topic="Root")
+    middle = Block(id=Ship(str(uuid4())), topic="Middle", parent=root)
+    leaf = Block(id=Ship(str(uuid4())), topic="Leaf", parent=middle)
+    restored_middle = Block.records.from_record(middle.records.to_record())
+    restored_leaf = Block.records.from_record(leaf.records.to_record())
+    restored_leaf.bind_parent(restored_middle)
+    with pytest.raises(LookupError):
+        restored_leaf.ancestors()
+    restored_middle.bind_parent(root)
+    assert restored_leaf.ancestors() == (restored_middle, root)
+
+
+def test_block_subclass_is_a_distinct_type():
+    class SpecBlock(Block):
+        @classmethod
+        def class_entity(cls):
+            return TaravClass(target=cls, id=TypeShip(str(uuid4())),
+                              name="Test.SpecBlock")
+
+    block = SpecBlock(id=Ship(str(uuid4())), topic="Current design")
+    assert block.records.to_record()["type"] == "Test.SpecBlock"
 
 
 def test_line_import_has_no_model_dependency():

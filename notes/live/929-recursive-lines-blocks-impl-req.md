@@ -68,3 +68,18 @@ Inspected active Lines primitives, disconnected Models facade, runtime wiring,
 legacy Diagram imports, project guidance, Constitution, and Wiki. The current
 repository was clean before this request. Chatlas update failed because its
 cache lies outside the writable sandbox; no Turn hash was guessed.
+
+### Slice 1 — Recursive authoring context
+
+Start checkpoint: `e6d45001`. The focused tests first failed for missing
+parentage, unrestricted Line scope, and unrestricted Block membership. Line
+scope now requires a Block. Blocks retain parent and ordered child identities,
+support detached record binding, and reject membership mismatches and known
+parent cycles. Block subtypes use ordinary Tarav class identity; there is no
+closed role enumeration. The synthetic scoring corpus was updated to describe
+the new scope rule.
+
+Focused tests: `tests/test_scoped_lines.py` and
+`tests/scoring/test_line_support_scenario.py` passed (18 tests before the final
+binding-order case). Ruff and `git diff --check` passed. Product Breadcrumb
+capture is pending because Chatlas refresh cannot write its cache.

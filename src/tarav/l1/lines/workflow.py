@@ -1,10 +1,10 @@
-"""Ownership of Lines, Blocks, Collections, and their editions."""
+"""Ownership of Lines and their recursive Block contexts."""
 from tarav.l0.kernel import TaravClass, TaravWorkflow, TypeShip
 from .identity import LINES_WORKFLOW_SHIP
 
 
 class LinesWorkflow(TaravWorkflow):
-    constitution = "Organize evidence-linked Lines, Blocks, Collections, and their editions."
+    constitution = "Interpret Lines within identified recursive Block contexts."
 
     @classmethod
     def class_entity(cls):

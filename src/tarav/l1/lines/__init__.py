@@ -1,4 +1,4 @@
-"""Scoped natural-language statements, independent of Models."""
+"""Natural-language statements interpreted within identified Blocks."""
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip
 from .workflow import LinesWorkflow
@@ -8,7 +8,7 @@ from tarav.l0.kernel import LoadedRecord
 
 
 class Line(TaravEntity):
-    """One statement interpreted within exactly one entity scope."""
+    """One statement interpreted within exactly one authoring Block."""
 
     @classmethod
     def class_entity(cls):
@@ -27,10 +27,10 @@ class Line(TaravEntity):
                     "scope_ship": "611a6454-f1c7-4647-8944-a6c6fd643119"}
 
 
-    def __init__(self, *, id: Ship, text: str, scope: TaravEntity):
+    def __init__(self, *, id: Ship, text: str, scope: Block):
         super().__init__(id)
-        if not isinstance(scope, TaravEntity):
-            raise TypeError("scope must be a TaravEntity")
+        if not isinstance(scope, Block):
+            raise TypeError("Line scope must be a Block")
         self.text = text
         self._scope_ship = scope.id
         self._scope = scope
@@ -55,10 +55,10 @@ class Line(TaravEntity):
     def scope_ship(self):
         return self._scope_ship
 
-    def bind_scope(self, scope: TaravEntity):
+    def bind_scope(self, scope: Block):
         """Resolve the retained edge without changing its semantic identity."""
-        if not isinstance(scope, TaravEntity):
-            raise TypeError("scope must be a TaravEntity")
+        if not isinstance(scope, Block):
+            raise TypeError("Line scope must be a Block")
         if scope.id != self._scope_ship:
             raise ValueError("scope identity does not match the retained scope")
         self._scope = scope
