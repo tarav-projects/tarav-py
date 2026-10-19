@@ -132,7 +132,7 @@ it, after the one-chain binding check.
    (`l2/skw/chains.py`), 42 POIs (`l1/skw/pois.py`), Actions derived
    (`SkwPOI.__init_subclass__`; `l2/skw/pois.py` uses `poi_type.action`
    already). Check: SKW tests with literal names updated; default suite.
-   Status: pending.
+   Status: done.
 3. **Migration — the stored records.** Mapping old → new name by Type id
    (old names from HEAD before slice 1, new from the code); backup; rewrite;
    commit in the records store. Check: 0 records with an old name;
@@ -175,3 +175,16 @@ closes on the next check run.
   20 passed. Ruff: the same 24 pre-existing findings before and after
   (file and rule). Breadcrumbs: 2 in chains.py (the kinds, the helper), 1 in
   gitleaks.py (the prefixes); audits clean after position refresh.
+- Slice 2 (refactor): the 19 Skillware chains and Checks
+  (`l2/skw/chains.py`) and 38 POIs (`l1/skw/pois.py`) named with
+  `chain_type_name("Tarav.SKW.<Chain>", ...)`, the problem being the POI's
+  current short name; `ContextUnobserved` is `Tarav.SKW.ContextUnobserved.POI`
+  (no chain). `SkwPOI.__init_subclass__` derives the Action: the POI's name
+  ending in `Action` instead of `POI`, and refuses a name not ending in
+  `.POI`. StaleContext and StaleGeneration Actions named with the helper.
+  Tests: the produced-chains list (16 literal names), the Action rule with
+  StaleContext's names literally, the finding JSON's POI name; SKW and chain
+  tests 50 passed; default suite 407 passed in 89 s. Ruff: same findings
+  before and after. Breadcrumb: 1 on the derivation (`l1/skw/pois.py`);
+  chains.py and l2 pois.py are mechanical renames, no new Breadcrumb; audits
+  clean.

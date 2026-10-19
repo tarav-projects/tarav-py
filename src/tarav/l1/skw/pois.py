@@ -36,6 +36,7 @@ class SkwPOI(CheckPOI):
     # tarav.breadcrumb ccf024a804b7
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        # tarav.breadcrumb 8f3404a30f27
         # every Skillware POI Type has its own Action Type, named after it (tarav.l2.skw.pois):
         # the same name, ending on what it is
         name = entity(cls).name
