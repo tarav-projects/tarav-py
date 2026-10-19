@@ -105,5 +105,22 @@ The User asked for it next, after Gitleaks.
   compares joins the situation only where that is the problem (ProductDrift,
   freshness).
 - Every Skillware POI Type names `<its name>.Resolution`.
-- Not yet: the reading-graph checks and the Project's agents file, which
-  still raises chain POI Types from outside their chains.
+- Not yet: the Project's agents file, which still raises chain POI Types
+  from outside their chains.
+
+## Implemented: the reading graph (request 928)
+
+The User chose it next.
+<!-- tarav.breadcrumb 77cd993bf9b6 -->
+
+- The reading analysis is one traversal of the whole graph: reachability,
+  cycles and paths cannot be decided per block. It plays the part of a
+  native report: `ReadingAnalysis` runs it once and each reading Check
+  (graph, node, declaration target, source-block binding, requirement,
+  reading path, prose link) reads its own subject's part. Where a rule is
+  local (a block's binding, a link's prose), the Check runs it itself.
+- A missing context keeps the path that misses it in its situation, as the
+  reading-path Wiki asks ("identify an unmet dependency and the path that
+  misses it", `tarav-md/notes/wiki/reader-context-path.md`); a requirement
+  met on some paths and not others is its own situation.
+  <!-- tarav.breadcrumb ad65590db5fd -->
