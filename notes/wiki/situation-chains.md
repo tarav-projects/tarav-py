@@ -124,3 +124,37 @@ The User chose it next.
   misses it", `tarav-md/notes/wiki/reader-context-path.md`); a requirement
   met on some paths and not others is its own situation.
   <!-- tarav.breadcrumb ad65590db5fd -->
+
+## Naming: a chain's Types end on what they are (request 930)
+
+The User asked to homogenize the names of a chain around one prefix, as a
+formalism for readability: the name ends on the kind of Type, so it says
+what it is, with optional extras between the chain and the kind.
+<!-- tarav.breadcrumb 940058930892 -->
+<!-- tarav.breadcrumb 8d28a12a36d3 -->
+<!-- tarav.breadcrumb 559c4802e903 -->
+
+```text
+<chain>.<extras>.<kind>      kind: Chain, Check, POI, Action
+Tarav.Git.Gitleaks.Finding.Chain
+Tarav.Git.Gitleaks.Finding.Check
+Tarav.Git.Gitleaks.Finding.Reported.POI
+Tarav.Git.Gitleaks.Finding.Reported.Action
+```
+
+- A POI and the Action it opens carry the problem as their extra, also in a
+  one-POI chain, so a chain can gain a POI without a rename; the shared
+  problem pairs them. `.Resolution` is gone: this supersedes the 927 note
+  above that Skillware Actions are `<its name>.Resolution`.
+- A helper builds the names, so the code tells the next chains the
+  convention (`chain_type_name`, `CHAIN_KINDS`), and defining a chain
+  refuses a Check, POI or Action named otherwise; that also enforces one
+  Action Type per POI Type in a chain.
+  <!-- tarav.breadcrumb 6e2cd7baf44b -->
+- Names are labels, ids are identity: check, POI and action identities hash
+  Type ids, so renaming kept them. Stored action records keep names, and
+  were migrated once outside Tarav
+  (`~/Documents/tarav/migrations/20261019-chain-type-names/`).
+- Not covered: suite names (a suite's identity uses its name), Python class
+  names. One POI's situation holds a Type name, `Tarav.Project.Root.ChildPOIs`
+  (child POIs counted by Type), so a rename re-identifies it; open.
