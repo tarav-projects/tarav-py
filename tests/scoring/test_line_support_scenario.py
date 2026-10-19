@@ -21,10 +21,10 @@ def test_corpus_has_fifty_scoped_assertable_lines_and_closed_cases():
     assert len(scenario.blocks) == 10
     assert len(scenario.lines) == 50
     assert len({line.id for line in scenario.lines}) == 50
-    assert all(isinstance(block, Block) and len(block.lines) == 5
+    assert all(isinstance(block, Block) and len(block.contents) == 6
                for block in scenario.blocks)
     assert all(isinstance(line, Line) and isinstance(line, Assertable)
-               and isinstance(line, ScoringTestLine) and line in line.scope.lines
+               and isinstance(line, ScoringTestLine) and line in line.scope.contents
                for line in scenario.lines)
 
     cases = [scenario.case(line) for line in scenario.lines]
@@ -32,6 +32,8 @@ def test_corpus_has_fifty_scoped_assertable_lines_and_closed_cases():
     assert len({case.assertion_ref["subject_ref"]["line_id"] for case in cases}) == 50
     assert cases[0].records.to_record()["turn_ids"] == ["u01", "u02"]
     assert "Candidate Line: The marker lives" in cases[0].presentation
+    # tarav.breadcrumb 0bca608ba12f
+    assert "This Block concerns Project marker." in cases[0].presentation
     assert "u02: The marker does not store" in cases[0].presentation
     assert build_line_support_scenario().lines[0].id == scenario.lines[0].id
 

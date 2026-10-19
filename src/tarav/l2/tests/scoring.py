@@ -192,14 +192,17 @@ class LineSupportAssertion(Assertion):
         if any(turn_id not in turns for turn_id in line.turn_ids):
             raise ValueError("Line cites a missing User turn")
         block = line.scope
-        if line.id not in block.line_ships:
+        if line.id not in block.content_ships:
             raise ValueError("Line is not a member of its declared scope Block")
+        context = "\n".join(
+            f"- {item.text}" for item in block.contents if isinstance(item, Line)
+        )
         evidence = "\n".join(f"{turn_id}: {turns[turn_id]}" for turn_id in line.turn_ids)
         return case_type(
             assertion_ref=self.reference(),
             tribunal_type_id=str(entity(LineSupportTribunal).id),
             question="How strongly do the User turns support this scoped Line?",
-            presentation=(f"Block scope: {block.topic}\nCandidate Line: {line.text}\n"
+            presentation=(f"Block scope:\n{context}\nCandidate Line: {line.text}\n"
                           f"Cited User turns: {', '.join(line.turn_ids)}\n"
                           f"Relevant User turns:\n{evidence}"),
             line_id=str(line.id), chat_id=str(chat.id), turn_ids=list(line.turn_ids),
@@ -301,7 +304,7 @@ _TOPICS = (
 
 
 def build_line_support_scenario() -> LineSupportScenario:
-    """Build a stable 20-turn, 10-Block, 50-Line synthetic corpus."""
+    """Build 20 turns, 10 Blocks, and 50 candidate Lines with context Lines."""
     turns: list[dict[str, str]] = []
     blocks: list[Block] = []
     lines: list[ScoringTestLine] = []
@@ -309,7 +312,12 @@ def build_line_support_scenario() -> LineSupportScenario:
     for topic_index, (topic, first, second, candidates) in enumerate(_TOPICS, start=1):
         first_id, second_id = f"u{2 * topic_index - 1:02}", f"u{2 * topic_index:02}"
         turns.extend(({"id": first_id, "text": first}, {"id": second_id, "text": second}))
-        block = Block(id=_ship(f"block:{topic_index}"), topic=topic)
+        block = Block(id=_ship(f"block:{topic_index}"))
+        # tarav.breadcrumb 8f96e0b79100
+        block.append(Line(
+            id=_ship(f"block:{topic_index}:context"),
+            text=f"This Block concerns {topic}.", scope=block,
+        ))
         blocks.append(block)
         for candidate_index, candidate in enumerate(candidates, start=1):
             line = ScoringTestLine(

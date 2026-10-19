@@ -387,12 +387,15 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
 
 ## Kernel contracts
 
-`tarav.l1.lines.Block` is a storage-independent entity with a named topic and
-ordered Line membership. Its Record retains Line Ships; explicit binding
-resolves the ordered members without changing them. Membership does not change
-a Line's scope. `tarav.l1.lines.Line` is a storage-independent entity with text and one
-interpretive entity scope. Its Record retains the scope Ship; explicit binding
-resolves that edge without changing it.
+`tarav.l1.lines.Block` is a storage-independent entity with one ordered
+`contents` collection of Lines or nested Blocks. Its Record retains the mixed
+order as `content_ships`; explicit binding resolves those members without
+changing them. A Block's Lines confer its meaning; the base has no topic field.
+`tarav.l1.lines.Line` has text and one authoring Block, whose ancestry supplies
+its interpretive context. Membership does not change a Line's scope. Its Record
+retains the scope Ship; explicit binding resolves that edge without changing it.
+<!-- tarav.breadcrumb 9ef1979dfc58 -->
+<!-- tarav.breadcrumb 03c727288326 -->
 
 Archive exposes workflow membership through `ArchiveType` / `ArchiveObject`. Explorers are workflow
 Types without requiring the Object Record contract. Their roots may be owned
@@ -695,7 +698,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
 | `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
 | `l1.git`, `l2.git`, `l3.git` | The Git Workflow spans repository mechanics, commit-message Breadcrumb integration, and installed CLI composition. |
-| `l1.lines` | LinesWorkflow owns identified natural-language Lines and recursive typed Blocks. Each Line has one authoring Block; its direct Block and parent chain bound interpretation. A Block orders its direct Lines and child Blocks. The Python class supplies Block type; external graph relationships supply uses such as specification. |
+| `l1.lines` | LinesWorkflow owns identified natural-language Lines and recursive typed Blocks. Each Line has one authoring Block; its direct Block and parent chain bound interpretation. A Block's Lines confer its meaning; its single contents collection preserves mixed Line/Block order. The Python class supplies Block type; external graph relationships supply uses such as specification. |
 | `assertions` | AssertionsWorkflow owns the shallow TaravAssertion root and Assertable capability. The base imposes no case-production method. |
 | `scoring` | ScoringWorkflow owns the identified, case-producing Assertion subtype, closed AssessmentCase contract, shallow Score root, and retained evaluation mechanics. Scoring Records are entities with explicit Context reference edges. |
 | `scoring.ranking` | RankingWorkflow is a Scoring subtype and child workflow. It owns pairwise cases, singleton Tribunal entities, pairwise operations and Checks, and ephemeral RankingScore results. |

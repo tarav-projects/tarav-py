@@ -43,8 +43,8 @@ records and handlers. That baseline motivated the coordinated retirement.
 ## Execution.Plan
 
 1. Feature: reshape Line and Block records and APIs so Line scope is exactly
-   one Block; a Block has one optional parent Block, ordered direct Lines and
-   child Blocks. Reject duplicate members, mismatched scope, parent conflicts,
+   one Block; a Block has one optional parent Block and one ordered contents
+   collection of Lines or Blocks. Reject duplicate members, mismatched scope, parent conflicts,
    and cycles. Check: focused construction, binding, and record round-trip tests.
 2. Removal: retire old l2 Lines, Models, Unsorted Diagram, Project.models,
    Diagram CLI/config wiring, and adapters dependent only on that application.
@@ -150,3 +150,29 @@ Its 75 remaining open actions predate this change or concern other surfaces:
 worktrees were clean after the implementation commits. The old code remains
 available in Git history; there is no active legacy Diagram CLI or Model
 workflow.
+
+### Amendment — meaning through Lines and one ordered contents collection
+
+The user removed the base Block's predefined topic: its Lines confer its
+meaning. Replace separate Lines and child Blocks collections with one ordered
+`contents` collection of Line or Block objects, retained as `content_ships`.
+Keep one parent Block and each Line's authoring Block. Filtering by Python
+type is sufficient; do not retain aliases for the split collections.
+<!-- tarav.breadcrumb ef1a144918fb -->
+<!-- tarav.breadcrumb 7f99331894ef -->
+
+Todo:
+- [x] Replace the Block fields and collection API; retain parent/scope checks.
+- [x] Update the synthetic scoring consumer and mixed-order/binding tests.
+- [x] Update the Wiki and architecture, capture this decision, and verify.
+
+Start checkpoints: tarav-py `5b8ccf73` (existing Skillware changes retained
+as found) and tarav-md `089b4bd6` (clean).
+
+The focused Lines, scoring-scenario, and architecture suites passed (62 tests).
+Ruff and whitespace checks passed. The synthetic fixture now writes its subject
+as an ordinary context Line, retaining 50 scoring candidates plus 10 context
+Lines. Mixed membership, ordering after Record binding, empty Blocks, duplicate
+Ships, and parent/scope conflicts are covered. Fourteen new Breadcrumbs across
+eight changed surfaces were submitted and audited with no failures; moved
+positions were refreshed. The umbrella Project status is running for closure.
