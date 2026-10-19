@@ -70,6 +70,7 @@ testpaths = [
     "tests/test_poi_primitives.py",
     "tests/test_poi_workflow.py",
     "tests/test_poi_tracking.py",
+    "tests/test_situation_chains.py",
     "tests/test_skw_poi.py",
     "tests/test_skills.py",
     "tests/test_usage_live_help.py",

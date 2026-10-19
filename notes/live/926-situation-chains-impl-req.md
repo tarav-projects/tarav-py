@@ -112,11 +112,12 @@ Inspected 2026-10-19:
 
 ### Agent decisions (proposals)
 
-- `tarav.l1.chains` holds `SituationChain`, a Type whose class fields name its
-  links: `Situation` (a `Situation` subtype), `Check` (a `SituationCheck`),
-  `POIs` (its `CheckPOI` Types) and one Action Type per POI Type. Its
-  instance holds one situation; identity hash(chain Type, hash(situation)).
-  It imports Checks and Actions, so it sits above both.
+- `tarav.l1.checks.chains` holds `SituationChain`, a Type whose class fields
+  name its links: `Check` (a `SituationCheck`, whose `SituationType` is the
+  chain's situation) and `POIs`. Each POI Type names its Action Type by its
+  existing `action` field, so the chain needs no import of Actions and stays
+  in the Checks workflow. Its instance holds one situation; identity
+  hash(chain Type, situation), the same form as Checks and POIs.
 - A POI Type's Action Type is declared by its chain. When a chain declares
   none for a POI Type, it derives a `POIResolutionAction` subtype whose
   TypeShip is derived from the POI Type's, named `<POI name>.Resolution`.
@@ -165,7 +166,7 @@ Core data shape: `SituationChain` with class fields `Situation`, `Check`,
    chain binds `chain` on its Check and POI Types; an instance holds one
    situation, with identity hash(chain Type, hash(situation)); a chain's
    `SituationCheck` raises only its chain's POI Types. Check:
-   `tests/test_situation_chains.py` (lamp chain). Status: pending.
+   `tests/test_situation_chains.py` (lamp chain). Status: done.
 2. Feature — blessing as an Action exit: `BlessablePOI` removed;
    `POIResolutionAction` exits = gone; a blessable subtype adds blessed;
    the blessable POI Types name their own Action Types;
@@ -185,3 +186,10 @@ check of the Actions workflow that depends on the generic Action Type name.
 
 - 2026-10-19: request designed in the session above; needs alignment on the
   open questions.
+- Execute (same session). Start checkpoint b033aa5.
+- Slice 1: `l1/checks/chains.py` `SituationChain`; `chain` fields on
+  `CheckPOI` and `SituationCheck`; `SituationCheck.poi()` refuses a POI Type
+  of another chain. `tests/test_situation_chains.py` failed at collection
+  first (no module), then 5 passed (one expectation fixed: the Check is the
+  first link found already bound). Listed in the default suite. Suite 392
+  passed before listing.

@@ -105,6 +105,9 @@ class CheckPOI(SituationPOI, ActionablePOI):
     identity, and `failure`, whether it counts as a finding.
     """
 
+    #: The Situation Chain this POI Type belongs to, bound when the chain is defined.
+    chain: ClassVar[type | None] = None
+
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("20ad2c76-009f-4aae-a564-70b7925664ef"),
@@ -149,6 +152,8 @@ class SituationCheck(Check):
     """A Check whose evaluation and POI identity share one input snapshot."""
 
     SituationType: type[Situation] = Situation
+    #: The Situation Chain this Check Type belongs to, bound when the chain is defined.
+    chain: ClassVar[type | None] = None
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -186,6 +191,9 @@ class SituationCheck(Check):
 
         if not isinstance(poi_type, type) or not issubclass(poi_type, CheckPOI):
             raise TypeError("SituationCheck findings require a CheckPOI Type")
+        chain = type(self).chain
+        if chain is not None and poi_type not in chain.POIs:
+            raise TypeError(f"{entity(poi_type).name} is not a POI of {entity(chain).name}")
         return poi_type(
             self,
             message,
