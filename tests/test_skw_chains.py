@@ -101,3 +101,19 @@ def test_a_block_poi_is_raised_by_the_check_of_that_block(tmp_path):
                                              "path": "src/guide.skw.json", "block": "body"}}
     assert type(missing).chain is BlockChain
     assert missing.message == "A block has no content: src/guide.skw.json: body"
+
+
+def test_every_skillware_poi_type_names_its_own_action_type():
+    from tarav.l1.actions import action_types
+    from tarav.l1.actions.pois import BlessableResolution
+    from tarav.l1.skw.pois import SkwPOI, StaleContext, StaleGeneration
+
+    create_runtime()
+    registered = action_types()
+    poi_types = SkwPOI.__subclasses__()
+    actions = [registered[poi_type.action] for poi_type in poi_types]
+    assert [entity(action).name for action in actions] == [
+        f"{entity(poi_type).name}.Resolution" for poi_type in poi_types]
+    assert len(set(actions)) == len(poi_types) == len({entity(a).id for a in actions})
+    assert [poi_type for poi_type, action in zip(poi_types, actions)
+            if issubclass(action, BlessableResolution)] == [StaleContext, StaleGeneration]

@@ -144,7 +144,7 @@ suite.
 3. **Feature — Action Types for every SkwPOI.** Convention in l1, table in
    l2, runtime registration; a test asserts each `SkwPOI` subclass's action
    resolves. Delete the affected records; `tarav status --project tarav-md`
-   twice: same open counts, second run "nothing". Status: pending.
+   twice: same open counts, second run "nothing". Status: done.
 4. **Docs.** AGENTS.md (source) / ARCHITECTURE.md / Wiki. Status: pending.
 
 Deviation triggers: a per-subject split that changes `lint()` output; a
@@ -186,7 +186,21 @@ tarav-md growing past ~2× (report it).
   passed; ruff clean. Real surface: `tarav check --project tarav-md` 262 →
   573 checks, same 68 POIs by Type, 1.37 s → 1.31 s (one load instead of
   four); `tarav status --project tarav-md`: "Changed in this run: nothing",
-  68 open. The open OutputChanged actions recorded the old suite
-  (`Tarav.Checks.Suite`) as detector; slice 3 deletes and reopens them.
+  68 open. That run also updated the open actions' recorded suite to
+  `Tarav.SKW.Suite.Skill` ("62 updated" in the partition log).
   Breadcrumb 6878eaee3b17 on `SkwSkillSuite`; moved labels refreshed in
   chains.py, skills.py, test_skw_poi.py; audits clean.
+- Slice 3 (feature): `SkwPOI.__init_subclass__` names each Type's Action
+  Type `<POI name>.Resolution`; `l2/skw/pois.py` builds the 41 other ones
+  (`RESOLUTIONS`, one explicit UUID each, `POIResolutionAction`, gone only)
+  beside the two `BlessableResolution`s; `SKW_ACTION_TYPES` is registered by
+  the runtime. Reading POIs get theirs too, outside chains. Check:
+  `test_every_skillware_poi_type_names_its_own_action_type` (43 Types, 43
+  distinct registered Action Types named after them, blessable exactly
+  StaleContext and StaleGeneration); default suite 403 passed; ruff clean.
+  Records: the 6 OutputChanged actions (Action Type was the generic one)
+  deleted, partition commit 14f2fd6; StaleContext ones kept (same Action
+  Type and POI identity). `tarav status --project tarav-md`: "6 opened",
+  68 open; again: "nothing", 68 open. A reopened action records
+  `Tarav.SKW.POI.OutputChanged.Resolution`, `Tarav.SKW.Check.Block` and the
+  same situation. Breadcrumb ccf024a804b7 on `__init_subclass__`; audits clean.

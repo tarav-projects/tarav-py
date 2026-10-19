@@ -32,6 +32,12 @@ class SkwPOI(CheckPOI):
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
+    # tarav.breadcrumb ccf024a804b7
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # every Skillware POI Type has its own Action Type, named after it (tarav.l2.skw.pois)
+        cls.action = f"{entity(cls).name}.Resolution"
+
     @classmethod
     def sentence(cls, *, where=None, target=None, detail=None) -> str:
         """The Type's statement, then which one of that kind this is."""
@@ -615,7 +621,6 @@ class StaleContext(SkwPOI):
     Blessing records that assessment; it never advances the document baseline.
     """
 
-    action = "Tarav.SKW.POI.StaleContext.Resolution"
 
     statement = "The tracked context of a generated block differs from the recorded baseline"
 
@@ -637,7 +642,6 @@ class StaleGeneration(SkwPOI):
     changed inputs. Source, output, and generation history are not rewritten.
     """
 
-    action = "Tarav.SKW.POI.StaleGeneration.Resolution"
 
     statement = "The inputs of a generated block differ from the recorded baseline"
 

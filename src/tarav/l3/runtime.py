@@ -575,12 +575,11 @@ def create_runtime(
         GitleaksStagedResolution,
     )
     from tarav.l1.git.hooks import HooksNotInstalledResolution
-    from tarav.l2.skw.pois import StaleContextResolution, StaleGenerationResolution
+    from tarav.l2.skw.pois import SKW_ACTION_TYPES
     from tarav.l2.tests.actions import TestMarkerResolution
     for action_type in (GitleaksFindingResolution, GitleaksStagedResolution,
                         GitleaksNeverScannedResolution, GitleaksMissingResolution,
-                        HooksNotInstalledResolution, StaleContextResolution,
-                        StaleGenerationResolution, TestMarkerResolution):
+                        HooksNotInstalledResolution, *SKW_ACTION_TYPES, TestMarkerResolution):
         register_action(action_type)
     from tarav.l1.project.config import register_config_section
     from tarav.l1.project.agents import AgentsConfig
