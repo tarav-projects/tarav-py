@@ -43,7 +43,9 @@ class SituationChain(TaravObject):
     creates; `POIs` are the POI Types it may raise. Each POI Type names its
     Action Type (`action`), and an Action Type its Closings by its exits.
     Defining a chain binds `chain` on its Check and POI Types; a link belongs
-    to one chain.
+    to one chain. The chain's Types are named after it and end on what they
+    are (`chain_type_name`): `<chain>.Chain`, `<chain>.Check`,
+    `<chain>.<problem>.POI` and `<chain>.<problem>.Action`.
 
     An instance is one situation. Its identity, like that of every object of
     the chain, is its Type and that situation, hashed. Consumers decide what

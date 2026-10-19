@@ -146,7 +146,7 @@ it, after the one-chain binding check.
    literal message; default suite. Status: done.
 5. **Docs.** The convention in the chains design note, the
    `SituationChain` docstring, the tarav-md depot `AGENTS.md` line. Status:
-   pending.
+   done.
 
 Deviation triggers: an identity that changes with a name; a name consumed
 somewhere this note does not list; a migrated action that opens, reopens or
@@ -231,3 +231,12 @@ closes on the next check run.
   `Tarav.CLI.Command.Metadata.POI`) are labelled by their area too. Ruff:
   the same 2 import-order findings before and after. Breadcrumb: 1 on
   `_check_names`.
+- Slice 5 (docs): AGENTS.md through its source (`AGENTS.skw.json`, the
+  chain paragraph names the convention), compiled: written, no findings.
+  ARCHITECTURE `checks` row (the convention, `chain_type_name`,
+  `CHAIN_KINDS`, the refusal) and `skw` row (`Tarav.SKW.<chain>...`, the
+  Action derived by kind). `SituationChain` docstring. tarav-md: the depot
+  `AGENTS.md` of tarav-hugentics names `Tarav.SKW.LinkProse.MissingMarkdownLink.POI`.
+  Checks: test_architecture, test_project_agents, test_situation_chains 64
+  passed; `tarav status --project tarav-md` unchanged (68 open). No new
+  Breadcrumb: the docs restate the code and its decisions, which carry them.
