@@ -12,7 +12,7 @@ Implement a real Python AtticWorkflow for cheap conservation of displaced
 material, with a small manifest model and metadata-only checks composed into
 the Tarav System Project. Refresh its owning skill in the companion
 [documentation request](../../../tarav-md/notes/live/867-attic-semantics-impl-req.md).
-Status: implemented; verification and capture closure in progress.
+Status: complete; implemented, verified, captured, and committed.
 <!-- tarav.breadcrumb 09669f665e26 -->
 
 Contents remain opaque. A manifest is a depositor's self-declaration: checks
@@ -69,7 +69,8 @@ The companion documentation request handles that surface.
 Product: `tarav-py`. Wiki owner: `tarav-md/notes/wiki/` by umbrella routing.
 Relevant context: `record-archive.md`, `projects.md`, and this session's exact
 User Turns `7e5cab371f946325` and `952e05cea4612df7`.
-Capture destinations: `attic.md` and `daily/2026-10-19.md`. Status: pending.
+Capture destinations: `attic.md` and `daily/2026-10-19.md`. Status: complete;
+Wiki commit `f3fc14cc7c0d4c1acef3dfa89cd99f2a24adca19`.
 No Diagram Models, Drafts, or authorization Gates are needed.
 
 ## Execution.Plan
@@ -83,11 +84,11 @@ No Diagram Models, Drafts, or authorization Gates are needed.
    Status: verified.
 2. **Feature — operational guidance.** Execute the companion documentation
    request, update architecture and authoritative agents-file source, compile,
-   and verify documentation and real metadata inspection. Status: pending.
+   and verify documentation and real metadata inspection. Status: verified.
 3. **Validation and closure.** Run project checks including non-routine suites,
    distinguish unrelated concurrent findings, capture implemented surfaces and
    Wiki discussion, and commit under the Hugentics evidence workflow.
-   Status: pending.
+   Status: complete; unrelated findings remain explicit below.
 
 Risks: other agents are developing in these same repositories. Preserve their
 changes and use scoped product commits. Some retained manifests predate the
@@ -138,3 +139,15 @@ is a design deviation and requires alignment before expanding scope.
 - Skill build and check: zero findings. Installed skill paths already resolve
   to the maintained product. Agents source compilation: zero findings. The
   installed editable Tarav tool was refreshed through uv.
+- Slice commit: `9f333d1b2db4601a720496a4360c5410b11dba5b`; documentation:
+  `40a151c2a3263c917ddf07d1d9636713c282131c`; System environment lock:
+  `f8aa6e1d5e174978f57e74eadcc4351b0007201b`.
+- Wiki capture committed as `f3fc14cc7c0d4c1acef3dfa89cd99f2a24adca19`:
+  `tarav-md/notes/wiki/attic.md` and `daily/2026-10-19.md`. Inlined audits
+  passed on requests, code, tests, architecture, compiled agents guidance,
+  skill guidance, and the unversioned depot guidance. Generated source text
+  remains authoritative; no provisional evidence markers remain in our scope.
+- No implementation or capture gap remains. General project findings and the
+  two historical manifest-format actions are maintenance outcomes, not hidden
+  repairs or blockers. Shared source/architecture surfaces may include the
+  other agents' work; their edits were preserved throughout.
