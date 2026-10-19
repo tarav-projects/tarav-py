@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlsplit
 
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.checks import CheckResult, CheckSuite, SituationCheck
-from tarav.l1.checks.chains import SituationChain
+from tarav.l1.checks.chains import SituationChain, chain_type_name
 from tarav.l1.references import Reference
 from tarav.l1.skills import SKILL_JSON, SkillMarker
 from tarav.l1.skw.annotations import GenerationAnnotation
@@ -82,7 +82,8 @@ class SkillMarkerCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("aa706659-3242-48a9-a5be-7d3c7317ec62"),
-                          name="Tarav.SKW.Check.SkillMarker", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.SkillMarker", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, package):
         super().__init__(situation=situation)
@@ -104,7 +105,8 @@ class SkillLoadingCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("2d9ad34b-5b7f-4311-b8a1-8a782e9431bc"),
-                          name="Tarav.SKW.Check.SkillLoading", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.SkillLoading", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, load):
         super().__init__(situation=situation)
@@ -124,7 +126,8 @@ class SourceCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("e6c3d79a-ad56-454a-9b28-008c16d0c749"),
-                          name="Tarav.SKW.Check.Source", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.Source", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, document):
         super().__init__(situation=situation)
@@ -144,7 +147,8 @@ class ProductCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("7b00d613-d5b3-4acb-bb70-df4aeb5b50db"),
-                          name="Tarav.SKW.Check.Product", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.Product", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, package, documents):
         super().__init__(situation=situation)
@@ -172,7 +176,8 @@ class ProductDriftCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("28ec7d20-6dad-4e38-83e2-8393ea82cef1"),
-                          name="Tarav.SKW.Check.ProductDrift", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ProductDrift", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, package, document, actual, expected):
         super().__init__(situation=situation)
@@ -201,7 +206,8 @@ class BlockCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("1c5ca03e-947f-4525-be08-2973bbdd620d"),
-                          name="Tarav.SKW.Check.Block", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.Block", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, document):
         super().__init__(situation=situation)
@@ -219,7 +225,7 @@ class GenerationContextResolutionCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("555f8dcd-b836-4b24-88fc-70440a576074"),
-                          name="Tarav.SKW.Check.GenerationContextResolution",
+                          name=chain_type_name("Tarav.SKW.GenerationContextResolution", "Check"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, document):
@@ -250,7 +256,7 @@ class GenerationFreshnessCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("2378413d-f295-4034-8ce0-f92049f09f6b"),
-                          name="Tarav.SKW.Check.GenerationFreshness",
+                          name=chain_type_name("Tarav.SKW.GenerationFreshness", "Check"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def _run(self):
@@ -264,7 +270,7 @@ class ContextFreshnessCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("101a3e88-45c7-45de-b9ea-b28351099c93"),
-                          name="Tarav.SKW.Check.ContextFreshness",
+                          name=chain_type_name("Tarav.SKW.ContextFreshness", "Check"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def _run(self):
@@ -280,7 +286,8 @@ class ConsumerFileCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("f8bded79-7b9c-41cf-a2db-6a96ab41fc78"),
-                          name="Tarav.SKW.Check.ConsumerFile", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ConsumerFile", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, package):
         super().__init__(situation=situation)
@@ -300,7 +307,8 @@ class ConsumerLinkCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("dbf7bc46-d8b1-46fc-9f1c-cc679fc2ed53"),
-                          name="Tarav.SKW.Check.ConsumerLink", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ConsumerLink", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, package):
         super().__init__(situation=situation)
@@ -331,7 +339,8 @@ class DependencyCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("23f11ce5-1885-4867-957d-e09169746f20"),
-                          name="Tarav.SKW.Check.Dependency", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.Dependency", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, package, dependency):
         super().__init__(situation=situation)
@@ -358,7 +367,8 @@ class SkillMarkerChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("9d3d5b3d-b22e-4df2-a9a5-7b5406a3918b"),
-                          name="Tarav.SKW.Chain.SkillMarker", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.SkillMarker", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class SkillLoadingChain(SituationChain):
@@ -369,7 +379,8 @@ class SkillLoadingChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("ba80de3d-9659-4096-a776-50ef0a4e7e93"),
-                          name="Tarav.SKW.Chain.SkillLoading", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.SkillLoading", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class SourceChain(SituationChain):
@@ -380,7 +391,8 @@ class SourceChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("07da01b7-7d92-49b1-bf4c-82d305547b10"),
-                          name="Tarav.SKW.Chain.Source", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.Source", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class ProductChain(SituationChain):
@@ -391,7 +403,8 @@ class ProductChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("7d25e718-5086-40a8-a6fd-8e8f3b46dc8a"),
-                          name="Tarav.SKW.Chain.Product", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.Product", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class ProductDriftChain(SituationChain):
@@ -402,7 +415,8 @@ class ProductDriftChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("bf689637-d086-47c8-8b2f-8eeeaee31dfb"),
-                          name="Tarav.SKW.Chain.ProductDrift", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ProductDrift", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class BlockChain(SituationChain):
@@ -414,7 +428,8 @@ class BlockChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("6d301fc3-9c56-4d8f-a8af-54a572fbcc72"),
-                          name="Tarav.SKW.Chain.Block", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.Block", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class GenerationContextResolutionChain(SituationChain):
@@ -425,7 +440,7 @@ class GenerationContextResolutionChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("9556b00f-ee7d-4b3e-bf16-914f2fa7f1bd"),
-                          name="Tarav.SKW.Chain.GenerationContextResolution",
+                          name=chain_type_name("Tarav.SKW.GenerationContextResolution", "Chain"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
@@ -437,7 +452,7 @@ class GenerationFreshnessChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("31cdde75-e4bc-4925-b5d0-751250f051d4"),
-                          name="Tarav.SKW.Chain.GenerationFreshness",
+                          name=chain_type_name("Tarav.SKW.GenerationFreshness", "Chain"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
@@ -449,7 +464,7 @@ class ContextFreshnessChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("64e5ee5a-0ec7-4b2e-8f60-edc99adb1dd5"),
-                          name="Tarav.SKW.Chain.ContextFreshness",
+                          name=chain_type_name("Tarav.SKW.ContextFreshness", "Chain"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
@@ -461,7 +476,8 @@ class ConsumerFileChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("9d12a07d-812b-48b0-845e-9ce719e16afd"),
-                          name="Tarav.SKW.Chain.ConsumerFile", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ConsumerFile", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class ConsumerLinkChain(SituationChain):
@@ -472,7 +488,8 @@ class ConsumerLinkChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("3a62f461-5e1e-4fc1-95d2-4436b1f2c585"),
-                          name="Tarav.SKW.Chain.ConsumerLink", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ConsumerLink", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class DependencyChain(SituationChain):
@@ -483,7 +500,8 @@ class DependencyChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("2d477830-34fe-41ba-8685-a346d9f9363f"),
-                          name="Tarav.SKW.Chain.Dependency", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.Dependency", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 # --- the reading graph -------------------------------------------------------------
@@ -537,7 +555,8 @@ class ReadingGraphCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("05bff74a-5aee-4fb2-a95d-3feace1d260d"),
-                          name="Tarav.SKW.Check.ReadingGraph", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ReadingGraph", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, analysis):
         super().__init__(situation=situation)
@@ -559,7 +578,8 @@ class ReadingNodeCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("45292b6a-4206-43d6-87d1-80042607472f"),
-                          name="Tarav.SKW.Check.ReadingNode", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ReadingNode", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, analysis, node):
         super().__init__(situation=situation)
@@ -579,7 +599,7 @@ class ReadingDeclarationCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("870eecfd-9186-4c46-8634-93a71158e3ec"),
-                          name="Tarav.SKW.Check.ReadingDeclaration",
+                          name=chain_type_name("Tarav.SKW.ReadingDeclaration", "Check"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, analysis, node):
@@ -599,7 +619,8 @@ class BlockBindingCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("aa628f66-98e4-45f9-ad19-64b1905d2aff"),
-                          name="Tarav.SKW.Check.BlockBinding", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.BlockBinding", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, graph, document):
         super().__init__(situation=situation)
@@ -619,7 +640,7 @@ class ReadingRequirementCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("2c4a0b22-d9e2-4118-95ee-d3558ca86bc8"),
-                          name="Tarav.SKW.Check.ReadingRequirement",
+                          name=chain_type_name("Tarav.SKW.ReadingRequirement", "Check"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, analysis, node, observations):
@@ -644,7 +665,8 @@ class ReadingPathCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("d299550a-b1c2-4eba-990f-9e71b3bff122"),
-                          name="Tarav.SKW.Check.ReadingPath", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ReadingPath", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, analysis, node, observation):
         super().__init__(situation=situation)
@@ -671,7 +693,8 @@ class LinkProseCheck(SituationCheck):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("ac970186-220f-43c4-984a-b6fd94a88227"),
-                          name="Tarav.SKW.Check.LinkProse", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.LinkProse", "Check"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
     def __init__(self, *, situation, analysis, node, link):
         super().__init__(situation=situation)
@@ -740,7 +763,8 @@ class ReadingGraphChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("625475a8-b78a-4d93-977b-bcb544f0f22c"),
-                          name="Tarav.SKW.Chain.ReadingGraph", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ReadingGraph", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class ReadingNodeChain(SituationChain):
@@ -751,7 +775,8 @@ class ReadingNodeChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("ff663df6-b0cc-42e0-9086-17ecf134ecce"),
-                          name="Tarav.SKW.Chain.ReadingNode", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ReadingNode", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class ReadingDeclarationChain(SituationChain):
@@ -762,7 +787,7 @@ class ReadingDeclarationChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("ca2aff33-8a88-46ee-b6db-97aee73d4143"),
-                          name="Tarav.SKW.Chain.ReadingDeclaration",
+                          name=chain_type_name("Tarav.SKW.ReadingDeclaration", "Chain"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
@@ -774,7 +799,8 @@ class BlockBindingChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("f93600cd-4cdd-44df-a8b0-3fe20745c952"),
-                          name="Tarav.SKW.Chain.BlockBinding", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.BlockBinding", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class ReadingRequirementChain(SituationChain):
@@ -785,7 +811,7 @@ class ReadingRequirementChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("8c84935a-6c89-4631-bbe9-9178be9e48bf"),
-                          name="Tarav.SKW.Chain.ReadingRequirement",
+                          name=chain_type_name("Tarav.SKW.ReadingRequirement", "Chain"),
                           workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
@@ -797,7 +823,8 @@ class ReadingPathChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("b66a61f8-cf08-48c8-b5b3-89bf7b4cce19"),
-                          name="Tarav.SKW.Chain.ReadingPath", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.ReadingPath", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 class LinkProseChain(SituationChain):
@@ -808,7 +835,8 @@ class LinkProseChain(SituationChain):
     @classmethod
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("52bdce1d-f566-4407-8bcd-e75634dfee24"),
-                          name="Tarav.SKW.Chain.LinkProse", workflow=SKW_SKILLS_WORKFLOW_SHIP)
+                          name=chain_type_name("Tarav.SKW.LinkProse", "Chain"),
+                          workflow=SKW_SKILLS_WORKFLOW_SHIP)
 
 
 SKW_CHAINS = (

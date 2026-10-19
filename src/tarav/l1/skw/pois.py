@@ -11,6 +11,7 @@ from typing import ClassVar
 
 from tarav.l0.kernel import TaravClass, TypeShip, entity
 from tarav.l1.checks import CheckPOI
+from tarav.l1.checks.chains import chain_type_name
 
 from .identity import SKW_SKILLS_WORKFLOW_SHIP
 
@@ -35,8 +36,12 @@ class SkwPOI(CheckPOI):
     # tarav.breadcrumb ccf024a804b7
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        # every Skillware POI Type has its own Action Type, named after it (tarav.l2.skw.pois)
-        cls.action = f"{entity(cls).name}.Resolution"
+        # every Skillware POI Type has its own Action Type, named after it (tarav.l2.skw.pois):
+        # the same name, ending on what it is
+        name = entity(cls).name
+        if not name.endswith(".POI"):
+            raise TypeError(f"A Skillware POI Type's name ends in .POI: {name}")
+        cls.action = name.removesuffix(".POI") + ".Action"
 
     @classmethod
     def sentence(cls, *, where=None, target=None, detail=None) -> str:
@@ -142,7 +147,7 @@ class MissingMarkdownLink(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('83887afe-9c07-445a-94c8-4eafaf8039a0'),
-            name='Tarav.SKW.POI.MissingMarkdownLink',
+            name=chain_type_name("Tarav.SKW.LinkProse", "POI", "MissingMarkdownLink"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -161,7 +166,7 @@ class MissingContext(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000002'),
-            name='Tarav.SKW.POI.MissingContext',
+            name=chain_type_name("Tarav.SKW.ReadingPath", "POI", "MissingContext"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -176,7 +181,7 @@ class PathDependentContext(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000003'),
-            name='Tarav.SKW.POI.PathDependentContext',
+            name=chain_type_name("Tarav.SKW.ReadingRequirement", "POI", "PathDependentContext"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -193,7 +198,7 @@ class UnreachableBlock(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000004'),
-            name='Tarav.SKW.POI.UnreachableBlock',
+            name=chain_type_name("Tarav.SKW.ReadingNode", "POI", "UnreachableBlock"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -208,7 +213,7 @@ class AttachmentCycle(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000005'),
-            name='Tarav.SKW.POI.AttachmentCycle',
+            name=chain_type_name("Tarav.SKW.ReadingNode", "POI", "AttachmentCycle"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -223,7 +228,7 @@ class InclusionCycle(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000006'),
-            name='Tarav.SKW.POI.InclusionCycle',
+            name=chain_type_name("Tarav.SKW.ReadingNode", "POI", "InclusionCycle"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -238,7 +243,7 @@ class InvalidBlockReference(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000007'),
-            name='Tarav.SKW.POI.InvalidBlockReference',
+            name=chain_type_name("Tarav.SKW.ReadingNode", "POI", "InvalidBlockReference"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -253,7 +258,7 @@ class UndeclaredBlock(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000008'),
-            name='Tarav.SKW.POI.UndeclaredBlock',
+            name=chain_type_name("Tarav.SKW.BlockBinding", "POI", "UndeclaredBlock"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -268,7 +273,7 @@ class InvalidParent(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000009'),
-            name='Tarav.SKW.POI.InvalidParent',
+            name=chain_type_name("Tarav.SKW.ReadingDeclaration", "POI", "InvalidParent"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -283,7 +288,7 @@ class InvalidContextTarget(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000010'),
-            name='Tarav.SKW.POI.InvalidContextTarget',
+            name=chain_type_name("Tarav.SKW.ReadingDeclaration", "POI", "InvalidContextTarget"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -298,7 +303,7 @@ class InvalidLoadingRoot(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000011'),
-            name='Tarav.SKW.POI.InvalidLoadingRoot',
+            name=chain_type_name("Tarav.SKW.ReadingGraph", "POI", "InvalidLoadingRoot"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -313,7 +318,7 @@ class RootHasParent(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000012'),
-            name='Tarav.SKW.POI.RootHasParent',
+            name=chain_type_name("Tarav.SKW.ReadingGraph", "POI", "RootHasParent"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -328,7 +333,7 @@ class LoadingAnalysisIncomplete(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000013'),
-            name='Tarav.SKW.POI.LoadingAnalysisIncomplete',
+            name=chain_type_name("Tarav.SKW.ReadingGraph", "POI", "LoadingAnalysisIncomplete"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -343,7 +348,7 @@ class LoadingDeclarationStale(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000014'),
-            name='Tarav.SKW.POI.LoadingDeclarationStale',
+            name=chain_type_name("Tarav.SKW.Source", "POI", "LoadingDeclarationStale"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -358,7 +363,7 @@ class LoadingRenderError(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000015'),
-            name='Tarav.SKW.POI.LoadingRenderError',
+            name=chain_type_name("Tarav.SKW.Source", "POI", "LoadingRenderError"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -373,7 +378,7 @@ class InvalidLoadingModel(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000016'),
-            name='Tarav.SKW.POI.InvalidLoadingModel',
+            name=chain_type_name("Tarav.SKW.SkillLoading", "POI", "InvalidLoadingModel"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -388,7 +393,7 @@ class DuplicateOutput(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000018'),
-            name='Tarav.SKW.POI.DuplicateOutput',
+            name=chain_type_name("Tarav.SKW.Product", "POI", "DuplicateOutput"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -403,7 +408,7 @@ class OutputNotDeployed(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000019'),
-            name='Tarav.SKW.POI.OutputNotDeployed',
+            name=chain_type_name("Tarav.SKW.Product", "POI", "OutputNotDeployed"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -418,7 +423,7 @@ class InvalidSource(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000020'),
-            name='Tarav.SKW.POI.InvalidSource',
+            name=chain_type_name("Tarav.SKW.Source", "POI", "InvalidSource"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -433,7 +438,7 @@ class MissingConsumerFile(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000021'),
-            name='Tarav.SKW.POI.MissingConsumerFile',
+            name=chain_type_name("Tarav.SKW.ConsumerFile", "POI", "MissingConsumerFile"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -448,7 +453,7 @@ class SkillMarkerMissing(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('a11c7a39-3a98-4b95-a2e1-b63361d924d2'),
-            name='Tarav.SKW.POI.SkillMarkerMissing',
+            name=chain_type_name("Tarav.SKW.SkillMarker", "POI", "SkillMarkerMissing"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -463,7 +468,7 @@ class SkillMarkerMismatch(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('ec7d92bf-a64c-4ca4-b09c-e7e93cfcc0e5'),
-            name='Tarav.SKW.POI.SkillMarkerMismatch',
+            name=chain_type_name("Tarav.SKW.SkillMarker", "POI", "SkillMarkerMismatch"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -480,7 +485,7 @@ class UnbundledLink(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000022'),
-            name='Tarav.SKW.POI.UnbundledLink',
+            name=chain_type_name("Tarav.SKW.ConsumerLink", "POI", "UnbundledLink"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -495,7 +500,7 @@ class UndeclaredConsumerLink(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000023'),
-            name='Tarav.SKW.POI.UndeclaredConsumerLink',
+            name=chain_type_name("Tarav.SKW.ConsumerLink", "POI", "UndeclaredConsumerLink"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -510,7 +515,7 @@ class MissingLinkTarget(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000024'),
-            name='Tarav.SKW.POI.MissingLinkTarget',
+            name=chain_type_name("Tarav.SKW.ConsumerLink", "POI", "MissingLinkTarget"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -525,7 +530,7 @@ class MissingDependency(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000025'),
-            name='Tarav.SKW.POI.MissingDependency',
+            name=chain_type_name("Tarav.SKW.Dependency", "POI", "MissingDependency"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -540,7 +545,8 @@ class ContextUnresolvable(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000029'),
-            name='Tarav.SKW.POI.ContextUnresolvable',
+            name=chain_type_name("Tarav.SKW.GenerationContextResolution", "POI",
+                                 "ContextUnresolvable"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -555,7 +561,7 @@ class ContextUnobserved(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000030'),
-            name='Tarav.SKW.POI.ContextUnobserved',
+            name='Tarav.SKW.ContextUnobserved.POI',
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -575,7 +581,7 @@ class StaleContext(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000031'),
-            name='Tarav.SKW.POI.StaleContext',
+            name=chain_type_name("Tarav.SKW.ContextFreshness", "POI", "StaleContext"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -596,7 +602,7 @@ class StaleGeneration(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000034'),
-            name='Tarav.SKW.POI.StaleGeneration',
+            name=chain_type_name("Tarav.SKW.GenerationFreshness", "POI", "StaleGeneration"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -613,7 +619,7 @@ class OutputChanged(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000035'),
-            name='Tarav.SKW.POI.OutputChanged',
+            name=chain_type_name("Tarav.SKW.Block", "POI", "OutputChanged"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -628,7 +634,7 @@ class InvalidAnnotation(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000036'),
-            name='Tarav.SKW.POI.InvalidAnnotation',
+            name=chain_type_name("Tarav.SKW.Block", "POI", "InvalidAnnotation"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -643,7 +649,7 @@ class SourceUncompiled(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000037'),
-            name='Tarav.SKW.POI.SourceUncompiled',
+            name=chain_type_name("Tarav.SKW.Source", "POI", "SourceUncompiled"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -658,7 +664,7 @@ class ProductUnavailable(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000038'),
-            name='Tarav.SKW.POI.ProductUnavailable',
+            name=chain_type_name("Tarav.SKW.Product", "POI", "ProductUnavailable"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -675,7 +681,7 @@ class ProductDrift(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-000000000039'),
-            name='Tarav.SKW.POI.ProductDrift',
+            name=chain_type_name("Tarav.SKW.ProductDrift", "POI", "ProductDrift"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -708,7 +714,7 @@ class MissingContent(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-00000000003b'),
-            name='Tarav.SKW.POI.MissingContent',
+            name=chain_type_name("Tarav.SKW.Block", "POI", "MissingContent"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -723,7 +729,7 @@ class InvalidProducedOutput(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-00000000003c'),
-            name='Tarav.SKW.POI.InvalidProducedOutput',
+            name=chain_type_name("Tarav.SKW.Block", "POI", "InvalidProducedOutput"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )
 
@@ -738,6 +744,6 @@ class StaleProducedOutput(SkwPOI):
         return TaravClass(
             target=cls,
             id=TypeShip('9a70b6c2-63ea-4b73-9273-00000000003d'),
-            name='Tarav.SKW.POI.StaleProducedOutput',
+            name=chain_type_name("Tarav.SKW.Block", "POI", "StaleProducedOutput"),
             workflow=SKW_SKILLS_WORKFLOW_SHIP,
         )

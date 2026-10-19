@@ -62,24 +62,24 @@ def test_the_skill_suite_runs_one_atomic_check_per_situation(tmp_path):
                 if isinstance(check, SituationCheck)]
     assert [(entity(type(check).chain).name, check.situation["subject"])
             for check in produced] == [
-        ("Tarav.SKW.Chain.SkillMarker", owner),
-        ("Tarav.SKW.Chain.SkillLoading", owner),
-        ("Tarav.SKW.Chain.Product", {**owner, "path": "guide.md"}),
-        ("Tarav.SKW.Chain.Source", {**owner, "path": "src/guide.skw.json"}),
-        ("Tarav.SKW.Chain.ProductDrift", {**owner, "path": "guide.md"}),
-        ("Tarav.SKW.Chain.Block", {**owner, "path": "src/guide.skw.json", "block": "title"}),
-        ("Tarav.SKW.Chain.Block", {**owner, "path": "src/guide.skw.json", "block": "body"}),
-        ("Tarav.SKW.Chain.ConsumerFile", {**owner, "path": "guide.md"}),
-        ("Tarav.SKW.Chain.ConsumerLink", {**owner, "path": "guide.md", "target": "one.md"}),
-        ("Tarav.SKW.Chain.Dependency", {**owner, "path": "../absent"}),
-        ("Tarav.SKW.Chain.ReadingGraph", owner),
-        ("Tarav.SKW.Chain.ReadingNode", {**owner, "block": _id("title")}),
-        ("Tarav.SKW.Chain.ReadingNode", {**owner, "block": _id("body")}),
+        ("Tarav.SKW.SkillMarker.Chain", owner),
+        ("Tarav.SKW.SkillLoading.Chain", owner),
+        ("Tarav.SKW.Product.Chain", {**owner, "path": "guide.md"}),
+        ("Tarav.SKW.Source.Chain", {**owner, "path": "src/guide.skw.json"}),
+        ("Tarav.SKW.ProductDrift.Chain", {**owner, "path": "guide.md"}),
+        ("Tarav.SKW.Block.Chain", {**owner, "path": "src/guide.skw.json", "block": "title"}),
+        ("Tarav.SKW.Block.Chain", {**owner, "path": "src/guide.skw.json", "block": "body"}),
+        ("Tarav.SKW.ConsumerFile.Chain", {**owner, "path": "guide.md"}),
+        ("Tarav.SKW.ConsumerLink.Chain", {**owner, "path": "guide.md", "target": "one.md"}),
+        ("Tarav.SKW.Dependency.Chain", {**owner, "path": "../absent"}),
+        ("Tarav.SKW.ReadingGraph.Chain", owner),
+        ("Tarav.SKW.ReadingNode.Chain", {**owner, "block": _id("title")}),
+        ("Tarav.SKW.ReadingNode.Chain", {**owner, "block": _id("body")}),
         # the body's parent, by default the block before it
-        ("Tarav.SKW.Chain.ReadingDeclaration",
+        ("Tarav.SKW.ReadingDeclaration.Chain",
          {**owner, "block": _id("body"), "target": _id("title")}),
-        ("Tarav.SKW.Chain.BlockBinding", {**owner, "path": "src/guide.skw.json", "block": "title"}),
-        ("Tarav.SKW.Chain.BlockBinding", {**owner, "path": "src/guide.skw.json", "block": "body"}),
+        ("Tarav.SKW.BlockBinding.Chain", {**owner, "path": "src/guide.skw.json", "block": "title"}),
+        ("Tarav.SKW.BlockBinding.Chain", {**owner, "path": "src/guide.skw.json", "block": "body"}),
     ]
     # every object of a chain is its Type and its situation, hashed
     for check in produced:
@@ -129,8 +129,11 @@ def test_every_skillware_poi_type_names_its_own_action_type():
     registered = action_types()
     poi_types = SkwPOI.__subclasses__()
     actions = [registered[poi_type.action] for poi_type in poi_types]
-    assert [entity(action).name for action in actions] == [
-        f"{entity(poi_type).name}.Resolution" for poi_type in poi_types]
+    # the POI's name and its Action's differ only in what they are
+    assert [entity(action).name.removesuffix(".Action") for action in actions] == [
+        entity(poi_type).name.removesuffix(".POI") for poi_type in poi_types]
+    assert entity(StaleContext).name == "Tarav.SKW.ContextFreshness.StaleContext.POI"
+    assert StaleContext.action == "Tarav.SKW.ContextFreshness.StaleContext.Action"
     assert len(set(actions)) == len(poi_types) == len({entity(a).id for a in actions})
     assert [poi_type for poi_type, action in zip(poi_types, actions)
             if issubclass(action, BlessableResolution)] == [StaleContext, StaleGeneration]

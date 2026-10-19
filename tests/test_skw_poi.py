@@ -308,7 +308,7 @@ def test_a_finding_names_its_poi_type_and_no_type_has_a_second_name(tmp_path):
     finding = skw.Finding(skw.UnreachableBlock, block="x")
     assert finding.poi is skw.UnreachableBlock
     assert finding.at(path="a.skw.json").to_json() == {
-        "type": "Tarav.SKW.POI.UnreachableBlock", "block": "x", "path": "a.skw.json"}
+        "type": "Tarav.SKW.ReadingNode.UnreachableBlock.POI", "block": "x", "path": "a.skw.json"}
 
     # what a package reports is said by Types, and so is what a command prints
     root = _layout(tmp_path)
