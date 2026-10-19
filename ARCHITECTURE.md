@@ -699,6 +699,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
 | `l1.git`, `l2.git`, `l3.git` | The Git Workflow spans repository mechanics, commit-message Breadcrumb integration, and installed CLI composition. |
 | `l1.lines` | LinesWorkflow owns identified natural-language Lines and recursive typed Blocks. Each Line has one authoring Block; its direct Block and parent chain bound interpretation. A Block's Lines confer its meaning; its single contents collection preserves mixed Line/Block order. The Python class supplies Block type; external graph relationships supply uses such as specification. |
+| `l1.notebook`, `l2.project.notebook` | NotebookWorkflow persists Lines and Blocks through its standard Record Registry partition. Notebook selection and reads do not provision storage. The featured Project's `notebook()` binds its ProjectBlock; explicit `create()` seeds Discussion, Model, and Archive sibling Blocks once. Project Types choose the initial layout through `notebook_layout()`. |
 | `assertions` | AssertionsWorkflow owns the shallow TaravAssertion root and Assertable capability. The base imposes no case-production method. |
 | `scoring` | ScoringWorkflow owns the identified, case-producing Assertion subtype, closed AssessmentCase contract, shallow Score root, and retained evaluation mechanics. Scoring Records are entities with explicit Context reference edges. |
 | `scoring.ranking` | RankingWorkflow is a Scoring subtype and child workflow. It owns pairwise cases, singleton Tribunal entities, pairwise operations and Checks, and ephemeral RankingScore results. |
@@ -754,6 +755,15 @@ and its CLI, is retired. Git history retains that implementation. The new Lines
 workflow supplies only authoring primitives; relationships between Blocks and
 other Tarav objects belong to the broader Diagram.
 <!-- tarav.breadcrumb 81853af57d52 -->
+
+Notebook storage imports Lines and the general RecordMap mechanics; it does
+not import Project. The Project association lives in l2. Its default root Ship
+derives from the Project Ship, while typed branch Ships derive from the root
+and their Types. These rules locate the initial objects; later reads load the
+stored membership and text without regeneration. Discussion, Model, and Archive
+are shallow typed Blocks with explanatory Lines, not alignment engines.
+<!-- tarav.context 0f5bad01:62c5e3e4c77f1cf3 -->
+<!-- tarav.context 0f5bad01:89b3bb12c584cdae -->
 
 Assertions owns the common Assertable and shallow TaravAssertion contracts.
 Scoring's `assertions` module supplies its identified, case-producing Assertion

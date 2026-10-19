@@ -58,6 +58,19 @@ class Project(TaravProject):
 
         return ProjectDecisions(self)
 
+    # tarav.context 0f5bad01:62c5e3e4c77f1cf3
+    def notebook_layout(self):
+        """The initial layout; Project subtypes may choose other Block Types."""
+        from tarav.l1.notebook.blocks import ArchiveBlock, DiscussionBlock, ModelBlock
+
+        return (DiscussionBlock, ModelBlock, ArchiveBlock)
+
+    def notebook(self, *, notebook=None):
+        """Select this Project's notebook without creating storage."""
+        from .notebook import ProjectNotebook
+
+        return ProjectNotebook(self, notebook=notebook, block_types=self.notebook_layout())
+
 
 __all__ = [
     "PROJECT_RUNNER_RECORD_TYPES",

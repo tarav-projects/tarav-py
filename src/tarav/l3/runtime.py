@@ -285,6 +285,7 @@ def create_runtime(
     from tarav.l1.lines import Block, Line, LinesWorkflow
     # tarav.breadcrumb f98e9b92d186
     from tarav.l1.notebook import Notebook, NotebookWorkflow
+    from tarav.l1.notebook.blocks import NOTEBOOK_BLOCK_TYPES
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
     # tarav.breadcrumb 35548ca6fdf7
@@ -396,6 +397,7 @@ def create_runtime(
                 Block,
                 Line,
                 Notebook,
+                *NOTEBOOK_BLOCK_TYPES,
                 TaravEnvironment,
                 TaravSystem,
                 TestEntity,
