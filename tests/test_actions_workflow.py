@@ -520,6 +520,22 @@ def test_only_a_detector_that_ran_can_say_a_situation_is_gone(stores):
     assert stores.pois.of(attic).exit == GONE
 
 
+# tarav.breadcrumb e140ecf049a9
+def test_one_identified_suite_cannot_close_sibling_actions(stores):
+    a = LampCheck("room-a", 3).run().pois()[0]
+    b = LampCheck("room-b", 3).run().pois()[0]
+    stores.update(HOME, CheckSuite([
+        RoomSuite([LampCheck("room-a", 3)], key="a"),
+        RoomSuite([LampCheck("room-b", 3)], key="b"),
+    ]).run())
+
+    result = stores.update(HOME, RoomSuite([LampCheck("room-a", 0)], key="a").run())
+    assert result["gone"] == 1
+    assert stores.pois.of(a).exit == GONE
+    assert axes(stores.pois.of(b))["situation"] == "not run"
+    assert stores.pois.of(b).state == RUNNING
+
+
 # tarav.breadcrumb d7307e455da5
 def test_a_suite_that_is_no_longer_yielded_closes_its_actions(stores):
     attic = LampCheck("attic", 2).run().pois()[0]

@@ -107,8 +107,9 @@ class POIResolutionAction(StepAction):
         suites above its check are the detectors, and only one whose own
         code ran to its end can say the situation is gone. The nearest of
         them that is in this run decides; when none is, the suite handed
-        over does. A suite that did not run, or in which a check of the
-        POI's Type of check failed, says nothing, and the action stays.
+        over does only if it is an unscoped Project suite or an identified
+        ancestor of the detector. A suite that did not run, or in which a
+        check of the POI's Type failed, says nothing, and the action stays.
         """
         event = run.data.get("event") or {}
         if not event:
@@ -150,8 +151,19 @@ class POIResolutionAction(StepAction):
             if tape.clean(run, git, at=update.at):
                 change = change or "updated"
             return change
+        # tarav.breadcrumb db909a4b904d
+        recorded = {_suite_key(suite) for suite in event["suites"]}
         detector = next((seen["suites"][key] for key in map(_suite_key, reversed(event["suites"]))
-                         if key in seen["suites"]), update.checks)
+                         if key in seen["suites"]), None)
+        if detector is None:
+            root = update.checks
+            if root.identity is None or _suite_key(root.identity) in recorded:
+                detector = root
+        if detector is None:
+            if situation == NOT_RUN:
+                return None
+            run.data["situation"] = {"state": NOT_RUN, "at": update.at}
+            return "updated"
         check_type = (event.get("check") or {}).get("type")
         if detector.conclusive_for(check_type):
             state = ABSENT
