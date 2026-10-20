@@ -9,7 +9,7 @@
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
 Phase: Execute
-Status: executing
+Status: complete
 Product: tarav-py. Documentation owner: tarav-md.
 
 Implement the evidence-producing part of Notebook capture: small reusable
@@ -302,7 +302,10 @@ return for Interactive alignment rather than expanding this request.
   cannot turn off a reviewed ancestor's requirement. Context changes are
   conservative invalidation; no semantic score or automatic carry is produced.
 - Updated architecture documentation and the authoritative AGENTS SKW source;
-  produced/compiled the latter. JSON source/lock files have no native inline
+  compiled the latter successfully with no findings. The attempted code-produce
+  operation reported that ProjectSystemPrompt has no code producer; retained
+  source text was compiled directly, without adding an unrelated producer.
+  JSON source/lock files have no native inline
   capture convention, an explicit capture limitation rather than invented syntax.
 - Found and covered the context-at-proposal boundary: the rendered review now
   includes each target state's digest. An ancestor change between presentation
@@ -318,3 +321,41 @@ return for Interactive alignment rather than expanding this request.
   focused execution alone would not include them in future Project --all runs.
   TOML has no supported native inline Breadcrumb convention; the change is
   represented by request/commit evidence and its actual collection behavior.
+
+## Completion
+
+Execution was authorized through Hugentics Execute. All five implementation
+slices are complete within the requested Python and mechanical-check scope.
+Semantic Assertions/scoring, general LineTrace/lineage, code alignment, a new
+capture skill route and extension UI remain deferred.
+<!-- tarav.breadcrumb ed04005a7aee -->
+
+- Final verification: 22 focused evidence/architecture checks passed, followed
+  by 29 Record-contract and evidence tests. Focused Ruff and diff whitespace
+  checks passed. Broader architecture and existing Notebook tests passed in
+  the earlier 86-test run; they also ran in the final configured suite where
+  selected. No optional live-agent scoring run was performed.
+- Final umbrella status --all: 1,217 checks completed, zero incomplete,
+  51 configured pytest file checks with zero test POIs, zero new actions.
+  The two transient Record-example failure actions closed as gone. The 68
+  inherited unrelated POIs remain; none were blessed or repaired here.
+- Installed tool refreshed with uv tool install --reinstall --editable .;
+  the real Notebook CLI still opens the live Project Model. That Notebook's
+  Git worktree is clean; no live evidence or Notebook data was invented.
+- Wiki capture completed in tarav-md/notes/wiki/line-notebook.md, Implemented
+  support and review capture, and daily/2026-10-20.md. Eleven topic and three
+  daily Breadcrumbs submitted; both complete Note audits passed with zero POIs.
+  Scoped Wiki commit: bd4510f41788cc27cd52839388abe86300c38d71.
+- Product commits: 3b08f1dab734ca57b397d8285c2f976acbe92592 (Types),
+  2ceb338f7aed24baa0d9646df3ced8b6a74caef1 (capture/review),
+  4e9f16bd7c880295a5f34114145be16679d7268d (checks/integration/docs),
+  plus the Record-example/testpaths correction. Slice commit evidence audits
+  passed. Product-surface captures are registered; moved labels were refreshed.
+- Explicit capture limitations: authoritative SKW JSON/lock and pytest TOML
+  have no native inline convention. Generated AGENTS was changed through its
+  source and compiled; no source evidence syntax was invented. No capture
+  registration for an implemented supported surface is pending.
+- Operational policy: state fingerprints conservatively include sibling Lines
+  in authoring contexts. Context edits can require new evidence even when a
+  semantic evaluator might later establish continuity. Existing evidence is
+  retained and inspectable; this pass does not infer that continuity.
