@@ -15,7 +15,7 @@ The User requested design followed by execution. The skill owner is
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: executing
+Status: complete
 
 ## Design
 
@@ -77,7 +77,7 @@ adds a separate --capture --notebook route without reviving that backend.
    new recursive Blocks, amendments retaining Ships, exact token checks,
    support/review independence, stale edits/context rejection, preservation of
    unrelated additions, and restored-plan landing through the public API.
-2. **Pending — Integration/closure.** Add the test file to Project testpaths,
+2. **Verified — Integration/closure.** Add the test file to Project testpaths,
    update architecture, run focused and full Project checks. Capture code
    Breadcrumbs and commit verified work; finish the dependent skill request,
    topical/daily Wiki capture and completion evidence.
@@ -110,3 +110,27 @@ composition and avoid imports from the skill or CLI.
   Normal Model reference fixtures and isolated storage, including byte hashes
   before rejected landings. The initial Type-wording failure was a test fixture
   using the wrong retained Type name; corrected it to Tarav.Notebook.ReviewedLine.
+- Verified core slice commit: 95ec466a8900b579c3ac87cbd550cddcfc24ec47. A later
+  installed run executed the compiled skill's staging and landing examples
+  against isolated Project/Normal Model fixtures and obtained current valid
+  support and review. The public recipe and draft transport use actual records;
+  no live Notebook content or synthetic real-session approval was written.
+- Full root status completed 1,298 checks, zero incomplete, and 58 test-file
+  runs with no test POIs. Ruff and scoped diff checks pass. Skill metadata
+  freshness findings, including two new neighboring Issue contexts, are tracked
+  in the skill request rather than hidden or treated as Python test failures.
+- NotebookDraft is included through Notebook.draft(), the new test file is in
+  Project testpaths, and ARCHITECTURE describes its transient plan and preflight
+  boundaries. Code/test surface and slice-commit Breadcrumb audits pass.
+- Dependent skill slice: 1c23bdfd84220021e9c154de84ebb694e479667f. Its active
+  depot links the compiled router plus Notebook capture and Kernel Writing
+  modules. Compiled and isolated-deployed bytes match; artifact checks pass.
+- Scoped Wiki capture: tarav-md notes/wiki/line-notebook.md and
+  notes/wiki/daily/2026-10-20.md, commit
+  de6fc20f76d421af77277178404b7c1b18e65fbe. New references resolve; older
+  unavailable-Turn attachments remain visible in whole-Note audits.
+- Final fast status after capture completed 1,240 checks with zero incomplete,
+  67 findings and no action changes. Full test verification remains the 1,298
+  completed checks / 58 passing test-file runs recorded above. All planned
+  work is complete; the retained skill maintenance findings and older evidence
+  gaps do not represent missing draft/capture functionality.
