@@ -11,7 +11,7 @@ Context's existing SPARQL query engine, and a small `tarav notebook` CLI.
 The companion skill request is [868](../../../tarav-md/notes/live/868-notebook-grounding-skill-impl-req.md).
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready
+Status: executing
 
 Grounding finds Blocks relevant to the current conversation. Infer the Project,
 start at its ModelBlock, and collect the complete Model subtree before querying.
@@ -96,3 +96,19 @@ default scope and query ownership in the Notebook topic and daily Note.
 - Known storage behavior: Notebook.load resolves a connected component, which
   can include sibling objects in memory. This request bounds collected graph
   contributions and presented content; it does not claim selective disk I/O.
+
++- Cold-reloaded requests 933 and 868 before product edits; no design-reality
++  mismatch found. Baseline: 39 relevant Lines/Notebook/Context tests passed.
++- Start checkpoints: external 14160e9dafe73c00d892e556f99e0285bfd9ddf0;
++  request 11141d8c47a9ada8bfe3e6c948f43155e79d4119. Markdown counterpart
++  checkpoints: external 207d6140568f61e838a0d1474817ddcbff1c8234 and request
++  290c03dc49036144a51d51676f914a8404ade525.
++
++- Slice 1 verified: 29 Lines/Context tests passed and focused Ruff passed.
++  Type identity assertions compare Ships; class projection objects are not
++  promised to be the same Python allocation. Context collection remains
++  storage-independent and uses the existing Explorer query/follow methods.
++- Slice 1 inline capture submitted five surfaces with six new Breadcrumbs;
++  audits resolved them. Older label positions on the two edited Lines files
++  were refreshed. No capture registration is pending.
++

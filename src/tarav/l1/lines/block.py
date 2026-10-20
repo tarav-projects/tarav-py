@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from tarav.l0.kernel import LoadedRecord, Ship, TaravClass, TaravEntity, TypeShip
 
 from .identity import LINES_WORKFLOW_SHIP
+from .predicates import CONTAINS, PARENT, RDF_MEMBERSHIP
 
 if TYPE_CHECKING:
     from . import Line
@@ -38,6 +39,17 @@ class Block(TaravEntity):
                 "parent_ship": None,
                 "content_ships": [],
             }
+
+    # tarav.breadcrumb 2e0d3f0d3314
+    class Context(TaravEntity.Context):
+        def _obj_context_hook(self, cxt):
+            super()._obj_context_hook(cxt)
+            block = self.obj
+            if block.parent is not None:
+                cxt.triplets.append((block, PARENT, block.parent))
+            for position, member in enumerate(block.contents, 1):
+                cxt.triplets.extend(((block, CONTAINS, member),
+                                     (block, f"{RDF_MEMBERSHIP}{position}", member)))
 
     def __init__(
         self,

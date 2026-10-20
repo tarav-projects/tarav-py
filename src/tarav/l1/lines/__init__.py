@@ -5,6 +5,7 @@ from .workflow import LinesWorkflow
 from .identity import LINES_WORKFLOW_SHIP
 from .block import Block
 from tarav.l0.kernel import LoadedRecord
+from .predicates import SCOPE, TEXT
 
 
 # tarav.breadcrumb 72c9de0ef660
@@ -27,6 +28,13 @@ class Line(TaravEntity):
                     "id": "93d415af-e04b-4e2b-a7c6-ea6514c6827b",
                     "text": "It is red.",
                     "scope_ship": "611a6454-f1c7-4647-8944-a6c6fd643119"}
+
+    # tarav.breadcrumb f3ba79fc2a57
+    class Context(TaravEntity.Context):
+        def _obj_context_hook(self, cxt):
+            super()._obj_context_hook(cxt)
+            cxt.triplets.extend(((self.obj, TEXT, self.obj.text),
+                                 (self.obj, SCOPE, self.obj.scope)))
 
 
     def __init__(self, *, id: Ship, text: str, scope: Block):
