@@ -7,6 +7,7 @@ from tarav.l1.lines import Block, Line
 from tarav.l1.records.registry import RecordMap, RecordRegistry
 
 from .workflow import NOTEBOOK_WORKFLOW_SHIP, NotebookWorkflow
+from .blocks import NotebookBlock
 
 
 # tarav.breadcrumb 3c097c77d655
@@ -99,10 +100,13 @@ class Notebook(TaravObject):
                 obj.bind_contents(resolve(member) for member in obj.content_ships)
             return obj
 
+        # tarav.breadcrumb f14166a12c4a
         result = resolve(identity)
         for obj in cache.values():
             if isinstance(obj, Block):
                 obj.ancestors()
+            if isinstance(obj, NotebookBlock):
+                obj.bind_storage(self)
         return result
 
     def commit(self, message: str) -> str:

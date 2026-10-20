@@ -15,7 +15,8 @@ from tarav.l1.context.query import ContextQueryService, IdentityContextQuery
 from tarav.l1.lines import Block, Line
 from tarav.l1.lines.predicates import TEXT
 from tarav.l1.notebook import Notebook
-from tarav.l2.notebook import NOTEBOOK, NotebookContext, NotebookProjectHook, NotebookResolver
+# tarav.breadcrumb f4878f0ef245
+from tarav.l2.notebook_context import NOTEBOOK, NotebookContext, NotebookProjectHook, NotebookResolver
 from tarav.l2.project import Project
 from tarav.l3.runtime import create_runtime, set_runtime
 
@@ -86,7 +87,7 @@ def test_project_hook_and_missing_storage_do_not_provision(setup, tmp_path):
     builder.register("notebook", NotebookProjectHook(notebook))
     context = builder.build(project)
     links = [(s.id, p, o.id) for s, p, o in context.triplets if p == NOTEBOOK]
-    assert links == [(project.id, NOTEBOOK, project.notebook(notebook=notebook).root_ship)]
+    assert links == [(project.id, NOTEBOOK, project.notebook(notebook=notebook).id)]
     absent = Notebook(tmp_path / "absent")
     builder = ContextBuilder()
     builder.register("notebook", NotebookProjectHook(absent))
@@ -117,7 +118,7 @@ def test_real_cli_infers_project_queries_reads_and_resolves_identity(setup):
     read = cli("notebook", "read", "--id", str(model.id), "--json")
     assert [record["id"] for record in read["contents"]] == [
         str(model.contents[0].id), str(child.id), str(last.id)]
-    assert read["ancestors"][0]["lines"][0]["text"].startswith("This notebook concerns Project Example")
+    assert read["ancestors"][-1]["lines"][0]["text"].startswith("This notebook concerns Project Example")
     queried = cli("notebook", "query", "--sparql",
                   f'SELECT ?line ?text WHERE {{ ?line <{TEXT}> ?text FILTER(CONTAINS(?text,"validated")) }}', "--json")
     assert queried["rows"] == [{"line": {"id": str(first.id), "type": "Tarav.Lines.Line"},

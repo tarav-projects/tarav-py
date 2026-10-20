@@ -55,35 +55,36 @@ def binding(tmp_path):
 
 
 # tarav.breadcrumb d5486c25ac07
+# tarav.breadcrumb 7ba8ab3f0067
 def test_recover_selected_snapshot_keeps_text_identity_context_and_source(tmp_path):
     legacy, block_id, line_id = source(tmp_path)
     target = binding(tmp_path)
     report = recovery()(target, [legacy])
     assert report["counts"]["lines"] == 1
     assert report["counts"]["blocks"] == 1
-    line = target.notebook.load(line_id)
+    line = target.storage.load(line_id)
     assert isinstance(line, Line)
     assert line.text == "It is red."
     assert line.scope.id == Ship(block_id)
     assert line.scope.contents[0].text == "The car"
     assert target.archive.id in {x.id for x in line.scope.ancestors()}
-    retained = target.notebook.root / report["sources"][0]["retained"] / "ships" / f"{line_id}.json"
+    retained = target.storage.root / report["sources"][0]["retained"] / "ships" / f"{line_id}.json"
     assert retained.read_bytes() == (legacy / "ships" / f"{line_id}.json").read_bytes()
     line.text = "We subsequently changed it."
-    target.notebook.save(line)
+    target.storage.save(line)
     with pytest.raises(FileExistsError):
         recovery()(target, [legacy])
-    assert target.notebook.load(line_id).text == "We subsequently changed it."
+    assert target.storage.load(line_id).text == "We subsequently changed it."
 
 
 def test_unresolved_source_membership_is_reported_before_record_writes(tmp_path):
     legacy, block_id, _ = source(tmp_path)
     (legacy / "ships" / f"{block_id}.json").unlink()
     target = binding(tmp_path)
-    before = target.notebook.ids()
+    before = target.storage.ids()
     with pytest.raises(ValueError, match="missing Block"):
         recovery()(target, [legacy])
-    assert target.notebook.ids() == before
+    assert target.storage.ids() == before
 
 
 def test_import_script_initializes_its_runtime_in_a_fresh_process(tmp_path):

@@ -29,9 +29,9 @@ class Project(TaravProject):
             """The Project's checks, and its test fixtures while `.tarav/tests/` exists."""
             from tarav.l2.tests.actions import TestFixturesSuite
             # tarav.breadcrumb b4812048cdc1
-            from tarav.l2.notebook_checks import NotebookEvidenceSuite
+            from tarav.l2.project.notebook_checks import ProjectNotebookSuite
 
-            return CheckSuite([super().suite(), NotebookEvidenceSuite(self.obj),
+            return CheckSuite([super().suite(), ProjectNotebookSuite(self.obj),
                                CheckSuite(lambda run: TestFixturesSuite.present(self.obj.root))],
                               name=self.obj.name, repositories=self.obj.repositories())
 
@@ -63,15 +63,16 @@ class Project(TaravProject):
     # tarav.breadcrumb 5497fcfeb1d2
     def notebook_layout(self):
         """The initial layout; Project subtypes may choose other Block Types."""
-        from tarav.l1.notebook.blocks import ArchiveBlock, DiscussionBlock, ModelBlock
+        from tarav.l2.notebook import ArchiveBlock, DiscussionBlock, ModelBlock
 
         return (DiscussionBlock, ModelBlock, ArchiveBlock)
 
+    # tarav.breadcrumb db2a7942d72a
     def notebook(self, *, notebook=None):
         """Select this Project's notebook without creating storage."""
-        from .notebook import ProjectNotebook
+        from .notebook import project_notebook
 
-        return ProjectNotebook(self, notebook=notebook, block_types=self.notebook_layout())
+        return project_notebook(self, notebook=notebook, block_types=self.notebook_layout())
 
 
 __all__ = [

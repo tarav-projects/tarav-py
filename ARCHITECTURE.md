@@ -722,7 +722,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | `breadcrumb_workflows` | Independent integrations between Breadcrumbs and producer domains such as Chatlas. |
 | `l1.git`, `l2.git`, `l3.git` | The Git Workflow spans repository mechanics, commit-message Breadcrumb integration, and installed CLI composition. |
 | `l1.lines` | LinesWorkflow owns identified natural-language Lines and recursive typed Blocks. Each Line has one authoring Block; its direct Block and parent chain bound interpretation. A Block's Lines confer its meaning; its single contents collection preserves mixed Line/Block order. The Python class supplies Block type; external graph relationships supply uses such as specification. |
-| `l1.notebook`, `l2.project.notebook` | NotebookWorkflow persists Lines and Blocks through its standard Record Registry partition. Notebook selection and reads do not provision storage. The featured Project's `notebook()` binds its ProjectBlock; explicit `create()` seeds Discussion, Model, and Archive sibling Blocks once. Project Types choose the initial layout through `notebook_layout()`. |
+| `l1.notebook`, `l2.notebook`, `l2.project.notebook` | The l1 Notebook is storage; the l2 Notebook is a typed Block integrating capture, evidence and checks. Project.notebook() returns its actual ProjectBlock. New Project notebooks are nested under TaravNotebook; explicit create seeds the selected sibling layout once. Reads preserve existing records and parent links. |
 | `assertions` | AssertionsWorkflow owns the shallow TaravAssertion root and Assertable capability. The base imposes no case-production method. |
 | `scoring` | ScoringWorkflow owns the identified, case-producing Assertion subtype, closed AssessmentCase contract, shallow Score root, and retained evaluation mechanics. Scoring Records are entities with explicit Context reference edges. |
 | `scoring.ranking` | RankingWorkflow is a Scoring subtype and child workflow. It owns pairwise cases, singleton Tribunal entities, pairwise operations and Checks, and ephemeral RankingScore results. |
@@ -785,7 +785,16 @@ not import Project. The Project association lives in l2. Its default root Ship
 derives from the Project Ship, while typed branch Ships derive from the root
 and their Types. These rules locate the initial objects; later reads load the
 stored membership and text without regeneration. Discussion, Model, and Archive
-are shallow typed Blocks with explanatory Lines, not alignment engines.
+are typed Notebook Blocks with explanatory Lines and reusable operations.
+`l1.notebook.blocks.NotebookBlock` carries only transient storage binding;
+storage binds it during loading without importing the l2 integrations.
+`l2.notebook.Notebook` is a CheckProvider whose local suite is composed with
+each nearest nested Notebook's suite, so subtype checks run and Lines are
+checked once. The Project composes an access suite and its Notebook's checks;
+it retains status/action ownership. Existing TypeShips and serialized block
+Type names remain stable; no read-time data migration changes old ancestry.
+New Project notebooks can share the deterministic TaravNotebook root.
+<!-- tarav.breadcrumb 2baf3744e64b -->
 <!-- tarav.breadcrumb 6b8104da86a8 -->
 <!-- tarav.breadcrumb 785a4a323c9c -->
 
@@ -793,7 +802,7 @@ Lines contribute `urn:tarav:lines:` text, scope, parent and containment predicat
 plus RDF ordinal membership edges for mixed order. The optional
 `l1.lines.context.explore(root)` adapter uses Context to collect a complete
 subtree and ancestor direct Lines. It keeps the selected root in focus and
-does not open sibling payloads. `l2.notebook.NotebookContext` selects the
+does not open sibling payloads. `l2.notebook_context.NotebookContext` selects the
 Project's ModelBlock by default; explicit branches or Block Ships broaden that
 scope. Queries run through the existing ContextExplorer, with no Notebook
 text-search engine or retained session View. The runtime's Notebook resolver
@@ -824,13 +833,26 @@ by attaching an older proposal later.
 <!-- tarav.breadcrumb edc13a28dd56 -->
 
 `l2.notebook_checks` supplies atomic support/review/access Situation Chains and
-NotebookEvidenceSuite in the featured Project's normal checks. Types and ancestry
+NotebookEvidenceSuite over one Notebook's local Lines. The featured Notebook
+recurses into child Notebook suites; `l2.project.notebook_checks` handles
+access and composes them into Project checks. Types and ancestry
 can require support and review; inheritance cannot silently weaken either.
 Missing or invalid evidence produces POIs after recording. Unavailable evidence
 leaves the check incomplete, so prior actions are not closed without a conclusive
 run. Existing untyped Archive material and seed Lines are not retrofitted.
 This integration imports neither scoring nor runtime and supplies no semantic
 Assertion evaluator, claim propagation or LineTrace implementation.
+
+The Notebook's capture/support methods accept one root Reference and its
+neighborhood, producing one SupportMember per independent SupportSet. Multiple
+sets may support the same Line. The existing evidence checker requires a User
+turn root for conversational support and permits Agent turns as neighbors;
+capture retains invalid/missing evidence for later checks. Notebook operations
+are bounded to their subtree and delegate to NotebookCapture; review still
+requires actual proposal/approval evidence in chat. Notebook subtypes can
+specialize their evidence service and Checks namespace. Storage remains the
+separate l1 transport, and its record contains only its location.
+<!-- tarav.breadcrumb 9bb1e4364b2b -->
 <!-- tarav.breadcrumb f897176d2e28 -->
 
 Assertions owns the common Assertable and shallow TaravAssertion contracts.

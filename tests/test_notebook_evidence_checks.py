@@ -9,8 +9,10 @@ from tarav.l1.notebook.evidence import ReviewedBlock, SupportedBlock
 from tarav.l1.references import FileReference
 from tarav.l2.notebook_capture import NotebookCapture
 from tarav.l2.notebook_checks import (
-    NotebookEvidenceSuite, ReviewMissing, SupportMissing, SupportUnavailable,
+    ReviewMissing, SupportMissing, SupportUnavailable,
 )
+# tarav.breadcrumb 50bb7c995b54
+from tarav.l2.project.notebook_checks import ProjectNotebookSuite
 from tarav.l2.project import Project
 from test_actions_workflow import registry as registry_fixture
 from test_notebook_evidence import chat as chat_fixture, make_review, ship
@@ -66,7 +68,7 @@ def test_unavailable_evidence_is_incomplete_and_does_not_close_existing_action(t
     source, producer = add("user", "Discussed content."), add("agent", "Capture.")
     capture.attach_support(line, [SupportMember(source)], producer=producer)
     turns.clear()
-    suite = NotebookEvidenceSuite(project, capture=capture).run()
+    suite = ProjectNotebookSuite(project, notebook=capture.notebook).run()
     assert not suite.complete
     assert any(isinstance(p, SupportUnavailable) for p in suite.pois())
     project.actions.update(suite)
@@ -79,7 +81,7 @@ def test_legacy_plain_lines_are_only_checked_under_explicit_requirements(tmp_pat
     block.append(plain)
     capture.notebook.save_tree(block)
     before = capture.notebook.store.path(str(plain.id)).read_bytes()
-    run = NotebookEvidenceSuite(project, capture=capture).run()
+    run = ProjectNotebookSuite(project, notebook=capture.notebook).run()
     assert {type(p) for p in run.pois()} == {SupportMissing, ReviewMissing}
     assert capture.notebook.store.path(str(plain.id)).read_bytes() == before
     assert type(capture.notebook.load(plain.id)) is Line
@@ -91,7 +93,7 @@ def test_absent_project_notebook_stays_absent(tmp_path, registry):
     project = _project(root, Project)
     capture = NotebookCapture(Notebook())
     assert not capture.notebook.root.exists()
-    run = NotebookEvidenceSuite(project, capture=capture).run()
+    run = ProjectNotebookSuite(project, notebook=capture.notebook).run()
     assert run.complete and run.pois() == ()
     assert not capture.notebook.root.exists()
 

@@ -4,7 +4,7 @@ from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.lines import Line
 from tarav.l1.notebook import Notebook, NotebookWorkflow
 # tarav.breadcrumb 2be65786dd7c
-from tarav.l1.notebook.blocks import (
+from tarav.l2.notebook import (
     ArchiveBlock, DiscussionBlock, ModelBlock, ProjectBlock,
 )
 from tarav.l2.project import Project
@@ -15,6 +15,7 @@ def project(tmp_path, name):
     return Project(id=Ship(uuid4()), created_at="2026-10-19T00:00:00Z", project_name=name)
 
 
+# tarav.breadcrumb 6dc2ef955e82
 def test_project_notebook_creates_siblings_once_and_keeps_edits(tmp_path):
     notebook = Notebook(tmp_path / "notebook", records=create_runtime().records)
     p = project(tmp_path, "Tarav")
@@ -35,7 +36,7 @@ def test_project_notebook_creates_siblings_once_and_keeps_edits(tmp_path):
     notebook.save_tree(discussion)
     binding.create()
     assert binding.discussion.contents[-1].text == "Keep this discussion."
-    assert p.notebook(notebook=notebook).root.id == root.id
+    assert p.notebook(notebook=notebook).id == root.id
     other = project(tmp_path, "Other").notebook(notebook=notebook)
     assert other.create().id != root.id
     assert all(line.text != "Keep this discussion."

@@ -45,10 +45,11 @@ def _label(block, value):
 
 
 # tarav.breadcrumb 8698b1a2f9cf
-def import_diagram(binding, sources):
+# tarav.breadcrumb eccc8d8dac34
+def import_diagram(book, sources):
     """Import each latest explicit edition once; collisions require a decision."""
-    notebook = binding.notebook
-    archive = binding.archive
+    notebook = book.storage
+    archive = book.archive
     snapshots = []
     source_ids = set()
     recovered = set()
@@ -98,7 +99,7 @@ def import_diagram(binding, sources):
         raise FileExistsError(f"Snapshot was already captured: {destination}")
 
     groups = []
-    report = {"project_ship": str(binding.project.id), "archive_ship": str(archive.id),
+    report = {"project_ship": str(book.project_ship), "archive_ship": str(archive.id),
               "import_id": import_id, "sources": [], "selections": [], "counts": {}}
     totals = Counter()
     for root, namespace, models, blocks, lines in snapshots:
@@ -184,9 +185,8 @@ def main():
     parser.add_argument("--project", type=Path, required=True)
     parser.add_argument("--source", type=Path, action="append", required=True)
     args = parser.parse_args()
-    binding = Project.from_path(args.project).notebook()
-    binding.create()
-    print(json.dumps(import_diagram(binding, args.source), indent=2))
+    book = Project.from_path(args.project).notebook().create()
+    print(json.dumps(import_diagram(book, args.source), indent=2))
 
 
 if __name__ == "__main__":

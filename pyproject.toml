@@ -38,6 +38,11 @@ extend-exclude = ["_DEPRECATED"]
 testpaths = [
     "tests/test_notebook_evidence.py",
     "tests/test_notebook_evidence_checks.py",
+    "tests/test_notebook_integrator.py",
+    "tests/test_notebook.py",
+    "tests/test_project_notebook.py",
+    "tests/test_notebook_context.py",
+    "tests/test_notebook_recovery.py",
     "tests/test_attic.py",
     "tests/test_project_system.py",
     "tests/cli/test_import_guard.py",

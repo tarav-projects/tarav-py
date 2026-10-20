@@ -5,10 +5,8 @@ from tarav.l1.actions.pois import POIResolutionAction
 from tarav.l1.checks import CheckPOI, CheckResult, CheckSuite, SituationCheck
 from tarav.l1.checks.chains import SituationChain
 from tarav.l1.lines import Line
-from tarav.l1.notebook import Notebook
 from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
-from tarav.l2.notebook_capture import NotebookCapture, requirements
-from tarav.l2.project.notebook import ProjectNotebook
+from tarav.l2.notebook_capture import requirements
 
 
 def _type(cls, identity, name):
@@ -207,14 +205,13 @@ class NotebookAccessCheck(SituationCheck):
     def class_entity(cls):
         return _type(cls, "1024362c-ec69-459f-bb89-7b15220c3fb2", "Tarav.Notebook.Access.Check")
 
-    def __init__(self, *, situation, binding):
+    def __init__(self, *, situation, load):
         super().__init__(situation=situation)
-        self.binding, self.root, self.error = binding, None, None
+        self.load, self.root, self.error = load, None, None
 
     def _run(self):
         try:
-            if self.binding.notebook.store.path(str(self.binding.root_ship)).exists():
-                self.root = self.binding.root
+            self.root = self.load()
         except (OSError, ValueError, TypeError, LookupError, RuntimeError) as exc:
             self.error = str(exc)
             return CheckResult(self, status="incomplete", pois=(self.poi(
@@ -232,6 +229,7 @@ class NotebookAccessChain(SituationChain):
 
 
 # tarav.breadcrumb bf66d81da834
+# tarav.breadcrumb 1bf792263530
 class NotebookEvidenceSuite(CheckSuite):
     """Inspect existing evidence-bearing content; never provision or retrofit data."""
 
@@ -239,22 +237,15 @@ class NotebookEvidenceSuite(CheckSuite):
     def class_entity(cls):
         return _type(cls, "513f3edc-fb20-4c15-84a0-cef7e12f37c6", "Tarav.Notebook.Evidence.Suite")
 
-    def __init__(self, project, *, capture=None):
-        self.project = project
-        self.capture = capture if capture is not None else NotebookCapture(Notebook())
-        super().__init__(name="Notebook evidence", key=str(project.id))
+    def __init__(self, notebook):
+        self.notebook = notebook
+        self.capture = notebook.evidence
+        super().__init__(name="Notebook evidence", key=str(notebook.id))
 
     def produce(self):
-        binding = ProjectNotebook(self.project, notebook=self.capture.notebook)
-        access = NotebookAccessChain({"project": str(self.project.id),
-                                      "root": str(binding.root_ship)}).check(binding=binding)
-        yield access
-        if access.error is not None:
-            self._refused += 1
-            return
-        if access.root is None:
-            return
-        for line in access.root.walk():
+        project_ship = next((obj.project_ship for obj in (self.notebook, *self.notebook.ancestors())
+                             if hasattr(obj, "project_ship")), self.notebook.id)
+        for line in self.notebook.local_lines():
             if not isinstance(line, Line):
                 continue
             support, review = requirements(line)
@@ -263,7 +254,7 @@ class NotebookEvidenceSuite(CheckSuite):
             if not (support or review or support_ids or review_ids):
                 continue
             inspected = self.capture.inspect(line)
-            situation = {"project": str(self.project.id), "line": str(line.id),
+            situation = {"project": str(project_ship), "line": str(line.id),
                          "state": inspected["state"]["digest"],
                          "support_required": support, "review_required": review,
                          "support": support_ids, "review": review_ids}

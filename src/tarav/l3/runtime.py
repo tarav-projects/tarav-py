@@ -129,7 +129,7 @@ class TaravRuntime:
         """The installed resolvers from an identifier to what it identifies."""
         from tarav.l1.actions.views import ActionResolver
         from tarav.l1.notebook import Notebook
-        from tarav.l2.notebook import NotebookResolver
+        from tarav.l2.notebook_context import NotebookResolver
 
         service = ContextQueryService()
         service.register_resolver("action", ActionResolver())
@@ -290,8 +290,9 @@ def create_runtime(
     from tarav.l1.lines import Block, Line, LinesWorkflow
     # tarav.breadcrumb f98e9b92d186
     from tarav.l1.notebook import Notebook, NotebookWorkflow
-    from tarav.l2.notebook import NotebookProjectHook
-    from tarav.l1.notebook.blocks import NOTEBOOK_BLOCK_TYPES
+    # tarav.breadcrumb 156f7aa109f6
+    from tarav.l2.notebook_context import NotebookProjectHook
+    from tarav.l2.notebook import NOTEBOOK_BLOCK_TYPES
     # tarav.breadcrumb b457d57362a2
     from tarav.l1.notebook.evidence import NOTEBOOK_EVIDENCE_TYPES
     from tarav.l1.grounding import GROUNDING_RECORD_TYPES, GroundingWorkflow

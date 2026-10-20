@@ -8,7 +8,8 @@ from tarav.l0.kernel import TaravEntity, TaravType, entity
 from tarav.l1.lines import Block, Line
 from tarav.l1.lines.predicates import PREFIX
 from tarav.l1.notebook import Notebook
-from tarav.l2.notebook import NotebookContext
+# tarav.breadcrumb 33c95215cd65
+from tarav.l2.notebook_context import NotebookContext
 
 
 def _brief(obj):

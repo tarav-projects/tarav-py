@@ -437,7 +437,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
         if source == "l0":
             source = ".".join(relative.parts[:2])
         # Inspect the active domain modules without collapsing their dependencies.
-        if source in {"lines", "scoring", "project"}:
+        if source in {"lines", "scoring", "project", "notebook"}:
             source = ".".join(Path(*parts).with_suffix("").parts).removesuffix(".__init__")
         if relative.parts[0] == 'l1' and relative.parts[1] in {
             'scoring', 'poi', 'blessings', 'decisions', 'notebook',
@@ -462,7 +462,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                 imported = tuple(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported = (node.module,)
-                if node.level and source.split(".")[0] in {"lines", "scoring", "project"}:
+                if node.level and source.split(".")[0] in {"lines", "scoring", "project", "notebook"}:
                     from importlib.util import resolve_name
 
                     package = "tarav." + ".".join(relative.parts[:-1])
@@ -475,7 +475,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
                     target = ".".join(name.split(".")[:3]).removeprefix("tarav.")
                 if target in {"l1", "l2", "l3"}:
                     target = name.split(".", 3)[2]
-                if target in {"lines", "scoring", "project"}:
+                if target in {"lines", "scoring", "project", "notebook"}:
                     target = name.split(".", 2)[-1] if name.startswith("tarav.l") else name.removeprefix("tarav.")
                     if target.startswith(("l1.", "l2.", "l3.")):
                         target = target.split(".", 1)[1]
@@ -959,6 +959,7 @@ def test_no_object_keeps_the_record_it_was_loaded_from() -> None:
 
 
 # tarav.breadcrumb 6551951d20c3
+# tarav.breadcrumb 3853e9e2da0d
 def test_notebook_context_is_an_integration_above_storage():
     import subprocess
     import sys
@@ -969,9 +970,9 @@ import sys
 import tarav.l1.lines
 import tarav.l1.notebook
 assert 'tarav.l3.runtime' not in sys.modules
-from tarav.l2.notebook import NotebookContext, NotebookResolver
-assert NotebookContext.__module__ == 'tarav.l2.notebook'
-assert NotebookResolver.__module__ == 'tarav.l2.notebook'
+from tarav.l2.notebook_context import NotebookContext, NotebookResolver
+assert NotebookContext.__module__ == 'tarav.l2.notebook_context'
+assert NotebookResolver.__module__ == 'tarav.l2.notebook_context'
 assert 'tarav.l3.runtime' not in sys.modules
 """
     subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
