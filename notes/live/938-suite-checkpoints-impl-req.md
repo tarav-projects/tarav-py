@@ -8,7 +8,7 @@
 
 Knowledge.Surface: wiki  
 Alignment.Mode: Interactive  
-Status: executing.
+Status: complete.
 
 Let a CheckSuite record named checkpoints reached during its run. A checkpoint certifies that a particular dynamic Check producer finished scanning. When an earlier POI is absent, its Action may take its existing `gone` exit only when the relevant checkpoint was reached and the detector's Checks completed conclusively. Use this in md-library's paragraph alignment suite through [request 631](/Users/pereiro/projects/md-library-project/md-library-py/notes/live/631-alignment-checkpoint-impl-req.md). No generic redesign of Action exits or Check identity.
 <!-- tarav.breadcrumb 2e55d97404c4 -->
@@ -24,14 +24,18 @@ Declare a suite's checkpoint-to-Check-Type relation at construction and yield a 
 
 ## Impl.Req.Wiki
 
-Product Project: tarav-py. Wiki owner: tarav-md; relevant `notes/wiki/checks-workflow.md` and daily note. Source evidence is the above User Turns; behavior evidence will be focused CheckSuite and Action tests. Capture status: pending.
+Product Project: tarav-py. Wiki owner: tarav-md; captured `notes/wiki/checks-workflow.md` and `notes/wiki/daily/2026-10-20.md`. Source evidence is the above User Turns; behavior evidence is the focused CheckSuite and Action tests. New Breadcrumb labels resolve; older unrelated labels retain existing audit POIs.
 
 ## Execution.Plan
 
-1. **Feature — suite run.** Add marker, reached-set and certified Check-type relation. Verify markers only after actual production, run reset, and filtering/failure behavior. Status: pending.
-2. **Integration — POI Action.** Record the checkpoint on events and require it for absence conclusion when attached. Verify skipped dynamic producer stays open, completed producer closes, and suite scoping remains correct. Status: pending.
-3. **Guidance and integration.** Update maintained architecture and md-library consumer. Capture inline evidence, Wiki, focused/full checks, and commits. Status: pending.
+1. **Feature — suite run.** Add declaration, marker, reached-set and certified Check-type relation. Verify reset and local filtering/failure behavior. Status: verified.
+2. **Integration — POI Action.** Record the checkpoint on events and use the current suite declaration for earlier events. Verify skipped dynamic producer stays open, completed producer closes, and suite scoping remains correct. Status: verified.
+3. **Guidance and integration.** Update maintained architecture and md-library consumer. Capture inline evidence, Wiki, focused/full checks, and commits. Status: verified.
 
 ## Impl.Log
 
-- Inspected CheckSuite run/conclusion and POI Action event/scope code. Reproduced md-library floor-gated false closure in prior read-only investigation. No product changes yet.
+- Before implementation, inspected CheckSuite run/conclusion and POI Action event/scope code and reproduced the md-library floor-gated false closure in an isolated project.
+- Start checkpoint `04dffc0`. A concurrent workflow's checkpoint `ca3cb1a` included the verified Tarav code, tests, architecture, compiled AGENTS source, and this note's design refinement alongside its separate Notebook work. No unrelated Notebook files were edited by this workflow.
+- `SuiteCheckpoint(name)` is emitted after a declared scan; `CheckSuite.checkpoints` and `summary()["checkpoints"]` report names reached. Check-type certification is declared at suite construction. The Action's `gone` path requires the current detector's checkpoint and conclusive same-type results; a skipped path remains `not run`.
+- Focused Checks/Actions tests: 49 passed. Architecture tests: 100 passed in the combined run. Full Tarav suite: 496 passed. Ruff passed. Real DeMonte read-only suite reached `reading-alignment.scan` and retained 159 alignment POIs across 416 results.
+- Product and Wiki Breadcrumb labels submitted and audited; this pass's labels resolve. The broader audit still reports older unrelated unresolvable labels. `tarav skw document produce` found no producer for the ProjectSystemPrompt block; `compile` succeeded from its maintained JSON source.
