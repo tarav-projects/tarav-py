@@ -121,6 +121,16 @@ class Block(TaravEntity):
         self._contents = self._validated_contents((*self.contents, item))
         self._content_ships = tuple(value.id for value in self._contents)
 
+    # tarav.breadcrumb 635c2fb9e3bf
+    def walk(self):
+        """Visit this Block and its ordered descendants, without following external links."""
+        yield self
+        for item in self.contents:
+            if isinstance(item, Block):
+                yield from item.walk()
+            else:
+                yield item
+
     def bind_contents(self, contents: Iterable["Line | Block"]) -> None:
         """Resolve the retained members in their exact mixed order."""
         values = self._validated_contents(contents)

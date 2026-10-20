@@ -28,8 +28,10 @@ class Project(TaravProject):
         def suite(self) -> CheckSuite:
             """The Project's checks, and its test fixtures while `.tarav/tests/` exists."""
             from tarav.l2.tests.actions import TestFixturesSuite
+            # tarav.breadcrumb b4812048cdc1
+            from tarav.l2.notebook_checks import NotebookEvidenceSuite
 
-            return CheckSuite([super().suite(),
+            return CheckSuite([super().suite(), NotebookEvidenceSuite(self.obj),
                                CheckSuite(lambda run: TestFixturesSuite.present(self.obj.root))],
                               name=self.obj.name, repositories=self.obj.repositories())
 

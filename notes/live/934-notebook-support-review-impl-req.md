@@ -281,3 +281,31 @@ return for Interactive alignment rather than expanding this request.
 - The first review presentation is bounded Target/Operation/Before/After with
   exact Line identities and wording. Only whitespace wrapping is normalized.
   No renderer authority, paraphrase approval or new token workflow is invented.
+- Slice 4: Project checks now compose NotebookEvidenceSuite and atomic
+  support/review/access Situation Chains with ordinary Resolution actions.
+  The action test proves MissingReview closes as gone after valid evidence.
+  Unavailable evidence leaves its Check incomplete and does not close the
+  earlier unresolved action. Reads do not provision; existing Archive Lines
+  retain their original Types and bytes.
+- Architecture test initially exposed a dependency cycle through the CLI-facing
+  Notebook navigation module. Moved ordered structural traversal to Block.walk
+  and migrated all consumers, retaining the same navigation output. The graph
+  is acyclic again; no architecture assertion was relaxed.
+- 86 focused/architecture tests passed; a subsequent focused run passed the
+  new subprocess guard proving evidence imports neither scoring nor runtime.
+  Focused Ruff passed. Final expanded verification follows.
+- Added propose_review so a real proposal can be rendered before an approval
+  exists, without fabricated future chat references. The eventual record_review
+  captures exact resolved proposal/approval references; complete_review checks
+  the protocol and current targets, including completed removals.
+- All inheritance paths combine requirements monotonically. A supported child
+  cannot turn off a reviewed ancestor's requirement. Context changes are
+  conservative invalidation; no semantic score or automatic carry is produced.
+- Updated architecture documentation and the authoritative AGENTS SKW source;
+  produced/compiled the latter. JSON source/lock files have no native inline
+  capture convention, an explicit capture limitation rather than invented syntax.
+- Found and covered the context-at-proposal boundary: the rendered review now
+  includes each target state's digest. An ancestor change between presentation
+  and evidence attachment cannot make an older proposal approve the new
+  context, even when the Line's words are unchanged. Public proposal rendering
+  needs no fabricated future approval reference.

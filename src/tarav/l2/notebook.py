@@ -1,7 +1,5 @@
 """Project Notebook selection and identity integration for the Context workflow."""
 
-from collections.abc import Iterator
-
 from tarav.l0.kernel import TaravClass, TaravType, TypeShip
 from tarav.l1.context import ContextHook
 from tarav.l1.context.query import ContextCandidate, IdentityContextQuery
@@ -18,15 +16,6 @@ NOTEBOOK = "urn:tarav:notebook:root"
 BRANCHES = {"model": ModelBlock, "discussion": DiscussionBlock, "archive": ArchiveBlock}
 
 
-def walk(block: Block) -> Iterator[Block | Line]:
-    yield block
-    for member in block.contents:
-        if isinstance(member, Block):
-            yield from walk(member)
-        else:
-            yield member
-
-
 # tarav.breadcrumb 77db4896a68d
 class NotebookContext(TaravType):
     """One selected subtree collected into the existing Context Explorer."""
@@ -41,7 +30,7 @@ class NotebookContext(TaravType):
         self.notebook = notebook if notebook is not None else Notebook()
         project_root = ProjectNotebook(project, notebook=self.notebook).root
         if block is not None:
-            candidates = [obj for obj in walk(project_root) if isinstance(obj, Block)]
+            candidates = [obj for obj in project_root.walk() if isinstance(obj, Block)]
             self.root = _find(candidates, block)
         elif branch == "project":
             self.root = project_root

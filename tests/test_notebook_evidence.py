@@ -140,11 +140,9 @@ def test_support_missing_wrong_role_and_unavailable_are_detected_without_blockin
 
 
 def make_review(capture, block, lines, add, *, text=None, approval=None, operation="review", before=()):
-    states = [line_state(line) for line in lines]
-    template = VerbatimReview(id=ship(), destination=block.id, operation=operation,
-                              before=before, after=states, token="review:one",
-                              proposal=ref(), approval=ref("e"))
-    proposal = add("agent", (template.presentation() if text is None else text) + "\nreview:one")
+    rendered = capture.propose_review(lines, destination=block, token="review:one",
+                                      operation=operation, before=before)
+    proposal = add("agent", rendered if text is None else text + "\nreview:one")
     user = add("user", approval or "::approve review:one")
     return capture.record_review(lines, destination=block, operation=operation,
                                   before=before, token="review:one", proposal=proposal, approval=user)
@@ -178,10 +176,7 @@ def test_review_protocol_failures_are_retained_but_cannot_complete(tmp_path, cha
     add, _ = chat
     capture, block = capture_setup(tmp_path, ReviewedBlock)
     line = capture.capture(block, "Exact Case matters.")
-    state = line_state(line)
-    template = VerbatimReview(id=ship(), destination=block.id, operation="review", after=(state,),
-                              token="review:one", proposal=ref(), approval=ref("e"))
-    text = template.presentation()
+    text = capture.propose_review([line], destination=block, token="review:one")
     if problem == "wording":
         text = text.replace("Exact Case", "exact case")
     if problem == "destination":
@@ -228,3 +223,32 @@ def test_read_only_capture_selection_does_not_provision_and_state_is_a_snapshot(
     state = SubjectState(ship(), entity(NotebookLine).id, payload)
     payload["context"][0]["text"] = "New context."
     assert state.typed.payload["context"][0]["text"] == "Old context."
+
+
+def test_capture_cannot_reuse_an_existing_ship_under_another_block(tmp_path):
+    capture, block = capture_setup(tmp_path)
+    line = capture.capture(block, "Original statement.")
+    other = SupportedBlock(id=ship())
+    capture.notebook.save_tree(other)
+    with pytest.raises(FileExistsError, match="already exists"):
+        capture.capture(other, "Another statement.", id=line.id)
+    assert other.contents == ()
+    assert capture.notebook.load(line.id).scope.id == block.id
+
+
+def test_review_binds_context_as_presented_not_only_the_words(tmp_path, chat):
+    add, _ = chat
+    capture, block = capture_setup(tmp_path, ReviewedBlock)
+    line = capture.capture(block, "Unchanged words.")
+    presentation = capture.propose_review([line], destination=block, token="review:context")
+    proposal = add("agent", presentation)
+    context = NotebookLine(id=ship(), text="A different interpretation now applies.", scope=block)
+    block.append(context)
+    capture.notebook.save_tree(block)
+    approval = add("user", "::approve review:context")
+    # A late attachment cannot reinterpret an earlier approval under a new context.
+    review = capture.record_review([line], destination=block, proposal=proposal, approval=approval,
+                                    token="review:context")
+    assert capture.review_problems(review)[0].kind == "Invalid"
+    with pytest.raises(ValueError, match="not complete"):
+        capture.complete_review(review)

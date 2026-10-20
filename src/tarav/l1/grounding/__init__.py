@@ -68,6 +68,9 @@ class SubjectState(TypedState, TaravObject):
             return self._owner(Ship("3c2713da-cd9b-43ed-95fe-5c5a18d10fa6"),
                                entity(SubjectState).id, {"text": "Example"}).records.to_record()
 
+    def ships(self):
+        return (*super().ships(), self.typed.subject_ship, self.typed.subject_type)
+
 
 class SupportMember(TypedState, TaravObject):
     """One substantive source, with optional contextual references."""
@@ -130,6 +133,9 @@ class SupportSet(TypedState, TaravEntity):
             return self._owner(id=Ship("d862c270-70f4-488d-ae32-45fbf64ce1de"),
                                subject=SubjectState.records.from_record(
                                    SubjectState.records.record_example())).records.to_record()
+
+    def ships(self):
+        return (*super().ships(), self.typed.subject.subject_ship)
 
 
 GROUNDING_RECORD_TYPES = (SubjectState, SupportMember, SupportSet)

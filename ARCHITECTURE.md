@@ -797,6 +797,36 @@ ls/read/query CLI. Notebook storage remains independent of these consumers.
 <!-- tarav.breadcrumb 4ada1653d6c0 -->
 <!-- tarav.breadcrumb 1d76273569fc -->
 
+`l1.grounding` retains SubjectState snapshots and attributed SupportSets;
+`l1.review` retains tokenized VerbatimReview records independently of support.
+`l1.notebook.evidence` specializes Lines and Blocks with explicit support and
+review requirements. Base Lines remain mutable, identified authoring primitives.
+`Block.walk()` supplies ordered structural traversal to navigation and checks.
+<!-- tarav.breadcrumb 71b926552258 -->
+
+`l2.notebook_capture.NotebookCapture` captures and inspects evidence through
+existing Chatlas Turn references and append-only inserts in the Grounding and
+Review Record Registry partitions. Its explicit create initializes only those
+partitions. Subject fingerprints include wording, concrete Types and direct
+Lines of authoring ancestors, excluding evidence attachments. Historical claims
+remain retained after edits; they do not approve the current state. Protocol
+verification checks destination, operation, bounded before/after wording,
+proposal/approval roles, order and explicit token approval. Whitespace wrapping
+is normalized; semantic equivalence is not inferred. Proposals include target
+state digests, so unchanged words cannot be approved under a different context
+by attaching an older proposal later.
+<!-- tarav.breadcrumb edc13a28dd56 -->
+
+`l2.notebook_checks` supplies atomic support/review/access Situation Chains and
+NotebookEvidenceSuite in the featured Project's normal checks. Types and ancestry
+can require support and review; inheritance cannot silently weaken either.
+Missing or invalid evidence produces POIs after recording. Unavailable evidence
+leaves the check incomplete, so prior actions are not closed without a conclusive
+run. Existing untyped Archive material and seed Lines are not retrofitted.
+This integration imports neither scoring nor runtime and supplies no semantic
+Assertion evaluator, claim propagation or LineTrace implementation.
+<!-- tarav.breadcrumb f897176d2e28 -->
+
 Assertions owns the common Assertable and shallow TaravAssertion contracts.
 Scoring's `assertions` module supplies its identified, case-producing Assertion
 subtype and the AssessmentCase contract without

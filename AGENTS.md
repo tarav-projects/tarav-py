@@ -189,6 +189,15 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
   `l2.notebook` owns that integration and the Notebook identity resolver.
   Explicit branch/Block selection can broaden the scope. Reads never create
   Notebook data. `tarav context --id` also opens stored Block/Line Ships.
+- Notebook evidence Types live in `l1.notebook.evidence`; general support
+  and review Records live in `l1.grounding` and `l1.review`. Use
+  `l2.notebook_capture.NotebookCapture` for Python capture and inspection.
+  Evidence names exact subject/context snapshots; editing preserves old
+  claims and requires fresh evidence for the changed state. Explicit
+  `create()` provisions evidence stores. Project checks compose
+  `l2.notebook_checks.NotebookEvidenceSuite` without provisioning or
+  retrofitting existing records. Support and review remain independent.
+  Mechanical compliance does not certify semantic support or invoke scoring.
 
 ## Native surfaces and SKW
 

@@ -8,7 +8,7 @@ from tarav.l0.kernel import TaravEntity, TaravType, entity
 from tarav.l1.lines import Block, Line
 from tarav.l1.lines.predicates import PREFIX
 from tarav.l1.notebook import Notebook
-from tarav.l2.notebook import NotebookContext, walk
+from tarav.l2.notebook import NotebookContext
 
 
 def _brief(obj):
@@ -47,7 +47,7 @@ def report(project, *, operation, branch=None, block=None, root=None,
                 "triplets": len(context.explorer.graph), "prefixes": {"lines": PREFIX}}
         if operation == "ls":
             rows = []
-            for obj in walk(context.root):
+            for obj in context.root.walk():
                 if isinstance(obj, Block):
                     direct_lines = [member for member in obj.contents if isinstance(member, Line)]
                     rows.append({**_brief(obj), "parent": str(obj.parent_ship) if obj.parent_ship else None,

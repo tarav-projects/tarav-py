@@ -975,3 +975,21 @@ assert NotebookResolver.__module__ == 'tarav.l2.notebook'
 assert 'tarav.l3.runtime' not in sys.modules
 """
     subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
+
+
+# tarav.breadcrumb 55021e1f80ef
+def test_notebook_evidence_is_independent_of_runtime_and_scoring():
+    import subprocess
+    import sys
+
+    script = """
+import tarav_bypass
+import sys
+import tarav.l1.grounding
+import tarav.l1.review
+import tarav.l2.notebook_capture
+import tarav.l2.notebook_checks
+assert 'tarav.l3.runtime' not in sys.modules
+assert 'tarav.l2.scoring' not in sys.modules
+"""
+    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)

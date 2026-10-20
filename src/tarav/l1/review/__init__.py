@@ -14,6 +14,17 @@ from tarav.l1.references import Reference
 REVIEW_WORKFLOW_SHIP = WorkflowShip("a50d3c71-9fb3-428e-ae71-37ac312742ba")
 
 
+def review_presentation(destination, operation, *, before=(), after=()):
+    """Render the proposed change before any approval reference exists."""
+    lines = [f"Target: {destination}", f"Operation: {operation}"]
+    for heading, states in (("Before", before), ("After", after)):
+        lines.append(f"{heading}:")
+        for state in states:
+            lines.extend((f"- {state.subject_ship}: {state.payload['text']}",
+                          f"  State: {state.digest}"))
+    return "\n".join(lines)
+
+
 class ReviewWorkflow(TaravWorkflow):
     constitution = "Retain explicit review evidence without conflating it with substantive support."
 
@@ -71,11 +82,12 @@ class VerbatimReview(TypedState, TaravEntity):
 
     def presentation(self):
         """Whitespace may wrap this payload; case and punctuation retain meaning."""
-        lines = [f"Target: {self.typed.destination}", f"Operation: {self.typed.operation}"]
-        for heading, states in (("Before", self.typed.before), ("After", self.typed.after)):
-            lines.append(f"{heading}:")
-            lines.extend(f"- {state.subject_ship}: {state.payload['text']}" for state in states)
-        return "\n".join(lines)
+        return review_presentation(self.typed.destination, self.typed.operation,
+                                   before=self.typed.before, after=self.typed.after)
+
+    def ships(self):
+        return tuple(dict.fromkeys((*super().ships(), self.typed.destination,
+                                    *(state.subject_ship for state in (*self.typed.before, *self.typed.after)))))
 
     @classmethod
     def _from_record(cls, loaded: LoadedRecord):

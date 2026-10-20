@@ -296,6 +296,7 @@ def create_runtime(
     from tarav.l1.notebook.evidence import NOTEBOOK_EVIDENCE_TYPES
     from tarav.l1.grounding import GROUNDING_RECORD_TYPES, GroundingWorkflow
     from tarav.l1.review import REVIEW_RECORD_TYPES, ReviewWorkflow
+    from tarav.l2.notebook_checks import NOTEBOOK_EVIDENCE_POIS, NOTEBOOK_EVIDENCE_ACTIONS
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.neighborhood import NeighborhoodWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
@@ -414,6 +415,7 @@ def create_runtime(
                 *NOTEBOOK_EVIDENCE_TYPES,
                 *GROUNDING_RECORD_TYPES,
                 *REVIEW_RECORD_TYPES,
+                *NOTEBOOK_EVIDENCE_POIS,
                 TaravEnvironment,
                 TaravSystem,
                 TestEntity,
@@ -592,7 +594,7 @@ def create_runtime(
     for action_type in (GitleaksFindingResolution, GitleaksStagedResolution,
                         GitleaksNeverScannedResolution, GitleaksMissingResolution,
                         HooksNotInstalledResolution, *SKW_ACTION_TYPES, TestMarkerResolution,
-                        *ATTIC_ACTION_TYPES):
+                        *ATTIC_ACTION_TYPES, *NOTEBOOK_EVIDENCE_ACTIONS):
         register_action(action_type)
     from tarav.l1.project.config import register_config_section
     from tarav.l1.project.agents import AgentsConfig

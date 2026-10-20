@@ -12,7 +12,7 @@ from tarav.l1.notebook.evidence import NotebookLine, ReviewedLine
 from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
 from tarav.l1.records.registry import RecordRegistry
 from tarav.l1.references import Reference
-from tarav.l1.review import ReviewWorkflow, VerbatimReview
+from tarav.l1.review import ReviewWorkflow, VerbatimReview, review_presentation
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,8 @@ def line_state(line):
 
 
 def requirements(line):
-    types = (type(line), *(type(block) for block in (line.scope, *line.scope.ancestors())))
+    subjects = (line, line.scope, *line.scope.ancestors())
+    types = tuple(base for subject in subjects for base in type(subject).__mro__)
     review = any(getattr(cls, "requires_review", False) for cls in types)
     return any(getattr(cls, "requires_support", False) for cls in types) or review, review
 
@@ -77,6 +78,8 @@ class NotebookCapture(TaravType):
     def capture(self, block, text, *, members=(), producer=None, reviewed=False, id=None):
         cls = ReviewedLine if reviewed else NotebookLine
         line = cls(id=id or Ship(uuid4()), text=text, scope=block)
+        if self.notebook.store.path(str(line.id)).exists():
+            raise FileExistsError(f"Capture creates new Lines; {line.id} already exists")
         block.append(line)
         self.notebook.save_tree(block)
         if members or producer is not None:
@@ -119,6 +122,13 @@ class NotebookCapture(TaravType):
             self.notebook.save(line)
         return review
 
+    def propose_review(self, lines, *, destination, token, operation="review", before=()):
+        """Present real candidate states without fabricating future chat evidence."""
+        return review_presentation(
+            destination.id, operation, before=[state.typed for state in before],
+            after=[line_state(line).typed for line in lines],
+        ) + f"\n\n::approve {token}"
+
     def complete_review(self, review):
         self._resolved.clear()
         problems = self.review_problems(review)
@@ -131,8 +141,7 @@ class NotebookCapture(TaravType):
                 raise ValueError("Review is not complete: target state changed")
         if review.typed.operation == "remove":
             destination = self.notebook.load(review.typed.destination)
-            from tarav.l2.notebook import walk
-            remaining = {obj.id for obj in walk(destination)}
+            remaining = {obj.id for obj in destination.walk()}
             if any(state.subject_ship in remaining for state in review.typed.before):
                 raise ValueError("Review is not complete: removed targets are still present")
         return review
