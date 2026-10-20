@@ -12,6 +12,15 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+# tarav.breadcrumb c57681bc19a7
+def test_checkpoints_keep_checks_independent_of_action_resolution():
+    from tarav.l1.checks import CheckSuite, SuiteCheckpoint
+
+    assert hasattr(CheckSuite, "conclusive_at")
+    assert SuiteCheckpoint.__module__ == "tarav.l1.checks"
+    assert "actions" not in _top_level_import_graph()["checks"]
+
+
 # tarav.breadcrumb 2170ebdc15c6
 def test_attic_owns_its_types_and_is_an_archive_child():
     from tarav.l1.archive.workflow import ArchiveWorkflow

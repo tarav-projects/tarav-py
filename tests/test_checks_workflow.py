@@ -6,6 +6,7 @@ from tarav.l1.checks import (
     CheckProvider,
     CheckResult,
     CheckSuite,
+    SuiteCheckpoint,
     Situation,
     SituationCheck,
 )
@@ -301,6 +302,54 @@ def test_a_suite_holds_its_one_run_and_a_new_run_replaces_it():
     assert len(suite.results) == 1 and runs == ["one", "one"]
     suite.reset()
     assert (suite.ran, suite.results) == (False, [])
+
+
+# tarav.breadcrumb 1d7de86052ba
+def test_checkpoint_records_only_a_reached_scan_and_resets_on_rerun():
+    runs = []
+    state = {"scan": True, "check": True}
+
+    def produce(_suite):
+        if not state["scan"]:
+            return
+        if state["check"]:
+            yield ExampleCheck("one", runs)
+        yield SuiteCheckpoint("examples")
+
+    suite = CheckSuite(produce, checkpoint_types={"examples": (ExampleCheck,)}).run()
+    name = entity(ExampleCheck).name
+    assert suite.reached("examples", check_type=name)
+    assert suite.results[0].checkpoint == "examples"
+    assert suite.summary()["checkpoints"] == ["examples"]
+    assert suite.conclusive_at("examples", check_type=name)
+
+    state["check"] = False
+    suite.run()
+    assert suite.reached("examples", check_type=name)
+    assert suite.conclusive_at("examples", check_type=name)  # zero discovered Checks
+
+    state["scan"] = False
+    suite.run()
+    assert not suite.reached("examples", check_type=name)
+    assert not suite.conclusive_at("examples", check_type=name)
+
+    partial = CheckSuite(
+        [ExampleCheck("two", runs), SuiteCheckpoint("examples"),
+         DifferenceCheck(situation={"before": 1, "after": 1})],
+        checkpoint_types={"examples": (ExampleCheck,)})
+    partial.run(select=lambda item: not isinstance(item, DifferenceCheck))
+    assert not partial.exhausted
+    assert partial.conclusive_at("examples", check_type=name)
+    partial.run(select=lambda item: not isinstance(item, ExampleCheck))
+    assert partial.refused_at("examples", check_type=name)
+    assert not partial.conclusive_at("examples", check_type=name)
+
+    unrelated_group = CheckSuite([DifferenceCheck(situation={"before": 1, "after": 1})])
+    grouped = CheckSuite(
+        [ExampleCheck("three", runs), SuiteCheckpoint("examples"), unrelated_group],
+        checkpoint_types={"examples": (ExampleCheck,)})
+    grouped.run(select=lambda item: item is not unrelated_group)
+    assert grouped.conclusive_at("examples", check_type=name)
 
 
 # tarav.breadcrumb fc1800cb2561

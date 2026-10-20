@@ -546,8 +546,20 @@ its own Type id and a `key` binds an instance to a subject (`identity`); a
 plain grouping has no identity and counts as part of the suite above it.
 `exhausted` says the suite's own code ran to its end with nothing refused,
 and `conclusive_for(check Type)` that its own checks of that Type also
-completed; a nested suite with an identity answers for itself. `walk()` gives
-each result with the identified suites above it. A suite may declare the
+completed; a nested suite with an identity answers for itself.
+
+A dynamic producer declares `checkpoint_types={name: (CheckType, ...)}`
+on its suite and yields `SuiteCheckpoint(name)` after its scan. The run records
+that named checkpoint and attaches its declaration to results of the certified
+Check Types. For a POI Action raised by one of those
+results, absence is conclusive only if a later run reaches the same checkpoint
+and its Checks of that Type completed. A branch that skips the scan leaves the
+checkpoint unreached even when the suite itself ends; filtering that Check Type
+also prevents a `gone` conclusion. Other Check Types after the checkpoint do
+not affect that local completion claim.
+<!-- tarav.breadcrumb 8aefbfde8e68 -->
+
+`walk()` gives each result with the identified suites above it. A suite may declare the
 folders of the Git repositories its checks read (`repositories=`); when it
 runs it first records their HEAD and whether they are clean (`suite.git`,
 read through `tarav.l0._core.git_repository.repository_states`), and each
@@ -680,7 +692,9 @@ same for itself. A POI-resolution Action with the `gone` closing path closes
 only when the suite that detected its POI, or an identified ancestor of that
 suite, ran conclusively without it. A standalone identified sibling suite
 has no authority over the Action. An unscoped Project suite remains
-authoritative over children it no longer yields.
+authoritative over children it no longer yields. When the Action event records
+a checkpoint, the matching suite must reach it for the relevant Check Type;
+an absent POI in a skipped dynamic scan is `not run`, not `gone`.
 <!-- tarav.breadcrumb ad451ba0f3a9 -->
 
 While `<project>/.tarav/tests/` exists, the l2 `Project` adds

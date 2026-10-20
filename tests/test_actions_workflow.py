@@ -20,7 +20,7 @@ from tarav.l1.actions.project import ProjectActions
 from tarav.l1.actions.blessing import (
     BLESSED, Blessing, BlessingInput, BlessingWithoutReason,
 )
-from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite, SituationCheck
+from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite, SituationCheck, SuiteCheckpoint
 from tarav.l1.operator_context import OperatorContext, OperatorContextStore
 from tarav.l1.records import RecordRegistry
 from tarav.l1.project import TaravProject
@@ -534,6 +534,39 @@ def test_one_identified_suite_cannot_close_sibling_actions(stores):
     assert stores.pois.of(a).exit == GONE
     assert axes(stores.pois.of(b))["situation"] == "not run"
     assert stores.pois.of(b).state == RUNNING
+
+
+# tarav.breadcrumb 4e4da7c758ed
+def test_dynamic_check_disappearance_needs_its_reached_checkpoint(stores):
+    def scan(level, *, reached=True, crash=False):
+        def produce(_run):
+            if level is not None:
+                yield LampCheck("hall", level, crash=crash)
+            if reached:
+                yield SuiteCheckpoint("lamp-scan")
+
+        return RoomSuite(produce, key="room",
+                         checkpoint_types={"lamp-scan": (LampCheck,)}).run()
+
+    poi = LampCheck("hall", 3).run().pois()[0]
+    stores.update(HOME, scan(3))
+    action = stores.pois.of(poi)
+    assert action.data["event"]["checkpoint"] == "lamp-scan"
+    action.data["event"].pop("checkpoint")  # a saved Action from before this suite declaration
+    stores.runs.save(action, "Keep the prior Action event")
+
+    blocked = stores.update(HOME, scan(None, reached=False))
+    assert blocked["gone"] == 0
+    assert axes(stores.pois.of(poi))["situation"] == "not run"
+    assert stores.pois.of(poi).state == RUNNING
+
+    failed = stores.update(HOME, scan(0, crash=True))
+    assert failed["gone"] == 0
+    assert axes(stores.pois.of(poi))["situation"] == "check failed"
+
+    complete = stores.update(HOME, scan(None))
+    assert complete["gone"] == 1
+    assert stores.pois.of(poi).exit == GONE
 
 
 # tarav.breadcrumb d7307e455da5

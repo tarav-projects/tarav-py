@@ -20,7 +20,7 @@ A suite is the Integration.Object and authority for the Checks it discovers. A s
 <!-- tarav.breadcrumb 639214076a72 -->
 <!-- tarav.breadcrumb c543137cba89 -->
 
-Provide a named checkpoint marker in the CheckSuite production stream. This puts the declaration after the scan in source order; a branch that returns before it does not reach it. The marker names its certified Check types. Preserve existing behavior for unrelated suites that make no checkpoint declaration; this is an explicit authority refinement for a producer, not a reader or data compatibility path. Checkpoint names are local to an identified suite. Reject duplicate certification of a Check type in one run, rather than silently choosing one.
+Declare a suite's checkpoint-to-Check-Type relation at construction and yield a named checkpoint marker in its production stream after the scan. This lets the current suite govern already-open Actions even if their saved event predates the checkpoint feature. A branch that returns before the marker does not reach it. The declaration also attaches the checkpoint to Checks produced before the marker, including partial scans. Preserve existing behavior for unrelated suites that make no checkpoint declaration; this is an explicit authority refinement for a producer, not a reader or data compatibility path. Checkpoint names are local to a suite. Reject duplicate certification of a Check type, rather than silently choosing one.
 
 ## Impl.Req.Wiki
 

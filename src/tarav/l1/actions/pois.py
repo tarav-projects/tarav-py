@@ -81,7 +81,8 @@ class POIResolutionAction(StepAction):
     # tarav.breadcrumb c5db1b346c8b
     @classmethod
     def opened(cls, poi: SituationPOI, *, project: dict, at: str,
-               suites: tuple[dict, ...] = (), git: dict | None = None) -> ActionRun:
+               suites: tuple[dict, ...] = (), git: dict | None = None,
+               checkpoint: str | None = None) -> ActionRun:
         """Build the action of a POI, open and not yet registered anywhere.
 
         `suites` are the identified suites above the check that raised it, and
@@ -92,7 +93,8 @@ class POIResolutionAction(StepAction):
             "skill": cls.skill.to_json() if cls.skill else None,
             "intakes": [], "sessions": [], "opening": {"passed": True, "results": []},
             "operations": [], "output": None, "reason": None, "tape": [],
-            "event": _event(poi, suites), "situation": {"state": PRESENT, "at": at},
+            "event": _event(poi, suites, checkpoint=checkpoint),
+            "situation": {"state": PRESENT, "at": at},
         })
         tape.opened(run, at=at, states=git)
         return run
@@ -119,7 +121,8 @@ class POIResolutionAction(StepAction):
             raised_now = {}
             for chain, result in update.checks.walk():
                 for poi in raised(result.pois()):
-                    raised_now.setdefault(str(action_id(poi)), (poi, chain, result.git))
+                    raised_now.setdefault(str(action_id(poi)),
+                                          (poi, chain, result.git, result.checkpoint))
             seen = update.memo[cls] = {
                 "raised": raised_now,
                 "suites": {_suite_key(suite.identity): suite
@@ -129,9 +132,9 @@ class POIResolutionAction(StepAction):
         found = seen["raised"].get(str(run.id))
         situation = (run.data.get("situation") or {}).get("state")
         if found is not None:
-            poi, chain, git = found
+            poi, chain, git, checkpoint = found
             change = None
-            fresh = _event(poi, chain)
+            fresh = _event(poi, chain, checkpoint=checkpoint)
             if event != fresh:
                 # the same POI, raised again with other words or other details:
                 # the action keeps the POI as it is raised now
@@ -165,7 +168,17 @@ class POIResolutionAction(StepAction):
             run.data["situation"] = {"state": NOT_RUN, "at": update.at}
             return "updated"
         check_type = (event.get("check") or {}).get("type")
-        if detector.conclusive_for(check_type):
+        # tarav.breadcrumb 25b8e7f48015
+        checkpoint = event.get("checkpoint") or detector.checkpoint_for(check_type)
+        if checkpoint is not None:
+            if not detector.reached(checkpoint, check_type=check_type) or detector.refused_at(
+                    checkpoint, check_type=check_type):
+                state = NOT_RUN
+            elif detector.conclusive_at(checkpoint, check_type=check_type):
+                state = ABSENT
+            else:
+                state = CHECK_FAILED
+        elif detector.conclusive_for(check_type):
             state = ABSENT
         elif detector.exhausted:
             state = CHECK_FAILED
@@ -271,12 +284,14 @@ def raised(pois: Iterable[POI]) -> Iterable[SituationPOI]:
             and type(poi).action is not None)
 
 
-def _event(poi: SituationPOI, suites: tuple[dict, ...] = ()) -> dict:
+def _event(poi: SituationPOI, suites: tuple[dict, ...] = (), *,
+           checkpoint: str | None = None) -> dict:
     """What an action keeps of the POI it follows: the POI's record, and its detectors."""
     check = getattr(poi, "check", None)
     return {"poi": poi.records.to_record(),
             "check": {"type": entity(type(check)).name} if check is not None else None,
-            "suites": [dict(suite) for suite in suites]}
+            "suites": [dict(suite) for suite in suites],
+            **({"checkpoint": checkpoint} if checkpoint is not None else {})}
 
 
 def _suite_key(identity: dict) -> tuple:

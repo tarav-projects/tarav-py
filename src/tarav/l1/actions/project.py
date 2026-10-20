@@ -96,9 +96,11 @@ class ProjectActions:
                     continue
                 known.add(key)
                 run = self.runs.find(key)
+                # tarav.breadcrumb 06101de23f77
                 if run is None:
                     run = resolve_action(type(poi).action).opened(
-                        poi, project=self.project, at=at, suites=chain, git=result.git)
+                        poi, project=self.project, at=at, suites=chain, git=result.git,
+                        checkpoint=result.checkpoint)
                 else:
                     run.data["project"] = self.project
                 changed[key] = run

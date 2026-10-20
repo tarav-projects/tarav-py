@@ -3,6 +3,7 @@
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Literal
 
@@ -237,6 +238,7 @@ class CheckResult(TaravObject, POIProvider):
         self.data = deepcopy(data)
         self.reason = reason
         self.git: dict[str, dict] | None = None
+        self.checkpoint: str | None = None
         self._pois = tuple(pois)
         if any(not isinstance(poi, POI) for poi in self._pois):
             raise TypeError("CheckResult POIs must be POIs")
@@ -245,6 +247,23 @@ class CheckResult(TaravObject, POIProvider):
 
     def pois(self) -> tuple[POI, ...]:
         return self._pois
+
+
+# tarav.breadcrumb acbceef094e2
+@dataclass(frozen=True)
+class SuiteCheckpoint:
+    """Reached after a suite has finished a declared dynamic Check scan.
+
+    A producer yields this marker after the scan, even if it found zero Checks.
+    Its name is local to the producing suite's run.
+    """
+
+    name: str
+
+    def __init__(self, name: str) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Checkpoint name must be nonempty")
+        object.__setattr__(self, "name", name)
 
 
 # tarav.breadcrumb bd06b988e162
@@ -264,6 +283,10 @@ class CheckSuite(TaravObject, POIProvider):
     that a situation it did not report is gone. A subclass is a suite with an
     identity of its own, and a `key` binds one instance to a subject.
 
+    `checkpoint_types` declares dynamic Check scans by name. The producer
+    yields `SuiteCheckpoint(name)` after one scan finishes; only a reached
+    checkpoint can support a disappearance claim for its Check Types.
+
     `repositories` are folders in the Git repositories its checks read: a
     declaration its maintainers keep. When it runs it records their state
     first, as `git`; a suite that declares none keeps the one above it.
@@ -277,12 +300,28 @@ class CheckSuite(TaravObject, POIProvider):
                           name="Tarav.Checks.Suite", workflow=CHECKS_WORKFLOW_SHIP)
 
     def __init__(self, source=(), *, name: str | None = None, key: str | None = None,
-                 repositories: Iterable[str | Path] = ()) -> None:
+                 repositories: Iterable[str | Path] = (),
+                 checkpoint_types: Mapping[str, Iterable[type[Check]]] | None = None) -> None:
         super().__init__()
         self.source = source
         self.name = name
         self.key = key
         self.repositories = tuple(Path(folder) for folder in repositories)
+        self.declared_checkpoints: dict[str, tuple[str, ...]] = {}
+        self._certified_types: dict[str, str] = {}
+        for checkpoint, checks in (checkpoint_types or {}).items():
+            if not isinstance(checkpoint, str) or not checkpoint.strip():
+                raise ValueError("Checkpoint name must be nonempty")
+            check_types = tuple(checks)
+            if not check_types or any(not isinstance(item, type) or not issubclass(item, Check)
+                                      for item in check_types):
+                raise TypeError("Checkpoint needs one or more Check Types")
+            names = tuple(entity(check_type).name for check_type in check_types)
+            for type_name in names:
+                if type_name in self._certified_types:
+                    raise ValueError(f"Check Type certified twice: {type_name}")
+                self._certified_types[type_name] = checkpoint
+            self.declared_checkpoints[checkpoint] = names
         self.reset()
 
     @classmethod
@@ -318,6 +357,9 @@ class CheckSuite(TaravObject, POIProvider):
         self.ran = False
         self.git: dict[str, dict] | None = None
         self._refused = 0
+        self._refused_types: set[str] = set()
+        self.checkpoints: set[str] = set()
+        self._checkpoint_blocked: set[str] = set()
 
     def produce(self) -> Iterable:
         """Yield what to run: checks, nested suites or ready results.
@@ -350,11 +392,28 @@ class CheckSuite(TaravObject, POIProvider):
         # tarav.breadcrumb 62668358e7f2
         self.git = repository_states(self.repositories) if self.repositories else git
         for item in self.produce():
+            if isinstance(item, SuiteCheckpoint):
+                if item.name not in self.declared_checkpoints:
+                    raise ValueError(f"Undeclared checkpoint: {item.name}")
+                if item.name in self.checkpoints:
+                    raise ValueError(f"Checkpoint reached twice: {item.name}")
+                if any(not child.exhausted for child in self.items
+                       if isinstance(child, CheckSuite) and child.identity is None):
+                    self._checkpoint_blocked.add(item.name)
+                self.checkpoints.add(item.name)
+                continue
             if isinstance(item, CheckSuite):
                 if select is not None and not select(item):
                     item.reset()  # kept, so that it is known as not run
                 else:
                     item.run(select=select, on_result=on_result, git=self.git)
+                if item.identity is None:
+                    for result in item.own_results():
+                        checkpoint = self.checkpoint_for(entity(type(result.check)).name)
+                        if checkpoint is not None:
+                            if checkpoint in self.checkpoints:
+                                raise ValueError("A Check was produced after its completion checkpoint")
+                            result.checkpoint = checkpoint
                 self.items.append(item)
                 continue
             if isinstance(item, CheckResult):
@@ -362,6 +421,7 @@ class CheckSuite(TaravObject, POIProvider):
             elif isinstance(item, Check):
                 if select is not None and not select(item):
                     self._refused += 1
+                    self._refused_types.add(entity(type(item)).name)
                     continue
                 try:
                     result = item.run()
@@ -371,6 +431,11 @@ class CheckSuite(TaravObject, POIProvider):
                 raise TypeError("A suite yields Checks, suites or CheckResults")
             if result.git is None:
                 result.git = self.git
+            if entity(type(result.check)).name in self._certified_types:
+                checkpoint = self._certified_types[entity(type(result.check)).name]
+                if checkpoint in self.checkpoints:
+                    raise ValueError("A Check was produced after its completion checkpoint")
+                result.checkpoint = checkpoint
             self.items.append(result)
             if on_result is not None:
                 on_result(result)
@@ -423,6 +488,27 @@ class CheckSuite(TaravObject, POIProvider):
         return self.exhausted and all(
             result.status == "completed" for result in self.own_results()
             if check_type is None or entity(type(result.check)).name == check_type)
+
+    def reached(self, name: str, *, check_type: str | None = None) -> bool:
+        """Whether this run reached a checkpoint certifying the given Check Type."""
+        return name in self.checkpoints and (check_type is None or
+                                             check_type in self.declared_checkpoints[name])
+
+    def checkpoint_for(self, check_type: str | None) -> str | None:
+        """The checkpoint this suite declares for a Check Type, reached or not."""
+        return self._certified_types.get(check_type) if check_type is not None else None
+
+    def conclusive_at(self, name: str, *, check_type: str) -> bool:
+        """A reached scan with no refused or failed Checks of this Type."""
+        return (self.reached(name, check_type=check_type)
+                and check_type not in self._refused_types
+                and name not in self._checkpoint_blocked
+                and all(result.status == "completed" for result in self.own_results()
+                        if entity(type(result.check)).name == check_type))
+
+    def refused_at(self, name: str, *, check_type: str) -> bool:
+        return (self.reached(name, check_type=check_type)
+                and (check_type in self._refused_types or name in self._checkpoint_blocked))
 
     @property
     def conclusive(self) -> bool:
@@ -483,6 +569,7 @@ class CheckSuite(TaravObject, POIProvider):
                 by_type[entity(type(poi)).name] += 1
         return {
             "checks": len(results),
+            "checkpoints": sorted(self.checkpoints),
             "by_status": dict(statuses),
             "incomplete": len(results) - statuses["completed"],
             "not_run": [{**(suite.identity or {"type": None, "key": None}), "name": suite.name}
@@ -608,6 +695,7 @@ __all__ = [
     "CheckProvider",
     "CheckResult",
     "CheckSuite",
+    "SuiteCheckpoint",
     "Situation",
     "SituationCheck",
     "check_report",
