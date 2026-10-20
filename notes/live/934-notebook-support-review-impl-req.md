@@ -309,3 +309,12 @@ return for Interactive alignment rather than expanding this request.
   and evidence attachment cannot make an older proposal approve the new
   context, even when the Line's words are unchanged. Public proposal rendering
   needs no fabricated future approval reference.
+- First full --all verification found two existing Record-contract tests
+  failing on the new NotebookLine example: its inherited example omitted the
+  explicit empty support/review fields written by the subtype. Reproduced both
+  failures, added the subtype's complete example, and reran both tests passing.
+  No test assertion or serialization contract was weakened.
+- Added both new evidence test files to the explicit maintained pytest testpaths;
+  focused execution alone would not include them in future Project --all runs.
+  TOML has no supported native inline Breadcrumb convention; the change is
+  represented by request/commit evidence and its actual collection behavior.

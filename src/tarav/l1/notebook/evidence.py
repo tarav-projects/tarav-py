@@ -23,6 +23,10 @@ class NotebookLine(Line):
         support_ships: list[Ship] = Field(default_factory=list)
         review_ships: list[Ship] = Field(default_factory=list)
 
+    class Records(Line.Records):
+        def record_example(self):
+            return {**super().record_example(), "support_ships": [], "review_ships": []}
+
     def __init__(self, *, id, text, scope, support_ships=(), review_ships=()):
         super().__init__(id=id, text=text, scope=scope)
         self.support_ships = list(map(Ship, map(str, support_ships)))
