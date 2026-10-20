@@ -287,6 +287,7 @@ def create_runtime(
     from tarav.l1.notebook import Notebook, NotebookWorkflow
     from tarav.l1.notebook.blocks import NOTEBOOK_BLOCK_TYPES
     from tarav.l1.loading import LoadingWorkflow
+    from tarav.l1.neighborhood import NeighborhoodWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
     # tarav.breadcrumb 35548ca6fdf7
     from tarav.l1.workspaces import (
@@ -525,6 +526,7 @@ def create_runtime(
         OperatorContextWorkflow,
         ActionsWorkflow,
         ContextWorkflow,
+        NeighborhoodWorkflow,
         ChatlasWorkflow,
         ReferenceWorkflow,
         BreadcrumbWorkflow,

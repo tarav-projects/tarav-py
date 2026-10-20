@@ -709,6 +709,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 <!-- tarav.breadcrumb 4597f1786f7c -->
 <!-- tarav.breadcrumb 9b87f84163c1 -->
 | `l1.context`, `l3.context` | The Context Workflow: ObjectContext construction, ordered hooks, the Explorer and resolvers, and the `tarav context` command. |
+| `l1.neighborhood` | NeighborhoodWorkflow: the objects an object is shown with, for documentation only. A class names its neighbors as `NEIGHBOR` triples in its context hook; `neighborhood(obj)` is the object itself, then those neighbors. By default it is just the object, which adds no triple. Nothing decides anything from it; where a neighbor's Type lives is read by following its Type's `workflow` link, not stored. |
 | `references` | Shared typed locator, check, hints, and resolution mechanics. |
 | `chatlas` | Provider-native chat capture, Session Index, provider-neutral Normal Model, bounded Query, and rendering. |
 | `breadcrumbs` | Opaque Product.Surface anchors, position observations, attachment storage, and generic annotation transactions. |
