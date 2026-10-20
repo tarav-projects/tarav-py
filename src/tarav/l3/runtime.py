@@ -292,6 +292,10 @@ def create_runtime(
     from tarav.l1.notebook import Notebook, NotebookWorkflow
     from tarav.l2.notebook import NotebookProjectHook
     from tarav.l1.notebook.blocks import NOTEBOOK_BLOCK_TYPES
+    # tarav.breadcrumb b457d57362a2
+    from tarav.l1.notebook.evidence import NOTEBOOK_EVIDENCE_TYPES
+    from tarav.l1.grounding import GROUNDING_RECORD_TYPES, GroundingWorkflow
+    from tarav.l1.review import REVIEW_RECORD_TYPES, ReviewWorkflow
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.neighborhood import NeighborhoodWorkflow
     from tarav.l1.git import GIT_RECORD_TYPES, GitWorkflow
@@ -407,6 +411,9 @@ def create_runtime(
                 Line,
                 Notebook,
                 *NOTEBOOK_BLOCK_TYPES,
+                *NOTEBOOK_EVIDENCE_TYPES,
+                *GROUNDING_RECORD_TYPES,
+                *REVIEW_RECORD_TYPES,
                 TaravEnvironment,
                 TaravSystem,
                 TestEntity,
@@ -543,6 +550,8 @@ def create_runtime(
         RecordArchiveWorkflow,
         LinesWorkflow,
         NotebookWorkflow,
+        GroundingWorkflow,
+        ReviewWorkflow,
         WikiWorkflow,
         ProjectWorkflow,
         ProjectWikiWorkflow,

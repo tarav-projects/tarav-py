@@ -8,8 +8,8 @@
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Phase: Design
-Status: ready for execution; implementation not started
+Phase: Execute
+Status: executing
 Product: tarav-py. Documentation owner: tarav-md.
 
 Implement the evidence-producing part of Notebook capture: small reusable
@@ -248,3 +248,17 @@ return for Interactive alignment rather than expanding this request.
 - Ready for a later Execute invocation. Execution must cold-read this note
   and current guidance before product changes; this request does not execute
   its implementation plan.
+
+### Execute pass
+
+- Cold-read the complete request and inspected current interfaces. No material
+  mismatch with the accepted design. Implementation uses independent Grounding
+  and Review workflows, Notebook capability Types and exact retained state
+  snapshots; no base Line or legacy Notebook data migration.
+- Todo: retained Types; support capture; bounded review; mechanical chains and
+  Project integration; full verification and Wiki closure. Work remains scoped
+  to Python APIs, with semantic Assertions and scoring deferred.
+- Slice 1: added registered SubjectState, SupportMember, SupportSet,
+  VerbatimReview, NotebookLine/ReviewedLine and supported/reviewed Blocks.
+  Two public round-trip/schema tests and focused Ruff passed. Notebook storage
+  preserves identity and mixed membership with the specialized Line Types.
