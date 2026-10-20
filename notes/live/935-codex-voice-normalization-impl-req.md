@@ -16,7 +16,7 @@ broken implementation or introduce legacy compatibility paths.
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: executing
+Status: complete (separate source-merging and historical-reference limitations remain)
 
 Scope: the existing Codex normalizer, focused executable tests, and relevant
 Wiki documentation. Rebuild this exact conversation's derived Normal Model
@@ -80,7 +80,7 @@ a41073fff0d2a51c (investigation), 1b7b646343645954 (recover the missing turn).
    file in the explicit pytest testpaths. Run focused and existing Chatlas
    suites, syntax/lint checks, capture supported product Breadcrumbs, and
    commit the verified slice.
-2. **Pending — Recovery and closure.** Refresh the installed editable tool,
+2. **Complete — Recovery and closure.** Refresh the installed editable tool,
    rebuild this exact retained session's cache and search index with policy
    `all`, retrieve the raw voice passage by Query, and compare its text with
    the retained segment. Run Project checks including tests. Complete scoped
@@ -119,3 +119,44 @@ require investigation and alignment before expanding scope.
   Breadcrumbs and both product labels audited without POIs. pyproject.toml
   has no registered native embedding convention; no annotation syntax was
   invented. Its one routing entry makes the voice tests part of normal checks.
+- Slice commit: b853e23dc1a257b8d24c4f0d6d2f16a293ba7053.
+- Reinstalled the editable tool. ChatlasStages rebuilt this exact session's
+  cache and Normal Models index with policy `all`; no raw files changed.
+  CLI Query now returns the original 3,435-character User segment verbatim
+  as Turn dff422f65430f52a19900dfbf7a48166d21c3f9ae5bd5c4e4326fd0b971c6d93.
+  All 32 segments in the inspected active rollout (15 User / 17 Assistant)
+  are present in the merged Model; the target is indexed too.
+- Recovery observation corrections: the temporary checker initially unpacked
+  one (Turn, Message) pair incorrectly; corrected that checker, not product
+  code. Its next overbroad assertion covered every retained historical
+  rollout rather than the planned active 32-segment artifact. Investigation
+  exposed the independent older source collision below. The final bounded
+  check reads the already rebuilt Model and verifies the specified artifact.
+- Separate unresolved source-merging problem: 115 of 177 voice segments in
+  the older original rollout have no exact-text Message in the merged Model.
+  Example: its line 19 User voice " Hello" has Event address
+  480b0171710c4da1484e532d6cc6c066e52cb712e5571597874738dfa799a0c0;
+  reconciliation replaces it with a different Agent Event at line 19 of
+  another current rollout sharing its native scope. Direct normalization of
+  that older source DOES produce its voice Message. This is existing
+  cross-source addressing/reconciliation behavior in pipeline.py, independent
+  of native format recognition. Raw evidence remains safe. Do not silently
+  redesign fork authority or merge behavior inside this normalizer fix.
+- Full umbrella status: 1,218 checks, zero incomplete; 52 test-file runs,
+  zero test POIs. No opened/reopened/updated actions; 68 existing POIs.
+- Post-rebuild product/request Breadcrumb audit still passes. Wiki topic
+  audit resolves all 32 labels. Daily audit resolves all three new labels,
+  but three older labels (82eadaffc25b, b3da5a7c8eff, 032690e8d7d1)
+  now report missing Turns after regenerated membership changes. This is
+  the anticipated reference-reconciliation limitation, not failed new capture.
+  Preserve those existing attachments and report the POIs; do not silently
+  retarget them. New grounded additions are valid and can be retained.
+- Wiki closure: 7b0faefb964687d707c679d71be21915db7c4db2; topical
+  notes/wiki/chatlas-normal-model.md and daily notes/wiki/daily/2026-10-20.md
+  in tarav-md. Five new topical labels and three new daily labels registered.
+  All new labels resolve; the three older daily reference POIs remain visible.
+- Start and product slice commit Breadcrumb audits passed. Verified product
+  work, targeted session recovery, and grounded Wiki additions are complete.
+  Other session caches were not globally rebuilt. The 115 older segments and
+  three existing reference targets need a separately scoped reconciliation
+  design; no raw data or prior evidence attachment was rewritten.
