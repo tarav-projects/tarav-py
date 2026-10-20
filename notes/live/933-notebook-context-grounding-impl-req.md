@@ -11,7 +11,7 @@ Context's existing SPARQL query engine, and a small `tarav notebook` CLI.
 The companion skill request is [868](../../../tarav-md/notes/live/868-notebook-grounding-skill-impl-req.md).
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: executing
+Status: complete
 
 Grounding finds Blocks relevant to the current conversation. Infer the Project,
 start at its ModelBlock, and collect the complete Model subtree before querying.
@@ -89,55 +89,82 @@ default scope and query ownership in the Notebook topic and daily Note.
 
 ## Impl.Log
 
-- Todo: capture/cold-reload; start checkpoints; implement/verify slice 1;
-  implement/verify slice 2; reinstall; implement skill; capture Wiki; close.
+- Plan executed: capture/cold-reload; start checkpoints; Lines contribution;
+  Project/CLI integration; installed-tool verification; skill implementation.
+  Wiki capture and closing verification are recorded below.
 - Existing Neighborhood changes in runtime, pyproject, architecture and tests
   will be checkpointed as found. They are independent of this vocabulary.
 - Known storage behavior: Notebook.load resolves a connected component, which
   can include sibling objects in memory. This request bounds collected graph
   contributions and presented content; it does not claim selective disk I/O.
 
-+- Cold-reloaded requests 933 and 868 before product edits; no design-reality
-+  mismatch found. Baseline: 39 relevant Lines/Notebook/Context tests passed.
-+- Start checkpoints: external 14160e9dafe73c00d892e556f99e0285bfd9ddf0;
-+  request 11141d8c47a9ada8bfe3e6c948f43155e79d4119. Markdown counterpart
-+  checkpoints: external 207d6140568f61e838a0d1474817ddcbff1c8234 and request
-+  290c03dc49036144a51d51676f914a8404ade525.
-+
-+- Slice 1 verified: 29 Lines/Context tests passed and focused Ruff passed.
-+  Type identity assertions compare Ships; class projection objects are not
-+  promised to be the same Python allocation. Context collection remains
-+  storage-independent and uses the existing Explorer query/follow methods.
-+- Slice 1 inline capture submitted five surfaces with six new Breadcrumbs;
-+  audits resolved them. Older label positions on the two edited Lines files
-+  were refreshed. No capture registration is pending.
-+
-+- Slice 1 commit: 88ca4dd9da9978b7663f08a3da0b4b35fd31e636.
-+- Slice 2 verified: 84 focused/architecture tests passed before the harness
-+  regression addition; 36 focused tests passed afterwards, including five
-+  Notebook integration tests with actual CLI subprocesses. Ruff passed.
-+- Runtime registration initially attempted to register two non-Record service
-+  Types in the Record registry; removed that incorrect registration rather than
-+  inventing persistence. Runtime composes their resolver/hook instances instead.
-+- Architecture graph check now distinguishes l1 Notebook storage from its
-+  higher-level integration, following the existing foundation convention.
-+  Import-order and no-upward-layer checks still pass. The generic Context run
-+  assertion includes the newly installed Notebook hook's observed no-op run.
-+- Real-Project verification reproduced a global interpreter missing the custom
-+  harness Type. Notebook commands now use the ordinary Project harness launcher,
-+  preserving the Project Type and environment. A regression fixture has a Type
-+  installed only in its own interpreter; a direct caller fails to import it,
-+  while the Notebook command succeeds. No fallback Type or implicit provisioning.
-+- Installed CLI reinstalled with uv tool install --reinstall --editable .;
-+  ls/query on the live umbrella Project succeeded. Its current Model has only
-+  the seed explanatory Line: one Block and 19 collected triplets including
-+  ancestor contributions. No current design content was fabricated or imported.
-+- Slice 2 capture: l2 Notebook integration, CLI, integration tests, architecture
-+  test and architecture document submitted eight labels. Existing labels in
-+  runtime, Context command help and tests were audited/refreshed. AGENTS was
-+  changed at its SKW source and produced/compiled; JSON has no native inline
-+  convention. The header-only CLI module has no separate semantic attachment.
-+- Broader --all run completed 1,204 checks with zero incomplete, zero pytest
-+  POIs. It observed in-flight skill routing freshness changes; the skill's final
-+  generation recording and closing routine status follow in request 868.
-+
+- Cold-reloaded requests 933 and 868 before product edits; no design-reality
+  mismatch found. Baseline: 39 relevant Lines/Notebook/Context tests passed.
+- Start checkpoints: external 14160e9dafe73c00d892e556f99e0285bfd9ddf0;
+  request 11141d8c47a9ada8bfe3e6c948f43155e79d4119. Markdown counterpart
+  checkpoints: external 207d6140568f61e838a0d1474817ddcbff1c8234 and request
+  290c03dc49036144a51d51676f914a8404ade525.
+
+- Slice 1 verified: 29 Lines/Context tests passed and focused Ruff passed.
+  Type identity assertions compare Ships; class projection objects are not
+  promised to be the same Python allocation. Context collection remains
+  storage-independent and uses the existing Explorer query/follow methods.
+- Slice 1 inline capture submitted five surfaces with six new Breadcrumbs;
+  audits resolved them. Older label positions on the two edited Lines files
+  were refreshed. No capture registration is pending.
+
+- Slice 1 commit: 88ca4dd9da9978b7663f08a3da0b4b35fd31e636.
+- Slice 2 verified: 84 focused/architecture tests passed before the harness
+  regression addition; 36 focused tests passed afterwards, including five
+  Notebook integration tests with actual CLI subprocesses. Ruff passed.
+- Runtime registration initially attempted to register two non-Record service
+  Types in the Record registry; removed that incorrect registration rather than
+  inventing persistence. Runtime composes their resolver/hook instances instead.
+- Architecture graph check now distinguishes l1 Notebook storage from its
+  higher-level integration, following the existing foundation convention.
+  Import-order and no-upward-layer checks still pass. The generic Context run
+  assertion includes the newly installed Notebook hook's observed no-op run.
+- Real-Project verification reproduced a global interpreter missing the custom
+  harness Type. Notebook commands now use the ordinary Project harness launcher,
+  preserving the Project Type and environment. A regression fixture has a Type
+  installed only in its own interpreter; a direct caller fails to import it,
+  while the Notebook command succeeds. No fallback Type or implicit provisioning.
+- Installed CLI reinstalled with uv tool install --reinstall --editable .;
+  ls/query on the live umbrella Project succeeded. Its current Model has only
+  the seed explanatory Line: one Block and 19 collected triplets including
+  ancestor contributions. No current design content was fabricated or imported.
+- Slice 2 capture: l2 Notebook integration, CLI, integration tests, architecture
+  test and architecture document submitted eight labels. Existing labels in
+  runtime, Context command help and tests were audited/refreshed. AGENTS was
+  changed at its SKW source and produced/compiled; JSON has no native inline
+  convention. The header-only CLI module has no separate semantic attachment.
+- Broader --all run completed 1,204 checks with zero incomplete, zero pytest
+  POIs. It observed in-flight skill routing freshness changes; the skill's final
+  generation recording and closing routine status follow in request 868.
+
+## Completion
+
+- Slice 2 commit: 0ad8d1766c5e3b3a4b052aaf2833d28ce1640538. The skill
+  implementation is committed as 76c1b803ebc2b9f665673579d6ded0cc29a047bc.
+  Both commit evidence audits passed. No product verification gap remains.
+- The active skill depot points to the maintained compiled skill. A separate
+  deployment verified the router, grounding module and skill identity byte
+  for byte; the new module has zero lint findings. Inherited findings in
+  other skill blocks remain visible (52 context freshness, three output).
+- Closing routine status completed 1,163 checks, zero incomplete, no new
+  actions and eight existing skill actions closed as gone. Its 68 remaining
+  POIs include inherited skill, Git, system-prompt, fixture and provisional
+  markers on other Wiki surfaces. These were not repaired under this scope.
+  The earlier --all run included the configured pytest suites successfully.
+- Wiki capture: tarav-md/notes/wiki/line-notebook.md, Context-based grounding,
+  and notes/wiki/daily/2026-10-19.md, Notebook grounding through Context.
+  Twelve new Breadcrumbs submitted; both complete Note audits pass with no
+  POIs. Scoped capture commit: 01bc984ad8089f033e4b5083d6c5d4f64ff29a43.
+- Capture gaps: no inline convention for source/metadata JSON; registered
+  Markdown labels were carried into authoritative SKW content and rebuilt.
+  The header-only CLI module has no separate annotation. No pending markers
+  or unregistered captures from this implementation remain.
+- Operational limit: the live Model has only its seed Line. Commands and
+  sparse-coverage reporting are verified; useful conversational grounding
+  should be tried later against substantive Project Model content. Notebook
+  data, old Model backends and extension consumers were not changed.
