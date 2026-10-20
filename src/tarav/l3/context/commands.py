@@ -35,7 +35,7 @@ def _context(args: argparse.Namespace, *, service: ContextQueryService, opener) 
         raise CliError(
             f"Nothing is known by the identifier {args.id!r}. Actions are found by "
             "their id or by the id of the POI they follow (`tarav action list "
-            "--project`), and Tarav Types by name or Ship.")
+            "--project`), Tarav Types by name or Ship, and Notebook Blocks/Lines by Ship.")
     if len(candidates) > 1:
         rows = [{"identifier": candidate.identifier, "resolver": name,
                  "label": candidate.label} for name, candidate in candidates]
@@ -87,7 +87,7 @@ def register_context_command(
             "Identifiers\n"
             "resolve today for actions, by their id or by the id of the POI they\n"
             "follow (a unique prefix is enough), and for Tarav Types by name or\n"
-            "Ship. Scripts open the same Explorer with `obj.context()`."
+            "Ship, and Notebook Blocks/Lines by Ship. Scripts open the same Explorer with `obj.context()`."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

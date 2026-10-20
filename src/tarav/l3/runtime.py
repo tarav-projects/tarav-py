@@ -128,10 +128,13 @@ class TaravRuntime:
     def context_queries(self) -> ContextQueryService:
         """The installed resolvers from an identifier to what it identifies."""
         from tarav.l1.actions.views import ActionResolver
+        from tarav.l1.notebook import Notebook
+        from tarav.l2.notebook import NotebookResolver
 
         service = ContextQueryService()
         service.register_resolver("action", ActionResolver())
         service.register_resolver("type", TypeResolver(self.records.types))
+        service.register_resolver("notebook", NotebookResolver(Notebook(records=self.records)))
         return service
 
     def register_commands(
@@ -223,6 +226,8 @@ class TaravRuntime:
         from tarav.l1.actions.commands import register_action_commands
         from tarav.l1.operator_context.commands import register_operator_context_commands
         register_operator_context_commands(subparsers)
+        from tarav.l3.notebook.commands import register_notebook_commands
+        register_notebook_commands(subparsers)
         register_action_commands(subparsers)
         register_skw_commands(subparsers, registry=self.records)
         # tarav.breadcrumb ad568a3bc811
@@ -285,6 +290,7 @@ def create_runtime(
     from tarav.l1.lines import Block, Line, LinesWorkflow
     # tarav.breadcrumb f98e9b92d186
     from tarav.l1.notebook import Notebook, NotebookWorkflow
+    from tarav.l2.notebook import NotebookProjectHook
     from tarav.l1.notebook.blocks import NOTEBOOK_BLOCK_TYPES
     from tarav.l1.loading import LoadingWorkflow
     from tarav.l1.neighborhood import NeighborhoodWorkflow
@@ -622,6 +628,8 @@ def create_runtime(
     register_chatlas_hook_callbacks(registry)
     for registrar in hook_registrars:
         registrar(registry)
+    contexts = ContextBuilder()
+    contexts.register("notebook", NotebookProjectHook(Notebook(records=records)))
     return TaravRuntime(
         hooks=registry,
         system=TARAV,
@@ -634,7 +642,7 @@ def create_runtime(
             (archive_root or default_tarav_data_root() / "archive").expanduser().resolve()),
         navigation=navigation,
         search=search,
-        contexts=ContextBuilder(),
+        contexts=contexts,
         breadcrumb_integrations=composed_breadcrumb_integrations,
         pois=POICollector(),
     )

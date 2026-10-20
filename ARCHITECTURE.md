@@ -765,11 +765,12 @@ creating data.
 
 ## Integration invariants
 
-The new `l1.lines` primitives depend only on Kernel. Their `Line.scope_ship`
+The `l1.lines` primitives and their local Context hooks depend only on Kernel.
+Their `Line.scope_ship`
 names a Block, not a general entity; Block parentage is the bounded authoring
 context. The former l2 Diagram application, including Models, Drafts, Views,
 and its CLI, is retired. Git history retains that implementation. The new Lines
-workflow supplies only authoring primitives; relationships between Blocks and
+workflow supplies authoring primitives and their graph contributions; relationships between Blocks and
 other Tarav objects belong to the broader Diagram.
 <!-- tarav.breadcrumb 81853af57d52 -->
 
@@ -781,6 +782,20 @@ stored membership and text without regeneration. Discussion, Model, and Archive
 are shallow typed Blocks with explanatory Lines, not alignment engines.
 <!-- tarav.breadcrumb 6b8104da86a8 -->
 <!-- tarav.breadcrumb 785a4a323c9c -->
+
+Lines contribute `urn:tarav:lines:` text, scope, parent and containment predicates,
+plus RDF ordinal membership edges for mixed order. The optional
+`l1.lines.context.explore(root)` adapter uses Context to collect a complete
+subtree and ancestor direct Lines. It keeps the selected root in focus and
+does not open sibling payloads. `l2.notebook.NotebookContext` selects the
+Project's ModelBlock by default; explicit branches or Block Ships broaden that
+scope. Queries run through the existing ContextExplorer, with no Notebook
+text-search engine or retained session View. The runtime's Notebook resolver
+opens stored Block/Line Ships, and its Project hook exposes existing Notebook
+roots without provisioning. `l3.notebook` owns the read-only `tarav notebook`
+ls/read/query CLI. Notebook storage remains independent of these consumers.
+<!-- tarav.breadcrumb 4ada1653d6c0 -->
+<!-- tarav.breadcrumb 1d76273569fc -->
 
 Assertions owns the common Assertable and shallow TaravAssertion contracts.
 Scoring's `assertions` module supplies its identified, case-producing Assertion

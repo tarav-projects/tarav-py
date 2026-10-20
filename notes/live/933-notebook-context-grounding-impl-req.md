@@ -112,3 +112,32 @@ default scope and query ownership in the Notebook topic and daily Note.
 +  audits resolved them. Older label positions on the two edited Lines files
 +  were refreshed. No capture registration is pending.
 +
++- Slice 1 commit: 88ca4dd9da9978b7663f08a3da0b4b35fd31e636.
++- Slice 2 verified: 84 focused/architecture tests passed before the harness
++  regression addition; 36 focused tests passed afterwards, including five
++  Notebook integration tests with actual CLI subprocesses. Ruff passed.
++- Runtime registration initially attempted to register two non-Record service
++  Types in the Record registry; removed that incorrect registration rather than
++  inventing persistence. Runtime composes their resolver/hook instances instead.
++- Architecture graph check now distinguishes l1 Notebook storage from its
++  higher-level integration, following the existing foundation convention.
++  Import-order and no-upward-layer checks still pass. The generic Context run
++  assertion includes the newly installed Notebook hook's observed no-op run.
++- Real-Project verification reproduced a global interpreter missing the custom
++  harness Type. Notebook commands now use the ordinary Project harness launcher,
++  preserving the Project Type and environment. A regression fixture has a Type
++  installed only in its own interpreter; a direct caller fails to import it,
++  while the Notebook command succeeds. No fallback Type or implicit provisioning.
++- Installed CLI reinstalled with uv tool install --reinstall --editable .;
++  ls/query on the live umbrella Project succeeded. Its current Model has only
++  the seed explanatory Line: one Block and 19 collected triplets including
++  ancestor contributions. No current design content was fabricated or imported.
++- Slice 2 capture: l2 Notebook integration, CLI, integration tests, architecture
++  test and architecture document submitted eight labels. Existing labels in
++  runtime, Context command help and tests were audited/refreshed. AGENTS was
++  changed at its SKW source and produced/compiled; JSON has no native inline
++  convention. The header-only CLI module has no separate semantic attachment.
++- Broader --all run completed 1,204 checks with zero incomplete, zero pytest
++  POIs. It observed in-flight skill routing freshness changes; the skill's final
++  generation recording and closing routine status follow in request 868.
++

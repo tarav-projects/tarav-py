@@ -183,6 +183,12 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
   Project Types customize the initial layout with `notebook_layout()`.
   `tarav.l1.notebook.Notebook` uses the Notebook Workflow's standard
   Record Registry partition and supports explicit save/load and Git commits.
+  Lines Context hooks contribute text, authoring scope, parentage and ordered
+  membership. `tarav notebook ls/read/query` infers the Project and collects
+  its full Model subtree with ancestor context; query uses Context SPARQL.
+  `l2.notebook` owns that integration and the Notebook identity resolver.
+  Explicit branch/Block selection can broaden the scope. Reads never create
+  Notebook data. `tarav context --id` also opens stored Block/Line Ships.
 
 ## Native surfaces and SKW
 

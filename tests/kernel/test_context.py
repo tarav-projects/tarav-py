@@ -200,6 +200,7 @@ def test_build_passes_one_mutable_result_through_class_instance_and_external_hoo
     assert cxt.status == "completed"
     assert [(run.stage, run.name, run.before, run.after) for run in cxt.runs] == [
         ("class", "_class_context_hook", 0, 1), ("instance", "_obj_context_hook", 1, 2),
+        ("external", "notebook", 2, 2),  # installed hook declines this non-Project
         ("external", "annotations", 2, 2), ("external", "finish", 2, 2)]
     assert all(run.error is None for run in cxt.runs)
     assert not hasattr(document.context, "triplets")
