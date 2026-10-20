@@ -15,7 +15,7 @@ recapping this direction. Keep Lines minimal and evidence workflows separate.
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: executing
+Status: complete
 
 Scope: typed Notebook objects, standard bounded operation methods, recursive
 checks, Project/default-layout integration, Context consumers, tests, and
@@ -90,7 +90,7 @@ version bump, package and installation after modification.
    no duplicate checking and Project action lifecycle. Update maintained
    architecture guidance and explicit testpaths, capture code/test evidence,
    then commit verified work.
-3. **Pending — Consumer alignment and closure.** Update extension imports,
+3. **Verified — Consumer alignment and closure.** Update extension imports,
    verify actual read-only adapter/tests, package/install it. Refresh installed
    Tarav, run Project checks including tests, and prove existing live records
    open with the richer Notebook Types without modifying their bytes.
@@ -153,3 +153,26 @@ require explicit alignment before expanding scope.
   parent use the destination Notebook's specialized evidence service. All five
   integration tests passed after that adjustment. Non-Block review destinations
   are rejected before evidence storage is created. Ruff and diff checks pass.
+- Verified product commit: 664566c947edd4fa0d1ade067f2b1eeacbb02644.
+  Its commit Breadcrumb audit passes. The concurrent identified-suite Action
+  task committed its own work before this commit; its files were not absorbed.
+- Extension request 014 is verified: 30 Node tests, 6 Python tests, script
+  compilation, package and installation of version 0.1.20 pass. Product commit
+  33be766feccc78b52d5c3915655cfc5eb1eb71cb; scoped extension Wiki commit
+  8c14d147f6ac8c4ab6ffe867782e34597fac94f1. Both commit audits pass. Reload
+  the VS Code window to activate the installed build; in-window rendering was
+  not measured.
+- Scoped core Wiki capture: tarav-md notes/wiki/line-notebook.md and
+  notes/wiki/daily/2026-10-20.md, commit
+  60bde5e56e09b7f3a27d3c51c1e5878eb0ac754a, commit audit passes. Existing
+  topical/daily TurnUnavailable findings remain; all new references resolve.
+  Extension source, fixture and topical Wiki also retain older unavailable
+  Turn attachments; its new daily note audits cleanly.
+- Final root `tarav status --project ... --all` completed 1,223 checks with
+  zero incomplete checks, 57 completed test-file runs and zero test POIs.
+  It reports 68 pre-existing POIs and no action changes. An earlier run caught
+  two Wiki surfaces while capture was in progress; their actions were inspected
+  through Context and then closed automatically after marker submission. The
+  final full run was taken after the last code change and capture completion.
+- Completed all three planned steps. No live Notebook records were migrated,
+  no support/review was invented, and no scoring or lineage engine was added.
