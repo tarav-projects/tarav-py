@@ -50,6 +50,16 @@ class Notebook(NotebookBlock, CheckProvider):
     def save(self):
         self.storage.save_tree(self)
 
+    # tarav.breadcrumb 1e3843684f31
+    def draft(self, *, block=None):
+        """Stage reviewed capture without writing candidate content."""
+        from tarav.l2.notebook_draft import NotebookDraft
+
+        target = self if block is None else self._owned(block)
+        if not isinstance(target, Block):
+            raise TypeError("Draft destination must be a Block")
+        return NotebookDraft(self, target)
+
     def notebooks(self):
         """Nearest nested notebooks; each owns the recursion below it."""
         def visit(block):

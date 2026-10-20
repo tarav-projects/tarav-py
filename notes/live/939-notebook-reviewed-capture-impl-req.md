@@ -11,11 +11,11 @@ propose new Blocks/Lines or amend existing Lines without changing live Notebook
 records, then land the exact approved change with support and review evidence.
 The User requested design followed by execution. The skill owner is
 [request 869](../../../tarav-md/notes/live/869-notebook-capture-skill-impl-req.md).
-<!-- tarav.context 0f5bad01:ed97fca951f83f57 -->
+<!-- tarav.breadcrumb d571f6169837 -->
 
 Knowledge.Surface: wiki
 Alignment.Mode: Interactive
-Status: ready
+Status: executing
 
 ## Design
 
@@ -24,9 +24,9 @@ persists immediately and record_review expects existing current Lines. Retain
 those APIs. Add an ephemeral NotebookDraft, reached through Notebook.draft(),
 that stages one coherent cluster under an existing target Block. Its in-memory
 candidate is built from fresh persisted records. It supports new recursive
-Blocks, new Notebook Lines and amendments preserving Ships. Existing plain
-Lines require an explicit evidence-capable Line Type when amended; present that
-Type change for review, never silently promote it.
+Blocks, new Notebook Lines and amendments preserving Ships and concrete Types.
+Plain archive Lines may be cited in new supported captures; this workflow does
+not migrate their Types or invent evidence for them.
 
 The draft records a small sequence of additions/amendments, affected original
 Line states and the direct-Line context of affected Blocks and ancestors.
@@ -44,8 +44,8 @@ states and context, and new-ID collisions before any writes. It replays only
 the declared operations onto freshly loaded data. Unrelated child-Block
 additions can coexist; changed semantic context requires a fresh proposal.
 This is optimistic preflight, not a transactional/concurrent database promise.
-<!-- tarav.context 0f5bad01:3501f527bcf950c4 -->
-<!-- tarav.context 0f5bad01:647b3504d048bec5 -->
+<!-- tarav.breadcrumb dd9a362ae19a -->
+<!-- tarav.breadcrumb a102c5fad955 -->
 
 After landing, use existing SupportMember/SupportSet, VerbatimReview and
 NotebookCapture mechanics. Each supplied root plus neighborhood produces an
@@ -71,7 +71,7 @@ adds a separate --capture --notebook route without reviving that backend.
 
 ## Execution.Plan
 
-1. **Pending — Feature.** Implement NotebookDraft and Notebook.draft(). Data
+1. **Verified — Feature.** Implement NotebookDraft and Notebook.draft(). Data
    shape: operation records, bounded baseline contexts/Line states and sealed
    presentation/token. Verify no writes during staging/proposal/export/restore,
    new recursive Blocks, amendments retaining Ships, exact token checks,
@@ -96,3 +96,17 @@ composition and avoid imports from the skill or CLI.
 - Concurrent suite-checkpoint work is present in both repositories. The start
   checkpoints preserve it as found under the shared commit policy; later
   feature commits stay scoped to this task.
+- Cold-read both requests before product edits. Checkpoints: Python
+  ca3cb1a8fd9698623443dec7e80a7fc184986c4d and Markdown
+  c22cad08abdad997211890e1cc3705a9ae0fbb0e. External work is explicitly marked
+  unknown-session; it remains ordinary editable work for its owning task.
+- The initial agent design included optional Type promotion. A boundary test
+  showed Notebook storage deliberately forbids rebinding a Ship to another
+  concrete Type. Removed that unrequested extension: amendments retain Type;
+  plain historical Lines need separate new supported captures. The test now
+  verifies the actual invariant and no writes, rather than changing storage.
+- The first focused run passes 79 tests across draft, integration, evidence and
+  architecture. New tests exercise actual public draft/restore/land APIs with
+  Normal Model reference fixtures and isolated storage, including byte hashes
+  before rejected landings. The initial Type-wording failure was a test fixture
+  using the wrong retained Type name; corrected it to Tarav.Notebook.ReviewedLine.

@@ -808,6 +808,15 @@ checked once. The Project composes an access suite and its Notebook's checks;
 it retains status/action ownership. Existing TypeShips and serialized block
 Type names remain stable; no read-time data migration changes old ancestry.
 New Project notebooks can share the deterministic TaravNotebook root.
+`Notebook.draft()` stages add/amend capture through `l2.notebook_draft` without
+writing candidate content. Its temporary JSON plan retains operations, source
+Line/context baselines and an exact token presentation. Reviewed landing
+restores against fresh data, checks the actual approval and full presentation,
+then uses existing support/review records. Independent child-Block additions
+can merge; changed authoring context requires a new proposal. Amendments retain
+Ship and concrete Type. This is bounded optimistic preflight, not a database
+transaction, retained draft registry, removal workflow or lineage mechanism.
+<!-- tarav.breadcrumb 6724f2d70994 -->
 <!-- tarav.breadcrumb 2baf3744e64b -->
 <!-- tarav.breadcrumb 6b8104da86a8 -->
 <!-- tarav.breadcrumb 785a4a323c9c -->

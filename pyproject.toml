@@ -39,6 +39,7 @@ testpaths = [
     "tests/test_notebook_evidence.py",
     "tests/test_notebook_evidence_checks.py",
     "tests/test_notebook_integrator.py",
+    "tests/test_notebook_draft.py",
     "tests/test_notebook.py",
     "tests/test_project_notebook.py",
     "tests/test_notebook_context.py",
