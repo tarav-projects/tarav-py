@@ -349,7 +349,8 @@ capture skill route and extension UI remain deferred.
 - Product commits: 3b08f1dab734ca57b397d8285c2f976acbe92592 (Types),
   2ceb338f7aed24baa0d9646df3ced8b6a74caef1 (capture/review),
   4e9f16bd7c880295a5f34114145be16679d7268d (checks/integration/docs),
-  plus the Record-example/testpaths correction. Slice commit evidence audits
+  ccab9f6b75b4db058560d3cc37069072a2a74f45 (Record examples/testpaths).
+  Slice commit evidence audits
   passed. Product-surface captures are registered; moved labels were refreshed.
 - Explicit capture limitations: authoritative SKW JSON/lock and pytest TOML
   have no native inline convention. Generated AGENTS was changed through its
@@ -359,3 +360,8 @@ capture skill route and extension UI remain deferred.
   in authoring contexts. Context edits can require new evidence even when a
   semantic evaluator might later establish continuity. Existing evidence is
   retained and inspectable; this pass does not infer that continuity.
+- Execute start checkpoints (separate from the earlier Design checkpoints):
+  Python 1331f9551df241de470cd41bf22e7c5a860bca02; Markdown
+  78236d677c7d2e8b7ba164e544c9fb4c67fa7835. Completion evidence audit
+  b9cfffea14ad051e2ccaa1e3b09a0985d7aa8692 and scoped Wiki/fix commit
+  audits passed with zero POIs.
