@@ -9,6 +9,7 @@ from tarav.l0.kernel import (
     TypeShip, WorkflowShip, entity,
 )
 from tarav.l1.grounding import SubjectState
+from tarav.l1.references import Reference
 
 REVIEW_WORKFLOW_SHIP = WorkflowShip("a50d3c71-9fb3-428e-ae71-37ac312742ba")
 
@@ -41,8 +42,8 @@ class VerbatimReview(TypedState, TaravEntity):
         before: list[SubjectState.RecordInterface]
         after: list[SubjectState.RecordInterface]
         token: str = Field(min_length=1, pattern=r"^\S+$")
-        proposal: dict
-        approval: dict
+        proposal: Reference.RecordInterface
+        approval: Reference.RecordInterface
 
         @model_validator(mode="after")
         def bounded_change(self):

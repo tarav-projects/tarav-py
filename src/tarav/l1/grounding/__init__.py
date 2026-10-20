@@ -9,6 +9,7 @@ from tarav.l0.kernel import (
     LoadedRecord, Ship, TaravClass, TaravEntity, TaravObject, TaravWorkflow,
     TypedState, TypeShip, WorkflowShip, entity,
 )
+from tarav.l1.references import Reference
 
 GROUNDING_WORKFLOW_SHIP = WorkflowShip("c137b972-9141-44d6-88ca-8aa18664049e")
 
@@ -55,6 +56,7 @@ class SubjectState(TypedState, TaravObject):
 
     def __init__(self, subject_ship, subject_type, payload):
         super().__init__()
+        payload = json.loads(json.dumps(payload, allow_nan=False))
         self.typed = self.records.parse_record({
             "type": entity(type(self)).name, "subject_ship": str(subject_ship),
             "subject_type": str(subject_type), "payload": payload,
@@ -76,8 +78,8 @@ class SupportMember(TypedState, TaravObject):
                           name="Tarav.Grounding.SupportMember", workflow=GROUNDING_WORKFLOW_SHIP)
 
     class RecordInterface(TaravObject.RecordInterface):
-        source: dict
-        neighborhood: list[dict] = Field(default_factory=list)
+        source: Reference.RecordInterface
+        neighborhood: list[Reference.RecordInterface] = Field(default_factory=list)
 
     def __init__(self, source, *, neighborhood=()):
         super().__init__()
@@ -105,7 +107,7 @@ class SupportSet(TypedState, TaravEntity):
     class RecordInterface(TaravEntity.RecordInterface):
         subject: SubjectState.RecordInterface
         members: list[SupportMember.RecordInterface]
-        producer: dict | None = None
+        producer: Reference.RecordInterface | None = None
 
     def __init__(self, *, id, subject, members=(), producer=None):
         super().__init__(id)

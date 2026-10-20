@@ -262,3 +262,22 @@ return for Interactive alignment rather than expanding this request.
   VerbatimReview, NotebookLine/ReviewedLine and supported/reviewed Blocks.
   Two public round-trip/schema tests and focused Ruff passed. Notebook storage
   preserves identity and mixed membership with the specialized Line Types.
+- Slice 1 additionally passed 19 existing scoped-Line, Project Notebook and
+  Notebook Context tests. Five product surfaces captured/audited; prior moved
+  runtime labels refreshed. All new markers registered.
+- Slices 2/3 share the capture service and were verified together: 12 focused
+  tests cover support capture/reload, wrong role, drift, unavailable references,
+  independent review, token/wording/destination/order failures, ancestor changes,
+  bounded multi-Line modification and removal, immutable input snapshots and
+  read-only store selection. Evidence records are inserted, never replaced.
+- NotebookCapture exposes capture, attach_support, record_review, complete_review,
+  support_records/review_records and inspect. Explicit create provisions only
+  evidence partitions; ordinary Notebook creation remains separate. Structurally
+  valid incomplete Lines and failed reviews persist; completion fails honestly.
+- State capture conservatively includes all direct Lines in each ancestor
+  context, excluding attachments. Sibling Line edits can therefore require
+  renewed support/review. This simple policy avoids an implicit semantic
+  relevance judgment; selective carry remains deferred to scoring/other Types.
+- The first review presentation is bounded Target/Operation/Before/After with
+  exact Line identities and wording. Only whitespace wrapping is normalized.
+  No renderer authority, paraphrase approval or new token workflow is invented.
