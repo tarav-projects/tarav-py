@@ -58,6 +58,7 @@ testpaths = [
     "tests/chatlas/test_normal_models_index.py",
     "tests/chatlas/test_stages.py",
     "tests/chatlas_normal_model/test_cache.py",
+    "tests/chatlas_normal_model/test_codex_voice.py",
     "tests/kernel/test_record_interface.py",
     "tests/kernel/test_json_loading.py",
     "tests/kernel/test_environment.py",

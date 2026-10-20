@@ -256,11 +256,29 @@ def _session_scopes(records: list[_RawRecord]) -> dict[int, str]:
     return scopes
 
 
+# tarav.breadcrumb a80c6afe4a0f
+def _voice_message_side(record: JsonObject) -> str | None:
+    payload = record.get("payload")
+    if (record.get("type") != "realtime_item" or not isinstance(payload, dict)
+            or payload.get("type") != "transcript_segment"
+            or not isinstance(payload.get("text"), str)):
+        return None
+    role = payload.get("role")
+    if role == "user":
+        return "user"
+    if role == "assistant":
+        return "agent"
+    return None
+
+
 def _event_origin(record: JsonObject) -> str:
     record_type = record.get("type")
     payload = record.get("payload")
     if not isinstance(payload, dict):
         return "unresolved"
+    voice_side = _voice_message_side(record)
+    if voice_side is not None:
+        return voice_side
     if record_type in _AGENT_TOP_LEVEL_TYPES:
         return "agent"
     if record_type == "event_msg":
@@ -316,6 +334,9 @@ def _chat_message_side(
     payload = record.get("payload")
     if not isinstance(payload, dict):
         return None
+    voice_side = _voice_message_side(record)
+    if voice_side is not None:
+        return voice_side
     record_type = record.get("type")
     if record_type == "response_item" and payload.get("type") == "message":
         role = payload.get("role")
@@ -347,6 +368,8 @@ def _chat_message_text(record: JsonObject) -> str:
         return ""
     if record.get("type") == "response_item" and payload.get("type") == "message":
         return _message_text(payload) or ""
+    if record.get("type") == "realtime_item":
+        return payload["text"]
     text = payload.get("message")
     return text if isinstance(text, str) else ""
 
