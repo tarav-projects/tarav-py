@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: implemented; full Project validation running. Build a product-agnostic
+Knowledge.Surface: wiki. Status: completed. Build a product-agnostic
 Review Tracker over confirmed Product Maps. Batches are long-lived meaningful
 views over potentially overlapping chunk sets; reviews belong to exact batch
 revisions. The User requests design and execution together.
@@ -102,7 +102,7 @@ Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-
   Project manager/config and installed product-review CLI. Check actual CLI and
   Project status actions across no-map, uncovered, pending, completed and stale
   states; no reads provision storage. Reinstall installed entrypoint.
-- [ ] Verify, capture supported design into Wiki daily/topical Notes, submit and
+- [x] Verify, capture supported design into Wiki daily/topical Notes, submit and
   audit changed product surfaces, run required Project --all, close commits.
 
 ## Impl.Log
@@ -147,3 +147,17 @@ Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-
   source changes after capture were audited with refreshed positions. Wiki daily
   and product-review-tracker.md submitted/audited clean. Full root --all running
   with report /tmp/product-review-full-status.json.
+- Full root status --all completed: 1,347 completed checks, zero incomplete;
+  all 66 pytest file suites passed without test POIs. The expected single
+  completeness Action f30f5bdb-6dbb-81ac-563d-c653416e7202 now reports 1,171 mapped
+  chunks lacking batch membership. No batch reviews exist yet. The other 66
+  findings are existing hook/security, test-marker, prompt and SKW/Breadcrumb
+  maintenance signals. Product Mapping's check has zero findings.
+- Wiki closure b6b9f9b0 records the daily and topical capture. Product slice
+  commit 902147a9 evidence audit passed with zero POIs. Independent inspection
+  verified the selected horizon map contains 526 src/tests .py files and 1,171
+  chunks. Read-only inspection left the Product Review Registry unprovisioned.
+- Completion: implementation, installed CLI, Project integration, supporting
+  evidence and Wiki capture are complete. Existing maps and their IDs were
+  reused. Actual batch curation and User-present reviews are future use of the
+  workflow, not unfulfilled implementation steps.
