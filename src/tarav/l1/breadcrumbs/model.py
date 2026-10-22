@@ -33,6 +33,8 @@ class Breadcrumb(TypedState, DirectoryRecord):
 
         type: Literal["Tarav.Breadcrumb"]
         id: BreadcrumbId
+        # tarav.breadcrumb 9b2b5b516219
+        placement: Literal["embedded", "external"] = "embedded"
 
     class Records(DirectoryRecord.Records):
         def record_example(self) -> dict[str, object]:
@@ -65,6 +67,7 @@ class LocatorObservation(TypedState, TaravObject):
         type: Literal["Tarav.Breadcrumb.LocatorObservation"]
         breadcrumb_id: BreadcrumbId
         observed_at: str
+        fragment: str | None = Field(default=None, min_length=1, pattern=r"^[^\r\n]+$")
         locator: (
             FilePositionReference.RecordInterface
             | GitCommitMessagePositionReference.RecordInterface

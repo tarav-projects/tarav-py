@@ -66,3 +66,10 @@ and daily/2026-10-22.md. Guidance companion:
   is needed. Data shape first keeps placement and observations in Breadcrumbs.
 - Subtract before adding: remove the JSON renderer/write path first; retain
   read-only inspection of existing labels and TOML support.
+- Start checkpoints: Python df267e3761e5bc1261180a0f797ae00a8a3c8174;
+  Markdown 83c455ae41bb62bf1942de028c42535566e47f16. Trees were clean apart
+  from the new requests. Cold execution reload confirms the selected design.
+- Slice 1: eleven new tests first failed because external creation did not
+  exist. After implementing observations and resolution, 24 tests pass,
+  including existing prefix and short-label behavior. External reads do not
+  mutate observations, and missing/ambiguous selections retain their identity.

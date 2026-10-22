@@ -114,6 +114,26 @@ class BreadcrumbPositionAmbiguous(BreadcrumbResolutionPOI):
                           workflow=BREADCRUMBS_WORKFLOW_SHIP)
 
 
+class ExternalAnchorMissing(BreadcrumbResolutionPOI):
+    """An external selection is unavailable; its Breadcrumb remains registered."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip('ff221f17-7bee-460d-897d-4c2cb9976293'),
+                          name='Tarav.Breadcrumbs.Resolution.ExternalAnchorMissing',
+                          workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class ExternalAnchorAmbiguous(BreadcrumbResolutionPOI):
+    """Several lines contain the external fragment after its observed line changed."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip('a0692022-cbc0-4a60-83d8-f8fba2841e43'),
+                          name='Tarav.Breadcrumbs.Resolution.ExternalAnchorAmbiguous',
+                          workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
 @dataclass(frozen=True, slots=True)
 class BreadcrumbResolution:
     breadcrumb: Breadcrumb
@@ -164,7 +184,9 @@ class BreadcrumbStore:
         self.root = Path(root or default_breadcrumbs_root()).expanduser().resolve()
         self.records_root = self.root / "records"
 
-    def create(self, breadcrumb_id: str | None = None) -> Breadcrumb:
+    def create(self, breadcrumb_id: str | None = None, *, placement="embedded") -> Breadcrumb:
+        if placement not in ("embedded", "external"):
+            raise BreadcrumbError("Breadcrumb placement must be embedded or external")
         while True:
             selected = _validated_id(breadcrumb_id or secrets.token_hex(32))
             directory = self.records_root / selected
@@ -176,6 +198,8 @@ class BreadcrumbStore:
                 continue
             try:
                 record = {"type": entity(Breadcrumb).name, "id": selected}
+                if placement != "embedded":
+                    record["placement"] = placement
                 Breadcrumb.records.from_record(record)
                 atomic_write_json(directory / "main.json", record)
                 (directory / "attachments").mkdir()
@@ -183,6 +207,42 @@ class BreadcrumbStore:
                 shutil.rmtree(directory, ignore_errors=True)
                 raise
             return self.load(selected)
+
+    # tarav.breadcrumb 976a54ce1b75
+    def create_external(self, *, file: str | Path, line: int, fragment: str) -> Breadcrumb:
+        path = validate_external_selection(file, line, fragment)
+        breadcrumb = self.create(placement="external")
+        self.observe_external_position(str(breadcrumb.typed.id), file=path, line=line, fragment=fragment)
+        return breadcrumb
+
+    def observe_external_position(self, label: str, *, file: str | Path,
+                                  line: int, fragment: str) -> dict[str, object]:
+        """A maintainer's explicit replacement location; never edit the source."""
+        path = validate_external_selection(file, line, fragment)
+        breadcrumb = self.load(label)
+        if breadcrumb.typed.placement != "external":
+            raise BreadcrumbError("External observations require external placement")
+        record = {"type": entity(LocatorObservation).name,
+                  "breadcrumb_id": breadcrumb.typed.id, "observed_at": _now(),
+                  "fragment": fragment,
+                  "locator": {"type": entity(FilePositionReference).name,
+                              "locator": {"file": str(path), "line": line}}}
+        self.append_observation(label, record)
+        return record
+
+    def external_for_file(self, file: str | Path) -> tuple[str, ...]:
+        """Discover external anchors from their latest registry observation."""
+        path = Path(file).expanduser().resolve()
+        found = []
+        for source in sorted(self.records_root.glob("*/main.json")):
+            payload = json.loads(source.read_text(encoding="utf-8"))
+            if payload.get("placement") != "external":
+                continue
+            identity = self.find(source.parent.name)
+            observations = self.observations(identity)
+            if observations and Path(observations[-1]["locator"]["locator"]["file"]).resolve() == path:
+                found.append(identity)
+        return tuple(found)
 
     def ensure(self, breadcrumb_id: str) -> Breadcrumb:
         """Return one retained identity, creating it only when absent."""
@@ -232,6 +292,12 @@ class BreadcrumbStore:
     def append_observation(self, label: str, record: Mapping[str, object]) -> None:
         breadcrumb = self.load(label)
         observation = LocatorObservation.records.from_record(record)
+        external = breadcrumb.typed.placement == "external"
+        if external != (observation.typed.fragment is not None):
+            raise BreadcrumbError("External observations require a fragment; embedded observations do not")
+        if external and (not isinstance(observation.typed.locator, FilePositionReference.RecordInterface)
+                         or not isinstance(observation.typed.locator.locator.file, str)):
+            raise BreadcrumbError("External observations require a file path and line")
         if observation.records.to_record()["breadcrumb_id"] != breadcrumb.records.to_record()["id"]:
             raise BreadcrumbError("Locator observation belongs to another Breadcrumb")
         path = breadcrumb.directory / "locator-observations.jsonl"
@@ -350,6 +416,8 @@ class BreadcrumbStore:
 
     def resolve(self, label: str) -> BreadcrumbResolution:
         breadcrumb = self.load(label)
+        if breadcrumb.typed.placement == "external":
+            return self._resolve_external(breadcrumb)
         # Every valid label of this Breadcrumb contains its 12-character one.
         core_label = breadcrumb_label(str(breadcrumb.records.to_record()["id"])[:LABEL_PREFIX])
         positions: dict[
@@ -398,6 +466,49 @@ class BreadcrumbStore:
             positions=len(positions),
         )
         return BreadcrumbResolution(breadcrumb, "ambiguous", pois=(poi,))
+
+    def _resolve_external(self, breadcrumb: Breadcrumb) -> BreadcrumbResolution:
+        identity = str(breadcrumb.typed.id)
+        observations = self.observations(identity)
+        reason = "External Breadcrumb has no observed location."
+        if observations:
+            observation = observations[-1]
+            locator, fragment = observation["locator"]["locator"], observation.get("fragment")
+            if not isinstance(fragment, str) or not fragment.strip():
+                raise BreadcrumbError("External observation has no exact fragment")
+            path = Path(locator["file"]).expanduser().resolve()
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeError) as exc:
+                reason = f"External Breadcrumb file is unavailable: {exc}"
+            else:
+                line = locator["line"]
+                if line <= len(lines) and fragment in lines[line - 1]:
+                    return BreadcrumbResolution(breadcrumb, "resolved", FilePositionTarget(path, line, lines[line - 1]))
+                matches = [i for i, text in enumerate(lines, 1) if fragment in text]
+                if len(matches) == 1:
+                    line = matches[0]
+                    return BreadcrumbResolution(breadcrumb, "resolved", FilePositionTarget(path, line, lines[line - 1]))
+                if matches:
+                    poi = ExternalAnchorAmbiguous(
+                        f"External Breadcrumb fragment matches several lines: {matches}.",
+                        situation={"breadcrumb_id": identity})
+                    return BreadcrumbResolution(breadcrumb, "ambiguous", pois=(poi,))
+                reason = "External Breadcrumb line is missing; the maintainer must provide a new location."
+        poi = ExternalAnchorMissing(reason, situation={"breadcrumb_id": identity})
+        return BreadcrumbResolution(breadcrumb, "unresolvable", pois=(poi,))
+
+
+def validate_external_selection(file: str | Path, line: int, fragment: str) -> Path:
+    if not isinstance(line, int) or isinstance(line, bool) or line < 1:
+        raise BreadcrumbError("External line must be a positive integer")
+    if not isinstance(fragment, str) or not fragment.strip() or "\n" in fragment or "\r" in fragment:
+        raise BreadcrumbError("External fragment must be a nonempty single-line string")
+    path = Path(file).expanduser().resolve()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if line > len(lines) or fragment not in lines[line - 1]:
+        raise BreadcrumbError("External fragment does not occur on the selected line")
+    return path
 
 
 def _validated_prefix(value: str) -> str:
