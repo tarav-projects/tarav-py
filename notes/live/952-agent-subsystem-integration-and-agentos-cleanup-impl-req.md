@@ -146,3 +146,18 @@ concurrent session editing Chatlas/breadcrumbs (do not touch its files).
   jp's `resetsAt`). `latest_account_usage_record` picks the newest record across
   sources, so codex/br alternates between real br and jp data — the cause of the
   earlier "~55% while the account is empty" report.
+- Slice 2 done (code). `GLOBAL_CONFIG_CLASS = "tarav.global.config"` in
+  `l0/_core/home.py`; loader also accepts `agentos.global.config`; init and the
+  `l0.testing` environment write the new class (test home dir renamed
+  `tarav-home`). Checks: `tests/test_global_config_class.py` 4 passed (3 failed
+  against the old loader); ruff clean; full suite 594 passed, 1 failed in
+  `test_notebook_evidence.py` (another session's in-progress area; passes in
+  isolation). Breadcrumb in `home.py`.
+- Deviation: the live `~/.tarav/config.json` was migrated after an Attic
+  deposit (`20261022T222514Z-global-config-agentos-class`) and reverted within a
+  minute: the running monitor (pid 6885) and `tarav-daemon` hold the old loader,
+  which rejected the new class (3 `CliError` monitor-log events). The file is
+  byte-identical to the snapshot again. Migrate it after those processes restart.
+- Note: the other session's checkpoint `247f77b` committed the slice 2 code as
+  `unknown-session` external work before this slice's own commit; this commit
+  adds the Breadcrumb label and log.

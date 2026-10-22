@@ -15,7 +15,7 @@ GLOBAL_CONFIG_FILENAME = "config.json"
 GLOBAL_SCHEMA_VERSION = 1
 GLOBAL_CONFIG_CLASS = "tarav.global.config"
 # Homes initialized before the Agentos rename keep loading until their config is rewritten.
-# tarav.context bbf9a2bc:52dc459d3a7ab9db
+# tarav.breadcrumb c5941c02f262
 _READABLE_GLOBAL_CONFIG_CLASSES = frozenset({GLOBAL_CONFIG_CLASS, "agentos.global.config"})
 GLOBAL_STORAGE_DIR_NAMES = ("indexes", "tmp", "cache")
 
