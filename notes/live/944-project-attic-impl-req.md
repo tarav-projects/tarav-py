@@ -9,7 +9,7 @@
 Develop Project-local Attics: default `<project>/_ATTIC`, an optional configured
 folder, and metadata checks included in Project checks. Adopt this umbrella's
 retired `_DEPRECATED` trees into a local Attic, preserving their contents and
-Git histories. Status: implemented; final broad verification running.
+Git histories. Status: complete; broad-check findings recorded below.
 <!-- tarav.breadcrumb a230a9c8b4dc -->
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive.
@@ -71,7 +71,7 @@ Evidence: exact session and User Turns declared above. Capture pending.
 2. Feature/adoption: preserve `_DEPRECATED` in the local Attic; update routing
    sources and catalog locators, compile generated guidance, update architecture
    and operator guidance through request 872. Verify hashes, local metadata,
-   installed behavior and Project checks. Status: pending.
+   installed behavior and Project checks. Status: complete.
 3. Closure: capture implementation surfaces and Wiki, run full Project checks,
    commit verified work and report any unrelated POIs or evidence gaps.
 
@@ -111,3 +111,19 @@ notes are recovery hints, not runtime dependencies.
 - Added the new feature suite to maintained pytest testpaths so future Project
   full checks include it. The initial full run was already executing before
   that registration; the focused run separately covered all new feature tests.
+- Slice commits: umbrella `18a6e84`, Python `7ba9d317`, Markdown `ee565ae`.
+  All three commit evidence audits pass. The Markdown daily Note also held
+  concurrent repository-reference capture; that shared-file content was preserved.
+- Final `tarav check --project . --all --json`: 1,343 checks completed, zero
+  incomplete, zero local Attic POIs. Full pytest contributed 64 file suites;
+  one finding was `test_git_change.py::test_the_first_hooked_commit_through_tarav_git_commit_leaves_the_index_clean`.
+  Its focused rerun with all Project Attic tests passed: 12 tests in 3.79s.
+  Cause of the full-run failure was not established; do not label the full run
+  green. Other findings concern hooks/scans, existing test-action markers,
+  shipped prompt drift, SKW freshness/output changes and unrelated Wiki markers.
+- Final Ruff (`src tests`) passes. Attic skill checks pass. Nineteen changed
+  implementation/request/capture surfaces audit with zero findings, including
+  the maintained TOML test selection and external JSON anchors. No capture gap.
+- Wiki closure: topical `tarav-md/notes/wiki/attic.md` and daily
+  `tarav-md/notes/wiki/daily/2026-10-22.md`, committed with `ee565ae` and the
+  completion checkpoint. Full report: `/tmp/project-attic-all-checks.json`.
