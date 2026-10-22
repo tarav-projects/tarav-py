@@ -17,6 +17,7 @@ from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l0.project import project_id, require_agentos_project
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 from tarav.l1.attic import AtticWorkflow
+from tarav.l2.agent_setup import AgentSetup
 from tarav.l1.archive.checks import ArchiveLocatorSuite
 from tarav.l1.git.gitleaks import unowned_suites
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
@@ -64,6 +65,8 @@ class TaravSystemProject(Project):
                             name="gitleaks: repositories no Project owns"),
                  # tarav.breadcrumb d9daf0086d0e
                  AtticWorkflow.open().checks.suite(),
+                 # tarav.breadcrumb f6c5ccdf6df8
+                 AgentSetup(self.obj.root).checks.suite(),
                  # tarav.breadcrumb c6c9c7d043d3
                  ArchiveLocatorSuite()],
                 name=self.obj.name, repositories=self.obj.repositories())

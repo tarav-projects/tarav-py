@@ -161,3 +161,25 @@ concurrent session editing Chatlas/breadcrumbs (do not touch its files).
 - Note: the other session's checkpoint `247f77b` committed the slice 2 code as
   `unknown-session` external work before this slice's own commit; this commit
   adds the Breadcrumb label and log.
+- Slice 3 done. Deviation: the checks first lived in `tarav/l1/agent/checks.py`,
+  but `test_subsystem_import_graph_is_acyclic` failed — `actions` and
+  `operator_context` already import `agent.current_session`, so `agent → actions`
+  closed a cycle. Moved to `tarav/l2/agent_setup.py` (integration above the
+  definitions it combines; Types keep `AGENTS_WORKFLOW_SHIP`).
+  `AgentSetup` (TaravObject + CheckProvider) → `AgentSetupSuite`: chains
+  `Tarav.Agents.MonitorConfig` (`Invalid`), `Tarav.Agents.Profiles` (`Invalid`),
+  `Tarav.Agents.Fitness` (`AccountNotRegistered`, `HomeMissing`, `HomeMisaligned`;
+  misalignment suppressed when the home is missing), each POI with a
+  `POIResolutionAction`; registered in `l3/runtime.py`; composed into
+  `TaravSystemProject.Checks` after the Attic suite.
+  Checks: `tests/test_agent_setup_checks.py` 3 passed (the stale `claude-code/om`
+  monitor target now yields `MonitorConfigInvalid` instead of a `CliError`);
+  architecture + project-system tests 64 passed; ruff clean. Real surface:
+  `tarav check --project ~/Documents/tarav/system` lists
+  `Tarav.Agents.Fitness.HomeMisaligned.POI: 3` (codex-main unlisted account —
+  same `~/.codex` mismatch as the session-hook defect; copilot-jp/main
+  undeterminable), matching `tarav agent profile-check`.
+  Breadcrumbs `436c9a74799b`, `f23bbde3b417` (`agent_setup.py`), `f6c5ccdf6df8`
+  (`system.py`); `system.py` positions refreshed after line shifts; audits ok.
+  `l3/runtime.py` also carries another session's unsubmitted marker
+  (`0f5bad01`), committed here as found.

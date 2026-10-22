@@ -310,6 +310,7 @@ def create_runtime(
     # tarav.breadcrumb 156f7aa109f6
     from tarav.l2.notebook_context import NotebookProjectHook
     from tarav.l2.notebook import NOTEBOOK_BLOCK_TYPES
+    # tarav.breadcrumb a55ae08294f2
     # tarav.breadcrumb b457d57362a2
     from tarav.l1.notebook.evidence import NOTEBOOK_EVIDENCE_TYPES
     from tarav.l1.grounding import GROUNDING_RECORD_TYPES, GroundingWorkflow
@@ -328,6 +329,7 @@ def create_runtime(
     from tarav.l1.python_env import PYTHON_RECORD_TYPES, PythonWorkflow
     from tarav.l1.programs import ProgramsWorkflow, TaravProgram
     from tarav.l1.agent.workflow import AgentsWorkflow
+    from tarav.l2.agent_setup import AGENT_SETUP_ACTION_TYPES, AGENT_SETUP_RECORD_TYPES
     from tarav.l1.actions import (
         ACTION_RECORD_TYPES, ActionsWorkflow, register_action,
     )
@@ -463,6 +465,7 @@ def create_runtime(
                 *GIT_RECORD_TYPES,
                 *WORKSPACE_RECORD_TYPES,
                 *ATTIC_RECORD_TYPES,
+                *AGENT_SETUP_RECORD_TYPES,
                 *PRODUCT_MAPPING_RECORD_TYPES,
                 *PRODUCT_REVIEW_RECORD_TYPES,
                 *PRODUCT_REVIEW_CHECK_TYPES,
@@ -644,7 +647,8 @@ def create_runtime(
     for action_type in (GitleaksFindingResolution, GitleaksStagedResolution,
                         GitleaksNeverScannedResolution, GitleaksMissingResolution,
                         HooksNotInstalledResolution, *SKW_ACTION_TYPES, TestMarkerResolution,
-                        *ATTIC_ACTION_TYPES, *NOTEBOOK_EVIDENCE_ACTIONS,
+                        *ATTIC_ACTION_TYPES, *AGENT_SETUP_ACTION_TYPES,
+                        *NOTEBOOK_EVIDENCE_ACTIONS,
                         *ARCHIVE_ACTION_TYPES):
         register_action(action_type)
     register_action(MappingUpdateAction)
