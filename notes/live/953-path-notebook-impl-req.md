@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: implemented; closure in progress. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
+Status: complete. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
 
 Implement a typed PathNotebook under the existing Notebook, with SchemaBlocks
 linked to registered schema Ships and PathBlocks linked to registered Path Ships.
@@ -73,7 +73,7 @@ session above for request/source/Wiki evidence. Preserve older evidence gaps.
   Project selection. Test persistent round trips, root/escaped/numeric pointers,
   inherited context and ordinary capture, missing/duplicate/retired links,
   rename continuity, ancestry drift and read-only selection.
-- [ ] Integration/closure: runtime registration, architecture/guidance, source
+- [x] Integration/closure: runtime registration, architecture/guidance, source
   capture, focused and full Project checks, bounded Wiki capture and scoped
   evidence commits. Show a real Line schema in isolated Notebook data.
 
@@ -120,3 +120,19 @@ session above for request/source/Wiki evidence. Preserve older evidence gaps.
   reused the exact original design Turns; the post-refresh default-placement
   steering is retained verbatim in this conversation and summarized above, with
   exact newer Chatlas-turn indexing still pending rather than fabricated.
+- Python full status completed 87 checks, including 66 pytest suites, with no
+  incomplete checks. Two tests still expected the former three-branch Project
+  layout; updated those expectations for the default Path Notebook while
+  preserving custom layouts and existing notes. The focused Project Notebook
+  and Path Notebook rerun passed all 13 tests; Ruff passed. The concurrent
+  Agent architecture cycle was fixed by its owner, and its exact architecture
+  check now passes. Remaining full-run POIs concern existing Gitleaks, Product
+  Review coverage and synthetic test markers. The full run preceded these final
+  expectation corrections; it was not repeated in full.
+- Committed product implementation in
+  `2e52b1a322eec472c2313b4bdb03b4b657eca786`, shared Notebook adoption in
+  `1324ff0c9db0cfe8b8b767b141d3d236d6433e9f`, and Wiki capture in
+  `851fcfdb8817dd77c75d3374d8802b492708ab85`. Evidence audits passed for
+  all three commits. Wiki destinations: path-notebook.md, path-registry.md,
+  daily/2026-10-22.md. Completion records these results and the final layout test
+  correction; unrelated concurrent Product Review work remains untouched.

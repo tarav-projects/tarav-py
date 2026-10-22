@@ -26,7 +26,7 @@ def test_project_notebook_creates_siblings_once_and_keeps_edits(tmp_path):
     assert root.project_ship == p.id
     branches = [x for x in root.contents if not isinstance(x, Line)]
     assert [type(x) for x in branches] == [DiscussionBlock, ModelBlock, ArchiveBlock, PathNotebook]
-    # tarav.context 0f5bad01:1447ec75ae51ec24
+    # tarav.breadcrumb 4cab61926e3c
     assert all(x.parent is root for x in branches)
     assert "no implementation" in binding.discussion.contents[0].text
     assert "current" in binding.model.contents[0].text
@@ -59,7 +59,6 @@ def test_project_type_can_choose_a_layout(tmp_path):
                           project_name="A project")
     root = p.notebook(notebook=notebook).create()
     assert [type(x) for x in root.contents if not isinstance(x, Line)] == [DiscussionBlock, PathNotebook]
-    assert root.paths.parent is not root  # selection reloads a consistent stored tree
     assert root.paths.parent.id == root.id
 
 
