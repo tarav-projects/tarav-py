@@ -1,5 +1,9 @@
 """Natural-language statements interpreted within identified Blocks."""
 
+import re
+
+from pydantic import Field
+
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip
 from .workflow import LinesWorkflow
 from .identity import LINES_WORKFLOW_SHIP
@@ -89,4 +93,42 @@ class Line(TaravEntity):
     def ships(self):
         return (*super().ships(), self.scope_ship)
 
-__all__ = ["Block", "Line", "LinesWorkflow"]
+_BLOCK_TITLE_PATTERN = r"^[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+$"
+
+
+class BlockTitle(Line):
+    """A Block's citable dotted label, carried as one of its Lines.
+
+    At least two capitalized alphanumeric segments are required. Dots join
+    words, without declaring ancestry or replacing the Block's Ship identity.
+    """
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(
+            target=cls,
+            id=TypeShip("33d92043-9994-4424-b52a-0b8530cddb47"),
+            name="Tarav.Lines.BlockTitle",
+            workflow=LINES_WORKFLOW_SHIP,
+        )
+
+    class RecordInterface(Line.RecordInterface):
+        text: str = Field(pattern=_BLOCK_TITLE_PATTERN)
+
+    class Records(Line.Records):
+        def record_example(self):
+            return {**super().record_example(), "text": "Kernel.Writing"}
+
+    @Line.text.setter
+    def text(self, value):
+        if not isinstance(value, str):
+            raise TypeError("BlockTitle text must be a string")
+        if re.fullmatch(_BLOCK_TITLE_PATTERN, value) is None:
+            raise ValueError(
+                "BlockTitle requires at least two capitalized alphanumeric "
+                "segments separated by dots, e.g. Kernel.Writing"
+            )
+        self._text = value
+
+
+__all__ = ["Block", "BlockTitle", "Line", "LinesWorkflow"]

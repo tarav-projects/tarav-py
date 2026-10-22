@@ -394,6 +394,9 @@ changing them. A Block's Lines confer its meaning; the base has no topic field.
 `tarav.l1.lines.Line` has text and one authoring Block, whose ancestry supplies
 its interpretive context. Membership does not change a Line's scope. Its Record
 retains the scope Ship; explicit binding resolves that edge without changing it.
+`BlockTitle` is a Line subtype for citable dotted labels such as `Kernel.Writing`.
+It validates at least two capitalized alphanumeric segments on creation, editing,
+and Record loading. Titles live in `contents`; dots do not declare ancestry.
 <!-- tarav.breadcrumb 9ef1979dfc58 -->
 <!-- tarav.breadcrumb 03c727288326 -->
 

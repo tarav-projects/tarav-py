@@ -3,10 +3,55 @@ from uuid import uuid4
 import pytest
 
 from tarav.l0.kernel import Ship
-from tarav.l1.lines import Block, Line
+from tarav.l1.lines import Block, BlockTitle, Line
 # tarav.breadcrumb cc9b00e6c4cc
 from tarav.l1.notebook import Notebook
 from tarav.l3.runtime import create_runtime
+
+
+def test_block_title_persists_as_a_line_and_validates_edits(tmp_path):
+    notebook = Notebook(tmp_path / "notebook", records=create_runtime().records).create()
+    block = Block(id=Ship(uuid4()))
+    title = BlockTitle(id=Ship(uuid4()), text="Kernel.Writing", scope=block)
+    block.append(title)
+    notebook.save_tree(block)
+
+    loaded = notebook.load(block.id)
+    restored = loaded.contents[0]
+    assert isinstance(restored, BlockTitle)
+    assert isinstance(restored, Line)
+    assert restored.scope is loaded
+    assert restored.id == title.id
+    restored.text = "Semantic.Independence.And.Integration"
+    notebook.save(restored)
+    assert notebook.load(title.id).text == restored.text
+    with pytest.raises(ValueError):
+        restored.text = "An ordinary sentence"
+    assert restored.text == "Semantic.Independence.And.Integration"
+
+
+@pytest.mark.parametrize("text", ["Kernel.Writing", "HTTP.API", "Model2.Design"])
+def test_block_title_accepts_dotted_labels(text):
+    title = BlockTitle(id=Ship(uuid4()), text=text, scope=Block(id=Ship(uuid4())))
+    assert title.text == text
+    assert BlockTitle.records.from_record(title.records.to_record()).text == text
+
+
+@pytest.mark.parametrize("text", [
+    "", "Kernel", "Kernel Writing", "kernel.Writing", "Kernel.writing",
+    ".Kernel.Writing", "Kernel.Writing.", "Kernel..Writing", "Kernel/Writing",
+    "Kernel::Writing", " Kernel.Writing", "Kernel.Writing\n",
+])
+def test_block_title_rejects_invalid_construction_and_records(text):
+    from pydantic import ValidationError
+
+    block = Block(id=Ship(uuid4()))
+    with pytest.raises(ValueError):
+        BlockTitle(id=Ship(uuid4()), text=text, scope=block)
+    title = BlockTitle(id=Ship(uuid4()), text="Kernel.Writing", scope=block)
+    record = {**title.records.to_record(), "text": text}
+    with pytest.raises((ValueError, ValidationError)):
+        BlockTitle.records.from_record(record)
 
 
 def test_selection_and_missing_load_do_not_create_storage(tmp_path):
