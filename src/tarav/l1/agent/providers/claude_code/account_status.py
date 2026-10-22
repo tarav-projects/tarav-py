@@ -695,16 +695,21 @@ def _run_claude_statusline_refresh_session(
 
     try:
         master_fd, slave_fd = pty.openpty()
-        process = subprocess.Popen(
-            command.argv,
-            cwd=str(cwd),
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            env=env,
-            text=False,
-            close_fds=True,
-        )
+        try:
+            process = subprocess.Popen(
+                command.argv,
+                cwd=str(cwd),
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                env=env,
+                text=False,
+                close_fds=True,
+            )
+        except BaseException:
+            # A failed spawn must not leak the pty master; the monitor retries every tick.
+            os.close(master_fd)
+            raise
     except FileNotFoundError as exc:
         error = AccountStatusError(error_type="command_not_found", message=str(exc))
         _finalize_claude_statusline_log(run_log, error=error)
