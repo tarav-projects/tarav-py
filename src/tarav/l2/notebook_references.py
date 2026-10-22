@@ -1,16 +1,23 @@
 """Line state references reconstruct bounded authoring context from one Git commit."""
+# tarav.breadcrumb 98fc3b130fdc
 
 import json
 from functools import lru_cache
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l0.kernel.current import current_records
 from tarav.l1.grounding import SubjectState
 from tarav.l1.lines import Block, Line
-from tarav.l1.references.git import GitFileReference, git_file, git_text
+from tarav.l1.archive.references import RepositoryLocator, RepositoryReference
+from tarav.l1.references.git import git_file
+from tarav.l2.git.archive import resolve_repository
 
-from .workflow import NOTEBOOK_WORKFLOW_SHIP
+from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
+
+
+class NotebookStateLocator(RepositoryLocator):
+    path: str
 
 
 @lru_cache(maxsize=2048)
@@ -22,7 +29,7 @@ def _record(repository, commit, ship):
     return record
 
 
-class NotebookStateReference(GitFileReference):
+class NotebookStateReference(RepositoryReference):
     """One Line and its authoring context at an exact Notebook Git commit."""
 
     @classmethod
@@ -30,24 +37,27 @@ class NotebookStateReference(GitFileReference):
         return TaravClass(target=cls, id=TypeShip("31af41be-b6ae-4baf-971f-2476a8e179a6"),
                           name="Tarav.Notebook.Reference.State", workflow=NOTEBOOK_WORKFLOW_SHIP)
 
-    def __init__(self, *, notebook, commit, ship):
-        root = str(Path(notebook).resolve())
-        exact = git_text(root, "rev-parse", "--verify", "--end-of-options", f"{commit}^{{commit}}")
-        super().__init__({"type": entity(type(self)).name, "locator": {
-            "repository": root, "commit": exact, "path": f"records/{Ship(str(ship))}.json"}})
+    class RecordInterface(RepositoryReference.RecordInterface):
+        locator: NotebookStateLocator
 
     def _bind_record_loader(self, loader):
+        super()._bind_record_loader(loader)
         self._record_loader = loader
 
     def locate(self, locator):
-        target = super().locate(locator)
+        # This Type is the explicit Git consumer; Archive lookup stays declarative.
+        reference = RepositoryReference({"type": entity(RepositoryReference).name,
+                                         "locator": locator})
+        reference._records = getattr(self, "_records", None)
+        resolved = resolve_repository(reference)
+        if not resolved.ok:
+            raise ValueError(resolved.message)
+        target = resolved.target
         path = PurePosixPath(locator["path"])
         ship = str(Ship(path.stem))
         if path.as_posix() != f"records/{ship}.json":
             raise ValueError("Notebook state must name one Line record")
-        repository, commit = locator["repository"], locator["commit"]
-        if commit != git_text(repository, "rev-parse", "--verify", "--end-of-options", f"{commit}^{{commit}}"):
-            raise ValueError("Notebook state requires an exact commit, not a moving revision")
+        repository, commit = str(target.repository), target.commit
         loader = getattr(self, "_record_loader", None) or current_records().from_record
 
         def load(identity):
@@ -73,14 +83,18 @@ class NotebookStateReference(GitFileReference):
                                   "text": member.text})
             context.append({"ship": identity, "type": str(entity(type(block)).id), "lines": peers})
             identity = str(block.parent_ship) if block.parent_ship else ""
-        return {**target, "state": SubjectState(line.id, entity(type(line)).id,
+        return {"repository": repository, "commit": commit, "path": locator["path"],
+                "git_oid": target.git_oid, "content": target.content,
+                "recovered": target.recovered,
+                "state": SubjectState(line.id, entity(type(line)).id,
                                                 {"text": line.text, "context": context[::-1]})}
 
     def ships(self):
         return (*super().ships(), Ship(PurePosixPath(self.locator["path"]).stem))
 
-    class Records(GitFileReference.Records):
+    class Records(RepositoryReference.Records):
         def record_example(self):
             return {"type": entity(self._owner).name, "locator": {
-                "repository": "/example/notebook", "commit": "0" * 40,
+                "registry": "/example/registry", "doi": "a" * 64,
+                "commit": "0" * 40, "tree": "1" * 40,
                 "path": "records/ba962e69-2835-436f-b5c4-3e77105b6d79.json"}}

@@ -879,8 +879,10 @@ ls/read/query CLI. Notebook storage remains independent of these consumers.
 
 `l1.grounding` retains subject References and attributed SupportSets;
 SubjectState snapshots are computed in memory for comparison and presentation.
-`l1.notebook.references.NotebookStateReference` pins a Line record to one exact
-Git commit. It reconstructs the Line's bounded context from that same commit,
+`l2.notebook_references.NotebookStateReference` pins a Line through a repository
+DOI, exact commit/tree, optional Change-ID and record path. The explicit Git
+consumer accepts a recovered commit only when the repository resolver verifies
+one matching tree. It reconstructs the Line's bounded context from that commit,
 without embedding text or ancestor snapshots in support and review Records.
 `l1.review` retains tokenized VerbatimReview records independently of support.
 `l1.notebook.evidence` specializes Lines and Blocks with explicit support and
@@ -891,7 +893,12 @@ review requirements. Base Lines remain mutable, identified authoring primitives.
 `l2.notebook_capture.NotebookCapture` captures and inspects evidence through
 existing Chatlas Turn references and append-only inserts in the Grounding and
 Review Record Registry partitions. Its explicit create initializes only those
-partitions. Capture commits Notebook state before linking evidence to it.
+partitions. Explicit checkpoints bind/install tarav-change on these repositories,
+owned by the System Project unless an owner is selected. Capture commits Notebook
+state before linking evidence; support/review writes then commit their evidence
+and the Notebook links. Repository metadata and records are selected explicitly,
+preserving unrelated staged paths. Old commits without Change-IDs retain exact
+commit/tree coordinates. No legacy state-reference reader is retained.
 Reads do not commit or provision. Subject fingerprints include wording, concrete Types and direct
 Lines of authoring ancestors, excluding evidence attachments. Historical claims
 remain retained after edits; they do not approve the current state. Protocol

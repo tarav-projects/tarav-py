@@ -12,7 +12,14 @@ from tarav.l1.grounding import GroundingWorkflow, SubjectState, SupportSet, reso
 from tarav.l1.lines import Line
 from tarav.l1.notebook.evidence import NotebookLine, ReviewedBlockTitle, ReviewedLine
 from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
-from tarav.l1.notebook.references import NotebookStateReference
+from tarav.l2.notebook_references import NotebookStateReference
+from tarav.l1.archive import Archive
+from tarav.l1.archive.references import DOIReference
+from tarav.l1.git.hooks import GitConfig
+from tarav.l1.project.config import ProjectConfig
+from tarav.l0._core.git_repository import commit_paths
+from tarav.l2.git.archive import capture_repository, install_repository_hooks
+from tarav.l0._core.data_root import default_tarav_data_root
 from tarav.l1.references.git import git_text
 from tarav.l1.records.registry import RecordRegistry
 from tarav.l1.references import Reference
@@ -127,13 +134,15 @@ class NotebookCapture(TaravType):
         return TaravClass(target=cls, id=TypeShip("77c91fab-b947-47d7-8c5a-648147886f64"),
                           name="Tarav.Notebook.Capture", workflow=NOTEBOOK_WORKFLOW_SHIP)
 
-    def __init__(self, notebook, *, evidence_root=None, authorized_sources=()):
+    def __init__(self, notebook, *, evidence_root=None, authorized_sources=(), archive=None, owner=None):
         self.notebook = notebook
         self.records = notebook.store.records
         registry = RecordRegistry(root=evidence_root, records=self.records)
         self.supports = registry.for_workflow(GroundingWorkflow)
         self.reviews = registry.for_workflow(ReviewWorkflow)
         self.authorized_sources = tuple(authorized_sources)
+        self.archive = archive
+        self.owner = owner
         self._resolved = {}
 
     def create(self):
@@ -151,6 +160,8 @@ class NotebookCapture(TaravType):
         self.notebook.save_tree(block)
         if members or producer is not None:
             self.attach_support(line, members, producer=producer)
+        else:
+            self.checkpoint()
         return line
 
     def _current(self, line):
@@ -167,19 +178,33 @@ class NotebookCapture(TaravType):
         self.supports.insert(str(support.id), support)
         line.support_ships.append(support.id)
         self.notebook.save(line)
+        self._checkpoint_store(self.supports, "Record Notebook support")
+        self.checkpoint()
         return support
 
     def checkpoint(self):
         """Commit the Notebook before evidence refers to its state."""
-        root = self.notebook.root
+        return self._checkpoint_store(self.notebook.store, "Capture Notebook state for support and review")
+
+    def _checkpoint_store(self, store, message):
+        """Explicit writes bind repository identity and persist records plus hook metadata."""
+        # tarav.breadcrumb 09293098b3cc
+        root = store.root
+        config = ProjectConfig(root).section("git", GitConfig)
+        archive = self.archive if self.archive is not None else Archive(
+            config.repository_registry if config else None, records=self.records)
+        owner = self.owner if self.owner is not None else (
+            config.owner if config and config.owner else default_tarav_data_root() / "system")
+        install_repository_hooks(root, add=("tarav-change",), archive=archive, owner=owner)
+        paths = ("records", "registry.json", ".gitignore", ".tarav/config.json",
+                 ".tarav/git-hooks", ".gitattributes")
         try:
             head = git_text(root, "rev-parse", "--verify", "HEAD")
         except ValueError:
             head = None
-        changed = git_text(root, "status", "--porcelain", "--untracked-files=all", "--",
-                           "records", "registry.json", ".gitignore")
+        changed = git_text(root, "status", "--porcelain", "--untracked-files=all", "--", *paths)
         if head is None or changed:
-            return self.notebook.commit("Capture Notebook state for support and review")
+            return commit_paths(root, paths, message)
         return head
 
     def _state(self, state):
@@ -188,8 +213,16 @@ class NotebookCapture(TaravType):
     def pin(self, state, *, commit=None):
         """Pin an exact computed Line state; never substitute a different edition."""
         snapshot = line_state(state).typed if isinstance(state, Line) else self._state(state)
-        reference = NotebookStateReference(notebook=self.notebook.root,
-                                           commit=commit or self.checkpoint(), ship=snapshot.subject_ship)
+        exact = commit or self.checkpoint()
+        config = ProjectConfig(self.notebook.root).section("git", GitConfig)
+        if config is None or config.repository is None:
+            raise ValueError("Checkpoint the Notebook to bind its repository before pinning")
+        repository = DOIReference(config.repository, registry=config.repository_registry)
+        repository._records = self.records
+        captured = capture_repository(repository, self.notebook.root, commit=exact,
+                                      path=f"records/{snapshot.subject_ship}.json")
+        reference = self.records.from_record({**captured.records.to_record(),
+                                               "type": entity(NotebookStateReference).name})
         if self._state(reference).digest != snapshot.digest:
             raise ValueError("Notebook commit does not contain the requested Line/context state")
         return reference
@@ -226,6 +259,8 @@ class NotebookCapture(TaravType):
         for line in lines:
             line.review_ships.append(review.id)
             self.notebook.save(line)
+        self._checkpoint_store(self.reviews, "Record Notebook review evidence")
+        self.checkpoint()
         return review
 
     def propose_review(self, lines, *, destination, token, operation="review", before=()):

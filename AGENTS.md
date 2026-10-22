@@ -16,7 +16,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
   cross-domain imports.
 - Keep this file and `ARCHITECTURE.md` current when a change affects their
   contracts. They are guidance, not an implementation history.
-- `_DEPRECATED/` contains historical snapshots. Do not implement there.
+- The umbrella's `_ATTIC/` conserves historical snapshots. Do not implement in deposited material.
 
 ## Tooling
 
@@ -71,6 +71,11 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Attic
 
+- Featured `Project.attic()` selects `<project>/_ATTIC` or `attic.path` in
+  `.tarav/config.json`. Project checks compose its metadata suite lazily;
+  missing unused depots stay absent. Root Projects aggregate local Attic
+  checks through their normal child composition. Minimal `TaravProject`
+  remains independent of Attic. Local and general depots share semantics.
 - `tarav.l1.attic` owns `AtticWorkflow`, an Archive child for opaque displaced
   material. Its self-declared `deposit.json` is separate from ordinary object
   Records. `AtticWorkflow.open().checks.run()` reads immediate deposit metadata
@@ -202,7 +207,11 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 - Notebook evidence Types live in `l1.notebook.evidence`; general support
   and review Records live in `l1.grounding` and `l1.review`. Use
   `l2.notebook_capture.NotebookCapture` for Python capture and inspection.
-  Evidence names exact subject/context snapshots; editing preserves old
+  Evidence names repository DOI and exact commit/tree coordinates; its
+  l2 Notebook state consumer reconstructs the subject and context from Git.
+  Explicit capture checkpoints bind tarav-change with System Project ownership
+  by default; support/review writes commit evidence and Notebook links.
+  Editing preserves old
   claims and requires fresh evidence for the changed state. Explicit
   `create()` provisions evidence stores. Project checks compose
   `l2.notebook_checks.NotebookEvidenceSuite` without provisioning or

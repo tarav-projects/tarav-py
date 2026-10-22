@@ -1,15 +1,17 @@
 """Support and review are independent retained claims about exact Line states."""
 
 from uuid import uuid4
+import json
+import subprocess
 
 import pytest
 
-from tarav.l0.kernel import Ship, entity
+from tarav.l0.kernel import Ship, TaravClass, TypeShip, entity
 from tarav.l1.chatlas.references import ChatlasTurnReference
 from tarav.l1.grounding import SubjectState, SupportMember, SupportSet
 from tarav.l1.lines import Block
 from tarav.l1.notebook import Notebook
-from tarav.l1.notebook.references import NotebookStateReference
+from tarav.l2.notebook_references import NotebookStateReference
 from tarav.l1.notebook.evidence import (
     NotebookLine, ReviewedBlockTitle, ReviewedLine, ReviewedBlock, SupportedBlock,
 )
@@ -350,7 +352,7 @@ def test_git_subjects_preserve_context_without_embedding_it_and_ignore_unrelated
     support, = capture.support_records(line)
     subject = support.records.to_record()["subject"]
     assert set(subject) == {"type", "locator"}
-    assert set(subject["locator"]) == {"repository", "commit", "path"}
+    assert set(subject["locator"]) == {"registry", "doi", "commit", "tree", "change_id", "path"}
     assert len(subject["locator"]["commit"]) == 40
     assert subject["locator"]["path"] == f"records/{line.id}.json"
     original = resolve_subject(support.typed.subject)
@@ -367,6 +369,10 @@ def test_git_subjects_preserve_context_without_embedding_it_and_ignore_unrelated
     assert resolve_subject(support.typed.subject).payload == original.payload
     bad = support.records.to_record()
     bad["subject"]["locator"]["commit"] = "f" * 40
+    capture.supports.replace(str(support.id), SupportSet.records.from_record(bad))
+    # Missing original hashes can recover through the matching Change-ID/tree.
+    assert capture.inspect(line)["support"][0].kind == "Stale"
+    bad["subject"]["locator"]["tree"] = "f" * 40
     capture.supports.replace(str(support.id), SupportSet.records.from_record(bad))
     assert capture.inspect(line)["support"][0].kind == "Unavailable"
 
@@ -390,5 +396,115 @@ def test_git_review_records_resolve_exact_wording_and_reject_moving_revisions(tm
     with pytest.raises(ValueError, match="repeat a Ship"):
         repeated.presentation()
     after["locator"]["commit"] = "HEAD"
-    reference = NotebookStateReference.records.from_record(after)
+    with pytest.raises(ValueError, match="pattern"):
+        NotebookStateReference.records.from_record(after)
+
+
+def _git(root, *args, input=None):
+    return subprocess.run(["git", "-C", str(root), *args], input=input, text=True,
+                          capture_output=True, check=True).stdout.strip()
+
+
+class SpecializedEvidenceLine(NotebookLine):
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip("86da3bc2-a7f8-426e-9ecb-2c20474d251d"),
+                          name="Test.Notebook.SpecializedEvidenceLine")
+
+
+def test_state_reference_uses_its_bound_record_registry(tmp_path):
+    runtime = create_runtime(record_types=(SpecializedEvidenceLine,))
+    block = Block(id=ship())
+    line = SpecializedEvidenceLine(id=ship(), text="A specialized statement.", scope=block)
+    block.append(line)
+    storage = Notebook(tmp_path / "specialized", records=runtime.records).create()
+    storage.save_tree(block)
+    reference = NotebookCapture(storage).pin(line)
+    create_runtime()  # The process default has no registration for this Line subtype.
+    loaded = runtime.records.from_record(reference.records.to_record())
+    result = loaded.resolve()
+    assert result.ok
+    assert result.target["state"].typed.subject_type == entity(SpecializedEvidenceLine).id
+    assert result.target["state"].typed.payload["text"] == "A specialized statement."
+
+
+def test_notebook_state_follows_maintained_repository_location_without_writes(tmp_path):
+    # tarav.breadcrumb ad096e6987e7
+    from tarav.l1.archive import Archive
+    from tarav.l1.archive.model import LocalLocator
+
+    capture, block = capture_setup(tmp_path)
+    line = capture.capture(block, "Keep the original context.")
+    reference = capture.pin(line)
+    expected = reference.resolve().target["state"].typed.digest
+    root = capture.notebook.root
+    moved = tmp_path / "relocated"
+    root.rename(moved)
     assert not reference.resolve().ok
+    archive = Archive.open(reference.locator["registry"])
+    doi = archive.read(reference.locator["doi"])
+    doi.locators = [LocalLocator(moved)]
+    archive.update(doi)
+    before = {str(p.relative_to(moved)): p.read_bytes() for p in moved.rglob('*') if p.is_file()}
+    resolved = reference.resolve()
+    assert resolved.ok and resolved.target["state"].typed.digest == expected
+    assert resolved.target["repository"] == str(moved)
+    assert before == {str(p.relative_to(moved)): p.read_bytes() for p in moved.rglob('*') if p.is_file()}
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_notebook_state_recovers_only_matching_tree_after_rewrite(tmp_path, changed):
+    capture, block = capture_setup(tmp_path)
+    line = capture.capture(block, "Original wording.")
+    reference = capture.pin(line)
+    original = reference.resolve().target["state"].typed.digest
+    coordinate = reference.locator.copy()
+    root = capture.notebook.root
+    if changed:
+        path = capture.notebook.store.path(str(line.id))
+        data = json.loads(path.read_text())
+        data["text"] = "Different wording."
+        path.write_text(json.dumps(data))
+        _git(root, "add", "records")
+        tree = _git(root, "write-tree")
+    else:
+        tree = coordinate["tree"]
+    commit = _git(root, "commit-tree", tree,
+                  input=f"Rewritten\n\ntarav-change: {coordinate['change_id']}\n")
+    branch = _git(root, "symbolic-ref", "HEAD")
+    _git(root, "update-ref", branch, commit)
+    _git(root, "reflog", "expire", "--expire=now", "--all")
+    _git(root, "gc", "--prune=now")
+    result = reference.resolve()
+    if changed:
+        assert not result.ok and "matches" in result.message
+    else:
+        assert result.ok and result.target["recovered"] is True
+        assert result.target["commit"] == commit
+        assert result.target["state"].typed.digest == original
+    assert reference.locator == coordinate
+
+
+def test_evidence_writes_commit_all_three_stores_and_keep_distinct_witnesses(tmp_path, chat):
+    from tarav.l1.git.hooks import GitConfig
+    from tarav.l1.git.witness import ChangeWitnesses
+    from tarav.l1.project.config import ProjectConfig
+
+    add, _ = chat
+    capture, block = capture_setup(tmp_path)
+    user = add("user", "Preserve the wording.")
+    producer = add("agent", "Capture it.")
+    line = capture.capture(block, "Preserve the wording.",
+                           members=[SupportMember(user)], producer=producer)
+    review = make_review(capture, block, [line], add)
+    assert capture.complete_review(review).id == review.id
+    identities = []
+    for store in [capture.notebook.store, capture.supports, capture.reviews]:
+        config = ProjectConfig(store.root).section("git", GitConfig)
+        identities.append(config.repository)
+        assert _git(store.root, "status", "--porcelain") == ""
+        assert "tarav-change:" in _git(store.root, "show", "-s", "--format=%B", "HEAD")
+        branch = _git(store.root, "symbolic-ref", "--short", "HEAD")
+        witness = ChangeWitnesses().get(config.repository, branch)
+        assert witness.changes == (store.root / ".tarav/changes").read_text().splitlines()
+    assert len(set(identities)) == 3

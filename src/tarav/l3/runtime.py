@@ -294,7 +294,7 @@ def create_runtime(
     from tarav.l2.notebook_capture import NotebookReviewFrame
     # tarav.breadcrumb f98e9b92d186
     from tarav.l1.notebook import Notebook, NotebookWorkflow
-    from tarav.l1.notebook.references import NotebookStateReference
+    from tarav.l2.notebook_references import NotebookStateReference
     # tarav.breadcrumb 156f7aa109f6
     from tarav.l2.notebook_context import NotebookProjectHook
     from tarav.l2.notebook import NOTEBOOK_BLOCK_TYPES
@@ -609,6 +609,7 @@ def create_runtime(
                         *ARCHIVE_ACTION_TYPES):
         register_action(action_type)
     from tarav.l1.project.config import register_config_section
+    # tarav.context 96bd11c6:8e6ed6047b3cd490
     from tarav.l2.project.attic import ProjectAtticConfig
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig

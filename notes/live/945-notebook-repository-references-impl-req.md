@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready. Knowledge.Surface: wiki.
+Status: implemented; full verification running. Knowledge.Surface: wiki.
 
 Adopt the repository DOI/Change-ID infrastructure from request 943 for Notebook
 subject/context recording. Preserve exact wording, context, support sets and
@@ -62,11 +62,11 @@ Chatlas refresh and session identity.
 
 ## Execution.Plan
 
-- [ ] Feature/refactor: replace the state locator and integrate explicit
+- [x] Feature/refactor: replace the state locator and integrate explicit
   repository setup/checkpoints. Prove exact state reconstruction, relocation,
   matching-tree recovery, changed-tree rejection, custom registry loading,
   support staleness and token review through focused Notebook/reference tests.
-- [ ] Migration: inventory and snapshot original references/digests; bind the
+- [x] Migration: inventory and snapshot original references/digests; bind the
   three live stores; translate/verify/replace 30 references, conserving originals
   in Attic. Prove unchanged digests and review presentations and new witness
   updates after real commits. No fallback readers.
@@ -82,3 +82,29 @@ Chatlas refresh and session identity.
 - Current Chatlas session refreshed once; supporting User Turn is
   `0f5bad01:a443ccd3f09781dd`. No additional refresh during this pass.
 - Current external work: request 944 belongs to another session.
+- Cold reread completed before product edits. Start checkpoints: Python
+  `cdd3fa88ce515f3f84eb284aea99c62a3b1b63e9`, Markdown
+  `d936fb599998e4c1409eb76fe7f23b400ceb785b`.
+- Baseline: 23 Notebook evidence tests passed. First combined integration run:
+  88 passed, one expected old-contract failure. It expected an absent commit
+  hash to fail even with a matching Change-ID/tree; updated that test to verify
+  recovery and then reject a mismatched tree. Both affected tests passed.
+- New behavior checks: relocation/read-only access, same-tree rewrite recovery,
+  changed-tree rejection and three independently committed/witnessed stores:
+  four tests passed. Bound custom Record registry reconstruction: one passed.
+  Ruff passed. Full Project status is running.
+- Live migration completed: 17 records, 30 translated references, all SubjectState
+  digests and both review presentations unchanged. Original records are conserved
+  with byte-hash verification in Attic deposit
+  `20261022T175003Z-notebook-path-references`. No current legacy locators remain.
+- Repository DOI / committed migration:
+  Notebook `dfc5f3557530e6a7de7884dfc07dc341ae5db68afb1a619b27b6e36af803fe3a`
+  / `aa6a7187617a4ac35af8538128e7e98fd3ed1a65`;
+  Grounding `4b5839aeda95ab74f5310808a642a07fda47ff53b055c26b5b37a42e5490086a`
+  / `6e5908ab827d8008d80d046b7be4484c60e5ee4e`;
+  Review `d236ecbbec20d935a43b48175a4478146882a5d8094d24f9ed00e19bfceb2227`
+  / `d522db347c9b3f232871cc38f428d842b56c372c`.
+  All three new witnesses match the tracked markers; their Change checks are clean.
+- The shared authoritative AGENTS source, compiled output and lock contain
+  concurrent Project Attic changes. They will be retained as found in this
+  workflow's commits; separate Attic code is outside this workflow's scope.
