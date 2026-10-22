@@ -330,6 +330,10 @@ def create_runtime(
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
     # tarav.breadcrumb 40a71d141d26
     from tarav.l1.attic import ATTIC_ACTION_TYPES, ATTIC_RECORD_TYPES, AtticWorkflow
+    # tarav.breadcrumb 942d3e9b5bd8
+    from tarav.l1.product_mapping import (
+        PRODUCT_MAPPING_RECORD_TYPES, ProductMapper, ProductMappingWorkflow,
+    )
     from tarav.l1.project import ProjectWorkflow, TaravProject
     from tarav.l2.project import Project
     from tarav.l2.project.runner import PROJECT_RUNNER_RECORD_TYPES
@@ -440,6 +444,8 @@ def create_runtime(
                 *GIT_RECORD_TYPES,
                 *WORKSPACE_RECORD_TYPES,
                 *ATTIC_RECORD_TYPES,
+                *PRODUCT_MAPPING_RECORD_TYPES,
+                ProductMapper,
                 WorkspaceIntegrityCheck,
                 WorkspaceReferenceCheck,
                 WorkspaceRemovalCheck,
@@ -560,6 +566,7 @@ def create_runtime(
         WorkspacesWorkflow,
         ArchiveWorkflow,
         AtticWorkflow,
+        ProductMappingWorkflow,
         RecordArchiveWorkflow,
         LinesWorkflow,
         NotebookWorkflow,

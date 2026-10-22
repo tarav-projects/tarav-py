@@ -71,7 +71,7 @@ Companion: ../../../tarav-md/notes/live/873-product-mapping-guidance-impl-req.md
 
 ## Execution.Plan
 
-- [ ] Feature slice 1: typed maps, byte chunking, committed snapshots,
+- [x] Feature slice 1: typed maps, byte chunking, committed snapshots,
   endpoint proposals and explicit confirmation. Check real temporary Git repos:
   initial coverage, insertions, moves, changes, retirement, split/merge,
   ambiguous candidates, immutability and working-directory independence.
@@ -91,3 +91,12 @@ Companion: ../../../tarav-md/notes/live/873-product-mapping-guidance-impl-req.md
 - Data shape first: identity, exact state and continuity decisions are distinct.
   Boundary discipline: Git reads and Record/CLI input validate at the boundary.
 - Todo list is Execution.Plan. Cold reload follows before the first code edit.
+- Cold reload completed. Start checkpoints: Python 98b88dff; Markdown d74445e9.
+- Slice 1 measured: 74 focused mapping/runtime/architecture/Record tests passed;
+  Ruff passed. Initial seven failures exposed a missing explicit Type discriminator
+  in strict new Record interfaces, fixed at the data boundary. One test's byte
+  offsets were corrected after inspecting the literal input's positions.
+- Slice 1 Product.Surface capture submitted and audited every changed surface.
+  Export-only __init__.py and the test-suite list have no additional supported
+  annotation position. Older audit positions on shared runtime/pyproject need
+  position refresh; no new mapping support was fabricated.
