@@ -344,6 +344,7 @@ def create_runtime(
     from tarav.l1.product_mapping.checks import (
         PRODUCT_MAPPING_CHECK_TYPES, MappingUpdateAction,
     )
+    from tarav.l1.product_review import PRODUCT_REVIEW_RECORD_TYPES, ProductReviewWorkflow
     from tarav.l2.project.product_mapping import MappingLoadCheck, MappingProjectSuite
     from tarav.l1.project import ProjectWorkflow, TaravProject
     from tarav.l2.project import Project
@@ -456,6 +457,7 @@ def create_runtime(
                 *WORKSPACE_RECORD_TYPES,
                 *ATTIC_RECORD_TYPES,
                 *PRODUCT_MAPPING_RECORD_TYPES,
+                *PRODUCT_REVIEW_RECORD_TYPES,
                 ProductMapper,
                 *PRODUCT_MAPPING_CHECK_TYPES,
                 MappingLoadCheck,
@@ -585,6 +587,7 @@ def create_runtime(
         ArchiveWorkflow,
         AtticWorkflow,
         ProductMappingWorkflow,
+        ProductReviewWorkflow,
         PathRegistryWorkflow,
         RecordArchiveWorkflow,
         LinesWorkflow,

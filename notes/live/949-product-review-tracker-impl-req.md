@@ -1,0 +1,117 @@
+# Product Review Tracker
+
+<!-- tarav.sessions
+ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015415da94eeb1a17634872aa4fb9e25d8e065ab53
+-->
+
+## Impl.Abstract
+
+Knowledge.Surface: wiki. Status: ready for execution. Build a product-agnostic
+Review Tracker over confirmed Product Maps. Batches are long-lived meaningful
+views over potentially overlapping chunk sets; reviews belong to exact batch
+revisions. The User requests design and execution together.
+<!-- tarav.breadcrumb 6105c6e9e8f9 -->
+
+Review completion means that the User and Agent processed the batch, recorded
+outcomes, and can move on. It never certifies correct content or completed
+follow-up work. One explicit User token confirms both maintained membership
+and the review discussion. Products of review may live elsewhere and reference
+the exact batch revision.
+<!-- tarav.breadcrumb 87d3b8b9d3a0 -->
+<!-- tarav.breadcrumb d012dbc89536 -->
+
+## Design
+
+Two independent checks: every chunk in the selected map belongs to at least
+one live batch; every live batch has a completed review of its current revision.
+Overlapping batches are independent obligations. No approval or review state
+is stored on a chunk. Aggregate uncovered chunks into one completeness signal;
+use one stable review signal per batch, rather than one action per chunk.
+<!-- tarav.breadcrumb b8bd245604d7 -->
+<!-- tarav.breadcrumb 828043d669e8 -->
+
+Choose one confirmed map at a committed review horizon. Routine selection uses
+the most recent ancestor map at least five days old, measured by target
+commit time, not mapping-record creation time; an explicit map overrides the
+horizon. Do not silently use a too-recent map when none qualifies. A map older
+than the preferred horizon is still usable and its date is visible. Branches
+outside HEAD ancestry and superseded mapping tracks are not routine candidates.
+This is implementation policy within the discussed older-map convention.
+<!-- tarav.breadcrumb d240980b8b0d -->
+
+Maintaining a batch selects its chunk IDs at that map and creates an immutable
+revision with a base revision ID, map ID, commit, title/purpose, actor, reason
+and exact selected chunk states. IDs stay stable across revisions. Membership
+changes are explicit Agent/User decisions, not inferred semantic regrouping.
+A batch becomes stale when membership disappears or a selected chunk's exact
+state differs at the chosen horizon. The maintainer reconciles membership,
+then discusses and completes that revision with a fresh token. Pure location
+moves also request this explicit, potentially quick, review. Unchanged selected
+states retain their review across unrelated map advances. Retirement is explicit
+and historical records remain available.
+<!-- tarav.breadcrumb 97a7aa58f020 -->
+<!-- tarav.breadcrumb a110a7493712 -->
+
+Review completion stores a presentation token, exact Agent presentation and
+later User completion Turn references, and optional outcome references. The
+Agent presentation must include the exact batch revision/map/commit and the
+token; the User must issue the displayed completion command in that session.
+Retain both cited Turns using Chatlas snapshots. Never synthesize a User token.
+Membership maintenance and review completion can happen in one chat and be
+covered by that one completion token.
+<!-- tarav.breadcrumb ce5e08509d02 -->
+
+### Current code and boundaries
+
+Inspected l1.product_mapping.model/mapper/checks/commands, l2.project.product_mapping,
+l2.project.Project, l3.runtime, l1.review.VerbatimReview, l1.chatlas.references
+and turn_snapshots, and mapping/Notebook evidence tests. ProductMap pins commit,
+tree, chunks and scope; ProductMapper already reads exact bytes and history.
+Existing VerbatimReview is for presented wording/Notebook operations, so do not
+reinterpret it as product-content approval. Add separate Product Review Records.
+No existing path needs deletion or compatibility migration. Existing map IDs
+and chunk IDs are reused; no rebuilding of mappings.
+
+Data shape first: l1.product_review owns Workflow, Batch, BatchRevision,
+ChunkState and ReviewCompletion Records. l2.product_review owns mapping/evidence
+integration, persistent tracker operations and checks; l2.project.product_review
+owns Project configuration/manager. Runtime composes registration and the thin
+product-review CLI. Standard Record Registry storage; explicit create only.
+Boundaries: validate IDs, selected chunks, evidence roles/order/token at writes;
+checks read only, preserve pending actions if horizon/config cannot be evaluated.
+
+Non-goals: automatic semantic grouping, performing actual reviews, approving
+content, executing follow-up work, general pipelines or map regeneration.
+No real review completion is recorded without the User's actual token.
+
+## Impl.Req.Wiki
+
+Product: tarav-py. Wiki owner: tarav-md/notes/wiki. Read product-mapping.md;
+add product-review-tracker.md and today's daily narrative at completion.
+Supporting session is declared above. Product and Wiki keep independent commits.
+Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-req.md.
+
+## Execution.Plan
+
+- [ ] Feature: immutable batch revisions and explicit retained review completion.
+  Python lifecycle: create, maintain/revise, inspect exact committed material,
+  present token, complete with validated evidence, retain history. Check real Git
+  and public Python API: overlaps, exact states, invalid IDs, stale transitions,
+  retirement, proper User/Agent roles, wrong tokens and old reviews preserved.
+- [ ] Feature: horizon selection, independent completeness/currency checks,
+  Project manager/config and installed product-review CLI. Check actual CLI and
+  Project status actions across no-map, uncovered, pending, completed and stale
+  states; no reads provision storage. Reinstall installed entrypoint.
+- [ ] Verify, capture supported design into Wiki daily/topical Notes, submit and
+  audit changed product surfaces, run required Project --all, close commits.
+
+## Impl.Log
+
+- Develop / Wiki / Interactive. User explicitly requests plan and execution.
+- Todo list above. Readiness: targets and patterns verified; no unresolved User
+  decision needed. Agent policy choices above remain distinct from User design.
+- Initial worktrees clean. Empty evidence start checkpoints created before edits;
+  hashes retained in /tmp/product-review-start-{py,md}-result.json.
+- Cold-reloaded the complete request before product edits. Start checkpoints:
+  Python 85054981, Markdown 93b922c6. Initial baseline command used a nonexistent
+  test_records.py; corrected to the actual generic Record test files.
