@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: executing. Correct the overbroad tarav-py run:
+Knowledge.Surface: wiki. Status: completed. Correct the overbroad tarav-py run:
 only committed .py files under src/ and tests/ belong in its active map. The
 User explicitly puts this scope in Project configuration, not engine defaults.
 Keep the generic workflow product-agnostic.
@@ -39,7 +39,7 @@ This corrects request 946's operational scope, not the underlying general design
   retired code and similarly named directories; config changes update selection.
 - [x] Data: preserve old run, rebuild scoped history, independently audit each
   snapshot and compare inventory with committed src/tests Python files.
-- [ ] Capture, checks and commits; final HEAD catch-up without changing scope.
+- [x] Capture, checks and commits; final HEAD catch-up without changing scope.
 
 ## Impl.Log
 
@@ -71,3 +71,14 @@ This corrects request 946's operational scope, not the underlying general design
   annotated. The superseded report is retained by the earlier product Git commit.
 - Broad root status --all is running. Final catch-up will follow completion
   commit; exact coordinates will be retained in the registry.
+- Full root status --all completed 1,346 checks, none incomplete. All 66 pytest
+  file suites passed with zero test POIs. The 66 older hook/security/test-marker,
+  prompt and SKW/Breadcrumb maintenance findings remain unchanged.
+- Slice commit 25c184a2; Wiki closure f3c90012. JSON/config and every changed
+  product/Notes surface audited clean. The data baseline 993f5f5b preserves the
+  rejected run; no additional data start checkpoint was made before its explicit
+  schema migration. Existing records' non-scope fields were verified unchanged.
+- Final catch-up is executed after this completion commit using the same Project
+  configuration adapter. Current selection: 563 files, 463 src and 100 tests.
+  Final commit/map coordinates are retained in the workflow registry so a tracked
+  report need not change after mapping HEAD.
