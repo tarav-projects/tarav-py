@@ -62,6 +62,7 @@ class ChatlasTurnReference(Reference):
 
     def locate(self, locator):
         coordinates = self.address()
+        # tarav.breadcrumb 95c9e396ea10
         from .turn_snapshots import retained_turn
 
         retained = retained_turn(coordinates)

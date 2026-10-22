@@ -1,7 +1,7 @@
 """JSON metadata and TOML comments through the Breadcrumb transaction."""
+# tarav.breadcrumb b6216ffba709
 
 import json
-from pathlib import Path
 import tomllib
 
 import pytest
@@ -62,6 +62,17 @@ def test_json_uses_only_explicit_metadata_and_preserves_string_spans():
     line = text.splitlines()[position.line - 1]
     assert json.loads(line[position.start_column:position.end_column]) == MARKER
     assert (marker.alias, marker.turn_prefix) == ("abcdef12", "0123456789abcdef")
+
+
+def test_compact_json_replaces_multiple_markers_without_shifting_spans(tmp_path):
+    path = tmp_path / "compact.json"
+    path.write_text(json.dumps({"tarav.breadcrumbs": [MARKER, MARKER], "value": 4}))
+    store = BreadcrumbStore(tmp_path / "store")
+    result = submit_annotations(path, store=store, workflow=Markers(), request=None)
+    parsed = json.loads(path.read_text())
+    assert parsed["tarav.breadcrumbs"] == [b.label for b in result.breadcrumbs]
+    assert len(result.breadcrumbs) == 2 and parsed["value"] == 4
+    assert all(store.resolve(b.id).position.path == path for b in result.breadcrumbs)
 
 
 def test_toml_does_not_read_comments_inside_any_string_form():

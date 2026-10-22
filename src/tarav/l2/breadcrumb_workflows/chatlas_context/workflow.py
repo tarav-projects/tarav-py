@@ -37,6 +37,7 @@ from tarav.l1.chatlas.session_resolver import resolve_session_index_row
 from tarav.l1.chatlas.normal_model import resolve_chat_turn_ref
 from tarav.l1.chatlas.query import ChatlasQuery, ChatlasQueryEngine, ChatlasQueryError
 from tarav.l1.chatlas.references import ChatlasTurnReference
+# tarav.breadcrumb 99f4db652467
 from tarav.l1.chatlas.turn_snapshots import TurnSnapshotStore, retained_turn
 from tarav.l1.surfaces.markdown import MarkdownNormalModel
 from tarav.l1.surfaces.python import PythonNormalModel
@@ -255,7 +256,7 @@ def _resolve_turn(
     does not confirm, or a session with no readable cache, costs one rebuild
     from raw, kept in memory for the rest of the audit and never written.
     """
-    retained = retained_turn(locator, chatlas_root=chatlas_root)
+    retained = retained_turn({**locator, "session_identity": identity}, chatlas_root=chatlas_root)
     if retained is not None:
         return retained
     if identity not in sessions:
@@ -326,6 +327,7 @@ def provisional_markers(text: str, language: str) -> tuple[ChatlasContextMarker,
                     )
                 )
         return tuple(result)
+    # tarav.breadcrumb b777d74c3d77
     if language in ("json", "toml"):
         pattern = _PYTHON_CONTEXT if language == "toml" else re.compile(_CONTEXT_CORE)
         return tuple(ChatlasContextMarker(item.position, match.group(1), match.group(2))

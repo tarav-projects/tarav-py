@@ -528,6 +528,7 @@ def _surface_labels(
             if item.kind == "line" and "tarav.breadcrumb" in item.text
         )
         pattern = _TYPESCRIPT_BREADCRUMB
+    # tarav.breadcrumb 8a832530dd90
     elif surface.language in ("json", "toml"):
         candidates.extend((item.position.line, item.text)
                           for item in data_markers(surface.text, surface.language)

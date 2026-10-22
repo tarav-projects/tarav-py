@@ -1,8 +1,10 @@
 """Retain exact cited Turns independently of replaceable Normal Model projections."""
+# tarav.breadcrumb fa4091790df4
 
 from hashlib import sha256
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import ConfigDict
 
@@ -10,11 +12,11 @@ from tarav.l0.kernel import FileRecord, TaravClass, TypeShip, TypedState, entity
 from tarav.l1.records import RecordRegistry
 
 from .identity import CHATLAS_WORKFLOW_SHIP
-from .normal_model.event_ref import compute_event_hash, resolve_event_ref
-from .normal_model.message_ref import compute_chat_message_hash, resolve_chat_message_ref
-from .normal_model.model import NormalModelSession, NormalModelSource
-from .normal_model.records import ChatMessage, ChatTurn, event_record
-from .normal_model.turn_ref import compute_chat_turn_hash
+from .normal_model import (
+    ChatMessage, ChatTurn, NormalModelSession, NormalModelSource,
+    compute_event_hash, compute_chat_message_hash, compute_chat_turn_hash,
+    event_record, resolve_event_ref, resolve_chat_message_ref,
+)
 
 
 class TurnSnapshot(TypedState, FileRecord):
@@ -28,13 +30,34 @@ class TurnSnapshot(TypedState, FileRecord):
     class RecordInterface(FileRecord.RecordInterface):
         model_config = ConfigDict(strict=True, extra="forbid")
 
-        type: str
+        type: Literal["Tarav.Chatlas.TurnSnapshot"]
         session: NormalModelSession
         sources: list[NormalModelSource]
         producer: str | None
         turn: ChatTurn.RecordInterface
         messages: list[ChatMessage.RecordInterface]
         events: list[dict]
+
+    class Records(FileRecord.Records):
+        def record_example(self):
+            event = {"type": "User.Event", "origin": "user",
+                     "event_address": "1" * 64, "started_at": "2026-01-01T00:00:00Z",
+                     "opaque_payload_hash": "2" * 64, "content": {"text": "Example"},
+                     "observations": [{"observed_at": "2026-01-01T00:00:00Z",
+                                       "source_ref": {"source_id": "example", "record_index": 1, "line": 1}}]}
+            event["event_hash"] = compute_event_hash(event)
+            ref = {k: event[k] for k in ("event_address", "event_hash")}
+            message = {"type": "Chat.Message", "side": "user", "text": "Example",
+                       "message_address": "3" * 64, "event_refs": [ref]}
+            message["message_hash"] = compute_chat_message_hash(message)
+            turn = {"type": "Chat.Turn", "side": "user", "turn_address": "4" * 64,
+                    "event_refs": [ref], "message_refs": [{k: message[k] for k in ("message_address", "message_hash")}]}
+            turn["turn_hash"] = compute_chat_turn_hash(turn, opaque_payload_hashes=[event["opaque_payload_hash"]])
+            return {"type": "Tarav.Chatlas.TurnSnapshot", "producer": None,
+                    "session": {"provider": "codex", "session_id": "example", "identity_hash": "0" * 64},
+                    "sources": [{"source_id": "example", "path": "/example.jsonl", "role": "transcript",
+                                 "raw_model_version": None, "status": "recognized"}],
+                    "turn": turn, "messages": [message], "events": [event]}
 
     @classmethod
     def _from_record(cls, loaded):
@@ -69,9 +92,14 @@ class TurnSnapshot(TypedState, FileRecord):
         addressed = [resolve_event_ref(events, ref) for ref in turn["event_refs"]]
         if any(t["standing"] != "MATCHED" for t in addressed):
             raise ValueError("Snapshot Turn Event is not exact")
-        if len(events) != len(addressed) or any(e["origin"] != turn["side"] for e in events):
+        if ({r["event_address"] for r in turn["event_refs"]}
+                != {e["event_address"] for e in events}
+                or len(events) != len(addressed)
+                or any(e["origin"] != turn["side"] for e in events)):
             raise ValueError("Snapshot Event membership disagrees with Turn")
-        if (len(messages) != len(turn["message_refs"]) or any(
+        if ({r["message_address"] for r in turn["message_refs"]}
+                != {m["message_address"] for m in messages}
+                or len(messages) != len(turn["message_refs"]) or any(
                 resolve_chat_message_ref(messages, ref)["standing"] != "MATCHED"
                 for ref in turn["message_refs"])):
             raise ValueError("Snapshot Turn Message is not exact")
@@ -134,6 +162,7 @@ class TurnSnapshotStore:
             self.map.insert(key, snapshot)
         except FileExistsError:
             return self.find(locator)
+        self.map.commit((key,), "Retain exact cited Chatlas Turn")
         return snapshot
 
 

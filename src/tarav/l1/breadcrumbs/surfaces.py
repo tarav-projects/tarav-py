@@ -13,6 +13,7 @@ from .workflows import BreadcrumbAnnotationWorkflow, PreparedAnnotation
 
 
 # tarav.breadcrumb 8e22d670e075
+# tarav.breadcrumb 81884a16846c
 SURFACE_LANGUAGES = ("markdown", "python", "typescript", "json", "toml")
 TYPESCRIPT_SUFFIXES = frozenset({".ts", ".tsx", ".mts", ".cts"})
 UNSUPPORTED_LANGUAGE = "Breadcrumb surface language must be markdown, python, typescript, json or toml"
@@ -95,7 +96,11 @@ def submit_annotations(
     original_lines = document.text.splitlines()
     rewritten = document.text.splitlines(keepends=True)
     submitted: list[SubmittedBreadcrumb] = []
-    for annotation, breadcrumb_id, core_label in labelled:
+    label_order = {item[1]: index for index, item in enumerate(labelled)}
+    # Columns refer to the original text; replace right to left on each line.
+    for annotation, breadcrumb_id, core_label in sorted(
+        labelled, key=lambda item: (item[0].marker.line, -item[0].marker.start_column)
+    ):
         rendered = render_surface_label(selected_language, core_label)
         marker = annotation.marker
         current = rewritten[marker.line - 1]
@@ -130,7 +135,7 @@ def submit_annotations(
         path,
         selected_language,
         workflow.name,
-        tuple(submitted),
+        tuple(sorted(submitted, key=lambda item: label_order[item.id])),
     )
 
 
@@ -166,16 +171,18 @@ def _validate_annotations(
     annotations: tuple[PreparedAnnotation, ...],
 ) -> None:
     lines = surface.text.splitlines()
-    occupied: set[int] = set()
+    occupied: dict[int, list[tuple[int, int]]] = {}
     for annotation in annotations:
         marker = annotation.marker
         if marker.line < 1 or marker.line > len(lines):
             raise BreadcrumbError("Breadcrumb workflow returned an invalid marker line")
-        if marker.line in occupied:
+        spans = occupied.setdefault(marker.line, [])
+        if any(marker.start_column < end and start < marker.end_column
+               for start, end in spans):
             raise BreadcrumbError(
-                "A surface line cannot contain multiple Breadcrumb markers"
+                "Breadcrumb marker spans must not overlap"
             )
-        occupied.add(marker.line)
+        spans.append((marker.start_column, marker.end_column))
         line = lines[marker.line - 1]
         if not 0 <= marker.start_column < marker.end_column <= len(line):
             raise BreadcrumbError("Breadcrumb workflow returned an invalid marker span")

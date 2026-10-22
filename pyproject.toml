@@ -35,8 +35,10 @@ dev = [
 extend-exclude = ["_DEPRECATED"]
 
 [tool.pytest.ini_options]
+# tarav.breadcrumb c7c6b1f3fb5a
 testpaths = [
     "tests/chatlas_normal_model/test_rollout_collisions.py",
+    "tests/chatlas_normal_model/test_turn_snapshots.py",
     "tests/breadcrumbs/test_data_surfaces.py",
     "tests/test_project_managers.py",
     "tests/test_notebook_evidence.py",

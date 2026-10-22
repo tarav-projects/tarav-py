@@ -113,6 +113,7 @@ def build_normal_model_from_row(
 
     # Record indexes are local to native tapes, even when they repeat the
     # same session_meta. Keep conflicting payloads, and merge true copies.
+    # tarav.breadcrumb 0e769734544a
     variants: dict[str, dict[str, JsonObject]] = {}
     for fragment in fragments:
         for event in fragment.events:

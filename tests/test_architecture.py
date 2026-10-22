@@ -868,6 +868,7 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
         elif path.name not in {
             "commands.py",
             "references.py",
+            # tarav.breadcrumb ec8098bd97fb
             "turn_snapshots.py",
             "normal_model_cache.py",
             "workflow.py",

@@ -8,6 +8,7 @@ from tarav.l1.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 from .normal_model import CHATLAS_SEMANTIC_RECORD_TYPES, ChatlasNormalModel
 from .references import ChatlasTurnReference
 from .sessions import ChatSession
+# tarav.breadcrumb 62c3961913f2
 from .turn_snapshots import TurnSnapshot
 
 

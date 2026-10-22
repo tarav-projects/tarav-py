@@ -976,6 +976,19 @@ mechanical assertion engine under Unsorted is not folded into this model yet.
 - References is lower than Archive and other specialized Reference producers.
 - Breadcrumbs and Chatlas remain independent. Their contextual annotation
   behavior lives in `breadcrumb_workflows.chatlas_context`.
+- Breadcrumb data surfaces use TOML comments and explicit JSON
+  `tarav.breadcrumbs` string arrays at schema-permitted object positions.
+  Submission and auditing parse native syntax and ignore ordinary strings.
+  Multiple metadata markers on one line retain their original source spans.
+  <!-- tarav.breadcrumb ecfe9c89b344 -->
+- Chatlas retains distinct native payloads when rollouts reuse an Event address;
+  exact copies merge observations. Dependent Messages and Contexts follow their
+  own payload variant. Cited Turns are retained with hash-checked Messages,
+  Events and raw-source observations in the Chatlas Record Registry partition.
+  References identify the same exact coordinates and explicitly report a
+  `retained-snapshot` representation when resolved there. Replaceable current
+  Normal Models and immutable cited evidence have separate roles.
+  <!-- tarav.breadcrumb 7a57d9033198 -->
 - Commit evidence registers Breadcrumb identity and typed attachments before
   Git mutation, then appends the exact commit-message position as an observation.
   The commit retains a versioned evidence envelope so registration can recover

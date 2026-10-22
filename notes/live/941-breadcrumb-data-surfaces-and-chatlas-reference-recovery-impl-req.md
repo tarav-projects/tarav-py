@@ -1,11 +1,17 @@
 # Breadcrumb data surfaces and exact Chatlas reference recovery
 
+<!-- tarav.sessions
+ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015415da94eeb1a17634872aa4fb9e25d8e065ab53
+-->
+
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: developing.
 The User requested fixes for the investigated provenance gaps, explicitly
 including native JSON and TOML Breadcrumb support. Preserve unrelated Notebook
 work and existing evidence targets. No heuristic retargeting of old references.
+<!-- tarav.breadcrumb 8f3ccc85c105 -->
+<!-- tarav.breadcrumb 0e492270e444 -->
 
 ## Design and measured evidence
 
@@ -72,5 +78,48 @@ Exact current-session evidence will be attached during closure.
 
 - Start checkpoint e34051b9149285206c667a0682c6ccf809b3ab45 retains existing
   independent Notebook work as found; no changes were discarded.
-- JSON/TOML native support and tests are in progress. Existing Markdown,
+- JSON/TOML native support and tests are complete. Existing Markdown,
   Python and TypeScript contracts remain supported. No fake JSON comments.
+- Cold read confirmed a bounded data-surface change plus independent exact
+  reference recovery. No workflow primitive or Project manager redesign needed.
+- Concurrent Archive DOI work checkpointed the initial implementation in
+  be281910; its later 6058ca35 commit retained the shared architecture test.
+  External Archive changes were preserved. The tarav-md start checkpoint is
+  0bb5ce5d33fedc21d6b1456b53e02a41c462ee49 (existing Archive documentation).
+- Focused verification: 87 tests pass across Breadcrumbs, Chatlas, Normal
+  Model collisions, snapshots, Query, cache, index and raw-version behavior.
+  Snapshots validate Event, Message and Turn hashes, exact membership, text,
+  source observations and pinned coordinates; reads never create storage.
+- Recovered all nine historical Turns backing twelve reported labels by
+  exact reconstruction from retained raw. Seven used the current normalizer
+  on individual tapes, two the historical pre-voice normalizer from Git.
+  No historical normalizer is shipped. Snapshots retain the producer commit.
+- Rebuilding the session exposed four more previously cited Turn boundaries
+  changed by the merge fix. Retained their exact prior hash-checked projection
+  and protected all 140 matching existing attachments from that session before
+  discarding the diagnostic projection. All three original affected surfaces
+  now audit clean: zero POIs, zero errors. Labels and attachments are unchanged.
+- The production session cache now holds 10,031 Events, 779 Messages and
+  1,554 Turns. Current projection and retained cited representations remain
+  explicitly distinct. Raw artifacts were not rewritten by recovery.
+- Reindexed exactly the affected session with ChatlasStages.update_index
+  policy `all`: one indexed, zero failed. Other sessions were not rebuilt.
+- All three slices are verified. The collision regression lost the first
+  request before the fix and now retains both with correct raw observations;
+  reversed source enumeration gives the same semantic addresses.
+- Complete Python verification: `uv run pytest -q` passed 558 tests;
+  `uv run ruff check src tests tooling` passed. After the final compact-array
+  ordering improvement, all twelve data-surface tests passed again.
+- Product capture created 27 Breadcrumbs across 21 code, test, configuration,
+  request, skill-source and Wiki surfaces. Final batch audit: 21 OK, zero POIs,
+  zero errors. Both the real AGENTS JSON source and pyproject TOML use their
+  new native conventions. JSON metadata at the AGENTS source was merged with
+  the concurrently captured existing array rather than replacing it.
+- Authoritative SKW source was edited and compiled. Four changed generated
+  guidance blocks were prepared and recorded explicitly. The two unchanged
+  blocks were reviewed against their changed constitutional context and
+  explicitly observed; final document lint has no findings. The Project
+  prompt is a manual block without a code producer; its compile has no findings.
+- The installed editable CLI was reinstalled and exposes both new formats.
+  Wiki capture destinations are breadcrumbs.md, chatlas-normal-model.md and
+  daily/2026-10-22.md. There are no pending capture gaps on this implementation.
