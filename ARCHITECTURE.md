@@ -359,12 +359,26 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   synchronous and unrelated to the daemon's event hooks in `tarav.l1.hooks`.
   A handler may stop Git with `GitHookRefusal`, overruled through
   `TARAV_GIT_HOOKS_OVERRULE`. `tarav.l1.git.witness` keeps, outside the
-  repositories, the tarav-change IDs each Project branch had; tarav-change
+  repositories, the tarav-change IDs each repository DOI and branch had; tarav-change
   stops commits that lost some and hands stops and overrules to
   `ActionManager.register`, which registers actions without treating the
   results as a whole run of the Project's checks.
 <!-- tarav.breadcrumb 547dbca67291 -->
 <!-- tarav.breadcrumb c61ceaf85a21 -->
+- `tarav.l1.archive.references.RepositoryReference` records a repository DOI,
+  exact commit and tree, optional Change-ID and relative file path. Lookup
+  returns its maintained declaration and coordinates. `tarav.l2.git.archive`
+  explicitly consumes local Git: capture pins those coordinates; resolution
+  prefers the original commit, otherwise accepts exactly one Change-ID candidate
+  with the captured tree. Ambiguous or changed trees fail without rewriting the
+  reference. The tree includes `.tarav/changes`.
+- Hook installation binds repository identity independently of action ownership:
+  `tarav git hooks install --repo PATH --owner-project PATH --handler tarav-change`.
+  Witnesses use `git-changes/repositories/<doi>/`, with no Project-key fallback.
+  `OwnedRepositorySuite` in the featured Project rediscovers bound repositories
+  through Archive and rechecks their changes for the owner. Inaccessible local
+  repositories prevent discovery completion from falsely closing past findings.
+<!-- tarav.breadcrumb 3e2e99a09755 -->
 - `tarav.l1.git.gitleaks` integrates the gitleaks binary: gitleaks detects,
   Tarav keeps each run's raw report in a depot outside the repositories and
   a repository's `GitleaksSuite` (keyed by the repository, the detector of its
@@ -976,11 +990,15 @@ mechanical assertion engine under Unsorted is not folded into this model yet.
 - References is lower than Archive and other specialized Reference producers.
 - Breadcrumbs and Chatlas remain independent. Their contextual annotation
   behavior lives in `breadcrumb_workflows.chatlas_context`.
-- Breadcrumb data surfaces use TOML comments and explicit JSON
-  `tarav.breadcrumbs` string arrays at schema-permitted object positions.
-  Submission and auditing parse native syntax and ignore ordinary strings.
-  Multiple metadata markers on one line retain their original source spans.
+- Breadcrumbs have embedded and external placement in the same registry.
+  Embedded placement uses native Markdown/Python/TypeScript/TOML comments.
+  External observations retain a file, line and exact single-line fragment;
+  reads check the latest line, then search that file, exposing ambiguity or a
+  missing external anchor without deleting identity or attachments. Maintainers
+  explicitly append replacement locations. JSON is read-only for the workflow;
+  its former `tarav.breadcrumbs` metadata convention remains inspectable.
   <!-- tarav.breadcrumb ecfe9c89b344 -->
+  <!-- tarav.breadcrumb 2a5832c3c7cc -->
 - Chatlas retains distinct native payloads when rollouts reuse an Event address;
   exact copies merge observations. Dependent Messages and Contexts follow their
   own payload variant. Cited Turns are retained with hash-checked Messages,

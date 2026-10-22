@@ -149,8 +149,10 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
   whoever commits rethinks; `TARAV_GIT_HOOKS_OVERRULE=<handler>` overrules it.
   tarav-change stops a commit whose `.tarav/changes` lost IDs that the
   witness (`tarav.l1.git.witness`, under `~/Documents/tarav/git-changes/`, per
-  Project and branch) saw at the branch's last commit; stops and overrules
-  become actions of the Project.
+  repository DOI and branch) saw at the branch's last commit; stops and overrules
+  become actions of its owning Project. Hook installation binds repository
+  identity separately from ownership; ordinary Git repositories use
+  `tarav git hooks install --repo PATH --owner-project PATH --handler tarav-change`.
   <!-- tarav.breadcrumb 1413fcedc6ff -->
   Gitleaks (`tarav.l1.git.gitleaks`) is a default handler: a Project whose
   config names none gets it, and its checks report the hooks as not

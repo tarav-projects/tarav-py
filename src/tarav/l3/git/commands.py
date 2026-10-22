@@ -9,9 +9,11 @@ from pathlib import Path
 from tarav.l0._core.errors import CliError
 from tarav.l1.breadcrumbs import BreadcrumbError, BreadcrumbStore
 from tarav.l1.git import GitError
+from tarav.l1.archive import Archive
 from tarav.l1.git.change import find
 from tarav.l1.git.gitleaks import GitleaksUnavailable, owner_of, register_run, run_gitleaks
-from tarav.l1.git.hooks import install, run_hook
+from tarav.l1.git.hooks import run_hook
+from tarav.l2.git.archive import install_repository_hooks
 from tarav.l0.project import require_agentos_project
 from tarav.l1.usage import describe_file
 from tarav.l2.breadcrumb_workflows.chatlas_context import (
@@ -65,8 +67,16 @@ def _cmd_hook(args: argparse.Namespace) -> int:
 
 
 def _cmd_hooks_install(args: argparse.Namespace) -> int:
-    root = require_agentos_project(args.project.expanduser().resolve()).root.resolve()
-    config = install(root, add=args.handlers)
+    # tarav.breadcrumb 83ff9a43444f
+    root = (require_agentos_project(args.project.expanduser().resolve()).root.resolve()
+            if args.project is not None else args.repo.expanduser().resolve())
+    try:
+        config = install_repository_hooks(root, add=args.handlers, owner=args.owner_project,
+                                          repository_id=args.repository_doi,
+                                          archive=None if args.registry is None else
+                                          Archive(args.registry))
+    except (OSError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
     if args.json:
         print(json.dumps({"project": str(root), **config.model_dump(mode="json")}, indent=2))
     else:
@@ -152,10 +162,15 @@ def register_commands(subparsers: argparse._SubParsersAction) -> None:
         "install",
         help="Make the Project's repository run the hooks its config selects.",
     )
-    hooks_install.add_argument(
-        "--project", type=Path, nargs="?", const=Path("."), required=True,
+    location = hooks_install.add_mutually_exclusive_group(required=True)
+    location.add_argument(
+        "--project", type=Path, nargs="?", const=Path("."),
         help="Search this directory and parents for a Project; optionally start at PATH.",
     )
+    location.add_argument("--repo", type=Path, help="A Git working-tree root; need not be a Project.")
+    hooks_install.add_argument("--owner-project", type=Path, help="Project that owns hook actions.")
+    hooks_install.add_argument("--repository-doi", help="Bind an already registered Repository DOI.")
+    hooks_install.add_argument("--registry", type=Path, help="Optional DOI Registry partition.")
     hooks_install.add_argument("--handler", dest="handlers", action="append", default=[],
                                help="Add this handler to the Project's config first; repeatable.")
     hooks_install.add_argument("--json", action="store_true")

@@ -20,7 +20,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from tarav.l0._core.errors import CliError
 from tarav.l0._core.git_repository import GitError, git_result, run_git
@@ -55,11 +55,15 @@ class GitHooksConfig(BaseModel):
 
 
 class GitConfig(BaseModel):
+    # tarav.breadcrumb ec8cb60902d8
     """The `git` section of a Project's config, owned by the Git workflow."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
     hooks: GitHooksConfig | None = None
+    repository: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    repository_registry: str | None = None
+    owner: str | None = None
 
 
 # tarav.breadcrumb 7336e756890d

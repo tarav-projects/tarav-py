@@ -34,8 +34,10 @@ class Project(TaravProject):
             from tarav.l2.tests.actions import TestFixturesSuite
             # tarav.breadcrumb b4812048cdc1
             from tarav.l2.project.notebook_checks import ProjectNotebookSuite
+            from tarav.l2.git.archive import OwnedRepositorySuite
+            # tarav.breadcrumb 01089efbfdf1
 
-            return CheckSuite([super().suite(), ProjectNotebookSuite(self.obj),
+            return CheckSuite([super().suite(), ProjectNotebookSuite(self.obj), OwnedRepositorySuite(self.obj),
                                CheckSuite(lambda run: TestFixturesSuite.present(self.obj.root))],
                               name=self.obj.name, repositories=self.obj.repositories())
 

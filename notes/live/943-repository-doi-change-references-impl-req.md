@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: designed; execute after cold reload. Knowledge.Surface: wiki.
+Status: executing after cold reload. Knowledge.Surface: wiki.
 
 Integrate Archive repository-specialized references with tarav-change before
 Notebook adopts them. Archive returns maintained repository declarations and
@@ -21,6 +21,7 @@ The User requested Archive repository references already integrated with
 tarav-change. Prior discussion established that Archive lookup returns typed
 information, consumers perform access, and history recovery must not silently
 change captured evidence. The Develop invocation authorizes this bounded pass.
+<!-- tarav.breadcrumb 8eee1c8a8a39 -->
 
 Core shape and access paths:
 
@@ -28,7 +29,7 @@ Core shape and access paths:
   and repository DOI plus an exact commit, optional Change-ID and relative path,
   and required Git tree OID. Lookup returns a repository declaration with those
   coordinates; it neither opens Git nor downloads the external resource.
-- `l2.archive_git` composes Archive declarations with existing Git mechanics.
+- `l2.git.archive` composes Archive declarations with existing Git mechanics.
   Capture reads an explicitly supplied local repository and pins its commit/tree
   and any Change-ID actually carried by that commit; it never invents a marker
   for an older commit. Resolution tries declared local locations on this host,
@@ -82,11 +83,11 @@ Breadcrumbs. No compiled skill contract needs changing for this Python-first API
 
 ## Execution.Plan
 
-- [ ] Feature: add the typed declarative RepositoryReference and explicit Git
+- [x] Feature: add the typed declarative RepositoryReference and explicit Git
   capture/resolution integration. Tests: repository relocation, exact commits,
   absent originals with equivalent trees, mismatched trees, ambiguous candidates,
   optional file content and custom Type registries; lookup does no Git work.
-- [ ] Feature/refactor: introduce DOI binding and rekey witness/overrule records,
+- [x] Feature/refactor: introduce DOI binding and rekey witness/overrule records,
   update hooks/CLI and callers. Tests: two repositories sharing a Project remain
   independent, ordinary non-Project repositories work, missing bindings surface,
   branch/amend/rebase/refusal/overrule and action ownership remain correct.
@@ -102,3 +103,25 @@ Breadcrumbs. No compiled skill contract needs changing for this Python-first API
 - Current code, tests, Wiki and live witness metadata inspected. Design separates
   declaration lookup, candidate discovery and exact-state acceptance deliberately.
 - Todo order is the Execution.Plan above. No Notebook adoption in this pass.
+- Start checkpoints: Python `b89da4c99196f97f6bccd1375ccdb32e59c2b914`;
+  Markdown `e1200cef964d36e95b61fe860c814ab97ab26e34`.
+- Implemented the declarative reference, explicit Git capture/resolution, DOI
+  hook binding, repository-keyed witnesses and owner routing. Added
+  `OwnedRepositorySuite` so normal owner status can revisit ordinary repositories
+  and close recovered findings. Discovery conservatively remains incomplete if
+  any declared local repository cannot be inspected.
+- Architecture verification caught a subsystem cycle from the proposed
+  `l2.archive_git` placement; the integration lives in `l2.git.archive` instead.
+  This preserves the existing layering and public behavior.
+- Focused integration: 47 tests passed (references, hooks, change, Archive,
+  Project). Architecture and reference recheck: 62 passed. Ruff passed.
+- Migrated the one live tarav-py witness, preserving its branch and changes under
+  repository DOI `03618818cfd4c94c87ddca4bfbb26f4bd1f31c86069b0865b1d3bfb0f074848b`.
+  Original bytes are hash-verified in Attic deposit
+  `20261022T172653Z-project-keyed-git-witness`; the migrated check has no findings.
+  A real commit must still verify the new witness update.
+- Installed editable CLI refreshed and authoritative AGENTS source rebuilt.
+  Product and Wiki capture submitted successfully; the request already carried
+  its registered Breadcrumb. JSON config and SKW source use external placement.
+- ARCHITECTURE.md also contains concurrent external Breadcrumb work; that shared
+  file will be committed as found. Other session changes remain outside scope.

@@ -275,9 +275,11 @@ def create_runtime(
     """
     # tarav.breadcrumb ff49f8b4c27e
     from tarav.l1.archive import DOI_RECORD_TYPES
-    from tarav.l1.archive.references import DOIReference
+    from tarav.l1.archive.references import DOIReference, RepositoryReference
     from tarav.l1.archive.checks import ARCHIVE_ACTION_TYPES, ARCHIVE_CHECK_TYPES
     from tarav.l1.archive.workflow import ArchiveWorkflow
+    from tarav.l2.git.archive import OwnedRepositorySuite
+    # tarav.breadcrumb 0f372f5b276b
     from tarav.l2.breadcrumb_workflows.chatlas_context import (
         chatlas_context_integration,
     )
@@ -454,6 +456,8 @@ def create_runtime(
                 *ARCHIVE_CHECK_TYPES,
                 *RECORD_ARCHIVE_TYPES,
                 DOIReference,
+                RepositoryReference,
+                OwnedRepositorySuite,
                 Wiki,
                 WikiNote,
                 Project,

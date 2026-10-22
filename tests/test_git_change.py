@@ -12,13 +12,18 @@ import pytest
 
 from tarav.l1.git import GitError, GitRepository
 from tarav.l1.git.change import CHANGES_FILE, TaravChangeCheck, find
-from tarav.l1.git.hooks import install
+from tarav.l2.git.archive import install_repository_hooks as install
+# tarav.breadcrumb 7df4563f5b18
 from tarav.l1.git.witness import ChangeWitnesses
 from tarav.l2.project import Project
 from tarav.l3.runtime import create_runtime
 
 
 PROJECT_ID = "20c26be7-a8e5-4974-9ec0-0b5a3a125a94"
+
+
+def repository_id(root):
+    return json.loads((root / ".tarav/config.json").read_text())["git"]["repository"]
 
 
 @pytest.fixture(autouse=True)
@@ -225,7 +230,7 @@ def drop_first_line(root: Path) -> str:
 def test_the_witness_takes_each_commits_ids(tmp_path: Path) -> None:
     root = repository(tmp_path)
     committed(root, "second")
-    witness = ChangeWitnesses().get(PROJECT_ID, "main")
+    witness = ChangeWitnesses().get(repository_id(root), "main")
     assert witness.changes == (root / CHANGES_FILE).read_text().split()
     assert len(witness.changes) == 2
 
@@ -255,9 +260,9 @@ def test_an_overrule_commits_records_itself_and_moves_the_witness(tmp_path: Path
 
     assert passed.returncode == 0, passed.stderr
     head = git(root, "rev-parse", "HEAD").strip()
-    [overrule] = ChangeWitnesses().overrules(PROJECT_ID)
+    [overrule] = ChangeWitnesses().overrules(repository_id(root))
     assert (overrule.branch, overrule.commit, overrule.missing) == ("main", head, [lost])
-    assert lost not in ChangeWitnesses().get(PROJECT_ID, "main").changes
+    assert lost not in ChangeWitnesses().get(repository_id(root), "main").changes
     assert actions(root) == [("Tarav.Git.Change.Overruled", {"branch": "main", "commit": head})]
     assert found(root) == [("TaravChangeOverruled", {"branch": "main", "commit": head})]
     assert committed(root, "fourth").returncode == 0  # the witness accepted the rewrite
@@ -273,7 +278,7 @@ def test_the_check_sees_a_rewrite_between_commits_and_a_commit_that_skipped_the_
     drop_first_line(root)
     git(root, "commit", "-qam", "skips the hooks", "--no-verify")
     assert [name for name, _ in found(root)].count("TaravChangeRemoved") == 1
-    assert len(ChangeWitnesses().get(PROJECT_ID, "main").changes) == 2  # kept, so it keeps reporting
+    assert len(ChangeWitnesses().get(repository_id(root), "main").changes) == 2  # kept
 
 
 def test_each_branch_has_its_own_witness(tmp_path: Path) -> None:
@@ -281,5 +286,5 @@ def test_each_branch_has_its_own_witness(tmp_path: Path) -> None:
     committed(root, "second")
     git(root, "checkout", "-qb", "older", "HEAD~1")  # lacks main's latest ID, legitimately
     assert committed(root, "on older").returncode == 0
-    assert len(ChangeWitnesses().get(PROJECT_ID, "older").changes) == 2
-    assert len(ChangeWitnesses().get(PROJECT_ID, "main").changes) == 2
+    assert len(ChangeWitnesses().get(repository_id(root), "older").changes) == 2
+    assert len(ChangeWitnesses().get(repository_id(root), "main").changes) == 2

@@ -1,12 +1,13 @@
 """The witness of tarav-change IDs, kept outside the repositories it watches.
 
 `.tarav/changes` is append-only, but a history rewrite can cut it, and the
-repository then shows nothing. The witness remembers, per Project and
+repository then shows nothing. The witness remembers, per repository DOI and
 branch, which IDs the branch had at its last commit, so the next commit or
 check can tell that some are gone. It is machine-local and best effort: it
 finds nothing new, it only notices a loss.
 """
 
+# tarav.breadcrumb ab49af8c0c9c
 from __future__ import annotations
 
 import json
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from tarav.l0._core.data_root import default_tarav_data_root
 from tarav.l0._core.persistence import atomic_write_json
@@ -30,7 +31,7 @@ WITNESS_ENV_VAR = "TARAV_GIT_CHANGES_ROOT"
 # tarav.breadcrumb 709971905b10
 # tarav.breadcrumb 46dd1f5a78f3
 class ChangeWitness(TaravObject):
-    """The tarav-change IDs one branch of one Project had at its last commit."""
+    """The tarav-change IDs one repository branch had at its last commit."""
 
     @classmethod
     def class_entity(cls) -> TaravClass:
@@ -41,27 +42,32 @@ class ChangeWitness(TaravObject):
         model_config = ConfigDict(strict=True, extra="forbid")
 
         type: Literal["Tarav.Git.Change.Witness"]
-        project: str
+        repository: str = Field(pattern=r"^[0-9a-f]{64}$")
+        project: str | None = None
         branch: str
         changes: list[str]
         at: str
 
-    def __init__(self, *, project: str, branch: str, changes: list[str], at: str) -> None:
+    def __init__(self, *, repository: str, project: str | None = None,
+                 branch: str, changes: list[str], at: str) -> None:
         super().__init__()
+        self.repository = repository
         self.project, self.branch, self.changes, self.at = project, branch, list(changes), at
 
     @classmethod
     def _from_record(cls, loaded: LoadedRecord):
-        return cls(project=loaded.data.project, branch=loaded.data.branch,
+        return cls(repository=loaded.data.repository, project=loaded.data.project, branch=loaded.data.branch,
                    changes=loaded.data.changes, at=loaded.data.at)
 
     def _to_record(self):
-        return {"type": entity(type(self)).name, "project": self.project, "branch": self.branch,
+        return {"type": entity(type(self)).name, "repository": self.repository,
+                "project": self.project, "branch": self.branch,
                 "changes": list(self.changes), "at": self.at}
 
     class Records(TaravObject.Records):
         def record_example(self) -> dict[str, object]:
-            return {"type": entity(self._owner).name, "project": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
+            return {"type": entity(self._owner).name, "repository": "a" * 64,
+                    "project": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
                     "branch": "main", "changes": ["63736466-86f6-4d42-b164-8e7c56502a20"],
                     "at": "2026-10-16T00:00:00+00:00"}
 
@@ -79,30 +85,35 @@ class ChangeOverrule(TaravEntity):
         model_config = ConfigDict(strict=True, extra="forbid")
 
         type: Literal["Tarav.Git.Change.Overrule"]
-        project: str
+        repository: str = Field(pattern=r"^[0-9a-f]{64}$")
+        project: str | None = None
         branch: str
         commit: str
         missing: list[str]
         at: str
 
-    def __init__(self, id: Ship, *, project: str, branch: str, commit: str, missing: list[str],
-                 at: str) -> None:
+    def __init__(self, id: Ship, *, repository: str, project: str | None = None,
+                 branch: str, commit: str, missing: list[str], at: str) -> None:
         super().__init__(id)
+        self.repository = repository
         self.project, self.branch, self.commit = project, branch, commit
         self.missing, self.at = list(missing), at
 
     @classmethod
     def _from_record(cls, loaded: LoadedRecord):
-        return cls(loaded.data.id, project=loaded.data.project, branch=loaded.data.branch,
+        return cls(loaded.data.id, repository=loaded.data.repository,
+                   project=loaded.data.project, branch=loaded.data.branch,
                    commit=loaded.data.commit, missing=loaded.data.missing, at=loaded.data.at)
 
     def _to_record(self):
-        return {**super()._to_record(), "project": self.project, "branch": self.branch,
+        return {**super()._to_record(), "repository": self.repository,
+                "project": self.project, "branch": self.branch,
                 "commit": self.commit, "missing": list(self.missing), "at": self.at}
 
     class Records(TaravEntity.Records):
         def record_example(self) -> dict[str, object]:
             return {"type": entity(self._owner).name, "id": "4c0b6e1d-93a2-4f57-b8d1-2e6a9f0c7b35",
+                    "repository": "a" * 64,
                     "project": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94", "branch": "main",
                     "commit": "0c6a7501c6caace13e15a00add8d0995d52ff1e6",
                     "missing": ["63736466-86f6-4d42-b164-8e7c56502a20"],
@@ -110,36 +121,42 @@ class ChangeOverrule(TaravEntity):
 
 
 class ChangeWitnesses:
-    """The witness depot: one witness per Project and branch, and the overrules."""
+    """One witness per repository DOI and branch; Project is ownership metadata."""
 
     def __init__(self, root: Path | str | None = None) -> None:
         override = os.environ.get(WITNESS_ENV_VAR)
         chosen = root if root is not None else override or default_tarav_data_root() / "git-changes"
         self.root = Path(chosen).expanduser().resolve()
 
-    def _branch_path(self, project: str, branch: str) -> Path:
-        return self.root / project / "branches" / f"{quote(branch, safe='')}.json"
+    def _repository_path(self, repository: str) -> Path:
+        import re
+        if re.fullmatch(r"[0-9a-f]{64}", repository) is None:
+            raise ValueError("Witness requires an exact repository DOI")
+        return self.root / "repositories" / repository
 
-    def get(self, project: str, branch: str) -> ChangeWitness | None:
-        path = self._branch_path(project, branch)
+    def _branch_path(self, repository: str, branch: str) -> Path:
+        return self._repository_path(repository) / "branches" / f"{quote(branch, safe='')}.json"
+
+    def get(self, repository: str, branch: str) -> ChangeWitness | None:
+        path = self._branch_path(repository, branch)
         if not path.is_file():
             return None
         return ChangeWitness.records.from_record(json.loads(path.read_text(encoding="utf-8")))
 
     def put(self, witness: ChangeWitness) -> None:
-        path = self._branch_path(witness.project, witness.branch)
+        path = self._branch_path(witness.repository, witness.branch)
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(path, witness.records.to_record(), ensure_ascii=False)
 
     def add_overrule(self, overrule: ChangeOverrule) -> None:
-        folder = self.root / overrule.project / "overrules"
+        folder = self._repository_path(overrule.repository) / "overrules"
         folder.mkdir(parents=True, exist_ok=True)
         text = json.dumps(overrule.records.to_record(), ensure_ascii=False, indent=2) + "\n"
         with (folder / f"{overrule.id}.json").open("x", encoding="utf-8") as handle:
             handle.write(text)
 
-    def overrules(self, project: str) -> list[ChangeOverrule]:
-        folder = self.root / project / "overrules"
+    def overrules(self, repository: str) -> list[ChangeOverrule]:
+        folder = self._repository_path(repository) / "overrules"
         paths = sorted(folder.glob("*.json")) if folder.is_dir() else []
         return [ChangeOverrule.records.from_record(json.loads(path.read_text(encoding="utf-8")))
                 for path in paths]

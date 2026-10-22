@@ -16,6 +16,7 @@ until restored or overruled, and stops and overrules become actions of the
 Project.
 """
 
+# tarav.breadcrumb 312d2618dc3a
 from __future__ import annotations
 
 import json
@@ -27,10 +28,12 @@ from pathlib import Path
 
 from tarav.l0._core.git_repository import git_result, run_git
 from tarav.l0.kernel import Ship, TaravClass, TypeShip
-from tarav.l0.project import load_project_marker, project_id, project_marker_name
+from tarav.l0.project import load_project_marker, project_marker_name
+from tarav.l0._core.data_root import default_tarav_data_root
+from tarav.l1.project.config import ProjectConfig
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
 
-from .hooks import OVERRULE_ENV_VAR, GitHookCall, GitHookHandler, GitHookRefusal
+from .hooks import OVERRULE_ENV_VAR, GitConfig, GitHookCall, GitHookHandler, GitHookRefusal
 from .witness import ChangeOverrule, ChangeWitness, ChangeWitnesses
 from .workflow import GIT_WORKFLOW_SHIP
 
@@ -66,13 +69,27 @@ def _held(root: Path) -> list[str]:
 
 
 def _witnessed(root: Path) -> tuple[str, str] | None:
-    """The Project and branch the witness keys this repository by; None when it cannot."""
-    marker = root / ".tarav" / "project.json"
-    project = json.loads(marker.read_text(encoding="utf-8")).get("project_id") if marker.is_file() else None
+    """Repository DOI and branch, independent of Project ownership."""
+    config = ProjectConfig(root).section("git", GitConfig)
+    repository = config.repository if config is not None else None
     branch = git_result(root, "symbolic-ref", "--short", "-q", "HEAD")
-    if not project or branch.returncode != 0:
+    if not repository or branch.returncode != 0:
         return None
-    return str(project), branch.stdout.decode().strip()
+    return repository, branch.stdout.decode().strip()
+
+
+def owner_root(root: Path) -> Path:
+    config = ProjectConfig(root).section("git", GitConfig)
+    if config is not None and config.owner is not None:
+        return Path(config.owner).expanduser().resolve()
+    if (root / ".tarav/project.json").is_file():
+        return root
+    return default_tarav_data_root() / "system"
+
+
+def _owner_id(root: Path) -> str | None:
+    marker = owner_root(root) / ".tarav/project.json"
+    return str(load_project_marker(marker)["project_id"]) if marker.is_file() else None
 
 
 def _missing(witness: ChangeWitness | None, present: list[str]) -> list[str]:
@@ -167,7 +184,8 @@ class TaravChange(GitHookHandler):
         pending = _git_path(call.root, "tarav/overrule")
         if pending.exists():
             commit = run_git(call.root, "rev-parse", "HEAD").stdout.decode().strip()
-            overrule = ChangeOverrule(Ship(str(uuid.uuid4())), project=key[0], branch=key[1],
+            overrule = ChangeOverrule(Ship(str(uuid.uuid4())), repository=key[0],
+                                      project=_owner_id(call.root), branch=key[1],
                                       commit=commit, at=_now(),
                                       missing=json.loads(pending.read_text(encoding="utf-8"))["missing"])
             witnesses.add_overrule(overrule)
@@ -176,7 +194,8 @@ class TaravChange(GitHookHandler):
             missing = []
         if missing:
             return  # a commit that skipped pre-commit; the witness keeps reporting the loss
-        witnesses.put(ChangeWitness(project=key[0], branch=key[1], changes=held, at=_now()))
+        witnesses.put(ChangeWitness(repository=key[0], project=_owner_id(call.root),
+                                    branch=key[1], changes=held, at=_now()))
 
     def _post_rewrite(self, call: GitHookCall) -> None:
         at = datetime.now(timezone.utc).isoformat()
@@ -213,6 +232,23 @@ def find(root: Path | str, change: str) -> tuple[str, ...]:
     return tuple(ordered.stdout.decode().split())
 
 
+def ids_at(root: Path | str, commit: str) -> tuple[str, ...]:
+    """Markers actually introduced/carried by this commit, never its cumulative history."""
+    root = Path(root)
+    exact = run_git(root, "rev-parse", "--verify", "--end-of-options",
+                    f"{commit}^{{commit}}").stdout.decode().strip()
+    trailers = run_git(root, "show", "-s", "--format=%(trailers:key=tarav-change,valueonly)",
+                       exact).stdout.decode().split()
+    if trailers:
+        if any(_ID.fullmatch(value) is None for value in trailers):
+            raise ValueError("Commit contains a malformed tarav-change trailer")
+        return tuple(dict.fromkeys(trailers))
+    diff = run_git(root, "diff-tree", "--root", "--no-commit-id", "-p", exact,
+                   "--", CHANGES_FILE).stdout.decode()
+    return tuple(dict.fromkeys(line[1:] for line in diff.splitlines()
+                               if line.startswith("+") and _ID.fullmatch(line[1:])))
+
+
 class TaravChangeMissing(CheckPOI):
     """A commit carries no tarav-change: no trailer, and no line added to the file."""
 
@@ -220,6 +256,15 @@ class TaravChangeMissing(CheckPOI):
     def class_entity(cls) -> TaravClass:
         return TaravClass(target=cls, id=TypeShip("b6d2e8f4-1a73-4c59-8e06-3f9b7a2d1c45"),
                           name="Tarav.Git.Change.Missing", workflow=GIT_WORKFLOW_SHIP)
+
+
+class TaravChangeBindingMissing(CheckPOI):
+    """tarav-change has no repository DOI binding for its witness."""
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip("dcf45f10-a0da-4b18-9a84-f1f6654e4071"),
+                          name="Tarav.Git.Change.BindingMissing", workflow=GIT_WORKFLOW_SHIP)
 
 
 # tarav.breadcrumb 7d2b4065a2e0
@@ -244,7 +289,7 @@ class TaravChangeOverruled(CheckPOI):
 def _removed(check: Check, branch: str, missing: list[str]) -> TaravChangeRemoved:
     return TaravChangeRemoved(
         check, f"{len(missing)} tarav-change IDs that {branch} had at its last commit are gone "
-        f"from {CHANGES_FILE}", situation={"project": project_id(check.root), "branch": branch},
+        f"from {CHANGES_FILE}", situation={"repository": _witnessed(check.root)[0], "branch": branch},
         details={"root": str(check.root), "missing": missing})
 
 
@@ -252,7 +297,7 @@ def _overruled(check: Check, overrule: ChangeOverrule) -> TaravChangeOverruled:
     return TaravChangeOverruled(
         check, f"Commit {overrule.commit[:7]} on {overrule.branch} went through without "
         f"{len(overrule.missing)} tarav-change IDs, by overrule",
-        situation={"project": overrule.project, "branch": overrule.branch,
+        situation={"repository": overrule.repository, "branch": overrule.branch,
                    "commit": overrule.commit},
         details={"root": str(check.root), "missing": overrule.missing})
 
@@ -268,9 +313,10 @@ def _hand_to_project(root: Path, build) -> None:
     # tarav.breadcrumb 5115262b1620
     from tarav.l1.project.actions import ActionManager
 
-    marker = load_project_marker(root / ".tarav" / "project.json")
-    project = {"id": marker["project_id"], "name": project_marker_name(marker) or root.name,
-               "root": root}
+    owner = owner_root(root)
+    marker = load_project_marker(owner / ".tarav" / "project.json")
+    project = {"id": marker["project_id"], "name": project_marker_name(marker) or owner.name,
+               "root": owner}
     check = TaravChangeCheck(root)
     suite = CheckSuite([CheckResult(check, status="completed", pois=[build(check)])],
                        name="tarav-change hook").run()
@@ -293,6 +339,10 @@ class TaravChangeCheck(Check):
         root = self.root
         pois: list[CheckPOI] = []
         key = _witnessed(root)
+        config = ProjectConfig(root).section("git", GitConfig)
+        if config and config.hooks and "tarav-change" in config.hooks.handlers and not config.repository:
+            pois.append(TaravChangeBindingMissing(self, "Configure a repository DOI for tarav-change",
+                                                 situation={"root": str(root)}))
         if key is not None:
             witnesses = ChangeWitnesses()
             missing = _missing(witnesses.get(*key), _held(root))
@@ -306,6 +356,8 @@ class TaravChangeCheck(Check):
         return CheckResult(self, status="completed", pois=pois)
 
     def _without_change(self, root: Path, span: str) -> list[CheckPOI]:
+        config = ProjectConfig(root).section("git", GitConfig)
+        repository = config.repository if config else None
         commits = run_git(root, "log", "--no-merges", f"--max-count={CHECKED_COMMITS}",
                           "--format=%H%x00%s%x00%(trailers:key=tarav-change,valueonly,separator=%x2C)",
                           span).stdout.decode().splitlines()
@@ -318,12 +370,15 @@ class TaravChangeCheck(Check):
                 continue
             pois.append(TaravChangeMissing(
                 self, f"Commit {commit[:7]} carries no tarav-change: {subject}",
-                situation={"project": project_id(root), "commit": commit},
+                situation={"repository": repository,
+                           "root": str(root), "commit": commit},
                 details={"root": str(root)}))
         return pois
 
 
-GIT_CHANGE_RECORD_TYPES = (TaravChangeMissing, TaravChangeRemoved, TaravChangeOverruled)
+GIT_CHANGE_RECORD_TYPES = (TaravChangeMissing, TaravChangeRemoved, TaravChangeOverruled,
+                          TaravChangeBindingMissing)
 
 __all__ = ["CHANGES_FILE", "GIT_CHANGE_RECORD_TYPES", "TRAILER", "TaravChange", "TaravChangeCheck",
+           "ids_at", "owner_root",
            "TaravChangeMissing", "TaravChangeOverruled", "TaravChangeRemoved", "find"]
