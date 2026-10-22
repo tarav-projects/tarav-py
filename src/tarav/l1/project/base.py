@@ -14,6 +14,7 @@ from .actions import ActionManager
 from .checks import ChecksManager
 from .records import RecordsManager
 from .skw import SkwManager
+from .types import TypesManager
 from tarav.l0.kernel import LoadedRecord
 
 
@@ -48,6 +49,12 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
     Checks = ChecksManager
     Records = RecordsManager
     Skw = SkwManager
+    Types = TypesManager
+    # tarav.breadcrumb 724e2c85d0dc
+
+    @property
+    def types(self):
+        return type(self).Types(self)
 
     @property
     def skw(self) -> SkwManager:

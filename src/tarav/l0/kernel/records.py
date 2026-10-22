@@ -212,6 +212,14 @@ class TaravObject(TaravType):
 
         model_config = ConfigDict(strict=True, extra="allow")
 
+    @classmethod
+    def view_schemas(cls) -> dict[str, dict]:
+        """Computed documentation Views; Types may refine or replace the defaults."""
+        # tarav.breadcrumb ed5d856f8067
+        from .json_views import default_view_schemas
+
+        return default_view_schemas(cls)
+
     class Records(NamespaceBase["TaravObject | type[TaravObject]"]):
         """Record projection and loading for one object or concrete class."""
         # tarav.breadcrumb 515f09866971

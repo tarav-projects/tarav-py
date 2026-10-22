@@ -1090,6 +1090,30 @@ Project subtype overriding all four managers and its status loop.
 
 ## Sources of truth
 
+### Project Types and PathRegistry
+
+`TaravObject.view_schemas()` supplies default Record and partial instance schema
+Views through declaration-only introspection in `l0.kernel.json_views`; Types
+may override it. Record schemas come from RecordInterface, with the separate
+Type-dispatch field exposed. Instance projection never invokes constructors,
+property getters or evaluates annotation strings.
+
+`Project.Types` selects `l1.project.types.TypesManager`; `project.types.all()`
+filters already registered classes by their defining source under the Project
+root by default. Overrides own alternative membership policy. Dispatch remains
+`project.records.types`, independent of Project ownership.
+
+`l1.path_registry` owns JSONView, PathEntry, PathDocumentation and PathRegistry.
+Paths are JSON Pointers into a View value, with Ships maintained independently
+of path spelling. Attachments name identified objects retained by their own
+workflows; attached Lines keep their authoring context. Explicit enrollment,
+reassignment, addition, retirement and acceptance are distinct from computation.
+`l2.project.paths.PathsManager`, selected as `Project.Paths`, keeps the normal
+typed registry Record in `.tarav/paths.json` and composes read-only checks into
+Project status. Absence never provisions; unavailable scans never certify old
+findings gone. Git supplies history. See `l1/path_registry/README.md` for usage.
+<!-- tarav.breadcrumb 7576042d6588 -->
+
 `TaravProject.load_project(path=...)` combines upward Project discovery with
 the Project's harness: it imports `harness.type`, binds it in the configured
 current registry and loads project.json, whose type tag must name the same

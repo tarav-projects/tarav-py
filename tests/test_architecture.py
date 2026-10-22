@@ -654,6 +654,24 @@ def test_subsystem_import_graph_is_acyclic() -> None:
     assert _strongly_connected_components(graph) == ()
 
 
+def test_path_registry_composes_project_policy_above_computed_kernel_views() -> None:
+    # tarav.breadcrumb 6d67f5e3f62e
+    from tarav.l0.kernel import TaravObject, entity
+    from tarav.l1.path_registry import JSONView, PathRegistryWorkflow
+    from tarav.l1.project.base import TaravProject
+    from tarav.l2.project import Project
+    from tarav.l2.project.paths import PathsManager
+    from tarav.l3.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.records.resolve_type("Tarav.PathRegistry.JSONView") is JSONView
+    assert entity(JSONView).workflow_ship == PathRegistryWorkflow().id
+    assert callable(TaravObject.view_schemas)
+    assert TaravProject.Types.__module__ == "tarav.l1.project.types"
+    assert Project.Paths is PathsManager
+    assert not hasattr(TaravProject, "Paths")
+
+
 def test_layered_modules_do_not_import_higher_layers() -> None:
     for level in range(4):
         for path in (PACKAGE_ROOT / f"l{level}").rglob("*.py"):

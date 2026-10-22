@@ -278,6 +278,10 @@ def create_runtime(
     """
     # tarav.breadcrumb ff49f8b4c27e
     from tarav.l1.archive import DOI_RECORD_TYPES
+    from tarav.l1.path_registry import PATH_REGISTRY_TYPES, PathRegistryWorkflow
+    # tarav.breadcrumb 68309b2b5ff1
+    from tarav.l1.path_registry.checks import PATH_CHECK_TYPES
+    from tarav.l2.project.paths import PathsSuite, PathsUnavailable
     from tarav.l1.archive.references import DOIReference, RepositoryReference
     from tarav.l1.archive.checks import ARCHIVE_ACTION_TYPES, ARCHIVE_CHECK_TYPES
     from tarav.l1.archive.workflow import ArchiveWorkflow
@@ -469,6 +473,10 @@ def create_runtime(
                     for record_type in integration.workflow.record_types
                 ),
                 *DOI_RECORD_TYPES,
+                *PATH_REGISTRY_TYPES,
+                *PATH_CHECK_TYPES,
+                PathsSuite,
+                PathsUnavailable,
                 *ARCHIVE_CHECK_TYPES,
                 *RECORD_ARCHIVE_TYPES,
                 DOIReference,
@@ -577,6 +585,7 @@ def create_runtime(
         ArchiveWorkflow,
         AtticWorkflow,
         ProductMappingWorkflow,
+        PathRegistryWorkflow,
         RecordArchiveWorkflow,
         LinesWorkflow,
         NotebookWorkflow,

@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: ready. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
+Status: implemented; final verification running. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
 
 Implement a Python-first PathRegistry for TaravObject Record and instance schema
 Views. Projects enumerate their registered Types and own registry maintenance
@@ -63,9 +63,9 @@ session, refreshed once for this pass. Preserve older evidence gaps separately.
 
 ## Execution.Plan
 
-- [ ] Feature: computed default Views and Project Type enumeration. Verify real
+- [x] Feature: computed default Views and Project Type enumeration. Verify real
   Line/Block schemas, safe introspection, source ownership, manager overrides.
-- [ ] Feature: typed Views/entries/registry, explicit maintenance and Project
+- [x] Feature: typed Views/entries/registry, explicit maintenance and Project
   checks/actions. Verify save/load, stable Ships and attachments through a rename,
   new/retired/duplicate paths, schema drift and action closure; checks are read-only.
 - [ ] Capture/verification: register public Types, update architecture/guidance,
@@ -80,3 +80,29 @@ session, refreshed once for this pass. Preserve older evidence gaps separately.
   export works; Line class annotations are empty, while constructor/properties
   expose useful instance structure, hence explicitly partial defaults.
 - The plan above is the task todo list; cold reload precedes execution.
+- Cold reload completed. Start checkpoints: Python
+  `1e5d1e3db6c99025444cd1455e61600cb8901c12`, Markdown
+  `2bfa0656d99786751816238485d85d64fc6644da`.
+- Implemented declaration-only schema production, source-based Project Type
+  selection, explicit path maintenance and typed read-only checks. Registry
+  enrollment remains opt-in. Path lookup exposes duplicate matches; View
+  retirement retains retired identities and attachments.
+- Focused code/architecture/Project/Record-contract run passed 79 tests. The
+  first run exposed builders that needed explicit TypedState loading and a
+  missing identity in the PathEntry record example; fixed both using existing
+  Record patterns. Instance introspection correctly includes public scope_ship
+  properties as well as scope; adjusted the test's incorrect exclusion.
+- Live read-only probe computed default Views for all 389 currently selected
+  TaravObject Types in tarav-py, with no errors. No live registry was enrolled.
+  New kernel architecture test and final path lookup/retirement tests are
+  included in final verification. Full Project status is running.
+- Full Project run: 86 checks completed, none incomplete; all 66 pytest
+  suites passed. POI render coverage flagged seven new Types without summary
+  docstrings. Added their semantic summaries; follow-up status closed all seven
+  Actions, leaving the existing Gitleaks finding and two synthetic test markers.
+- Final behavior-only run passed 13 tests. Ruff passed. Source Breadcrumb audit
+  resolved all 14 surfaces with no errors; its 77 informational POIs record
+  updated source positions. Guidance source annotation was registered separately.
+- Wiki capture added path-registry.md and linked projects.md and the daily Note
+  for 2026-10-22. Markdown status completed 1,215 checks, with existing harness,
+  Git, SKW and provisional-marker findings; capture submission ran afterward.
