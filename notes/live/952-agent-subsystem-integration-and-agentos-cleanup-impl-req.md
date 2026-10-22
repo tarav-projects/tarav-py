@@ -196,3 +196,23 @@ concurrent session editing Chatlas/breadcrumbs (do not touch its files).
   Pending: rewrite `~/.tarav/config.json` `class` to `tarav.global.config` after
   restarting the account monitor and `tarav-daemon`; codex/br session-hook
   misattribution follow-up.
+- Follow-up (User request): `agentos://chat-session/` → `tarav://chat-session/`.
+  Writers (`agent/sessions.py`, `chatlas/index_writer.py`) emit the new scheme;
+  `_parse_chat_session_uri` accepts both; `plain_index_version` rewrites a
+  legacy `uri`, so a re-indexed session does not gain a version differing only
+  by scheme. URIs never fed identity: `session_identity_hash` uses provider,
+  instance and session id; `raw_version` hashes transcript stats.
+  Data: `chatlas/index/sessions` (gitignored, reproducible) snapshotted to Attic
+  `20261022T231314Z-chatlas-session-index-agentos-uris`, then 10,696 `uri` /
+  `archive_versions[].uri` values rewritten in 511 of 512 shards; every shard is
+  byte-identical to the snapshot under pure scheme substitution. Not rewritten:
+  `chatlas/raw/` transcripts (811 files) and Normal Model `events`/`messages`
+  caches, where the old URIs are conversation text, and Attic material.
+  Checks: `tests/test_chat_session_uri.py` 3 passed (import error before);
+  chatlas, normal-model, breadcrumbs, agent and architecture tests 172 passed;
+  ruff clean; a live `tarav chatlas update` wrote `tarav://` rows with no old
+  values back; `resolve_chat_sessions` finds this session by either scheme.
+  Breadcrumb `d856327957ff` in `sessions.py`.
+  Observation: agent discovery and the Chatlas index build different URIs for
+  one session (live-home adapter key vs retained raw instance fingerprint);
+  pre-existing, unchanged.

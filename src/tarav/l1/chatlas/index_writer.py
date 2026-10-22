@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 from tarav.l1.agent.session_refs import BackingArtifact
-from tarav.l1.agent.sessions import _format_stats_timestamp
+from tarav.l1.agent.sessions import (
+    CHAT_SESSION_URI_PREFIX,
+    _format_stats_timestamp,
+    current_chat_session_uri,
+)
 from tarav.l1.chatlas._cache_io import write_text_if_changed
 from tarav.l1.chatlas.index_store import (
     iter_session_index_rows,
@@ -104,7 +108,7 @@ def _session_project_path(native: dict[str, object]) -> str | None:
 
 def _session_uri(session: "ChatlasDiscoveredSession") -> str:
     return (
-        f"agentos://chat-session/{quote(session.provider_instance.provider, safe='')}/"
+        f"{CHAT_SESSION_URI_PREFIX}{quote(session.provider_instance.provider, safe='')}/"
         f"{quote(session.provider_instance.fingerprint, safe='')}/"
         f"{quote(session.session_id, safe='')}"
     )
@@ -307,6 +311,9 @@ def plain_index_version(row: dict[str, Any]) -> dict[str, Any]:
     version = dict(row)
     version.pop("archive_versions", None)
     version.pop("raw_version", None)
+    # A retained version differing only by the pre-rename URI scheme is the same version.
+    if isinstance(version.get("uri"), str):
+        version["uri"] = current_chat_session_uri(version["uri"])
     return version
 
 

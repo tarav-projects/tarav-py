@@ -33,7 +33,7 @@ class Depot:
         source.write_text(text, encoding="utf-8")
         _upsert_session_index_rows(self.root / SESSION_INDEX_ROOT, rows=[{
             "provider": "codex", "instance": "work", "provider_instance_fingerprint": "f" * 64,
-            "session_id": identity[:4], "identity_hash": identity, "uri": f"agentos://{identity[:4]}",
+            "session_id": identity[:4], "identity_hash": identity, "uri": f"tarav://{identity[:4]}",
             "project_path": "/work/alpha" if identity == ALPHA else "/work/beta",
             "last_activity_at": "2026-10-18T00:00:00Z",
             "backing_artifacts": [{"role": "transcript", "path": str(source)}],

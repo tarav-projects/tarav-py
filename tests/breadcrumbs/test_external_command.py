@@ -28,7 +28,7 @@ def chat(tmp_path):
     ]
     raw.write_text("\n".join(json.dumps(record) for record in records) + "\n")
     row = {"provider": "codex", "instance": "work", "provider_instance_fingerprint": "f" * 64,
-           "session_id": "external-test", "identity_hash": "a" * 64, "uri": "agentos://external-test",
+           "session_id": "external-test", "identity_hash": "a" * 64, "uri": "tarav://external-test",
            "last_activity_at": "2026-10-22T00:00:02Z",
            "backing_artifacts": [{"role": "transcript", "path": str(raw)}]}
     _upsert_session_index_rows(root / SESSION_INDEX_ROOT, rows=[row])

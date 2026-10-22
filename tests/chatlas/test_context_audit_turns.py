@@ -32,7 +32,7 @@ class Chat:
         self.source.write_text(text, encoding="utf-8")
         _upsert_session_index_rows(self.root / SESSION_INDEX_ROOT, rows=[{
             "provider": "codex", "instance": "work", "provider_instance_fingerprint": "f" * 64,
-            "session_id": "chat", "identity_hash": IDENTITY, "uri": "agentos://chat",
+            "session_id": "chat", "identity_hash": IDENTITY, "uri": "tarav://chat",
             "last_activity_at": "2026-10-18T00:00:00Z",
             "backing_artifacts": [{"role": "transcript", "path": str(self.source)}],
         }])

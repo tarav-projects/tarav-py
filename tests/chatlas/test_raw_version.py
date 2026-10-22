@@ -8,7 +8,7 @@ from tarav.l1.chatlas.index_writer import _upsert_session_index_rows
 IDENTITY = "a" * 64
 
 
-def _row(*transcripts: Path, uri: str = "agentos://one") -> dict[str, object]:
+def _row(*transcripts: Path, uri: str = "tarav://one") -> dict[str, object]:
     return {
         "provider": "codex",
         "instance": "work",
@@ -53,10 +53,10 @@ def test_the_raw_version_covers_archive_versions_without_entering_them(
     new.write_text("new\n", encoding="utf-8")
     index = tmp_path / "index"
 
-    merged = _indexed(index, _row(old, uri="agentos://old"), _row(new, uri="agentos://new"))
+    merged = _indexed(index, _row(old, uri="tarav://old"), _row(new, uri="tarav://new"))
     before = merged["raw_version"]
     old.write_text("old, amended\n", encoding="utf-8")
-    after = _indexed(index, _row(new, uri="agentos://new"))["raw_version"]
+    after = _indexed(index, _row(new, uri="tarav://new"))["raw_version"]
 
     versions = merged["archive_versions"]
     assert isinstance(versions, list) and len(versions) == 2

@@ -42,7 +42,7 @@ class Depot:
         source.write_text("raw\n", encoding="utf-8")
         _upsert_session_index_rows(self.root / SESSION_INDEX_ROOT, rows=[{
             "provider": "codex", "instance": "work", "provider_instance_fingerprint": "f" * 64,
-            "session_id": session_id, "identity_hash": identity, "uri": f"agentos://{session_id}",
+            "session_id": session_id, "identity_hash": identity, "uri": f"tarav://{session_id}",
             "project_path": project, "last_activity_at": activity,
             "backing_artifacts": [{"role": "transcript", "path": str(source)}],
         }])

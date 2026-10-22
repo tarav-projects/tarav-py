@@ -197,11 +197,24 @@ class SessionRefUriQuery:
     session_id: str
 
 
+CHAT_SESSION_URI_PREFIX = "tarav://chat-session/"
+# Session URIs recorded before the Agentos rename; queries and retained index rows may carry them.
+# tarav.breadcrumb d856327957ff
+LEGACY_CHAT_SESSION_URI_PREFIX = "agentos://chat-session/"
+
+
+def current_chat_session_uri(uri: str) -> str:
+    """The URI under the current scheme; other values are returned unchanged."""
+    if uri.startswith(LEGACY_CHAT_SESSION_URI_PREFIX):
+        return CHAT_SESSION_URI_PREFIX + uri[len(LEGACY_CHAT_SESSION_URI_PREFIX):]
+    return uri
+
+
 def _build_session_ref_uri(entry: ProviderSessionRefEntry) -> str:
     from urllib.parse import quote
 
     return (
-        f"agentos://chat-session/{quote(entry.provider, safe='')}/"
+        f"{CHAT_SESSION_URI_PREFIX}{quote(entry.provider, safe='')}/"
         f"{entry.context.adapter_uri_key}/"
         f"{quote(entry.session_id, safe='')}"
     )
@@ -984,11 +997,11 @@ def _build_provider_session_stats(session: ProviderSessionRefEntry) -> dict[str,
 
 
 def _parse_chat_session_uri(query: str) -> SessionRefUriQuery | None:
-    prefix = "agentos://chat-session/"
-    if not query.startswith(prefix):
+    query = current_chat_session_uri(query)
+    if not query.startswith(CHAT_SESSION_URI_PREFIX):
         return None
 
-    remainder = query[len(prefix):]
+    remainder = query[len(CHAT_SESSION_URI_PREFIX):]
     parts = remainder.split("/", 2)
     if len(parts) != 3:
         return None
