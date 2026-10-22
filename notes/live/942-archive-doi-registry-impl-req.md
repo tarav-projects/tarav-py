@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: ready for implementation; design only, no product changes made.
+Status: implemented; verification and capture results recorded below.
 Knowledge.Surface: wiki.
 
 Replace the old Artifact registration/retrieval implementation with a small
@@ -17,6 +17,15 @@ own access, retrieval, interpretation and their response to changes.
 <!-- tarav.breadcrumb b2c05ed2e118 -->
 
 ## Design
+
+Execution scope amendment: the User requested broken-locator checks and their
+Archive-owned actions in the System Project. Registry reads still do not access
+the resource. Local paths are checked on their declared host; HTTP(S) uses a
+three-second HEAD request without following redirects or fetching bodies.
+404/410 and missing local paths are distinguished from access failures.
+Authentication, unsupported HEAD, redirects, other hosts and unsupported
+protocols are explicitly unassessed. These checks never repair declarations.
+<!-- tarav.breadcrumb 9900cfdd86a8 -->
 
 User decisions from the current conversation:
 
@@ -171,17 +180,20 @@ Turns were resolved from its refreshed Normal Model before adding markers.
 - [x] Design alignment: finalize the minimal typed records and lookup contract,
   resolve existing Type/Ship continuity, and create the cross-linked Markdown
   request for constitutional clarification. Check: no hidden user decisions.
-- [ ] Replacement feature: retire the old retrieval-oriented registration paths
+- [x] Replacement feature: retire the old retrieval-oriented registration paths
   and migrate their callers to the small registry in one coherent change.
   Check: public registration, maintenance and lookup tests; lookup of an absent
   resource still returns maintained information; reads create nothing.
-- [ ] Data migration: preserve old registration data losslessly in an Attic
+- [x] Data migration: preserve old registration data losslessly in an Attic
   deposit and explicitly convert useful registrations, preserving supported
   identities. Leave no legacy reader or dormant legacy store on the active
   path. Check: retained-byte/provenance inventory and reopened new records.
-- [ ] Integration feature: compose new Types with runtime, CLI and Context.
+- [x] Integration feature: compose new Types with runtime, CLI and Context.
   Check: DOI lookup exposes typed information without resource access, and
   existing general Records, Attic and direct-reference consumers still work.
+- [x] Locator-check feature: compose the Archive locator Situation Chain into
+  the System Project. Check: missing path opens an owned action; incomplete
+  assessment leaves it open; successful recheck closes it; no reads mutate data.
 - [ ] Verification/capture: focused tests, architecture checks, Project status
   including required suites; complete Breadcrumb/Wiki capture and record actual
   results. Execute-phase Git checkpoints follow the skill's commit contract.
@@ -211,3 +223,31 @@ registry they may use, without inventing those integrations here.
 - This completes implementation preparation. Product code, live data and the
   Constitution remain unchanged. No implementation tests were run for this
   documentation-only preparation; execution has its own verification plan.
+- Execution started with Python `643d67adc2bed0bc61268838817839f5015fe427`
+  and Markdown `d5746b158cfa4b12c9f317c0397142f52cbd42d8` checkpoints.
+- Removed the old parent implementation and two obsolete migration utilities;
+  the second utility was found by a post-replacement obsolete-import search.
+  No live legacy registration store or data requiring relocation was found.
+- SKW imported blocks have no generation declarations, so prepare correctly
+  refused them. Edited their retained source content without fabricating
+  generation history, then compiled. Source evidence uses native JSON
+  `tarav.breadcrumbs` metadata; strings inside generated content are inactive.
+- Implemented DOI, RepositoryDOI, LocalLocator, RemoteLocator, RepositoryHints,
+  DOIReference, the Archive registry/CLI and Locator Situation Chain. Runtime
+  registers their contracts; the System Project composes the identified suite.
+- Verification: 72 focused integration tests passed across DOI, runtime,
+  references, System Project, Record Archive and Attic. Installed CLI smoke
+  passed uninitialized list, init/register/show/update/list without accessing
+  an absent resource. Ruff and whitespace checks passed.
+- Full Project status: 79 checks completed, including 61 pytest suites; five
+  test findings were reported across Chatlas audit and Kernel Record-contract
+  suites, plus the existing gitleaks and two test-marker findings. A focused
+  follow-up of all nine Kernel Record-contract tests passed. The initial
+  architecture failure was resolved by concurrent Chatlas work; its updated
+  architecture-test lines share this workflow's file and are preserved.
+- Product capture: 25 new Breadcrumbs on 18 source/request surfaces, with zero
+  findings for new attachments. Refreshed moved positions mechanically. Ten
+  older Architecture Breadcrumbs still report unavailable/amended Chatlas
+  Turns; left their claims intact rather than inventing replacement evidence.
+- No live data needed migration; the old registration store is absent. Shared
+  Record Archive partitions were left in place. No empty Attic deposit made.

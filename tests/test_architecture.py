@@ -347,21 +347,22 @@ for forbidden in ("tarav.l2", "tarav.l1.archive", "tarav.l3.runtime"):
         )
 
 
+# tarav.breadcrumb 0d58aa4752bd
 def test_archive_package_paths_match_workflow_ownership():
-    from tarav.l1.archive.artifact_records import ArtifactRecord
+    from tarav.l1.archive.model import DOI
     from tarav.l1.archive.records import ArchiveFolder, RecordArchiveWorkflow
     from tarav.l1.archive.workflow import ArchiveWorkflow
     from tarav.l3.runtime import create_runtime
 
     assert ArchiveFolder.__module__ == "tarav.l1.archive.records"
-    assert ArtifactRecord.__module__ == "tarav.l1.archive.artifact_records"
+    assert DOI.__module__ == "tarav.l1.archive.model"
     assert entity(ArchiveFolder).workflow is RecordArchiveWorkflow()
     assert RecordArchiveWorkflow().workflow is ArchiveWorkflow()
-    assert entity(ArtifactRecord).workflow is ArchiveWorkflow()
+    assert entity(DOI).workflow is ArchiveWorkflow()
     assert str(entity(ArchiveFolder).id) == "e67748c1-6ae8-4e9e-b868-913c57ec479d"
-    assert str(entity(ArtifactRecord).id) == "683fd453-7425-5a91-a382-5753a986e324"
+    assert str(entity(DOI).id) == "d37d8e09-1c61-43d9-a343-94673e59437c"
     assert create_runtime().records.resolve_type(entity(ArchiveFolder).name) is ArchiveFolder
-    for name in ("__init__.py", "workflow.py", "artifact_records.py"):
+    for name in ("__init__.py", "workflow.py", "model.py"):
         tree = ast.parse((PACKAGE_ROOT / "l1" / "archive" / name).read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
@@ -867,6 +868,7 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
         elif path.name not in {
             "commands.py",
             "references.py",
+            "turn_snapshots.py",
             "normal_model_cache.py",
             "workflow.py",
             "sessions.py",
@@ -878,6 +880,7 @@ def test_the_normal_model_layer_sits_on_capture_and_not_the_other_way() -> None:
             # group and hands its subparsers to the layer. Everything else in
             # chatlas/ must stay below the layer, not reach up into it.
             # references.py is an explicit Normal Model consumer exposing typed Turns.
+            # turn_snapshots.py retains exact cited Normal Model evidence.
             # normal_model_cache.py is the Chatlas-owned logistical decorator around
             # canonical Normal Model directories.
             # workflow.py is the runtime registration boundary for Chatlas Records.

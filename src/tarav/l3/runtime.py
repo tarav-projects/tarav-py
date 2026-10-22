@@ -273,9 +273,10 @@ def create_runtime(
     and `providers` ({name, workflow, root}). Paths are relative to that file.
     `filesystem` providers browse plain local Record collections.
     """
-    from tarav.l1.archive import ArchiveNotificationPOI
-    from tarav.l1.archive.artifact_records import ARCHIVE_RECORD_TYPES
-    from tarav.l1.archive.references import ArchiveReference
+    # tarav.breadcrumb ff49f8b4c27e
+    from tarav.l1.archive import DOI_RECORD_TYPES
+    from tarav.l1.archive.references import DOIReference
+    from tarav.l1.archive.checks import ARCHIVE_ACTION_TYPES, ARCHIVE_CHECK_TYPES
     from tarav.l1.archive.workflow import ArchiveWorkflow
     from tarav.l2.breadcrumb_workflows.chatlas_context import (
         chatlas_context_integration,
@@ -449,10 +450,10 @@ def create_runtime(
                     for integration in composed_breadcrumb_integrations
                     for record_type in integration.workflow.record_types
                 ),
-                *ARCHIVE_RECORD_TYPES,
-                ArchiveNotificationPOI,
+                *DOI_RECORD_TYPES,
+                *ARCHIVE_CHECK_TYPES,
                 *RECORD_ARCHIVE_TYPES,
-                ArchiveReference,
+                DOIReference,
                 Wiki,
                 WikiNote,
                 Project,
@@ -600,7 +601,8 @@ def create_runtime(
     for action_type in (GitleaksFindingResolution, GitleaksStagedResolution,
                         GitleaksNeverScannedResolution, GitleaksMissingResolution,
                         HooksNotInstalledResolution, *SKW_ACTION_TYPES, TestMarkerResolution,
-                        *ATTIC_ACTION_TYPES, *NOTEBOOK_EVIDENCE_ACTIONS):
+                        *ATTIC_ACTION_TYPES, *NOTEBOOK_EVIDENCE_ACTIONS,
+                        *ARCHIVE_ACTION_TYPES):
         register_action(action_type)
     from tarav.l1.project.config import register_config_section
     from tarav.l1.project.agents import AgentsConfig

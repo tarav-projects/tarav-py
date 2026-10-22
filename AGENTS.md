@@ -40,7 +40,7 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
   importing that runtime. Select custom runtimes with `tarav.l3.runtime.set_runtime()`.
 - Keep subsystem imports acyclic outside runtime composition.
 - Record Archive lives in `tarav.l1.archive.records`, matching its Archive parent.
-  Artifact-registration Record types live in `tarav.l1.archive.artifact_records`.
+  Typed DOI contracts and locator values live in `tarav.l1.archive.model`.
 - Context construction is explicit: `cxt = obj.context.build()` returns an
   `ObjectContext`, then `cxt.triplets` supplies its graph contribution.
   `_class_context_hook(cxt)`, `_obj_context_hook(cxt)`, then external hooks

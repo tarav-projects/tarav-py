@@ -6,6 +6,8 @@ import pytest
 
 from tarav.l3.loading import load as load_object
 from tarav.l1.archive import Archive
+from tarav.l1.archive.model import DOI, LocalLocator
+from tarav.l1.archive.references import DOIReference
 from tarav.l1.chatlas.workflow import ChatlasWorkflow
 from tarav.l0.kernel import DirectoryRecord, FileRecord, KERNEL_WORKFLOW_SHIP, RecordTypeMismatch, TARAV, KernelWorkflow
 from tarav.l1.references import FileReference
@@ -53,12 +55,14 @@ def test_every_registered_type_names_a_registered_owning_workflow():
         assert entity(record_type).workflow_ship == owner().id
 
 
+# tarav.breadcrumb 2c616f4d84ca
 def test_runtime_browses_archive_and_loads_reference_without_cli(tmp_path):
     archive = Archive.create(tmp_path / "archive")
     payload = tmp_path / "payload.txt"
     payload.write_text("data")
-    reference = archive.reference_file(str(payload))
-    doi = reference["locator"]["doi"]
+    artifact = archive.register(DOI(locators=[LocalLocator(payload)]))
+    reference = DOIReference(artifact.id, registry=archive.root).records.to_record()
+    doi = artifact.id
     config = tmp_path / "runtime.json"
     config.write_text(
         json.dumps(
@@ -71,25 +75,18 @@ def test_runtime_browses_archive_and_loads_reference_without_cli(tmp_path):
     )
     runtime = create_runtime(config=config)
     assert runtime.navigation.list().value[0].name == "archive"
-    record = runtime.navigation.load(f"/archive/artifacts/{doi}")
+    record = runtime.navigation.load(f"/archive/{doi}.json")
     assert record.ok
-    assert record.value.doi == doi
-    assert record.value.contract["kind"] == "file-version"
-    locator = runtime.navigation.load(f"/archive/artifacts/{doi}/locators.jsonl/0")
-    assert locator.ok
-    assert locator.value.records.to_record()["value"] == str(payload)
+    assert record.value.id == doi
+    assert record.value.locators[0].path == str(payload)
     file = tmp_path / "reference.json"
     file.write_text(json.dumps(reference))
     assert runtime.load_object(file).resolve().ok
-    archive.retire(
-        doi,
-        reason="explicit test retirement",
-        hints={"name": payload.name, "size": payload.stat().st_size},
-    )
-    assert archive.record(doi).doi == doi
+    payload.unlink()
     outcome = runtime.load_object(file).resolve()
-    assert outcome.pois
-    assert "retired" in outcome.message
+    assert outcome.ok
+    assert outcome.target.id == doi
+    payload.write_text("data")
     assert payload.read_text() == "data"
     assert (runtime.source_root / "l1" / "references" / "__init__.py").is_file()
 
@@ -116,16 +113,13 @@ def test_reference_check_and_hints_are_separate(tmp_path):
 
 
 def test_old_archive_data_requires_explicit_migration(tmp_path):
-    from tarav.l0.kernel import InvalidRecordType
-
     archive = Archive.create(tmp_path / "archive")
-    entry = archive.records_root / "main.json"
+    entry = archive.store.marker
     payload = json.loads(entry.read_text())
-    payload["class"] = payload.pop("type")
-    payload["schema_version"] = 1
+    payload["schema"] = 999
     entry.write_text(json.dumps(payload))
     before = entry.read_bytes()
-    with pytest.raises(InvalidRecordType):
+    with pytest.raises(ValueError):
         Archive.open(archive.root)
     assert entry.read_bytes() == before
 
@@ -140,25 +134,21 @@ def test_reference_classes_respect_structural_type_authority(tmp_path):
     path.write_text(json.dumps(reference))
     assert isinstance(create_runtime().load_object(path), FileReference)
     archive = Archive.create(tmp_path / "archive")
-    artifact = archive.register_artifact(locator=str(tmp_path / "data"))
-    entry = archive.record(artifact.id)
+    artifact = archive.register(DOI(locators=[LocalLocator(tmp_path / "data")]))
+    entry = archive.read(artifact.id)
     retained = entry.records.to_record()
     retained["type"] = {
         "uuid": str(entity(type(entry)).id),
         "label": "old human label",
     }
-    entry.source.write_text(json.dumps(retained))
-    assert archive.record(artifact.id).doi == artifact.id
+    archive.store.path(artifact.id).write_text(json.dumps(retained))
+    assert archive.read(artifact.id).id == artifact.id
 
 
 def test_archive_reference_requires_exact_doi(tmp_path):
-    from tarav.l1.archive.references import ArchiveReference
-
     archive = Archive.create(tmp_path / "archive")
-    artifact = archive.register_artifact(locator=str(tmp_path / "data"), name="example")
+    artifact = archive.register(DOI(label="example", locators=[LocalLocator(tmp_path / "data")]))
     for selector in ("example", artifact.id[:12]):
-        outcome = ArchiveReference(
-            {"locator": {"archive": str(archive.root), "doi": selector}}
-        ).resolve()
+        outcome = DOIReference(selector, registry=archive.root).resolve()
         assert not outcome.ok
         assert "exact DOI" in outcome.message

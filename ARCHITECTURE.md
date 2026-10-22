@@ -328,11 +328,21 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   <!-- tarav.breadcrumb 5ede35bc5676 -->
 - Domain packages own their vocabulary, Records, storage, validation, and
   operations. Cross-domain imports remain acyclic.
-- `tarav.l1.archive.records` implements Record Archive, nested beneath its parent
-  Archive workflow. Artifact-registration Record definitions live separately in
-  `tarav.l1.archive.artifact_records`; Archive's parent implementation does not
-  import its Record Archive child. Its retained layout remains Archive-owned;
-  it shares exact-type write and Git initialization mechanics with Records.
+- `tarav.l1.archive` owns the typed DOI registry. `model` defines DOI contracts,
+  local/remote locators and bounded repository recognition hints. `Archive`
+  uses the standard `l1.records.registry.RecordMap` partition under its Workflow
+  Ship; lookup returns maintained objects without accessing external resources.
+  `archive.references.DOIReference` loads a DOI declaration, while direct Git
+  references can retain exact declaration editions. `archive.checks` separately
+  observes local paths and bounded HTTP HEAD responses. Its Situation Chain
+  raises Archive-owned actions through the System Project; unassessed locations
+  never establish success. A scan checkpoint protects earlier findings when
+  discovery is incomplete. Checks never repair locations or gate lookup.
+<!-- tarav.breadcrumb 4f95380b66f7 -->
+<!-- tarav.breadcrumb 8eadede851af -->
+- `tarav.l1.archive.records` remains the independent Record Archive child.
+  Archive's parent implementation does not import that child. Its existing
+  storage layout, identities and consumers remain unchanged.
 - `tarav.l1.loading` owns profile discovery and `tarav.l3.loading` owns the
   runtime-backed load facade. `tarav.l1.project` owns the minimal Project Type;
   `tarav.l2.project` adds Models and Wiki integrations. Archive uses the
@@ -730,7 +740,7 @@ and resolves nothing. Programs and Actions are not yet related in code.
 | Package | Architectural responsibility |
 | --- | --- |
 | `agent` | AgentsWorkflow. Provider-neutral agent, account, session, and monitoring behavior; concrete providers (Claude Code, Codex, Copilot) live below `agent.providers`. `agent.current_session` names the running agent's session through the adapters that inherit `ReportsCurrentSession`. |
-| `archive` | Artifact identity, retained Archive Records, and Archive-specific location history. |
+| `archive` | Typed DOI resource declarations, maintained locators and recognition hints, registry references and independent locator checks. |
 | `archive.records` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
 | `records` | TaravRecords workflow: contributed Record-source navigation, on-demand Entity view, and optional standard keyed RecordRegistry partitions. |
 | `search` | SearchWorkflow owns typed incremental queries and a registry-backed meta engine. SearchEngine Types contribute a bound `.search` namespace; the runtime holds one SearchService per composition. Engine registration does not imply storing queries or hits. |

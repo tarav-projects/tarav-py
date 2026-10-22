@@ -9,14 +9,14 @@ from tarav.l1.archive.identity import ARCHIVE_WORKFLOW_SHIP
 from tarav.l0.kernel.space import FilesystemProvider
 
 from . import Archive
-from .artifact_records import record_registry
 
 
 class ArchiveProvider(FilesystemProvider):
+    # tarav.breadcrumb f1d76fea2fb1
     # tarav.breadcrumb 8bc3009f9a9c
-    def __init__(self, root: Path) -> None:
-        self.archive = Archive.open(root)
-        super().__init__(self.archive.records_root, record_registry())
+    def __init__(self, root: Path, records=None) -> None:
+        self.archive = Archive(root, records=records)
+        super().__init__(self.archive.store.records_dir, self.archive.store.records)
 
 class ArchiveWorkflow(TaravWorkflow):
     @classmethod
@@ -38,7 +38,7 @@ class ArchiveWorkflow(TaravWorkflow):
 
     @classmethod
     def provider(cls, root, records):
-        return ArchiveProvider(root)
+        return ArchiveProvider(root, records)
 
     @staticmethod
     def open(root: Path) -> Archive:

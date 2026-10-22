@@ -5,12 +5,7 @@ import hashlib
 import pytest
 from pydantic import ValidationError
 
-from tarav.l1.archive.references import (
-    ArchiveContainsCommitCheck,
-    ArchiveGitOidCheck,
-    ArchiveLocator,
-    ArchiveSha256Check,
-)
+from tarav.l1.archive.references import DOILocator, DOIReference
 from tarav.l1.chatlas.references import ChatlasTurnLocator, EmptyReferenceCheck
 from tarav.l0.kernel import TaravObject, isrecordsubclass, issubrecord
 from tarav.l1.references import (
@@ -59,12 +54,14 @@ def test_relative_reference_needs_explicit_context(tmp_path):
     assert reference.resolve().target == tmp_path / "payload"
 
 
+# tarav.breadcrumb f8de67c8f3bf
 def test_reference_record_interfaces_and_examples():
     for reference_type in (
         FileReference,
         FilePositionReference,
         GitFileReference,
         StructuredFileReference,
+        DOIReference,
     ):
         assert issubrecord(reference_type, Reference)
         assert isrecordsubclass(reference_type, Reference)
@@ -90,10 +87,7 @@ def test_embedded_reference_interfaces_share_tarav_object_record_root():
         GitFileLocator,
         GitOidCheck,
         StructuredFileLocator,
-        ArchiveLocator,
-        ArchiveSha256Check,
-        ArchiveGitOidCheck,
-        ArchiveContainsCommitCheck,
+        DOILocator,
         ChatlasTurnLocator,
         EmptyReferenceCheck,
         FilePositionLocator,

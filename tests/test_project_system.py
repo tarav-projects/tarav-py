@@ -21,6 +21,8 @@ def _runtime(monkeypatch, tmp_path):
     # System checks must never inspect the real machine's Attic in a unit test.
     from tarav.l1.attic import model as attic_model
     monkeypatch.setattr(attic_model, "default_tarav_data_root", lambda: tmp_path / "tarav-data")
+    import tarav.l1.archive as archive_module
+    monkeypatch.setattr(archive_module, "default_archive_root", lambda: tmp_path / "doi-registry")
 
 
 def _marker(root: Path, **fields) -> None:
@@ -28,6 +30,44 @@ def _marker(root: Path, **fields) -> None:
     (root / ".tarav/project.json").write_text(json.dumps(
         {"project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
          "created_at": "2026-10-15T00:00:00Z", **fields}))
+
+
+# tarav.breadcrumb 8df042c52f14
+def test_system_owns_locator_actions_and_rechecks_close_them(tmp_path, monkeypatch):
+    from tarav.l1.archive import Archive
+    from tarav.l1.archive.model import DOI, LocalLocator
+
+    missing = tmp_path / "resource"
+    archive = Archive.create(tmp_path / "doi-registry")
+    doi = archive.register(DOI(locators=[LocalLocator(missing)]))
+    system = tmp_path / "system"
+    _marker(system)
+    project = TaravSystemProject.from_path(system)
+    project.status()
+    actions = [run for run in project.actions.list()
+               if run.data["action"] == "Tarav.Archive.Locator.Missing.Action"]
+    assert len(actions) == 1
+    action = actions[0]
+    assert action.state == "running"
+    assert action.data["project"]["id"] == str(project.id)
+    assert action.data["event"]["poi"]["situation"]["doi"] == doi.id
+
+    # Missing registry is not a completed scan: do not close earlier findings.
+    marker = archive.store.marker.read_bytes()
+    archive.store.marker.unlink()
+    project.status()
+    assert next(run for run in project.actions.list() if run.id == action.id).state == "running"
+    archive.store.marker.write_bytes(marker)
+
+    # Another host cannot establish local availability either.
+    with monkeypatch.context() as remote_host:
+        remote_host.setattr("tarav.l1.archive.checks.socket.gethostname", lambda: "another-host")
+        project.status()
+        assert next(run for run in project.actions.list() if run.id == action.id).state == "running"
+    missing.write_text("restored")
+    project.status()
+    updated = next(run for run in project.actions.list() if run.id == action.id)
+    assert updated.state == "closed" and updated.exit == "gone"
 
 
 def test_each_active_project_is_loaded_through_its_own_harness(tmp_path: Path) -> None:
