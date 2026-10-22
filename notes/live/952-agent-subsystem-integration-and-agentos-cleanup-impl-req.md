@@ -16,7 +16,7 @@ and clean it of leftover Agentos naming.
 - Non-goals: Diagram-visible agent/account Types, Archive registration of the
   usage registry, log rotation, Agentos names owned by other subsystems
   (`l0.project` `*_agentos_*` helpers, daemon, hooks, stdlib, Chatlas).
-- Status: ready → executing (Develop).
+- Status: implemented; live config migration pending a restart of long-running Tarav processes.
 
 The User asked to update this "VERY old system", integrate it more, keep its
 functionality, and clean the old Agentos stuff.
@@ -92,7 +92,7 @@ belongs to `l0.project`.
 - Wiki: `tarav-py/notes/wiki/` (topical: `situation-chains.md`,
   `record-interfaces.md`); daily under `notes/wiki/daily/`.
 - Supporting chat: Claude Code session `e6a6bdb2-fd7b-4f83-ba62-7e12a2e8e9d3`.
-- Capture status: pending (completion pass).
+- Capture status: done — `notes/wiki/daily/2026-10-22.md`, `notes/wiki/agent-subsystem.md` (`a773c5c`).
 
 ## Execution.Plan
 
@@ -189,3 +189,10 @@ concurrent session editing Chatlas/breadcrumbs (do not touch its files).
   `f973b051579a`; positions refreshed (122 labels, audit ok). The file also held
   another session's uncommitted PathNotebook paragraph, committed here as found.
   Check: `tests/test_architecture.py` passed.
+- Completion. Full suite: 821 passed, 2 failed in `tests/test_project_notebook.py`
+  (`PathNotebook`, another session's in-progress Impl.Req 953; untouched here).
+  Commits: `5fd3f0d` start, `e23d877` slice 1, `394ad60` slice 2 (code also in
+  `247f77b`), `fae929e` slice 3, `b381608` slice 4, wiki `bf386cf`/`a773c5c`.
+  Pending: rewrite `~/.tarav/config.json` `class` to `tarav.global.config` after
+  restarting the account monitor and `tarav-daemon`; codex/br session-hook
+  misattribution follow-up.
