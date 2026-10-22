@@ -11,10 +11,21 @@ from tarav.l1.project.config import ProjectConfig
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 
 
+# tarav.breadcrumb a885ca2acfd0
 class ProductMappingConfig(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
     enabled: bool = False
     max_age_days: int = Field(default=5, ge=0)
+    include: list[str] = Field(default_factory=lambda: ["*"])
+    exclude: list[str] = Field(default_factory=list)
+
+
+def configured_mapper(repository, repository_id, *, root=None):
+    """Apply the selected Project's controls without coupling the core to Projects."""
+    config = ProjectConfig(repository).section("product_mapping", ProductMappingConfig)
+    return ProductMapper(repository, repository_id, root=root,
+                         include=config.include if config else None,
+                         exclude=config.exclude if config else None)
 
 
 class MappingLoadCheck(Check):
@@ -38,10 +49,11 @@ class MappingManager(NamespaceBase):
     """Own the Project's mapping selection and maintenance-check integration."""
 
     def open(self):
-        binding = ProjectConfig(self.obj.root).section("git", GitConfig)
+        settings = ProjectConfig(self.obj.root)
+        binding = settings.section("git", GitConfig)
         if binding is None or binding.repository is None:
             raise ValueError("Product Mapping requires an explicit Git repository identity binding")
-        return ProductMapper(self.obj.root, binding.repository)
+        return configured_mapper(self.obj.root, binding.repository)
 
     def suite(self):
         def produce(_suite):

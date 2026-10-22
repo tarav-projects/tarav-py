@@ -11,7 +11,7 @@ from .workflow import PRODUCT_MAPPING_SHIP
 
 
 class MappingUpdateRequired(CheckPOI):
-    """A mapping stream has no confirmed map, or has newer commits beyond its freshness window."""
+    """A map is missing, has outdated selection, or has newer commits beyond its freshness window."""
 
     action = "Tarav.ProductMapping.Update.Action"
 
@@ -46,7 +46,9 @@ class MappingFreshnessCheck(SituationCheck):
         try:
             latest = self.mapper.latest()
             head = self.mapper.product.exact("HEAD")
-            due = latest is None or (
+            scope_changed = latest is not None and self.mapper.selection() != (
+                latest.typed.include, latest.typed.exclude)
+            due = latest is None or scope_changed or (
                 latest.typed.commit != head and self.now - datetime.fromisoformat(
                     latest.typed.confirmed_at) >= timedelta(days=self.max_age_days))
         except (OSError, ValueError, RuntimeError) as exc:
@@ -54,6 +56,7 @@ class MappingFreshnessCheck(SituationCheck):
         pois = [self.poi(MappingUpdateRequired, message="Product map update required",
                          details={"repository": str(self.mapper.product.root), "head": head,
                                   "mapped_commit": latest.typed.commit if latest else None,
+                                  "scope_changed": scope_changed,
                                   "max_age_days": self.max_age_days})] if due else []
         return CheckResult(self, status="completed", pois=pois)
 

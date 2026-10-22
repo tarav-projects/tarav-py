@@ -37,25 +37,40 @@ class ProductMapper(TaravObject):
         repository: str
         repository_id: str
         root: str
+        include: list[str] | None = None
+        exclude: list[str] | None = None
 
-    def __init__(self, repository, repository_id, *, root=None, records=None):
+    def __init__(self, repository, repository_id, *, root=None, records=None,
+                 include=None, exclude=None):
         super().__init__()
         if not isinstance(repository_id, str) or not repository_id.strip():
             raise ValueError("An explicit repository identity is required")
         self.repository = Path(repository).expanduser().resolve()
         self._product = None
         self.repository_id = repository_id
+        for value in (include, exclude):
+            if value is not None and (not isinstance(value, list)
+                                      or any(not isinstance(item, str) for item in value)):
+                raise ValueError("Mapping include/exclude must be lists of path globs")
+        self.configured_include = list(include) if include is not None else None
+        self.configured_exclude = list(exclude) if exclude is not None else None
         self.store = (RecordMap(Path(root), PRODUCT_MAPPING_SHIP, records) if root is not None
                       else RecordRegistry(records=records).for_workflow(ProductMappingWorkflow))
         self.track_key = "track-" + sha256(repository_id.encode()).hexdigest()
 
     def _to_record(self):
-        return {**super()._to_record(), "repository": str(self.repository),
-                "repository_id": self.repository_id, "root": str(self.store.root)}
+        value = {**super()._to_record(), "repository": str(self.repository),
+                 "repository_id": self.repository_id, "root": str(self.store.root)}
+        if self.configured_include is not None:
+            value["include"] = self.configured_include
+        if self.configured_exclude is not None:
+            value["exclude"] = self.configured_exclude
+        return value
 
     @classmethod
     def _from_record(cls, loaded: LoadedRecord):
-        return cls(loaded.data.repository, loaded.data.repository_id, root=loaded.data.root)
+        return cls(loaded.data.repository, loaded.data.repository_id, root=loaded.data.root,
+                   include=loaded.data.include, exclude=loaded.data.exclude)
 
     class Records(TaravObject.Records):
         def record_example(self):
@@ -79,9 +94,13 @@ class ProductMapper(TaravObject):
         return obj
 
     def create(self, *, target_bytes=4096, boundary_bytes=256, include=None, exclude=None):
+        if include is None:
+            include = self.configured_include if self.configured_include is not None else ["*"]
+        if exclude is None:
+            exclude = self.configured_exclude if self.configured_exclude is not None else []
         data = build(MappingTrack, repository_id=self.repository_id, target_bytes=target_bytes,
-                     boundary_bytes=boundary_bytes, include=["*"] if include is None else include,
-                     exclude=[] if exclude is None else exclude, maps=[], issued_ids=[])
+                     boundary_bytes=boundary_bytes, include=include,
+                     exclude=exclude, maps=[], issued_ids=[])
         self.store.create()
         self.store.insert(self.track_key, data)
         return self
@@ -98,11 +117,19 @@ class ProductMapper(TaravObject):
         track = self.track()
         return self.load(track.typed.maps[-1]) if track and track.typed.maps else None
 
-    def inventory(self, commit, track=None):
-        data = (track or self.track()).typed
+    # tarav.breadcrumb 3c10baf79f97
+    def selection(self):
+        track = self.track()
+        include = (self.configured_include if self.configured_include is not None else
+                   track.typed.include if track else ["*"])
+        exclude = (self.configured_exclude if self.configured_exclude is not None else
+                   track.typed.exclude if track else [])
+        return list(include), list(exclude)
+
+    def inventory(self, commit, *, include, exclude):
         selected = {path: surface for path, surface in self.product.inventory(commit).items()
-                    if any(fnmatchcase(path, pattern) for pattern in data.include)
-                    and not any(fnmatchcase(path, pattern) for pattern in data.exclude)}
+                    if any(fnmatchcase(path, pattern) for pattern in include)
+                    and not any(fnmatchcase(path, pattern) for pattern in exclude)}
         regular = {p: s for p, s in selected.items() if s.mode in {"100644", "100755"}}
         skipped = [SkippedSurface(path=p, mode=s.mode, oid=s.oid)
                    for p, s in selected.items() if p not in regular]
@@ -128,7 +155,8 @@ class ProductMapper(TaravObject):
         if track is None:
             raise ValueError("Create an explicit mapping track before proposing")
         commit = self.product.exact(target)
-        regular, skipped = self.inventory(commit, track)
+        include, exclude = self.selection()
+        regular, skipped = self.inventory(commit, include=include, exclude=exclude)
         previous = self.latest()
         old_files = defaultdict(list)
         if previous:
@@ -162,7 +190,8 @@ class ProductMapper(TaravObject):
                                                         track.typed.boundary_bytes))
         return build(MappingProposal, repository_id=self.repository_id,
                      base=previous.typed.id if previous else None, commit=commit,
-                     tree=self.product.tree(commit), chunks=chunks, skipped=skipped)
+                     tree=self.product.tree(commit), include=include, exclude=exclude,
+                     chunks=chunks, skipped=skipped)
 
     def changes(self, proposal):
         """Return exact changed states, without interpreting identity continuity."""
@@ -188,7 +217,7 @@ class ProductMapper(TaravObject):
             raise ValueError("Map repository identity mismatch")
         if self.product.tree(data.commit) != data.tree:
             raise ValueError("Map tree does not match its commit")
-        regular, skipped = self.inventory(data.commit)
+        regular, skipped = self.inventory(data.commit, include=data.include, exclude=data.exclude)
         if sorted((s.path, s.mode, s.oid) for s in skipped) != sorted(
                 (s.path, s.mode, s.oid) for s in data.skipped):
             raise ValueError("Skipped surface inventory mismatch")
@@ -235,6 +264,8 @@ class ProductMapper(TaravObject):
             expected = track.typed.maps[-1] if track.typed.maps else None
             if proposal.typed.base != expected:
                 raise ValueError("Stale proposal: mapping stream has advanced")
+            if (proposal.typed.include, proposal.typed.exclude) != self.selection():
+                raise ValueError("Stale proposal: configured file scope has changed")
             self.audit(proposal)
             changes = self.changes(proposal)
             old = {change["id"] for change in changes if change["before"] is not None}

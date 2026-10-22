@@ -1,11 +1,18 @@
 # Project-configured Product Mapping scope
 
+<!-- tarav.sessions
+ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015415da94eeb1a17634872aa4fb9e25d8e065ab53
+-->
+
 ## Impl.Abstract
 
 Knowledge.Surface: wiki. Status: executing. Correct the overbroad tarav-py run:
 only committed .py files under src/ and tests/ belong in its active map. The
 User explicitly puts this scope in Project configuration, not engine defaults.
 Keep the generic workflow product-agnostic.
+<!-- tarav.breadcrumb bf55eef4fcef -->
+<!-- tarav.breadcrumb 53a090edbe4a -->
+<!-- tarav.breadcrumb 49304512c08e -->
 
 ## Design and Impl.Req.Wiki
 
@@ -27,10 +34,10 @@ This corrects request 946's operational scope, not the underlying general design
 
 ## Execution.Plan
 
-- [ ] Feature: Project config → manager/driver → generic mapper; snapshot scope
+- [x] Feature: Project config → manager/driver → generic mapper; snapshot scope
   preserves old audits. Verify nested .py inclusion and exclusion of .md, notes,
   retired code and similarly named directories; config changes update selection.
-- [ ] Data: preserve old run, rebuild scoped history, independently audit each
+- [x] Data: preserve old run, rebuild scoped history, independently audit each
   snapshot and compare inventory with committed src/tests Python files.
 - [ ] Capture, checks and commits; final HEAD catch-up without changing scope.
 
@@ -39,3 +46,28 @@ This corrects request 946's operational scope, not the underlying general design
 - Worktrees initially clean. Product head 1f714d75, original run 128 maps.
 - Todo list above. Product Mapping's existing include/exclude mechanics are
   reused. No new file classification, parser or workflow type is needed.
+- Readiness checked against the current mapper, Track, Project config, manager,
+  commands, driver and tests. No unresolved user decision. Cold-reloaded plan.
+- Config controls are shared by Project manager, CLI and replay. Core remains
+  generic. Map snapshots record selection; old map audits ignore new controls.
+  A changed configuration triggers an update at the same commit and rejects
+  confirmation of an obsolete-scope proposal.
+- Measured verification: 78 mapping/generic Record/architecture tests passed;
+  after scope-staleness coverage, 25 mapping/generic Record tests passed. Ruff
+  across src/tests/tooling passed. Nested .py inclusion, other-directory and
+  non-Python exclusion, CLI/manager agreement and historical audit are asserted.
+- Preserved 128 rejected broad maps in the existing data Git history and the
+  superseded-whole-repository Track. Explicit schema migration adds only their
+  original include/exclude values, verifying all other fields unchanged. No
+  runtime migration or repair was added. The active history is being rebuilt
+  from Project configuration through pinned original target 04981e43.
+- Start checkpoints: Python 1818f589, Markdown c027fdc9. Rebuilt 127 historical
+  checkpoints. At 04981e43: 553 files, 1,184 chunks, 3,454,612 bytes, no skipped
+  surfaces. Independent Git inventory enumeration matches exactly: regular
+  committed files whose path starts src/ or tests/ and ends .py.
+- The installed CLI independently audited every rebuilt historical map. All
+  modified product/doc surfaces audited clean; schema/control plumbing had no
+  additional invented User-Turn placement. JSON source remains externally
+  annotated. The superseded report is retained by the earlier product Git commit.
+- Broad root status --all is running. Final catch-up will follow completion
+  commit; exact coordinates will be retained in the registry.

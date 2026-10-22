@@ -179,6 +179,7 @@ class TaravRuntime:
         from tarav.l1.stdlib.utils import register_utils_commands
         from tarav.l1.workspaces.commands import register_workspace_commands
         from tarav.l1.product_mapping.commands import register_product_mapping_commands
+        from tarav.l2.project.product_mapping import configured_mapper
         from tarav.l1.usage.commands import register_usage_commands
 
         register_agent_commands(subparsers)
@@ -224,7 +225,7 @@ class TaravRuntime:
         )
         register_scoring_commands(subparsers)
         register_workspace_commands(subparsers)
-        register_product_mapping_commands(subparsers)
+        register_product_mapping_commands(subparsers, mapper_factory=configured_mapper)
         from tarav.l1.actions.commands import register_action_commands
         from tarav.l1.operator_context.commands import register_operator_context_commands
         register_operator_context_commands(subparsers)

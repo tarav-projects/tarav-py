@@ -21,7 +21,7 @@ def summary(mapping):
 
 def _run(args):
     try:
-        mapper = ProductMapper(args.repo, args.repository_id, root=args.store)
+        mapper = args.mapping_mapper(args.repo, args.repository_id, root=args.store)
         command = args.mapping_command
         if command == "init":
             mapper.create(target_bytes=args.target_bytes, boundary_bytes=args.boundary_bytes,
@@ -62,7 +62,7 @@ def _run(args):
 
 
 # tarav.breadcrumb ff230ac71547
-def register_product_mapping_commands(subparsers):
+def register_product_mapping_commands(subparsers, *, mapper_factory=ProductMapper):
     parser = subparsers.add_parser("product-map", help="Maintain byte-chunk maps at selected Git commits.")
     commands = parser.add_subparsers(dest="mapping_command", required=True)
     for name, description in (
@@ -105,4 +105,4 @@ def register_product_mapping_commands(subparsers):
             cmd.add_argument("--history", action="store_true")
         if name == "audit":
             cmd.add_argument("--all", action="store_true")
-        cmd.set_defaults(handler=_run)
+        cmd.set_defaults(handler=_run, mapping_mapper=mapper_factory)

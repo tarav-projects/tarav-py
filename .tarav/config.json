@@ -14,6 +14,8 @@
   },
   "product_mapping": {
     "enabled": true,
-    "max_age_days": 5
+    "max_age_days": 5,
+    "include": ["src/*.py", "tests/*.py"],
+    "exclude": []
   }
 }

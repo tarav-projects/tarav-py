@@ -161,6 +161,55 @@ def test_symlinks_are_listed_never_followed_and_scope_is_explicit(mapper):
     confirm(mapper, proposal)
 
 
+# tarav.breadcrumb 8f966443e2a4
+def test_project_config_controls_manager_and_cli_scope_without_reinterpreting_old_maps(mapper, capsys):
+    from hashlib import sha256
+    from tarav.l1.git.hooks import GitConfig
+    from tarav.l1.product_mapping.checks import MappingFreshnessCheck
+    from tarav.l1.project.config import ProjectConfig
+    from tarav.l2.project import Project
+    from tarav.l2.project.product_mapping import ProductMappingConfig
+    from tarav.l3.cli.cli import main
+
+    head = commit(mapper, {
+        "src/direct.py": b"x=1\n", "src/nested/core.py": b"y=2\n",
+        "tests/test_core.py": b"assert True\n", "tests/generated/test_auto.py": b"assert False\n",
+        "src/readme.md": b"docs", "notes/hidden.py": b"notes",
+        "_DEPRECATED/old.py": b"old", "srcish/no.py": b"outside", "tests/test.txt": b"text"})
+    root = mapper.product.root
+    (root / ".tarav").mkdir()
+    (root / ".tarav/project.json").write_text(json.dumps({
+        "type": "Tarav.Project", "project_id": str(uuid4()), "created_at": "2026-10-22T00:00:00Z"}))
+    config = ProjectConfig(root)
+    rid = sha256(str(root).encode()).hexdigest()
+    config.write_section("git", GitConfig(repository=rid))
+    config.write_section("product_mapping", ProductMappingConfig(enabled=True))
+    project = Project.from_path(root)
+    broad = project.mapping.open()
+    broad.create()
+    original = confirm(broad, broad.propose(head))
+    stale_scope = broad.propose(head)
+    config.write_section("product_mapping", ProductMappingConfig(
+        enabled=True, include=["src/*.py", "tests/*.py"], exclude=["tests/generated/*"]))
+    selected = project.mapping.open()
+    with pytest.raises(ValueError, match="file scope"):
+        selected.confirm(stale_scope, decisions=[], actor="user", reason="Old selection")
+    proposal = selected.propose(head)
+    assert {c.path for c in proposal.typed.chunks} == {
+        "src/direct.py", "src/nested/core.py", "tests/test_core.py"}
+    assert selected.audit(original)["files"] == 9
+    assert original.typed.include == ["*"]
+    assert len(MappingFreshnessCheck(mapper=selected).run().pois()) == 1
+    latest = confirm(selected, proposal)
+    assert selected.audit(latest)["files"] == 3
+    assert MappingFreshnessCheck(mapper=selected).run().pois() == ()
+    capsys.readouterr()
+    assert main(["product-map", "propose", "--repo", str(root), "--repository-id", rid]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert {c["path"] for c in output["chunks"]} == {
+        "src/direct.py", "src/nested/core.py", "tests/test_core.py"}
+
+
 def test_checkpoints_skip_intermediates_include_final_and_resume(mapper):
     history = [commit(mapper, {"a": str(i).encode()}) for i in range(24)]
     assert mapper.product.checkpoints(every=10) == (history[0], history[10], history[20], history[23])

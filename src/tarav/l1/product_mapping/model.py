@@ -65,6 +65,8 @@ class MappingProposal(TypedState, TaravObject):
         base: str | None
         commit: Oid
         tree: Oid
+        include: list[str]
+        exclude: list[str]
         chunks: list[Chunk]
         skipped: list[SkippedSurface]
 
@@ -72,7 +74,7 @@ class MappingProposal(TypedState, TaravObject):
         def record_example(self):
             return {**super().record_example(), "repository_id": "example-repository",
                     "base": None, "commit": "0" * 40, "tree": "0" * 40,
-                    "chunks": [], "skipped": []}
+                    "include": ["*"], "exclude": [], "chunks": [], "skipped": []}
 
 
 class ProductMap(TypedState, TaravObject):

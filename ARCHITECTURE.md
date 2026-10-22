@@ -518,6 +518,13 @@ Projects as `Mapping` / `mapping`, owns configuration and maintenance-check
 integration. One stable update action follows missing or stale maps with newer
 committed work; checks never initialize or advance mapping. See the workflow's
 README and `tests/test_product_mapping.py` for the agent loop and contract.
+
+File selection is Project policy: the `product_mapping.include` and `exclude`
+globs in `.tarav/config.json` enter the generic mapper through the Project
+manager and the runtime's CLI adapter. Confirmed maps retain their actual
+selection for historical auditing. A changed selection requests a map update
+and cannot silently reinterpret an earlier map.
+<!-- tarav.breadcrumb 3f25b9a97a19 -->
 <!-- tarav.breadcrumb 67f797198aa6 -->
 <!-- tarav.breadcrumb a69fa15a978b -->
 

@@ -13,7 +13,10 @@ A chunk version records a UUID, file path, blob OID, half-open byte range and
 SHA-256 fingerprint. A fingerprint identifies content state, never continuity.
 All selected regular files, including binary and empty files, are covered once.
 Symlinks and submodules are listed as skipped; their targets are never read.
-The stream's include/exclude globs are fixed at explicit creation.
+Each map retains the include/exclude globs used to select that exact state.
+Changing Project configuration changes future selection; old maps are audited
+against their recorded selection. Confirmation rejects a proposal whose scope
+no longer matches its current configuration.
 
 Initial chunks have a target byte size and optional forward boundary flexibility
 that prefers whitespace. This is a heuristic, not a word/UTF-8/syntax boundary
@@ -92,7 +95,23 @@ the independent ProductMappingSuite. Extend `Project.Mapping` to change that
 integration. Minimal TaravProject does not depend on the mapping workflow.
 
 Opt in through `.tarav/config.json` with
-`"product_mapping": {"enabled": true, "max_age_days": 5}`.
+the workflow-owned `product_mapping` section. For tarav-py:
+
+```json
+"product_mapping": {
+  "enabled": true,
+  "max_age_days": 5,
+  "include": ["src/*.py", "tests/*.py"],
+  "exclude": []
+}
+```
+
+These are repository-relative path globs; `*` also matches nested path segments.
+The Project manager, installed CLI and history runner share this configuration
+adapter. The generic mapper has no Python-specific selection rule. Standalone
+callers can supply their own selection explicitly or use their track's defaults.
+Changing scope requests an update immediately, even without a newer commit.
+<!-- tarav.breadcrumb d562b8fbc479 -->
 The freshness age is elapsed time since the latest map's confirmation, not its
 target commit's authored date. A missing map is due immediately. An existing
 map becomes due only when committed HEAD differs and that confirmation is old

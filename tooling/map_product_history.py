@@ -13,7 +13,7 @@ from uuid import uuid4
 import json
 
 from tarav.l0._core.persistence import atomic_write_json
-from tarav.l1.product_mapping import ContinuityDecision, ProductMapper
+from tarav.l1.product_mapping import ContinuityDecision
 from tarav.l1.product_mapping.alignment import chunk, partition
 
 
@@ -121,7 +121,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.apply and (not args.actor or not args.actor.startswith("agent:") or args.report is None):
         parser.error("--apply requires --actor agent:IDENTITY and --report PATH")
-    mapper = ProductMapper(args.repo, args.repository_id, root=args.store)
+    # tarav.breadcrumb 258151b8757f
+    from tarav.l2.project.product_mapping import configured_mapper
+
+    mapper = configured_mapper(args.repo, args.repository_id, root=args.store)
     endpoint = mapper.product.exact(args.commit)
     latest = mapper.latest()
     checkpoints = mapper.product.checkpoints(endpoint, every=args.every,
@@ -134,11 +137,12 @@ def main(argv=None):
     report = {"policy": POLICY, "actor": args.actor, "repository_id": args.repository_id,
               "repository": str(mapper.product.root), "store": str(mapper.store.root),
               "target": endpoint, "every": args.every,
+              "include": mapper.selection()[0], "exclude": mapper.selection()[1],
               "interpretation": "Agent-selected byte-evidence decisions; no user review claimed",
               "checkpoints": []}
     if args.report.exists():
         previous_report = json.loads(args.report.read_text())
-        for key in ("policy", "actor", "repository_id", "target", "every", "store"):
+        for key in ("policy", "actor", "repository_id", "target", "every", "store", "include", "exclude"):
             if previous_report[key] != report[key]:
                 raise ValueError(f"Report resume contract changed: {key}")
         report = previous_report
