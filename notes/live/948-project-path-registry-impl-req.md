@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: implemented; final verification running. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
+Status: complete. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
 
 Implement a Python-first PathRegistry for TaravObject Record and instance schema
 Views. Projects enumerate their registered Types and own registry maintenance
@@ -68,7 +68,7 @@ session, refreshed once for this pass. Preserve older evidence gaps separately.
 - [x] Feature: typed Views/entries/registry, explicit maintenance and Project
   checks/actions. Verify save/load, stable Ships and attachments through a rename,
   new/retired/duplicate paths, schema drift and action closure; checks are read-only.
-- [ ] Capture/verification: register public Types, update architecture/guidance,
+- [x] Capture/verification: register public Types, update architecture/guidance,
   add source evidence, run focused and full Project checks, Wiki capture and
   evidence commits. Demonstrate on real Block/Line schema values in isolated data.
 
@@ -106,3 +106,18 @@ session, refreshed once for this pass. Preserve older evidence gaps separately.
 - Wiki capture added path-registry.md and linked projects.md and the daily Note
   for 2026-10-22. Markdown status completed 1,215 checks, with existing harness,
   Git, SKW and provisional-marker findings; capture submission ran afterward.
+- Final focused run passed 76 tests across path behavior, architecture and kernel
+  Record contracts. Final non-test Python status completed 20 checks and retained
+  only the three existing findings. The prior all-suites run covered all 66 pytest
+  suites; the final focused run also covers the additional retirement and
+  architecture assertions introduced during that run.
+- Product slice: `f2d8e87d3511b32cdb49898be9d61d2118594c3f`. Commit Breadcrumb
+  audit passed. Wiki capture: `004c4c27eba4061c7a825821350b6b2eb6596ca1`.
+  All three Wiki surfaces audited with zero POIs/errors. Final Markdown status
+  completed 1,215 checks; remaining provisional markers are on other Wiki
+  surfaces (including context-graph.md), not this capture. Existing harness/Git
+  and SKW findings remain outside this request. No mixed external edits entered
+  the product slice; start checkpoints retained the pre-existing work.
+- Schema/identity demonstration uses real Line and Block computed Views in the
+  tests, and the rename/save/load test uses isolated Project data with a real
+  PathDocumentation Line. No live registry enrollment or extension change.
