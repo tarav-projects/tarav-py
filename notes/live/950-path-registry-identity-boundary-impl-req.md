@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: implemented; verification running. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
+Status: complete. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
 
 Follow up completed request 948. Restrict PathRegistry to providing and tracking
 identities of schemas and positions within schemas. Remove registry-owned
@@ -66,7 +66,7 @@ for request, affected source and Wiki Breadcrumbs. No scoring/support/review wor
   and path Ships survive rename/save/load/retirement, consumer associations stay
   outside serialization and their Lines keep their authoring context. Run path,
   kernel Record-contract and architecture tests plus Ruff.
-- [ ] Capture/closure: update workflow guide, architecture, Skillware source and
+- [x] Capture/closure: update workflow guide, architecture, Skillware source and
   rebuild guidance. Capture request and changed source, run full Project status,
   update topical/daily Wiki, audit Breadcrumbs and commit scoped evidence.
 
@@ -101,3 +101,14 @@ for request, affected source and Wiki Breadcrumbs. No scoring/support/review wor
   Ruff passed after source capture. All eight selected request/source/Wiki
   surfaces audited successfully with zero errors; informational findings update
   moved source positions. Guidance JSON uses a registered external annotation.
+- Full Project status finished: 86 checks completed, none incomplete. Of 66
+  pytest suites, 65 passed; architecture reported the same concurrent Product
+  Review test failure seen above. The corrected architecture rerun passed 55
+  tests. No full-suite rerun was needed after that targeted verification. The
+  full-run report retains its historical failure; this is not an all-green
+  full-run claim. Existing Gitleaks and two synthetic marker findings remain.
+- Product commit `48da1e74bc596e277669048d62503fd0c615d6b0`; Wiki capture
+  commit `a633a0d4226c586cff1fa72a081e2bcfb2d53013`. Both commit Breadcrumb
+  audits passed. Wiki destinations: path-registry.md and daily/2026-10-22.md.
+  Source/Wiki capture has no unresolved evidence gap. Concurrent Product Review
+  work remains managed by its own request; no additional implementation scope.
