@@ -10,6 +10,7 @@ from tarav.l0.kernel.current import current_records
 from tarav.l1.grounding import SubjectState
 from tarav.l1.lines import Block, Line
 from tarav.l1.archive.references import RepositoryLocator, RepositoryReference
+from tarav.l1.references import Reference
 from tarav.l1.references.git import git_file
 from tarav.l2.git.archive import resolve_repository
 
@@ -29,7 +30,7 @@ def _record(repository, commit, ship):
     return record
 
 
-class NotebookStateReference(RepositoryReference):
+class NotebookStateReference(Reference):
     """One Line and its authoring context at an exact Notebook Git commit."""
 
     @classmethod
@@ -37,12 +38,23 @@ class NotebookStateReference(RepositoryReference):
         return TaravClass(target=cls, id=TypeShip("31af41be-b6ae-4baf-971f-2476a8e179a6"),
                           name="Tarav.Notebook.Reference.State", workflow=NOTEBOOK_WORKFLOW_SHIP)
 
-    class RecordInterface(RepositoryReference.RecordInterface):
+    class RecordInterface(Reference.RecordInterface):
         locator: NotebookStateLocator
+        check: None = None
+
+    def __init__(self, record):
+        super().__init__()
+        self._fields = dict(record)
+        self.records.parse_record(self._fields)
 
     def _bind_record_loader(self, loader):
-        super()._bind_record_loader(loader)
+        self._records = getattr(loader, "__self__", None)
         self._record_loader = loader
+
+    def check_target(self, target, check):
+        if check is not None:
+            raise ValueError("Notebook state verification is defined by its repository coordinates")
+        return True
 
     def locate(self, locator):
         # This Type is the explicit Git consumer; Archive lookup stays declarative.
@@ -92,7 +104,7 @@ class NotebookStateReference(RepositoryReference):
     def ships(self):
         return (*super().ships(), Ship(PurePosixPath(self.locator["path"]).stem))
 
-    class Records(RepositoryReference.Records):
+    class Records(Reference.Records):
         def record_example(self):
             return {"type": entity(self._owner).name, "locator": {
                 "registry": "/example/registry", "doi": "a" * 64,

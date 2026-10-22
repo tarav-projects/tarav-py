@@ -21,15 +21,16 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def notebook_repository_owner(tmp_path, monkeypatch):
+def notebook_repository_owner(tmp_path_factory, monkeypatch):
     """Capture's default action owner is isolated from the real System Project."""
     # tarav.breadcrumb 573f5f3fa4a2
     from tarav.l2 import notebook_capture
 
-    owner = tmp_path / "tarav-data/system/.tarav"
+    data = tmp_path_factory.mktemp("notebook-owner")
+    owner = data / "system/.tarav"
     owner.mkdir(parents=True)
     (owner / "project.json").write_text(json.dumps({
         "project_id": "c85b1c1c-cecf-4d2d-b5ba-f93040cc8ac4",
         "name": "Test System", "type": "Tarav.Project",
     }))
-    monkeypatch.setattr(notebook_capture, "default_tarav_data_root", lambda: tmp_path / "tarav-data")
+    monkeypatch.setattr(notebook_capture, "default_tarav_data_root", lambda: data)

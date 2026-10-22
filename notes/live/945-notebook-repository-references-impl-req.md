@@ -108,3 +108,23 @@ Chatlas refresh and session identity.
 - The shared authoritative AGENTS source, compiled output and lock contain
   concurrent Project Attic changes. They will be retained as found in this
   workflow's commits; separate Attic code is outside this workflow's scope.
+- Implementation slice: `2a98c4cb253bdba0dcf2663e77f02322e915dfd4`.
+- The state consumer is an independent Reference Type reusing RepositoryLocator,
+  rather than a subtype that changes RepositoryReference's lookup-only return
+  contract. Final five reference behavior tests passed after this adjustment.
+- First full run: all 64 pytest suites completed; 63 passed and one Git test
+  exposed a fixture defect. The new autouse Notebook owner lived under tmp_path,
+  which that test used as its repository root, so the expected-clean tree held
+  an unrelated `tarav-data/` directory. Moved fixture data to an independent
+  tmp_path_factory directory. The exact failing test then passed. A superseded
+  run was stopped; the final full run uses the corrected fixture.
+- Installed CLI read the live `8d7cfce1-2209-4ed8-9c26-65ff83bf46fd` Block.
+  A fresh live read reverified all 30 migrated state digests and both review
+  presentations after the final consumer adjustment.
+- Evidence: 21 external JSON attachments passed audit, plus two external
+  attachments on shared runtime/architecture lines. Shared embedded submission
+  initially encountered another session's pending aliases; external placement
+  kept this pass independent. Final shared-source audit is clean. The Notebook
+  Wiki retains 12 older unavailable-Turn findings, preserved without retargeting.
+  Markdown status completed 1,215 checks with none incomplete and 60 existing
+  harness/SKW/pending-marker findings outside this implementation.
