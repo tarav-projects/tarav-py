@@ -1,6 +1,6 @@
 """Project-local discovery and composition of the independent Attic workflow."""
 
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -12,7 +12,7 @@ from tarav.l1.project.config import ProjectConfig
 from tarav.l1.project.workflow import PROJECT_WORKFLOW_SHIP
 
 
-# tarav.context 96bd11c6:8e6ed6047b3cd490
+# tarav.breadcrumb fe1b20023be7
 class ProjectAtticConfig(BaseModel):
     """The Attic section of `.tarav/config.json`; paths are Project-relative."""
 

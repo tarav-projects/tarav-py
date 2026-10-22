@@ -35,6 +35,7 @@ class Project(TaravProject):
             # tarav.breadcrumb b4812048cdc1
             from tarav.l2.project.notebook_checks import ProjectNotebookSuite
             from tarav.l2.git.archive import OwnedRepositorySuite
+            # tarav.breadcrumb 50c1ef5631aa
             from .attic import project_attic_checks
             # tarav.breadcrumb 01089efbfdf1
 
@@ -56,7 +57,7 @@ class Project(TaravProject):
     def docs(self) -> Docs:
         return type(self).Docs(self)
 
-    # tarav.context 96bd11c6:8e6ed6047b3cd490
+    # tarav.breadcrumb ba64c4164522
     def attic(self):
         """This Project's Attic, defaulting to `_ATTIC`, without creating it."""
         from .attic import project_attic

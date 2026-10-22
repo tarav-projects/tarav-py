@@ -609,7 +609,7 @@ def create_runtime(
                         *ARCHIVE_ACTION_TYPES):
         register_action(action_type)
     from tarav.l1.project.config import register_config_section
-    # tarav.context 96bd11c6:8e6ed6047b3cd490
+    # tarav.breadcrumb 59c760b32fc6
     from tarav.l2.project.attic import ProjectAtticConfig
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig

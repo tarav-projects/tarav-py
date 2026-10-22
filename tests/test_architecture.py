@@ -70,6 +70,7 @@ def test_project_managers_own_integration_without_reverse_workflow_dependencies(
     assert TaravProject.Records is RecordsManager
     assert TaravProject.Skw is SkwManager
     assert issubclass(Project.Skw, SkwManager)
+    # tarav.breadcrumb 498b066f8965
     assert callable(Project.attic)
     assert not hasattr(TaravProject, "attic")
     assert not (PACKAGE_ROOT / "l1/actions/project.py").exists()

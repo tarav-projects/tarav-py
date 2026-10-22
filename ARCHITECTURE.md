@@ -531,7 +531,7 @@ own and their children's Attics through ordinary check composition. Minimal
 `l1.project.TaravProject` does not import Attic, and Attic has no dependency on
 Project. Missing unused depots stay absent. The System Project additionally
 checks the general Tarav Attic, independently of its local one.
-<!-- tarav.context 96bd11c6:8e6ed6047b3cd490 -->
+<!-- tarav.breadcrumb 6f53edfca5e7 -->
 
 Project's optional Python harness spans `tarav.l2.project.harness` (inspection,
 scaffolding, uv sync) and `tarav.l3.project` (trusted runtime bootstrap and child

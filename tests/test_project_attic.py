@@ -38,7 +38,7 @@ def manifest():
             "dependency_status": "disconnected"}
 
 
-# tarav.context 96bd11c6:8e6ed6047b3cd490
+# tarav.breadcrumb 64c5f4cdfc3e
 def test_default_and_override_discovery_never_create_folders(tmp_path):
     default = project_at(tmp_path / "default")
     custom = project_at(tmp_path / "custom", config={"attic": {"path": "old/attic"}})

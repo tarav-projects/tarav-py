@@ -53,6 +53,8 @@ testpaths = [
     "tests/test_notebook_context.py",
     "tests/test_notebook_recovery.py",
     "tests/test_attic.py",
+    # tarav.breadcrumb a89d2828f285
+    "tests/test_project_attic.py",
     "tests/test_project_system.py",
     "tests/cli/test_import_guard.py",
     "tests/cli/test_run_registry.py",

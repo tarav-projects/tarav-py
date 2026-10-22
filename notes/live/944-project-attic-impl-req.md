@@ -9,7 +9,7 @@
 Develop Project-local Attics: default `<project>/_ATTIC`, an optional configured
 folder, and metadata checks included in Project checks. Adopt this umbrella's
 retired `_DEPRECATED` trees into a local Attic, preserving their contents and
-Git histories. Status: designed, ready for execution.
+Git histories. Status: implemented; final broad verification running.
 <!-- tarav.breadcrumb a230a9c8b4dc -->
 
 Knowledge.Surface: wiki. Alignment.Mode: Interactive.
@@ -87,3 +87,27 @@ notes are recovery hints, not runtime dependencies.
 - Design inspected: Attic model/checks, featured Project and RootProject suites,
   System Project, Project config registration/file checks, architecture tests,
   and Wiki Attic Note. Baseline: no Project Attic capability exists.
+- Cold-reloaded the complete request before product edits. Implemented the
+  declared design without material deviation. Focused feature and boundary
+  verification: 103 tests passed across Project Attic, Attic, Project files,
+  System, Root and architecture tests. Ruff passes on changed Python surfaces.
+- Local adoption: `_ATTIC/deposits/20261022T174331Z-retired-projects`, UUID
+  `78570498-efeb-44de-b785-5c38d82bf1d8`. Atomic rename preserved 12,633 files
+  (365,043,360 bytes); every SHA-256, file size, directory and symlink target
+  matched before/after. Payloads remain ignored by the umbrella repository;
+  its manifest and README are tracked. Historical catalog locators updated.
+- Installed editable tool refreshed. Public `Project.attic()` resolves this
+  root's local depot; its direct metadata suite reports one deposit, zero POIs.
+  Routine root check completes all 1,279 checks, including three local Attic
+  listings and the deposit manifest, with zero Attic findings. Other Project
+  backlog findings remain outside scope.
+- Capture: 18 implementation, request, operator and Wiki surfaces audited with
+  zero findings. JSON source and deposit metadata use external placement.
+  The two shared runtime/architecture surfaces initially had another session's
+  provisional markers; submission succeeded after its capture completed.
+- Concurrent Notebook development checkpointed some of this work in `cdd3fa88`
+  and `2a98c4cb`. Shared-file changes were preserved; our scoped closure records
+  final evidence replacements. This is a shared worktree, not isolated history.
+- Added the new feature suite to maintained pytest testpaths so future Project
+  full checks include it. The initial full run was already executing before
+  that registration; the focused run separately covered all new feature tests.
