@@ -35,9 +35,11 @@ class Project(TaravProject):
             # tarav.breadcrumb b4812048cdc1
             from tarav.l2.project.notebook_checks import ProjectNotebookSuite
             from tarav.l2.git.archive import OwnedRepositorySuite
+            from .attic import project_attic_checks
             # tarav.breadcrumb 01089efbfdf1
 
-            return CheckSuite([super().suite(), ProjectNotebookSuite(self.obj), OwnedRepositorySuite(self.obj),
+            return CheckSuite([super().suite(), project_attic_checks(self.obj),
+                               ProjectNotebookSuite(self.obj), OwnedRepositorySuite(self.obj),
                                CheckSuite(lambda run: TestFixturesSuite.present(self.obj.root))],
                               name=self.obj.name, repositories=self.obj.repositories())
 
@@ -53,6 +55,13 @@ class Project(TaravProject):
     @property
     def docs(self) -> Docs:
         return type(self).Docs(self)
+
+    # tarav.context 96bd11c6:8e6ed6047b3cd490
+    def attic(self):
+        """This Project's Attic, defaulting to `_ATTIC`, without creating it."""
+        from .attic import project_attic
+
+        return project_attic(self)
 
     # tarav.breadcrumb ead5ff16cd26
     def workspaces(self):

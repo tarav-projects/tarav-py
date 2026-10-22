@@ -523,6 +523,16 @@ depositing and recovery under `tarav-pkg --attic`; no payload operation is
 implicit in workflow discovery or checking.
 <!-- tarav.breadcrumb c1e8d482d837 -->
 
+The featured `l2.project.Project.attic()` selects the Project-relative `_ATTIC`
+depot or the `attic.path` override in `.tarav/config.json`. Its Project checks
+compose that depot's existing suite lazily; malformed configuration leaves the
+Attic scan incomplete while other checks continue. Root Projects aggregate their
+own and their children's Attics through ordinary check composition. Minimal
+`l1.project.TaravProject` does not import Attic, and Attic has no dependency on
+Project. Missing unused depots stay absent. The System Project additionally
+checks the general Tarav Attic, independently of its local one.
+<!-- tarav.context 96bd11c6:8e6ed6047b3cd490 -->
+
 Project's optional Python harness spans `tarav.l2.project.harness` (inspection,
 scaffolding, uv sync) and `tarav.l3.project` (trusted runtime bootstrap and child
 launch). A Project's `.tarav/project.json` is its Record and the Project

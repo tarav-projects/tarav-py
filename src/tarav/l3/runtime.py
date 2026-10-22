@@ -609,12 +609,13 @@ def create_runtime(
                         *ARCHIVE_ACTION_TYPES):
         register_action(action_type)
     from tarav.l1.project.config import register_config_section
+    from tarav.l2.project.attic import ProjectAtticConfig
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig
     from tarav.l1.git.hooks import GitConfig, register_git_hook_handler
     from tarav.l1.git.change import TaravChange
     for section, model in (("agents", AgentsConfig), ("skills", SkillsConfig),
-                           ("git", GitConfig)):
+                           ("git", GitConfig), ("attic", ProjectAtticConfig)):
         register_config_section(section, model)
     register_git_hook_handler(TaravChange())
     from tarav.l1.git.gitleaks import Gitleaks

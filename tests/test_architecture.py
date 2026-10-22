@@ -70,6 +70,8 @@ def test_project_managers_own_integration_without_reverse_workflow_dependencies(
     assert TaravProject.Records is RecordsManager
     assert TaravProject.Skw is SkwManager
     assert issubclass(Project.Skw, SkwManager)
+    assert callable(Project.attic)
+    assert not hasattr(TaravProject, "attic")
     assert not (PACKAGE_ROOT / "l1/actions/project.py").exists()
     graph = _top_level_import_graph()
     # The existing action CLI lists Project scopes; core action mechanics do
