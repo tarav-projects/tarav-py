@@ -1,5 +1,6 @@
-"""Maintained Ships for JSON positions; attachments follow identity, not spelling."""
+"""Maintained identities for schemas and positions; consumers own their associations."""
 # tarav.breadcrumb eb79f527c6b6
+# tarav.breadcrumb 11e926e73222
 
 from copy import deepcopy
 from uuid import uuid4, uuid5
@@ -11,7 +12,6 @@ from tarav.l0.kernel import (
     TypeShip, WorkflowShip, entity,
 )
 from tarav.l0._core.persistence import atomic_write_json
-from tarav.l1.lines import Line
 
 PATHS_WORKFLOW_SHIP = WorkflowShip("01a1f680-b529-4a88-a002-bc114a5dc9da")
 
@@ -81,7 +81,6 @@ class PathEntry(TypedState, TaravEntity):
         view: Ship
         path: str | None = None
         active: bool = True
-        attachments: list[Ship] = Field(default_factory=list)
 
         @field_validator("path")
         @classmethod
@@ -92,11 +91,10 @@ class PathEntry(TypedState, TaravEntity):
                 raise ValueError("Path must be an RFC 6901 JSON Pointer")
             return value
 
-    def __init__(self, view, path, *, id=None, active=True, attachments=()):
+    def __init__(self, view, path, *, id=None, active=True):
         super().__init__(id or Ship(uuid4()))
         self.typed = self.records.parse_record({"type": entity(type(self)).name,
-            "id": str(self.id), "view": str(view), "path": path, "active": active,
-            "attachments": [str(value) for value in attachments]})
+            "id": str(self.id), "view": str(view), "path": path, "active": active})
 
     @classmethod
     def _from_record(cls, loaded):
@@ -109,16 +107,7 @@ class PathEntry(TypedState, TaravEntity):
         def record_example(self):
             return {**super().record_example(), "id": "3909fe5f-f858-4501-ab73-4c90f2767bcc",
                     "view": "2001db37-4dd8-4ba8-a558-b092fa3725b8",
-                    "path": "", "active": True, "attachments": []}
-
-
-class PathDocumentation(Line):
-    """Documentation authored as a Line in its own Block; path binding does not replace scope."""
-
-    @classmethod
-    def class_entity(cls):
-        return TaravClass(target=cls, id=TypeShip("df425f5f-4497-464b-b98d-91dd940d717f"),
-                          name="Tarav.PathRegistry.Documentation.Line", workflow=PATHS_WORKFLOW_SHIP)
+                    "path": "", "active": True}
 
 
 class PathRegistry(TaravEntity):
@@ -158,7 +147,7 @@ class PathRegistry(TaravEntity):
                      if entry.typed.active and entry.typed.view == Ship(str(view)) and entry.typed.path == path)
 
     def declare(self, ship, path, *, active=True):
-        """Maintainer declares continuity; attachments stay with this Ship."""
+        """Maintainer declares continuity by keeping this Ship."""
         entry = self.entry(ship)
         data = {**entry.records.to_record(), "path": path, "active": active}
         entry.typed = entry.records.parse_record(data)
@@ -172,7 +161,7 @@ class PathRegistry(TaravEntity):
         self.declare(ship, None, active=False)
 
     def retire_view(self, view):
-        """End maintenance of a View, retaining its retired path identities and attachments."""
+        """End maintenance of a View, retaining its retired path identities."""
         view = Ship(str(view))
         if not any(item.id == view for item in self.views):
             raise ValueError("View is not enrolled")
@@ -180,13 +169,6 @@ class PathRegistry(TaravEntity):
             if entry.typed.view == view:
                 self.retire(entry.id)
         self.views = [item for item in self.views if item.id != view]
-
-    def attach(self, ship, obj):
-        if not isinstance(obj, TaravEntity):
-            raise TypeError("Path attachments name identified Tarav objects")
-        entry = self.entry(ship)
-        if obj.id not in entry.typed.attachments:
-            entry.typed.attachments.append(obj.id)
 
     def accept(self, view):
         """Record the accepted schema without changing any path identities."""
@@ -214,4 +196,4 @@ class PathRegistry(TaravEntity):
             return PathRegistry("2ea41fe7-1775-470a-b89f-05b339f2377e").records.to_record()
 
 
-PATH_REGISTRY_TYPES = (JSONView, PathEntry, PathRegistry, PathDocumentation)
+PATH_REGISTRY_TYPES = (JSONView, PathEntry, PathRegistry)

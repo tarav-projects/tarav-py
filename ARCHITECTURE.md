@@ -1,6 +1,7 @@
 # Tarav Python Architecture
 
 <!-- tarav.sessions
+0f5bad01 = codex:01a15483-94e8-7fe0-86ad-ddd83e2bae52 @0f5bad0131260477b4cf3d712a95871496c3db92d67eaa7910243e312f7b552a
 ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015415da94eeb1a17634872aa4fb9e25d8e065ab53
 473c89a0 = codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8 @473c89a00e2367fb827193af74a6375c60a96b0be110f21df0aff49360ca972f
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
@@ -537,8 +538,14 @@ independent for every batch revision, including overlapping batches. A completio
 token confirms that the review happened and its outcomes were captured, without
 endorsing content or closing follow-up work. Earlier revisions and their reviews
 remain available. Reads never provision the workflow's Record Registry partition.
-<!-- tarav.context ec6cf584:f14fba928dd29981 -->
-<!-- tarav.context ec6cf584:e9d7c7ce457bec3a -->
+Featured `Project.Review` / `project.review` owns the configuration and suite
+integration. `product_review` in `.tarav/config.json` selects enabled state and
+review horizon (five days by default). Runtime registers `product-review` as a
+thin CLI over the same tracker. Completeness has one repository-level Action;
+each batch has an independent stable review Action. Scan checkpoints prevent
+disabled or unavailable scans from falsely closing existing findings.
+<!-- tarav.breadcrumb f39b6d5d518f -->
+<!-- tarav.breadcrumb e8d7f87de016 -->
 
 `tarav.l1.attic` owns cheap conservation of opaque displaced material.
 `AtticWorkflow` is an explicit Archive child, separate from Artifact
@@ -1126,7 +1133,7 @@ typed registry Record in `.tarav/paths.json` and composes read-only checks into
 Project status. Absence never provisions; unavailable scans never certify old
 findings gone. Git supplies history. See `l1/path_registry/README.md` for usage.
 <!-- tarav.breadcrumb 7576042d6588 -->
-<!-- tarav.context 0f5bad01:28711a8a56d9ff47 -->
+<!-- tarav.breadcrumb 4f32bc5b3178 -->
 
 `TaravProject.load_project(path=...)` combines upward Project discovery with
 the Project's harness: it imports `harness.type`, binds it in the configured

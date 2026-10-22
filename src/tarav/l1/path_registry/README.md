@@ -56,27 +56,28 @@ indices. A schema field is `/properties/text`; this is distinct from the
 instance's `/text`. Moving array items changes the schema and requires maintainer
 judgment too. No automatic field-rename or semantic continuity heuristic runs.
 
-## Documentation and maintenance
+## Consumers and identity maintenance
 
-Attachments name identified Tarav objects by Ship. The object stays in its own
-workflow's storage; PathRegistry does not copy it or replace its authoring scope.
-`PathDocumentation` specializes Line and therefore requires an ordinary Block:
+The registry provides identified schemas and positions. Consumers own their
+documentation, evidence and other associations to those Ships. The registry
+stores no attachments and has no dependency on Lines. For example, a documentation
+consumer can hold its own mapping keyed by a Path Ship:
+<!-- tarav.breadcrumb 8dcb7ba7b400 -->
 
 ```python
 from uuid import uuid4
 from tarav.l0.kernel import Ship
-from tarav.l1.lines import Block
-from tarav.l1.path_registry import PathDocumentation
+from tarav.l1.lines import Block, Line
 
 block = Block(id=Ship(uuid4()))
-line = PathDocumentation(id=Ship(uuid4()), text="The statement's wording.", scope=block)
+line = Line(id=Ship(uuid4()), text="The statement's wording.", scope=block)
 block.append(line)
-# Persist block through Notebook or another normal Lines store.
-registry.attach(entry.id, line)
-project.paths.save(registry)
+documentation = {entry.id: line}  # Illustrative consumer-owned data, not a registry API.
+# The consumer chooses its own persistence and how to present this association.
 
-# After a deliberate rename, move the same Ship and retain its attachments:
+# After a deliberate rename, keep the same Ship:
 registry.declare(entry.id, "/properties/wording")
+assert documentation[entry.id] is line  # The external association still names it.
 # Add fresh positions explicitly, or retire an identity:
 registry.add(entry.typed.view, "/properties/other")
 registry.retire(entry.id)
@@ -95,5 +96,6 @@ actions. Removing a registry does not certify that its old findings disappeared.
 Schema drift can exist while capture and other work continue.
 
 `registry.retire_view(view.id)` ends maintenance of a removed Type/View, keeping
-its Path Ships and attachments as retired entries. `registry.at(view.id, path)`
+its Path Ships as retired entries. Consumers decide what retirement means for
+their own associations. `registry.at(view.id, path)`
 returns all active matches; duplicates are visible rather than resolved arbitrarily.

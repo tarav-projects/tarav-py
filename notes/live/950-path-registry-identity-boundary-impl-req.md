@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: ready for execution. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
+Status: implemented; verification running. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
 
 Follow up completed request 948. Restrict PathRegistry to providing and tracking
 identities of schemas and positions within schemas. Remove registry-owned
@@ -61,7 +61,7 @@ for request, affected source and Wiki Breadcrumbs. No scoring/support/review wor
 
 ## Execution.Plan
 
-- [ ] Refactor: establish the existing path tests' passing baseline; remove
+- [x] Refactor: establish the existing path tests' passing baseline; remove
   registry attachment/documentation ownership and update callers. Verify schema
   and path Ships survive rename/save/load/retirement, consumer associations stay
   outside serialization and their Lines keep their authoring context. Run path,
@@ -78,3 +78,26 @@ for request, affected source and Wiki Breadcrumbs. No scoring/support/review wor
 - Concurrent Product Review Tracker work exists in this shared Python tree.
   Preserve it; start checkpoint captures pre-existing work under the skill's
   normal evidence policy. Product implementation remains scoped to this request.
+- Cold-read the request before product edits. Start checkpoints: Python
+  `f892309dab54ad220a4b94c52e948cac24dc1c4b`, Markdown
+  `36a0c6d212f4a1ccff27f3f104d813614a093234`. Baseline: 13 path tests passed.
+- Removed attachment field/API, documentation subtype and Lines dependency;
+  runtime registration follows the shortened PATH_REGISTRY_TYPES tuple. Updated
+  consumer examples, behavior and architecture tests, architecture and Skillware
+  guidance source; rebuilt AGENTS.md and its lock. Ruff passed.
+- No live registry data appeared before edits. No migration or compatibility
+  reader is needed. JSONView and PathEntry Type identities remain unchanged.
+- ARCHITECTURE.md and tests/test_architecture.py also contain concurrent Product
+  Review Tracker changes; scope commits include these mixed files in full under
+  the skill policy. Product Review implementation files remain outside our slice.
+- Focused run: 76 passed, one failure in the concurrent Product Review
+  architecture test. All path and kernel Record-contract tests passed, including
+  the exact identity-only Path record and external Line association example.
+  The other session corrected its test during the run; architecture is being
+  rerun without changing that session's implementation. Full Project status runs
+  separately. Markdown full status completed 1,215 checks, none incomplete;
+  existing harness, Git, SKW and two other Wiki marker findings remain.
+- Architecture rerun passed all 55 tests after the concurrent test correction.
+  Ruff passed after source capture. All eight selected request/source/Wiki
+  surfaces audited successfully with zero errors; informational findings update
+  moved source positions. Guidance JSON uses a registered external annotation.

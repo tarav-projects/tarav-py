@@ -10,7 +10,7 @@ import pytest
 
 from tarav.l0.kernel import Ship, TaravClass, TaravObject, TypeShip, entity
 from tarav.l1.lines import Block, Line
-from tarav.l1.path_registry import JSONView, PathDocumentation, PathEntry, PathRegistry, json_paths
+from tarav.l1.path_registry import JSONView, PathEntry, PathRegistry, json_paths
 from tarav.l1.path_registry.checks import (
     DuplicatePath, IdentityConflict, PathMissing, PathUndeclared, PathUnregistered,
     RegistryCheck, SchemaChanged, ViewMissing,
@@ -119,14 +119,16 @@ def test_new_project_reads_and_checks_do_not_provision(project):
     assert not project.paths.file.exists()
 
 
-def test_rename_preserves_path_ship_attachments_and_line_context(project):
+def test_rename_preserves_identity_for_external_consumer_associations(project):
+    # tarav.breadcrumb 0bf45523a83f
     entries = project.paths.enroll(Subject, "record")
     path = next(e for e in entries if e.typed.path == "/properties/old")
     registry = project.paths.open()
     block = Block(id=Ship(uuid4()))
-    doc = PathDocumentation(id=Ship(uuid4()), scope=block, text="The value retained by this field.")
+    doc = Line(id=Ship(uuid4()), scope=block, text="The value retained by this field.")
     block.append(doc)
-    registry.attach(path.id, doc)
+    # This mapping belongs to the consumer; registry records do not contain it.
+    documentation = {path.id: doc}
     Subject.schema = {"properties": {"new": {"type": "string"}}}
     current, = project.paths.views()
     findings = RegistryCheck(registry, [current]).run().pois()
@@ -138,8 +140,14 @@ def test_rename_preserves_path_ship_attachments_and_line_context(project):
     project.paths.save(registry)
     restored = project.paths.open()
     assert restored.entry(path.id).typed.path == "/properties/new"
-    assert restored.entry(path.id).typed.attachments == [doc.id]
-    assert doc.scope is block
+    assert documentation[restored.entry(path.id).id] is doc
+    assert documentation[restored.entry(path.id).id].scope is block
+    assert restored.entry(path.id).records.to_record() == {
+        "type": "Tarav.PathRegistry.Path", "id": str(path.id),
+        "view": str(path.typed.view), "path": "/properties/new", "active": True,
+    }
+    assert doc.text not in project.paths.file.read_text()
+    assert str(doc.id) not in project.paths.file.read_text()
     assert tuple(RegistryCheck(restored, [current]).run().pois()) == ()
     assert get_runtime().records.from_record(restored.records.to_record()).records.to_record() == restored.records.to_record()
 
@@ -170,18 +178,18 @@ def test_retirement_keeps_identity_and_new_paths_get_explicit_ships(project):
     assert registry.entry(removed.id).typed.path is None
 
 
-def test_path_lookup_exposes_ambiguity_and_view_retirement_preserves_attachments(project):
+def test_path_lookup_exposes_ambiguity_and_view_retirement_preserves_identity(project):
     project.paths.enroll(Subject, "record")
     registry = project.paths.open()
     view = registry.views[0]
     entry, = registry.at(view.id, "/properties/old")
-    block = Block(id=Ship(uuid4()))
-    registry.attach(entry.id, block)
     duplicate = registry.add(view.id, "/properties/old")
     assert registry.at(view.id, "/properties/old") == (entry, duplicate)
     registry.retire_view(view.id)
     assert registry.at(view.id, "/properties/old") == ()
-    assert registry.entry(entry.id).typed.attachments == [block.id]
+    assert registry.entry(entry.id).id == entry.id
+    assert registry.entry(entry.id).typed.active is False
+    assert registry.entry(entry.id).typed.path is None
     assert tuple(RegistryCheck(registry, []).run().pois()) == ()
 
 

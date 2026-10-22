@@ -17,6 +17,10 @@ def test_product_review_keeps_mapping_and_chat_evidence_integration_above_core_r
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
+    from tarav.l2.project import Project
+    from tarav.l1.project import TaravProject
+    assert isinstance(Project.Review, type)
+    assert not hasattr(TaravProject, "review")
     assert runtime.workflows.get("Tarav.Workflow.ProductReview") is ProductReviewWorkflow
     for record_type in PRODUCT_REVIEW_RECORD_TYPES:
         assert runtime.records.resolve_ship(entity(record_type).id) is record_type
