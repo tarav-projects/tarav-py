@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: implemented; closure in progress. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
+Status: complete. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
 
 Create the LabelFormats Workflow and a shared Label value accepting the current
 dotted Block format and RFC 6901 JSON Pointers. Replace the BlockTitle Python
@@ -66,7 +66,7 @@ Extension adoption is request 016 in that repository; execute after Python.
   architecture. Run focused tests, Ruff and full Project status.
 - [x] Consumer adoption: execute extension request 016, test actual Python
   reader and Node surface, package/install under its project guidance.
-- [ ] Capture/closure: source Breadcrumbs, API and architecture guidance, scoped
+- [x] Capture/closure: source Breadcrumbs, API and architecture guidance, scoped
   Wiki capture, evidence audits and commits. Keep known unrelated findings clear.
 
 ## Impl.Log
@@ -103,3 +103,23 @@ Extension adoption is request 016 in that repository; execute after Python.
   the actual worker; Node: 29 passed, three browser-only skips. Version 0.1.25
   packaged and installed successfully. Earlier fixture assertions were updated
   to account for the newly added pointer title (117 records and nonempty Model).
+- Final combined run: 131 tests passed (Label, Notebook, path registry, Record
+  contract, Project generators/tree and architecture), and Ruff passed. Final
+  routine status completed 21 checks, none incomplete; remaining findings are
+  Gitleaks, two synthetic markers and Product Review coverage. The previous full
+  run's four failures were corrected and verified by this combined run; no claim
+  that a second full run was performed. Existing persisted test Actions from that
+  full run remain until the next matching Project test-suite status.
+- Source audit covered 25 surfaces: all new Breadcrumbs resolved; five older
+  TurnUnavailable findings remain (Lines init, extension reader/test/README).
+  Other findings were position updates. Guidance and System marker JSON use
+  external capture. Final Markdown status completed 1,215 checks, none incomplete;
+  existing harness, Git, SKW and two unrelated Wiki provisional-marker findings
+  remain. Capture destinations: label-formats.md, path-registry.md cross-link,
+  daily/2026-10-22.md.
+- Concurrent task 952 checkpoint `7595c061` captured the verified Python product
+  files before our slice commit. Preserve that commit; completion here records
+  their provenance and verification. No history rewrite or duplicate code edit.
+- System Project adoption ran through its own environment with runtime assembly;
+  Project/Type UUIDs and active list verified unchanged. It has its own bounded
+  request at ~/Documents/tarav/system/notes/live/001-shared-label-adoption-impl-req.md.
