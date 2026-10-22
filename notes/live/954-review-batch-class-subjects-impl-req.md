@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: ready. Develop the existing Review Tracker:
+Knowledge.Surface: wiki. Status: completed. Develop the existing Review Tracker:
 every batch attaches to an existing subject UUID; Tarav's selected specialization
 links that UUID to a class's Type identity. Keep the base batch product agnostic.
 Do not construct another semantic organization or require every class to have a
@@ -79,7 +79,7 @@ and size requirement. Companion request: ../../../tarav-md/notes/live/876-review
 - [x] Feature: max_chunks=8 generic/Project controls, bounded writes and oversized
   batch Action on config reduction. Verify exact boundary, over-limit creation,
   revision/completion, no partial writes and stable Action closure after regrouping.
-- [ ] Verify existing mapping/review/architecture/Record behavior, reinstall CLI,
+- [x] Verify existing mapping/review/architecture/Record behavior, reinstall CLI,
   run Project --all, submit/audit implemented surfaces, capture Wiki and commit.
 
 ## Impl.Log
@@ -110,3 +110,19 @@ and size requirement. Companion request: ../../../tarav-md/notes/live/876-review
 - Reinstalled the editable CLI; create requires --subject and list can filter it.
   Ruff across src/tests/tooling and scoped diff validation passed. Full Python
   Project status --all is running at /tmp/review-subject-full-status.json.
+- Feature slice e581a6fc. Additional shared-partition regression passed. Every
+  implemented code/doc/request surface submitted or assessed for justified
+  placement and audited clean. JSON config uses an external anchor on max_chunks;
+  no metadata was inserted. Wiki topical/daily refinement submitted/audited clean.
+- Full Python Project status --all completed: 87 checks, all completed, none
+  incomplete. All 66 pytest file suites passed with zero test POIs. Four existing
+  findings remain: the expected review completeness Action, two synthetic markers
+  and one gitleaks finding. No unrelated repair is part of this request.
+- Installed Python API read independently confirmed ClassReviewTracker/ClassBatch,
+  max_chunks=8 and horizon_days=5, with zero batches and no provisioned Review
+  partition. Initial ad-hoc script omitted runtime initialization; corrected
+  get_runtime() setup before the successful read. No map or real batch changed.
+- Wiki closure: 6bd2164a. Feature commit evidence audit passed with zero POIs;
+  changed Product.Surface and Wiki audits passed. Existing class identities,
+  maps and historical records were reused; no additional semantic hierarchy or
+  synthetic User review was created. Implementation and capture complete.
