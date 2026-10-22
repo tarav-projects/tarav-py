@@ -8,11 +8,13 @@ from tarav.l1.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 from .normal_model import CHATLAS_SEMANTIC_RECORD_TYPES, ChatlasNormalModel
 from .references import ChatlasTurnReference
 from .sessions import ChatSession
+from .turn_snapshots import TurnSnapshot
 
 
 CHATLAS_RECORD_TYPES = (
     ChatSession,
     ChatlasTurnReference,
+    TurnSnapshot,
     ChatlasNormalModel,
     *CHATLAS_SEMANTIC_RECORD_TYPES,
 )

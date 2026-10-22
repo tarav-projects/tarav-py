@@ -25,6 +25,7 @@ from tarav.l1.breadcrumbs.auditing import (
     ChatlasContextTurnUnavailable,
 )
 from tarav.l1.breadcrumbs.surfaces import UNSUPPORTED_LANGUAGE, BreadcrumbSurface
+from tarav.l1.breadcrumbs.data_surfaces import data_markers
 from tarav.l1.breadcrumbs.workflows import (
     BreadcrumbAnnotationWorkflow,
     PreparedAnnotation,
@@ -36,6 +37,7 @@ from tarav.l1.chatlas.session_resolver import resolve_session_index_row
 from tarav.l1.chatlas.normal_model import resolve_chat_turn_ref
 from tarav.l1.chatlas.query import ChatlasQuery, ChatlasQueryEngine, ChatlasQueryError
 from tarav.l1.chatlas.references import ChatlasTurnReference
+from tarav.l1.chatlas.turn_snapshots import TurnSnapshotStore, retained_turn
 from tarav.l1.surfaces.markdown import MarkdownNormalModel
 from tarav.l1.surfaces.python import PythonNormalModel
 from tarav.l1.surfaces.typescript import TypeScriptNormalModel
@@ -253,6 +255,9 @@ def _resolve_turn(
     does not confirm, or a session with no readable cache, costs one rebuild
     from raw, kept in memory for the rest of the audit and never written.
     """
+    retained = retained_turn(locator, chatlas_root=chatlas_root)
+    if retained is not None:
+        return retained
     if identity not in sessions:
         sessions[identity] = (_cached_turns(identity, chatlas_root), False)
     turns, rebuilt = sessions[identity]
@@ -321,6 +326,11 @@ def provisional_markers(text: str, language: str) -> tuple[ChatlasContextMarker,
                     )
                 )
         return tuple(result)
+    if language in ("json", "toml"):
+        pattern = _PYTHON_CONTEXT if language == "toml" else re.compile(_CONTEXT_CORE)
+        return tuple(ChatlasContextMarker(item.position, match.group(1), match.group(2))
+                     for item in data_markers(text, language)
+                     if (match := pattern.fullmatch(item.text)) is not None)
     raise BreadcrumbError(UNSUPPORTED_LANGUAGE)
 
 
@@ -362,6 +372,10 @@ def _malformed_marker_lines(text: str, language: str) -> tuple[int, ...]:
             for item in comments
             if "tarav.context" in item.text
         )
+    elif language in ("json", "toml"):
+        candidates.extend((item.position.line, item.text) for item in data_markers(text, language)
+                          if "tarav.context" in item.text)
+        pattern = _PYTHON_CONTEXT if language == "toml" else re.compile(_CONTEXT_CORE)
     else:
         raise BreadcrumbError(UNSUPPORTED_LANGUAGE)
     return tuple(line for line, value in candidates if pattern.fullmatch(value) is None)
@@ -434,6 +448,9 @@ def _resolve_chatlas_turns(
         result = ChatlasQueryEngine(reader).run(
             ChatlasQuery(turn_hash_prefixes=tuple(prefixes))
         )
+        snapshot_model = {**reader.model_header(), "events": list(reader.iter_events()),
+                          "messages": [m for match in result.matches for m in match.messages]}
+        snapshots = TurnSnapshotStore(chatlas_root=request.chatlas_root)
         identity = result.session.get("identity_hash")
         if not isinstance(identity, str) or identity[:8] != alias:
             raise BreadcrumbError(
@@ -444,6 +461,7 @@ def _resolve_chatlas_turns(
                 raise BreadcrumbError(
                     f"Breadcrumb context must resolve to a User Turn: {match.prefix}"
                 )
+            snapshots.retain(snapshot_model, match.turn)
             records[(alias, match.prefix)] = {
                 "type": entity(ChatlasTurnReference).name,
                 "locator": {

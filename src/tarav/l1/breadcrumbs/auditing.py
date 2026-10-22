@@ -22,6 +22,7 @@ from .store import (
     BreadcrumbPositionMissing, BreadcrumbResolution, BreadcrumbResolutionPOI, BreadcrumbStore,
 )
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
+from .data_surfaces import data_markers
 from .surfaces import UNSUPPORTED_LANGUAGE, BreadcrumbSurface, infer_surface_language
 from .workflows import BreadcrumbAnnotationWorkflow
 
@@ -527,6 +528,11 @@ def _surface_labels(
             if item.kind == "line" and "tarav.breadcrumb" in item.text
         )
         pattern = _TYPESCRIPT_BREADCRUMB
+    elif surface.language in ("json", "toml"):
+        candidates.extend((item.position.line, item.text)
+                          for item in data_markers(surface.text, surface.language)
+                          if "tarav.breadcrumb" in item.text)
+        pattern = _PYTHON_BREADCRUMB if surface.language == "toml" else re.compile(_BREADCRUMB_CORE)
     else:
         raise BreadcrumbError(UNSUPPORTED_LANGUAGE)
 

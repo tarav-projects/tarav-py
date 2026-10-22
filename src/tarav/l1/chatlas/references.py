@@ -62,6 +62,11 @@ class ChatlasTurnReference(Reference):
 
     def locate(self, locator):
         coordinates = self.address()
+        from .turn_snapshots import retained_turn
+
+        retained = retained_turn(coordinates)
+        if retained is not None:
+            return {"type": entity(type(self)).name, "locator": coordinates, **retained}
         model = provide_normal_model(identity_hash=coordinates['session_identity'])
         result = resolve_chat_turn_ref(model['turns'], coordinates)
         if result['standing'] != 'MATCHED':

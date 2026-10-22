@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import json
 
 from tarav.l0._core.persistence import atomic_write_text
 
@@ -12,9 +13,9 @@ from .workflows import BreadcrumbAnnotationWorkflow, PreparedAnnotation
 
 
 # tarav.breadcrumb 8e22d670e075
-SURFACE_LANGUAGES = ("markdown", "python", "typescript")
+SURFACE_LANGUAGES = ("markdown", "python", "typescript", "json", "toml")
 TYPESCRIPT_SUFFIXES = frozenset({".ts", ".tsx", ".mts", ".cts"})
-UNSUPPORTED_LANGUAGE = "Breadcrumb surface language must be markdown, python or typescript"
+UNSUPPORTED_LANGUAGE = "Breadcrumb surface language must be markdown, python, typescript, json or toml"
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +141,8 @@ def infer_surface_language(path: Path) -> str:
         return "python"
     if path.suffix.lower() in TYPESCRIPT_SUFFIXES:
         return "typescript"
+    if path.suffix.lower() in {".json", ".toml"}:
+        return path.suffix.lower()[1:]
     raise BreadcrumbError(
         f"Cannot infer surface language from {path.suffix or '<no extension>'}; "
         "provide --language"
@@ -149,8 +152,10 @@ def infer_surface_language(path: Path) -> str:
 def render_surface_label(language: str, label: str) -> str:
     if language == "markdown":
         return f"<!-- {label} -->"
-    if language == "python":
+    if language in ("python", "toml"):
         return f"# {label}"
+    if language == "json":
+        return json.dumps(label)
     if language == "typescript":
         return f"// {label}"
     raise BreadcrumbError(UNSUPPORTED_LANGUAGE)

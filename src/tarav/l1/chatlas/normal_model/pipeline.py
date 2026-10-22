@@ -72,6 +72,7 @@ def build_normal_model_from_row(
     contexts_by_agent_address: dict[str, JsonObject] = {}
     raw_fragments: list[JsonObject] = []
     recognized_source_count = 0
+    fragments = []
 
     for transcript_source in transcript_sources(row):
         path = transcript_source.path
@@ -108,37 +109,44 @@ def build_normal_model_from_row(
                     "value": fragment.raw,
                 }
             )
-        current_addresses = {str(event["event_address"]) for event in fragment.events}
-        if transcript_source.current:
-            for message_address, message in list(chat_messages_by_address.items()):
-                addresses = message.get("event_addresses")
-                if isinstance(addresses, list) and current_addresses.intersection(
-                    str(address) for address in addresses
-                ):
-                    del chat_messages_by_address[message_address]
-            for address in current_addresses:
-                contexts_by_agent_address.pop(address, None)
+        fragments.append(fragment)
+
+    # Record indexes are local to native tapes, even when they repeat the
+    # same session_meta. Keep conflicting payloads, and merge true copies.
+    variants: dict[str, dict[str, JsonObject]] = {}
+    for fragment in fragments:
         for event in fragment.events:
-            address = str(event["event_address"])
+            variants.setdefault(event["event_address"], {})[event["opaque_payload_hash"]] = event
+    canonical = {address: min(items, key=lambda digest: (
+        items[digest].get("started_at", ""), digest)) for address, items in variants.items()}
+
+    for fragment in fragments:
+        remapped = {}
+        for event in fragment.events:
+            address, digest = event["event_address"], event["opaque_payload_hash"]
+            remapped[address] = (address if digest == canonical[address]
+                                 else _variant_address(address, digest))
+        for event in fragment.events:
+            event = deepcopy(event)
+            address = remapped[event["event_address"]]
+            event["event_address"] = address
             existing = events_by_address.get(address)
             if existing is None:
-                events_by_address[address] = deepcopy(event)
+                events_by_address[address] = event
                 continue
-            observations = _merged_observations(existing, event)
-            if transcript_source.current:
-                replacement = deepcopy(event)
-                replacement["observations"] = observations
-                events_by_address[address] = replacement
-            else:
-                existing["observations"] = observations
+            existing["observations"] = _merged_observations(existing, event)
         for message in fragment.chat_messages:
-            chat_messages_by_address[str(message["message_address"])] = deepcopy(
-                message
-            )
+            message = deepcopy(message)
+            addresses = [remapped[a] for a in message["event_addresses"]]
+            if addresses != message["event_addresses"]:
+                message["message_address"] = _variant_address(message["message_address"], addresses)
+            message["event_addresses"] = addresses
+            chat_messages_by_address[message["message_address"]] = message
         for context in fragment.loaded_contexts:
-            contexts_by_agent_address[str(context["agent_event_address"])] = deepcopy(
-                context
-            )
+            context = deepcopy(context)
+            context["agent_event_address"] = remapped[context["agent_event_address"]]
+            context["event_addresses"] = [remapped[a] for a in context["event_addresses"]]
+            contexts_by_agent_address[context["agent_event_address"]] = context
 
     if recognized_source_count == 0:
         raise CliError(
@@ -216,6 +224,13 @@ def build_normal_model_from_row(
 
 def _source_id(path: Path) -> str:
     return f"source-{sha256(str(path).encode('utf-8')).hexdigest()[:16]}"
+
+
+def _variant_address(address: str, discriminator: object) -> str:
+    import json
+
+    value = ["tarav.chatlas.retained-variant.v1", address, discriminator]
+    return sha256(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
 def _event_sort_key(event: JsonObject) -> tuple[datetime, str]:
