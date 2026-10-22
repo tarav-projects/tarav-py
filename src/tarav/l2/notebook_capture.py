@@ -271,10 +271,9 @@ class NotebookCapture(TaravType):
             if not isinstance(reference, Reference):
                 raise TypeError("Evidence requires a registered Reference Type")
             try:
-                model = None
                 if isinstance(reference, chat_refs.ChatlasTurnReference):
-                    model = chat_refs.provide_normal_model(identity_hash=reference.locator["session_identity"])
-                    standing = chat_refs.resolve_chat_turn_ref(model["turns"], reference.address())["standing"]
+                    # tarav.breadcrumb be95668a5c7e
+                    standing = reference.turn_result()["standing"]
                     if standing == "AMENDED":
                         raise ValueError("Chatlas evidence changed at the referenced address")
                     if standing != "MATCHED":
@@ -288,8 +287,7 @@ class NotebookCapture(TaravType):
                 raise EvidenceUnavailable(resolved.message)
             if isinstance(reference, chat_refs.ChatlasTurnReference):
                 target = resolved.target
-                position = next(i for i, turn in enumerate(model["turns"])
-                                if turn["turn_address"] == reference.locator["turn_address"])
+                position = reference.order_key(target)
                 self._resolved[key] = (reference, target, position)
             else:
                 self._resolved[key] = (reference, resolved.target, None)

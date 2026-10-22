@@ -11,6 +11,14 @@ from tarav.l1.chatlas.references import ChatlasTurnReference
 from tarav.l1.chatlas.turn_snapshots import TurnSnapshot, TurnSnapshotStore, retained_turn
 
 
+@pytest.fixture(autouse=True)
+def snapshot_registry(tmp_path, monkeypatch):
+    from tarav.l3.runtime import get_runtime
+
+    monkeypatch.setenv("TARAV_RECORDS", str(tmp_path / "records"))
+    get_runtime()
+
+
 @pytest.fixture
 def model(tmp_path):
     raw = tmp_path / "rollout.jsonl"
@@ -19,6 +27,9 @@ def model(tmp_path):
         {"timestamp": "2026-10-22T00:00:01Z", "type": "response_item",
          "payload": {"type": "message", "role": "user",
                      "content": [{"type": "input_text", "text": "Keep my exact request."}]}},
+        {"timestamp": "2026-10-22T00:00:02Z", "type": "response_item",
+         "payload": {"type": "message", "role": "assistant",
+                     "content": [{"type": "output_text", "text": "Capturing that request."}]}},
     ]
     raw.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
     return build_normal_model_from_row({
@@ -33,7 +44,7 @@ def test_retained_turn_resolves_after_current_projection_is_unavailable(tmp_path
     snapshot = store.retain(model, turn)
     locator = {"session_identity": model["session"]["identity_hash"],
                **{k: turn[k] for k in ("turn_address", "turn_hash")}}
-    assert retained_turn(locator, chatlas_root=root)["messages"] == model["messages"]
+    assert retained_turn(locator, chatlas_root=root)["messages"] == [m for m in model["messages"] if m["side"] == "user"]
     path = store.map.path(store.key(locator))
     before = path.read_bytes()
     assert store.retain(model, turn).records.to_record() == snapshot.records.to_record()
@@ -78,3 +89,37 @@ def test_snapshot_rejects_tampered_evidence(tmp_path, model, kind):
 def test_registered_snapshot_example_is_valid():
     example = TurnSnapshot.records.record_example()
     assert TurnSnapshot.records.from_record(example).records.to_record() == example
+
+
+def test_notebook_support_uses_exact_retained_evidence_after_projection_changes(tmp_path, model, monkeypatch):
+    from uuid import uuid4
+    from tarav.l0.kernel import Ship
+    from tarav.l1.grounding import SupportMember
+    from tarav.l1.notebook import Notebook
+    from tarav.l1.notebook.evidence import SupportedBlock
+    from tarav.l2.notebook_capture import NotebookCapture
+
+    references = {}
+    store = TurnSnapshotStore()
+    for turn in model["turns"]:
+        if not turn["message_refs"]:
+            continue
+        store.retain(model, turn)
+        references[turn["side"]] = ChatlasTurnReference.records.from_record({
+            "type": "Tarav.Chatlas.Reference.Turn", "locator": {
+                "session_identity": model["session"]["identity_hash"],
+                **{k: turn[k] for k in ("turn_address", "turn_hash")}}})
+    monkeypatch.setattr("tarav.l1.chatlas.references.provide_normal_model", lambda **kw: {
+        "turns": [], "messages": [], "events": []})
+    notebook = Notebook(tmp_path / "notebook").create()
+    block = SupportedBlock(id=Ship(uuid4()))
+    notebook.save_tree(block)
+    capture = NotebookCapture(notebook, evidence_root=tmp_path / "evidence").create()
+    line = capture.capture(block, "Keep my exact request.",
+                           members=[SupportMember(references["user"])], producer=references["agent"])
+    assert capture.inspect(line)["support"] == ()
+    problems = capture.review_turn_problems(proposal=references["agent"].records.to_record(),
+                                           approval=references["user"].records.to_record(),
+                                           token="review:late", presentation="Capturing that request.")
+    assert [(p.kind, p.message) for p in problems] == [
+        ("Invalid", "Approval must follow its proposal in the same session")]

@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: developing.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: completed.
 The User requested fixes for the investigated provenance gaps, explicitly
 including native JSON and TOML Breadcrumb support. Preserve unrelated Notebook
 work and existing evidence targets. No heuristic retargeting of old references.
@@ -110,8 +110,8 @@ Exact current-session evidence will be attached during closure.
 - Complete Python verification: `uv run pytest -q` passed 558 tests;
   `uv run ruff check src tests tooling` passed. After the final compact-array
   ordering improvement, all twelve data-surface tests passed again.
-- Product capture created 27 Breadcrumbs across 21 code, test, configuration,
-  request, skill-source and Wiki surfaces. Final batch audit: 21 OK, zero POIs,
+- Product capture created 29 Breadcrumbs across 23 code, test, configuration,
+  request, skill-source and Wiki surfaces. Final batch audit: 23 OK, zero POIs,
   zero errors. Both the real AGENTS JSON source and pyproject TOML use their
   new native conventions. JSON metadata at the AGENTS source was merged with
   the concurrently captured existing array rather than replacing it.
@@ -123,3 +123,34 @@ Exact current-session evidence will be attached during closure.
 - The installed editable CLI was reinstalled and exposes both new formats.
   Wiki capture destinations are breadcrumbs.md, chatlas-normal-model.md and
   daily/2026-10-22.md. There are no pending capture gaps on this implementation.
+- Verified product/capture slice commit: 17449dc3eced40be3628b0522adf06c643a07ad0;
+  its commit evidence audit passes. Wiki/skill closure commit:
+  23f9182b06624f920d53011a11cdd33d029677ce.
+- First full root status ran 1,336 checks and passed all 62 pytest file suites.
+  It exposed 30 Notebook support/review checks bypassing exact-reference
+  resolution and consulting only the rebuilt projection. The affected eleven
+  cited Turns were all exactly available in the retained pre-rebuild projection;
+  they were preserved without editing support or review claims.
+- Added a failing regression: Notebook support was reported unavailable despite
+  an exact retained source and producer. Notebook now consumes the reference's
+  representation-aware result and compares the same Event chronology used by
+  the aggregate, rather than shifting current-projection ordinals. This keeps
+  support/proposal/approval ordering checks effective. The snapshot regression
+  also rejects approval preceding proposal. Relevant 104 tests pass, including
+  existing Notebook role, wording, session and order rejection tests.
+- Root recheck completed all 1,336 checks with no incomplete checks and closed
+  all thirty Notebook evidence actions. A test assertion passed a Reference
+  object where the review API expects a Record; correcting the input left all
+  nine snapshot tests passing. The final Python Project run rechecks the whole
+  maintained test set after that correction. The remaining root findings are
+  the pre-existing prompts, hooks/scans, SKW context/output and synthetic markers.
+- Final Python Project status: 80 checks completed, zero incomplete; all
+  62 pytest file suites pass and the temporary test-input finding closed.
+  Only its pre-existing Gitleaks flag and two synthetic test markers remain.
+  Final focused verification after the chronology change: 38 tests pass and
+  Ruff passes. Final read-only audit: all 23 implemented surfaces OK, zero
+  POIs or errors. All twelve originally reported labels resolve exactly.
+- Completion: JSON/TOML capture, collision preservation, immutable cited Turns,
+  historical recovery and Notebook consumption are implemented and verified.
+  No required product work or capture remains pending. The broader root's
+  pre-existing prompt, hook, scan, SKW and marker findings remain outside scope.

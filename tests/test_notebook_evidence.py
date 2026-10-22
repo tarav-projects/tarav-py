@@ -77,10 +77,11 @@ def test_evidence_state_digest_detects_tampering_and_empty_support_remains_recor
 @pytest.fixture
 def chat(monkeypatch):
     """Actual Normal Model reference resolution over fixed turn/message records."""
+    # tarav.breadcrumb a0df24b63a6c
     from tarav.l1.chatlas import references
     from tarav.l1.chatlas.normal_model.records import ChatTurn, ChatMessage
 
-    turns, messages = [], []
+    turns, messages, events = [], [], []
 
     def add(side, text):
         index = len(turns) + 1
@@ -89,7 +90,9 @@ def chat(monkeypatch):
         msg.update(message_address=address, message_hash=digest, side=side, text=text)
         turn = ChatTurn.records.record_example()
         turn.update(turn_address=address, turn_hash=digest, side=side,
+                    event_refs=[{"event_address": address, "event_hash": digest}],
                     message_refs=[{"message_address": address, "message_hash": digest}])
+        events.append({"event_address": address, "started_at": f"2026-10-22T00:00:{index:02d}Z"})
         turns.append(turn)
         messages.append(msg)
         return ChatlasTurnReference.records.from_record({
@@ -97,7 +100,7 @@ def chat(monkeypatch):
                 "session_identity": "1" * 64, "turn_address": address, "turn_hash": digest}})
 
     monkeypatch.setattr(references, "provide_normal_model", lambda **kw: {
-        "turns": turns, "messages": messages})
+        "turns": turns, "messages": messages, "events": events})
     return add, turns
 
 

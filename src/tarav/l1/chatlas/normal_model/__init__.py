@@ -7,7 +7,7 @@ from .normal_model import (
     provide_normal_model,
     provide_normal_model_reader,
 )
-from .pipeline import build_normal_model_from_row
+from .pipeline import build_normal_model_from_row, event_order_key
 from .records import (
     AgentEvent,
     AgentLoadedContext,
@@ -37,6 +37,7 @@ __all__ = [
     "NormalModelSession",
     "NormalModelSource",
     "event_record",
+    "event_order_key",
     "event_ref",
     "provide_normal_model",
     "provide_normal_model_reader",

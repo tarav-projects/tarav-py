@@ -156,7 +156,7 @@ def build_normal_model_from_row(
 
     events = sorted(
         (event_record(event).records.to_record() for event in events_by_address.values()),
-        key=_event_sort_key,
+        key=event_order_key,
     )
     event_by_address = {str(event["event_address"]): event for event in events}
     event_order = {
@@ -234,7 +234,8 @@ def _variant_address(address: str, discriminator: object) -> str:
     return sha256(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
-def _event_sort_key(event: JsonObject) -> tuple[datetime, str]:
+def event_order_key(event: JsonObject) -> tuple[datetime, str]:
+    """The Event chronology used by the aggregate and exact-reference consumers."""
     timestamp = event.get("started_at")
     if not isinstance(timestamp, str):
         return datetime.max.replace(tzinfo=timezone.utc), str(

@@ -9,6 +9,7 @@ from tarav.l1.references import Reference
 from tarav.l1.chatlas.identity import CHATLAS_WORKFLOW_SHIP
 from tarav.l1.chatlas.normal_model import (
     provide_normal_model, resolve_chat_turn_ref, resolve_chat_message_ref,
+    event_order_key,
 )
 
 
@@ -60,7 +61,8 @@ class ChatlasTurnReference(Reference):
             raise ValueError("Turn coordinates must be full lowercase SHA-256 digests")
         return dict(locator)
 
-    def locate(self, locator):
+    def turn_result(self):
+        """Resolve the pinned representation, including its standing and Event chronology."""
         coordinates = self.address()
         # tarav.breadcrumb 95c9e396ea10
         from .turn_snapshots import retained_turn
@@ -71,7 +73,8 @@ class ChatlasTurnReference(Reference):
         model = provide_normal_model(identity_hash=coordinates['session_identity'])
         result = resolve_chat_turn_ref(model['turns'], coordinates)
         if result['standing'] != 'MATCHED':
-            raise ValueError(f"Chatlas Turn is {result['standing']}")
+            return {"type": entity(type(self)).name, "locator": coordinates,
+                    "representation": "current-normal-model", **result}
         turn = result['turn']
         messages = []
         for ref in turn['message_refs']:
@@ -79,12 +82,30 @@ class ChatlasTurnReference(Reference):
             if message['standing'] != 'MATCHED':
                 raise ValueError(f"Chatlas Message is {message['standing']}")
             messages.append(message['message'])
+        event_addresses = {ref["event_address"] for ref in turn["event_refs"]}
         return {
             "type": entity(type(self)).name,
             "locator": coordinates,
             "turn": turn,
             "messages": messages,
+            "standing": "MATCHED",
+            "representation": "current-normal-model",
+            "events": [event for event in model["events"]
+                       if event["event_address"] in event_addresses],
         }
+
+    def locate(self, locator):
+        result = self.turn_result()
+        if result["standing"] != "MATCHED":
+            raise ValueError(f"Chatlas Turn is {result['standing']}")
+        return result
+
+    @staticmethod
+    def order_key(target):
+        """Compare cited Turns by the same Event chronology as current projections."""
+        first = target["turn"]["event_refs"][0]["event_address"]
+        event = next(event for event in target["events"] if event["event_address"] == first)
+        return event_order_key(event)
 
     def check_target(self, target, check):
         if check not in (None, {}):
