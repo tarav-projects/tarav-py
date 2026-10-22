@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: ready for execution. Build a product-agnostic
+Knowledge.Surface: wiki. Status: implemented; full Project validation running. Build a product-agnostic
 Review Tracker over confirmed Product Maps. Batches are long-lived meaningful
 views over potentially overlapping chunk sets; reviews belong to exact batch
 revisions. The User requests design and execution together.
@@ -134,3 +134,16 @@ Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-
   pending Actions. Configuration enabled for tarav-py with horizon_days=5.
 - No mapping rebuilt, batch grouping invented, actual User review performed or
   completion token synthesized. Existing maps remain untouched.
+- Slice 2 commit: 902147a9. Measured checks: 99 mapping/review/architecture/Record
+  tests passed; after enforcing token-to-revision binding and validating retained
+  batch states against their pinned map, 29 review/Record tests passed. Ruff over
+  src/tests/tooling and git diff --check passed; installed CLI reinstalled.
+- Actual CLI inspection selected existing map 31f594b1-6d1d-47bf-8a31-6239c4983e47
+  at commit 131b0357a3fbe441c99c8e2931e97833825ca0b7: 1,171 selected chunks,
+  none yet assigned to batches. Inspection did not create review storage.
+- Capture: all changed Python/Markdown surfaces audited clean, including the
+  shared architecture surfaces after concurrent capture resolved. Config JSON
+  externally anchored with Breadcrumb b63b5f2538ee; no metadata injected. Product
+  source changes after capture were audited with refreshed positions. Wiki daily
+  and product-review-tracker.md submitted/audited clean. Full root --all running
+  with report /tmp/product-review-full-status.json.
