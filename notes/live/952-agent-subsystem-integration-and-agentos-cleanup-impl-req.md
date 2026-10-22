@@ -183,3 +183,9 @@ concurrent session editing Chatlas/breadcrumbs (do not touch its files).
   (`system.py`); `system.py` positions refreshed after line shifts; audits ok.
   `l3/runtime.py` also carries another session's unsubmitted marker
   (`0f5bad01`), committed here as found.
+- Slice 4 done. `ARCHITECTURE.md`: `agent` row notes the `tarav.agent.*` log
+  classes and the legacy usage-record read; new `l2.agent_setup` row. Marker
+  placed after the table (a comment inside it would split the table); Breadcrumb
+  `f973b051579a`; positions refreshed (122 labels, audit ok). The file also held
+  another session's uncommitted PathNotebook paragraph, committed here as found.
+  Check: `tests/test_architecture.py` passed.

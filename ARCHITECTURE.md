@@ -812,11 +812,13 @@ and resolves nothing. Programs and Actions are not yet related in code.
 
 | Package | Architectural responsibility |
 | --- | --- |
-| `agent` | AgentsWorkflow. Provider-neutral agent, account, session, and monitoring behavior; concrete providers (Claude Code, Codex, Copilot) live below `agent.providers`. `agent.current_session` names the running agent's session through the adapters that inherit `ReportsCurrentSession`. |
+| `agent` | AgentsWorkflow. Provider-neutral agent, account, session, and monitoring behavior; concrete providers (Claude Code, Codex, Copilot) live below `agent.providers`. `agent.current_session` names the running agent's session through the adapters that inherit `ReportsCurrentSession`. Its operational logs under `~/.tarav/agent/` carry `tarav.agent.*` classes; the usage registry still reads records written as `agentos.agent.usage-record`. |
+| `l2.agent_setup` | Integration of `agent` with Checks and Actions: `AgentSetup` reports monitor-config loading, profile loading, and each agent's `profile_check()` checkpoints as POIs under the Agents workflow. It sits in l2 because `actions` already depends on `agent.current_session`. `TaravSystemProject` composes its suite. |
 | `archive` | Typed DOI resource declarations, maintained locators and recognition hints, registry references and independent locator checks. |
 | `archive.records` | Optional typed Folder and List Archives for storing class-owned Records at explicit roots; the stored Type keeps its domain meaning. |
 | `records` | TaravRecords workflow: contributed Record-source navigation, on-demand Entity view, and optional standard keyed RecordRegistry partitions. |
 | `search` | SearchWorkflow owns typed incremental queries and a registry-backed meta engine. SearchEngine Types contribute a bound `.search` namespace; the runtime holds one SearchService per composition. Engine registration does not imply storing queries or hits. |
+<!-- tarav.breadcrumb f973b051579a -->
 <!-- tarav.breadcrumb 4597f1786f7c -->
 <!-- tarav.breadcrumb 9b87f84163c1 -->
 | `l1.context`, `l3.context` | The Context Workflow: ObjectContext construction, ordered hooks, the Explorer and resolvers, and the `tarav context` command. |
@@ -1143,6 +1145,17 @@ Project status. Absence never provisions; unavailable scans never certify old
 findings gone. Git supplies history. See `l1/path_registry/README.md` for usage.
 <!-- tarav.breadcrumb 7576042d6588 -->
 <!-- tarav.breadcrumb 4f32bc5b3178 -->
+
+`l2.notebook.PathNotebook` is a child of an existing ProjectBlock, selected by
+`project.notebook().paths` or `project.paths.notebook()`. Explicit Project
+Notebook creation adds that child, including to an existing edited layout;
+selection never writes. `l1.notebook.paths.SchemaBlock` and `PathBlock` retain
+schema/path Ships and ordinary Lines. Schema, root-path and parent-path Blocks
+provide the inherited context for a subpath note. Notes use existing Notebook
+storage and capture; PathRegistry owns no Lines or attachments. Current-path
+access reports stale ancestry after a path move instead of silently reparenting.
+See `l1/notebook/PATHS.md` for the explicit add/save/read API.
+<!-- tarav.breadcrumb 2fefc98aa307 -->
 
 `TaravProject.load_project(path=...)` combines upward Project discovery with
 the Project's harness: it imports `harness.type`, binds it in the configured
