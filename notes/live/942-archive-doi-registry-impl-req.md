@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: implemented; verification and capture results recorded below.
+Status: complete; implemented, verified and captured.
 Knowledge.Surface: wiki.
 
 Replace the old Artifact registration/retrieval implementation with a small
@@ -194,7 +194,7 @@ Turns were resolved from its refreshed Normal Model before adding markers.
 - [x] Locator-check feature: compose the Archive locator Situation Chain into
   the System Project. Check: missing path opens an owned action; incomplete
   assessment leaves it open; successful recheck closes it; no reads mutate data.
-- [ ] Verification/capture: focused tests, architecture checks, Project status
+- [x] Verification/capture: focused tests, architecture checks, Project status
   including required suites; complete Breadcrumb/Wiki capture and record actual
   results. Execute-phase Git checkpoints follow the skill's commit contract.
 
@@ -251,3 +251,23 @@ registry they may use, without inventing those integrations here.
   Turns; left their claims intact rather than inventing replacement evidence.
 - No live data needed migration; the old registration store is absent. Shared
   Record Archive partitions were left in place. No empty Attic deposit made.
+- Verified implementation commit: Python `6058ca3591ec2263890016d525761736e57d6c5a`.
+  Markdown request commit: `397e544fcec3f58dd32ccebb41e09a82f6c38730`.
+  Concurrent Markdown checkpoint `0bb5ce5d33fedc21d6b1456b53e02a41c462ee49`
+  had already retained the implemented constitutional and candidate sources.
+  Both implementation commit evidence audits passed with no findings.
+- Follow-up verification of the two previously failing test files plus the
+  full architecture test file passed all 64 tests. The complete Project status
+  is being rerun to reconcile those earlier findings against the updated tree.
+- Wiki completion capture appended the implemented result and the User's
+  broken-link addition to the topical and daily notes. Both audits passed
+  without findings. The tarav-pkg skill check again reported zero findings.
+- Final `tarav status --project tarav-py --all --json` completed 80 checks,
+  including all 62 pytest suites with zero test findings and zero incomplete
+  checks. The five earlier test findings disappeared on recheck. Remaining:
+  one pre-existing Gitleaks finding and two synthetic test-marker findings.
+- Wiki closure: `53104c54957ba6f3429e3a224e5e35dc186b6b7b` retained the
+  topical/daily implementation capture and companion completion log. Final
+  verification is also appended to those Wiki notes. The ten older
+  Architecture evidence findings remain outside this implementation's new
+  attachments; new support and commit evidence audits passed.
