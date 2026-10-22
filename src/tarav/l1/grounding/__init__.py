@@ -10,6 +10,7 @@ from tarav.l0.kernel import (
     TypedState, TypeShip, WorkflowShip, entity,
 )
 from tarav.l1.references import Reference
+from tarav.l0.kernel.current import current_records
 
 GROUNDING_WORKFLOW_SHIP = WorkflowShip("c137b972-9141-44d6-88ca-8aa18664049e")
 
@@ -35,7 +36,7 @@ def state_digest(ship, type_ship, payload):
 
 # tarav.breadcrumb 8307cb68b925
 class SubjectState(TypedState, TaravObject):
-    """An inspectable state coordinate; no general history or succession policy."""
+    """A computed snapshot for comparison and presentation, not retained support data."""
 
     @classmethod
     def class_entity(cls):
@@ -108,7 +109,7 @@ class SupportSet(TypedState, TaravEntity):
                           name="Tarav.Grounding.SupportSet", workflow=GROUNDING_WORKFLOW_SHIP)
 
     class RecordInterface(TaravEntity.RecordInterface):
-        subject: SubjectState.RecordInterface
+        subject: Reference.RecordInterface
         members: list[SupportMember.RecordInterface]
         producer: Reference.RecordInterface | None = None
 
@@ -130,12 +131,35 @@ class SupportSet(TypedState, TaravEntity):
 
     class Records(TaravEntity.Records):
         def record_example(self):
-            return self._owner(id=Ship("d862c270-70f4-488d-ae32-45fbf64ce1de"),
-                               subject=SubjectState.records.from_record(
-                                   SubjectState.records.record_example())).records.to_record()
+            return {"type": entity(self._owner).name,
+                    "id": "d862c270-70f4-488d-ae32-45fbf64ce1de",
+                    "subject": {"type": "Tarav.Reference.GitFile", "locator": {
+                        "repository": "/example/notebook", "commit": "0" * 40,
+                        "path": "records/3c2713da-cd9b-43ed-95fe-5c5a18d10fa6.json"}},
+                    "members": [], "producer": None}
 
     def ships(self):
-        return (*super().ships(), self.typed.subject.subject_ship)
+        reference = current_records().from_record(self.typed.subject.model_dump(mode="json"))
+        return tuple(dict.fromkeys((*super().ships(), *reference.ships())))
+
+
+def resolve_subject(state, *, records=None):
+    """Resolve a retained state reference, or use an in-memory proposal snapshot."""
+    if isinstance(state, SubjectState):
+        return state.typed
+    if isinstance(state, SubjectState.RecordInterface):
+        return state
+    record = state.model_dump(mode="json") if hasattr(state, "model_dump") else state.records.to_record()
+    reference = (records if records is not None else current_records()).from_record(record)
+    if not isinstance(reference, Reference):
+        raise TypeError("Subject must be a state Reference")
+    resolved = reference.resolve()
+    if not resolved.ok:
+        raise LookupError(resolved.message)
+    snapshot = resolved.target.get("state") if isinstance(resolved.target, dict) else None
+    if not isinstance(snapshot, SubjectState):
+        raise ValueError("Subject Reference did not resolve to a subject state")
+    return snapshot.typed
 
 
 GROUNDING_RECORD_TYPES = (SubjectState, SupportMember, SupportSet)

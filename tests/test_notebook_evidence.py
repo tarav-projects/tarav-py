@@ -9,6 +9,7 @@ from tarav.l1.chatlas.references import ChatlasTurnReference
 from tarav.l1.grounding import SubjectState, SupportMember, SupportSet
 from tarav.l1.lines import Block
 from tarav.l1.notebook import Notebook
+from tarav.l1.notebook.references import NotebookStateReference
 from tarav.l1.notebook.evidence import (
     NotebookLine, ReviewedBlockTitle, ReviewedLine, ReviewedBlock, SupportedBlock,
 )
@@ -35,7 +36,9 @@ def test_evidence_records_roundtrip_and_keep_support_separate_from_review(tmp_pa
     block = Block(id=ship())
     line = NotebookLine(id=ship(), text="Preserve evidence.", scope=block)
     block.append(line)
-    state = SubjectState(line.id, entity(type(line)).id, {"text": line.text})
+    notebook = Notebook(tmp_path / "notebook", records=runtime.records).create()
+    notebook.save_tree(block)
+    state = NotebookCapture(notebook).pin(line)
     member = SupportMember(ref(), neighborhood=(ref("c"),))
     support = SupportSet(id=ship(), subject=state, members=(member,), producer=ref("d"))
     review = VerbatimReview(id=ship(), destination=block.id, operation="review",
@@ -47,7 +50,6 @@ def test_evidence_records_roundtrip_and_keep_support_separate_from_review(tmp_pa
         loaded = runtime.records.from_record(record)
         assert type(loaded) is type(obj)
         assert loaded.records.to_record() == record
-    notebook = Notebook(tmp_path / "notebook", records=runtime.records).create()
     notebook.save_tree(block)
     loaded = notebook.load(line.id)
     assert type(loaded) is NotebookLine
@@ -60,7 +62,8 @@ def test_evidence_records_roundtrip_and_keep_support_separate_from_review(tmp_pa
 
 def test_evidence_state_digest_detects_tampering_and_empty_support_remains_recordable():
     state = SubjectState(ship(), entity(NotebookLine).id, {"text": "Original."})
-    support = SupportSet(id=ship(), subject=state)
+    reference = NotebookStateReference.records.from_record(NotebookStateReference.records.record_example())
+    support = SupportSet(id=ship(), subject=reference)
     assert support.records.to_record()["members"] == []
     record = state.records.to_record()
     record["payload"]["text"] = "Changed."
@@ -199,7 +202,7 @@ def test_bounded_multi_line_modify_and_removal_review(tmp_path, chat):
     capture, block = capture_setup(tmp_path)
     first = capture.capture(block, "Original first.")
     second = capture.capture(block, "Original second.")
-    before = [line_state(first), line_state(second)]
+    before = [capture.pin(first), capture.pin(second)]
     first.text, second.text = "New first.", "New second."
     capture.notebook.save_tree(block)
     review = make_review(capture, block, [first, second], add, operation="modify", before=before)
@@ -324,8 +327,65 @@ def test_markdown_review_frame_rejects_hidden_or_reordered_lines_and_wrong_desti
     proposal, approval = add("agent", "Pending proposal"), add("user", "::approve review:frame")
     for states, destination in ((lines[:1], parent), (tuple(reversed(lines)), parent), (lines, block)):
         with pytest.raises(ValueError):
-            NotebookReviewFrame(
+            review = NotebookReviewFrame(
                 id=ship(), destination=destination.id, block_ship=block.id, location="Example.",
-                after=[line_state(line) for line in states], token="review:frame",
+                after=[capture.pin(line) for line in states], token="review:frame",
                 proposal=proposal, approval=approval,
             )
+            review.presentation()
+
+
+def test_git_subjects_preserve_context_without_embedding_it_and_ignore_unrelated_commits(tmp_path, chat):
+    from tarav.l1.grounding import resolve_subject
+
+    add, _ = chat
+    capture, block = capture_setup(tmp_path)
+    user = add("user", "Use Git to preserve the capture context.")
+    producer = add("agent", "Capturing the principle.")
+    line = capture.capture(block, "Preserve capture context in Git.",
+                           members=(SupportMember(user),), producer=producer)
+    support, = capture.support_records(line)
+    subject = support.records.to_record()["subject"]
+    assert set(subject) == {"type", "locator"}
+    assert set(subject["locator"]) == {"repository", "commit", "path"}
+    assert len(subject["locator"]["commit"]) == 40
+    assert subject["locator"]["path"] == f"records/{line.id}.json"
+    original = resolve_subject(support.typed.subject)
+    child = Block(id=ship(), parent=block)
+    block.append(child)
+    capture.notebook.save_tree(block)
+    assert capture.checkpoint() != subject["locator"]["commit"]
+    assert capture.inspect(line)["support"] == ()
+    context = NotebookLine(id=ship(), text="A new interpretation.", scope=block)
+    block.append(context)
+    capture.notebook.save_tree(block)
+    assert capture.inspect(line)["support"][0].kind == "Stale"
+    assert resolve_subject(support.typed.subject).digest == original.digest
+    assert resolve_subject(support.typed.subject).payload == original.payload
+    bad = support.records.to_record()
+    bad["subject"]["locator"]["commit"] = "f" * 40
+    capture.supports.replace(str(support.id), SupportSet.records.from_record(bad))
+    assert capture.inspect(line)["support"][0].kind == "Unavailable"
+
+
+def test_git_review_records_resolve_exact_wording_and_reject_moving_revisions(tmp_path, chat):
+    from tarav.l1.grounding import resolve_subject
+
+    add, _ = chat
+    capture, block = capture_setup(tmp_path)
+    line = capture.capture(block, "Pin the reviewed wording.")
+    review = make_review(capture, block, [line], add)
+    after = review.records.to_record()["after"][0]
+    assert set(after) == {"type", "locator"}
+    assert resolve_subject(review.typed.after[0]).payload["text"] == line.text
+    assert capture.complete_review(review).id == review.id
+    original = NotebookStateReference.records.from_record(after)
+    later = capture.pin(line, commit=capture.checkpoint())
+    repeated = VerbatimReview(id=ship(), destination=block.id, operation="review",
+                              after=[original, later], token="review:repeated",
+                              proposal=ref(), approval=ref("c"))
+    with pytest.raises(ValueError, match="repeat a Ship"):
+        repeated.presentation()
+    after["locator"]["commit"] = "HEAD"
+    reference = NotebookStateReference.records.from_record(after)
+    assert not reference.resolve().ok

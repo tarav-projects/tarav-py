@@ -7,7 +7,7 @@ from tarav.l1.grounding import SupportMember
 from tarav.l1.lines import Block, Line
 from tarav.l1.notebook.evidence import NotebookLine, ReviewedLine
 from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
-from tarav.l1.review import VerbatimReview, review_presentation
+from tarav.l1.review import review_presentation
 from tarav.l2.notebook_capture import line_state
 
 
@@ -177,10 +177,12 @@ class NotebookDraft(TaravType):
         fresh = self.restore(self.notebook, self.export())
         before, after = fresh._states()
         capture = fresh.notebook._owner(fresh.block).evidence
-        candidate = VerbatimReview(id=Ship(uuid4()), destination=fresh.block.id,
-                                   operation="modify" if before else "add", before=before, after=after,
-                                   token=self._token, proposal=proposal, approval=approval)
-        problems = capture.review_problems(candidate)
+        operation = "modify" if before else "add"
+        problems = capture.review_turn_problems(
+            proposal=proposal.records.to_record(), approval=approval.records.to_record(),
+            token=self._token, presentation=review_presentation(
+                fresh.block.id, operation, before=[state.typed for state in before],
+                after=[state.typed for state in after]))
         if problems:
             raise ValueError("Review cannot land: " + "; ".join(problem.message for problem in problems))
         text = "\n".join(message["text"] for message in proposal.resolve().target["messages"])
@@ -193,6 +195,8 @@ class NotebookDraft(TaravType):
             raise TypeError("Support must contain typed SupportMember objects")
         # All preflight checks above are read-only. IO failures below may require reconciliation.
         capture.create()
+        original_commit = capture.checkpoint()
+        before = [capture.pin(state, commit=original_commit) for state in before]
         capture.notebook.save_tree(fresh.block)
         lines = [fresh._find(key) for key in fresh._edited]
         for line in lines:
@@ -202,6 +206,6 @@ class NotebookDraft(TaravType):
             for member in members:
                 capture.attach_support(line, (member,), producer=producer)
         review = capture.record_review(lines, destination=fresh.block,
-                                        operation=candidate.typed.operation, before=before,
+                                        operation=operation, before=before,
                                         token=self._token, proposal=proposal, approval=approval)
         return capture.complete_review(review)

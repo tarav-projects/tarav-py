@@ -8,10 +8,12 @@ from pydantic import Field, model_validator
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TaravType, TypeShip, entity
 from tarav.l1.chatlas import references as chat_refs
-from tarav.l1.grounding import GroundingWorkflow, SubjectState, SupportSet
+from tarav.l1.grounding import GroundingWorkflow, SubjectState, SupportSet, resolve_subject
 from tarav.l1.lines import Line
 from tarav.l1.notebook.evidence import NotebookLine, ReviewedBlockTitle, ReviewedLine
 from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
+from tarav.l1.notebook.references import NotebookStateReference
+from tarav.l1.references.git import git_text
 from tarav.l1.records.registry import RecordRegistry
 from tarav.l1.references import Reference
 from tarav.l1.review import ReviewWorkflow, VerbatimReview, review_presentation
@@ -73,18 +75,6 @@ class NotebookReviewFrame(VerbatimReview):
         def complete_added_block(self):
             if self.operation != "add" or self.before:
                 raise ValueError("Notebook Review.Frame currently describes added Blocks only")
-            if self.after[0].subject_type != entity(ReviewedBlockTitle).id:
-                raise ValueError("Review.Frame needs a reviewed BlockTitle first")
-            members = [{"ship": str(s.subject_ship), "type": str(s.subject_type),
-                        "text": s.payload["text"]} for s in self.after]
-            for state in self.after:
-                context = state.payload.get("context", [])
-                if (len(context) < 2 or context[-1]["ship"] != str(self.block_ship)
-                        or context[-2]["ship"] != str(self.destination)):
-                    raise ValueError("Review.Frame Block must be directly inside its destination")
-                expected = [m for m in members if m["ship"] != str(state.subject_ship)]
-                if context[-1]["lines"] != expected:
-                    raise ValueError("Review.Frame must present all Block Lines in order")
             return self
 
     def __init__(self, *, id, destination, block_ship, location, after, token, proposal, approval):
@@ -97,8 +87,22 @@ class NotebookReviewFrame(VerbatimReview):
             "block_ship": str(block_ship), "location": location,
         })
 
-    def presentation(self):
-        states = self.typed.after
+    def presentation(self, *, records=None):
+        states = [resolve_subject(state, records=records) for state in self.typed.after]
+        if len({state.subject_ship for state in states}) != len(states):
+            raise ValueError("A review target set cannot repeat a Ship")
+        if states[0].subject_type != entity(ReviewedBlockTitle).id:
+            raise ValueError("Review.Frame needs a reviewed BlockTitle first")
+        members = [{"ship": str(s.subject_ship), "type": str(s.subject_type),
+                    "text": s.payload["text"]} for s in states]
+        for state in states:
+            context = state.payload.get("context", [])
+            if (len(context) < 2 or context[-1]["ship"] != str(self.typed.block_ship)
+                    or context[-2]["ship"] != str(self.typed.destination)):
+                raise ValueError("Review.Frame Block must be directly inside its destination")
+            expected = [m for m in members if m["ship"] != str(state.subject_ship)]
+            if context[-1]["lines"] != expected:
+                raise ValueError("Review.Frame must present all Block Lines in order")
         return (f"**Add to:** {self.typed.location}\n\n## {states[0].payload['text']}\n\n"
                 + "\n".join(f"- {state.payload['text']}" for state in states[1:]))
 
@@ -107,16 +111,10 @@ class NotebookReviewFrame(VerbatimReview):
 
     class Records(VerbatimReview.Records):
         def record_example(self):
-            from tarav.l1.lines import Block
-
-            parent = Block(id=Ship("6a51f247-3857-4205-bf48-12b44bb1648b"))
-            block = Block(id=Ship("9ce303eb-06ed-4a3c-9881-c3de7aa615a5"), parent=parent)
-            title = ReviewedBlockTitle(id=Ship("ba962e69-2835-436f-b5c4-3e77105b6d79"),
-                                       text="Kernel.Writing", scope=block)
-            block.append(title)
             return {**super().record_example(), "operation": "add", "before": [],
-                    "after": [line_state(title).records.to_record()],
-                    "block_ship": str(block.id), "location": "Example Project → Discussion."}
+                    "after": [NotebookStateReference.records.record_example()],
+                    "block_ship": "9ce303eb-06ed-4a3c-9881-c3de7aa615a5",
+                    "location": "Example Project → Discussion."}
 
 
 # tarav.breadcrumb 23612b68dfdc
@@ -164,12 +162,37 @@ class NotebookCapture(TaravType):
 
     def attach_support(self, line, members=(), *, producer=None):
         self._current(line)
-        support = SupportSet(id=Ship(uuid4()), subject=line_state(line),
+        support = SupportSet(id=Ship(uuid4()), subject=self.pin(line),
                              members=members, producer=producer)
         self.supports.insert(str(support.id), support)
         line.support_ships.append(support.id)
         self.notebook.save(line)
         return support
+
+    def checkpoint(self):
+        """Commit the Notebook before evidence refers to its state."""
+        root = self.notebook.root
+        try:
+            head = git_text(root, "rev-parse", "--verify", "HEAD")
+        except ValueError:
+            head = None
+        changed = git_text(root, "status", "--porcelain", "--untracked-files=all", "--",
+                           "records", "registry.json", ".gitignore")
+        if head is None or changed:
+            return self.notebook.commit("Capture Notebook state for support and review")
+        return head
+
+    def _state(self, state):
+        return resolve_subject(state, records=self.records)
+
+    def pin(self, state, *, commit=None):
+        """Pin an exact computed Line state; never substitute a different edition."""
+        snapshot = line_state(state).typed if isinstance(state, Line) else self._state(state)
+        reference = NotebookStateReference(notebook=self.notebook.root,
+                                           commit=commit or self.checkpoint(), ship=snapshot.subject_ship)
+        if self._state(reference).digest != snapshot.digest:
+            raise ValueError("Notebook commit does not contain the requested Line/context state")
+        return reference
 
     def record_review(self, lines, *, destination, proposal, approval, token,
                       operation="review", before=(), frame_location=None):
@@ -177,21 +200,26 @@ class NotebookCapture(TaravType):
         lines = tuple(lines)
         for line in lines:
             self._current(line)
+        before = [self.pin(state, commit=git_text(self.notebook.root, "rev-parse", "HEAD"))
+                  if isinstance(state, SubjectState) else state for state in before]
+        commit = self.checkpoint()
+        after = [self.pin(line, commit=commit) for line in lines]
         if frame_location is not None:
             if operation != "add" or before or not lines:
                 raise ValueError("Review.Frame requires an added Block")
             review = NotebookReviewFrame(
                 id=Ship(uuid4()), destination=destination.id, block_ship=lines[0].scope_ship,
-                location=frame_location, after=[line_state(line) for line in lines],
+                location=frame_location, after=after,
                 proposal=proposal, approval=approval, token=token,
             )
         else:
             review = VerbatimReview(
                 id=Ship(uuid4()), destination=destination.id, operation=operation,
-                before=before, after=[line_state(line) for line in lines],
+                before=before, after=after,
                 proposal=proposal, approval=approval, token=token,
             )
         for state in (*review.typed.before, *review.typed.after):
+            state = self._state(state)
             if str(destination.id) not in [item["ship"] for item in state.payload["context"]]:
                 raise ValueError("Review targets must be within the declared destination context")
         self.reviews.insert(str(review.id), review)
@@ -203,7 +231,7 @@ class NotebookCapture(TaravType):
     def propose_review(self, lines, *, destination, token, operation="review", before=()):
         """Present real candidate states without fabricating future chat evidence."""
         return review_presentation(
-            destination.id, operation, before=[state.typed for state in before],
+            destination.id, operation, before=[self._state(state) for state in before],
             after=[line_state(line).typed for line in lines],
         ) + f"\n\n::approve {token}"
 
@@ -214,13 +242,14 @@ class NotebookCapture(TaravType):
             raise ValueError("Review is not complete: " + "; ".join(p.message for p in problems))
         # Do not return a success for a previously reviewed state that is no longer current.
         for state in review.typed.after:
+            state = self._state(state)
             current = self.notebook.load(state.subject_ship)
             if line_state(current).typed.digest != state.digest:
                 raise ValueError("Review is not complete: target state changed")
         if review.typed.operation == "remove":
             destination = self.notebook.load(review.typed.destination)
             remaining = {obj.id for obj in destination.walk()}
-            if any(state.subject_ship in remaining for state in review.typed.before):
+            if any(self._state(state).subject_ship in remaining for state in review.typed.before):
                 raise ValueError("Review is not complete: removed targets are still present")
         return review
 
@@ -281,6 +310,7 @@ class NotebookCapture(TaravType):
         if support.typed.producer is None:
             problems.append(EvidenceProblem("Invalid", "Conversational support has no producer turn"))
         try:
+            self._state(support.typed.subject)
             producer = (self._reference(support.typed.producer, role="agent")
                         if support.typed.producer is not None else None)
             for member in support.typed.members:
@@ -293,7 +323,7 @@ class NotebookCapture(TaravType):
                         raise ValueError("Support must precede its producing Agent turn")
                 for neighbor in member.neighborhood:
                     self._reference(neighbor)
-        except EvidenceUnavailable as exc:
+        except (EvidenceUnavailable, LookupError, OSError) as exc:
             problems.append(EvidenceProblem("Unavailable", str(exc)))
         except (ValueError, TypeError, KeyError) as exc:
             problems.append(EvidenceProblem("Invalid", str(exc)))
@@ -303,16 +333,27 @@ class NotebookCapture(TaravType):
         if not isinstance(review, VerbatimReview):
             return (EvidenceProblem("Invalid", "Review link does not name a VerbatimReview"),)
         try:
-            proposal, p, pi = self._reference(review.typed.proposal, role="agent")
-            approval, a, ai = self._reference(review.typed.approval, role="user")
+            presentation = review.presentation(records=self.records)
+        except (LookupError, OSError) as exc:
+            return (EvidenceProblem("Unavailable", str(exc)),)
+        except (ValueError, TypeError, KeyError) as exc:
+            return (EvidenceProblem("Invalid", str(exc)),)
+        return self.review_turn_problems(proposal=review.typed.proposal, approval=review.typed.approval,
+                                         token=review.typed.token, presentation=presentation)
+
+    def review_turn_problems(self, *, proposal, approval, token, presentation):
+        """Check real chat evidence before writing or pinning candidate content."""
+        try:
+            proposal, p, pi = self._reference(proposal, role="agent")
+            approval, a, ai = self._reference(approval, role="user")
             if proposal.locator["session_identity"] != approval.locator["session_identity"] or pi >= ai:
                 raise ValueError("Approval must follow its proposal in the same session")
             ptext = "\n".join(message["text"] for message in p["messages"])
             atext = "\n".join(message["text"] for message in a["messages"])
-            if review.typed.token not in ptext or re.search(
-                    rf"(?m)^\s*::approve\s+{re.escape(review.typed.token)}\s*$", atext) is None:
+            if token not in ptext or re.search(
+                    rf"(?m)^\s*::approve\s+{re.escape(token)}\s*$", atext) is None:
                 raise ValueError("The User must explicitly approve the presented token")
-            if _plain_text(review.presentation()) not in _plain_text(ptext):
+            if _plain_text(presentation) not in _plain_text(ptext):
                 raise ValueError("Proposal must present destination, operation and bounded before/after wording")
         except EvidenceUnavailable as exc:
             return (EvidenceProblem("Unavailable", str(exc)),)
@@ -338,7 +379,7 @@ class NotebookCapture(TaravType):
             for ship in ids:
                 try:
                     record = store.load(str(ship))
-                    states = target(record)
+                    states = [self._state(state) for state in target(record)]
                     if any(state.subject_ship == line.id and state.digest == current.digest for state in states):
                         candidates.append(record)
                     else:

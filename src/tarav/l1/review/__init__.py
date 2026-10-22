@@ -8,17 +8,21 @@ from tarav.l0.kernel import (
     LoadedRecord, Ship, TaravClass, TaravEntity, TaravWorkflow, TypedState,
     TypeShip, WorkflowShip, entity,
 )
-from tarav.l1.grounding import SubjectState
+from tarav.l1.grounding import resolve_subject
+from tarav.l0.kernel.current import current_records
 from tarav.l1.references import Reference
 
 REVIEW_WORKFLOW_SHIP = WorkflowShip("a50d3c71-9fb3-428e-ae71-37ac312742ba")
 
 
-def review_presentation(destination, operation, *, before=(), after=()):
+def review_presentation(destination, operation, *, before=(), after=(), records=None):
     """Render the proposed change before any approval reference exists."""
     lines = [f"Target: {destination}", f"Operation: {operation}"]
     for heading, states in (("Before", before), ("After", after)):
         lines.append(f"{heading}:")
+        states = [resolve_subject(state, records=records) for state in states]
+        if len({state.subject_ship for state in states}) != len(states):
+            raise ValueError("A review target set cannot repeat a Ship")
         for state in states:
             lines.extend((f"- {state.subject_ship}: {state.payload['text']}",
                           f"  State: {state.digest}"))
@@ -50,8 +54,8 @@ class VerbatimReview(TypedState, TaravEntity):
     class RecordInterface(TaravEntity.RecordInterface):
         destination: Ship
         operation: Literal["add", "modify", "remove", "review"]
-        before: list[SubjectState.RecordInterface]
-        after: list[SubjectState.RecordInterface]
+        before: list[Reference.RecordInterface]
+        after: list[Reference.RecordInterface]
         token: str = Field(min_length=1, pattern=r"^\S+$")
         proposal: Reference.RecordInterface
         approval: Reference.RecordInterface
@@ -65,7 +69,7 @@ class VerbatimReview(TypedState, TaravEntity):
             if self.operation == "modify" and (not self.before or not self.after):
                 raise ValueError("Modify needs before and after states")
             for states in (self.before, self.after):
-                if len({state.subject_ship for state in states}) != len(states):
+                if len({state.model_dump_json() for state in states}) != len(states):
                     raise ValueError("A review target set cannot repeat a Ship")
             return self
 
@@ -80,14 +84,16 @@ class VerbatimReview(TypedState, TaravEntity):
             "proposal": proposal.records.to_record(), "approval": approval.records.to_record(),
         })
 
-    def presentation(self):
+    def presentation(self, *, records=None):
         """Whitespace may wrap this payload; case and punctuation retain meaning."""
         return review_presentation(self.typed.destination, self.typed.operation,
-                                   before=self.typed.before, after=self.typed.after)
+                                   before=self.typed.before, after=self.typed.after, records=records)
 
     def ships(self):
+        references = [current_records().from_record(state.model_dump(mode="json"))
+                      for state in (*self.typed.before, *self.typed.after)]
         return tuple(dict.fromkeys((*super().ships(), self.typed.destination,
-                                    *(state.subject_ship for state in (*self.typed.before, *self.typed.after)))))
+                                    *(ship for ref in references for ship in ref.ships()))))
 
     @classmethod
     def _from_record(cls, loaded: LoadedRecord):
@@ -103,7 +109,10 @@ class VerbatimReview(TypedState, TaravEntity):
             return {"type": entity(self._owner).name,
                     "id": "4ff001b2-7909-4e71-b316-93b4cc547930",
                     "destination": "6a51f247-3857-4205-bf48-12b44bb1648b", "operation": "review",
-                    "before": [], "after": [SubjectState.records.record_example()],
+                    "before": [], "after": [
+                        {"type": "Tarav.Reference.GitFile", "locator": {
+                            "repository": "/example/notebook", "commit": "0" * 40,
+                            "path": "records/3c2713da-cd9b-43ed-95fe-5c5a18d10fa6.json"}}],
                     "token": "review:example", "proposal": source, "approval": source}
 
 

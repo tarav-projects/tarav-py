@@ -291,6 +291,7 @@ def create_runtime(
     from tarav.l2.notebook_capture import NotebookReviewFrame
     # tarav.breadcrumb f98e9b92d186
     from tarav.l1.notebook import Notebook, NotebookWorkflow
+    from tarav.l1.notebook.references import NotebookStateReference
     # tarav.breadcrumb 156f7aa109f6
     from tarav.l2.notebook_context import NotebookProjectHook
     from tarav.l2.notebook import NOTEBOOK_BLOCK_TYPES
@@ -415,6 +416,7 @@ def create_runtime(
                 NotebookReviewFrame,
                 Line,
                 Notebook,
+                NotebookStateReference,
                 *NOTEBOOK_BLOCK_TYPES,
                 *NOTEBOOK_EVIDENCE_TYPES,
                 *GROUNDING_RECORD_TYPES,

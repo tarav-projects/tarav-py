@@ -843,7 +843,11 @@ ls/read/query CLI. Notebook storage remains independent of these consumers.
 <!-- tarav.breadcrumb 4ada1653d6c0 -->
 <!-- tarav.breadcrumb 1d76273569fc -->
 
-`l1.grounding` retains SubjectState snapshots and attributed SupportSets;
+`l1.grounding` retains subject References and attributed SupportSets;
+SubjectState snapshots are computed in memory for comparison and presentation.
+`l1.notebook.references.NotebookStateReference` pins a Line record to one exact
+Git commit. It reconstructs the Line's bounded context from that same commit,
+without embedding text or ancestor snapshots in support and review Records.
 `l1.review` retains tokenized VerbatimReview records independently of support.
 `l1.notebook.evidence` specializes Lines and Blocks with explicit support and
 review requirements. Base Lines remain mutable, identified authoring primitives.
@@ -853,7 +857,8 @@ review requirements. Base Lines remain mutable, identified authoring primitives.
 `l2.notebook_capture.NotebookCapture` captures and inspects evidence through
 existing Chatlas Turn references and append-only inserts in the Grounding and
 Review Record Registry partitions. Its explicit create initializes only those
-partitions. Subject fingerprints include wording, concrete Types and direct
+partitions. Capture commits Notebook state before linking evidence to it.
+Reads do not commit or provision. Subject fingerprints include wording, concrete Types and direct
 Lines of authoring ancestors, excluding evidence attachments. Historical claims
 remain retained after edits; they do not approve the current state. Protocol
 verification checks destination, operation, bounded before/after wording,
