@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: executing after cold reload. Knowledge.Surface: wiki.
+Status: complete. Knowledge.Surface: wiki.
 
 Integrate Archive repository-specialized references with tarav-change before
 Notebook adopts them. Archive returns maintained repository declarations and
@@ -91,10 +91,10 @@ Breadcrumbs. No compiled skill contract needs changing for this Python-first API
   update hooks/CLI and callers. Tests: two repositories sharing a Project remain
   independent, ordinary non-Project repositories work, missing bindings surface,
   branch/amend/rebase/refusal/overrule and action ownership remain correct.
-- [ ] Explicit migration: register/bind tarav-py's repository, preserve its live
+- [x] Explicit migration: register/bind tarav-py's repository, preserve its live
   witness baseline under the new key, conserve original records in Attic, verify
   the next real commit updates the new witness. No fallback schema reader.
-- [ ] Capture/verification: source Breadcrumbs, focused tests, installed CLI smoke,
+- [x] Capture/verification: source Breadcrumbs, focused tests, installed CLI smoke,
   required full Project checks, Wiki capture and evidence commits. Keep unrelated
   work intact and record every material gap.
 
@@ -125,3 +125,13 @@ Breadcrumbs. No compiled skill contract needs changing for this Python-first API
   its registered Breadcrumb. JSON config and SKW source use external placement.
 - ARCHITECTURE.md also contains concurrent external Breadcrumb work; that shared
   file will be committed as found. Other session changes remain outside scope.
+- Verified slice committed as `5932b1aa8d51942e23d972944129cc6b5c9fdc59`.
+  The next real commit updated the repository-keyed witness: all 159 marker
+  lines matched the tracked file and TaravChangeCheck reported no findings.
+- Full `tarav status --project . --all --json`: 82 completed checks, none
+  incomplete; all 64 pytest suites passed. Five unrelated findings remain:
+  the existing Gitleaks flag, two synthetic test markers and two missing summary
+  renderers on concurrent external-Breadcrumb POI Types. No failing tests.
+- All 15 audited source/request/Wiki surfaces passed evidence audit after
+  position refresh. Both JSON external attachments submitted successfully.
+  Shared Wiki files contain concurrent work and are retained as found.
