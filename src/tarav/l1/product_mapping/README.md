@@ -58,6 +58,12 @@ are the Python interface. `mapper.product.checkpoints(target, every=10)` selects
 the first commit, every tenth subsequent first-parent commit and the final
 target. `after=commit` resumes after a mapped checkpoint.
 
+`locate(chunk_id, at=map_id)` returns its exact coordinates; `read_chunk` returns
+the fingerprint-checked committed bytes. Omitting `at` selects the latest map.
+`chunk_history(chunk_id)` expands its recorded states and continuity decisions,
+including retirement. These APIs do not substitute a different version for a
+chunk absent from the selected map.
+
 The CLI mirrors those operations under `tarav product-map`. Each leaf takes
 `--repo PATH --repository-id ID` and an optional `--store PARTITION`.
 
@@ -70,6 +76,7 @@ tarav product-map confirm ... --proposal /tmp/proposal.json \
   --decisions /tmp/decisions.json --actor agent:SESSION --reason 'Inspected transition'
 tarav product-map show ... --json
 tarav product-map history ...
+tarav product-map chunk ... --id CHUNK_ID --history
 tarav product-map audit ... --all
 ```
 

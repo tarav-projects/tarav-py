@@ -42,19 +42,31 @@ class ProductMapper(TaravObject):
         super().__init__()
         if not isinstance(repository_id, str) or not repository_id.strip():
             raise ValueError("An explicit repository identity is required")
-        self.product = CommittedProduct(repository)
+        self.repository = Path(repository).expanduser().resolve()
+        self._product = None
         self.repository_id = repository_id
         self.store = (RecordMap(Path(root), PRODUCT_MAPPING_SHIP, records) if root is not None
                       else RecordRegistry(records=records).for_workflow(ProductMappingWorkflow))
         self.track_key = "track-" + sha256(repository_id.encode()).hexdigest()
 
     def _to_record(self):
-        return {**super()._to_record(), "repository": str(self.product.root),
+        return {**super()._to_record(), "repository": str(self.repository),
                 "repository_id": self.repository_id, "root": str(self.store.root)}
 
     @classmethod
     def _from_record(cls, loaded: LoadedRecord):
         return cls(loaded.data.repository, loaded.data.repository_id, root=loaded.data.root)
+
+    class Records(TaravObject.Records):
+        def record_example(self):
+            return {**super().record_example(), "repository": "/example/product",
+                    "repository_id": "example-repository", "root": "/example/maps"}
+
+    @property
+    def product(self):
+        if self._product is None:
+            self._product = CommittedProduct(self.repository)
+        return self._product
 
     def track(self):
         if not self.store.marker.exists():
@@ -258,3 +270,35 @@ class ProductMapper(TaravObject):
     def history(self):
         track = self.track()
         return tuple(track.typed.maps) if track else ()
+
+    def locate(self, chunk_id, *, at=None):
+        """Locate an ID in the latest or explicitly pinned map, never another revision."""
+        selected = self.load(at) if at else self.latest()
+        if selected:
+            for item in selected.typed.chunks:
+                if item.id == chunk_id:
+                    return item
+        raise ValueError(f"Chunk is absent from the selected map: {chunk_id}")
+
+    def read_chunk(self, chunk_id, *, at=None):
+        """Return exact committed bytes; an explicit map ID pins the content state."""
+        selected = self.locate(chunk_id, at=at)
+        content = self.product.blob(selected.blob)[selected.start:selected.end]
+        if (len(content) != selected.end - selected.start or
+                sha256(content).hexdigest() != selected.sha256):
+            raise ValueError("Chunk bytes do not match the recorded state")
+        return content
+
+    def chunk_history(self, chunk_id):
+        """Expand recorded versions and creation/continuity/retirement decisions."""
+        result = []
+        for identity in self.history():
+            mapping = self.load(identity).typed
+            chunk = next((c for c in mapping.chunks if c.id == chunk_id), None)
+            decisions = [d.model_dump() for d in mapping.decisions
+                         if chunk_id in d.source_ids or chunk_id in d.target_ids]
+            if chunk is not None or decisions:
+                result.append({"map": identity, "commit": mapping.commit,
+                               "chunk": chunk.model_dump() if chunk is not None else None,
+                               "decisions": decisions})
+        return result

@@ -68,6 +68,12 @@ class MappingProposal(TypedState, TaravObject):
         chunks: list[Chunk]
         skipped: list[SkippedSurface]
 
+    class Records(TaravObject.Records):
+        def record_example(self):
+            return {**super().record_example(), "repository_id": "example-repository",
+                    "base": None, "commit": "0" * 40, "tree": "0" * 40,
+                    "chunks": [], "skipped": []}
+
 
 class ProductMap(TypedState, TaravObject):
     """An immutable confirmed map of one committed state."""
@@ -84,6 +90,15 @@ class ProductMap(TypedState, TaravObject):
         actor: str = Field(min_length=1, pattern=r"\S")
         reason: str = Field(min_length=1, pattern=r"\S")
         decisions: list[ContinuityDecision]
+
+    class Records(TaravObject.Records):
+        def record_example(self):
+            from tarav.l0.kernel import entity
+
+            return {**MappingProposal.records.record_example(), "type": entity(self._owner).name,
+                    "id": "18ce30ea-ff0e-494f-a0cf-7cf079d7870e",
+                    "confirmed_at": "1970-01-01T00:00:00Z", "actor": "example-agent",
+                    "reason": "Schema example only; no mapping claim", "decisions": []}
 
 
 class MappingTrack(TypedState, TaravObject):
@@ -104,6 +119,10 @@ class MappingTrack(TypedState, TaravObject):
         exclude: list[str] = Field(default_factory=list)
         maps: list[str] = Field(default_factory=list)
         issued_ids: list[str] = Field(default_factory=list)
+
+    class Records(TaravObject.Records):
+        def record_example(self):
+            return {**super().record_example(), "repository_id": "example-repository"}
 
 
 def build(cls, **values):

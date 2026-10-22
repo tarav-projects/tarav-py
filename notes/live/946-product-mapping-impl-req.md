@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: executing.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: completed.
 Implement Product Mapping and exercise it on tarav-py, from the first commit
 through pinned target 04981e436403e158559c9c40be1a5cd8255f2262, every ten
 first-parent commits and at the final target. The chain has 1,257 commits.
@@ -81,7 +81,7 @@ Companion: ../../../tarav-md/notes/live/873-product-mapping-guidance-impl-req.md
 - [x] Operational slice 3: map the complete pinned first-parent history at
   ten-commit checkpoints. Inspect transitions, record agent decisions, audit
   exact byte coverage, and retain a reproducible report and unresolved cases.
-- [ ] Completion: code and Wiki capture, architecture contract, Ruff, focused
+- [x] Completion: code and Wiki capture, architecture contract, Ruff, focused
   tests and full root status --all; evidence commits and compact report.
 
 ## Impl.Log
@@ -136,3 +136,33 @@ Companion: ../../../tarav-md/notes/live/873-product-mapping-guidance-impl-req.md
   report captured externally (c9ada48176b1, a8d7afb1f253), without metadata edits.
 - Full root status --all is running. Final catch-up map will target the completed
   implementation commit, beyond the fixed historical report's endpoint.
+- Full root status --all completed 1,345 checks without incomplete checks. Its
+  66 pytest file suites exposed two failures in the one generic Record contract
+  file: new Types lacked complete schema examples. Reproduced that failure,
+  supplied examples, and made Mapper loading detached/lazy so unavailable
+  repository locations can still round-trip. The generic and mapping files then
+  passed 24 tests; latest mapping/architecture checks passed 68 tests.
+- Added direct chunk lookup, fingerprint-checked committed reads and recorded
+  chunk history, including retirement. Consumers can pin a map ID rather than
+  receiving a silently substituted version. A public test verifies old/new
+  exact bytes and retired standing.
+- Rerunning all affected file suites through the actual Project harness and
+  ActionManager, with exact file-suite identities, to clear the two own failures
+  without asserting anything about unrelated findings or unrun suites.
+- Affected harness rerun completed with zero POIs; both own test-failure actions
+  closed as gone. This follows the broad run and targeted fixes, rather than
+  claiming the original broad run passed. New/changed mapping tests: 15 passed;
+  mapping plus architecture: 68 passed; generic Record plus mapping: 24 passed.
+  Ruff across src/tests/tooling passed. The verification wrapper initially
+  failed to serialize typed action signals after its successful run; corrected
+  its report serialization and retained the focused harness result separately.
+- Slice 3 commit: 0bd9564c. All changed Product.Surfaces were submitted where
+  supported and audited clean, including external JSON observations. Pure
+  mechanical exports/examples have no additional invented User-Turn support.
+- Wiki captures: tarav-md/notes/wiki/product-mapping.md and
+  daily/2026-10-22.md. The companion request records that repository's closure.
+- Final catch-up runs after this completion commit. Its exact commit/map ID is
+  retained in the Product Mapping registry, avoiding a self-referential tracked
+  report that changes the product after mapping it. The historical JSON report
+  intentionally retains its fixed 04981e43 endpoint. Product Review Tracker and
+  review approval remain unimplemented, as explicitly scoped out.

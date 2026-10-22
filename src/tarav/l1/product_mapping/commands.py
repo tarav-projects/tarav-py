@@ -42,6 +42,9 @@ def _run(args):
             value = (selected.records.to_record() if args.json else summary(selected)) if selected else None
         elif command == "history":
             value = [summary(mapper.load(identity)) for identity in mapper.history()]
+        elif command == "chunk":
+            value = (mapper.chunk_history(args.id) if args.history else
+                     mapper.locate(args.id, at=args.map).model_dump())
         elif command == "audit":
             selected = mapper.history() if args.all else (
                 (args.map,) if args.map else mapper.history()[-1:])
@@ -69,6 +72,7 @@ def register_product_mapping_commands(subparsers):
         ("confirm", "Confirm a proposal with attributed continuity decisions."),
         ("show", "Show the latest or selected confirmed map."),
         ("history", "List confirmed map checkpoints."),
+        ("chunk", "Locate a chunk or expand its recorded lineage."),
         ("audit", "Verify exact byte coverage of confirmed maps."),
         ("checkpoints", "Select every Nth first-parent commit and the final target."),
     ):
@@ -94,8 +98,11 @@ def register_product_mapping_commands(subparsers):
             cmd.add_argument("--decisions", type=Path, required=True)
             cmd.add_argument("--actor", required=True)
             cmd.add_argument("--reason", required=True)
-        if name in {"show", "audit"}:
+        if name in {"show", "audit", "chunk"}:
             cmd.add_argument("--map")
+        if name == "chunk":
+            cmd.add_argument("--id", required=True)
+            cmd.add_argument("--history", action="store_true")
         if name == "audit":
             cmd.add_argument("--all", action="store_true")
         cmd.set_defaults(handler=_run)

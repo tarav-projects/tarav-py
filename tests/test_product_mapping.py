@@ -197,6 +197,26 @@ def test_retaining_an_id_requires_one_consistent_continuity_decision(mapper):
             actor="user", reason="Contradictory identity assertions")
 
 
+def test_chunk_coordinates_resolve_exact_versions_and_expose_retirement(mapper):
+    commit(mapper, {"a": b"old content"})
+    mapper.create()
+    first = confirm(mapper, mapper.propose())
+    identity = first.typed.chunks[0].id
+    commit(mapper, {"a": b"new content"})
+    second = confirm(mapper, mapper.propose())
+    assert mapper.read_chunk(identity, at=first.typed.id) == b"old content"
+    assert mapper.read_chunk(identity, at=second.typed.id) == b"new content"
+    commit(mapper, {"a": None, "b": b"replacement"})
+    confirm(mapper, mapper.propose())
+    with pytest.raises(ValueError, match="absent"):
+        mapper.locate(identity)
+    history = mapper.chunk_history(identity)
+    assert len(history) == 3
+    assert history[0]["map"] == first.typed.id
+    assert history[-1]["chunk"] is None
+    assert history[-1]["decisions"][0]["source_ids"] == [identity]
+
+
 def test_cli_requires_explicit_decisions_and_roundtrips_real_records(mapper, tmp_path, capsys):
     from tarav.l3.cli.cli import main
 
@@ -290,7 +310,7 @@ def test_project_manager_opens_closes_and_reopens_one_update_action(mapper, monk
 def test_unknown_revision_does_not_create_a_map(mapper):
     commit(mapper, {"a": b"first"})
     mapper.create()
-    with pytest.raises(Exception, match="unknown|revision|single revision|valid object"):
+    with pytest.raises(ValueError, match="unknown|revision|single revision|valid object"):
         mapper.propose("not-a-commit")
     assert mapper.history() == ()
 
