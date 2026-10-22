@@ -161,3 +161,11 @@ Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-
   evidence and Wiki capture are complete. Existing maps and their IDs were
   reused. Actual batch curation and User-present reviews are future use of the
   workflow, not unfulfilled implementation steps.
+- Completion commit 796d29c62437cd1b2138715e8aa8aa428d70b328 exists. Its post-commit
+  Breadcrumb observation failed with InvalidRecordJSON: Not a JSON value: Label,
+  during concurrent shared LabelFormats/Record edits. Explicit register-commit
+  recovery and commit audit hit the same serialization error. Earlier product
+  and Wiki captures audited clean; only this final commit observation remains
+  pending. Preserve the existing commit and recover its observation after the
+  shared Record serialization change is repaired; do not repeat the product
+  commit. This gap is reported to the User separately from passed validation.
