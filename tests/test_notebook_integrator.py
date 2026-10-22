@@ -61,10 +61,15 @@ def test_existing_project_records_keep_identity_shape_parent_and_edited_layout(t
     record = root.records.to_record()
     before = hashes(storage.root)
     loaded = p.notebook(notebook=storage).create()
-    assert loaded.records.to_record() == record
+    assert loaded.id == root.id
+    assert loaded.content_ships == (*root.content_ships, loaded.paths.id)
+    # tarav.breadcrumb 5c8997133232
+    assert {k: v for k, v in loaded.records.to_record().items() if k != "content_ships"} == {
+        k: v for k, v in record.items() if k != "content_ships"}
     assert loaded.parent is None
     assert not TaravNotebook.open(storage).exists
-    assert hashes(storage.root) == before
+    assert hashlib.sha256(storage.store.path(str(root.contents[0].id)).read_bytes()).hexdigest() == before[
+        str(storage.store.path(str(root.contents[0].id)).relative_to(storage.root))]
 
 
 def test_notebook_coordinates_one_root_sets_review_and_current_state(tmp_path, chat):

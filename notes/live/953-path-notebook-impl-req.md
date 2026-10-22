@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: ready. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
+Status: implemented; closure in progress. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
 
 Implement a typed PathNotebook under the existing Notebook, with SchemaBlocks
 linked to registered schema Ships and PathBlocks linked to registered Path Ships.
@@ -20,9 +20,9 @@ The User requested a simple Notebook specialization whose Blocks reference
 registered paths. They clarified that schemas have Ships too and can have Lines;
 a subpath note's interpretive context includes all parent notes up to the schema,
 using the same ancestry semantics as other Notebook Lines. Develop is authorized.
-<!-- tarav.context 0f5bad01:1447ec75ae51ec24 -->
-<!-- tarav.context 0f5bad01:a3d0027b7576ede9 -->
-<!-- tarav.context 0f5bad01:f2ce9196bf104645 -->
+<!-- tarav.breadcrumb aa4e87b3cfc3 -->
+<!-- tarav.breadcrumb 29908b3ac04b -->
+<!-- tarav.breadcrumb 1aa901496934 -->
 
 Inspected state: `l2.notebook.Notebook` is already a typed Block with storage,
 capture and nested checks; `l1.notebook.Notebook` is its shared persistence service.
@@ -30,15 +30,18 @@ JSONView already has an identity and PathEntry declares its owning View and exac
 RFC 6901 pointer. Registry enrollment normally registers every parent position.
 The implementation needs an integration above those independent workflows.
 
-Data shape first: `l2.path_notebook.PathNotebook(Notebook)` retains registry_ship;
+Data shape first: `l2.notebook.PathNotebook(Notebook)` retains registry_ship;
 SchemaBlock retains schema_ship; PathBlock retains path_ship. Each Block has its
 own stable identity and inherited authoring semantics. A PathNotebook contains
 Lines and SchemaBlocks; schema/path Blocks contain Lines and PathBlocks. Typed
 Record projection/loading and ships() retain the registry links. These Types
 belong to NotebookWorkflow; no separate workflow or storage partition is needed.
 
-`project.paths.notebook()` selects its PathNotebook under the Project Notebook
-without writing. Explicit create provisions via normal Notebook operations.
+`project.paths.notebook()` and `project.notebook().paths` select its PathNotebook
+inside the already existing Project Notebook without writing. Explicit Project
+Notebook create adds the Path Notebook child, including on an existing edited
+layout, while preserving all its prior content and identity. Explicit Path
+Notebook create uses the same parent and normal Notebook operations.
 Schema/path add operations work in memory; ordinary save persists the tree.
 Adding a path materializes only its registered parent chain, including the empty
 root position. JSON Pointer token boundaries, not decoded slash characters or
@@ -66,7 +69,7 @@ session above for request/source/Wiki evidence. Preserve older evidence gaps.
 
 ## Execution.Plan
 
-- [ ] Feature: three typed Blocks, explicit schema/path add/read operations and
+- [x] Feature: three typed Blocks, explicit schema/path add/read operations and
   Project selection. Test persistent round trips, root/escaped/numeric pointers,
   inherited context and ordinary capture, missing/duplicate/retired links,
   rename continuity, ancestry drift and read-only selection.
@@ -82,3 +85,38 @@ session above for request/source/Wiki evidence. Preserve older evidence gaps.
 - Concurrent configuration/Agent work is present. Start checkpoint preserves
   pre-existing work; scoped implementation commits do not include unrelated
   files except any shared mixed surfaces, recorded explicitly.
+- Cold-read request before product edits. Checkpoints: Python
+  `247f77bd98b6f70c06f30dc1d8e5428404bf9b98`, Markdown
+  `4c74b707fd1a6eeaedff278f77df84a2d3e1b3e9`.
+- User clarified during execution that the default Path Notebook belongs inside
+  already existing Project Notebooks and describes their Types. Implemented
+  ProjectBlock.paths and explicit ProjectBlock.create adoption without replacing
+  the parent or existing layout. This steering arrived after the pass's single
+  Chatlas freshness boundary; its exact new Turn remains to be indexed separately.
+- Core link Types live at l1.notebook.paths; PathNotebook integration lives with
+  other typed Notebooks in l2.notebook to avoid a reverse module dependency.
+- Focused run passed 86 tests, with one unrelated global architecture failure
+  reporting the concurrent actions/agent/operator_context cycle. No Path Notebook
+  dependency cycle was reported. All path behavior and Record examples passed.
+  Initial tests corrected an incorrect SubjectState attribute and ensured moves
+  with missing parent notes report ancestry drift rather than ordinary absence.
+- Corrected integrator run passed 14 tests; final local path/Record/new
+  architecture contract run passed 19. Ruff passed. The old edited-layout test
+  now verifies the requested addition while preserving every earlier child and
+  the byte content of the existing Line.
+- Live adoption: existing Tarav Project Notebook f6c673d6-88e7-5071-8533-ab0a6450c6e6
+  gained PathNotebook aab88039-65ca-5411-8f8f-372111a384f8. Exactly one membership
+  Record changed and one empty child was added; the other 2,165 Records remained
+  byte-for-byte unchanged. Shared Notebook data was clean before its checkpoint
+  and scoped adoption commit. No schema enrollment or generated note text.
+- A final create-path inspection found that preparing notes before creating an
+  unpersisted parent could let parent default construction replace the pending
+  child with an empty one. The explicit create now attaches that pending child
+  before persisting the parent; a new test verifies the prepared Line survives.
+  Final local run passed 20 tests; Ruff passed. Capture audit resolved all 12
+  surfaces with zero errors; its 26 findings were position updates only.
+- Markdown full status completed 1,215 checks, none incomplete. Existing harness,
+  Git, SKW and two other Wiki provisional-marker findings remain. Source capture
+  reused the exact original design Turns; the post-refresh default-placement
+  steering is retained verbatim in this conversation and summarized above, with
+  exact newer Chatlas-turn indexing still pending rather than fabricated.

@@ -709,6 +709,19 @@ def test_label_formats_are_shared_below_kernel_and_lines():
     assert not any(name and name.startswith("tarav.") for name in imports)
 
 
+def test_path_notebook_reuses_notebook_storage_without_registry_back_dependencies():
+    # tarav.breadcrumb 6bc4ec2a0083
+    from tarav.l1.notebook.paths import SchemaBlock, PathBlock
+    from tarav.l2.notebook import Notebook, PathNotebook
+    from tarav.l3.runtime import create_runtime
+
+    records = create_runtime().records
+    for cls in (PathNotebook, SchemaBlock, PathBlock):
+        assert records.resolve_ship(entity(cls).id) is cls
+    assert issubclass(PathNotebook, Notebook)
+    assert "notebook" not in _top_level_import_graph()["path_registry"]
+
+
 def test_layered_modules_do_not_import_higher_layers() -> None:
     for level in range(4):
         for path in (PACKAGE_ROOT / f"l{level}").rglob("*.py"):

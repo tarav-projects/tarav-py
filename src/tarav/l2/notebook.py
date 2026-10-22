@@ -7,6 +7,8 @@ from tarav.l1.grounding import SupportMember
 from tarav.l1.lines import Block, Line
 from tarav.l1.notebook import Notebook as NotebookStorage
 from tarav.l1.notebook.blocks import NotebookBlock
+from tarav.l1.notebook.paths import SchemaBlock, PathBlock
+from tarav.l0.label_formats import Label
 from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
 from tarav.l2.notebook_capture import NotebookCapture
 from tarav.l2.notebook_checks import NotebookEvidenceSuite
@@ -216,6 +218,20 @@ class ProjectBlock(Notebook):
     def archive(self):
         return self._branch(ArchiveBlock)
 
+    @property
+    def paths(self):
+        """The nested notes on this Project's registered Type schemas."""
+        # tarav.breadcrumb ecfedb264030
+        from tarav.l1.path_registry import PathRegistry
+
+        return PathNotebook.open(PathRegistry(self.project_ship), parent=self, storage=self.storage)
+
+    def create(self):
+        root = super().create()
+        if not root.paths.exists:
+            root.paths.create()
+        return self.storage.load(root.id)
+
 
 class DiscussionBlock(Notebook):
     """Reasoning without an obligation to implement its content."""
@@ -241,5 +257,151 @@ class ArchiveBlock(Notebook):
                           name="Tarav.Notebook.ArchiveBlock", workflow=NOTEBOOK_WORKFLOW_SHIP)
 
 
+class PathNotebook(Notebook):
+    """A nested Notebook whose schema/path Blocks own notes, never registry data."""
+    # tarav.breadcrumb 56b7937ac17a
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip("c3f7c2b7-3929-45be-8936-a499e499d9df"),
+                          name="Tarav.Notebook.Path", workflow=NOTEBOOK_WORKFLOW_SHIP)
+
+    class RecordInterface(Notebook.RecordInterface):
+        registry_ship: Ship
+
+    def __init__(self, *, id, registry_ship, parent=None, contents=(), storage=None):
+        super().__init__(id=id, parent=parent, contents=contents, storage=storage)
+        self.registry_ship = Ship(str(registry_ship))
+
+    def _validated_contents(self, contents):
+        values = super()._validated_contents(contents)
+        if any(not isinstance(item, (Line, SchemaBlock)) for item in values):
+            raise TypeError("PathNotebook contains Lines and SchemaBlocks")
+        return values
+
+    def _to_record(self):
+        return {**super()._to_record(), "registry_ship": str(self.registry_ship)}
+
+    @classmethod
+    def _from_record(cls, loaded):
+        obj = super()._from_record(loaded)
+        obj.registry_ship = loaded.data.registry_ship
+        return obj
+
+    def ships(self):
+        return (*super().ships(), self.registry_ship)
+
+    class Records(Notebook.Records):
+        def record_example(self):
+            return {**super().record_example(), "registry_ship": "7daab078-c8e5-41c4-a644-9653fd53c9e2"}
+
+    @classmethod
+    def open(cls, registry, *, parent, storage=None):
+        storage = storage if storage is not None else parent.storage
+        identity = Ship(uuid5(registry.id.uuid, "PathNotebook"))
+        if storage.store.path(str(identity)).exists():
+            obj = storage.load(identity)
+            if (not isinstance(obj, cls) or obj.registry_ship != registry.id
+                    or obj.parent_ship != parent.id):
+                raise ValueError("Path Notebook identity, registry or parent mismatch")
+            return obj
+        return cls(id=identity, registry_ship=registry.id, parent=parent, storage=storage)
+
+    def create(self):
+        if isinstance(self.parent, Notebook) and not self.parent.exists:
+            if self.id not in self.parent.content_ships:
+                self.parent.append(self)
+            self._parent = self.parent.create()
+        return super().create()
+
+    def _view(self, registry, ship):
+        if registry.id != self.registry_ship:
+            raise ValueError("PathNotebook belongs to a different registry")
+        matches = [view for view in registry.views if view.id == Ship(str(ship))]
+        if len(matches) != 1:
+            raise LookupError("Schema must identify one registered View")
+        return matches[0]
+
+    def schema(self, registry, ship):
+        view = self._view(registry, ship)
+        matches = [b for b in self.contents if isinstance(b, SchemaBlock) and b.schema_ship == view.id]
+        if len(matches) != 1:
+            raise LookupError("Schema must identify one direct SchemaBlock")
+        return matches[0]
+
+    def add_schema(self, registry, ship):
+        view = self._view(registry, ship)
+        matches = [b for b in self.contents if isinstance(b, SchemaBlock) and b.schema_ship == view.id]
+        if matches:
+            return self.schema(registry, ship)
+        block = SchemaBlock(id=Ship(uuid5(self.id.uuid, "schema:" + str(view.id))),
+                            schema_ship=view.id, parent=self)
+        self.append(block)
+        return block
+
+    def _chain(self, registry, ship):
+        entry = registry.entry(ship)
+        view = self._view(registry, entry.typed.view)
+        if not entry.typed.active or entry.typed.path is None:
+            raise ValueError("Path identity is retired or has no current declaration")
+        paths = [""]
+        pointer = ""
+        if entry.typed.path:
+            for token in entry.typed.path.split("/")[1:]:
+                pointer += "/" + token
+                paths.append(pointer)
+        chain = []
+        for pointer in paths:
+            matches = registry.at(view.id, pointer)
+            if len(matches) != 1:
+                raise LookupError(f"Path ancestry requires one registered identity at {pointer!r}")
+            chain.append(matches[0])
+        return view, chain
+
+    def _path_block(self, ship):
+        matches = [b for b in self.walk() if isinstance(b, PathBlock) and b.path_ship == ship]
+        if len(matches) > 1:
+            raise ValueError("Several note Blocks reference the same Path Ship")
+        return matches[0] if matches else None
+
+    def path(self, registry, ship):
+        view, chain = self._chain(registry, ship)
+        if self._path_block(Ship(str(ship))) is None:
+            raise LookupError("Path has no note Block")
+        parent = self.schema(registry, view.id)
+        for entry in chain:
+            block = self._path_block(entry.id)
+            if block is None or block.parent_ship != parent.id:
+                raise ValueError("Path note ancestry changed; maintain the Notebook explicitly")
+            parent = block
+        return parent
+
+    def add_path(self, registry, ship):
+        """Explicit in-memory construction; materialize registered parents only."""
+        view, chain = self._chain(registry, ship)
+        existing = [self._path_block(entry.id) for entry in chain]
+        schemas = [b for b in self.contents if isinstance(b, SchemaBlock) and b.schema_ship == view.id]
+        if len(schemas) > 1:
+            raise ValueError("Several note Blocks reference the same schema")
+        parent = schemas[0] if schemas else None
+        for block in existing:
+            if block is not None and (parent is None or block.parent_ship != parent.id):
+                raise ValueError("Path note ancestry changed; maintain the Notebook explicitly")
+            parent = block
+        parent = self.add_schema(registry, view.id)
+        for entry, block in zip(chain, existing):
+            if block is None:
+                block = PathBlock(id=Ship(uuid5(self.id.uuid, "path:" + str(entry.id))),
+                                  path_ship=entry.id, parent=parent)
+                parent.append(block)
+            parent = block
+        return parent
+
+    def label(self, registry, ship):
+        self.path(registry, ship)
+        return Label(registry.entry(ship).typed.path)
+
+
 NOTEBOOK_BLOCK_TYPES = (NotebookBlock, Notebook, TaravNotebook, ProjectBlock,
-                        DiscussionBlock, ModelBlock, ArchiveBlock)
+                        DiscussionBlock, ModelBlock, ArchiveBlock, PathNotebook,
+                        SchemaBlock, PathBlock)

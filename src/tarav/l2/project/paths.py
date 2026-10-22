@@ -43,6 +43,11 @@ class PathsManager(NamespaceBase):
     def suite(self):
         return PathsSuite(self)
 
+    def notebook(self, *, notebook=None):
+        """Select the Path Notebook inside this Project's existing Notebook."""
+        return self.obj.notebook(notebook=notebook).paths
+        # tarav.breadcrumb df94e327bb74
+
 
 class PathsUnavailable(Check):
     @classmethod
