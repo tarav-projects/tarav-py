@@ -47,6 +47,7 @@ class Batch(TypedState, TaravObject):
                     "repository_id": "example-product", "revisions": ["00000000-0000-0000-0000-000000000002"]}
 
 
+# tarav.breadcrumb c910032d8541
 class BatchRevision(TypedState, TaravObject):
     @classmethod
     def class_entity(cls):
@@ -86,6 +87,7 @@ class BatchRevision(TypedState, TaravObject):
                     "created_at": "1970-01-01T00:00:00Z", "actor": "example-agent", "reason": "Example only"}
 
 
+# tarav.breadcrumb 4a45fda6fe39
 class ReviewCompletion(TypedState, TaravObject):
     """The review happened; follow-up work may remain open."""
 
@@ -106,13 +108,19 @@ class ReviewCompletion(TypedState, TaravObject):
         completion: Reference.RecordInterface
         outcomes: list[Reference.RecordInterface] = Field(default_factory=list)
 
+        @model_validator(mode="after")
+        def token_names_revision(self):
+            if self.token != "review:" + self.revision_id:
+                raise ValueError("Completion token must name its exact batch revision")
+            return self
+
     class Records(TaravObject.Records):
         def record_example(self):
             ref = {"type": "Tarav.Chatlas.Reference.Turn", "locator": {
                 "session_identity": "0" * 64, "turn_address": "0" * 64, "turn_hash": "0" * 64}}
             return {**super().record_example(), "id": "00000000-0000-0000-0000-000000000005",
                     "revision_id": "00000000-0000-0000-0000-000000000002", "repository_id": "example-product",
-                    "token": "review:example", "completed_at": "1970-01-01T00:00:00Z",
+                    "token": "review:00000000-0000-0000-0000-000000000002", "completed_at": "1970-01-01T00:00:00Z",
                     "presentation": ref, "completion": ref, "outcomes": []}
 
 

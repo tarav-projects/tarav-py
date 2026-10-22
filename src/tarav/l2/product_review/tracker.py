@@ -28,8 +28,11 @@ def build(cls, **values):
 
 # tarav.breadcrumb 0bd6e4b384e8
 class ReviewTracker:
-    def __init__(self, mapper, *, root=None, records=None):
+    def __init__(self, mapper, *, root=None, records=None, horizon_days=5):
+        if type(horizon_days) is not int or horizon_days < 0:
+            raise ValueError("Review horizon days must be a nonnegative integer")
         self.mapper = mapper
+        self.horizon_days = horizon_days
         self.repository_id = mapper.repository_id
         self.store = (RecordMap(Path(root), PRODUCT_REVIEW_SHIP, records) if root is not None
                       else RecordRegistry(records=records).for_workflow(ProductReviewWorkflow))
@@ -65,15 +68,21 @@ class ReviewTracker:
             raise ValueError("Revision identity or Type mismatch")
         if result.typed.repository_id != self.repository_id:
             raise ValueError("Revision belongs to another repository")
+        mapping = self.mapper.load(result.typed.map_id)
+        chunks = {c.id: c.model_dump() for c in mapping.typed.chunks}
+        if (result.typed.commit != mapping.typed.commit
+                or any(c.model_dump() != chunks.get(c.id) for c in result.typed.chunks)):
+            raise ValueError("Batch revision differs from its pinned committed map")
         return result
 
     def current(self, batch_id):
         return self.revision(self.batch(batch_id).typed.revisions[-1])
 
-    def select_map(self, *, map_id=None, horizon_days=5, now=None):
+    def select_map(self, *, map_id=None, horizon_days=None, now=None):
         if map_id is not None:
             return self.mapper.load(map_id)
-        if horizon_days < 0:
+        horizon_days = self.horizon_days if horizon_days is None else horizon_days
+        if type(horizon_days) is not int or horizon_days < 0:
             raise ValueError("Review horizon days must be nonnegative")
         cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=horizon_days)
         history = self.mapper.history()
@@ -204,7 +213,7 @@ class ReviewTracker:
         # A blob changing elsewhere in the file does not change these chunk bytes.
         return chunk.id, chunk.path, chunk.start, chunk.end, chunk.sha256
 
-    def inspect(self, *, map_id=None, horizon_days=5, now=None):
+    def inspect(self, *, map_id=None, horizon_days=None, now=None):
         mapping = self.select_map(map_id=map_id, horizon_days=horizon_days, now=now)
         current = {c.id: c for c in mapping.typed.chunks}
         covered, batches = set(), []

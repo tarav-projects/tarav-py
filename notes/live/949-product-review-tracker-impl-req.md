@@ -98,7 +98,7 @@ Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-
   present token, complete with validated evidence, retain history. Check real Git
   and public Python API: overlaps, exact states, invalid IDs, stale transitions,
   retirement, proper User/Agent roles, wrong tokens and old reviews preserved.
-- [ ] Feature: horizon selection, independent completeness/currency checks,
+- [x] Feature: horizon selection, independent completeness/currency checks,
   Project manager/config and installed product-review CLI. Check actual CLI and
   Project status actions across no-map, uncovered, pending, completed and stale
   states; no reads provision storage. Reinstall installed entrypoint.
@@ -127,3 +127,10 @@ Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-
   temporarily carries the other session's undeclared marker; finish after that
   session's capture. Unmarked schema/plumbing surfaces had no justified extra
   placements; submit reports no provisional marker and audit passes.
+- Slice 1 commit: 1095b4df. Slice 2 added independent Situation Chains, a guarded
+  scan checkpoint, Project.Review manager/config and product-review CLI. All
+  12 public lifecycle/CLI/real Project status tests passed before extra retirement
+  and unavailable-map cases. Disabled scans and missing horizon maps preserve
+  pending Actions. Configuration enabled for tarav-py with horizon_days=5.
+- No mapping rebuilt, batch grouping invented, actual User review performed or
+  completion token synthesized. Existing maps remain untouched.

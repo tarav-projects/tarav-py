@@ -51,6 +51,41 @@ currency across unrelated map advances; a blob changing elsewhere in a file
 does not itself change a chunk. Location changes are visible and require an
 explicit, possibly quick, renewed review.
 
+## Project integration and CLI
+
+Featured Projects select `Project.Review` and expose `project.review.open()`
+and `project.review.suite()`. Configure the workflow in `.tarav/config.json`:
+
+```json
+"product_review": {"enabled": true, "horizon_days": 5}
+```
+
+The Git repository identity and Product Mapping scope come from the existing
+Project configuration. Mapping owns which files exist in the map. The tracker
+does not rebuild maps or introduce its own file-selection rules. Routine checks
+select existing maps by commit age; `--map` overrides the horizon on demand.
+
+Discover `tarav product-review --help` and each command's help. Commands take
+`--repo PATH --repository-id DOI`. `--maps-store` and `--store` explicitly
+override their independent standard Record Registry partitions.
+
+`inspect` reports uncovered chunks and batch states. `init` creates storage;
+`create` selects repeated `--chunk ID` values with a title, purpose, actor and
+reason. `revise` also requires the stable `--batch ID` and current `--base
+REVISION`. `show`, `list` and `history` expose retained revisions. `read`
+returns exact committed bytes as base64, including binary material. `present`
+prints the completion frame. After the actual in-chat review, `complete`
+requires `--revision`, `--presentation` and `--completion` JSON files holding
+exact Chatlas Turn Reference Records; `--outcomes` optionally holds an array
+of Reference Records. The command never generates a User token or finishes
+follow-up work. `retire` explicitly removes an obsolete batch from active use.
+
+`tarav status` integrates the signals into Actions: one aggregate completeness
+action and one stable review action per batch. Successful scans close findings
+that have disappeared and reopen them on recurrence. Disabled, failed or
+unavailable scans do not imply the work has gone away. A missing eligible map
+is an incomplete check, not a reason to generate a fresh one during inspection.
+
 Completeness and currency are independent. Every selected-map chunk must belong
 to at least one live batch. Every live batch needs its own current review,
 regardless of whether another batch overlaps it. Checks emit findings without

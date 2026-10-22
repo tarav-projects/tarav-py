@@ -180,6 +180,8 @@ class TaravRuntime:
         from tarav.l1.workspaces.commands import register_workspace_commands
         from tarav.l1.product_mapping.commands import register_product_mapping_commands
         from tarav.l2.project.product_mapping import configured_mapper
+        from tarav.l2.product_review.commands import register_product_review_commands
+        from tarav.l2.project.product_review import configured_tracker
         from tarav.l1.usage.commands import register_usage_commands
 
         register_agent_commands(subparsers)
@@ -226,6 +228,7 @@ class TaravRuntime:
         register_scoring_commands(subparsers)
         register_workspace_commands(subparsers)
         register_product_mapping_commands(subparsers, mapper_factory=configured_mapper)
+        register_product_review_commands(subparsers, tracker_factory=configured_tracker)
         from tarav.l1.actions.commands import register_action_commands
         from tarav.l1.operator_context.commands import register_operator_context_commands
         register_operator_context_commands(subparsers)
@@ -345,6 +348,8 @@ def create_runtime(
         PRODUCT_MAPPING_CHECK_TYPES, MappingUpdateAction,
     )
     from tarav.l1.product_review import PRODUCT_REVIEW_RECORD_TYPES, ProductReviewWorkflow
+    from tarav.l2.product_review.checks import PRODUCT_REVIEW_CHECK_TYPES, PRODUCT_REVIEW_ACTION_TYPES
+    from tarav.l2.project.product_review import ProjectReviewSuite
     from tarav.l2.project.product_mapping import MappingLoadCheck, MappingProjectSuite
     from tarav.l1.project import ProjectWorkflow, TaravProject
     from tarav.l2.project import Project
@@ -458,6 +463,8 @@ def create_runtime(
                 *ATTIC_RECORD_TYPES,
                 *PRODUCT_MAPPING_RECORD_TYPES,
                 *PRODUCT_REVIEW_RECORD_TYPES,
+                *PRODUCT_REVIEW_CHECK_TYPES,
+                ProjectReviewSuite,
                 ProductMapper,
                 *PRODUCT_MAPPING_CHECK_TYPES,
                 MappingLoadCheck,
@@ -638,17 +645,21 @@ def create_runtime(
                         *ARCHIVE_ACTION_TYPES):
         register_action(action_type)
     register_action(MappingUpdateAction)
+    for action_type in PRODUCT_REVIEW_ACTION_TYPES:
+        register_action(action_type)
     from tarav.l1.project.config import register_config_section
     # tarav.breadcrumb 59c760b32fc6
     from tarav.l2.project.attic import ProjectAtticConfig
     from tarav.l2.project.product_mapping import ProductMappingConfig
+    from tarav.l2.project.product_review import ProductReviewConfig
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig
     from tarav.l1.git.hooks import GitConfig, register_git_hook_handler
     from tarav.l1.git.change import TaravChange
     for section, model in (("agents", AgentsConfig), ("skills", SkillsConfig),
                            ("git", GitConfig), ("attic", ProjectAtticConfig),
-                           ("product_mapping", ProductMappingConfig)):
+                           ("product_mapping", ProductMappingConfig),
+                           ("product_review", ProductReviewConfig)):
         register_config_section(section, model)
     register_git_hook_handler(TaravChange())
     from tarav.l1.git.gitleaks import Gitleaks

@@ -13,6 +13,7 @@ from .runner import (
 )
 from .skw import SkwManager
 from .product_mapping import MappingManager
+from .product_review import ReviewManager
 from .paths import PathsManager
 
 
@@ -23,6 +24,7 @@ class Project(TaravProject):
     Skw = SkwManager
     # tarav.breadcrumb 102d55145a93
     Mapping = MappingManager
+    Review = ReviewManager
     Paths = PathsManager
     # tarav.breadcrumb 00b0d37c5fab
 
@@ -33,6 +35,10 @@ class Project(TaravProject):
     @property
     def mapping(self):
         return type(self).Mapping(self)
+
+    @property
+    def review(self):
+        return type(self).Review(self)
 
     @classmethod
     def class_entity(cls):
@@ -55,6 +61,7 @@ class Project(TaravProject):
 
             return CheckSuite([super().suite(), project_attic_checks(self.obj),
                                self.obj.mapping.suite(),
+                               self.obj.review.suite(),
                                self.obj.paths.suite(),
                                ProjectNotebookSuite(self.obj), OwnedRepositorySuite(self.obj),
                                CheckSuite(lambda run: TestFixturesSuite.present(self.obj.root))],
