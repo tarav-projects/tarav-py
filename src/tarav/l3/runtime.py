@@ -352,6 +352,7 @@ def create_runtime(
         PRODUCT_MAPPING_CHECK_TYPES, MappingUpdateAction,
     )
     from tarav.l1.product_review import PRODUCT_REVIEW_RECORD_TYPES, ProductReviewWorkflow
+    from tarav.l2.product_review import ClassBatch
     from tarav.l2.product_review.checks import PRODUCT_REVIEW_CHECK_TYPES, PRODUCT_REVIEW_ACTION_TYPES
     from tarav.l2.project.product_review import ProjectReviewSuite
     from tarav.l2.project.product_mapping import MappingLoadCheck, MappingProjectSuite
@@ -468,6 +469,7 @@ def create_runtime(
                 *AGENT_SETUP_RECORD_TYPES,
                 *PRODUCT_MAPPING_RECORD_TYPES,
                 *PRODUCT_REVIEW_RECORD_TYPES,
+                ClassBatch,
                 *PRODUCT_REVIEW_CHECK_TYPES,
                 ProjectReviewSuite,
                 ProductMapper,

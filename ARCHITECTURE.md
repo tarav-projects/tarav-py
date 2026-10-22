@@ -556,6 +556,21 @@ disabled or unavailable scans from falsely closing existing findings.
 <!-- tarav.breadcrumb f39b6d5d518f -->
 <!-- tarav.breadcrumb e8d7f87de016 -->
 
+`Batch.subject` is a generic existing Ship UUID, pinned into each revision's
+review frame. Tarav's `ClassBatch` specializes it to a class TypeShip and
+`ClassReviewTracker` resolves attachments through the trusted existing Type graph.
+The linked TaravClass supplies its own bases, Workflow and Context; the tracker
+stores no parallel class hierarchy. The Project and installed CLI select this
+class specialization; generic Python consumers keep arbitrary subject UUIDs.
+<!-- tarav.breadcrumb 2511fc0604d4 -->
+<!-- tarav.breadcrumb 880b94d167f6 -->
+
+`product_review.max_chunks` bounds a batch to eight chunks by default. Create,
+revise and complete enforce the current limit. A configuration reduction
+reports oversized saved batches through their existing review Action without
+rewriting membership or dropping historical reviews.
+<!-- tarav.breadcrumb 4b4fcb2c56e1 -->
+
 `tarav.l1.attic` owns cheap conservation of opaque displaced material.
 `AtticWorkflow` is an explicit Archive child, separate from Artifact
 registration. `Attic` and `Deposit` are path handlers with ordinary Tarav

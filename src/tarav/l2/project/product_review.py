@@ -7,7 +7,7 @@ from tarav.l1.checks import CheckSuite
 from tarav.l1.git.hooks import GitConfig
 from tarav.l1.product_review import PRODUCT_REVIEW_SHIP
 from tarav.l1.project.config import ProjectConfig
-from tarav.l2.product_review import ReviewTracker
+from tarav.l2.product_review import ClassReviewTracker
 from tarav.l2.product_review.checks import (
     BatchReviewCheck, CoverageCheck, ProductReviewSuite, ReviewUnavailable,
 )
@@ -19,12 +19,14 @@ class ProductReviewConfig(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
     enabled: bool = False
     horizon_days: int = Field(default=5, ge=0)
+    max_chunks: int = Field(default=8, ge=1)
 
 
 def configured_tracker(repository, repository_id, *, root=None, maps_root=None):
     config = ProjectConfig(repository).section("product_review", ProductReviewConfig)
-    return ReviewTracker(configured_mapper(repository, repository_id, root=maps_root), root=root,
-                         horizon_days=config.horizon_days if config else 5)
+    return ClassReviewTracker(configured_mapper(repository, repository_id, root=maps_root), root=root,
+                              horizon_days=config.horizon_days if config else 5,
+                              max_chunks=config.max_chunks if config else 8)
 
 
 class ReviewManager(NamespaceBase):

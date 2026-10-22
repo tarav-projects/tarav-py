@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from filelock import FileLock
 
-from tarav.l0.kernel import entity
+from tarav.l0.kernel import Ship, entity
 from tarav.l1.chatlas.normal_model import provide_normal_model, resolve_chat_turn_ref
 from tarav.l1.chatlas.references import ChatlasTurnReference
 from tarav.l1.chatlas.turn_snapshots import TurnSnapshotStore
@@ -28,11 +28,16 @@ def build(cls, **values):
 
 # tarav.breadcrumb 0bd6e4b384e8
 class ReviewTracker:
-    def __init__(self, mapper, *, root=None, records=None, horizon_days=5):
+    Batch = Batch
+
+    def __init__(self, mapper, *, root=None, records=None, horizon_days=5, max_chunks=8):
         if type(horizon_days) is not int or horizon_days < 0:
             raise ValueError("Review horizon days must be a nonnegative integer")
         self.mapper = mapper
         self.horizon_days = horizon_days
+        if type(max_chunks) is not int or max_chunks < 1:
+            raise ValueError("Maximum chunks per batch must be a positive integer")
+        self.max_chunks = max_chunks
         self.repository_id = mapper.repository_id
         self.store = (RecordMap(Path(root), PRODUCT_REVIEW_SHIP, records) if root is not None
                       else RecordRegistry(records=records).for_workflow(ProductReviewWorkflow))
@@ -41,7 +46,8 @@ class ReviewTracker:
         self.store.create()
         return self
 
-    def batches(self, *, retired=False):
+    def batches(self, *, retired=False, subject=None):
+        selected = self._subject(subject) if subject is not None else None
         if not self.store.marker.exists():
             return ()
         result = []
@@ -51,12 +57,15 @@ class ReviewTracker:
                 if not isinstance(batch, Batch):
                     raise ValueError("Batch key has the wrong Record Type")
                 if batch.typed.repository_id == self.repository_id and (retired or not batch.typed.retired):
-                    result.append(batch)
+                    if not isinstance(batch, self.Batch):
+                        raise ValueError("Batch Type does not match the selected tracker")
+                    if selected is None or batch.typed.subject == selected:
+                        result.append(batch)
         return tuple(result)
 
     def batch(self, identity):
         result = self.store.load("batch-" + identity)
-        if not isinstance(result, Batch) or result.typed.id != identity:
+        if not isinstance(result, self.Batch) or result.typed.id != identity:
             raise ValueError("Batch identity or Type mismatch")
         if result.typed.repository_id != self.repository_id:
             raise ValueError("Batch belongs to another repository")
@@ -68,6 +77,8 @@ class ReviewTracker:
             raise ValueError("Revision identity or Type mismatch")
         if result.typed.repository_id != self.repository_id:
             raise ValueError("Revision belongs to another repository")
+        if result.typed.subject != self.batch(result.typed.batch_id).typed.subject:
+            raise ValueError("Revision subject differs from its batch")
         mapping = self.mapper.load(result.typed.map_id)
         chunks = {c.id: c.model_dump() for c in mapping.typed.chunks}
         if (result.typed.commit != mapping.typed.commit
@@ -98,7 +109,16 @@ class ReviewTracker:
             raise ValueError("No confirmed Product Map is old enough for the review horizon")
         return min(reversed(eligible), key=lambda m: rank[m.typed.commit])
 
-    def _revision(self, *, batch_id, base, map_id, chunk_ids, title, purpose, actor, reason):
+    def _subject(self, value):
+        return value if isinstance(value, Ship) else Ship(value)
+
+    def _check_size(self, chunk_ids):
+        # tarav.breadcrumb 5557c4484983
+        if len(chunk_ids) > self.max_chunks:
+            raise ValueError(f"Batch has {len(chunk_ids)} chunks; maximum is {self.max_chunks}")
+
+    def _revision(self, *, batch_id, subject, base, map_id, chunk_ids, title, purpose, actor, reason):
+        self._check_size(chunk_ids)
         mapping = self.mapper.load(map_id)
         chunks = {c.id: c for c in mapping.typed.chunks}
         if len(set(chunk_ids)) != len(chunk_ids) or not chunk_ids:
@@ -106,17 +126,19 @@ class ReviewTracker:
         if not set(chunk_ids) <= chunks.keys():
             raise ValueError("Selected chunk is absent from the pinned map")
         return build(BatchRevision, id=str(uuid4()), batch_id=batch_id,
+                     subject=str(subject),
                      repository_id=self.repository_id, base=base, map_id=map_id,
                      commit=mapping.typed.commit, title=title, purpose=purpose,
                      chunks=[chunks[c].model_dump() for c in sorted(chunk_ids)],
                      created_at=now_text(), actor=actor, reason=reason)
 
-    def create_batch(self, *, map_id, chunk_ids, title, purpose, actor, reason):
+    def create_batch(self, *, subject, map_id, chunk_ids, title, purpose, actor, reason):
         self.store.open()
+        subject = self._subject(subject)
         identity = str(uuid4())
-        revision = self._revision(batch_id=identity, base=None, map_id=map_id, chunk_ids=chunk_ids,
+        revision = self._revision(batch_id=identity, subject=subject, base=None, map_id=map_id, chunk_ids=chunk_ids,
                                   title=title, purpose=purpose, actor=actor, reason=reason)
-        batch = build(Batch, id=identity, repository_id=self.repository_id,
+        batch = build(self.Batch, id=identity, subject=str(subject), repository_id=self.repository_id,
                       revisions=[revision.typed.id])
         with FileLock(str(self.store.root) + ".review.lock"):
             self.store.insert("revision-" + revision.typed.id, revision)
@@ -131,7 +153,8 @@ class ReviewTracker:
                 raise ValueError("Cannot revise a retired batch")
             if previous.typed.id != base:
                 raise ValueError("Stale batch revision: reload the current revision")
-            revision = self._revision(batch_id=batch_id, base=base, map_id=map_id,
+            self._subject(batch.typed.subject)
+            revision = self._revision(batch_id=batch_id, subject=batch.typed.subject, base=base, map_id=map_id,
                                       chunk_ids=chunk_ids, actor=actor, reason=reason,
                                       title=previous.typed.title if title is None else title,
                                       purpose=previous.typed.purpose if purpose is None else purpose)
@@ -147,7 +170,7 @@ class ReviewTracker:
                 raise ValueError("Batch is already retired")
             data = batch.records.to_record()
             data.update(retired=True, retired_at=now_text(), retired_by=actor, retirement_reason=reason)
-            batch = Batch.records.from_record(data)
+            batch = type(batch).records.from_record(data)
             self.store.replace("batch-" + batch_id, batch)
         return batch
 
@@ -163,6 +186,7 @@ class ReviewTracker:
     def presentation(self, revision_id):
         revision = self.revision(revision_id).typed
         lines = ["Product review completion", f"Batch: {revision.batch_id}",
+                 f"Subject: {revision.subject}",
                  f"Revision: {revision.id}", f"Map: {revision.map_id}", f"Commit: {revision.commit}",
                  f"Title: {revision.title}", f"Purpose: {revision.purpose}", "Chunks:"]
         lines.extend(f"- {c.id}: {c.path} bytes [{c.start}, {c.end}) sha256 {c.sha256}" for c in revision.chunks)
@@ -173,6 +197,7 @@ class ReviewTracker:
     # tarav.breadcrumb 442372a29caa
     def complete(self, revision_id, *, presentation, completion, outcomes=()):
         revision = self.revision(revision_id)
+        self._check_size(revision.typed.chunks)
         if not all(isinstance(ref, ChatlasTurnReference) for ref in (presentation, completion)):
             raise ValueError("Review evidence must reference exact Chatlas Turns")
         p, u = presentation.turn_result(), completion.turn_result()
@@ -224,8 +249,11 @@ class ReviewTracker:
             covered.update(c.id for c in revision.typed.chunks if c.id in current)
             completed = self.completion(revision.typed.id)
             batches.append({"batch_id": batch.typed.id, "revision_id": revision.typed.id,
+                            "subject": str(revision.typed.subject),
+                            "chunks": len(revision.typed.chunks), "max_chunks": self.max_chunks,
                             "title": revision.typed.title, "map_id": revision.typed.map_id,
-                            "state": "stale" if changed else "reviewed" if completed else "pending",
+                            "state": "oversized" if len(revision.typed.chunks) > self.max_chunks else
+                                     "stale" if changed else "reviewed" if completed else "pending",
                             "changed_chunks": changed,
                             "completion": completed.typed.id if completed else None})
         return {"repository_id": self.repository_id, "map_id": mapping.typed.id,

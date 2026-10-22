@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from tarav.l0.kernel import TaravClass, TaravObject, TypedState, TypeShip
+from tarav.l0.kernel import Ship, TaravClass, TaravObject, TypedState, TypeShip
 from tarav.l1.references import Reference
 
 from .workflow import PRODUCT_REVIEW_SHIP
@@ -34,6 +34,8 @@ class Batch(TypedState, TaravObject):
         model_config = ConfigDict(strict=True, extra="forbid")
         type: Literal["Tarav.ProductReview.Batch"]
         id: Identity
+        # tarav.breadcrumb 3cc3eac1d689
+        subject: Ship
         repository_id: Text
         revisions: list[Identity] = Field(min_length=1)
         retired: bool = False
@@ -44,6 +46,7 @@ class Batch(TypedState, TaravObject):
     class Records(TaravObject.Records):
         def record_example(self):
             return {**super().record_example(), "id": "0" * 8 + "-0000-0000-0000-000000000001",
+                    "subject": "00000000-0000-0000-0000-000000000006",
                     "repository_id": "example-product", "revisions": ["00000000-0000-0000-0000-000000000002"]}
 
 
@@ -59,6 +62,7 @@ class BatchRevision(TypedState, TaravObject):
         type: Literal["Tarav.ProductReview.BatchRevision"]
         id: Identity
         batch_id: Identity
+        subject: Ship
         repository_id: Text
         base: Identity | None
         map_id: Identity
@@ -80,6 +84,7 @@ class BatchRevision(TypedState, TaravObject):
         def record_example(self):
             return {**super().record_example(), "id": "00000000-0000-0000-0000-000000000002",
                     "batch_id": "00000000-0000-0000-0000-000000000001", "repository_id": "example-product",
+                    "subject": "00000000-0000-0000-0000-000000000006",
                     "base": None, "map_id": "00000000-0000-0000-0000-000000000003", "commit": "0" * 40,
                     "title": "Example", "purpose": "Example only", "chunks": [{
                         "id": "00000000-0000-0000-0000-000000000004", "path": "example.txt",

@@ -14,7 +14,8 @@
   },
   "product_review": {
     "enabled": true,
-    "horizon_days": 5
+    "horizon_days": 5,
+    "max_chunks": 8
   },
   "product_mapping": {
     "enabled": true,

@@ -8,6 +8,8 @@ from uuid import uuid4
 import pytest
 
 from tarav.l1.product_mapping import ContinuityDecision, ProductMapper
+from tarav.l0.kernel import entity
+from tarav.l1.product_review import Batch
 from tarav.l2.product_review import ReviewTracker
 from tarav.l3.runtime import create_runtime
 
@@ -25,7 +27,7 @@ def tracker(tmp_path, monkeypatch):
     git(repo, "init", "-q")
     git(repo, "config", "user.name", "Test")
     git(repo, "config", "user.email", "test@example.com")
-    mapper = ProductMapper(repo, "example-product", root=tmp_path / "maps")
+    mapper = ProductMapper(repo, "example-product", root=tmp_path / "maps", exclude=[".tarav/*"])
     return ReviewTracker(mapper, root=tmp_path / "reviews")
 
 
@@ -51,7 +53,7 @@ def mapped(tracker, files):
 
 def batch(tracker, mapping, *, chunks=None, title="Related material"):
     tracker.create()
-    return tracker.create_batch(map_id=mapping.typed.id,
+    return tracker.create_batch(subject=str(entity(Batch).id), map_id=mapping.typed.id,
                                 chunk_ids=chunks if chunks is not None else [c.id for c in mapping.typed.chunks],
                                 title=title, purpose="Discuss design and capture outcomes",
                                 actor="test-agent", reason="A coherent review subject")
@@ -326,10 +328,14 @@ def test_cli_and_project_config_select_same_maps_and_roundtrip_batch_history(tra
     assert not selected.store.root.exists()
     assert main(["product-review", "init", *common]) == 0
     capsys.readouterr()
-    assert main(["product-review", "create", *common, "--chunk", mapping.typed.chunks[0].id,
+    assert main(["product-review", "create", *common, "--subject", str(entity(Batch).id), "--chunk", mapping.typed.chunks[0].id,
                  "--title", "Design", "--purpose", "Discuss design", "--actor", "agent", "--reason", "Coherent subject"]) == 0
     revision = json.loads(capsys.readouterr().out)
     assert revision["commit"] == mapping.typed.commit
+    assert revision["subject"] == str(entity(Batch).id)
+    from tarav.l2.product_review import ClassBatch, ClassReviewTracker
+    assert isinstance(selected, ClassReviewTracker)
+    assert isinstance(selected.batch(revision["batch_id"]), ClassBatch)
     assert main(["product-review", "present", *common, "--revision", revision["id"]]) == 0
     assert "::reviewed review:" + revision["id"] in capsys.readouterr().out
     (root / "a.txt").write_text("uncommitted changes")
@@ -339,5 +345,182 @@ def test_cli_and_project_config_select_same_maps_and_roundtrip_batch_history(tra
     history = json.loads(capsys.readouterr().out)
     assert history[0]["revision"]["id"] == revision["id"]
     assert history[0]["completion"] is None
-    assert main(["product-review", "create", *common, "--chunk", str(uuid4()),
+    assert main(["product-review", "list", *common, "--subject", str(entity(Batch).id)]) == 0
+    assert [b["batch_id"] for b in json.loads(capsys.readouterr().out)] == [revision["batch_id"]]
+    assert main(["product-review", "create", *common, "--subject", str(entity(Batch).id), "--chunk", str(uuid4()),
                  "--title", "Invalid", "--purpose", "Invalid", "--actor", "agent", "--reason", "Invalid"]) != 0
+
+
+# tarav.breadcrumb fada5041aab9
+def test_generic_subject_is_required_and_preserved_in_revision_evidence(tracker, chat):
+    mapping = mapped(tracker, {"a": b"data"})
+    tracker.create()
+    external_subject = "99de9103-7a1a-4a18-8e14-8493f71bbc35"
+    item = tracker.create_batch(subject=external_subject, map_id=mapping.typed.id,
+                                chunk_ids=[c.id for c in mapping.typed.chunks],
+                                title="External product subject", purpose="Discuss", actor="agent", reason="Grouping")
+    assert type(item) is Batch
+    assert str(item.typed.subject) == external_subject
+    revision = tracker.current(item.typed.id)
+    assert str(revision.typed.subject) == external_subject
+    assert "Subject: " + external_subject in tracker.presentation(revision.typed.id)
+    finish(tracker, revision, chat)
+    updated = tracker.revise(item.typed.id, base=revision.typed.id, map_id=mapping.typed.id,
+                             chunk_ids=[c.id for c in mapping.typed.chunks], actor="agent", reason="Refine wording")
+    assert str(updated.typed.subject) == external_subject
+    assert tracker.history(item.typed.id)[0]["revision"]["subject"] == external_subject
+    assert tracker.inspect(map_id=mapping.typed.id)["batches"][0]["subject"] == external_subject
+    malformed = item.records.to_record()
+    del malformed["subject"]
+    with pytest.raises(ValueError, match="subject"):
+        Batch.records.from_record(malformed)
+    assert tracker.batches(subject=external_subject)[0].typed.id == item.typed.id
+
+
+# tarav.breadcrumb e3cfc7674766
+def test_class_attachment_reuses_existing_type_graph_and_survives_retirement(tracker):
+    from tarav.l0.kernel import TaravObject
+    from tarav.l1.product_review import ProductReviewWorkflow
+    from tarav.l2.product_review import ClassBatch, ClassReviewTracker
+
+    mapping = mapped(tracker, {"a": b"data"})
+    selected = ClassReviewTracker(tracker.mapper, root=tracker.store.root).create()
+    first = batch(selected, mapping)
+    second = batch(selected, mapping, title="Another review of the same class")
+    assert type(first) is ClassBatch
+    assert first.subject_entity().target is Batch
+    assert [base.id for base in first.subject_entity().bases()] == [entity(TaravObject).id]
+    assert first.subject_entity().workflow.id == ProductReviewWorkflow().id
+    assert {b.typed.id for b in selected.batches(subject=entity(Batch).id)} == {first.typed.id, second.typed.id}
+    assert selected.batches(subject=entity(TaravObject).id) == ()
+    workflow_batch = selected.create_batch(subject=entity(ProductReviewWorkflow).id,
+                                           map_id=mapping.typed.id, chunk_ids=[mapping.typed.chunks[0].id],
+                                           title="Workflow", purpose="Discuss", actor="agent", reason="Workflow subject")
+    assert workflow_batch.subject_entity().target is ProductReviewWorkflow
+    reloaded = selected.store.records.from_record(first.records.to_record())
+    assert type(reloaded) is ClassBatch
+    assert reloaded.subject_entity().id == entity(Batch).id
+    retired = selected.retire(first.typed.id, actor="agent", reason="Replace grouping")
+    assert type(retired) is ClassBatch
+    assert str(retired.typed.subject) == str(entity(Batch).id)
+    assert len(selected.history(first.typed.id)) == 1
+    assert selected.batches(subject=entity(Batch).id)[0].typed.id == second.typed.id
+
+
+def test_class_subject_refuses_instance_workflow_entity_and_unknown_ids_before_writes(tracker):
+    from tarav.l1.product_review import ProductReviewWorkflow
+    from tarav.l2.product_review import ClassReviewTracker
+
+    mapping = mapped(tracker, {"a": b"data"})
+    selected = ClassReviewTracker(tracker.mapper, root=tracker.store.root).create()
+    values = dict(map_id=mapping.typed.id, chunk_ids=[c.id for c in mapping.typed.chunks],
+                  title="Subject", purpose="Discuss", actor="agent", reason="Grouping")
+    for invalid in (str(uuid4()), str(ProductReviewWorkflow().id), "not-a-uuid"):
+        with pytest.raises(ValueError):
+            selected.create_batch(subject=invalid, **values)
+        assert selected.store.names() == ()
+    instance_id = batch(selected, mapping).typed.id
+    before = selected.store.names()
+    with pytest.raises(ValueError):
+        selected.create_batch(subject=instance_id, **values)
+    assert selected.store.names() == before
+
+
+def test_generic_and_class_batches_for_different_products_share_workflow_storage(tracker, tmp_path):
+    from tarav.l2.product_review import ClassReviewTracker
+
+    generic_map = mapped(tracker, {"a": b"data"})
+    generic = batch(tracker, generic_map)
+    mapper = ProductMapper(tracker.mapper.repository, "another-product", root=tmp_path / "other-maps")
+    selected = ClassReviewTracker(mapper, root=tracker.store.root)
+    class_map = mapped(selected, {"b": b"more"})
+    attached = batch(selected, class_map)
+    assert [b.typed.id for b in selected.batches()] == [attached.typed.id]
+    assert [b.typed.id for b in tracker.batches()] == [generic.typed.id]
+
+
+# tarav.breadcrumb 39c031e45c92
+def test_chunk_limit_boundary_and_rejected_writes_preserve_existing_records(tracker, chat):
+    mapping = mapped(tracker, {str(i): b"data" for i in range(9)})
+    ids = [c.id for c in mapping.typed.chunks]
+    item = batch(tracker, mapping, chunks=ids[:8])
+    revision = tracker.current(item.typed.id)
+    finish(tracker, revision, chat)
+    before = {key: tracker.store.path(key).read_bytes() for key in tracker.store.names()}
+    with pytest.raises(ValueError, match="9 chunks; maximum is 8"):
+        batch(tracker, mapping)
+    with pytest.raises(ValueError, match="maximum is 8"):
+        tracker.revise(item.typed.id, base=revision.typed.id, map_id=mapping.typed.id,
+                       chunk_ids=ids, actor="agent", reason="Too broad")
+    assert {key: tracker.store.path(key).read_bytes() for key in tracker.store.names()} == before
+    tracker.max_chunks = 7
+    report = tracker.inspect(map_id=mapping.typed.id)["batches"][0]
+    assert (report["state"], report["chunks"], report["max_chunks"]) == ("oversized", 8, 7)
+    assert tracker.completion(revision.typed.id) is not None
+    assert len(tracker.history(item.typed.id)) == 1
+    with pytest.raises(ValueError, match="maximum is 7"):
+        tracker.complete(revision.typed.id, presentation=None, completion=None)
+    assert {key: tracker.store.path(key).read_bytes() for key in tracker.store.names()} == before
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.5, "8"])
+def test_maximum_chunk_count_must_be_positive_integer(tracker, value):
+    from tarav.l2.project.product_review import ProductReviewConfig
+
+    with pytest.raises(ValueError):
+        ReviewTracker(tracker.mapper, max_chunks=value)
+    with pytest.raises(ValueError):
+        ProductReviewConfig(max_chunks=value)
+
+
+def test_project_size_control_and_cli_enforce_same_boundary(tracker, capsys, chat, monkeypatch):
+    from hashlib import sha256
+    from tarav.l1.git.hooks import GitConfig
+    from tarav.l1.project.config import ProjectConfig
+    from tarav.l2.project import Project
+    from tarav.l2.project.product_review import ProductReviewConfig
+    from tarav.l2.project.product_mapping import ProductMappingConfig
+    from tarav.l3.cli.cli import main
+
+    root = tracker.mapper.product.root
+    (root / ".tarav").mkdir()
+    (root / ".tarav/project.json").write_text(json.dumps({
+        "type": "Tarav.Project", "project_id": str(uuid4()), "created_at": "2026-10-22T00:00:00Z"}))
+    rid = sha256(str(root).encode()).hexdigest()
+    config = ProjectConfig(root)
+    config.write_section("git", GitConfig(repository=rid))
+    config.write_section("product_mapping", ProductMappingConfig(include=["[abc]"]))
+    config.write_section("product_review", ProductReviewConfig(enabled=True, horizon_days=0, max_chunks=2))
+    project = Project.from_path(root)
+    selected = project.review.open()
+    mapping = mapped(selected, {"a": b"a", "b": b"b", "c": b"c"})
+    selected.create()
+    common = ["--repo", str(root), "--repository-id", rid]
+    create = ["product-review", "create", *common, "--subject", str(entity(Batch).id),
+              "--title", "Subject", "--purpose", "Discuss", "--actor", "agent", "--reason", "Grouping"]
+    chunks = [value for c in mapping.typed.chunks for value in ("--chunk", c.id)]
+    assert main([*create, *chunks]) != 0
+    assert "maximum is 2" in capsys.readouterr().err
+    assert selected.store.names() == ()
+    assert main([*create, *chunks[:4]]) == 0
+    revision = json.loads(capsys.readouterr().out)
+    assert len(revision["chunks"]) == 2
+    monkeypatch.setattr(Project.Checks, "suite", lambda self: self.obj.review.suite())
+    project.status()
+    action = next(a for a in project.actions.list() if a.data["action"] == "Tarav.ProductReview.Batch.Required.Action")
+    finish(selected, selected.revision(revision["id"]), chat)
+    project.status()
+    assert project.actions.runs.find(str(action.id)).state == "closed"
+    config.write_section("product_review", ProductReviewConfig(enabled=True, horizon_days=0, max_chunks=1))
+    report = project.review.open().inspect(map_id=mapping.typed.id)
+    assert report["batches"][0]["state"] == "oversized"
+    project.status()
+    reopened = project.actions.runs.find(str(action.id))
+    assert reopened.state == "running"
+    assert reopened.data["event"]["poi"]["details"]["state"] == "oversized"
+    smaller = project.review.open()
+    updated = smaller.revise(revision["batch_id"], base=revision["id"], map_id=mapping.typed.id,
+                              chunk_ids=[revision["chunks"][0]["id"]], actor="agent", reason="Smaller review subject")
+    finish(smaller, updated, chat)
+    project.status()
+    assert project.actions.runs.find(str(action.id)).state == "closed"

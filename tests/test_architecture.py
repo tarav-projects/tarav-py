@@ -24,6 +24,13 @@ def test_product_review_keeps_mapping_and_chat_evidence_integration_above_core_r
     assert runtime.workflows.get("Tarav.Workflow.ProductReview") is ProductReviewWorkflow
     for record_type in PRODUCT_REVIEW_RECORD_TYPES:
         assert runtime.records.resolve_ship(entity(record_type).id) is record_type
+    from tarav.l0.kernel import Ship, TypeShip
+    from tarav.l1.product_review import Batch
+    from tarav.l2.product_review import ClassBatch, ClassReviewTracker
+    assert Batch.RecordInterface.model_fields["subject"].annotation is Ship
+    assert ClassBatch.RecordInterface.model_fields["subject"].annotation is TypeShip
+    assert runtime.records.resolve_ship(entity(ClassBatch).id) is ClassBatch
+    assert ClassReviewTracker.Batch is ClassBatch
     # The aggregate graph intentionally collapses l1/l2 names; inspect core only.
     for path in (PACKAGE_ROOT / "l1/product_review").glob("*.py"):
         imports = [node.module for node in ast.walk(ast.parse(path.read_text()))

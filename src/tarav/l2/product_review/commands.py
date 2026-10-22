@@ -32,14 +32,14 @@ def _run(args):
                 values = dict(map_id=mapping.typed.id, chunk_ids=args.chunk,
                               actor=args.actor, reason=args.reason)
                 if command == "create":
-                    obj = tracker.create_batch(**values, title=args.title, purpose=args.purpose)
+                    obj = tracker.create_batch(**values, subject=args.subject, title=args.title, purpose=args.purpose)
                     value = tracker.current(obj.typed.id).records.to_record()
                 else:
                     value = tracker.revise(args.batch, **values, base=args.base,
                                            title=args.title, purpose=args.purpose).records.to_record()
         elif command == "list":
             value = [tracker.current(b.typed.id).records.to_record()
-                     for b in tracker.batches(retired=args.retired)]
+                     for b in tracker.batches(retired=args.retired, subject=args.subject)]
         elif command == "show":
             value = (tracker.revision(args.revision) if args.revision else tracker.current(args.batch)).records.to_record()
         elif command == "history":
@@ -101,6 +101,8 @@ def register_product_review_commands(subparsers, *, tracker_factory=_tracker):
             cmd.add_argument("--chunk", action="append", required=True)
             cmd.add_argument("--title", required=name == "create")
             cmd.add_argument("--purpose", required=name == "create")
+        if name == "create":
+            cmd.add_argument("--subject", required=True, help="Existing subject UUID; installed Tarav uses class Type identities.")
         if name in {"create", "revise", "retire"}:
             cmd.add_argument("--actor", required=True)
             cmd.add_argument("--reason", required=True)
@@ -120,4 +122,5 @@ def register_product_review_commands(subparsers, *, tracker_factory=_tracker):
             cmd.add_argument("--outcomes", type=Path)
         if name == "list":
             cmd.add_argument("--retired", action="store_true")
+            cmd.add_argument("--subject", help="Only batches attached to this existing subject UUID.")
         cmd.set_defaults(handler=_run, review_tracker=tracker_factory)
