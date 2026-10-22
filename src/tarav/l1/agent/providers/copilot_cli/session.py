@@ -1,4 +1,3 @@
-# $kw: ^agentos-provider-copilot-cli-session --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 from __future__ import annotations
 
 from dataclasses import dataclass

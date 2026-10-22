@@ -1,4 +1,3 @@
-# $kw: ^account-monitor-registry-first --from Normalization.Pipeline::Account.Usage.Model --note [DC] limits tracking consumes fresh compatible registry observations before performing provider acquisition --supp ^c20260811-47u ^c20260813-26u
 """Limits-tracking workflow: usage refresh, transition logging, and limit row rendering."""
 
 from __future__ import annotations

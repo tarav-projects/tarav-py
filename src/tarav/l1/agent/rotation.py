@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """`Auth.Data.Rotation` — activate the head-of-line captured artifact.
 
 Pure-pool `Auth.Registry`-only `Auth.Data.Activation`: the rotation ranks the

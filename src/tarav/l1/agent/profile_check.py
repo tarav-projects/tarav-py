@@ -1,4 +1,3 @@
-# $kw: --from Agent.Profile
 """The agent profile-check primitive — the read-only pre-run fitness gate.
 
 It answers one question: "is this fully-specified agent fit to run *right now*?" —

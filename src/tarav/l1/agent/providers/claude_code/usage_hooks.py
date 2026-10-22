@@ -1,4 +1,3 @@
-# $kw: ^claude-statusline-usage-hook --from Agentos.Hook --from Normalization.Pipeline::Account.Usage.Model --from Account.Management --note [DC] Claude statusLine contexts normalize into account-scoped quota observations with callback-owned throttling --supp ^c20260811-5u ^c20260811-13u ^c20260811-22u ^c20260813-26u
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -31,7 +30,7 @@ def register_claude_usage_hook_callbacks(registry: HookRegistry) -> None:
     registry.register(
         CLAUDE_STATUSLINE_CONTEXT_HOOK,
         _consume_claude_statusline_context,
-        callback_id="agentos.agent.providers.claude-code.account-quota-report",
+        callback_id="tarav.agent.providers.claude-code.account-quota-report",
     )
 
 

@@ -1,4 +1,3 @@
-# $kw: --from Agent.Profile
 """`agent profiles` commands."""
 
 from __future__ import annotations

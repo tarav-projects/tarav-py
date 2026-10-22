@@ -1,4 +1,3 @@
-# $kw: --from Account.Management --from Provider.Instance
 """Resolve a credential `class` to its `AuthMethod` instance.
 
 The new-shape ``accounts.json`` records each method's ``class`` (the credential

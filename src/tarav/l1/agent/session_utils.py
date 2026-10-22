@@ -1,4 +1,3 @@
-# $kw: --from Agent.Normal.Model
 from __future__ import annotations
 
 from datetime import datetime

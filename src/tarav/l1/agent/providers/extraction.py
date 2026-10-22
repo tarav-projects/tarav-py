@@ -1,4 +1,3 @@
-# $kw: ^agentos-provider-extraction --from Agent.Navigable.Codebase --note [DF] provider transcript extraction is selected from the canonical provider adapter registry --supp ^c20260811-62u
 from __future__ import annotations
 
 from dataclasses import dataclass

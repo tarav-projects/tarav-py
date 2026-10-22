@@ -1,4 +1,3 @@
-# $kw: --from Agent.Profile --from Provider.Instance
 """Agent configuration entry decoding and validation."""
 
 from __future__ import annotations

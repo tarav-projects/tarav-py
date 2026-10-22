@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """Readers (and minimal writers) for the redesigned `Auth.Registry`.
 
 Settings/state are physically split under ``~/.tarav/accounts/<provider>/``:

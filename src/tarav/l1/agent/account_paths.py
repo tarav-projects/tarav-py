@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """Filesystem paths for the account store — provider-agnostic, credential-free.
 
 These are pure location helpers under ``~/.tarav/accounts/`` shared by the new

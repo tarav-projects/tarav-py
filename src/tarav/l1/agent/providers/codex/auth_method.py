@@ -1,4 +1,3 @@
-# $kw: ^agentos-provider-codex-auth-method --from Account.Management --from Provider.Instance --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 """Codex `Auth.Method` subclass — the `auth-json` credential class.
 
 Identity is extracted from the **access_token** `chatgpt_account_id` claim, which

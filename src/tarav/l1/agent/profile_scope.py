@@ -1,4 +1,3 @@
-# $kw: --from Agent.Profile
 from __future__ import annotations
 
 from pathlib import Path

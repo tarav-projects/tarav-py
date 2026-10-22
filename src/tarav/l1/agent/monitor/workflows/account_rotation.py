@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """Account-rotation workflow: periodic capture+rotate sweeps and drift reporting."""
 
 from __future__ import annotations

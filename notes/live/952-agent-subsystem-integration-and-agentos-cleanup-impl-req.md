@@ -125,3 +125,24 @@ concurrent session editing Chatlas/breadcrumbs (do not touch its files).
 - 2026-10-22: Design written in-session (Develop). Prior om account removal
   material deposited at
   `~/Documents/tarav/attic/deposits/20261022T221137Z-claude-code-om-account-retirement`.
+- Start checkpoint: `7595c06` (external label-formats/notebook work from another
+  session, `unknown-session`), `5fd3f0d` (this note). Baseline: 106 passed
+  across agent, architecture, project-system and attic tests.
+- Develop boundary: note reloaded through its Breadcrumb audit before execution.
+- Slice 1 done. Removed 79 single-line `# $kw:` headers under
+  `src/tarav/l1/agent/`; renamed log classes to `tarav.agent.{usage-record,
+  monitor-log,accounts-log}` and the statusline last-run-log class; hook callback
+  ids `tarav.agent.providers.*`; thread names `tarav-monitor-*`; Claude OAuth
+  `User-Agent: claude-cli/tarav`; Codex app-server `clientInfo.name = "tarav"`;
+  accounts help text. Usage registry reads `agentos.agent.usage-record` too.
+  Checks: `tests/test_agent_usage_registry.py` 3 passed (new-class test failed
+  against the old code); agent/architecture tests 78 passed; ruff clean; a live
+  `tarav agent accounts monitor --once --json` still served all 7 targets from
+  the retained registry. Breadcrumb `39a8b7f942c5` in `usage_registry.py`,
+  audit ok.
+- Discovered defect (out of scope, follow-up): the Codex session hook in
+  `~/.codex` (`codex-main`, `home-current`) appends `source: session_hook`
+  records labelled `account: br` whose payload is jp's quota (no `accountId`,
+  jp's `resetsAt`). `latest_account_usage_record` picks the newest record across
+  sources, so codex/br alternates between real br and jp data — the cause of the
+  earlier "~55% while the account is empty" report.

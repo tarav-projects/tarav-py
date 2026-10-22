@@ -1,4 +1,3 @@
-# $kw: --from Account.Management --from Provider.Instance
 """The `Auth.Method` provider seam.
 
 `Account.Model::Auth.Method` is an independent authentication method of an account

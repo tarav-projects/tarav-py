@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """The `Auth.Data.Activation` primitive — point `Active.Auth.Data` at a chosen ref.
 
 `activate` resolves a (possibly abbreviated) `Auth.Ref` against the

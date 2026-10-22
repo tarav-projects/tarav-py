@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """Auto-prime workflow: ping each configured target whose burst window is not running."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# $kw: --from Agent.Normal.Model
 """`agent list` command."""
 
 from __future__ import annotations

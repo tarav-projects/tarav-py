@@ -1,4 +1,3 @@
-# $kw: --from Agent.Profile --from Provider.Instance
 """Shared agent configuration models and canonical provider specifications."""
 
 from __future__ import annotations

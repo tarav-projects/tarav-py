@@ -1,4 +1,3 @@
-# $kw: ^agentos-provider-claude-code-account-status --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 from __future__ import annotations
 
 import datetime
@@ -421,7 +420,7 @@ def _fetch_claude_usage_payload(agent: AgentConfig) -> dict[str, Any]:
             "Authorization": f"Bearer {access_token}",
             "anthropic-beta": CLAUDE_OAUTH_BETA_HEADER,
             "Content-Type": "application/json",
-            "User-Agent": "claude-cli/agentos",
+            "User-Agent": "claude-cli/tarav",
         },
         method="GET",
     )
@@ -877,7 +876,7 @@ def _finalize_claude_statusline_log(
 ) -> None:
     run_log.error = error.summary() if error is not None else None
     payload = {
-        "class": "agentos.agent.providers.claude_code.statusline.last-run-log",
+        "class": "tarav.agent.providers.claude_code.statusline.last-run-log",
         "schema_version": 1,
         "finished_at": _datetime_to_iso(datetime.datetime.now(tz=datetime.timezone.utc)),
         "elapsed_sec": round(time.monotonic() - run_log.started_at_monotonic, 3),

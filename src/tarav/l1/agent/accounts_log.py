@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """The accounts lifecycle event log — a durable, secret-free audit of account
 primitives (capture / activate / materialize / rotate).
 
@@ -24,7 +23,7 @@ from typing import Any
 from tarav.l0._core.clock import iso_z
 from tarav.l0._core.home import tarav_home_dir, home_path_str
 
-ACCOUNTS_LOG_CLASS = "agentos.agent.accounts-log"
+ACCOUNTS_LOG_CLASS = "tarav.agent.accounts-log"
 ACCOUNTS_LOG_SCHEMA_VERSION = 1
 
 

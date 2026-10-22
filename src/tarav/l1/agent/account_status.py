@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """Provider-neutral account status, usage limits, and usage-record metadata.
 
 An account is metered over two quota windows: a short burst window and a long

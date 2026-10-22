@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """`agent accounts monitor` command and its interactive input thread."""
 
 from __future__ import annotations
@@ -114,7 +113,7 @@ def _start_monitor_input_thread(loop) -> Thread:
 
     thread = Thread(
         target=listen_for_input,
-        name="agentos-monitor-input",
+        name="tarav-monitor-input",
         daemon=True,
     )
     thread.start()

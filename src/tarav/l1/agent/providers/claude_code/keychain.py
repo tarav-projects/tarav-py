@@ -1,4 +1,3 @@
-# $kw: ^agentos-provider-claude-code-keychain --from Account.Management --from Provider.Instance --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 """Claude secure-storage (Keychain / `.credentials.json`) read+write primitives.
 
 Provider-specific *home secret access*, shared by the new model (`ClaudeAuthMethod`)

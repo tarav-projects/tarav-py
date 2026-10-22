@@ -1,4 +1,3 @@
-# $kw: ^codex-account-quota-live-read --from Normalization.Pipeline::Account.Usage.Model --from Agent.Navigable.Codebase --note [DC] live account status requests provider quota windows only; account token-history accounting is outside monitor scope --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-47u --supp ^c20260811-62u
 from __future__ import annotations
 
 import json
@@ -271,7 +270,7 @@ def _fetch_account_usage_app_server_payload(agent: AgentConfig) -> dict[str, Any
                 ],
             },
             "clientInfo": {
-                "name": "agentos",
+                "name": "tarav",
                 "version": "1",
             },
         },

@@ -1,4 +1,3 @@
-# $kw: --from Agentos.Agent.Adapter
 """The agent-ping primitive — run an account's configured liveness ping and
 report the outcome.
 

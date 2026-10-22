@@ -1,4 +1,3 @@
-# $kw: ^agentos-provider-registry --from Agent.Navigable.Codebase --note [DF] provider-neutral agent selection composes concrete provider adapters from one discoverable registry --supp ^c20260811-62u
 """provider adapter registry."""
 
 from __future__ import annotations

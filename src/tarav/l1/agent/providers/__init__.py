@@ -1,4 +1,3 @@
-# $kw: ^agentos-provider-adapters --from Agent.Navigable.Codebase --note [DF] provider specs and concrete harness adapters are discoverable beneath one agent-owned namespace --supp ^c20260811-62u
 """Canonical provider specifications and concrete agent harness adapters."""
 
 from .specs import (

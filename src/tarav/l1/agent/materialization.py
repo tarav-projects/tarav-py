@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """The `Auth.Data.Materialization` primitive — push `Active.Auth.Data` into homes.
 
 `materialize_account` is the singular primitive: archive whatever a home currently

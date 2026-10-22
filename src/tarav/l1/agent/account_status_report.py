@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """Home-centric, read-only account status — the all-homes drift report.
 
 For every home declared by a profile, read its `Home.State`, project to an

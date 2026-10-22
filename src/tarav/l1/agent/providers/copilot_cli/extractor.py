@@ -1,4 +1,3 @@
-# $kw: --from Agent.Normal.Model --from Provider.Instance
 """copilot-cli transcript extraction."""
 
 from __future__ import annotations

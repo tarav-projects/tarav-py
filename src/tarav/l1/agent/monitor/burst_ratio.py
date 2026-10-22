@@ -1,4 +1,3 @@
-# $kw: ^account-burst-ratio-measured --from Normalization.Pipeline::Account.Usage.Model --note [DC] weekly budget consumed by one full burst window is measured from the provider's own two windows rather than fixed in code --supp ^c20260811-47u
 """Weekly budget consumed by one full burst window, measured from the registry.
 
 Providers publish both a burst window and a weekly window. Between two

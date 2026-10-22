@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """Assembly of configured monitor workflows, including multi-config merging."""
 
 from __future__ import annotations

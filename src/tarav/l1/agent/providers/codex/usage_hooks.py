@@ -1,4 +1,3 @@
-# $kw: ^codex-account-quota-hook --from Agentos.Hook --from Normalization.Pipeline::Account.Usage.Model --from Agent.Navigable.Codebase --note [DC] Codex turn-stop callbacks normalize the active session quota snapshot into the account usage registry --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-5u ^c20260811-13u ^c20260811-32u ^c20260811-47u --supp ^c20260811-62u
 from __future__ import annotations
 
 import json
@@ -20,7 +19,7 @@ def register_codex_usage_hook_callbacks(registry: HookRegistry) -> None:
     registry.register(
         "agent.turn.stop",
         _consume_codex_turn_stop,
-        callback_id="agentos.agent.providers.codex.account-quota-report",
+        callback_id="tarav.agent.providers.codex.account-quota-report",
     )
 
 

@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 from __future__ import annotations
 
 import datetime
@@ -10,7 +9,7 @@ from typing import Any
 from tarav.l0._core.clock import iso_z
 from tarav.l0._core.home import tarav_home_dir, home_path_str
 
-MONITOR_LOG_CLASS = "agentos.agent.monitor-log"
+MONITOR_LOG_CLASS = "tarav.agent.monitor-log"
 MONITOR_LOG_SCHEMA_VERSION = 1
 
 

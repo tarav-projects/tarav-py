@@ -1,4 +1,3 @@
-# $kw: ^agentos-provider-specs --from Agent.Navigable.Codebase --note [DF] canonical provider identities and home layouts belong to the agent subsystem --supp ^c20260811-62u
 """canonical provider specifications."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# $kw: ^agentos-provider-homes --from Agent.Navigable.Codebase --note [DF] provider home discovery projects canonical provider specs without owning a parallel namespace --supp ^c20260811-62u
 """provider home projections."""
 
 from __future__ import annotations

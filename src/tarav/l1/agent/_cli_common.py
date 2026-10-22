@@ -1,4 +1,3 @@
-# $kw: --from Agentos.Agent.Adapter
 from __future__ import annotations
 
 import json

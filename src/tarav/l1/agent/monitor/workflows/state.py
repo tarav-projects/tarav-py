@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """Typed per-workflow monitor state stored in ``MonitorState.data``.
 
 The limits-tracking and auto-prime workflows keep their tick-to-tick state in

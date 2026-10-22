@@ -1,4 +1,3 @@
-# $kw: ^agent-account-command-boundary --from Agentos.Hook --note [DC] provider lifecycle hook reporting enters through the general hook command rather than a parallel account command --supp ^c20260811-47u
 """`agent accounts` lifecycle commands (capture, activate, rotate, materialize, status)."""
 
 from __future__ import annotations
@@ -589,7 +588,7 @@ def _register_accounts_commands(agent_subparsers) -> None:
     accounts_materialize_parser.add_argument(
         "--account",
         required=True,
-        help="Local AgentOS account alias to materialize.",
+        help="Local Tarav account alias to materialize.",
     )
     accounts_materialize_parser.add_argument(
         "--check",

@@ -1,4 +1,3 @@
-# $kw: --from Account.Management --from Normalization.Pipeline::Account.Usage.Model
 from __future__ import annotations
 
 import math
@@ -186,7 +185,7 @@ class MonitorLoop:
             self._pending_workflow_snapshot = None
         self._workflow_thread = Thread(
             target=self._run_workflow_loop,
-            name="agentos-monitor-workflows",
+            name="tarav-monitor-workflows",
             daemon=True,
         )
         self._workflow_thread.start()

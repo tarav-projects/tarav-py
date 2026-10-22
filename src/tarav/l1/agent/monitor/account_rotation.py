@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """Account-lifecycle sweep for the monitor — rotate (+ optionally materialize).
 
 The framework-free heart of the account monitor workflow. `sweep_rotations` drives

@@ -1,4 +1,3 @@
-# $kw: ^account-usage-registry --from Normalization.Pipeline::Account.Usage.Model --note [DC] normalized quota observations retain acquisition provenance and support explicit account-scoped reads for account-wide facts --supp ^c20260811-47u
 from __future__ import annotations
 
 import datetime
@@ -13,7 +12,10 @@ from tarav.l0._core.errors import CliError
 from tarav.l0._core.home import tarav_home_dir
 
 
-USAGE_RECORD_CLASS = "agentos.agent.usage-record"
+USAGE_RECORD_CLASS = "tarav.agent.usage-record"
+# Records written before the Agentos rename stay readable; the registry is never rewritten.
+# tarav.breadcrumb 39a8b7f942c5
+_READABLE_USAGE_RECORD_CLASSES = frozenset({USAGE_RECORD_CLASS, "agentos.agent.usage-record"})
 USAGE_RECORD_SCHEMA_VERSION = 1
 
 
@@ -190,7 +192,7 @@ def _record_matches(
 ) -> bool:
     return (
         record.get("schema_version") == USAGE_RECORD_SCHEMA_VERSION
-        and record.get("class") == USAGE_RECORD_CLASS
+        and record.get("class") in _READABLE_USAGE_RECORD_CLASSES
         and record.get("provider") == provider
         and record.get("account") == account
         and (home is None or record.get("home") == home)

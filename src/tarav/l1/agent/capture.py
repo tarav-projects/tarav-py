@@ -1,4 +1,3 @@
-# $kw: --from Account.Management
 """The `Auth.Data.Capture` primitive and its global sweep.
 
 `capture_home` is the singular primitive: read the `Auth.Data` present in one
