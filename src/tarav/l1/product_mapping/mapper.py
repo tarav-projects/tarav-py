@@ -234,6 +234,8 @@ class ProductMapper(TaravObject):
                         or len(b) != len(decision.target_ids) or a & seen_old or b & seen_new
                         or not a <= old or not b <= new):
                     raise ValueError("Invalid, duplicate or unrelated continuity decision")
+                if (a & new) - b or (b & old) - a:
+                    raise ValueError("Retained IDs must occur on both sides of the same decision")
                 seen_old.update(a)
                 seen_new.update(b)
             if seen_old != old or seen_new != new:

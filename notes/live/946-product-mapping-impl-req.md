@@ -78,7 +78,7 @@ Companion: ../../../tarav-md/notes/live/873-product-mapping-guidance-impl-req.md
 - [x] Feature slice 2: installed CLI, Record Registry persistence, Project
   freshness check and update action. Check actual CLI proposal/confirm/inspect,
   stable action identity, closed/reopened update and no writes during checks.
-- [ ] Operational slice 3: map the complete pinned first-parent history at
+- [x] Operational slice 3: map the complete pinned first-parent history at
   ten-commit checkpoints. Inspect transitions, record agent decisions, audit
   exact byte coverage, and retain a reproducible report and unresolved cases.
 - [ ] Completion: code and Wiki capture, architecture contract, Ruff, focused
@@ -111,3 +111,28 @@ Companion: ../../../tarav-md/notes/live/873-product-mapping-guidance-impl-req.md
   decisions. A conservative, inspectable replay policy may replace weak candidates
   with fresh IDs rather than pretend semantic certainty. User review remains out
   of scope. Report the policy, decisions and exact coverage separately.
+- Slice 2 commit: 13920481. A next-slice driver's literal byte-count assertion
+  was included too early; corrected its expected 35 to the measured 36 before
+  proceeding. The real script process exposed a missing runtime bootstrap,
+  fixed explicitly and covered by a subprocess regression.
+- Historical run completed: 127 checkpoints, from 7abab7a4 through pinned
+  04981e43. Final historical map 4082e071-903d-42a7-84d0-67ba97183da4 covers
+  1,157 regular files, 4,584 chunks and 16,161,833 bytes; two symlinks are listed
+  as skipped. Independent installed `product-map audit --all` verified all 127.
+- Retained 30,935 explicit Agent decisions; 2,344 edited candidate ranges got
+  fresh IDs under the conservative evidence policy. No User review is claimed.
+  Full report: product-mapping-history-2026-10-22.json. Record partition:
+  /Users/pereiro/Documents/tarav/records/ef1dc42a-fd98-43b8-a30d-e68bf742de34.
+- Performance evidence: profiling one early transition found 173M calls / 26.7s
+  dominated by character alignment. Switched operational evidence to exact
+  matching line/block bytes; a later sampled transition took 0.048s. Samples
+  differ, so these are diagnostic observations, not a controlled speedup claim.
+  Paused during candidate calculation; confirmed maps remained intact. Resumed
+  with explicit report recovery support, preserving earlier decisions.
+- Code review found contradictory retire/create decisions could reuse an ID
+  within one transition. Reproduced with a failing public confirmation test;
+  now retained IDs must be on both sides of the same continuity decision.
+- Enabled five-day freshness policy in tarav-py's config. JSON config and run
+  report captured externally (c9ada48176b1, a8d7afb1f253), without metadata edits.
+- Full root status --all is running. Final catch-up map will target the completed
+  implementation commit, beyond the fixed historical report's endpoint.

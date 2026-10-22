@@ -183,6 +183,20 @@ def test_decision_cannot_consume_unrelated_or_duplicate_id(mapper):
     assert json.loads(mapper.store.path(mapper.track_key).read_text())["maps"] == []
 
 
+def test_retaining_an_id_requires_one_consistent_continuity_decision(mapper):
+    commit(mapper, {"a": b"old content"})
+    mapper.create()
+    confirm(mapper, mapper.propose())
+    commit(mapper, {"a": b"new content"})
+    proposal = mapper.propose()
+    identity = proposal.typed.chunks[0].id
+    with pytest.raises(ValueError, match="Retained IDs"):
+        mapper.confirm(proposal, decisions=[
+            {"source_ids": [identity], "target_ids": [], "reason": "Retire"},
+            {"source_ids": [], "target_ids": [identity], "reason": "Create again"}],
+            actor="user", reason="Contradictory identity assertions")
+
+
 def test_cli_requires_explicit_decisions_and_roundtrips_real_records(mapper, tmp_path, capsys):
     from tarav.l3.cli.cli import main
 
@@ -294,6 +308,10 @@ def test_historical_driver_is_explicit_agent_work_and_checks_every_checkpoint(ma
     assert driver["main"](common) == 0
     assert not mapper.store.root.exists()
     capsys.readouterr()
+    real = subprocess.run(["tarav", "run", "--", str(Path(__file__).resolve().parents[1] /
+                            "tooling/map_product_history.py"), *common], capture_output=True, text=True)
+    assert real.returncode == 0, real.stderr
+    assert json.loads(real.stdout)["target"] == final
     report = tmp_path / "report.json"
     assert driver["main"]([*common, "--apply", "--actor", "agent:test", "--report", str(report)]) == 0
     data = json.loads(report.read_text())
@@ -301,7 +319,7 @@ def test_historical_driver_is_explicit_agent_work_and_checks_every_checkpoint(ma
     assert data["actor"] == "agent:test"
     assert data["checkpoints"][-1]["commit"] == final
     assert mapper.latest().typed.actor == "agent:test"
-    assert mapper.audit(mapper.latest())["bytes"] == 35
+    assert mapper.audit(mapper.latest())["bytes"] == 36
     # Resume neither duplicates maps nor changes the pinned endpoint.
     assert driver["main"]([*common, "--apply", "--actor", "agent:test", "--report", str(report)]) == 0
     assert len(mapper.history()) == 2

@@ -94,3 +94,16 @@ workflow-owned update action; a current map closes it and later due work reopens
 the same action. Disabled/unavailable scans cannot establish disappearance.
 On-demand mapping has no freshness restriction.
 <!-- tarav.breadcrumb 77bdc4d8861d -->
+
+## Historical exercise
+
+`tooling/map_product_history.py` is an explicit operational Agent policy, separate
+from the workflow's default mechanics. Without `--apply` it lists checkpoints.
+Application requires an `agent:` actor and a report path. Exact content carries
+forward except ambiguous cross-file matches. Edited candidates retain IDs only
+with at least 80% matching-byte evidence; weaker candidates receive fresh IDs,
+and oversized edited ranges can split. This is a declared Agent inference,
+not a claim of semantic equivalence or User review. Every decision is retained
+on its confirmed map. The report records alignment evidence and independent
+exact coverage audits, and the driver resumes from the latest mapped checkpoint.
+<!-- tarav.breadcrumb 43ec1726a3f8 -->
