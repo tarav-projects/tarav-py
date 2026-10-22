@@ -507,6 +507,20 @@ relationships, storage policies, or interpretation of domain payloads.
 
 ## Domain ownership
 
+`tarav.l1.product_mapping` maintains byte-chunk coordinates at selected Git
+commits. Exact states (blob, range, fingerprint) are separate from persistent
+chunk IDs and attributed continuity decisions. Editable endpoint proposals do
+not advance the map; explicit confirmation validates full byte coverage and
+records an immutable map in the standard Record Registry. Intermediate commits
+are evidence, not mandatory checkpoints. The workflow has no Project or review
+dependency. `l2.project.product_mapping.MappingManager`, selected by featured
+Projects as `Mapping` / `mapping`, owns configuration and maintenance-check
+integration. One stable update action follows missing or stale maps with newer
+committed work; checks never initialize or advance mapping. See the workflow's
+README and `tests/test_product_mapping.py` for the agent loop and contract.
+<!-- tarav.breadcrumb 67f797198aa6 -->
+<!-- tarav.breadcrumb a69fa15a978b -->
+
 `tarav.l1.attic` owns cheap conservation of opaque displaced material.
 `AtticWorkflow` is an explicit Archive child, separate from Artifact
 registration. `Attic` and `Deposit` are path handlers with ordinary Tarav

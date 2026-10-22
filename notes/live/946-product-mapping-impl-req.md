@@ -75,7 +75,7 @@ Companion: ../../../tarav-md/notes/live/873-product-mapping-guidance-impl-req.md
   endpoint proposals and explicit confirmation. Check real temporary Git repos:
   initial coverage, insertions, moves, changes, retirement, split/merge,
   ambiguous candidates, immutability and working-directory independence.
-- [ ] Feature slice 2: installed CLI, Record Registry persistence, Project
+- [x] Feature slice 2: installed CLI, Record Registry persistence, Project
   freshness check and update action. Check actual CLI proposal/confirm/inspect,
   stable action identity, closed/reopened update and no writes during checks.
 - [ ] Operational slice 3: map the complete pinned first-parent history at
@@ -100,3 +100,14 @@ Companion: ../../../tarav-md/notes/live/873-product-mapping-guidance-impl-req.md
   Export-only __init__.py and the test-suite list have no additional supported
   annotation position. Older audit positions on shared runtime/pyproject need
   position refresh; no new mapping support was fabricated.
+- Slice 1 commit: 23141237. Refreshed earlier positions; all audited surfaces
+  then clean. Slice 2 measured: 73 mapping, architecture, manager and action
+  tests passed, including actual CLI rejection/confirmation and one-action
+  close/reopen. Disabled scans preserve open actions through a scan checkpoint.
+- Installed editable CLI refreshed. Freshness measures time since confirmation;
+  mapping old history on demand is permitted. README exposes this policy choice.
+- Operational choice for the authorized historical run: actor is this Agent,
+  never the User. Exact states carry forward; edited candidates require retained
+  decisions. A conservative, inspectable replay policy may replace weak candidates
+  with fresh IDs rather than pretend semantic certainty. User review remains out
+  of scope. Report the policy, decisions and exact coverage separately.

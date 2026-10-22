@@ -12,6 +12,22 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+# tarav.breadcrumb 97bbc29006d0
+def test_product_mapping_owns_coordinates_and_keeps_project_policy_above_it():
+    from tarav.l1.product_mapping import ProductMapper, ProductMappingWorkflow
+    from tarav.l2.project import Project
+    from tarav.l1.project import TaravProject
+    from tarav.l3.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("Tarav.Workflow.ProductMapping") is ProductMappingWorkflow
+    assert runtime.records.resolve_ship(entity(ProductMapper).id) is ProductMapper
+    assert isinstance(Project.Mapping, type)
+    assert not hasattr(TaravProject, "mapping")
+    assert not any(name.startswith(("project", "l2.", "l3."))
+                   for name in _top_level_import_graph()["product_mapping"])
+
+
 # tarav.breadcrumb c57681bc19a7
 def test_checkpoints_keep_checks_independent_of_action_resolution():
     from tarav.l1.checks import CheckSuite, SuiteCheckpoint

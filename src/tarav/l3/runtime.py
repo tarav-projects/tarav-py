@@ -178,6 +178,7 @@ class TaravRuntime:
         from tarav.l1.system import register_system_commands
         from tarav.l1.stdlib.utils import register_utils_commands
         from tarav.l1.workspaces.commands import register_workspace_commands
+        from tarav.l1.product_mapping.commands import register_product_mapping_commands
         from tarav.l1.usage.commands import register_usage_commands
 
         register_agent_commands(subparsers)
@@ -223,6 +224,7 @@ class TaravRuntime:
         )
         register_scoring_commands(subparsers)
         register_workspace_commands(subparsers)
+        register_product_mapping_commands(subparsers)
         from tarav.l1.actions.commands import register_action_commands
         from tarav.l1.operator_context.commands import register_operator_context_commands
         register_operator_context_commands(subparsers)
@@ -334,6 +336,10 @@ def create_runtime(
     from tarav.l1.product_mapping import (
         PRODUCT_MAPPING_RECORD_TYPES, ProductMapper, ProductMappingWorkflow,
     )
+    from tarav.l1.product_mapping.checks import (
+        PRODUCT_MAPPING_CHECK_TYPES, MappingUpdateAction,
+    )
+    from tarav.l2.project.product_mapping import MappingLoadCheck, MappingProjectSuite
     from tarav.l1.project import ProjectWorkflow, TaravProject
     from tarav.l2.project import Project
     from tarav.l2.project.runner import PROJECT_RUNNER_RECORD_TYPES
@@ -446,6 +452,9 @@ def create_runtime(
                 *ATTIC_RECORD_TYPES,
                 *PRODUCT_MAPPING_RECORD_TYPES,
                 ProductMapper,
+                *PRODUCT_MAPPING_CHECK_TYPES,
+                MappingLoadCheck,
+                MappingProjectSuite,
                 WorkspaceIntegrityCheck,
                 WorkspaceReferenceCheck,
                 WorkspaceRemovalCheck,
@@ -615,15 +624,18 @@ def create_runtime(
                         *ATTIC_ACTION_TYPES, *NOTEBOOK_EVIDENCE_ACTIONS,
                         *ARCHIVE_ACTION_TYPES):
         register_action(action_type)
+    register_action(MappingUpdateAction)
     from tarav.l1.project.config import register_config_section
     # tarav.breadcrumb 59c760b32fc6
     from tarav.l2.project.attic import ProjectAtticConfig
+    from tarav.l2.project.product_mapping import ProductMappingConfig
     from tarav.l1.project.agents import AgentsConfig
     from tarav.l2.project.skills.routing import SkillsConfig
     from tarav.l1.git.hooks import GitConfig, register_git_hook_handler
     from tarav.l1.git.change import TaravChange
     for section, model in (("agents", AgentsConfig), ("skills", SkillsConfig),
-                           ("git", GitConfig), ("attic", ProjectAtticConfig)):
+                           ("git", GitConfig), ("attic", ProjectAtticConfig),
+                           ("product_mapping", ProductMappingConfig)):
         register_config_section(section, model)
     register_git_hook_handler(TaravChange())
     from tarav.l1.git.gitleaks import Gitleaks

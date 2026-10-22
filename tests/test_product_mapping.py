@@ -181,3 +181,127 @@ def test_decision_cannot_consume_unrelated_or_duplicate_id(mapper):
         mapper.confirm(proposal, decisions=[{"source_ids": [str(uuid4())],
                        "target_ids": [], "reason": "bad"}], actor="user", reason="bad")
     assert json.loads(mapper.store.path(mapper.track_key).read_text())["maps"] == []
+
+
+def test_cli_requires_explicit_decisions_and_roundtrips_real_records(mapper, tmp_path, capsys):
+    from tarav.l3.cli.cli import main
+
+    head = commit(mapper, {"a": b"a real product\n"})
+    common = ["--repo", str(mapper.product.root), "--repository-id", "test-repository",
+              "--store", str(mapper.store.root)]
+    assert main(["product-map", "init", *common]) == 0
+    capsys.readouterr()
+    path = tmp_path / "proposal.json"
+    assert main(["product-map", "propose", *common, "--output", str(path)]) == 0
+    capsys.readouterr()
+    from tarav.l1.product_mapping import MappingProposal
+    proposal = MappingProposal.records.from_record(json.loads(path.read_text()))
+    decision_path = tmp_path / "decisions.json"
+    decision_path.write_text("[]")
+    command = ["product-map", "confirm", *common, "--proposal", str(path),
+               "--decisions", str(decision_path), "--actor", "user", "--reason", "Explicit review"]
+    assert main(command) != 0
+    assert mapper.history() == ()
+    capsys.readouterr()
+    decision_path.write_text(json.dumps([d.model_dump() for d in decisions(mapper, proposal)]))
+    assert main(command) == 0
+    assert json.loads(capsys.readouterr().out)["commit"] == head
+    assert main(["product-map", "audit", *common, "--all"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["bytes"] == 15
+    assert main(["product-map", "show", *common, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["actor"] == "user"
+
+
+# tarav.breadcrumb a421d5af5f32
+def test_freshness_only_reports_due_changes_and_never_writes(mapper):
+    from datetime import datetime, timedelta
+    from tarav.l1.product_mapping.checks import MappingFreshnessCheck
+
+    commit(mapper, {"a": b"first"})
+    missing = MappingFreshnessCheck(mapper=mapper).run()
+    assert len(missing.pois()) == 1
+    assert not mapper.store.root.exists()
+    mapper.create()
+    first = confirm(mapper, mapper.propose())
+    now = datetime.fromisoformat(first.typed.confirmed_at)
+    commit(mapper, {"a": b"second"})
+    before = {p: p.read_bytes() for p in mapper.store.records_dir.iterdir()}
+    assert MappingFreshnessCheck(mapper=mapper, now=now + timedelta(days=4)).run().pois() == ()
+    due = MappingFreshnessCheck(mapper=mapper, now=now + timedelta(days=5)).run()
+    assert len(due.pois()) == 1
+    assert missing.pois()[0].identity == due.pois()[0].identity
+    assert before == {p: p.read_bytes() for p in mapper.store.records_dir.iterdir()}
+    confirm(mapper, mapper.propose())
+    assert MappingFreshnessCheck(mapper=mapper, now=now + timedelta(days=10)).run().pois() == ()
+
+
+def test_project_manager_opens_closes_and_reopens_one_update_action(mapper, monkeypatch):
+    from tarav.l2.project import Project
+    from tarav.l1.project.config import ProjectConfig
+    from tarav.l2.project.product_mapping import ProductMappingConfig
+
+    commit(mapper, {"a": b"first"})
+    root = mapper.product.root
+    (root / ".tarav").mkdir()
+    (root / ".tarav/project.json").write_text(json.dumps({
+        "type": "Tarav.Project", "project_id": str(uuid4()),
+        "created_at": "2026-10-22T00:00:00Z"}))
+    project = Project.from_path(root)
+    monkeypatch.setattr(Project.Mapping, "open", lambda self: mapper)
+    config = ProjectConfig(root)
+    config.write_section("product_mapping", ProductMappingConfig(enabled=True, max_age_days=0))
+    # Exercise the real status/action loop with just this integration's checks.
+    monkeypatch.setattr(Project.Checks, "suite", lambda self: self.obj.mapping.suite())
+    project.status()
+    action = project.actions.list()[0]
+    assert action.data["action"] == "Tarav.ProductMapping.Update.Action"
+    assert action.state == "running"
+    project.status()
+    assert len(project.actions.list()) == 1
+    mapper.create()
+    confirm(mapper, mapper.propose())
+    project.status()
+    assert project.actions.list()[0].state == "closed"
+    commit(mapper, {"a": b"second"})
+    project.status()
+    updated = project.actions.list()[0]
+    assert updated.id == action.id
+    assert updated.state == "running"
+    # Disabling or losing an integration is not evidence that its finding vanished.
+    config.write_section("product_mapping", ProductMappingConfig(enabled=False))
+    project.status()
+    assert project.actions.list()[0].state == "running"
+
+
+def test_unknown_revision_does_not_create_a_map(mapper):
+    commit(mapper, {"a": b"first"})
+    mapper.create()
+    with pytest.raises(Exception, match="unknown|revision|single revision|valid object"):
+        mapper.propose("not-a-commit")
+    assert mapper.history() == ()
+
+
+def test_historical_driver_is_explicit_agent_work_and_checks_every_checkpoint(mapper, tmp_path, capsys):
+    from pathlib import Path
+    import runpy
+
+    driver = runpy.run_path(str(Path(__file__).resolve().parents[1] / "tooling/map_product_history.py"))
+    commit(mapper, {"a": b"first body\n"})
+    commit(mapper, {"a": b"first body\nmore detail\n"})
+    final = commit(mapper, {"a": b"entirely different product\n", "new": b"new file\n"})
+    common = ["--repo", str(mapper.product.root), "--repository-id", mapper.repository_id,
+              "--store", str(mapper.store.root), "--commit", final, "--every", "2"]
+    assert driver["main"](common) == 0
+    assert not mapper.store.root.exists()
+    capsys.readouterr()
+    report = tmp_path / "report.json"
+    assert driver["main"]([*common, "--apply", "--actor", "agent:test", "--report", str(report)]) == 0
+    data = json.loads(report.read_text())
+    assert len(data["checkpoints"]) == 2
+    assert data["actor"] == "agent:test"
+    assert data["checkpoints"][-1]["commit"] == final
+    assert mapper.latest().typed.actor == "agent:test"
+    assert mapper.audit(mapper.latest())["bytes"] == 35
+    # Resume neither duplicates maps nor changes the pinned endpoint.
+    assert driver["main"]([*common, "--apply", "--actor", "agent:test", "--report", str(report)]) == 0
+    assert len(mapper.history()) == 2

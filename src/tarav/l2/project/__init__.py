@@ -12,6 +12,7 @@ from .runner import (
     ProjectRunnerError,
 )
 from .skw import SkwManager
+from .product_mapping import MappingManager
 
 
 class Project(TaravProject):
@@ -19,6 +20,12 @@ class Project(TaravProject):
 
     # tarav.breadcrumb b5f1123150af
     Skw = SkwManager
+    # tarav.breadcrumb 102d55145a93
+    Mapping = MappingManager
+
+    @property
+    def mapping(self):
+        return type(self).Mapping(self)
 
     @classmethod
     def class_entity(cls):
@@ -40,6 +47,7 @@ class Project(TaravProject):
             # tarav.breadcrumb 01089efbfdf1
 
             return CheckSuite([super().suite(), project_attic_checks(self.obj),
+                               self.obj.mapping.suite(),
                                ProjectNotebookSuite(self.obj), OwnedRepositorySuite(self.obj),
                                CheckSuite(lambda run: TestFixturesSuite.present(self.obj.root))],
                               name=self.obj.name, repositories=self.obj.repositories())
