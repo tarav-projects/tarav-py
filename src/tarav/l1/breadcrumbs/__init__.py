@@ -1,4 +1,5 @@
 """Opaque surface anchors with workflow-owned typed attachments."""
+# tarav.breadcrumb d327a10f9ce7
 
 from .auditing import (
     AuditedBreadcrumb,
@@ -20,6 +21,8 @@ from .store import (
     BreadcrumbPositionMissing,
     BreadcrumbPositionAmbiguous,
     BreadcrumbResolution,
+    ExternalAnchorMissing,
+    ExternalAnchorAmbiguous,
     BreadcrumbStore,
     breadcrumb_label,
     default_breadcrumbs_root,
@@ -30,6 +33,7 @@ from .surfaces import (
     SubmissionResult,
     SubmittedBreadcrumb,
     submit_annotations,
+    submit_external_annotation,
 )
 from .workflow import BreadcrumbWorkflow
 from .workflows import (
@@ -72,4 +76,7 @@ __all__ = [
     "default_breadcrumbs_root",
     "parse_breadcrumb_label",
     "submit_annotations",
+    "submit_external_annotation",
+    "ExternalAnchorMissing",
+    "ExternalAnchorAmbiguous",
 ]

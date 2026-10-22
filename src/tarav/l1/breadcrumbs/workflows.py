@@ -1,4 +1,5 @@
 """Plugin contract for Product.Surface Breadcrumb annotation workflows."""
+# tarav.breadcrumb 228757d7d5a9
 
 from __future__ import annotations
 
@@ -40,6 +41,10 @@ class BreadcrumbAnnotationWorkflow(ABC):
         surface: BreadcrumbSurface,
         request: object,
     ) -> tuple[PreparedAnnotation, ...]: ...
+
+    def prepare_external(self, surface: BreadcrumbSurface, *, line: int,
+                         fragment: str, request: object) -> PreparedAnnotation:
+        raise ValueError(f"{self.name} does not support external placement")
 
     @abstractmethod
     def attachments(

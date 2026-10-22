@@ -1,4 +1,5 @@
 """Inspect Breadcrumbs, optionally recording refreshed file positions."""
+# tarav.breadcrumb 83704efe4c6f
 
 from __future__ import annotations
 
@@ -20,6 +21,8 @@ from tarav.l1.references.git import GitCommitMessagePositionTarget
 from .store import (
     LABEL_PREFIX, BreadcrumbAmbiguous, BreadcrumbError, BreadcrumbPositionAmbiguous,
     BreadcrumbPositionMissing, BreadcrumbResolution, BreadcrumbResolutionPOI, BreadcrumbStore,
+    ExternalAnchorMissing as MissingExternalPosition,
+    ExternalAnchorAmbiguous as AmbiguousExternalPosition,
 )
 from .identity import BREADCRUMBS_WORKFLOW_SHIP
 from .data_surfaces import data_markers
@@ -40,6 +43,7 @@ class SurfaceBreadcrumbLabel:
     prefix: str
     line: int
     label: str
+    placement: str = "embedded"
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +65,7 @@ class AuditedBreadcrumb:
     resolution: BreadcrumbResolution | None
     observations: tuple[Mapping[str, object], ...] = ()
     attachments: tuple[Mapping[str, object], ...] = ()
+    placement: str = "embedded"
 
     def to_json(self) -> dict[str, object]:
         position: dict[str, object] | None = None
@@ -84,6 +89,7 @@ class AuditedBreadcrumb:
                 }
         return {
             "id": self.breadcrumb_id,
+            "placement": self.placement,
             "line": self.line,
             "label": self.label,
             "status": status,
@@ -275,10 +281,28 @@ class CommitEvidenceRegistrationIncomplete(BreadcrumbAuditPOI):
                           name='Tarav.Breadcrumbs.Audit.POI.CommitEvidence.RegistrationIncomplete', workflow=BREADCRUMBS_WORKFLOW_SHIP)
 
 
+class ExternalAnchorMissing(BreadcrumbAuditPOI):
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip('b8bdbf48-aa7a-4a0f-bccb-3898da083220'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ExternalAnchorMissing',
+                          workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
+class ExternalAnchorAmbiguous(BreadcrumbAuditPOI):
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip('92bfa385-9392-4741-a399-1deee2dc28a3'),
+                          name='Tarav.Breadcrumbs.Audit.POI.ExternalAnchorAmbiguous',
+                          workflow=BREADCRUMBS_WORKFLOW_SHIP)
+
+
 def audit_type(poi: BreadcrumbResolutionPOI) -> type[BreadcrumbAuditPOI]:
     """The audit's POI Type for what resolving a Breadcrumb found."""
     return {BreadcrumbPositionMissing: LabelWithoutPosition,
-            BreadcrumbPositionAmbiguous: LabelWithSeveralPositions}[type(poi)]
+            BreadcrumbPositionAmbiguous: LabelWithSeveralPositions,
+            MissingExternalPosition: ExternalAnchorMissing,
+            AmbiguousExternalPosition: ExternalAnchorAmbiguous}[type(poi)]
 
 
 class BreadcrumbPositionUpdated(NotificationPOI):
@@ -390,6 +414,12 @@ def audit_annotations(
         path.read_text(encoding="utf-8"),
     )
     labels, findings = _surface_labels(document)
+    external = []
+    for identity in store.external_for_file(path):
+        latest = store.observations(identity)[-1]
+        external.append(SurfaceBreadcrumbLabel(identity, latest["locator"]["locator"]["line"],
+                                               store.label(identity), placement="external"))
+    labels = (*labels, *external)
     found = {label.prefix: find_label(store, label, findings) for label in labels}
     counts = Counter(found.get(label.prefix) for label in labels)
     updates: list[Mapping[str, object]] = []
@@ -404,7 +434,7 @@ def audit_annotations(
         attachments: tuple[Mapping[str, object], ...] = ()
         try:
             resolution = store.resolve(breadcrumb_id)
-            if refresh_positions and counts[breadcrumb_id] == 1 and (
+            if refresh_positions and label.placement == "embedded" and counts[breadcrumb_id] == 1 and (
                 resolution.status == "unresolvable"
             ):
                 try:
@@ -417,6 +447,18 @@ def audit_annotations(
                     updates.append({"breadcrumb_id": breadcrumb_id,
                                     "file": str(path), "line": label.line})
                     resolution = store.resolve(breadcrumb_id)
+            if refresh_positions and label.placement == "external" and resolution.ok:
+                latest = store.observations(breadcrumb_id)[-1]
+                if latest["locator"]["locator"]["line"] != resolution.position.line:
+                    try:
+                        store.observe_external_position(breadcrumb_id, file=path,
+                            line=resolution.position.line, fragment=latest["fragment"])
+                    except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
+                        findings.append(BreadcrumbAuditConcern(BreadcrumbPositionRefreshFailed,
+                                                              str(exc), breadcrumb_id, label.line))
+                    else:
+                        updates.append({"breadcrumb_id": breadcrumb_id, "file": str(path),
+                                        "line": resolution.position.line})
             observations = store.observations(breadcrumb_id)
             attachments = store.attachments(breadcrumb_id)
         except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
@@ -438,7 +480,7 @@ def audit_annotations(
                         label.line,
                     )
                 )
-            if resolution.position is not None and (
+            if label.placement == "embedded" and resolution.position is not None and (
                 resolution.position.path.resolve() != path
                 or resolution.position.line != label.line
             ):
@@ -462,11 +504,13 @@ def audit_annotations(
         audited.append(
             AuditedBreadcrumb(
                 breadcrumb_id,
-                label.line,
+                (resolution.position.line if label.placement == "external" and resolution is not None
+                 and resolution.position is not None else label.line),
                 label.label,
                 resolution,
                 observations,
                 attachments,
+                label.placement,
             )
         )
     context = BreadcrumbAuditContext(document, tuple(audited))
@@ -491,6 +535,8 @@ def _surface_labels(
     surface: BreadcrumbSurface,
 ) -> tuple[tuple[SurfaceBreadcrumbLabel, ...], list[BreadcrumbAuditConcern]]:
     candidates: list[tuple[int, str]] = []
+    if surface.language == "text":
+        return (), []
     if surface.language == "markdown":
         model = MarkdownNormalModel.from_text(surface.text)
         fenced = model.fenced_line_numbers()

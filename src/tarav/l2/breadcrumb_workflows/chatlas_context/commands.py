@@ -1,4 +1,5 @@
 """CLI adapter for the Chatlas Context Breadcrumb workflow."""
+# tarav.breadcrumb 1553741dfdc0
 
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ def _request(args: argparse.Namespace) -> ChatlasContextRequest:
         provider=args.provider,
         session_id=args.session_id,
         instance=args.instance,
+        turn_hash_prefix=args.turn_hash_prefix,
         chatlas_root=(
             Path(args.chatlas_root).expanduser() if args.chatlas_root else None
         ),
@@ -56,6 +58,7 @@ def register_chatlas_context_submission(
     parser.add_argument("--session-id")
     parser.add_argument("--instance")
     parser.add_argument("--chatlas-root")
+    parser.add_argument("--turn-hash-prefix", help="Exact User-Turn prefix for external placement.")
 
 
 def register_chatlas_context_audit(

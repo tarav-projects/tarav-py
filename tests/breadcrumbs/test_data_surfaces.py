@@ -1,4 +1,5 @@
 """JSON metadata and TOML comments through the Breadcrumb transaction."""
+# tarav.breadcrumb 014c2611c7a7
 # tarav.breadcrumb b6216ffba709
 
 import json
@@ -31,7 +32,7 @@ class Markers(BreadcrumbAnnotationWorkflow):
         return ()
 
 
-@pytest.mark.parametrize("language", ["json", "toml"])
+@pytest.mark.parametrize("language", ["toml"])
 def test_submit_resolve_and_cli_audit_data_surfaces(tmp_path, capsys, language):
     path = tmp_path / ("config." + language)
     text = (json.dumps({"enabled": True, "example": MARKER,
@@ -64,15 +65,16 @@ def test_json_uses_only_explicit_metadata_and_preserves_string_spans():
     assert (marker.alias, marker.turn_prefix) == ("abcdef12", "0123456789abcdef")
 
 
-def test_compact_json_replaces_multiple_markers_without_shifting_spans(tmp_path):
+@pytest.mark.parametrize("language", [None, "json", "python", "markdown"])
+def test_json_embedded_submission_is_read_only_even_with_a_language_override(tmp_path, language):
     path = tmp_path / "compact.json"
     path.write_text(json.dumps({"tarav.breadcrumbs": [MARKER, MARKER], "value": 4}))
     store = BreadcrumbStore(tmp_path / "store")
-    result = submit_annotations(path, store=store, workflow=Markers(), request=None)
-    parsed = json.loads(path.read_text())
-    assert parsed["tarav.breadcrumbs"] == [b.label for b in result.breadcrumbs]
-    assert len(result.breadcrumbs) == 2 and parsed["value"] == 4
-    assert all(store.resolve(b.id).position.path == path for b in result.breadcrumbs)
+    original = path.read_bytes()
+    with pytest.raises(BreadcrumbError, match="read-only"):
+        submit_annotations(path, store=store, workflow=Markers(), request=None, language=language)
+    assert path.read_bytes() == original
+    assert not store.root.exists()
 
 
 def test_toml_does_not_read_comments_inside_any_string_form():

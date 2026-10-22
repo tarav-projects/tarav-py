@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: ready.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: developing.
 The User selected two placement modes of the same registered Breadcrumb.
 Embedded placement writes its opaque label into a writable surface. External
 placement records a file, observed line and exact single-line fragment in the
@@ -64,7 +64,7 @@ and daily/2026-10-22.md. Guidance companion:
 - Cold review: inspected Store, LocatorObservation, submission/audit protocols,
   Chatlas integration, CLI and file-position Reference. No new workflow identity
   is needed. Data shape first keeps placement and observations in Breadcrumbs.
-- Subtract before adding: remove the JSON renderer/write path first; retain
+- Subtract before adding: remove the JSON renderer/write path during integration; retain
   read-only inspection of existing labels and TOML support.
 - Start checkpoints: Python df267e3761e5bc1261180a0f797ae00a8a3c8174;
   Markdown 83c455ae41bb62bf1942de028c42535566e47f16. Trees were clean apart
@@ -73,3 +73,28 @@ and daily/2026-10-22.md. Guidance companion:
   exist. After implementing observations and resolution, 24 tests pass,
   including existing prefix and short-label behavior. External reads do not
   mutate observations, and missing/ambiguous selections retain their identity.
+- Slice 1 committed as 7588afbdb2bfa9cadc8e7ffe572745e21ed70fc5.
+- Slice 2: embedded JSON writes are rejected before workflow preparation,
+  regardless of language override. Chatlas external submission reuses Query,
+  exact Turn snapshots and typed attachments; relocation is explicit. File
+  audit discovers external anchors from their latest registered location and
+  supports read-only inspection or opt-in observation refresh.
+- Verification: 115 focused tests pass across Breadcrumbs, Chatlas, Normal
+  Model and the runtime Record contract; Ruff passes. The broader architecture
+  test currently fails on an independent archive_git/git import cycle in
+  concurrent DOI/Change-ID work. Those files are outside this implementation.
+- The JSON source for capture guidance was edited as its owner's product
+  work, then four blocks were prepared/recorded and compiled with no findings.
+  Its Breadcrumb capture uses external placement only; registration checks its
+  exact source bytes remain unchanged. Existing JSON labels remain inspection
+  history; no source metadata is added or removed by this workflow.
+- The transient independent import cycle and runtime move have settled; the
+  architecture acyclicity test now passes and the installed CLI is usable.
+  Concurrent commit 5932b1aa retained the shared ARCHITECTURE.md updates,
+  including this request's placement paragraph; no external changes were removed.
+- Product capture: eleven embedded submissions plus four external anchors on
+  the guidance source. The source SHA-256 stayed
+  b34c832fece5e9f34fbf36eb760feb689c840acb9747a5a5f759dd5d3b7341ed.
+  Slice 1 and both requests were already captured separately. The final read-only
+  batch audit covers nineteen implemented/request/Wiki surfaces: all OK, zero
+  POIs and zero errors. Position refresh only appended registry observations.

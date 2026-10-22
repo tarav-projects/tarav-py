@@ -1,22 +1,22 @@
 """Generic Product.Surface transaction for registered Breadcrumb workflows."""
+# tarav.breadcrumb fc01815cb281
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import json
 
 from tarav.l0._core.persistence import atomic_write_text
 
-from .store import BreadcrumbError, BreadcrumbStore
+from .store import BreadcrumbError, BreadcrumbStore, validate_external_selection
 from .workflows import BreadcrumbAnnotationWorkflow, PreparedAnnotation
 
 
 # tarav.breadcrumb 8e22d670e075
 # tarav.breadcrumb 81884a16846c
-SURFACE_LANGUAGES = ("markdown", "python", "typescript", "json", "toml")
+SURFACE_LANGUAGES = ("markdown", "python", "typescript", "json", "toml", "text")
 TYPESCRIPT_SUFFIXES = frozenset({".ts", ".tsx", ".mts", ".cts"})
-UNSUPPORTED_LANGUAGE = "Breadcrumb surface language must be markdown, python, typescript, json or toml"
+UNSUPPORTED_LANGUAGE = "Breadcrumb surface language must be markdown, python, typescript, json, toml or text"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +30,7 @@ class BreadcrumbSurface:
 class SubmittedBreadcrumb:
     id: str
     line: int
-    provisional: str
+    provisional: str | None
     label: str
 
     def to_json(self) -> dict[str, object]:
@@ -48,11 +48,13 @@ class SubmissionResult:
     language: str
     workflow: str
     breadcrumbs: tuple[SubmittedBreadcrumb, ...]
+    placement: str = "embedded"
 
     def to_json(self) -> dict[str, object]:
         return {
             "status": "ok",
             "workflow": self.workflow,
+            "placement": self.placement,
             "surface": str(self.surface),
             "language": self.language,
             "breadcrumbs": [item.to_json() for item in self.breadcrumbs],
@@ -73,6 +75,8 @@ def submit_annotations(
     if not path.is_file():
         raise BreadcrumbError(f"Surface is not a file: {path}")
     selected_language = language or infer_surface_language(path)
+    if path.suffix.lower() == ".json" or selected_language in ("json", "text"):
+        raise BreadcrumbError("This surface is read-only for Breadcrumbs; use --placement external")
     document = BreadcrumbSurface(
         path=path,
         language=selected_language,
@@ -139,6 +143,25 @@ def submit_annotations(
     )
 
 
+def submit_external_annotation(
+    surface: str | Path, *, line: int, fragment: str,
+    store: BreadcrumbStore, workflow: BreadcrumbAnnotationWorkflow,
+    request: object, language: str | None = None,
+) -> SubmissionResult:
+    """Register one externally selected fragment without ever writing its surface."""
+    path = validate_external_selection(surface, line, fragment)
+    document = BreadcrumbSurface(path, language or infer_surface_language(path),
+                                 path.read_text(encoding="utf-8"))
+    annotation = workflow.prepare_external(document, line=line, fragment=fragment, request=request)
+    breadcrumb = store.create_external(file=path, line=line, fragment=fragment)
+    identity = str(breadcrumb.typed.id)
+    for attachment in workflow.attachments(annotation, identity):
+        store.attach(identity, attachment)
+    return SubmissionResult(path, document.language, workflow.name,
+                            (SubmittedBreadcrumb(identity, line, None, store.label(identity)),),
+                            placement="external")
+
+
 def infer_surface_language(path: Path) -> str:
     if path.suffix.lower() in {".md", ".markdown"}:
         return "markdown"
@@ -148,19 +171,16 @@ def infer_surface_language(path: Path) -> str:
         return "typescript"
     if path.suffix.lower() in {".json", ".toml"}:
         return path.suffix.lower()[1:]
-    raise BreadcrumbError(
-        f"Cannot infer surface language from {path.suffix or '<no extension>'}; "
-        "provide --language"
-    )
+    return "text"
 
 
 def render_surface_label(language: str, label: str) -> str:
+    if language in ("json", "text"):
+        raise BreadcrumbError("This surface is read-only for Breadcrumbs; use external placement")
     if language == "markdown":
         return f"<!-- {label} -->"
     if language in ("python", "toml"):
         return f"# {label}"
-    if language == "json":
-        return json.dumps(label)
     if language == "typescript":
         return f"// {label}"
     raise BreadcrumbError(UNSUPPORTED_LANGUAGE)
@@ -198,4 +218,5 @@ __all__ = [
     "infer_surface_language",
     "render_surface_label",
     "submit_annotations",
+    "submit_external_annotation",
 ]

@@ -80,6 +80,7 @@ class ChatlasContextRequest:
     instance: str | None = None
     chatlas_root: Path | None = None
     resolver: TurnResolver | None = None
+    turn_hash_prefix: str | None = None
 
 
 class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
@@ -93,6 +94,8 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
     ) -> tuple[PreparedAnnotation, ...]:
         if not isinstance(request, ChatlasContextRequest):
             raise TypeError("chatlas-context requires a ChatlasContextRequest")
+        if request.turn_hash_prefix is not None:
+            raise BreadcrumbError("--turn-hash-prefix requires external placement")
         declarations = (
             _markdown_sessions(surface.text) if surface.language == "markdown" else {}
         )
@@ -123,6 +126,23 @@ class ChatlasContextBreadcrumbWorkflow(BreadcrumbAnnotationWorkflow):
             )
             for item in markers
         )
+
+    def prepare_external(self, surface, *, line, fragment, request):
+        # tarav.breadcrumb 4f906b0f8a2a
+        if not isinstance(request, ChatlasContextRequest):
+            raise TypeError("chatlas-context requires a ChatlasContextRequest")
+        if not request.provider or not request.session_id or not request.turn_hash_prefix:
+            raise BreadcrumbError("External context requires --provider, --session-id and --turn-hash-prefix")
+        try:
+            reader = provide_normal_model_reader(provider=request.provider, session_id=request.session_id,
+                                                  instance=request.instance, chatlas_root=request.chatlas_root)
+            identity = reader.model_header()["session"]["identity_hash"]
+            alias, prefix = identity[:8], request.turn_hash_prefix
+            references = _references_from_reader(reader, (prefix,), alias, request)
+        except ChatlasQueryError as exc:
+            raise BreadcrumbError(str(exc)) from exc
+        return PreparedAnnotation(SurfaceMarker(line, 0, len(fragment)),
+                                  f"tarav.context {alias}:{prefix}", references[(alias, prefix)])
 
     def attachments(
         self,
@@ -288,6 +308,8 @@ def _cached_turns(identity: str, chatlas_root: Path | None) -> list[JsonObject]:
 
 def provisional_markers(text: str, language: str) -> tuple[ChatlasContextMarker, ...]:
     """The active `tarav.context` markers of a text, by this workflow's convention for its language."""
+    if language == "text":
+        return ()
     if language == "markdown":
         model = MarkdownNormalModel.from_text(text)
         fenced = model.fenced_line_numbers()
@@ -355,6 +377,8 @@ def _code_comments(text: str, language: str):
 
 
 def _malformed_marker_lines(text: str, language: str) -> tuple[int, ...]:
+    if language == "text":
+        return ()
     candidates: list[tuple[int, str]] = []
     if language == "markdown":
         model = MarkdownNormalModel.from_text(text)
@@ -447,31 +471,27 @@ def _resolve_chatlas_turns(
                 instance=request.instance,
                 chatlas_root=request.chatlas_root,
             )
-        result = ChatlasQueryEngine(reader).run(
-            ChatlasQuery(turn_hash_prefixes=tuple(prefixes))
-        )
-        snapshot_model = {**reader.model_header(), "events": list(reader.iter_events()),
-                          "messages": [m for match in result.matches for m in match.messages]}
-        snapshots = TurnSnapshotStore(chatlas_root=request.chatlas_root)
-        identity = result.session.get("identity_hash")
-        if not isinstance(identity, str) or identity[:8] != alias:
-            raise BreadcrumbError(
-                f"Session alias {alias} does not match resolved Chatlas identity"
-            )
-        for match in result.matches:
-            if match.turn.get("side") != "user":
-                raise BreadcrumbError(
-                    f"Breadcrumb context must resolve to a User Turn: {match.prefix}"
-                )
-            snapshots.retain(snapshot_model, match.turn)
-            records[(alias, match.prefix)] = {
-                "type": entity(ChatlasTurnReference).name,
-                "locator": {
-                    "session_identity": identity,
-                    "turn_address": match.turn.get("turn_address"),
-                    "turn_hash": match.turn.get("turn_hash"),
-                },
-            }
+        records.update(_references_from_reader(reader, tuple(prefixes), alias, request))
+    return records
+
+
+def _references_from_reader(reader, prefixes, alias, request):
+    result = ChatlasQueryEngine(reader).run(ChatlasQuery(turn_hash_prefixes=prefixes))
+    snapshot_model = {**reader.model_header(), "events": list(reader.iter_events()),
+                      "messages": [m for match in result.matches for m in match.messages]}
+    snapshots = TurnSnapshotStore(chatlas_root=request.chatlas_root)
+    identity = result.session.get("identity_hash")
+    if not isinstance(identity, str) or identity[:8] != alias:
+        raise BreadcrumbError(f"Session alias {alias} does not match resolved Chatlas identity")
+    records = {}
+    for match in result.matches:
+        if match.turn.get("side") != "user":
+            raise BreadcrumbError(f"Breadcrumb context must resolve to a User Turn: {match.prefix}")
+        snapshots.retain(snapshot_model, match.turn)
+        records[(alias, match.prefix)] = {
+            "type": entity(ChatlasTurnReference).name,
+            "locator": {"session_identity": identity, "turn_address": match.turn["turn_address"],
+                        "turn_hash": match.turn["turn_hash"]}}
     return records
 
 

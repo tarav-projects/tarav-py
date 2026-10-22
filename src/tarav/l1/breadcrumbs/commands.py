@@ -1,4 +1,5 @@
 """CLI adapter for Breadcrumb stores and surface submission."""
+# tarav.breadcrumb 02c6fa91a7c5
 
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from tarav.l1.poi.rendering import (
 from .auditing import audit_annotations
 from .integrations import BreadcrumbIntegration
 from .store import BreadcrumbError, BreadcrumbStore
-from .surfaces import SURFACE_LANGUAGES, submit_annotations
+from .surfaces import SURFACE_LANGUAGES, submit_annotations, submit_external_annotation
 from .workflows import BreadcrumbAnnotationWorkflow
 
 
@@ -50,12 +51,19 @@ def _cmd_submit(args: argparse.Namespace) -> int:
         workflow = args.breadcrumb_annotation_workflow
         request_factory = args.breadcrumb_request_factory
         assert isinstance(workflow, BreadcrumbAnnotationWorkflow)
-        result = submit_annotations(
+        external = args.placement == "external"
+        if external and (args.line is None or args.fragment is None):
+            raise BreadcrumbError("External placement requires --line and --fragment")
+        if not external and (args.line is not None or args.fragment is not None):
+            raise BreadcrumbError("--line and --fragment require --placement external")
+        submit = submit_external_annotation if external else submit_annotations
+        result = submit(
             args.surface,
             store=_store(args),
             workflow=workflow,
             request=request_factory(args),
             language=args.language,
+            **({"line": args.line, "fragment": args.fragment} if external else {}),
         )
     except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
         raise CliError(str(exc)) from exc
@@ -225,6 +233,16 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
     return 0 if resolution.ok else 1
 
 
+def _cmd_relocate(args: argparse.Namespace) -> int:
+    try:
+        observation = _store(args).observe_external_position(
+            args.label, file=args.surface, line=args.line, fragment=args.fragment)
+    except (BreadcrumbError, OSError, TypeError, ValueError) as exc:
+        raise CliError(str(exc)) from exc
+    return _print(args, {"status": "ok", "placement": "external", "observation": observation},
+                  (f"observed: {args.surface}:{args.line}",))
+
+
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--breadcrumbs-root", help="Breadcrumb store root override.")
     parser.add_argument("--json", action="store_true")
@@ -245,6 +263,9 @@ def register_submission_command(
     parser = subparsers.add_parser(workflow.name, help=help_text)
     parser.add_argument("--surface", required=True)
     parser.add_argument("--language", choices=SURFACE_LANGUAGES)
+    parser.add_argument("--placement", choices=("embedded", "external"), default="embedded")
+    parser.add_argument("--line", type=int, help="Selected external line, one-based.")
+    parser.add_argument("--fragment", help="Exact selected single-line fragment.")
     _add_common(parser)
     parser.set_defaults(
         handler=_cmd_submit,
@@ -303,7 +324,7 @@ def register_breadcrumb_commands(
 ) -> None:
     parser = subparsers.add_parser(
         "breadcrumbs",
-        help="Create and resolve opaque annotations embedded in Product.Surfaces.",
+        help="Create and resolve embedded or external Product.Surface annotations.",
     )
     commands = parser.add_subparsers(dest="breadcrumbs_command", required=True)
 
@@ -356,6 +377,14 @@ def register_breadcrumb_commands(
     show.add_argument("--label", required=True)
     _add_common(show)
     show.set_defaults(handler=_cmd_show)
+
+    relocate = commands.add_parser("relocate", help="Append a maintainer-selected external location.")
+    relocate.add_argument("--label", required=True)
+    relocate.add_argument("--surface", required=True)
+    relocate.add_argument("--line", required=True, type=int)
+    relocate.add_argument("--fragment", required=True)
+    _add_common(relocate)
+    relocate.set_defaults(handler=_cmd_relocate)
 
     for registrar in command_registrars:
         registrar(commands)
