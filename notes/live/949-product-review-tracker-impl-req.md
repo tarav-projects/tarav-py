@@ -169,3 +169,6 @@ Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-
   pending. Preserve the existing commit and recover its observation after the
   shared Record serialization change is repaired; do not repeat the product
   commit. This gap is reported to the User separately from passed validation.
+- Recovery on retry: register-commit for 796d29c6 succeeded after the shared
+  serialization change progressed. The completion Breadcrumb observation is
+  now registered; the earlier pending-gap entry above is historical.
