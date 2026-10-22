@@ -71,7 +71,7 @@ class TaravTestEnvironment:
     def create(cls, root: Path) -> "TaravTestEnvironment":
         resolved_root = root.resolve()
         home = resolved_root / "home"
-        tarav_home = resolved_root / "agentos-home"
+        tarav_home = resolved_root / "tarav-home"
         home.mkdir(parents=True, exist_ok=True)
         tarav_home.mkdir(parents=True, exist_ok=True)
         return cls(root=resolved_root, home=home, tarav_home=tarav_home)
@@ -91,7 +91,7 @@ class TaravTestEnvironment:
         return write_raw_json(
             self.tarav_home / "config.json",
             {
-                "class": "agentos.global.config",
+                "class": "tarav.global.config",
                 "schema_version": 1,
                 **sections,
             },

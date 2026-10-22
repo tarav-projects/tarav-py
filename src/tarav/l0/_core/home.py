@@ -13,6 +13,10 @@ from tarav.l0._core.errors import CliError
 TARAV_DIRNAME = ".tarav"
 GLOBAL_CONFIG_FILENAME = "config.json"
 GLOBAL_SCHEMA_VERSION = 1
+GLOBAL_CONFIG_CLASS = "tarav.global.config"
+# Homes initialized before the Agentos rename keep loading until their config is rewritten.
+# tarav.context bbf9a2bc:52dc459d3a7ab9db
+_READABLE_GLOBAL_CONFIG_CLASSES = frozenset({GLOBAL_CONFIG_CLASS, "agentos.global.config"})
 GLOBAL_STORAGE_DIR_NAMES = ("indexes", "tmp", "cache")
 
 
@@ -62,8 +66,8 @@ def load_global_config(config_path: Path) -> dict[str, object]:
         raise CliError(f"invalid global config JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise CliError("global config must be a JSON object")
-    if payload.get("class") != "agentos.global.config":
-        raise CliError("global config field class must be 'agentos.global.config'")
+    if payload.get("class") not in _READABLE_GLOBAL_CONFIG_CLASSES:
+        raise CliError(f"global config field class must be '{GLOBAL_CONFIG_CLASS}'")
     return payload
 
 
@@ -103,7 +107,7 @@ def initialize_global_layout(
             raise CliError(f"tarav global home already initialized: {base}")
     else:
         base.mkdir(parents=True, exist_ok=True)
-        config_payload = {"class": "agentos.global.config", "schema_version": GLOBAL_SCHEMA_VERSION}
+        config_payload = {"class": GLOBAL_CONFIG_CLASS, "schema_version": GLOBAL_SCHEMA_VERSION}
         config_created = ensure_json_file(config_path, config_payload)
 
     dirs = ensure_named_dirs(base, GLOBAL_STORAGE_DIR_NAMES)
