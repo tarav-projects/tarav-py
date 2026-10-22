@@ -51,7 +51,9 @@ class Label(str):
 
     @classmethod
     def __get_pydantic_json_schema__(cls, _schema, _handler):
-        return {"anyOf": [{"type": "string", "pattern": "^(?:" + fmt.pattern + ")$"}
+        # JSON Schema patterns search strings; require the absolute end, including
+        # after a newline (unlike a bare dollar anchor in Python/JavaScript).
+        return {"anyOf": [{"type": "string", "pattern": "^(?:" + fmt.pattern + ")(?![\\s\\S])"}
                           for fmt in cls.formats]}
 
 

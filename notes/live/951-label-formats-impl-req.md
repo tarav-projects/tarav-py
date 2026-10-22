@@ -123,3 +123,12 @@ Extension adoption is request 016 in that repository; execute after Python.
 - System Project adoption ran through its own environment with runtime assembly;
   Project/Type UUIDs and active list verified unchanged. It has its own bounded
   request at ~/Documents/tarav/system/notes/live/001-shared-label-adoption-impl-req.md.
+- Completion commits: Python `9c5a6afa`, extension `09d3869b`, Wiki `2526b6cf`,
+  System Project `688e6512`; all commit Breadcrumb audits passed. Extension
+  version 0.1.25 was repackaged after source capture and force-installed.
+- Final schema boundary check tightened exported pattern end anchors: bare `$`
+  can accept a trailing newline in JSON Schema regex search, unlike Label's
+  fullmatch. The schema test now checks accepted/rejected literal examples,
+  including a trailing newline, instead of mirroring implementation constants.
+  Label/path/Record rerun passed 40 tests. This is the only change after the
+  131-test combined run; it does not change accepted Python Label values.

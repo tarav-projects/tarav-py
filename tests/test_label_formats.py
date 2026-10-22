@@ -2,11 +2,12 @@
 # tarav.breadcrumb d945874539c1
 
 import json
+import re
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from tarav.l0.label_formats import DottedFormat, JSONPointerFormat, Label
+from tarav.l0.label_formats import DottedFormat, Label
 from tarav.l0.kernel import TaravClass, TaravObject, TypeShip
 
 
@@ -44,10 +45,15 @@ def test_specialized_label_restricts_formats_at_all_boundaries():
 
 
 def test_schema_describes_both_formats_and_root_pointer():
-    assert TypeAdapter(Label).json_schema() == {"anyOf": [
-        {"type": "string", "pattern": "^(?:" + DottedFormat.pattern + ")$"},
-        {"type": "string", "pattern": "^(?:" + JSONPointerFormat.pattern + ")$"},
-    ]}
+    choices = TypeAdapter(Label).json_schema()["anyOf"]
+    def matches(text):
+        return any(re.search(choice["pattern"], text) for choice in choices)
+    assert matches("Kernel.Writing")
+    assert matches("/properties/text")
+    assert matches("")
+    assert not matches("Kernel.Writing\n")
+    assert not matches("/bad~2")
+    assert not matches("ordinary prose")
 
 
 def test_type_labels_share_validation_in_construction_and_records():
