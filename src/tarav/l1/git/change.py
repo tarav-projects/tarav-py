@@ -265,7 +265,8 @@ def _hand_to_project(root: Path, build) -> None:
     The Project is read from its marker: Git does not import the Project Type,
     which imports the Git hooks for its checks.
     """
-    from tarav.l1.actions.project import ProjectActions
+    # tarav.breadcrumb 5115262b1620
+    from tarav.l1.project.actions import ActionManager
 
     marker = load_project_marker(root / ".tarav" / "project.json")
     project = {"id": marker["project_id"], "name": project_marker_name(marker) or root.name,
@@ -273,7 +274,7 @@ def _hand_to_project(root: Path, build) -> None:
     check = TaravChangeCheck(root)
     suite = CheckSuite([CheckResult(check, status="completed", pois=[build(check)])],
                        name="tarav-change hook").run()
-    ProjectActions(project).register(suite)
+    ActionManager.for_owner(project).register(suite)
 
 
 class TaravChangeCheck(Check):

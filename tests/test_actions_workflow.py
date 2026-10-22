@@ -16,7 +16,8 @@ from tarav.l1.actions import (
 from tarav.l1.actions.pois import (
     GONE, BlessableResolution, GoneClosing, POIActionClosed, POIResolutionAction, action_id,
 )
-from tarav.l1.actions.project import ProjectActions
+# tarav.breadcrumb 65d7c2fd07ea
+from tarav.l1.project.actions import ActionManager
 from tarav.l1.actions.blessing import (
     BLESSED, Blessing, BlessingInput, BlessingWithoutReason,
 )
@@ -202,7 +203,7 @@ class Stores:
 
     def update(self, owner, checks):
         """Hand a Project's actions one run of its checks."""
-        return ProjectActions(owner, self.runs).update(checks)
+        return ActionManager.for_owner(owner, self.runs).update(checks)
 
     def lamps(self, owner=HOME, crash=(), **levels):
         """One run of a Project's checks, one check per lamp, handed to its actions."""
@@ -332,8 +333,8 @@ def test_a_poi_opens_its_action_and_raising_it_again_lands_on_the_same_one(store
         [LampCheck("hall", 3), LampCheck("den", 1), LampCheck("den", 1)]).run())
     assert (twice["opened"], twice["actions"]) == (1, 2)  # raised twice in one run: one action
     assert twice["project"] == HOME and len(stores.runs.list()) == 2
-    assert len(ProjectActions(HOME, stores.runs).list()) == 2
-    assert ProjectActions(SHED, stores.runs).list() == []
+    assert len(ActionManager.for_owner(HOME, stores.runs).list()) == 2
+    assert ActionManager.for_owner(SHED, stores.runs).list() == []
 
 
 def test_checks_that_no_longer_produce_a_poi_close_its_action(stores):
@@ -435,7 +436,7 @@ def test_an_action_belongs_to_the_project_whose_checks_produce_its_poi(stores):
 
 def test_starting_and_refreshing_are_separate_and_write_nothing_by_themselves(stores):
     # tarav.breadcrumb 1b3481cce255
-    home = ProjectActions(HOME, stores.runs)
+    home = ActionManager.for_owner(HOME, stores.runs)
     checks = lamp_suite(hall=3).run()
     started = home.start(checks)
     assert [run.state for run in started.values()] == [RUNNING] and not stores.runs.exists()
@@ -459,7 +460,7 @@ def test_an_action_type_without_a_rule_ignores_the_checks(stores):
     result = stores.lamps(HOME, hall=3)
     assert (result["opened"], result["updated"], result["gone"]) == (1, 0, 0)
     assert stores.runs.load(str(run.id)).state == RUNNING
-    assert len(ProjectActions(HOME, stores.runs).list()) == 2
+    assert len(ActionManager.for_owner(HOME, stores.runs).list()) == 2
 
 
 class RoomSuite(CheckSuite):
@@ -620,11 +621,11 @@ def test_a_blessed_action_stays_closed_while_its_poi_is_still_raised(stores):
     assert (record["type"], record["reason"], record["support"]) == (
         "Tarav.Blessings.Blessing", "The hall lamp stays on at night.", support)
     assert record["actor"]["session_id"] == "one" and record["poi"]["id"] == poi.identity
-    home = ProjectActions(HOME, stores.runs)  # how it stands is asked of the Project
+    home = ActionManager.for_owner(HOME, stores.runs)  # how it stands is asked of the Project
     blessing = home.blessing(poi)
     assert isinstance(blessing, Blessing) and str(blessing.id) == record["id"]
     assert (home.standing(poi), home.of(poi).id) == ("blessed", action_id(poi))
-    assert ProjectActions(SHED, stores.runs).of(poi) is None  # not the shed's
+    assert ActionManager.for_owner(SHED, stores.runs).of(poi) is None  # not the shed's
 
     again = stores.lamps(hall=3)  # the situation still exists: the blessing holds
     assert (again["opened"], again["reopened"]) == (0, 0)
@@ -652,7 +653,7 @@ def test_a_blessing_declares_assertions_and_scores_stay_with_the_scorer(stores, 
     stores.runner.close(str(action_id(backed)), stores.contexts.put(
         BlessingInput.new(reason="The rules allow it.", support=support)), exit=BLESSED)
 
-    home = ProjectActions(HOME, stores.runs)
+    home = ActionManager.for_owner(HOME, stores.runs)
     first, second = home.blessing(plain), home.blessing(backed)
     assert list(first.assertions) == ["main"] and list(second.assertions) == ["main", "grounds"]
     main = second.assertions["main"]
@@ -745,6 +746,11 @@ class _Home:
 
     actions = TaravProject.actions
     status = TaravProject.status
+    Actions = TaravProject.Actions
+
+    @property
+    def records(self):
+        return TaravProject.Records(self)
 
 
 @pytest.fixture

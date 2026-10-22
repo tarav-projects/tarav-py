@@ -6,10 +6,14 @@ from pydantic import Field
 from tarav.l0._core.errors import CliError
 from tarav.l0.project import ProjectHarnessConfig, project_marker_name, require_agentos_project
 from tarav.l0.kernel import NamespaceBase, Ship, TaravClass, TaravEntity, TypeShip, entity
-from tarav.l1.checks import CheckProvider, CheckSuite
+from tarav.l1.checks import CheckProvider
 from tarav.l1.loading import LoadingProfile
 
 from .workflow import PROJECT_WORKFLOW_SHIP
+from .actions import ActionManager
+from .checks import ChecksManager
+from .records import RecordsManager
+from .skw import SkwManager
 from tarav.l0.kernel import LoadedRecord
 
 
@@ -39,23 +43,15 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
     def agents(self) -> Agents:
         return type(self).Agents(self)
 
-    class Checks(CheckProvider.Checks):
-        # tarav.breadcrumb c1c38799380f
-        def suite(self) -> CheckSuite:
-            from tarav.l1.git.hooks import git_hooks_suite
+    # tarav.breadcrumb 275a50afd006
+    Actions = ActionManager
+    Checks = ChecksManager
+    Records = RecordsManager
+    Skw = SkwManager
 
-            from .files import ProjectFilesCheck
-
-            return CheckSuite([ProjectFilesCheck(self.obj),
-                               self.obj.agents.agents_md.checks.suite(),
-                               self.obj.agents.skills.checks.suite(),
-                               git_hooks_suite(self.obj)],
-                              name=self.obj.name, repositories=self.obj.repositories())
-
-        # tarav.breadcrumb 47c83896e2f3
-        def own(self) -> CheckSuite:
-            """The checks of this Project alone, without those of its member Projects."""
-            return self.suite()
+    @property
+    def skw(self) -> SkwManager:
+        return type(self).Skw(self)
 
     # tarav.breadcrumb a0b3336717d2
     def repositories(self) -> tuple[Path, ...]:
@@ -74,26 +70,12 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
     @property
     def actions(self):
         """The actions registered under this Project."""
-        from tarav.l1.actions.project import ProjectActions
-
-        return ProjectActions.for_project(self)
+        return type(self).Actions(self)
 
     # tarav.breadcrumb c480857f3a5c
     def status(self, *, select=None, on_result=None):
-        """Run this Project's checks and hand the suite that ran to its actions.
-
-        The checks only run and the actions never run a check; this is where
-        the two meet. A Project with members does this for its own checks and
-        asks each member to do the same for itself. `select` filters what
-        runs; what it leaves out is known as not run, so no action closes
-        for it.
-        """
-        from .status import ProjectStatus
-
-        checks = self.checks.own().run(select=select, on_result=on_result)
-        return ProjectStatus(self, checks, self.actions.update(checks),
-                             tuple(member.status(select=select, on_result=on_result)
-                                   for member in self.members()))
+        """Enter the action manager's checks-to-actions status loop."""
+        return self.actions.status(select=select, on_result=on_result)
 
     @classmethod
     def loading_paths(cls) -> tuple[str, ...]:
@@ -224,12 +206,3 @@ class TaravProject(TaravEntity, LoadingProfile, CheckProvider):
         if self.harness is not None:
             record["harness"] = self.harness.model_dump(mode="json")
         return {**record, **self.fields}
-
-    class Records(TaravEntity.Records):
-        def record_example(self):
-            cls = self._owner
-            return {
-                "type": entity(cls).name,
-                "project_id": "20c26be7-a8e5-4974-9ec0-0b5a3a125a94",
-                "created_at": "2026-01-01T00:00:00Z",
-            }

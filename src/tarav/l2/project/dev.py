@@ -175,23 +175,6 @@ class PyTestSuite(CheckSuite):
                                   name=file, key=file)
 
 
-class SkillLoadCheck(Check):
-    """A skill depot of the Project could not be loaded to collect its checks."""
-
-    @classmethod
-    def class_entity(cls) -> TaravClass:
-        return TaravClass(target=cls, id=TypeShip("bf257488-4865-4608-a6ee-86b7b23033dc"),
-                          name="Tarav.Project.Dev.SkillLoad", workflow=PROJECT_WORKFLOW_SHIP)
-
-    def __init__(self, skill: Path, reason: str) -> None:
-        super().__init__()
-        self.skill = Path(skill)
-        self.reason = reason
-
-    def _run(self) -> CheckResult:
-        return CheckResult(self, status="incomplete", reason=f"{self.skill.name}: {self.reason}")
-
-
 # tarav.breadcrumb 50c81a4342d1
 class PythonPackageProject(Project):
     """A folder that develops a Python package; its first check is its test suite."""
@@ -228,35 +211,20 @@ class DocsProject(Project):
         return TaravClass(target=cls, id=TypeShip("b811ca80-597a-4d11-90f2-7bdb30f9fd19"),
                           name="Tarav.Project.Docs", workflow=PROJECT_WORKFLOW_SHIP)
 
-    def skill_depots(self) -> tuple[Path, ...]:
-        from tarav.l2.skw.skills import project_skills
-
-        return project_skills(self.root)
-
     class Checks(Project.Checks):
         def suite(self) -> CheckSuite:
+            from .wiki import ProjectWiki
+
             return CheckSuite([super().suite(),
-                               CheckSuite(lambda suite: self.obj._checks())],
+                               # tarav.breadcrumb ce12bd2fcde1
+                               self.obj.skw.checks(),
+                               CheckSuite(lambda suite: ProjectWiki(self.obj).checks())],
                               name=self.obj.name, repositories=self.obj.repositories())
-
-    def _checks(self):
-        from tarav.l0.kernel.current import current_records
-        from tarav.l2.skw.skills import load_depot
-
-        for depot in self.skill_depots():
-            try:
-                yield load_depot(depot, registry=current_records()).checks.suite()
-            except (OSError, ValueError, TypeError, RuntimeError) as exc:
-                yield SkillLoadCheck(depot, f"{type(exc).__name__}: {exc}")
-        # the Wiki says what to check about its notes
-        from .wiki import ProjectWiki
-        yield from ProjectWiki(self).checks()
 
 
 __all__ = [
     "DocsProject",
     "PythonPackageProject",
-    "SkillLoadCheck",
     "PyTestCheck",
     "PyTestFileSuite",
     "PyTestSuite",

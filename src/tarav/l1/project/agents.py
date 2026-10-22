@@ -171,7 +171,7 @@ class AgentsMd(TaravObject, CheckProvider, SettingsProvider):
 
     @property
     def depot(self) -> Path:
-        return self.project.root / ".tarav" / "skillware"
+        return self.project.skw.depot
 
     @property
     def aliases(self) -> tuple[Path, ...]:
@@ -185,8 +185,8 @@ class AgentsMd(TaravObject, CheckProvider, SettingsProvider):
                 TaravObject,
                 (*SKW_CODE_RECORD_TYPES, TaravSystemPrompt, ProjectSystemPrompt),
             )
-        return Document(self.source, root=self.project.root, depot=self.depot,
-                        registry=registry)
+        # tarav.breadcrumb 57b2e6f82e46
+        return self.project.skw.document("AGENTS.skw.json", registry=registry)
 
     class Checks(CheckProvider.Checks):
         def suite(self) -> CheckSuite:

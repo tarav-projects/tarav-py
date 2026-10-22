@@ -56,6 +56,29 @@ def test_project_capabilities_use_bound_semantic_paths() -> None:
     assert not hasattr(Project, "wiki")
 
 
+# tarav.breadcrumb 251c8b4e9b46
+def test_project_managers_own_integration_without_reverse_workflow_dependencies():
+    from tarav.l1.project import TaravProject
+    from tarav.l1.project.actions import ActionManager
+    from tarav.l1.project.checks import ChecksManager
+    from tarav.l1.project.records import RecordsManager
+    from tarav.l1.project.skw import SkwManager
+    from tarav.l2.project import Project
+
+    assert TaravProject.Actions is ActionManager
+    assert TaravProject.Checks is ChecksManager
+    assert TaravProject.Records is RecordsManager
+    assert TaravProject.Skw is SkwManager
+    assert issubclass(Project.Skw, SkwManager)
+    assert not (PACKAGE_ROOT / "l1/actions/project.py").exists()
+    graph = _top_level_import_graph()
+    # The existing action CLI lists Project scopes; core action mechanics do
+    # not import the Project manager or Project type.
+    assert "project.actions" not in graph["actions"]
+    assert "project.base" not in graph["actions"]
+    assert not any(name.startswith("project") for name in graph["checks"])
+
+
 # tarav.breadcrumb 7211da22c6b1
 def test_object_namespaces_stay_in_kernel_and_do_not_import_records_workflow():
     from tarav.l0.kernel import NamespaceBase, TaravObject

@@ -9,7 +9,8 @@ import pytest
 
 from tarav.l0.kernel import RDF_TYPE, TaravClass, TypeShip, entity
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite
-from tarav.l1.actions.project import ProjectActions
+# tarav.breadcrumb a0b13d875e3b
+from tarav.l1.project.actions import ActionManager
 from tarav.l1.actions.pois import action_id
 from tarav.l1.actions.views import ActionResolver
 from tarav.l1.context.query import ContextCandidate, ContextQueryService, IdentityContextQuery
@@ -52,7 +53,7 @@ def opened(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("TARAV_RECORDS", str(tmp_path / "records"))
     set_runtime(create_runtime())
     suite = CheckSuite([SampleCheck()]).run()
-    ProjectActions({"id": "p1", "name": "sample", "root": str(tmp_path)}).update(suite)
+    ActionManager.for_owner({"id": "p1", "name": "sample", "root": str(tmp_path)}).update(suite)
     yield list(suite.pois())
     set_runtime(None)
 

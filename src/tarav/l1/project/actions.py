@@ -1,24 +1,19 @@
-"""The actions registered under one Project.
-
-A Project hands each suite of its checks that ran to this place. It registers the
-actions of the POIs it sees for the first time, and passes the results to
-every action registered under the Project; each Action Type decides what
-they mean for it. Nothing here runs a check, and nothing here knows what a
-POI action does with the results.
-"""
+"""Project-owned action integration and the checks-to-actions status loop."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
+from tarav.l0.kernel import NamespaceBase
 from tarav.l1.checks import CheckSuite
 
 from tarav.l1.poi import POI
 
-from . import ActionError, ActionRun, ActionRunStore, ChecksUpdate, resolve_action
-from .blessing import BLESSED, Blessing
-from .pois import action_id, raised
+from tarav.l1.actions import ActionError, ActionRun, ActionRunStore, ChecksUpdate, resolve_action
+from tarav.l1.actions.blessing import BLESSED, Blessing
+from tarav.l1.actions.pois import action_id, raised
 
 
 def _now() -> str:
@@ -27,19 +22,44 @@ def _now() -> str:
 
 # tarav.breadcrumb 2e1b9af1c741
 # tarav.breadcrumb c95725410973
-class ProjectActions:
-    """The actions of one Project: register them, and hand them the Project's check results."""
+class ActionManager(NamespaceBase):
+    """Register and update work, and coordinate this Project's status loop."""
 
-    def __init__(self, project: dict, runs: ActionRunStore | None = None, *,
+    def __init__(self, project, runs: ActionRunStore | None = None, *,
                  now: Callable[[], str] = _now) -> None:
-        self.project = {"id": str(project["id"]), "name": project["name"],
-                        "root": str(project["root"])}
-        self.runs = runs if runs is not None else ActionRunStore()
+        super().__init__(project)
+        self._runs = runs
         self._now = now
 
+    @property
+    def project(self) -> dict:
+        return {"id": str(self.obj.id), "name": self.obj.name, "root": str(self.obj.root)}
+
+    @property
+    def runs(self) -> ActionRunStore:
+        if self._runs is None:
+            self._runs = ActionRunStore(self.obj.records.registry)
+        return self._runs
+
     @classmethod
-    def for_project(cls, project, runs: ActionRunStore | None = None) -> "ProjectActions":
-        return cls({"id": project.id, "name": project.name, "root": project.root}, runs)
+    def for_owner(cls, owner: dict, runs: ActionRunStore | None = None, *,
+                  now: Callable[[], str] = _now) -> "ActionManager":
+        """Handle external findings without loading an executable Project Type.
+
+        An ownership-only binding registers and queries actions. Status
+        requires a full Project with checks and members.
+        """
+        return cls(SimpleNamespace(**owner), runs if runs is not None else ActionRunStore(), now=now)
+
+    # tarav.breadcrumb 4435bc65de9a
+    def status(self, *, select=None, on_result=None):
+        """Run checks, update actions, then visit each member's own manager loop."""
+        from .status import ProjectStatus
+
+        checks = self.obj.checks.own().run(select=select, on_result=on_result)
+        return ProjectStatus(self.obj, checks, self.update(checks),
+                             tuple(member.actions.status(select=select, on_result=on_result)
+                                   for member in self.obj.members()))
 
     # tarav.breadcrumb 336868a1e89c
     def list(self, *, state: str | None = None, own: bool = False) -> list[ActionRun]:
@@ -175,4 +195,4 @@ class ProjectActions:
                 "project": self.project, "changes": listed, "signals": update.signals}
 
 
-__all__ = ["ProjectActions"]
+__all__ = ["ActionManager"]

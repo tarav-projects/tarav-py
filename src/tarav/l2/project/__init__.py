@@ -11,10 +11,14 @@ from .runner import (
     ProjectRunnerConfigurator,
     ProjectRunnerError,
 )
+from .skw import SkwManager
 
 
 class Project(TaravProject):
     """Tarav's featured project, with Wiki access."""
+
+    # tarav.breadcrumb b5f1123150af
+    Skw = SkwManager
 
     @classmethod
     def class_entity(cls):

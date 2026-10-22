@@ -200,9 +200,10 @@ def committed(root: Path, message: str, **environment: str) -> subprocess.Comple
 
 def actions(root: Path) -> list[tuple[str, dict]]:
     """The POI type and situation of each action registered on the Project, oldest first."""
-    from tarav.l1.actions.project import ProjectActions
+    # tarav.breadcrumb 16c9374e62d4
+    from tarav.l1.project.actions import ActionManager
 
-    runs = ProjectActions.for_project(Project.from_path(root)).list(own=True)
+    runs = ActionManager(Project.from_path(root)).list(own=True)
     return sorted(((run.data["event"]["poi"]["type"],
                     {key: value for key, value in run.data["event"]["poi"]["situation"].items()
                      if key in ("branch", "commit")}) for run in runs), key=str)

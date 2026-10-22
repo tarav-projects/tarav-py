@@ -14,7 +14,8 @@ from pathlib import Path
 from tarav.l0.kernel.identity import TypeShip, WorkflowShip
 from tarav.l0.kernel.records import TaravClass
 from tarav.l1.actions import ActionRunStore
-from tarav.l1.actions.project import ProjectActions
+# tarav.breadcrumb c6b1934c24b8
+from tarav.l1.project.actions import ActionManager
 from tarav.l1.checks import Check, CheckPOI, CheckResult, CheckSuite, SituationCheck
 from tarav.l1.poi import POI
 from tarav.l1.actions.pois import BlessableResolution
@@ -153,7 +154,7 @@ def workspace_project(workspace: str | Path) -> dict:
 
 def update_workspace(workspace: str | Path, runs: ActionRunStore | None = None) -> dict:
     """Run the workspace's checks and hand the results to its actions."""
-    return ProjectActions(workspace_project(workspace), runs).update(
+    return ActionManager.for_owner(workspace_project(workspace), runs).update(
         CheckSuite(workspace_checks(workspace), name="test-workspace").run())
 
 

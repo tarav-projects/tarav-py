@@ -532,13 +532,14 @@ class GitleaksSuite(CheckSuite):
 # tarav.breadcrumb 91ec1d57d64a
 def register_staged(root: Path | str, run: GitleaksRun, *, overruled: bool) -> dict:
     """Open the action of a staged report on the repository's owner."""
-    from tarav.l1.actions.project import ProjectActions
+    # tarav.breadcrumb 10c4e1fcba48
+    from tarav.l1.project.actions import ActionManager
 
     root = Path(root).resolve()
     check = GitleaksStagedChain({"repository": run.key, "run": run.report}).check(
         root=root, run=run, overruled=overruled)
     suite = CheckSuite([check], name="gitleaks hook").run()
-    return ProjectActions(owner_of(root)).register(suite)
+    return ActionManager.for_owner(owner_of(root)).register(suite)
 
 
 # tarav.breadcrumb 88f957d5a028
@@ -605,10 +606,10 @@ def owner_of(root: Path | str, *, system: Path | None = None) -> dict:
 def register_run(root: Path | str, run: GitleaksRun, *, system: Path | None = None,
                  runs=None) -> dict:
     """Register the actions of what the repository's check raises now on its owner."""
-    from tarav.l1.actions.project import ProjectActions
+    from tarav.l1.project.actions import ActionManager
 
     suite = CheckSuite([GitleaksSuite(root)], name="gitleaks scan").run()
-    return ProjectActions(owner_of(root, system=system), runs).register(suite)
+    return ActionManager.for_owner(owner_of(root, system=system), runs).register(suite)
 
 
 def unowned_suites(depot: GitleaksDepot | None = None) -> list[GitleaksSuite]:

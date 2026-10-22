@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Status: ready for Develop execution. Knowledge.Surface: wiki.
+Status: implemented and verified; native capture limitations recorded below. Knowledge.Surface: wiki.
 
 Give Project Classes extensible ActionManager, ChecksManager, SkwManager and
 RecordsManager integration objects. Move existing Project integration into
@@ -93,4 +93,46 @@ or adding higher-layer imports to lower layers, stop and align first.
   the verified current-session command; no inferred session identity.
 - Practices: subtract before adding removes the former action integration
   path; boundary discipline leaves action/check semantics with their Types.
-- Baseline tests running before product edits. Slice status: pending.
+- Design-note checkpoint: 75ded0a981495e123ef4b1527cdd1fac5d288d16.
+- Cold-read this request before product changes; inspected interfaces matched
+  the plan. No lifecycle or retained-schema change was needed.
+- Baseline: 110 existing action/Project/agents/architecture tests passed.
+- Slice: moved the former ProjectActions implementation to project.actions,
+  bound it as ActionManager, and moved status coordination there. Added the
+  ChecksManager, RecordsManager and base/featured SkwManagers. Migrated all
+  maintained old imports and moved DocsProject's SKW work into its manager.
+- Updated the CLI fixture to declare the managers its borrowed accessors now
+  select. Initial new tests needed a complete Project marker and the actual
+  document factory's missing-depot error contract; corrected those fixtures,
+  without changing the product to fit an incorrect expectation.
+- Measured: 116 focused action/Project/agents/architecture/manager tests pass;
+  51 manager/Git/SKW/agents/context integration tests pass. Ruff and diff
+  whitespace checks pass. These suites overlap; counts are not additive.
+- New tests exercise all four class-selected managers, custom action Record
+  storage, direct checks without action updates, status delegation, child
+  manager loops, and SKW source/depot selection. Existing detector/checkpoint,
+  identity, blessing and reopening tests continue to pass.
+- Reinstalled the editable CLI. Produced and compiled the authoritative
+  agents source; compilation reported no findings.
+- Product inline capture: 23 new Breadcrumbs across 20 Python/Markdown
+  surfaces, all newly attached turns resolved. Position observations were
+  refreshed after moves. Twelve older TurnUnavailable findings remain:
+  nine in ARCHITECTURE.md, two in l2/project/__init__.py and one in
+  tests/test_architecture.py. Their old labels were preserved.
+- Native capture limitation: the authoritative AGENTS.skw.json source is
+  unsupported (`Cannot infer surface language from .json`). TOML test-path
+  configuration and generated lock/AGENTS products likewise have no new
+  source-level Breadcrumb annotation; the supported design note and code
+  retain the discussion. No guessed labels or JSON comment syntax were added.
+- Wiki capture: projects.md and daily/2026-10-22.md submitted nine new
+  Breadcrumbs and both audits passed with no POIs. The request's five
+  design Breadcrumbs were submitted and audited before execution.
+- Full root `tarav status --project . --all --json` completed: 1,329 checks
+  completed, zero incomplete, and no pytest findings. It returned 1 because
+  67 already-registered actions remain open. Action changes were all zero:
+  none opened, reopened, closed or updated. No unrelated findings were repaired.
+- Wiki closure: eb1c311e43f301d4ad5f9ab3dd50b5600a5bde62.
+- Slice status: verified. Product and Wiki capture completed for supported
+  native surfaces; the source-format limitation and older evidence gaps above
+  remain explicit. Scope is the 26 implementation paths in this repository
+  plus projects.md and daily/2026-10-22.md in the Wiki repository.

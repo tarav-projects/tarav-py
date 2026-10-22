@@ -15,11 +15,13 @@ from tarav.l2.project.dev import (
     PyTestCheck,
     PyTestFileSuite,
     PyTestSuite,
-    SkillLoadCheck,
     TestFailurePOI,
 )
 from tarav.l2.breadcrumb_workflows.chatlas_context.checks import UnsubmittedMarkersCheck
 from tarav.l2.project import Project
+
+# tarav.breadcrumb 28cac2824446
+from tarav.l2.project.skw import SkillLoadCheck
 
 
 def _project(root: Path, project_type):

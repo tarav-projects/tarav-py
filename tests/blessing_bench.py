@@ -8,7 +8,8 @@ from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.actions import ACTIONS_WORKFLOW_SHIP, ActionRunStore, StepRunner
 from tarav.l1.actions import register_action
 from tarav.l1.actions.pois import BlessableResolution, action_id
-from tarav.l1.actions.project import ProjectActions
+# tarav.breadcrumb 952dde6fd60e
+from tarav.l1.project.actions import ActionManager
 from tarav.l1.actions.blessing import BLESSED, Blessing, BlessingInput
 from tarav.l1.checks import Check, CheckResult, CheckSuite
 from tarav.l1.operator_context import OperatorContextStore
@@ -49,7 +50,7 @@ class Bench:
         self.at = datetime.now(timezone.utc)
         self.runner = StepRunner(runs=self.runs, contexts=self.contexts,
                                  session=lambda: self.actor, now=lambda: self.at.isoformat())
-        self.actions = ProjectActions(TARGET, self.runs, now=lambda: self.at.isoformat())
+        self.actions = ActionManager.for_owner(TARGET, self.runs, now=lambda: self.at.isoformat())
         self.pois = self.actions  # how the bench Project's actions stand for a POI
         self.raised: list = []
 
