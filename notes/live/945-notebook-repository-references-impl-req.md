@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Status: implemented; full verification running. Knowledge.Surface: wiki.
+Status: complete. Knowledge.Surface: wiki.
 
 Adopt the repository DOI/Change-ID infrastructure from request 943 for Notebook
 subject/context recording. Preserve exact wording, context, support sets and
@@ -70,7 +70,7 @@ Chatlas refresh and session identity.
   three live stores; translate/verify/replace 30 references, conserving originals
   in Attic. Prove unchanged digests and review presentations and new witness
   updates after real commits. No fallback readers.
-- [ ] Capture/verification: update architecture/guidance and Wiki, attach/audit
+- [x] Capture/verification: update architecture/guidance and Wiki, attach/audit
   source evidence, run full Project checks and evidence commits. Preserve
   concurrent work; record all findings outside scope.
 
@@ -128,3 +128,13 @@ Chatlas refresh and session identity.
   Wiki retains 12 older unavailable-Turn findings, preserved without retargeting.
   Markdown status completed 1,215 checks with none incomplete and 60 existing
   harness/SKW/pending-marker findings outside this implementation.
+- Final full Project status completed 84 checks, none incomplete. All 65 pytest
+  suites passed with zero test findings. The fixture-related action
+  `552d5d23-2c58-ac14-2c92-1462cb7fc9ee` closed as gone. Only the existing Gitleaks
+  flag and two synthetic test-marker findings remain. Report:
+  `/tmp/notebook-doi-verified-status.json`.
+- Final contract/fixture slice: `0de84f229f5a1f36c77ca3d68c2627bed2408dd5`.
+  Both implementation commits audited cleanly. Wiki capture committed as
+  `d804a8b49bae1563c9ed7441ad390ec3de9b5867` and its commit evidence audited clean.
+  Completion records this final verification in the request and Wiki. No
+  implementation gaps remain; the 12 older Wiki evidence gaps remain explicit.
