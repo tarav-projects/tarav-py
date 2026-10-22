@@ -93,7 +93,7 @@ Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-
 
 ## Execution.Plan
 
-- [ ] Feature: immutable batch revisions and explicit retained review completion.
+- [x] Feature: immutable batch revisions and explicit retained review completion.
   Python lifecycle: create, maintain/revise, inspect exact committed material,
   present token, complete with validated evidence, retain history. Check real Git
   and public Python API: overlaps, exact states, invalid IDs, stale transitions,
@@ -115,3 +115,15 @@ Companion request: ../../../tarav-md/notes/live/875-product-review-tracker-impl-
 - Cold-reloaded the complete request before product edits. Start checkpoints:
   Python 85054981, Markdown 93b922c6. Initial baseline command used a nonexistent
   test_records.py; corrected to the actual generic Record test files.
+- Slice 1 measured: 24 Product Review/generic Record checks passed, then all
+  11 review and new architecture checks passed. Existing mapping/architecture
+  run had 79 passes and one fixture assertion error (dict treated as BaseModel),
+  corrected and rechecked. Ruff passed. Actual Chatlas reference resolution and
+  hash-valid Turn snapshot retention are exercised, not a mock completion result.
+- Concurrent PathRegistry work checkpointed some in-progress Review Tracker
+  files in f892309d. Preserve it. Shared ARCHITECTURE/tests contain changes from
+  both tasks; this workflow commits those files as found and leaves unrelated
+  PathRegistry files alone. Capture audits passed except shared ARCHITECTURE
+  temporarily carries the other session's undeclared marker; finish after that
+  session's capture. Unmarked schema/plumbing surfaces had no justified extra
+  placements; submit reports no provisional marker and audit passes.

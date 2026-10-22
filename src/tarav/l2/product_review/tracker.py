@@ -1,6 +1,7 @@
 """Explicit batch maintenance and token-backed completion over existing maps."""
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import re
 from uuid import uuid4
 
@@ -25,12 +26,12 @@ def build(cls, **values):
     return cls.records.from_record({"type": entity(cls).name, **values})
 
 
-# tarav.context ec6cf584:f14fba928dd29981
+# tarav.breadcrumb 0bd6e4b384e8
 class ReviewTracker:
     def __init__(self, mapper, *, root=None, records=None):
         self.mapper = mapper
         self.repository_id = mapper.repository_id
-        self.store = (RecordMap(root, PRODUCT_REVIEW_SHIP, records) if root is not None
+        self.store = (RecordMap(Path(root), PRODUCT_REVIEW_SHIP, records) if root is not None
                       else RecordRegistry(records=records).for_workflow(ProductReviewWorkflow))
 
     def create(self):
@@ -160,7 +161,7 @@ class ReviewTracker:
                       f"::reviewed review:{revision.id}"])
         return "\n".join(lines)
 
-    # tarav.context ec6cf584:e9d7c7ce457bec3a
+    # tarav.breadcrumb 442372a29caa
     def complete(self, revision_id, *, presentation, completion, outcomes=()):
         revision = self.revision(revision_id)
         if not all(isinstance(ref, ChatlasTurnReference) for ref in (presentation, completion)):

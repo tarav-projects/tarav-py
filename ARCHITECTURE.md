@@ -1,6 +1,7 @@
 # Tarav Python Architecture
 
 <!-- tarav.sessions
+ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015415da94eeb1a17634872aa4fb9e25d8e065ab53
 473c89a0 = codex:01a1176b-f14c-7fd0-a97c-b22279c3f8c8 @473c89a00e2367fb827193af74a6375c60a96b0be110f21df0aff49360ca972f
 6734aba0 = codex:01a0d86c-9538-7be1-af96-014cd4203d61 @6734aba0b9204f614baf3987604865fa85146495877841244ad7fe1efce4104b
 f5845518 = claude-code:4ee3b84e-14fa-4aa9-9c6f-8d139954fe18 @f5845518e808c6cf0496f867fc656fdad9063980a184f7c3f15c54adf8fcb31f
@@ -527,6 +528,17 @@ and cannot silently reinterpret an earlier map.
 <!-- tarav.breadcrumb 3f25b9a97a19 -->
 <!-- tarav.breadcrumb 67f797198aa6 -->
 <!-- tarav.breadcrumb a69fa15a978b -->
+
+`tarav.l1.product_review` owns stable Batch identities, immutable BatchRevision
+Records and separate ReviewCompletion evidence. `tarav.l2.product_review`
+integrates those records with existing Product Maps and exact Chatlas Turns.
+Completeness is chunk membership in at least one live batch; review currency is
+independent for every batch revision, including overlapping batches. A completion
+token confirms that the review happened and its outcomes were captured, without
+endorsing content or closing follow-up work. Earlier revisions and their reviews
+remain available. Reads never provision the workflow's Record Registry partition.
+<!-- tarav.context ec6cf584:f14fba928dd29981 -->
+<!-- tarav.context ec6cf584:e9d7c7ce457bec3a -->
 
 `tarav.l1.attic` owns cheap conservation of opaque displaced material.
 `AtticWorkflow` is an explicit Archive child, separate from Artifact
@@ -1103,16 +1115,18 @@ filters already registered classes by their defining source under the Project
 root by default. Overrides own alternative membership policy. Dispatch remains
 `project.records.types`, independent of Project ownership.
 
-`l1.path_registry` owns JSONView, PathEntry, PathDocumentation and PathRegistry.
+`l1.path_registry` owns JSONView, PathEntry and PathRegistry.
 Paths are JSON Pointers into a View value, with Ships maintained independently
-of path spelling. Attachments name identified objects retained by their own
-workflows; attached Lines keep their authoring context. Explicit enrollment,
+of path spelling. Other workflows reference these Ships and own their associations
+and documentation. The registry stores no attachments or documentation Types.
+Explicit enrollment,
 reassignment, addition, retirement and acceptance are distinct from computation.
 `l2.project.paths.PathsManager`, selected as `Project.Paths`, keeps the normal
 typed registry Record in `.tarav/paths.json` and composes read-only checks into
 Project status. Absence never provisions; unavailable scans never certify old
 findings gone. Git supplies history. See `l1/path_registry/README.md` for usage.
 <!-- tarav.breadcrumb 7576042d6588 -->
+<!-- tarav.context 0f5bad01:28711a8a56d9ff47 -->
 
 `TaravProject.load_project(path=...)` combines upward Project discovery with
 the Project's harness: it imports `harness.type`, binds it in the configured

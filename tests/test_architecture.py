@@ -12,6 +12,23 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+def test_product_review_keeps_mapping_and_chat_evidence_integration_above_core_records():
+    from tarav.l1.product_review import PRODUCT_REVIEW_RECORD_TYPES, ProductReviewWorkflow
+    from tarav.l3.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert runtime.workflows.get("Tarav.Workflow.ProductReview") is ProductReviewWorkflow
+    for record_type in PRODUCT_REVIEW_RECORD_TYPES:
+        assert runtime.records.resolve_ship(entity(record_type).id) is record_type
+    # The aggregate graph intentionally collapses l1/l2 names; inspect core only.
+    for path in (PACKAGE_ROOT / "l1/product_review").glob("*.py"):
+        imports = [node.module for node in ast.walk(ast.parse(path.read_text()))
+                   if isinstance(node, ast.ImportFrom) and node.module]
+        assert not any(name.startswith(("tarav.l1.project", "tarav.l1.product_mapping",
+                                       "tarav.l1.chatlas", "tarav.l2", "tarav.l3"))
+                       for name in imports)
+
+
 # tarav.breadcrumb 97bbc29006d0
 def test_product_mapping_owns_coordinates_and_keeps_project_policy_above_it():
     from tarav.l1.product_mapping import ProductMapper, ProductMappingWorkflow
@@ -670,6 +687,8 @@ def test_path_registry_composes_project_policy_above_computed_kernel_views() -> 
     assert TaravProject.Types.__module__ == "tarav.l1.project.types"
     assert Project.Paths is PathsManager
     assert not hasattr(TaravProject, "Paths")
+    assert "lines" not in _top_level_import_graph()["path_registry"]
+    # tarav.breadcrumb c5f7d83cf973
 
 
 def test_layered_modules_do_not_import_higher_layers() -> None:

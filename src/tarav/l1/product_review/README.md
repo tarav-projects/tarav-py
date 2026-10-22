@@ -1,0 +1,58 @@
+# Product Review Tracker
+
+Product Mapping supplies persistent chunk coordinates. Product Review Tracker
+groups them into meaningful, potentially overlapping review batches. The Agent
+chooses those groupings with the User; no language parser or automatic semantic
+grouping is required.
+<!-- tarav.breadcrumb 627c28d2091a -->
+
+A batch keeps its ID. Each immutable revision pins a confirmed map ID, commit,
+title/purpose and exact selected chunk states. Maintaining membership creates a
+new revision. It never transfers review completion from an older revision.
+Retiring a batch preserves its history and removes it from active coverage.
+<!-- tarav.breadcrumb 66309baf6611 -->
+
+Review completion means the User and Agent processed that batch and recorded
+the outcomes. Follow-up Actions, design changes and other products can remain
+open elsewhere and reference this exact revision. Completion does not endorse
+the content. One User token covers both maintained membership and discussion.
+<!-- tarav.breadcrumb cca810df9bd2 -->
+<!-- tarav.breadcrumb f2d7c26d518f -->
+
+## Python workflow
+
+`tarav.l1.product_review` owns the Records and Workflow. Mapping and Chatlas
+integration lives in `tarav.l2.product_review.ReviewTracker`:
+
+1. Open a `ProductMapper` with its repository identity and existing maps.
+2. Construct `ReviewTracker(mapper)`; reads never provision storage. Explicit
+   `create()` initializes its standard Record Registry partition.
+3. `select_map()` chooses an ancestor of HEAD whose commit is at least five
+   days old. `map_id=` explicitly selects any available confirmed map. No
+   qualifying map is reported as unavailable; it never silently falls back to
+   fresh material. Confirmation timestamps do not determine commit age.
+4. `inspect(map_id=...)` reports uncovered chunk IDs and per-batch currency.
+   `create_batch(map_id=..., chunk_ids=[...], title=..., purpose=..., actor=...,
+   reason=...)` creates a coherent subject. `revise(batch_id, base=...,
+   map_id=..., chunk_ids=[...], actor=..., reason=...)` maintains it explicitly.
+5. Read `current(batch_id)`, expand `read(revision_id)` for exact committed
+   bytes, and discuss with the User. `presentation(revision_id)` produces the
+   precise completion frame and `::reviewed review:<revision-id>` token.
+6. After the User actually issues that token, pass the exact Agent presentation
+   and later User Turn references to `complete(revision_id, presentation=...,
+   completion=..., outcomes=[...])`. The cited frame and token are checked and
+   both Turns retained as Chatlas snapshots. No synthetic User evidence.
+7. Use `history(batch_id)` to recover earlier revisions and their completions.
+
+The completion frame confirms the whole revision. It does not require the User
+to review each chunk separately. A new membership or selected-state change
+requires maintenance and a fresh review. Unchanged selected chunks retain
+currency across unrelated map advances; a blob changing elsewhere in a file
+does not itself change a chunk. Location changes are visible and require an
+explicit, possibly quick, renewed review.
+
+Completeness and currency are independent. Every selected-map chunk must belong
+to at least one live batch. Every live batch needs its own current review,
+regardless of whether another batch overlaps it. Checks emit findings without
+repairing membership, writing Records or performing reviews.
+<!-- tarav.breadcrumb 57a71fa7da11 -->

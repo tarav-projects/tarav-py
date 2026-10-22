@@ -104,7 +104,7 @@ def finish(tracker, revision, chat, *, outcomes=()):
     return tracker.complete(revision.typed.id, presentation=presentation, completion=completion, outcomes=outcomes)
 
 
-# tarav.context ec6cf584:f14fba928dd29981
+# tarav.breadcrumb 591c26621a0e
 def test_completeness_and_overlapping_batch_reviews_are_independent(tracker, chat):
     mapping = mapped(tracker, {"a.txt": b"alpha", "b.txt": b"beta"})
     a = next(c.id for c in mapping.typed.chunks if c.path == "a.txt")
@@ -122,7 +122,7 @@ def test_completeness_and_overlapping_batch_reviews_are_independent(tracker, cha
     assert states == {first.typed.id: "reviewed", second.typed.id: "pending"}
 
 
-# tarav.context ec6cf584:e9d7c7ce457bec3a
+# tarav.breadcrumb 2e226f21af7c
 def test_completion_retains_evidence_and_open_followup_without_approving_content(tracker, chat):
     from tarav.l1.chatlas.turn_snapshots import TurnSnapshotStore
     from tarav.l1.references import FileReference
@@ -135,7 +135,7 @@ def test_completion_retains_evidence_and_open_followup_without_approving_content
     assert loaded.records.to_record() == result.records.to_record()
     assert loaded.typed.outcomes[0].locator == outcome.records.to_record()["locator"]
     for ref in (loaded.typed.presentation, loaded.typed.completion):
-        assert TurnSnapshotStore().find(ref.locator.model_dump()) is not None
+        assert TurnSnapshotStore().find(ref.locator) is not None
     assert tracker.inspect(map_id=mapping.typed.id)["batches"][0]["state"] == "reviewed"
 
 
