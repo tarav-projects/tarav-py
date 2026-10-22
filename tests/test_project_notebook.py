@@ -5,7 +5,7 @@ from tarav.l1.lines import Line
 from tarav.l1.notebook import Notebook, NotebookWorkflow
 # tarav.breadcrumb 2be65786dd7c
 from tarav.l2.notebook import (
-    ArchiveBlock, DiscussionBlock, ModelBlock, ProjectBlock,
+    ArchiveBlock, DiscussionBlock, ModelBlock, ProjectBlock, PathNotebook,
 )
 from tarav.l2.project import Project
 from tarav.l3.runtime import create_runtime
@@ -25,7 +25,8 @@ def test_project_notebook_creates_siblings_once_and_keeps_edits(tmp_path):
     assert isinstance(root, ProjectBlock)
     assert root.project_ship == p.id
     branches = [x for x in root.contents if not isinstance(x, Line)]
-    assert [type(x) for x in branches] == [DiscussionBlock, ModelBlock, ArchiveBlock]
+    assert [type(x) for x in branches] == [DiscussionBlock, ModelBlock, ArchiveBlock, PathNotebook]
+    # tarav.context 0f5bad01:1447ec75ae51ec24
     assert all(x.parent is root for x in branches)
     assert "no implementation" in binding.discussion.contents[0].text
     assert "current" in binding.model.contents[0].text
@@ -57,7 +58,9 @@ def test_project_type_can_choose_a_layout(tmp_path):
     p = DiscussionProject(id=Ship(uuid4()), created_at="2026-10-19T00:00:00Z",
                           project_name="A project")
     root = p.notebook(notebook=notebook).create()
-    assert [type(x) for x in root.contents if not isinstance(x, Line)] == [DiscussionBlock]
+    assert [type(x) for x in root.contents if not isinstance(x, Line)] == [DiscussionBlock, PathNotebook]
+    assert root.paths.parent is not root  # selection reloads a consistent stored tree
+    assert root.paths.parent.id == root.id
 
 
 def test_notebook_types_are_registered_without_project_dependency(tmp_path):
