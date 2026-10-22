@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: developing.
+Knowledge.Surface: wiki. Alignment.Mode: Interactive. Status: completed.
 The User selected two placement modes of the same registered Breadcrumb.
 Embedded placement writes its opaque label into a writable surface. External
 placement records a file, observed line and exact single-line fragment in the
@@ -103,3 +103,16 @@ and daily/2026-10-22.md. Guidance companion:
   all 64 pytest file suites passed. It found two new external audit POI Types
   missing their required rendered summaries. Opened their action context and
   added explicit descriptions; the final routine recheck verifies that fix.
+- Final routine root recheck: 1,274 checks completed, zero incomplete; both
+  summary findings closed. Only the prior 67 prompt, hook/scan, SKW and
+  synthetic-marker findings remain. Full pytest verification above remains
+  passing; no executable behavior changed after it. Final Ruff and diff checks
+  pass. All nineteen capture surfaces audit clean with no POIs or errors.
+- External guidance anchors: cf439d7dc411 (introduction), 5a04bb4b0863
+  (surface contract), eaf993186cf5 (capture workflow), b526dc0bffc8 (audit).
+  Source JSON bytes were unchanged by registration. Topical capture is
+  tarav-md/notes/wiki/breadcrumbs.md and the daily is 2026-10-22.md.
+  Concurrent documentation commit ebc03aa retained the shared daily section.
+- Completion: both placements, JSON write rejection, missing/ambiguous anchor
+  reporting, explicit maintenance, CLI/library integration and capture guidance
+  are implemented. No required work or capture is pending.
