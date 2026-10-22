@@ -695,6 +695,20 @@ def test_path_registry_composes_project_policy_above_computed_kernel_views() -> 
     # tarav.breadcrumb c5f7d83cf973
 
 
+def test_label_formats_are_shared_below_kernel_and_lines():
+    # tarav.breadcrumb f784a6639dc4
+    from tarav.l0.label_formats import Label
+    from tarav.l1.label_formats import LabelFormatsWorkflow
+    from tarav.l1.lines import LabelLine
+    from tarav.l3.runtime import create_runtime
+
+    assert create_runtime().workflows.get("Tarav.Workflow.LabelFormats") is LabelFormatsWorkflow
+    assert LabelLine.RecordInterface.model_fields["text"].annotation is Label
+    tree = ast.parse((PACKAGE_ROOT / "l0/label_formats/__init__.py").read_text())
+    imports = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
+    assert not any(name and name.startswith("tarav.") for name in imports)
+
+
 def test_layered_modules_do_not_import_higher_layers() -> None:
     for level in range(4):
         for path in (PACKAGE_ROOT / f"l{level}").rglob("*.py"):
@@ -714,7 +728,7 @@ def test_layered_modules_do_not_import_higher_layers() -> None:
 def test_kernel_is_a_dependency_clean_application_base() -> None:
     imports = _top_level_import_graph()
 
-    assert imports["l0.kernel"] == set()
+    assert imports["l0.kernel"] == {"l0.label_formats"}
     assert "l0.kernel" in imports["lines.block"]
     assert "l0.kernel" in imports["archive"]
     assert "l0.kernel" in imports["records"]
@@ -831,7 +845,7 @@ def test_context_and_test_workspace_stay_above_kernel() -> None:
     from tarav.l2.tests.scoring import ScoringTestsWorkflow
 
     imports = _top_level_import_graph()
-    assert imports["l0.kernel"] == set()
+    assert imports["l0.kernel"] == {"l0.label_formats"}
     assert not (PACKAGE_ROOT / "l2" / "context").exists()
     assert not (PACKAGE_ROOT / "l0" / "kernel" / "context.py").exists()
     assert (PACKAGE_ROOT / "l2" / "tests" / "workflow.py").is_file()

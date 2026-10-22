@@ -300,7 +300,9 @@ def create_runtime(
     from tarav.l1.chatlas.workflow import CHATLAS_RECORD_TYPES, ChatlasWorkflow
     from tarav.l1.chatlas.search import ChatlasSearchEngine
     # tarav.breadcrumb 3c23fe71552d
-    from tarav.l1.lines import Block, BlockTitle, Line, LinesWorkflow
+    from tarav.l1.lines import Block, LabelLine, Line, LinesWorkflow
+    from tarav.l1.label_formats import LabelFormatsWorkflow
+    # tarav.breadcrumb ccc8cff3a8a4
     from tarav.l2.notebook_capture import NotebookReviewFrame
     # tarav.breadcrumb f98e9b92d186
     from tarav.l1.notebook import Notebook, NotebookWorkflow
@@ -436,7 +438,7 @@ def create_runtime(
                 SearchQuery,
                 TaravClass,
                 Block,
-                BlockTitle,
+                LabelLine,
                 NotebookReviewFrame,
                 Line,
                 Notebook,
@@ -598,6 +600,7 @@ def create_runtime(
         PathRegistryWorkflow,
         RecordArchiveWorkflow,
         LinesWorkflow,
+        LabelFormatsWorkflow,
         NotebookWorkflow,
         GroundingWorkflow,
         ReviewWorkflow,

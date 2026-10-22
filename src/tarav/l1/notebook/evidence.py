@@ -5,7 +5,7 @@ from typing import ClassVar
 from pydantic import Field
 
 from tarav.l0.kernel import Ship, TaravClass, TypeShip
-from tarav.l1.lines import Block, BlockTitle, Line
+from tarav.l1.lines import Block, LabelLine, Line
 from .workflow import NOTEBOOK_WORKFLOW_SHIP
 
 
@@ -56,18 +56,19 @@ class ReviewedLine(NotebookLine):
                           name="Tarav.Notebook.ReviewedLine", workflow=NOTEBOOK_WORKFLOW_SHIP)
 
 
-class ReviewedBlockTitle(BlockTitle, ReviewedLine):
-    """A dotted title with the same support and review obligations as its Lines."""
+class ReviewedLabel(LabelLine, ReviewedLine):
+    """A label with the same support and review obligations as its Lines."""
+    # tarav.breadcrumb c5cfa9a10af5
 
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls, id=TypeShip("655a4592-4d19-4c2c-b052-6b885413f6e0"),
                           name="Tarav.Notebook.ReviewedBlockTitle", workflow=NOTEBOOK_WORKFLOW_SHIP)
 
-    class RecordInterface(BlockTitle.RecordInterface, ReviewedLine.RecordInterface):
+    class RecordInterface(LabelLine.RecordInterface, ReviewedLine.RecordInterface):
         pass
 
-    class Records(BlockTitle.Records, ReviewedLine.Records):
+    class Records(LabelLine.Records, ReviewedLine.Records):
         def record_example(self):
             return {**super().record_example(), "text": "Kernel.Writing"}
 
@@ -91,4 +92,4 @@ class ReviewedBlock(SupportedBlock):
                           name="Tarav.Notebook.ReviewedBlock", workflow=NOTEBOOK_WORKFLOW_SHIP)
 
 
-NOTEBOOK_EVIDENCE_TYPES = (NotebookLine, ReviewedLine, ReviewedBlockTitle, SupportedBlock, ReviewedBlock)
+NOTEBOOK_EVIDENCE_TYPES = (NotebookLine, ReviewedLine, ReviewedLabel, SupportedBlock, ReviewedBlock)

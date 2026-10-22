@@ -10,7 +10,7 @@ from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TaravType, TypeShip, 
 from tarav.l1.chatlas import references as chat_refs
 from tarav.l1.grounding import GroundingWorkflow, SubjectState, SupportSet, resolve_subject
 from tarav.l1.lines import Line
-from tarav.l1.notebook.evidence import NotebookLine, ReviewedBlockTitle, ReviewedLine
+from tarav.l1.notebook.evidence import NotebookLine, ReviewedLabel, ReviewedLine
 from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
 from tarav.l2.notebook_references import NotebookStateReference
 from tarav.l1.archive import Archive
@@ -98,8 +98,9 @@ class NotebookReviewFrame(VerbatimReview):
         states = [resolve_subject(state, records=records) for state in self.typed.after]
         if len({state.subject_ship for state in states}) != len(states):
             raise ValueError("A review target set cannot repeat a Ship")
-        if states[0].subject_type != entity(ReviewedBlockTitle).id:
-            raise ValueError("Review.Frame needs a reviewed BlockTitle first")
+        if states[0].subject_type != entity(ReviewedLabel).id:
+            raise ValueError("Review.Frame needs a reviewed LabelLine first")
+        # tarav.breadcrumb 8b37909cd407
         members = [{"ship": str(s.subject_ship), "type": str(s.subject_type),
                     "text": s.payload["text"]} for s in states]
         for state in states:

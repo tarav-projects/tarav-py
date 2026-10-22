@@ -13,7 +13,7 @@ from tarav.l1.lines import Block
 from tarav.l1.notebook import Notebook
 from tarav.l2.notebook_references import NotebookStateReference
 from tarav.l1.notebook.evidence import (
-    NotebookLine, ReviewedBlockTitle, ReviewedLine, ReviewedBlock, SupportedBlock,
+    NotebookLine, ReviewedLabel, ReviewedLine, ReviewedBlock, SupportedBlock,
 )
 from tarav.l1.review import VerbatimReview
 from tarav.l3.runtime import create_runtime
@@ -268,7 +268,7 @@ def frame_setup(tmp_path):
     capture, parent = capture_setup(tmp_path)
     block = Block(id=ship(), parent=parent)
     parent.append(block)
-    title = ReviewedBlockTitle(id=ship(), text="Review.Frame", scope=block)
+    title = ReviewedLabel(id=ship(), text="Review.Frame", scope=block)
     line = ReviewedLine(id=ship(), text="Approval accepts the presented wording.", scope=block)
     block.append(title)
     block.append(line)
@@ -299,7 +299,8 @@ def test_markdown_review_frame_lands_exact_wording_and_retains_independent_suppo
         capture.attach_support(line, (SupportMember(root),), producer=proposal)
         assert capture.inspect(line)["support"] == ()
     loaded_title = capture.notebook.load(lines[0].id)
-    assert isinstance(loaded_title, ReviewedBlockTitle)
+    assert isinstance(loaded_title, ReviewedLabel)
+    # tarav.breadcrumb caef1918c520
     with pytest.raises(ValueError):
         loaded_title.text = "ordinary prose"
     block.append(NotebookLine(id=ship(), text="A changed authoring context.", scope=block))

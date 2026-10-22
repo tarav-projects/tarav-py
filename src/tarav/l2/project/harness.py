@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from uuid import uuid4
 
 from tarav.l0._core.persistence import atomic_write_json
+from tarav.l0.label_formats import Label
 from tarav.l0.project import initialize_project_layout, load_project_marker
 from tarav.l0.kernel import (
     TaravClass,
@@ -174,7 +175,15 @@ class ProjectHarness(TaravObject):
         if not harness.root.is_dir():
             raise ProjectHarnessError(f"Project root must be an existing directory: {harness.root}")
         project_type = f"{package}.project:{class_name}"
-        type_name = f"Project.{package}.{class_name}"
+        def label_word(identifier):
+            word = "".join(part[0].upper() + part[1:] for part in identifier.split("_") if part) or "Local"
+            return word if word[0].isalpha() else "N" + word
+
+        try:
+            type_name = str(Label(f"Project.{label_word(package)}.{label_word(class_name)}"))
+        except ValueError as exc:
+            raise ProjectHarnessError("Generated Type name must use supported Label syntax") from exc
+        # tarav.breadcrumb 2896e4237055
         type_ship = str(uuid4())
         if harness.marker.exists():
             marker = load_project_marker(harness.marker)

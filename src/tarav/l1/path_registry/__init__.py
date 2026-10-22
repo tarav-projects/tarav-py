@@ -6,6 +6,7 @@ from copy import deepcopy
 from uuid import uuid4, uuid5
 
 from pydantic import Field, JsonValue, field_validator
+from tarav.l0.label_formats import JSONPointerFormat
 
 from tarav.l0.kernel import (
     Ship, TaravClass, TaravEntity, TaravObject, TaravWorkflow, TypedState,
@@ -85,9 +86,8 @@ class PathEntry(TypedState, TaravEntity):
         @field_validator("path")
         @classmethod
         def valid_pointer(cls, value):
-            import re
-            if value is not None and (value != "" and not value.startswith("/") or
-                                      re.search(r"~(?![01])", value)):
+            # tarav.breadcrumb ff02d5f7d4f9
+            if value is not None and not JSONPointerFormat.matches(value):
                 raise ValueError("Path must be an RFC 6901 JSON Pointer")
             return value
 

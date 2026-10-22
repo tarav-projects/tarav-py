@@ -420,16 +420,25 @@ changing them. A Block's Lines confer its meaning; the base has no topic field.
 `tarav.l1.lines.Line` has text and one authoring Block, whose ancestry supplies
 its interpretive context. Membership does not change a Line's scope. Its Record
 retains the scope Ship; explicit binding resolves that edge without changing it.
-`BlockTitle` is a Line subtype for citable dotted labels such as `Kernel.Writing`.
-It validates at least two capitalized alphanumeric segments on creation, editing,
-and Record loading. Titles live in `contents`; dots do not declare ancestry.
-`ReviewedBlockTitle` composes dotted syntax with Notebook support and review.
+`l0.label_formats.Label` accepts the union of declared formats: citable dotted
+labels such as `Kernel.Writing`, and RFC 6901 JSON Pointers such as
+`/properties/text` (including the empty root). Format rules are shared by Type
+names, `LabelLine` wording and PathRegistry pointer validation. Label subclasses
+can restrict their format tuple. Label is an immutable value, not an identity.
+`l1.label_formats.LabelFormatsWorkflow` owns this vocabulary; it depends on
+Kernel while the l0 value module does not, avoiding a reverse import.
+`LabelLine` validates on construction, editing and Record loading. Labels live
+in `contents`; dots and slashes do not declare Block ancestry. `ReviewedLabel`
+composes label syntax with Notebook support and review. Existing Type Ships and
+wire Record names are preserved so Git-pinned evidence remains readable; the
+old BlockTitle Python API is removed.
 For adding a Block, `l2.notebook_capture.NotebookReviewFrame` binds an approved
 Markdown frame (location, title, ordered bullets and token) to captured states.
 It reviews displayed wording and location; it does not claim the User saw hidden
 UUIDs or Types. The existing snapshot presentation remains a distinct contract.
 <!-- tarav.breadcrumb 9ef1979dfc58 -->
 <!-- tarav.breadcrumb 03c727288326 -->
+<!-- tarav.breadcrumb 5762ccad0b95 -->
 
 Archive exposes workflow membership through `ArchiveType` / `ArchiveObject`. Explorers are workflow
 Types without requiring the Object Record contract. Their roots may be owned

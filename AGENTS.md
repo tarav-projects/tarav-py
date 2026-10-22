@@ -87,6 +87,11 @@ abd0372d = claude-code:d82f1801-d3f2-4deb-9c95-297028a54b7a @abd0372dd06ffeef10c
 
 ## Project model
 
+- `tarav.l0.label_formats.Label` validates shared dotted or JSON Pointer
+  syntax. `LabelLine` carries it in Lines; `ReviewedLabel` adds Notebook
+  support/review. Type names also use Label; PathRegistry selects the
+  JSONPointerFormat rule. Values do not supply semantic identity.
+
 - `project.types.all()` enumerates registered TaravObject classes owned by
   the Project's defining source paths; override `Project.Types` for other
   membership rules. Dispatch remains `project.records.types`.

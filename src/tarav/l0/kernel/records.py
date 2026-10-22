@@ -9,7 +9,8 @@ from pathlib import Path
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, BinaryIO, ClassVar, Self, TextIO, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from tarav.l0.label_formats import Label
 
 from .namespaces import NamespaceBase, check_namespace_composition
 from .identity import (
@@ -453,7 +454,8 @@ class TaravClass(TaravEntity):
     class RecordInterface(TaravEntity.RecordInterface):
         id: TypeShip
         python_class: str
-        name: str
+        name: Label = Field(min_length=1)
+        # tarav.breadcrumb 7dbe069d5b37
         workflow: WorkflowShip
 
     def __init__(
@@ -476,7 +478,7 @@ class TaravClass(TaravEntity):
         super().__init__(id)
         self._target = target
         self._python_class = f"{target.__module__}.{target.__qualname__}"
-        self._name = name
+        self._name = Label(name)
         self._workflow = selected_workflow
 
     @classmethod
@@ -512,7 +514,7 @@ class TaravClass(TaravEntity):
         return identity
 
     @property
-    def name(self) -> str:
+    def name(self) -> Label:
         return self._name
 
     @property
@@ -652,6 +654,8 @@ def _json_object(value: object) -> dict[str, object]:
         raise InvalidRecordJSON("Tarav JSON root must be an object")
 
     def copy_json(item):
+        if isinstance(item, Label):
+            return str(item)
         if item is None or type(item) in (str, bool, int):
             return item
         if type(item) is float and math.isfinite(item):

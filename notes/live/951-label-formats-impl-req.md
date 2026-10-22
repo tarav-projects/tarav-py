@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: ready. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
+Status: implemented; closure in progress. Knowledge.Surface: wiki. Alignment.Mode: Interactive.
 
 Create the LabelFormats Workflow and a shared Label value accepting the current
 dotted Block format and RFC 6901 JSON Pointers. Replace the BlockTitle Python
@@ -20,9 +20,9 @@ The User selected Label as the shared abstraction. It accepts any supported
 format; later specializations may restrict formats. Initial formats are citable
 dotted words and paths. The User requested LabelFormats and updating all
 consumers through Develop.
-<!-- tarav.context 0f5bad01:894fe2cbf2c3c3b5 -->
-<!-- tarav.context 0f5bad01:67e0fcc7bda286d7 -->
-<!-- tarav.context 0f5bad01:825b33d4f96b76f2 -->
+<!-- tarav.breadcrumb 71f8d1ea2295 -->
+<!-- tarav.breadcrumb 9bf9928bdc58 -->
+<!-- tarav.breadcrumb 1296bf2be560 -->
 
 Data shape first: Label is an immutable string value with construction and
 Pydantic validation/JSON Schema. Format implementations own their matching
@@ -32,8 +32,8 @@ root and slash-prefixed tokens with only ~0/~1 escapes, without normalization.
 Consumers can select a format explicitly (PathEntry requires JSON Pointer),
 while later Label subclasses can narrow the supported format tuple.
 
-The dependency-clean value belongs to l0.label_formats. Its Workflow module
-depends on Kernel, while Kernel imports only the value module; no upward import
+The dependency-clean value belongs to l0.label_formats. Its identified Workflow
+belongs to l1.label_formats and depends on Kernel, while Kernel imports only the value module; no upward import
 or new runtime callback is required. Runtime registers the identified Workflow.
 Label is a value primitive like Ship, not a Line or an independently stored
 Entity. LabelLine is its Lines consumer, retaining normal authoring context;
@@ -60,11 +60,11 @@ Extension adoption is request 016 in that repository; execute after Python.
 
 ## Execution.Plan
 
-- [ ] Feature/refactor: implement Label/format rules, Workflow, Pydantic contract
+- [x] Feature/refactor: implement Label/format rules, Workflow, Pydantic contract
   and consumers. Verify dotted and pointer construction/edit/load/schema, Type
   names, restricted Label subtype, stable Notebook review state, path checks and
   architecture. Run focused tests, Ruff and full Project status.
-- [ ] Consumer adoption: execute extension request 016, test actual Python
+- [x] Consumer adoption: execute extension request 016, test actual Python
   reader and Node surface, package/install under its project guidance.
 - [ ] Capture/closure: source Breadcrumbs, API and architecture guidance, scoped
   Wiki capture, evidence audits and commits. Keep known unrelated findings clear.
@@ -75,3 +75,31 @@ Extension adoption is request 016 in that repository; execute after Python.
   extension title selection. Existing path/Notebook tests provide baseline.
 - Exact session refreshed once; supporting User Turns resolved. Plan above is
   the todo list. Concurrent Product Review request 949 remains separate.
+- Start checkpoints: Python `996d19d76d53b922a97b8c8a005310b1e46144ff`,
+  Markdown `d40407427f7c968421ce3eb5b38e0b71f2166fd5`, extension
+  `b258a2eacae20a03065c0c0eb4bfb0db5f89a47a`. Cold-read request before edits.
+- Focused values/Notebook/path/Record tests passed 62 cases. Initial failures
+  exposed Label subclasses at the strict JSON boundary; explicitly project
+  Labels to plain strings without accepting arbitrary non-JSON objects.
+- Evidence/architecture run: 81 passed, three architecture failures from the
+  initial Workflow/value aggregate dependency. Moved identified Workflow to l1
+  and retained dependency-free values at l0; corrected architecture rerun passed
+  all 56 tests. No higher-layer Kernel dependency or runtime callback added.
+- Both live reviewed title Lines load as ReviewedLabel with zero support/review
+  problems. Type Ships and wire names preserve exact historical reconstruction.
+- Full status (87 completed checks, none incomplete) reported four test failures:
+  the three earlier architecture failures and generated System Project Type
+  naming. A targeted run reproduced the latter: scaffold embedded a raw Python
+  package slug in a semantic label. Update that producer to capitalized dotted
+  words, keeping Python identifiers unchanged. Adopt the corrected label in this
+  machine's System Project too (separate request there). Do not expand Label to
+  accept arbitrary slugs merely to conceal the generator mismatch.
+- The generator/system/tree rerun passed 13 tests. Final focused values run
+  passed 62; corrected architecture passed 56; all 28 Notebook evidence tests in
+  the original 84-test run passed. Ruff passed. Full status was run before these
+  last fixes; its four failures were resolved by the targeted reruns, not a new
+  full-run claim.
+- Extension tests: 8 Python tests passed, including pointer-title search through
+  the actual worker; Node: 29 passed, three browser-only skips. Version 0.1.25
+  packaged and installed successfully. Earlier fixture assertions were updated
+  to account for the newly added pointer title (117 records and nonempty Model).

@@ -110,7 +110,8 @@ def test_init_creates_the_system_project_once(tmp_path: Path, monkeypatch) -> No
 
     root = tmp_path / "tarav" / "system"
     record = json.loads((root / ".tarav/project.json").read_text())
-    assert record["type"]["label"] == "Project.tarav_system_harness.SystemProject"
+    assert record["type"]["label"] == "Project.TaravSystemHarness.SystemProject"
+    # tarav.breadcrumb 191fc7a07dbe
     assert record["harness"] == {"environment": ".tarav/env",
                                  "type": "tarav_system_harness.project:SystemProject"}
     assert record["active"] == []
