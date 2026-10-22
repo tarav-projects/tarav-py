@@ -282,6 +282,8 @@ class CommitEvidenceRegistrationIncomplete(BreadcrumbAuditPOI):
 
 
 class ExternalAnchorMissing(BreadcrumbAuditPOI):
+    """The external fragment or file is missing; its Breadcrumb remains registered."""
+
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls, id=TypeShip('b8bdbf48-aa7a-4a0f-bccb-3898da083220'),
@@ -290,6 +292,8 @@ class ExternalAnchorMissing(BreadcrumbAuditPOI):
 
 
 class ExternalAnchorAmbiguous(BreadcrumbAuditPOI):
+    """The external fragment matches several lines and needs a maintainer's selection."""
+
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls, id=TypeShip('92bfa385-9392-4741-a399-1deee2dc28a3'),
