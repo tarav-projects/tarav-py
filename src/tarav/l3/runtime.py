@@ -288,6 +288,7 @@ def create_runtime(
     from tarav.l1.chatlas.search import ChatlasSearchEngine
     # tarav.breadcrumb 3c23fe71552d
     from tarav.l1.lines import Block, BlockTitle, Line, LinesWorkflow
+    from tarav.l2.notebook_capture import NotebookReviewFrame
     # tarav.breadcrumb f98e9b92d186
     from tarav.l1.notebook import Notebook, NotebookWorkflow
     # tarav.breadcrumb 156f7aa109f6
@@ -411,6 +412,7 @@ def create_runtime(
                 TaravClass,
                 Block,
                 BlockTitle,
+                NotebookReviewFrame,
                 Line,
                 Notebook,
                 *NOTEBOOK_BLOCK_TYPES,

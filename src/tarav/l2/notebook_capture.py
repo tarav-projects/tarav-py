@@ -4,11 +4,13 @@ from dataclasses import dataclass
 import re
 from uuid import uuid4
 
-from tarav.l0.kernel import Ship, TaravClass, TaravType, TypeShip, entity
+from pydantic import Field, model_validator
+
+from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TaravType, TypeShip, entity
 from tarav.l1.chatlas import references as chat_refs
 from tarav.l1.grounding import GroundingWorkflow, SubjectState, SupportSet
 from tarav.l1.lines import Line
-from tarav.l1.notebook.evidence import NotebookLine, ReviewedLine
+from tarav.l1.notebook.evidence import NotebookLine, ReviewedBlockTitle, ReviewedLine
 from tarav.l1.notebook.workflow import NOTEBOOK_WORKFLOW_SHIP
 from tarav.l1.records.registry import RecordRegistry
 from tarav.l1.references import Reference
@@ -48,6 +50,73 @@ def requirements(line):
 
 def _plain_text(text):
     return " ".join(text.split())
+
+
+class NotebookReviewFrame(VerbatimReview):
+    """Approval of an added Block's Markdown wording at a named destination.
+
+    This frame reviews the displayed location, title and ordered Lines, not
+    undisplayed UUIDs or Types. State snapshots bind that wording to the captured
+    authoring context; subsequent changes still make its evidence stale.
+    """
+
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip("9d40a74a-e93e-4bab-93cf-ae43fbb2b232"),
+                          name="Tarav.Notebook.ReviewFrame", workflow=NOTEBOOK_WORKFLOW_SHIP)
+
+    class RecordInterface(VerbatimReview.RecordInterface):
+        block_ship: Ship
+        location: str = Field(min_length=1, pattern=r"^[^\r\n]+$")
+
+        @model_validator(mode="after")
+        def complete_added_block(self):
+            if self.operation != "add" or self.before:
+                raise ValueError("Notebook Review.Frame currently describes added Blocks only")
+            if self.after[0].subject_type != entity(ReviewedBlockTitle).id:
+                raise ValueError("Review.Frame needs a reviewed BlockTitle first")
+            members = [{"ship": str(s.subject_ship), "type": str(s.subject_type),
+                        "text": s.payload["text"]} for s in self.after]
+            for state in self.after:
+                context = state.payload.get("context", [])
+                if (len(context) < 2 or context[-1]["ship"] != str(self.block_ship)
+                        or context[-2]["ship"] != str(self.destination)):
+                    raise ValueError("Review.Frame Block must be directly inside its destination")
+                expected = [m for m in members if m["ship"] != str(state.subject_ship)]
+                if context[-1]["lines"] != expected:
+                    raise ValueError("Review.Frame must present all Block Lines in order")
+            return self
+
+    def __init__(self, *, id, destination, block_ship, location, after, token, proposal, approval):
+        TaravEntity.__init__(self, id)
+        self.typed = self.records.parse_record({
+            "type": entity(type(self)).name, "id": str(id), "destination": str(destination),
+            "operation": "add", "before": [],
+            "after": [state.records.to_record() for state in after], "token": token,
+            "proposal": proposal.records.to_record(), "approval": approval.records.to_record(),
+            "block_ship": str(block_ship), "location": location,
+        })
+
+    def presentation(self):
+        states = self.typed.after
+        return (f"**Add to:** {self.typed.location}\n\n## {states[0].payload['text']}\n\n"
+                + "\n".join(f"- {state.payload['text']}" for state in states[1:]))
+
+    def ships(self):
+        return (*super().ships(), self.typed.block_ship)
+
+    class Records(VerbatimReview.Records):
+        def record_example(self):
+            from tarav.l1.lines import Block
+
+            parent = Block(id=Ship("6a51f247-3857-4205-bf48-12b44bb1648b"))
+            block = Block(id=Ship("9ce303eb-06ed-4a3c-9881-c3de7aa615a5"), parent=parent)
+            title = ReviewedBlockTitle(id=Ship("ba962e69-2835-436f-b5c4-3e77105b6d79"),
+                                       text="Kernel.Writing", scope=block)
+            block.append(title)
+            return {**super().record_example(), "operation": "add", "before": [],
+                    "after": [line_state(title).records.to_record()],
+                    "block_ship": str(block.id), "location": "Example Project → Discussion."}
 
 
 # tarav.breadcrumb 23612b68dfdc
@@ -103,16 +172,25 @@ class NotebookCapture(TaravType):
         return support
 
     def record_review(self, lines, *, destination, proposal, approval, token,
-                      operation="review", before=()):
+                      operation="review", before=(), frame_location=None):
         """Retain even failed review evidence; completion is a separate checked result."""
         lines = tuple(lines)
         for line in lines:
             self._current(line)
-        review = VerbatimReview(
-            id=Ship(uuid4()), destination=destination.id, operation=operation,
-            before=before, after=[line_state(line) for line in lines],
-            proposal=proposal, approval=approval, token=token,
-        )
+        if frame_location is not None:
+            if operation != "add" or before or not lines:
+                raise ValueError("Review.Frame requires an added Block")
+            review = NotebookReviewFrame(
+                id=Ship(uuid4()), destination=destination.id, block_ship=lines[0].scope_ship,
+                location=frame_location, after=[line_state(line) for line in lines],
+                proposal=proposal, approval=approval, token=token,
+            )
+        else:
+            review = VerbatimReview(
+                id=Ship(uuid4()), destination=destination.id, operation=operation,
+                before=before, after=[line_state(line) for line in lines],
+                proposal=proposal, approval=approval, token=token,
+            )
         for state in (*review.typed.before, *review.typed.after):
             if str(destination.id) not in [item["ship"] for item in state.payload["context"]]:
                 raise ValueError("Review targets must be within the declared destination context")

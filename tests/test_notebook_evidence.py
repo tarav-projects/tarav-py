@@ -9,10 +9,12 @@ from tarav.l1.chatlas.references import ChatlasTurnReference
 from tarav.l1.grounding import SubjectState, SupportMember, SupportSet
 from tarav.l1.lines import Block
 from tarav.l1.notebook import Notebook
-from tarav.l1.notebook.evidence import NotebookLine, ReviewedLine, ReviewedBlock, SupportedBlock
+from tarav.l1.notebook.evidence import (
+    NotebookLine, ReviewedBlockTitle, ReviewedLine, ReviewedBlock, SupportedBlock,
+)
 from tarav.l1.review import VerbatimReview
 from tarav.l3.runtime import create_runtime
-from tarav.l2.notebook_capture import NotebookCapture, line_state
+from tarav.l2.notebook_capture import NotebookCapture, NotebookReviewFrame, line_state
 
 
 def ship():
@@ -252,3 +254,78 @@ def test_review_binds_context_as_presented_not_only_the_words(tmp_path, chat):
     assert capture.review_problems(review)[0].kind == "Invalid"
     with pytest.raises(ValueError, match="not complete"):
         capture.complete_review(review)
+
+
+def frame_setup(tmp_path):
+    capture, parent = capture_setup(tmp_path)
+    block = Block(id=ship(), parent=parent)
+    parent.append(block)
+    title = ReviewedBlockTitle(id=ship(), text="Review.Frame", scope=block)
+    line = ReviewedLine(id=ship(), text="Approval accepts the presented wording.", scope=block)
+    block.append(title)
+    block.append(line)
+    capture.notebook.save_tree(parent)
+    return capture, parent, block, (title, line)
+
+
+def test_markdown_review_frame_lands_exact_wording_and_retains_independent_support(tmp_path, chat):
+    add, _ = chat
+    capture, parent, block, lines = frame_setup(tmp_path)
+    root = add("user", "Use Review.Frame; approval accepts the presented wording.")
+    proposal = add("agent", "**Add to:** Example Project → Discussion.\n\n"
+                   "## Review.Frame\n\n- Approval accepts the presented wording.\n\n"
+                   "```text\n::approve review:frame\n```")
+    approval = add("user", "::approve review:frame")
+    review = capture.record_review(
+        lines, destination=parent, operation="add", frame_location="Example Project → Discussion.",
+        token="review:frame", proposal=proposal, approval=approval,
+    )
+    assert isinstance(review, NotebookReviewFrame)
+    assert capture.complete_review(review).id == review.id
+    restored = capture.reviews.load(str(review.id))
+    assert type(restored) is NotebookReviewFrame
+    assert restored.presentation() == review.presentation()
+    for line in lines:
+        assert capture.inspect(line)["review"] == ()
+        assert capture.inspect(line)["support"][0].kind == "Missing"
+        capture.attach_support(line, (SupportMember(root),), producer=proposal)
+        assert capture.inspect(line)["support"] == ()
+    loaded_title = capture.notebook.load(lines[0].id)
+    assert isinstance(loaded_title, ReviewedBlockTitle)
+    with pytest.raises(ValueError):
+        loaded_title.text = "ordinary prose"
+    block.append(NotebookLine(id=ship(), text="A changed authoring context.", scope=block))
+    capture.notebook.save_tree(block)
+    assert capture.inspect(lines[1])["review"][0].kind == "Stale"
+
+
+@pytest.mark.parametrize("problem", ["wording", "location", "token", "role", "order"])
+def test_markdown_review_frame_does_not_accept_other_content_or_approval(tmp_path, chat, problem):
+    add, _ = chat
+    capture, parent, _, lines = frame_setup(tmp_path)
+    text = "**Add to:** Example.\n\n## Review.Frame\n\n- Approval accepts the presented wording."
+    if problem == "wording":
+        text = text.replace("accepts", "rejects")
+    if problem == "location":
+        text = text.replace("Example.", "Another.")
+    early = add("user", "::approve review:frame") if problem == "order" else None
+    proposal = add("user" if problem == "role" else "agent", text + "\n::approve review:frame")
+    approval = early or add("user", "::approve wrong" if problem == "token" else "::approve review:frame")
+    review = capture.record_review(
+        lines, destination=parent, operation="add", frame_location="Example.",
+        token="review:frame", proposal=proposal, approval=approval,
+    )
+    assert capture.review_problems(review)[0].kind == "Invalid"
+
+
+def test_markdown_review_frame_rejects_hidden_or_reordered_lines_and_wrong_destination(tmp_path, chat):
+    add, _ = chat
+    capture, parent, block, lines = frame_setup(tmp_path)
+    proposal, approval = add("agent", "Pending proposal"), add("user", "::approve review:frame")
+    for states, destination in ((lines[:1], parent), (tuple(reversed(lines)), parent), (lines, block)):
+        with pytest.raises(ValueError):
+            NotebookReviewFrame(
+                id=ship(), destination=destination.id, block_ship=block.id, location="Example.",
+                after=[line_state(line) for line in states], token="review:frame",
+                proposal=proposal, approval=approval,
+            )

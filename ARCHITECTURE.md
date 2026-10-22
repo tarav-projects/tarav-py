@@ -397,6 +397,11 @@ retains the scope Ship; explicit binding resolves that edge without changing it.
 `BlockTitle` is a Line subtype for citable dotted labels such as `Kernel.Writing`.
 It validates at least two capitalized alphanumeric segments on creation, editing,
 and Record loading. Titles live in `contents`; dots do not declare ancestry.
+`ReviewedBlockTitle` composes dotted syntax with Notebook support and review.
+For adding a Block, `l2.notebook_capture.NotebookReviewFrame` binds an approved
+Markdown frame (location, title, ordered bullets and token) to captured states.
+It reviews displayed wording and location; it does not claim the User saw hidden
+UUIDs or Types. The existing snapshot presentation remains a distinct contract.
 <!-- tarav.breadcrumb 9ef1979dfc58 -->
 <!-- tarav.breadcrumb 03c727288326 -->
 
