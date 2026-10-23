@@ -49,6 +49,11 @@ Optional JSON controls are `chunk_chars` (800), `chunk_overlap` (80),
 longer while Typesense downloads its embedding model; increase timeout in that
 machine's configuration if necessary.
 
+Search requests cap the socket wait at 15 seconds, even when imports have a
+longer timeout, and report timeouts explicitly. This bounds a silent wait for
+a stalled engine; it is not an absolute wall-clock deadline for streamed data.
+<!-- tarav.breadcrumb 4b8b16802143 -->
+
 The environment can supply `TARAV_TYPESENSE_URL`, `TARAV_TYPESENSE_API_KEY_FILE`
 or `TARAV_TYPESENSE_API_KEY`. Keep keys in private files or the environment,
 never command arguments, public repositories or CLI routing rules. Configuration
@@ -92,6 +97,10 @@ by their stored Event time, with relevance breaking ties. The default remains
 relevance. Unknown dates are omitted rather than fabricated; undated records
 cannot establish an earliest conversation. Semantic retrieval is approximate,
 so an oldest-first result is not a proof of exhaustive historical coverage.
+Search disables the optional curation stage: this adapter uses ordinary hybrid
+ranking, and Typesense 30.2's default curation path has a reported recursive-lock
+deadlock during concurrent search and document updates (upstream PR #3087).
+<!-- tarav.breadcrumb 0201d4829562 -->
 <!-- tarav.breadcrumb 7f8dc6c3030e -->
 For exact Turn expansion, use the returned provider, session ID and Turn hash:
 

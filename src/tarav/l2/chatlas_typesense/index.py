@@ -210,14 +210,19 @@ class TypesenseIndex:
                 filters.append(f"started_at:>={_timestamp(since)}")
             except ValueError as exc:
                 raise TypesenseError("since must be an ISO date or timestamp") from exc
+        # tarav.breadcrumb 0cb355e141e9
         params = {
             "q": query, "query_by": "text,embedding", "per_page": limit,
             "filter_by": " && ".join(filters), "exclude_fields": "embedding",
+            # No curated ranking is used here. v30.2's default curation path
+            # can deadlock behind concurrent writes (upstream PR #3087).
+            "enable_curations": "false",
         }
         # tarav.breadcrumb aaabc630ff06
         if order != "relevance":
             direction = "asc" if order == "oldest" else "desc"
             params["sort_by"] = f"started_at:{direction},_text_match:desc"
-        result = self.client.request("GET", self.client.collection_path + "/documents/search", params=params)
+        result = self.client.request("GET", self.client.collection_path + "/documents/search",
+                                     params=params, timeout=15)
         return {"found": result["found"], "search_time_ms": result.get("search_time_ms"),
                 "hits": [hit["document"] for hit in result["hits"]]}

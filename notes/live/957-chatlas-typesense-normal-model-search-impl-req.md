@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: awaiting operator deployment; live POC open. Develop / Wiki / Autonomous.
+Knowledge.Surface: wiki. Status: deployed; concurrent search/import stall reproduced, repair in progress. Develop / Wiki / Autonomous.
 Implement a thin Typesense consumer in Tarav, publish Tarav to its existing
 GitHub remote, and prepare deployment to the Studio. Install Typesense only on
 the Studio, never on the control Mac. The accepted initial data is conversation
@@ -115,6 +115,14 @@ pass. Product, request and Wiki Breadcrumb submission/audit are pending.
 
 ## Execution.Plan
 
+- [ ] Search stall bug fix: reproduce the User's exact query with bounded direct
+  API reads, bypass unused curations through the documented API flag to avoid
+  the matching v30.2 recursive-lock path, and cap search socket waits at 15s
+  independently of the import timeout. Prove stalled-CLI failure and request
+  semantics locally, publish the change, then operator deploy/restart and verify
+  real search during ingestion. The existing server must be recovered first.
+<!-- tarav.breadcrumb 8bce7330f6f9 -->
+
 - [ ] Live POC (required): after operator service/client apply, enable the
   separately configured CLI route, finish Normal Model-only ingestion, run
   oldest-first searches for Kernel.Writing and spelling variants, resolve exact
@@ -137,7 +145,7 @@ pass. Product, request and Wiki Breadcrumb submission/audit are pending.
   Product.Surfaces and Wiki capture, evidence commits. Test live search after the
   operator applies deployment; otherwise report it as pending, not passed.
 - [x] Publish source and captured design to the existing GitHub main branches.
-- [ ] Operator apply: service check/apply, then the personal client check/apply
+- [x] Operator apply: service check/apply, then the personal client check/apply
   including the explicit Normal Model-only transfer. Read retained Ansible logs
   before declaring the service installed or enabling the route.
 
@@ -220,3 +228,64 @@ pass. Product, request and Wiki Breadcrumb submission/audit are pending.
   the deployment guide. The live POC checkbox intentionally remains unchecked;
   no service install, full ingestion, route activation or live retrieval result
   has been claimed. Typesense was not installed on the control Mac.
+- Operator service check/apply and personal client check/apply subsequently
+  succeeded (retained Ansible logs 20261023-123623, 124056, 130309 and 130535).
+  Tarav revision a1bad45d is installed remotely; the copied Normal Model root has
+  10,169 directories. Live initial status reported 21 documents/one checkpoint.
+- Enabled the independent global Typesense CLI route; routed status displayed
+  its full SSH invocation and passed. Started full sync with tee output retained
+  at /tmp/chatlas-typesense-sync.log. It reached 114 checkpointed sessions before
+  imports, collection reads and the oldest-first POC search stopped responding.
+  Health/debug/metrics still respond; Typesense 30.2 logs show a stuck request,
+  a queued write and one inflight search. Similar upstream issue #3032 is a
+  diagnostic lead, not an established cause. No live relevance result is claimed.
+- Prepared an explicit Typesense-only recovery restart through its Ansible
+  playbook (typesense_restart=true); the operator still owns the check/apply.
+  Local stalled SSH clients were cancelled; remote requests may outlive them
+  until timeout. Full ingestion and exact-source POC verification remain open.
+- Operator restart apply 20261023-140317 failed: bootstrap raced the old job's
+  removal (code 5). Read-only diagnostics now show no Typesense job/process.
+  The Ansible handler now unloads conditionally and retries bootstrap for a
+  bounded interval. Recovery apply and actual search remain pending.
+- Restart apply 20261023-141548 succeeded. Collection GET/list now returns
+  absent, while seed sync creation returns HTTP 409. Source Normal Models remain
+  present. The only snapshot entry is temp; Typesense 30.2 treats any entry as
+  a snapshot and skips initial collection loading, matching the startup log.
+  Prepared operator-run snapshot recovery preserving db/meta and the incomplete
+  snapshot while retaining the Raft log for native replay. This startup failure
+  and the original ingestion/search stall still require separate verification.
+- Snapshot recovery check 20261023-151134 and apply 20261023-151706 passed.
+  Collection GET now returns 4,180 documents; keyword search succeeded in 7 ms.
+  Separate direct live hybrid probes succeeded for relevance and oldest sorting
+  in 15 ms and 6 ms. Routed full sync resumed, retaining progress in
+  /tmp/chatlas-typesense-sync-recovered-20261023.log. No concurrent search will
+  be added during this run; original stall cause and full POC remain open.
+- User testing reproduced the stall with the exact natural-language query plus
+  side=user. Sync had reached 9,350 sessions and 257,647 documents in this run.
+  Engine logs show inflight searches and a queued write with frozen sequence;
+  a direct local API request times out after 5 seconds while health takes 10 ms.
+  This excludes SSH routing as the immediate cause. Upstream PR #3087 describes
+  a v30.2 recursive shared-mutex deadlock during concurrent search/delete that
+  closely matches our consumer's workload. Source review confirms the nested
+  lock is conditional on enable_curations=true, enabled by default even without
+  configured rules. The consumer needs no curated ranking; request false.
+- Boundary discipline: the deployed 600s import timeout also applied to searches,
+  hiding this failure for ten minutes. Add a short search-specific ceiling and
+  an explicit timeout diagnostic; preserve the import allowance. The parameter
+  bypass is a supported consumer setting, not a patched Typesense build. Its
+  live effectiveness remains unverified until operator recovery/deployment.
+- Concurrent external edits are present in the shared Python worktree (test
+  restructuring and hooks). Preserve them; use a separate regression test file
+  and leave their test_typesense.py changes intact.
+- Regression checks failed before the fix: the curation parameter was absent,
+  and the real CLI against a stalled HTTP fixture exceeded a 25s outer timeout.
+  After the fix both dedicated tests passed in 19.14s. Shared focused testing
+  passed seven checks but an existing 401-error CLI case printed its expected
+  error and then failed to exit within 20s; this is not a green broader run.
+  A detached verification/publication checkout at the deployed a1bad45d revision
+  is checking only this repair independently of concurrent uncommitted changes.
+- Isolated verification against the deployed a1bad45d baseline passed all 36
+  adapter/routing tests in 65.30s with this repair overlaid. Ruff and whitespace
+  checks passed. The dedicated regression pair also passes on the shared tree.
+  Typesense is not installed locally. Remote recovery and the exact live User
+  query still await operator client deployment and service restart.

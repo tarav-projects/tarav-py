@@ -2,7 +2,7 @@
 
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import Thread
+from threading import Event, Thread
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -11,7 +11,8 @@ import pytest
 @pytest.fixture
 def engine():
     state = {"schema": None, "documents": {}, "imports": [], "deletes": [],
-             "searches": [], "reject": False, "key": "private-test-credential"}
+             "searches": [], "reject": False, "key": "private-test-credential",
+             "stall_search": False, "search_release": Event()}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -31,6 +32,9 @@ def engine():
             if path.path.endswith("/documents/search"):
                 params = parse_qs(path.query)
                 state["searches"].append(params)
+                if state["stall_search"]:
+                    state["search_release"].wait(30)
+                    return
                 docs = list(state["documents"].values())
                 return self.send({"found": len(docs), "search_time_ms": 2,
                                   "hits": [{"document": d} for d in docs]})
@@ -72,6 +76,7 @@ def engine():
     try:
         yield state
     finally:
+        state["search_release"].set()
         server.shutdown()
         server.server_close()
         thread.join()

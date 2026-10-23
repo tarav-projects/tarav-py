@@ -89,7 +89,9 @@ class TypesenseClient:
     def __init__(self, config: TypesenseConfig):
         self.config = config
 
-    def request(self, method: str, path: str, *, params=None, payload=None, raw=False, missing=False):
+    # tarav.breadcrumb 4ca7f64ba8a4
+    def request(self, method: str, path: str, *, params=None, payload=None, raw=False, missing=False,
+                timeout: float | None = None):
         url = self.config.url.rstrip("/") + path
         if params:
             url += "?" + urlencode(params)
@@ -100,14 +102,17 @@ class TypesenseClient:
             "X-TYPESENSE-API-KEY": self.config.api_key,
             "Content-Type": "text/plain" if isinstance(payload, str) else "application/json",
         })
+        effective_timeout = self.config.timeout if timeout is None else min(timeout, self.config.timeout)
         try:
-            with urlopen(request, timeout=self.config.timeout) as response:
+            with urlopen(request, timeout=effective_timeout) as response:
                 text = response.read().decode("utf-8")
         except HTTPError as exc:
             if missing and exc.code == 404:
                 return None
             # Do not print server bodies or headers that may reflect credentials.
             raise TypesenseError(f"Typesense {method} {path} failed (HTTP {exc.code})") from exc
+        except TimeoutError as exc:
+            raise TypesenseError(f"Typesense {method} {path} timed out after {effective_timeout:g}s") from exc
         except (OSError, URLError, UnicodeError) as exc:
             raise TypesenseError(f"cannot reach Typesense for {method} {path}") from exc
         if raw:
