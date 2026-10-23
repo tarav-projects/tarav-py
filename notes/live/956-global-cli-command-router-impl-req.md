@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: executing. Develop / Wiki /
+Knowledge.Surface: wiki. Status: complete. Develop / Wiki /
 Interactive. Implement a global configuration mapping selected Tarav command
 paths to external invocations, forwarding remaining arguments. Always show the
 actual invocation before running it. The immediate use case is a future Chatlas
@@ -83,7 +83,7 @@ behavior, with no claim that the vector workflow is already implemented.
   commands, longest/exact-token matching, quoted/empty arguments, stdin/stdout/
   stderr, exit status, local fallback, invalid config and loop bypass. Check
   existing CLI/live-help/import tests and architecture; document actual config.
-- [ ] Documentation/capture: submit/audit all implemented Product.Surfaces,
+- [x] Documentation/capture: submit/audit all implemented Product.Surfaces,
   update architecture and default pytest discovery, reinstall the editable CLI,
   run focused checks and root Project status --all, then close Wiki capture and
   evidence commits. Use temporary fake SSH, not a live remote install.
@@ -121,3 +121,22 @@ profile design is an Interactive deviation checkpoint; do not expand scope.
   moved existing labels received refreshed positions, with no unresolved POIs.
   Wiki topical and daily capture submitted/audited with zero POIs. Full root
   Project status --all is running, with output retained under /tmp/cli-router-*.
+- After capture, all 17 router tests passed again (9.88 seconds), as did
+  whole-source Ruff and diff whitespace checks. Product slice commit 1faaccad;
+  its commit Breadcrumb audit has zero POIs. Wiki request checkpoint 07ee644e
+  and scoped Wiki capture commit 5bf22c01 also audit with zero POIs.
+- Product Breadcrumbs: routing.py 04f41c0839ac; l3/cli/cli.py 4b8f2a164a85;
+  l1/cli/__init__.py 722a5b634900; README.md 0b46ccd539e0 and 6aa6d3adff89;
+  test_routing.py fba9609aff40 and fb1acb351e97; test_architecture.py
+  50d67e02a9e4; ARCHITECTURE.md 1b93799797f0; pyproject.toml 0245b20c942b.
+  Request and Wiki surfaces retain their own resolved labels. No capture gap.
+- Full root `tarav status --project . --all --json` finished: all 1,350 checks
+  completed, including 69 pytest file checks with zero test POIs. No incomplete
+  checks or skipped suites. Exit 1 reports 67 existing maintenance findings
+  (Skillware freshness/blocks, pending markers elsewhere, review/test markers,
+  hooks and scans). It opened or reopened no actions. Report retained in
+  /tmp/cli-router-root-status.json. These findings are outside this request;
+  no unrelated repair was made.
+- Completion: installed router verified through real CLI and real SSH. Wiki
+  destinations cli-routing.md and daily/2026-10-23.md are committed and audited;
+  no production vector route, remote installation or data mutation was made.
