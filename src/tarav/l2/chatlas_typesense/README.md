@@ -63,6 +63,7 @@ tarav chatlas typesense sync
 tarav chatlas typesense search 'why did we add command routing?'
 tarav chatlas typesense search 'normal model' --side user --provider codex \
   --since 2026-10-01 --limit 5 --json
+tarav chatlas typesense search 'kernel writing' --side user --order oldest --limit 20 --json
 ```
 
 Status reports service health, collection existence/document count, source model
@@ -86,6 +87,12 @@ background workers; a caller may run it in its own terminal/job runner.
 
 Search delegates hybrid matching and ranking to Typesense. JSON hits contain
 the full source selector; text output shows the Message and available Turn hashes.
+`--order oldest` or `--order newest` asks the engine to sort matching passages
+by their stored Event time, with relevance breaking ties. The default remains
+relevance. Unknown dates are omitted rather than fabricated; undated records
+cannot establish an earliest conversation. Semantic retrieval is approximate,
+so an oldest-first result is not a proof of exhaustive historical coverage.
+<!-- tarav.breadcrumb 7f8dc6c3030e -->
 For exact Turn expansion, use the returned provider, session ID and Turn hash:
 
 ```sh

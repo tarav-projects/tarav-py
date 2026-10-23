@@ -37,7 +37,7 @@ extend-exclude = ["_DEPRECATED"]
 [tool.pytest.ini_options]
 # tarav.breadcrumb c7c6b1f3fb5a
 testpaths = [
-    # tarav.context 0d8af26c:adfc632a77cb3e9b
+    # tarav.breadcrumb e50909eae8f3
     "tests/chatlas_typesense",
     # tarav.breadcrumb 0245b20c942b
     "tests/cli/test_routing.py",

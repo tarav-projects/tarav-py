@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: designing. Develop / Wiki / Autonomous.
+Knowledge.Surface: wiki. Status: executing; deployment pending operator. Develop / Wiki / Autonomous.
 Implement a thin Typesense consumer in Tarav, publish Tarav to its existing
 GitHub remote, and prepare deployment to the Studio. Install Typesense only on
 the Studio, never on the control Mac. The accepted initial data is conversation
@@ -24,6 +24,26 @@ read raw transcripts or the Session Index, or trigger normalization as fallback.
 <!-- tarav.breadcrumb 1d44fb57dcaf -->
 
 ## Design
+
+### Live POC acceptance — required, not optional
+
+The User requires following the implementation through a real deployed test:
+find the first chats where Kernel.Writing was discussed. Completion requires
+the running Studio Typesense product to index the stored Normal Models, then
+return dated early conversations for `kernel writing` (including the historical
+`kernel writting` spelling). Verify their exact Message/Turn references against
+the Normal Model files and report earliest relevant sessions with quotations.
+Local fixture tests or a reference scan alone do not complete this POC.
+<!-- tarav.breadcrumb 6e88361e9a08 -->
+
+Add `search --order oldest|newest|relevance` to express this through the product
+API. Prepare a read-only literal reference set from existing Normal Model files
+to compare against live results. Review semantic relevance: the topic is the
+Kernel.Writing discipline, not operating-system kernels. Group repeated chunks
+into conversations before presenting the earliest results. Report missing dates,
+indexing errors and approximate-retrieval limits instead of claiming exhaustive
+historical coverage. The operator-run machine boundary still applies; remain
+pending until deployment and the real POC are verified.
 
 Inspected the canonical ChatlasNormalModel DirectoryRecord (`main.json`, events,
 messages and turns JSONL), its streaming readers and typed records, the CLI
@@ -95,7 +115,13 @@ pass. Product, request and Wiki Breadcrumb submission/audit are pending.
 
 ## Execution.Plan
 
-- [ ] Feature: machine-neutral HTTP adapter, Normal Model projection, resumable
+- [ ] Live POC (required): after operator service/client apply, enable the
+  separately configured CLI route, finish Normal Model-only ingestion, run
+  oldest-first searches for Kernel.Writing and spelling variants, resolve exact
+  returned source records, compare to the read-only reference set and report the
+  earliest verified conversations. Do not close this request at code publication.
+
+- [x] Feature: machine-neutral HTTP adapter, Normal Model projection, resumable
   sync, status/search commands and runtime registration. Prove actual CLI calls
   against an isolated HTTP contract server: exact references, long messages,
   metadata filters, row-level import failure, missing/corrupt sources, incremental
@@ -117,3 +143,52 @@ pass. Product, request and Wiki Breadcrumb submission/audit are pending.
   All three trees were clean. No subagent work requested or used.
 - Known deployment boundary and missing Normal Model data were reported in chat.
   CLI neutrality and Normal Model-only input are explicit subsequent User steering.
+- Request was cold-reloaded before source edits. Implemented the l2 consumer and
+  registrar injection with no lower-layer imports of the consumer. The adapter
+  contains no host/SSH logic and calls no provider/cache/normalization readers.
+- Initial real-CLI/HTTP contract suite: 15 tests passed in 13.75 seconds. Broader
+  integration, routing, usage, Chatlas and architecture verification: 103 passed
+  in 57.86 seconds. Whole-source Ruff passed; default collection is 666 tests.
+- Reinstalled Tarav with `uv tool install --reinstall --editable .`; no Typesense
+  executable, server or embedding model was installed on this Mac. Full root
+  Project status --all is running in /tmp/typesense-root-status.json.
+- Product Breadcrumb capture ran. The HTTP fixture helper has no directly
+  supported User anchor: submission reports no provisional markers; its audit
+  has zero labels/POIs. No invented support was added. Other changed surfaces
+  submit/audit with refreshed existing positions and no unresolved POIs.
+- Concurrent work: another workflow's start checkpoints 721cb46e (Python) and
+  d90be81 (Markdown) absorbed this workflow's files as pre-existing external work.
+  Preserve those commits and their work. Own later commits contain only this
+  request's remaining changes; no other workflow's design is implemented here.
+- Ops preparation: pinned native Typesense 30.2 ARM64 artifact from its official
+  formula, root-owned service configuration, private index/key and loopback-only
+  listener, separate personal GitHub client checkout and explicit Normal Model
+  transfer. Both owning state playbooks passed syntax checks through ./run.
+  YAML parsing and LaunchDaemon native plist validation passed. A first ad-hoc
+  validator hit this Mac's broken Homebrew XML module, then missing Jinja in a
+  different Python; used Ansible's actual interpreter to render and native plutil
+  to validate, without modifying unrelated Python installations.
+- Manual contract review found that stored Event times are opaque strings, and
+  ordinary Chatlas Query tolerates unparsable values. Added a regression first:
+  unknown-time session import failed with an ISO parse error. The consumer now
+  retains exact event references and text while omitting unavailable dates,
+  matching that boundary. Rechecked the regression and focused suite below.
+- Final isolated adapter suite passed 17 tests, including the timestamp regression
+  and oldest-first POC request. Full shared root status completed all 1,351 checks
+  with no incomplete suite, but reported 25 test failures while the concurrent
+  Program redesign removed states.py before updating its importers. Those are not
+  presented as a Typesense pass. An isolated detached worktree at 721cb46e with
+  only this workflow's fixes is running the full pytest suite independently;
+  /tmp/typesense-isolated-full-tests.log retains its output.
+- Read-only Normal Model inventory: 10,167 current-schema headers declare 220,029
+  Messages. The completed Git-only upload was checked separately: remote/local
+  HEAD 37dbfe86578f53313c6c72a5fb193f3363d50f35 matches, remote .git is 4.1 GiB,
+  and git fsck --connectivity-only --no-reflogs passed. No checkout or source
+  mutation was performed. Normal Models remain a separate explicit transfer.
+- Live POC reference preparation read only existing Normal Model files: 132
+  candidate models contain 540 literal Kernel.Writing/Writting message matches.
+  Exact coordinates and excerpts remain local in
+  /tmp/typesense-kernel-poc-reference.json, not in public source fixtures. Manual
+  neighboring-message review separates an earlier reading/writing interface from
+  the first clear proposal of the writing discipline. This is a reference scan,
+  not a claimed Typesense search result or completed POC.

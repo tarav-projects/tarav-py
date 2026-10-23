@@ -34,6 +34,8 @@ def register_typesense_commands(commands: argparse._SubParsersAction):
     search.add_argument("--provider", choices=("codex", "claude-code"))
     search.add_argument("--since", help="ISO date or timestamp, inclusive.")
     search.add_argument("--limit", type=int, default=10)
+    # tarav.breadcrumb e977b5808fad
+    search.add_argument("--order", choices=("relevance", "oldest", "newest"), default="relevance")
     for leaf in (status, sync, search):
         leaf.add_argument("--config", type=Path, help="Global Typesense client configuration file.")
         leaf.add_argument("--normal-model-root", type=Path, help="Root containing stored Model directories.")
@@ -60,7 +62,7 @@ def _run(args):
             code = 1 if result["errors"] else 0
         else:
             result = index.search(args.query, side=args.side, provider=args.provider,
-                                  since=args.since, limit=args.limit)
+                                  since=args.since, limit=args.limit, order=args.order)
             code = 0
     except TypesenseError as exc:
         raise CliError(str(exc)) from exc

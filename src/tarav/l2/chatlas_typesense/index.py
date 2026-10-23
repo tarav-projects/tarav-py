@@ -57,8 +57,13 @@ def project_model(directory: Path, config: TypesenseConfig, version: str) -> lis
     for name, rows in (("events", events), ("messages", messages), ("turns", turns)):
         if header["counts"][name] != len(rows):
             raise TypesenseError(f"Normal Model {name} count mismatch")
-    event_times = {(event["event_address"], event["event_hash"]): _timestamp(event["started_at"])
-                   for event in events}
+    event_times = {}
+    for event in events:
+        try:
+            stamp = _timestamp(event["started_at"])
+        except (ValueError, OverflowError, OSError):
+            stamp = None
+        event_times[event["event_address"], event["event_hash"]] = stamp
     message_keys = {(m["message_address"], m["message_hash"]) for m in messages}
     turn_refs: dict[tuple, list] = {}
     for turn in turns:
@@ -79,7 +84,8 @@ def project_model(directory: Path, config: TypesenseConfig, version: str) -> lis
             event = (ref["event_address"], ref["event_hash"])
             if event not in event_times:
                 raise TypesenseError("Chat.Message references an unavailable exact Event")
-            dates.append(event_times[event])
+            if event_times[event] is not None:
+                dates.append(event_times[event])
         text = message["text"]
         for number, start in enumerate(range(0, len(text), config.chunk_chars - config.chunk_overlap)):
             end = min(start + config.chunk_chars, len(text))
@@ -187,9 +193,11 @@ class TypesenseIndex:
             return report
 
     def search(self, query: str, *, side: str | None = None, provider: str | None = None,
-               since: str | None = None, limit: int = 10) -> dict:
+               since: str | None = None, limit: int = 10, order: str = "relevance") -> dict:
         if not query.strip() or not 1 <= limit <= 100:
             raise TypesenseError("search requires nonempty text and limit 1..100")
+        if order not in {"relevance", "oldest", "newest"}:
+            raise TypesenseError("order must be relevance, oldest or newest")
         filters = []
         for name, value, allowed in (("side", side, {"user", "agent"}),
                                      ("provider", provider, {"codex", "claude-code"})):
@@ -202,9 +210,14 @@ class TypesenseIndex:
                 filters.append(f"started_at:>={_timestamp(since)}")
             except ValueError as exc:
                 raise TypesenseError("since must be an ISO date or timestamp") from exc
-        result = self.client.request("GET", self.client.collection_path + "/documents/search", params={
+        params = {
             "q": query, "query_by": "text,embedding", "per_page": limit,
             "filter_by": " && ".join(filters), "exclude_fields": "embedding",
-        })
+        }
+        # tarav.breadcrumb aaabc630ff06
+        if order != "relevance":
+            direction = "asc" if order == "oldest" else "desc"
+            params["sort_by"] = f"started_at:{direction},_text_match:desc"
+        result = self.client.request("GET", self.client.collection_path + "/documents/search", params=params)
         return {"found": result["found"], "search_time_ms": result.get("search_time_ms"),
                 "hits": [hit["document"] for hit in result["hits"]]}

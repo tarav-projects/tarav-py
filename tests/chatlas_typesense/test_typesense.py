@@ -44,7 +44,7 @@ def cli(tmp_path, config, *arguments):
                           capture_output=True, text=True, env=env, timeout=20)
 
 
-# tarav.context 0d8af26c:b37c76d4f28cb300
+# tarav.breadcrumb a020997a77dc
 def test_cli_sync_search_and_exact_sources_with_no_raw_or_session_index(tmp_path, depot, engine):
     config, model, fixture = depot
     assert not (tmp_path / "ABSENT-raw.jsonl").exists()
@@ -75,6 +75,18 @@ def test_status_does_not_create_a_collection_or_checkpoint(tmp_path, depot, engi
     assert json.loads(result.stdout)["collection_exists"] is False
     assert engine["schema"] is None and engine["imports"] == []
     assert not (tmp_path / "home/cache/chatlas-typesense").exists()
+
+
+def test_unparseable_event_times_leave_date_absent_without_discarding_text(tmp_path, depot, engine):
+    config, model, _ = depot
+    events = [json.loads(line) for line in (model.directory / "events.jsonl").read_text().splitlines()]
+    for event in events:
+        event["started_at"] = "unknown"
+    (model.directory / "events.jsonl").write_text("\n".join(json.dumps(row) for row in events) + "\n")
+    report = TypesenseIndex(config, state_path=tmp_path / "state.json").sync()
+    assert report["errors"] == []
+    assert report["indexed_documents"] == 2
+    assert all("started_at" not in doc for doc in engine["documents"].values())
 
 
 def test_sync_skips_unchanged_and_reimports_a_recreated_collection(tmp_path, depot, engine):
@@ -161,10 +173,19 @@ def test_incompatible_existing_collection_is_not_modified(tmp_path, depot, engin
 def test_invalid_filter_and_limit_are_rejected_before_http(tmp_path, depot, engine):
     config, _, _ = depot
     index = TypesenseIndex(config)
-    for arguments in ({"limit": 0}, {"side": "user || true"}, {"since": "not-a-date"}):
+    for arguments in ({"limit": 0}, {"side": "user || true"}, {"since": "not-a-date"}, {"order": "sideways"}):
         with pytest.raises(TypesenseError):
             index.search("cache", **arguments)
     assert engine["searches"] == []
+
+
+# tarav.breadcrumb 0c8ee56c2889
+def test_oldest_search_requests_chronological_order_from_the_engine(tmp_path, depot, engine):
+    config, _, _ = depot
+    result = cli(tmp_path, config, "search", "kernel writing", "--side", "user", "--order", "oldest")
+    assert result.returncode == 0, result.stderr
+    assert engine["searches"][-1]["q"] == ["kernel writing"]
+    assert engine["searches"][-1]["sort_by"] == ["started_at:asc,_text_match:desc"]
 
 
 def test_endpoint_errors_never_reveal_the_key(tmp_path, depot):
