@@ -316,6 +316,13 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
 - `tarav.l1.cli` projects the built argparse tree as stable `Command` Entities
   and supplies command checks. These runtime-derived objects are resolved from
   the current parser tree, not loaded as standalone retained Records.
+  Its `routing` module reads global `cli-routes.json`, matches exact command
+  tokens and constructs target argv. The l3 CLI adapter dispatches routes before
+  local parser construction, announces the actual invocation on stderr, and
+  inherits streams and cwd. Optional shell-command serialization quotes one
+  argv string for consumers such as SSH; it does not introduce an SSH workflow
+  or local shell execution. See `src/tarav/l1/cli/README.md` for configuration.
+  <!-- tarav.breadcrumb 1b93799797f0 -->
   `tarav.l1.usage` retains bounded, workflow-attributed
   traces in typed Archive folders with workflow-owned daily files. Callers
   choose their trace payloads and a `UsageTrace` subtype whose owner renders

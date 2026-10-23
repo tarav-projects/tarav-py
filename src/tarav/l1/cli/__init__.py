@@ -24,7 +24,8 @@ _COMMAND_NAMESPACE = UUID("568520b3-d876-43cb-8bfd-6c2e4f13d5a0")
 
 # tarav.breadcrumb 4d74d3599852
 class CliWorkflow(TaravWorkflow):
-    constitution = "Expose the installed Tarav command tree as inspectable objects."
+    # tarav.breadcrumb 722a5b634900
+    constitution = "Expose the installed Tarav command tree and route configured invocations."
 
     @classmethod
     def class_entity(cls) -> TaravClass:

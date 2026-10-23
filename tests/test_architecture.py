@@ -12,6 +12,20 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+# tarav.breadcrumb 50d67e02a9e4
+def test_cli_routing_keeps_process_launch_in_the_cli_adapter():
+    from tarav.l1.cli.routing import CommandRoute, CommandRouter
+
+    router = CommandRouter((CommandRoute(("chatlas", "vector"), ("external",)),))
+    assert router.resolve(["chatlas", "vector", "two words"]) == ("external", "two words")
+    tree = ast.parse((PACKAGE_ROOT / "l1/cli/routing.py").read_text())
+    imports = {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+    imports |= {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import)
+                for alias in node.names}
+    assert "subprocess" not in imports
+    assert not any(name and name.startswith(("tarav.l2", "tarav.l3")) for name in imports)
+
+
 # tarav.breadcrumb 2fe441973842
 # tarav.breadcrumb 4665c18f8598
 def test_program_core_reuses_actions_and_keeps_project_integration_above_it():

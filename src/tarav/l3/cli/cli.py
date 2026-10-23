@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+import shlex
+import subprocess
 import sys
 from time import perf_counter
 from typing import Sequence
@@ -12,6 +15,7 @@ from tarav.l0._core.errors import CliError
 from tarav.l0._core.operational_logging import configure_operational_logging
 from tarav.l3.runtime import TaravRuntime, HookRegistrar, create_runtime
 from tarav.l1.cli import Command, CommandUse, CliWorkflow, commands_from_parser
+from tarav.l1.cli.routing import CommandRouter
 from tarav.l1.live_help import LiveHelpArgumentParser, render_live_help
 
 
@@ -57,16 +61,34 @@ def build_parser(
     return parser
 
 
+# tarav.breadcrumb 4b8f2a164a85
+def _run_route(argv: tuple[str, ...]) -> int:
+    print(f"Routed to: {shlex.join(argv)}", file=sys.stderr, flush=True)
+    try:
+        # A local Tarav target must not route itself again. SSH callers put the
+        # same env assignment in their remote shell_command explicitly.
+        result = subprocess.run(argv, env={**os.environ, "TARAV_CLI_NO_ROUTE": "1"}, check=False)
+    except OSError as exc:
+        raise CliError(f"cannot run routed command: {exc}") from exc
+    except KeyboardInterrupt:
+        return 130
+    return result.returncode if result.returncode >= 0 else 128 - result.returncode
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     configure_operational_logging()
-    runtime = create_runtime()
-    parser = build_parser(runtime=runtime)
     started = perf_counter()
     command: Command | None = None
     exit_code: int | None = None
     args: argparse.Namespace | None = None
     try:
         argv_list = list(argv) if argv is not None else sys.argv[1:]
+        if os.environ.get("TARAV_CLI_NO_ROUTE") != "1":
+            routed = CommandRouter.load().resolve(argv_list)
+            if routed is not None:
+                return _run_route(routed)
+        runtime = create_runtime()
+        parser = build_parser(runtime=runtime)
         args = parser.parse_args(argv_list)
         command = getattr(args, "_tarav_command", None)
         args._agentos_argv = argv_list
