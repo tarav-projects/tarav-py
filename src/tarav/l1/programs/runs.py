@@ -2,13 +2,23 @@
 
 from typing import Literal
 
-from pydantic import ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from tarav.l0.kernel import TaravClass, TaravEntity, TypedState, TypeShip, entity
+from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypedState, TypeShip, entity
 from tarav.l1.actions import ActionRun
 
-from .states import ProgramExecutionAction, State
+from .actions import ProgramExecutionAction
 from .workflow import PROGRAMS_WORKFLOW_SHIP
+
+
+# tarav.breadcrumb 562b5bedaa8b
+class ActiveAction(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    id: Ship
+    action: TypeShip
+    token: str = Field(min_length=1)
+    source: TypeShip | None = None
+    target: TypeShip | None = None
 
 
 class ProgramRun(TypedState, TaravEntity):
@@ -22,11 +32,8 @@ class ProgramRun(TypedState, TaravEntity):
         type: Literal["Tarav.Programs.Run"]
         program: TypeShip
         project: dict[str, JsonValue]
-        state: TypeShip
-        arrival: int = Field(ge=0)
-        token: str = Field(min_length=1)
+        active: list[ActiveAction]
         phase: Literal["running", "completed"]
-        pending: str | None
         data: dict[str, JsonValue]
         actions: list[dict]
         history: list[dict]
@@ -43,6 +50,5 @@ class ProgramRun(TypedState, TaravEntity):
             action.update(id=identity, action=str(entity(ProgramExecutionAction).name), project=owner)
             return {"type": str(entity(self._owner).name), "id": identity,
                     "program": str(entity(TaravProgram).id), "project": owner,
-                    "state": str(entity(State).id), "arrival": 0, "token": identity + ".example",
-                    "phase": "running", "pending": None, "data": {}, "actions": [action],
+                    "active": [], "phase": "completed", "data": {}, "actions": [action],
                     "history": [], "created_at": "2026-10-23T00:00:00Z", "updated_at": "2026-10-23T00:00:00Z"}

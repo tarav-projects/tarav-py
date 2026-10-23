@@ -1,4 +1,4 @@
-"""Checked, token-bound advancement over explicitly registered Program classes."""
+"""Checked movement between token-bound Action occurrences in a trusted graph."""
 
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -11,10 +11,11 @@ from filelock import FileLock
 from tarav.l0._core.git_repository import git_result
 from tarav.l0.kernel import Ship, entity
 from tarav.l1.actions import ActionRun, ActionRunStore, LOOP, close_run, register_action, tape
+from tarav.l1.checks import CheckSuite
 from tarav.l1.records import RecordRegistry
 
-from .runs import ProgramRun
-from .states import ProgramExecutionAction, State, Transition
+from .runs import ActiveAction, ProgramRun
+from .actions import ProgramExecutionAction, NodeAction, EdgeAction, Transition
 from .workflow import ProgramsWorkflow
 
 
@@ -27,41 +28,45 @@ def _now():
 
 
 def _evidence(suite):
-    return {"passed": suite.clean(), "results": [
+    return {"passed": suite.complete and suite.clean(), "complete": suite.complete, "results": [
         {"check": str(entity(type(r.check)).name), "status": r.status, "reason": r.reason,
          "pois": [p.records.to_record() for p in r.pois()]} for r in suite.results]}
 
 
 def validate_definition(program):
-    """Inspect only trusted class declarations, never import a path from run data."""
-    if not isinstance(program.initial, type) or not issubclass(program.initial, State):
-        raise ProgramError("Program.initial must be a State class")
+    """Only inspect trusted declarations; never import a path from run data."""
+    if not isinstance(program.initial, tuple) or not program.initial:
+        raise ProgramError("Program.initial must be a nonempty tuple of NodeAction classes")
+    if not isinstance(program.terminal, tuple):
+        raise ProgramError("Program.terminal must be a tuple of NodeAction classes")
     if not isinstance(program.graph, tuple) or any(not isinstance(e, Transition) for e in program.graph):
         raise ProgramError("Program.graph must be a tuple of Transition declarations")
-    states = {entity(program.initial).id: program.initial}
-    keys = set()
+    definitions, keys = {}, set()
+
+    def add(cls, base):
+        if not isinstance(cls, type) or not issubclass(cls, base):
+            raise ProgramError(f"Program graph role requires a {base.__name__} class")
+        identity = entity(cls).id
+        if identity in definitions and definitions[identity] is not cls:
+            raise ProgramError("Two Action classes declare the same identity")
+        definitions[identity] = cls
+        register_action(cls)
+
+    for cls in (*program.initial, *program.terminal):
+        add(cls, NodeAction)
     for edge in program.graph:
         key = (entity(edge.source).id, entity(edge.action).id)
         if key in keys:
-            raise ProgramError("A Program graph repeats a source/action connection")
+            raise ProgramError("A Program graph repeats a source/edge connection")
         keys.add(key)
-        for state in (edge.source, edge.action.State):
-            identity = entity(state).id
-            if identity in states and states[identity] is not state:
-                raise ProgramError("Two State classes declare the same identity")
-            states[identity] = state
-        register_action(edge.action)
-    for state in program.terminal:
-        if not isinstance(state, type) or not issubclass(state, State):
-            raise ProgramError("Program.terminal must contain State classes")
-        identity = entity(state).id
-        if identity in states and states[identity] is not state:
-            raise ProgramError("Two State classes declare the same identity")
-        states[identity] = state
-    return states
+        add(edge.source, NodeAction)
+        add(edge.action, EdgeAction)
+        add(edge.target, NodeAction)
+    return definitions
 
 
-# tarav.breadcrumb e1d9a6eaa3a0
+# tarav.breadcrumb 45f4ac2834d5
+# tarav.breadcrumb 6d1061989ec1
 class ProgramRunner:
     def __init__(self, program, *, project=None, registry=None):
         from . import TaravProgram
@@ -69,7 +74,7 @@ class ProgramRunner:
         if not isinstance(program, type) or not issubclass(program, TaravProgram):
             raise ProgramError("A runner requires a trusted Program class")
         self.program = program
-        self.states = validate_definition(program)
+        self.definitions = validate_definition(program)
         self.registry = registry if registry is not None else RecordRegistry()
         self.store = self.registry.for_workflow(ProgramsWorkflow)
         self.actions = ActionRunStore(self.registry)
@@ -78,6 +83,12 @@ class ProgramRunner:
 
     def _lock(self):
         return FileLock(str(self.store.root) + ".programs.lock")
+
+    def role(self, occurrence):
+        cls = self.definitions.get(occurrence.action)
+        if cls is None:
+            raise ProgramError("The current Program no longer declares this Action")
+        return "node" if issubclass(cls, NodeAction) else "edge"
 
     def load(self, identity):
         identity = str(Ship(identity))
@@ -88,33 +99,41 @@ class ProgramRunner:
             raise ProgramError("Run belongs to another Program class")
         if self.project is not None and run.typed.project != self.project:
             raise ProgramError("Run belongs to another Project")
-        if run.typed.state not in self.states:
-            raise ProgramError("The current Program definition no longer declares this State")
-        ids = [item["id"] for item in run.typed.actions]
-        if len(ids) != len(set(ids)) or identity not in ids or (run.typed.pending and run.typed.pending not in ids):
-            raise ProgramError("Program action snapshots are inconsistent")
-        for item in run.typed.actions:
-            ActionRun.records.from_record(item)
+        snapshots = [ActionRun.records.from_record(item) for item in run.typed.actions]
+        ids = [str(item.id) for item in snapshots]
+        active_ids = [str(item.id) for item in run.typed.active]
+        if (len(ids) != len(set(ids)) or identity not in ids or len(active_ids) != len(set(active_ids))
+                or bool(active_ids) != (run.typed.phase == "running")):
+            raise ProgramError("Program Action occurrences are inconsistent")
+        for occurrence in run.typed.active:
+            role = self.role(occurrence)
+            snapshot = next((item for item in snapshots if item.id == occurrence.id), None)
+            if (snapshot is None or snapshot.state != "running" or snapshot.data["project"] != run.typed.project
+                    or snapshot.data["action"] != str(entity(self.definitions[occurrence.action]).name)):
+                raise ProgramError("Active Action snapshot is inconsistent")
+            if role == "node" and (occurrence.source is not None or occurrence.target is not None):
+                raise ProgramError("A node occurrence cannot carry an edge connection")
+            if role == "edge" and not any(
+                entity(e.source).id == occurrence.source and entity(e.action).id == occurrence.action
+                and entity(e.target).id == occurrence.target for e in self.program.graph
+            ):
+                raise ProgramError("The active edge connection is no longer declared")
         return run
 
     def by_token(self, token):
-        if not isinstance(token, str) or "." not in token:
-            raise ProgramError("A current Program state token is required")
+        if not isinstance(token, str) or len(parts := token.split(".")) != 3:
+            raise ProgramError("A current Program Action token is required")
         try:
-            run = self.load(token.split(".", 1)[0])
+            run = self.load(parts[0])
         except (OSError, ValueError) as exc:
             raise ProgramError(f"Program token cannot be resolved: {exc}") from exc
-        if not token.isascii() or not secrets.compare_digest(token, run.typed.token):
-            raise ProgramError("Stale or incorrect Program state token")
-        return run
-
-    @staticmethod
-    def _token(identity):
-        return str(identity) + "." + secrets.token_hex(24)
+        occurrence = next((item for item in run.typed.active if str(item.id) == parts[1]), None)
+        if occurrence is None or not token.isascii() or not secrets.compare_digest(token, occurrence.token):
+            raise ProgramError("Stale or incorrect Program Action token")
+        return run, occurrence
 
     def _save(self, run):
         run.typed.updated_at = _now()
-        # This Record is authoritative. Projections can be recovered explicitly.
         if self.store.path(str(run.id)).exists():
             self.store.replace(str(run.id), run)
         else:
@@ -127,14 +146,13 @@ class ProgramRunner:
         changed = []
         for key in (key for key in keys if key is not None):
             retained = git_result(self.actions.map.root, "show", f"HEAD:records/{key}.json")
-            # Recovery can restore bytes already in HEAD, requiring no new commit.
             if retained.returncode or retained.stdout != self.actions.map.path(key).read_bytes():
                 changed.append(key)
         self.actions.commit(changed, f"Project Program {run.id} actions")
 
     @staticmethod
     def _action(run, identity):
-        return ActionRun.records.from_record(next(a for a in run.typed.actions if a["id"] == identity))
+        return ActionRun.records.from_record(next(a for a in run.typed.actions if a["id"] == str(identity)))
 
     @staticmethod
     def _keep_action(run, action):
@@ -154,34 +172,62 @@ class ProgramRunner:
             "operations": [], "output": None, "reason": None,
             "tape": [{"type": tape.OPENED, "at": _now()}]})
 
-    def _available(self, run):
-        if run.typed.phase == "completed" or run.typed.pending:
+    def _new(self, run, cls, *, source=None, target=None):
+        identity = Ship(str(uuid4()))
+        occurrence = ActiveAction(id=identity, action=entity(cls).id,
+                                  token=f"{run.id}.{identity}.{secrets.token_hex(24)}",
+                                  source=source, target=target)
+        snapshot = self._open_action(str(identity), cls, run.typed.project,
+                                     program_run=str(run.id), parent=str(run.id), role=self.role(occurrence),
+                                     prompt=cls.prompt, source=str(source) if source else None,
+                                     target=str(target) if target else None)
+        self._keep_action(run, snapshot)
+        return occurrence
+
+    def _available(self, run, occurrence):
+        if self.role(occurrence) != "node":
             return ()
-        selected = tuple(self.program(id=run.id).available(run))
-        if any(edge not in self.program.graph or entity(edge.source).id != run.typed.state for edge in selected):
+        selected = tuple(self.program(id=run.id).available(run, occurrence))
+        if any(edge not in self.program.graph or entity(edge.source).id != occurrence.action for edge in selected):
             raise ProgramError("Availability can only select declared outgoing connections")
         if len(selected) != len(set(selected)):
             raise ProgramError("Availability repeats a connection")
         return selected
 
     def frame(self, run):
-        pending = self._action(run, run.typed.pending) if run.typed.pending else None
         return {"run": str(run.id), "program": str(run.typed.program), "project": run.typed.project,
-                "state": str(run.typed.state), "arrival": run.typed.arrival, "phase": run.typed.phase,
-                "token": run.typed.token, "pending": pending.records.to_record() if pending else None,
-                "available": [{"action": str(entity(e.action).id), "name": str(entity(e.action).name),
-                               "target": str(entity(e.action.State).id), "prompt": e.action.prompt}
-                              for e in self._available(run)], "data": deepcopy(run.typed.data)}
+                "phase": run.typed.phase, "active": [
+                    {**item.model_dump(mode="json"), "role": self.role(item),
+                     "name": str(entity(self.definitions[item.action]).name),
+                     "record": self._action(run, item.id).records.to_record(),
+                     "available": [{"action": str(entity(e.action).id), "name": str(entity(e.action).name),
+                                    "target": str(entity(e.target).id), "prompt": e.action.prompt}
+                                   for e in self._available(run, item)]} for item in run.typed.active],
+                "data": deepcopy(run.typed.data)}
 
-    def state_checks(self, token):
-        run = self.by_token(token)
-        return self.states[run.typed.state](run).checks.suite()
+    def _suite(self, run, occurrence, operation):
+        return CheckSuite.of(self.program(id=run.id).checks(run, occurrence, operation=operation))
+
+    def action_checks(self, token):
+        run, occurrence = self.by_token(token)
+        return self._suite(run, occurrence, "status")
+
+    def context(self, occurrence, operation):
+        return {"occurrence": str(occurrence.id), "action": str(occurrence.action),
+                "role": self.role(occurrence), "operation": operation}
 
     def status(self, token):
-        run = self.by_token(token)
-        checks = self.state_checks(token).run()
-        self.by_token(token)  # a concurrent arrival invalidates this contextual read
-        return {**self.frame(run), "state_checks": _evidence(checks), "coherent": checks.clean()}
+        run, occurrence = self.by_token(token)
+        checks = self.action_checks(token).run()
+        self.by_token(token)
+        return {**self.frame(run), "context": self.context(occurrence, "status"),
+                "action_checks": _evidence(checks), "coherent": checks.complete and checks.clean()}
+
+    def _gates(self, contexts):
+        suites = [(occ, op, self._suite(run, occ, op)) for run, occ, op in contexts]
+        whole = CheckSuite([suite for _, _, suite in suites]).run()
+        return {"passed": whole.complete and whole.clean(), "contexts": [
+            {**self.context(occ, op), **_evidence(suite)} for occ, op, suite in suites]}
 
     def start(self, *, data=None):
         if (not isinstance(self.project, dict) or set(self.project) != {"id", "name", "root"}
@@ -191,23 +237,21 @@ class ProgramRunner:
         Ship(self.project["id"])
         if not Path(self.project["root"]).is_absolute():
             raise ProgramError("A Program run requires an absolute Project root")
-        identity = Ship(str(uuid4()))
-        at = _now()
+        identity, at = Ship(str(uuid4())), _now()
         run = ProgramRun.records.from_record({
             "type": str(entity(ProgramRun).name), "id": str(identity), "program": str(entity(self.program).id),
-            "project": self.project, "state": str(entity(self.program.initial).id), "arrival": 0,
-            "token": self._token(identity), "phase": "running", "pending": None,
-            "data": {} if data is None else data, "actions": [], "history": [], "created_at": at, "updated_at": at})
-        checks = self.program.initial(run).checks.suite().run()
-        if not checks.clean():
-            raise ProgramError(f"Initial State conditions are not fulfilled: {_evidence(checks)}")
-        action = self._open_action(str(identity), ProgramExecutionAction, self.project,
-                                   program=str(entity(self.program).id))
-        self._keep_action(run, action)
-        run.typed.history.append({"kind": "started", "at": at, "state": str(run.typed.state),
-                                  "arrival": 0, "checks": _evidence(checks)})
-        self._finish_if_terminal(run)
-        self._available(run)  # validate author-supplied availability before creating storage
+            "project": self.project, "active": [], "phase": "running", "data": {} if data is None else data,
+            "actions": [], "history": [], "created_at": at, "updated_at": at})
+        self._keep_action(run, self._open_action(str(identity), ProgramExecutionAction, self.project,
+                                               program=str(entity(self.program).id)))
+        run.typed.active = [self._new(run, cls) for cls in self.program.initial]
+        evidence = self._gates([(run, item, "enter") for item in run.typed.active])
+        if not evidence["passed"]:
+            raise ProgramError(f"Initial Action entry checks are not fulfilled: {evidence}")
+        for item in run.typed.active:
+            self._available(run, item)
+        run.typed.history.append({"kind": "started", "at": at, "checks": evidence,
+                                  "active": [item.model_dump(mode="json") for item in run.typed.active]})
         self.store.create()
         with self._lock():
             self._save(run)
@@ -215,78 +259,61 @@ class ProgramRunner:
 
     def choose(self, token, action):
         with self._lock():
-            run = self.by_token(token)
-            if run.typed.pending or run.typed.phase == "completed":
-                raise ProgramError("The Program has a pending action or is completed")
-            if not self.state_checks(token).run().clean():
-                raise ProgramError("The current State is incoherent; restore its conditions before choosing")
-            choices = [edge for edge in self._available(run)
+            run, occurrence = self.by_token(token)
+            if self.role(occurrence) != "node":
+                raise ProgramError("Choose an edge only from a current NodeAction token")
+            choices = [edge for edge in self._available(run, occurrence)
                        if action in (str(entity(edge.action).id), str(entity(edge.action).name))]
             if len(choices) != 1:
                 raise ProgramError("Action is not an available outgoing connection")
             edge = choices[0]
-            child = self._open_action(str(uuid4()), edge.action, run.typed.project,
-                                      program_run=str(run.id), parent=str(run.id),
-                                      source=str(run.typed.state), target=str(entity(edge.action.State).id),
-                                      prompt=edge.action.prompt)
-            run.typed.pending = str(child.id)
-            self._keep_action(run, child)
-            run.typed.history.append({"kind": "selected", "at": _now(), "action": str(child.id),
-                                      "action_type": str(entity(edge.action).id)})
-            self._save(run)
-        return self.frame(run)
+            return self._move(run, occurrence, edge.action,
+                              source=entity(edge.source).id, target=entity(edge.target).id)
 
-    # tarav.breadcrumb 3f01ad3bca9c
     def step(self, token, *, data=None):
         with self._lock():
-            run = self.by_token(token)
-            if not run.typed.pending or run.typed.phase != "running":
-                raise ProgramError("Choose a StateAction before advancing")
-            child = self._action(run, run.typed.pending)
-            edges = [e for e in self.program.graph if entity(e.source).id == run.typed.state
-                     and str(entity(e.action).name) == child.data["action"]]
-            if len(edges) != 1:
-                raise ProgramError("The pending action is no longer declared at this State")
-            edge = edges[0]
+            run, occurrence = self.by_token(token)
             if data is not None:
                 if not isinstance(data, dict):
                     raise ProgramError("Program input data must be a JSON object")
-                candidate = run.records.to_record()
-                candidate["data"].update(data)
-                run = ProgramRun.records.from_record(candidate)
-            # Prerequisites see the source context; destination conditions see the candidate arrival.
-            candidate = ProgramRun.records.from_record(run.records.to_record())
-            candidate.typed.state = entity(edge.action.State).id
-            candidate.typed.arrival += 1
-            checks = edge.action().checks(run, destination=candidate).run()
-            evidence = _evidence(checks)
-            passed = checks.clean()
-            tape.attempt(child, "reached", by=LOOP, at=_now(), passed=passed, results=evidence["results"])
-            run.typed.history.append({"kind": "checked", "at": _now(), "action": str(child.id),
-                                      "passed": passed, "checks": evidence})
-            if passed:
-                candidate.typed.history = run.typed.history
-                run = candidate
-                close_run(edge.action(), child, "reached", by=LOOP, at=_now(), extra={
-                    "program_run": str(run.id), "state": str(run.typed.state), "arrival": run.typed.arrival})
-                run.typed.pending = None
-                run.typed.token = self._token(run.id)
-                run.typed.history.append({"kind": "arrived", "at": _now(), "state": str(run.typed.state),
-                                          "arrival": run.typed.arrival, "action": str(child.id)})
-                self._finish_if_terminal(run)
-            self._keep_action(run, child)
-            self._save(run)
-        return {**self.frame(run), "advanced": passed, "checks": evidence}
+                values = run.records.to_record()
+                values["data"].update(data)
+                run = ProgramRun.records.from_record(values)
+            if self.role(occurrence) == "node":
+                if occurrence.action not in {entity(cls).id for cls in self.program.terminal}:
+                    raise ProgramError("Choose an EdgeAction, or complete a declared terminal NodeAction")
+                return self._move(run, occurrence, None)
+            return self._move(run, occurrence, self.definitions[occurrence.target])
 
-    def _finish_if_terminal(self, run):
-        if run.typed.state in {entity(state).id for state in self.program.terminal}:
-            run.typed.phase = "completed"
-            root = self._action(run, str(run.id))
-            close_run(ProgramExecutionAction(), root, "finished", by=LOOP, at=_now())
-            self._keep_action(run, root)
+    def _move(self, run, occurrence, cls, *, source=None, target=None):
+        candidate = ProgramRun.records.from_record(run.records.to_record())
+        entered = self._new(candidate, cls, source=source, target=target) if cls else None
+        candidate.typed.active = [entered if item.id == occurrence.id else item
+                                  for item in candidate.typed.active if entered or item.id != occurrence.id]
+        contexts = [(run, occurrence, "complete")]
+        if entered:
+            contexts.append((candidate, entered, "enter"))
+            self._available(candidate, entered)
+        evidence = self._gates(contexts)
+        snapshot = self._action(run, occurrence.id)
+        tape.attempt(snapshot, "completed", by=LOOP, at=_now(), passed=evidence["passed"],
+                     results=evidence["contexts"])
+        if evidence["passed"]:
+            close_run(self.definitions[occurrence.action](), snapshot, "completed", by=LOOP, at=_now())
+            run = candidate
+            if not run.typed.active:
+                run.typed.phase = "completed"
+                root = self._action(run, run.id)
+                close_run(ProgramExecutionAction(), root, "finished", by=LOOP, at=_now())
+                self._keep_action(run, root)
+        self._keep_action(run, snapshot)
+        run.typed.history.append({"kind": "moved" if evidence["passed"] else "blocked", "at": _now(),
+                                  "from": str(occurrence.id), "to": str(entered.id) if entered and evidence["passed"] else None,
+                                  "checks": evidence})
+        self._save(run)
+        return {**self.frame(run), "advanced": evidence["passed"], "checks": evidence}
 
     def recover(self, identity):
-        """Explicitly replay Action projections after an interrupted multi-store write."""
         with self._lock():
             run = self.load(identity)
             self._project_actions(run)

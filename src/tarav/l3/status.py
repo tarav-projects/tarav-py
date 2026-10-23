@@ -207,7 +207,7 @@ def register_status_command(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--all", action="store_true",
                         help="Run every suite. Without it, suites that are not part of the "
                              "routine run are left out, such as a Project's pytest tests.")
-    parser.add_argument("--program-token", help="Also check the State declared by this current Program token.")
+    parser.add_argument("--program-token", help="Also run the Program's status checks for this active Action token.")
     parser.set_defaults(handler=_status)
 
 

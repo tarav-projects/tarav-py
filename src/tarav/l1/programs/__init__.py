@@ -1,17 +1,18 @@
 """Trusted Python Program definitions; the shared runner owns execution mechanics."""
 
 from tarav.l0.kernel import Ship, TaravClass, TaravEntity, TypeShip, entity
+from tarav.l1.checks import CheckSuite
 
 from .workflow import PROGRAMS_WORKFLOW_SHIP, ProgramsWorkflow
-from .states import ProgramExecutionAction, State, StateAction, StateReached, Transition
-from .runs import ProgramRun
+from .actions import ProgramAction, ProgramExecutionAction, NodeAction, EdgeAction, Transition
+from .runs import ActiveAction, ProgramRun
 from .runner import ProgramError, ProgramRunner
 
 
 class TaravProgram(TaravEntity):
     """Define a graph in Python; specialize available() for conditional routes."""
 
-    initial = State
+    initial = (NodeAction,)
     terminal = ()
     graph: tuple[Transition, ...] = ()
 
@@ -29,9 +30,14 @@ class TaravProgram(TaravEntity):
             cls = self._owner
             return cls(id=Ship("bbf8d724-f685-4919-99dd-e5cf11350e18")).records.to_record()
 
-    def available(self, run):
+    def available(self, run, occurrence):
         """Return only declared outgoing connections; authors can filter this result."""
-        return tuple(edge for edge in self.graph if entity(edge.source).id == run.typed.state)
+        return tuple(edge for edge in self.graph if entity(edge.source).id == occurrence.action)
+
+    # tarav.breadcrumb 3f083c93b437
+    def checks(self, run, occurrence, *, operation):
+        """Select checks for enter/status/complete; their meaning belongs to this Program."""
+        return CheckSuite((), name=f"{occurrence.action}: {operation}")
 
     @classmethod
     def runner(cls, *, project=None, registry=None):
@@ -49,9 +55,9 @@ class TaravProgram(TaravEntity):
 
 
 
-PROGRAM_RECORD_TYPES = (ProgramRun, StateReached)
-PROGRAM_ACTION_TYPES = (ProgramExecutionAction, StateAction)
+PROGRAM_RECORD_TYPES = (ProgramRun,)
+PROGRAM_ACTION_TYPES = (ProgramExecutionAction, ProgramAction, NodeAction, EdgeAction)
 
-__all__ = ["ProgramsWorkflow", "TaravProgram", "State", "StateAction", "Transition",
-           "ProgramRun", "ProgramRunner", "ProgramError", "ProgramExecutionAction",
+__all__ = ["ProgramsWorkflow", "TaravProgram", "ProgramAction", "NodeAction", "EdgeAction", "Transition",
+           "ActiveAction", "ProgramRun", "ProgramRunner", "ProgramError", "ProgramExecutionAction",
            "PROGRAM_RECORD_TYPES", "PROGRAM_ACTION_TYPES"]

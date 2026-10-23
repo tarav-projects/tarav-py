@@ -12,7 +12,7 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
-# tarav.context 0d8af26c:b796228f65ba3467
+# tarav.breadcrumb b82796e1535e
 def test_typesense_is_a_normal_model_consumer_composed_above_chatlas():
     from tarav.l3.cli import build_parser
 
@@ -45,16 +45,20 @@ def test_cli_routing_keeps_process_launch_in_the_cli_adapter():
 
 # tarav.breadcrumb 2fe441973842
 # tarav.breadcrumb 4665c18f8598
+# tarav.breadcrumb df97a94b5fd5
 def test_program_core_reuses_actions_and_keeps_project_integration_above_it():
     from tarav.l1.actions import Action, StepAction
-    from tarav.l1.programs import PROGRAM_RECORD_TYPES, StateAction, TaravProgram
+    from tarav.l1.programs import PROGRAM_RECORD_TYPES, NodeAction, EdgeAction, TaravProgram
     from tarav.l1.project import TaravProject
     from tarav.l2.project import Project
     from tarav.l2.project.programs import ProjectProgram, PROJECT_PROGRAM_RECORD_TYPES
     from tarav.l3.runtime import create_runtime
 
     runtime = create_runtime()
-    assert issubclass(StateAction, Action) and not issubclass(StateAction, StepAction)
+    for cls in (NodeAction, EdgeAction):
+        assert issubclass(cls, Action) and not issubclass(cls, StepAction)
+    import tarav.l1.programs as programs
+    assert not hasattr(programs, "State") and not hasattr(programs, "StateAction")
     assert isinstance(Project.Programs, type) and not hasattr(TaravProject, "programs")
     for cls in (TaravProgram, ProjectProgram, *PROGRAM_RECORD_TYPES, *PROJECT_PROGRAM_RECORD_TYPES):
         assert runtime.records.resolve_ship(entity(cls).id) is cls

@@ -651,8 +651,9 @@ def create_runtime(
         register_action(action_type)
     for program_type in records.record_types:
         if issubclass(program_type, TaravProgram):
-            for edge in program_type.graph:
-                register_action(edge.action)
+            from tarav.l1.programs.runner import validate_definition
+
+            validate_definition(program_type)
     from tarav.l1.git.gitleaks import (
         GitleaksFindingResolution, GitleaksMissingResolution, GitleaksNeverScannedResolution,
         GitleaksStagedResolution,

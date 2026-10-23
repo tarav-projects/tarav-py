@@ -58,8 +58,8 @@ class ProgramsManager(NamespaceBase):
         return self.runner(str(run.typed.program))
 
     def for_token(self, token):
-        if not isinstance(token, str) or "." not in token:
-            raise ProgramError("A current Program state token is required")
+        if not isinstance(token, str) or len(token.split(".")) != 3:
+            raise ProgramError("A current Program Action token is required")
         runner = self.for_run(token.split(".", 1)[0])
         runner.by_token(token)
         return runner
@@ -84,40 +84,55 @@ class ProgramsManager(NamespaceBase):
                                    for member in self.obj.members()))
 
 
-class StateIncoherent(CheckPOI):
-    """The product no longer fulfills the State declared by this Program's token."""
+class ActionIncoherent(CheckPOI):
+    """The selected Action's Program-defined status checks report a finding."""
 
     @classmethod
     def class_entity(cls):
-        return TaravClass(target=cls, id=TypeShip("4fd9b8ce-b0aa-4271-bff3-0c92dd9c49aa"),
-                          name="Tarav.Programs.StateIncoherent.POI", workflow=PROGRAMS_WORKFLOW_SHIP)
+        return TaravClass(target=cls, id=TypeShip("ee00f95c-5b18-4523-b3a5-7e8087c253b9"),
+                          name="Tarav.Programs.ActionIncoherent.POI", workflow=PROGRAMS_WORKFLOW_SHIP)
 
 
 # tarav.breadcrumb 1faa49b6ceb8
+# tarav.breadcrumb 25a1430500d4
 class ProgramCoherenceCheck(SituationCheck):
     @classmethod
     def class_entity(cls):
         return TaravClass(target=cls, id=TypeShip("05b6ae65-3f3a-4a9a-93e6-3d35bc012263"),
                           name="Tarav.Programs.Coherence.Check", workflow=PROGRAMS_WORKFLOW_SHIP)
 
-    def __init__(self, runner, token):
-        run = runner.by_token(token)
-        super().__init__(situation={"program_run": str(run.id)})
+    def __init__(self, runner, token, occurrence_id, run_id=None):
+        run = runner.by_token(token)[0] if token is not None else runner.load(run_id)
+        super().__init__(situation={"program_run": str(run.id), "action_run": occurrence_id})
+        self.occurrence_id, self.run_id = occurrence_id, str(run.id)
         self.runner, self.token = runner, token
 
     def _run(self):
         try:
-            run = self.runner.by_token(self.token)
-            checks = self.runner.state_checks(self.token).run()
+            if self.token is None:
+                run, selected = self.runner.load(self.run_id), None
+            else:
+                run, selected = self.runner.by_token(self.token)
+            occurrence = next((item for item in run.typed.active if str(item.id) == self.occurrence_id), None)
+            if occurrence is None:
+                snapshot = next((item for item in run.typed.actions if item["id"] == self.occurrence_id), None)
+                from tarav.l1.actions import ActionRun
+
+                if snapshot is None or ActionRun.records.from_record(snapshot).state != "closed":
+                    return CheckResult(self, status="incomplete", reason="Action occurrence cannot be resolved")
+                return CheckResult(self, status="completed", pois=[])
+            if selected is None or occurrence.id != selected.id:
+                return CheckResult(self, status="incomplete", reason="Token does not select this active Action")
+            checks = self.runner.action_checks(self.token).run()
             self.runner.by_token(self.token)
         except (OSError, ValueError, RuntimeError) as exc:
             return CheckResult(self, status="incomplete", reason=str(exc))
-        if any(result.status != "completed" for result in checks.results):
-            return CheckResult(self, status="incomplete", reason="Program State checks did not complete",
-                               data={"state_checks": _evidence(checks)})
+        if not checks.complete:
+            return CheckResult(self, status="incomplete", reason="Program Action checks did not complete",
+                               data={"action_checks": _evidence(checks)})
         return CheckResult(self, status="completed", pois=[] if checks.clean() else [self.poi(
-            StateIncoherent, message="Product is incoherent with the declared Program State",
-            details={"state": str(run.typed.state), "arrival": run.typed.arrival,
+            ActionIncoherent, message="Program-defined status checks fail for the selected Action",
+            details={**self.runner.context(occurrence, "status"),
                      "checks": _evidence(checks)})])
 
 
@@ -127,15 +142,15 @@ class ProgramContextSuite(CheckSuite):
         return TaravClass(target=cls, id=TypeShip("3719593e-61d8-4f79-a5af-29f747c36ed2"),
                           name="Tarav.Programs.Context.Suite", workflow=PROGRAMS_WORKFLOW_SHIP)
 
-    def __init__(self, runner, token):
+    def __init__(self, runner, token, occurrence_id, run_id=None):
         self.runner, self.token = runner, token
-        run = runner.by_token(token)
-        super().__init__(key=str(run.id), name="Program State coherence",
-                         checkpoint_types={"state": (ProgramCoherenceCheck,)})
+        self.occurrence_id, self.run_id = occurrence_id, run_id
+        super().__init__(key=occurrence_id, name="Program Action coherence",
+                         checkpoint_types={"action": (ProgramCoherenceCheck,)})
 
     def produce(self):
-        yield ProgramCoherenceCheck(self.runner, self.token)
-        yield SuiteCheckpoint("state")
+        yield ProgramCoherenceCheck(self.runner, self.token, self.occurrence_id, self.run_id)
+        yield SuiteCheckpoint("action")
 
 
 class ProgramProjectSuite(CheckSuite):
@@ -151,9 +166,21 @@ class ProgramProjectSuite(CheckSuite):
     def produce(self):
         self.manager.prepare()
         if self.runner is not None:
-            yield ProgramContextSuite(self.runner, self.token)
+            _, selected = self.runner.by_token(self.token)
+            yield ProgramContextSuite(self.runner, self.token, str(selected.id))
+            return
+        # Closure is a recorded fact, independent of check policy. Ordinary
+        # status may retire a closed occurrence's warning, but cannot assert
+        # that another active occurrence's status checks passed.
+        for stored in self.manager.runs():
+            runner = self.manager.runner(str(stored.typed.program))
+            run = runner.load(str(stored.id))
+            active_ids = {str(item.id) for item in run.typed.active}
+            for snapshot in run.typed.actions:
+                if snapshot["id"] != str(run.id) and snapshot["id"] not in active_ids:
+                    yield ProgramContextSuite(runner, None, snapshot["id"], str(run.id))
 
 
-PROJECT_PROGRAM_RECORD_TYPES = (StateIncoherent, ProgramCoherenceCheck, ProgramContextSuite, ProgramProjectSuite)
+PROJECT_PROGRAM_RECORD_TYPES = (ActionIncoherent, ProgramCoherenceCheck, ProgramContextSuite, ProgramProjectSuite)
 
 __all__ = ["ProjectProgram", "ProgramsManager", "PROJECT_PROGRAM_RECORD_TYPES"]

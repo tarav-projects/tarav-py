@@ -30,7 +30,7 @@ def cli(tmp_path, monkeypatch):
     (source / "program_project_fixture.py").write_text('''from pathlib import Path
 from tarav.l0.kernel import TaravClass, TypeShip
 from tarav.l1.checks import CheckSuite, CheckResult, CheckPOI, SituationCheck
-from tarav.l1.programs import State, StateAction, TaravProgram, Transition
+from tarav.l1.programs import NodeAction, EdgeAction, TaravProgram, Transition
 from tarav.l1.programs.workflow import PROGRAMS_WORKFLOW_SHIP
 from tarav.l2.project import Project
 from tarav.l3.runtime import get_runtime
@@ -39,45 +39,54 @@ def identity(cls, number, name):
     return TaravClass(target=cls, id=TypeShip(f"00000000-0000-0000-0000-{number:012d}"),
                       name="Harness.Programs." + name, workflow=PROGRAMS_WORKFLOW_SHIP)
 
-class Ready(State):
+class Ready(NodeAction):
     @classmethod
     def class_entity(cls): return identity(cls, 9001, "Ready")
 
 class TextCheck(SituationCheck):
     @classmethod
     def class_entity(cls): return identity(cls, 9002, "Text.Check")
-    def __init__(self, run):
+    def __init__(self, run, expected):
         super().__init__(situation={"run": str(run.id)})
         self.path = Path(run.typed.project["root"]) / "product.txt"
+        self.expected = expected
     def _run(self):
         if (self.path.parent / "unavailable").exists():
             return CheckResult(self, status="incomplete", reason="Product unavailable")
         return CheckResult(self, status="completed", pois=[] if self.path.exists()
-                           and self.path.read_text() == "written" else
-                           [self.poi(CheckPOI, message="Product must contain written")])
+                           and self.path.read_text() == self.expected else
+                           [self.poi(CheckPOI, message=f"Product must contain {self.expected}")])
 
-class Written(State):
+class Written(NodeAction):
     @classmethod
     def class_entity(cls): return identity(cls, 9003, "Written")
-    class Checks(State.Checks):
-        def suite(self): return CheckSuite([TextCheck(self.obj.run)])
 
-class Write(StateAction):
-    State = Written
+class Write(EdgeAction):
     prompt = "Write the product."
     @classmethod
     def class_entity(cls): return identity(cls, 9004, "Write")
 
-class Reset(StateAction):
-    State = Ready
+class Reset(EdgeAction):
     @classmethod
     def class_entity(cls): return identity(cls, 9005, "Reset")
 
 class FixtureProgram(TaravProgram):
-    initial = Ready
-    graph = (Transition(Ready, Write), Transition(Written, Reset))
+    initial = (Ready,)
+    graph = (Transition(Ready, Write, Written), Transition(Written, Reset, Ready))
     @classmethod
     def class_entity(cls): return identity(cls, 9006, "Example")
+    def checks(self, run, occurrence, *, operation):
+        expected = {("00000000-0000-0000-0000-000000009003", "status"): "written",
+                    ("00000000-0000-0000-0000-000000009004", "status"): "working",
+                    ("00000000-0000-0000-0000-000000009004", "complete"): "written"}.get(
+                        (str(occurrence.action), operation))
+        return CheckSuite([TextCheck(run, expected)] if expected else ())
+
+class ParallelProgram(FixtureProgram):
+    initial = (Written, Written)
+    terminal = (Written,)
+    @classmethod
+    def class_entity(cls): return identity(cls, 9008, "Parallel")
 
 class FixtureProject(Project):
     @classmethod
@@ -86,6 +95,7 @@ class FixtureProject(Project):
         def suite(self): return self.obj.programs.suite()
 
 get_runtime().records.register(FixtureProgram)
+get_runtime().records.register(ParallelProgram)
 ''')
     project = Project(id=Ship(uuid4()), created_at="2026-10-23T00:00:00Z", project_name="Programs Test")
     marker = project.records.to_record()
@@ -112,40 +122,72 @@ def test_real_harness_program_and_contextual_status_lifecycle(cli):
                            capture_output=True, text=True, timeout=30)
     assert probe.returncode != 0 and "No module named" in probe.stderr
     listing = cli("program", "list")
-    assert listing["programs"] == [{"id": "00000000-0000-0000-0000-000000009006",
-                                    "name": "Harness.Programs.Example"}]
+    assert {row["name"] for row in listing["programs"]} == {"Harness.Programs.Example", "Harness.Programs.Parallel"}
     assert listing["runs"] == []
     frame = cli("program", "start", "--program", "Harness.Programs.Example")
-    cli("program", "choose", "--token", frame["token"], "--action", "Harness.Programs.Write")
-    failed = cli("program", "step", "--token", frame["token"], code=1)
-    assert not failed["advanced"] and failed["token"] == frame["token"]
+    node = frame["active"][0]
+    chosen = cli("program", "choose", "--token", node["token"], "--action", "Harness.Programs.Write")
+    edge = chosen["active"][0]
+    assert edge["role"] == "edge" and edge["token"] != node["token"]
+    assert "Stale" in cli("program", "step", "--token", node["token"], code=2)
+    failed = cli("program", "step", "--token", edge["token"], code=1)
+    assert failed["advanced"] is False and failed["active"][0]["token"] == edge["token"]
+    (cli.root / "product.txt").write_text("working")
+    edge_status = cli("status", "--program-token", edge["token"], code=1)
+    assert edge_status["open"] == 2 and edge_status["actions"]["opened"] == 0
     (cli.root / "product.txt").write_text("written")
-    reached = cli("program", "step", "--token", frame["token"])
-    assert reached["advanced"] and reached["token"] != frame["token"]
-    assert cli("program", "resume", "--run", frame["run"])["token"] == reached["token"]
-    assert "Stale" in cli("program", "status", "--token", frame["token"], code=2)
-    assert cli("program", "status", "--token", reached["token"])["coherent"]
-    # Parent run remains open; completed StateAction is retained in the registry.
-    status = cli("status", "--program-token", reached["token"], code=1)
-    assert status["open"] == 1
+    reached = cli("program", "step", "--token", edge["token"])
+    current = reached["active"][0]
+    assert reached["advanced"] is True and current["token"] != edge["token"]
+    assert cli("program", "resume", "--run", frame["run"])["active"][0]["token"] == current["token"]
+    assert "Stale" in cli("program", "status", "--token", edge["token"], code=2)
+    assert cli("program", "status", "--token", current["token"])["coherent"] is True
+    # Parent and current NodeAction remain open; prior occurrences are closed.
+    status = cli("status", "--program-token", current["token"], code=1)
+    assert status["open"] == 2
     (cli.root / "product.txt").write_text("drift")
-    drift = cli("status", "--program-token", reached["token"], code=1)
-    assert drift["actions"]["opened"] == 1 and drift["open"] == 2
+    drift = cli("status", "--program-token", current["token"], code=1)
+    assert drift["actions"]["opened"] == 1 and drift["open"] == 3
     (cli.root / "unavailable").touch()
-    incomplete = cli("status", "--program-token", reached["token"], code=1)
-    assert incomplete["open"] == 2 and incomplete["actions"]["gone"] == 0
+    incomplete = cli("status", "--program-token", current["token"], code=1)
+    assert incomplete["open"] == 3 and incomplete["actions"]["gone"] == 0
     assert any(item["status"] == "incomplete" for item in incomplete["checks"]["unfinished"])
     (cli.root / "unavailable").unlink()
     # No token, or a different run's token, cannot close this run's drift action.
-    assert cli("status", code=1)["open"] == 2
+    assert cli("status", code=1)["open"] == 3
     other = cli("program", "start", "--program", "Harness.Programs.Example")
-    assert cli("status", "--program-token", other["token"], code=1)["open"] == 3
+    assert cli("status", "--program-token", other["active"][0]["token"], code=1)["open"] == 5
     (cli.root / "product.txt").write_text("written")
-    restored = cli("status", "--program-token", reached["token"], code=1)
-    assert restored["actions"]["gone"] == 1 and restored["open"] == 2
+    restored = cli("status", "--program-token", current["token"], code=1)
+    assert restored["actions"]["gone"] == 1 and restored["open"] == 4
     retained = cli("program", "show", "--run", reached["run"])
-    assert retained["token"] == reached["token"] and retained["arrival"] == 1
-    assert cli("program", "recover", "--run", reached["run"])["token"] == reached["token"]
+    assert retained["active"][0]["token"] == current["token"]
+    assert not {"state", "arrival", "token", "pending"} & retained.keys()
+    assert cli("program", "recover", "--run", reached["run"])["active"][0]["token"] == current["token"]
+    (cli.root / "product.txt").write_text("drift")
+    assert cli("status", "--program-token", current["token"], code=1)["actions"]["reopened"] == 1
+    moved = cli("program", "choose", "--token", current["token"], "--action", "Harness.Programs.Reset")
+    retired = cli("status", "--program-token", moved["active"][0]["token"], code=1)
+    assert retired["actions"]["gone"] == 1 and retired["open"] == 4
+
+
+def test_contextual_status_does_not_resolve_another_active_occurrence_in_the_same_run(cli):
+    run = cli("program", "start", "--program", "Harness.Programs.Parallel")
+    left, right = run["active"]
+    assert cli("status", "--program-token", left["token"], code=1)["open"] == 4
+    assert cli("status", "--program-token", right["token"], code=1)["open"] == 5
+    (cli.root / "product.txt").write_text("written")
+    restored = cli("status", "--program-token", right["token"], code=1)
+    assert restored["open"] == 4 and restored["actions"]["gone"] == 1
+    assert cli("status", "--program-token", left["token"], code=1)["open"] == 3
+    (cli.root / "product.txt").write_text("drift")
+    assert cli("status", "--program-token", right["token"], code=1)["open"] == 4
+    # Completion policy is empty here, independent of failing status checks.
+    cli("program", "step", "--token", right["token"])
+    retired = cli("status", code=1)
+    assert retired["actions"]["gone"] == 1 and retired["open"] == 2
+    cli("program", "step", "--token", left["token"])
+    assert cli("status")["open"] == 0
 
 
 def test_cli_rejects_arbitrary_class_paths_and_invalid_inputs(cli, tmp_path):

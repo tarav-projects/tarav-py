@@ -12,6 +12,7 @@ from .check import in_harness
 
 # tarav.breadcrumb 4810ee307226
 # tarav.breadcrumb b3b1880d24b0
+# tarav.breadcrumb ec0d46b9f1c0
 def report_program(project, *, operation, program=None, token=None, run_id=None, action=None, data=None):
     try:
         if not hasattr(project, "programs"):
@@ -21,8 +22,9 @@ def report_program(project, *, operation, program=None, token=None, run_id=None,
             value = {"programs": [{"id": str(entity(cls).id), "name": str(entity(cls).name)}
                                    for cls in manager.definitions()],
                      "runs": [{"id": str(run.id), "program": str(run.typed.program),
-                               "state": str(run.typed.state), "arrival": run.typed.arrival,
-                               "phase": run.typed.phase, "pending": run.typed.pending}
+                               "phase": run.typed.phase,
+                               "active": [{"id": str(item.id), "action": str(item.action)}
+                                          for item in run.typed.active]}
                               for run in manager.runs()]}
         elif operation == "start":
             value = manager.runner(program).start(data=data)
@@ -57,16 +59,16 @@ def _run(args):
 
 
 def register_program_commands(subparsers):
-    parser = subparsers.add_parser("program", help="Run trusted Project Program classes through checked States.")
+    parser = subparsers.add_parser("program", help="Run trusted Project Action graphs.")
     operations = parser.add_subparsers(dest="program_operation", required=True)
     for name, help_text in (
         ("list", "List this Project's registered Program classes and runs."),
-        ("start", "Check the initial State and start one Program run."),
+        ("start", "Check entry and start the initial NodeActions."),
         ("show", "Read the retained run, data and arrival history."),
         ("resume", "Read the current token and next operations without advancing."),
-        ("choose", "Choose one declared StateAction under the current token."),
-        ("step", "Check the pending action; issue a new token only on arrival."),
-        ("status", "Check coherence with the token's current State, without advancing."),
+        ("choose", "Move from a NodeAction to an allowed EdgeAction, issuing a new token."),
+        ("step", "Complete an EdgeAction or terminal NodeAction through the Program's checks."),
+        ("status", "Run Program-defined checks for the token's Action, without advancing."),
         ("recover", "Explicitly recover Action projections from the authoritative run."),
     ):
         cmd = operations.add_parser(name, help=help_text)
@@ -80,6 +82,6 @@ def register_program_commands(subparsers):
         if name in {"choose", "step", "status"}:
             cmd.add_argument("--token", required=True)
         if name == "choose":
-            cmd.add_argument("--action", required=True, help="Available StateAction class name or Type UUID.")
+            cmd.add_argument("--action", required=True, help="Available EdgeAction class name or Type UUID.")
         if name in {"start", "step"}:
             cmd.add_argument("--data", type=Path, help="JSON object file containing program input.")
