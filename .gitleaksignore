@@ -3,3 +3,5 @@
 597c6e5ac3d7e56048269f636debefb674511c35:tests/chatlas/test_anchory_depot.py:generic-api-key:359
 597c6e5ac3d7e56048269f636debefb674511c35:tests/chatlas/test_index_approval_checks.py:generic-api-key:26
 b107ae5551c4ca71c4bacf520bdfc1734d8eae73:tests/test_chatlas_commands.py:generic-api-key:1690
+# GitleaksRun.record_example: the repository key is the same example Git SHA as head.
+8d2a291ea9450e31048c517909a0b4a9986e4a9b:src/tarav/l1/git/gitleaks.py:generic-api-key:102

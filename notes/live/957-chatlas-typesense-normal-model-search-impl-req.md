@@ -201,3 +201,9 @@ pass. Product, request and Wiki Breadcrumb submission/audit are pending.
   shared architecture/runtime files and captured labels; no external work was
   reverted or discarded. Source publication and the live operator/POC steps
   remain below; no local Typesense installation was performed.
+- Outgoing source-history scan identified one historical generic-api-key false
+  positive in GitleaksRun.record_example. AST review confirmed its repository key
+  equals the same 40-character example Git SHA used for head, not a credential.
+  Recorded the exact finding fingerprint in .gitleaksignore per the publishing
+  runbook, without changing the example, suppressing a rule or rewriting history.
+  Markdown outgoing history scan found no leaks. Source scan was rerun below.
