@@ -327,7 +327,9 @@ def create_runtime(
     )
     from tarav.l2.git.breadcrumbs import GIT_BREADCRUMB_RECORD_TYPES, audit_commit
     from tarav.l1.python_env import PYTHON_RECORD_TYPES, PythonWorkflow
-    from tarav.l1.programs import ProgramsWorkflow, TaravProgram
+    from tarav.l1.programs import (
+        ProgramsWorkflow, TaravProgram, PROGRAM_RECORD_TYPES, PROGRAM_ACTION_TYPES,
+    )
     from tarav.l1.agent.workflow import AgentsWorkflow
     from tarav.l2.agent_setup import AGENT_SETUP_ACTION_TYPES, AGENT_SETUP_RECORD_TYPES
     from tarav.l1.actions import (
@@ -514,6 +516,7 @@ def create_runtime(
                 *PROJECT_RUNNER_RECORD_TYPES,
                 *SYSTEM_RECORD_TYPES,
                 TaravProgram,
+                *PROGRAM_RECORD_TYPES,
                 ProjectProgram,
                 *OPERATOR_CONTEXT_RECORD_TYPES,
                 *ACTION_RECORD_TYPES,
@@ -639,6 +642,12 @@ def create_runtime(
     ):
         registrations.register(workflow)
     register_action(POIResolutionAction)
+    for action_type in PROGRAM_ACTION_TYPES:
+        register_action(action_type)
+    for program_type in records.record_types:
+        if issubclass(program_type, TaravProgram):
+            for edge in program_type.graph:
+                register_action(edge.action)
     from tarav.l1.git.gitleaks import (
         GitleaksFindingResolution, GitleaksMissingResolution, GitleaksNeverScannedResolution,
         GitleaksStagedResolution,

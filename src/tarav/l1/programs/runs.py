@@ -1,0 +1,48 @@
+"""Durable Program execution state in the workflow's external Record partition."""
+
+from typing import Literal
+
+from pydantic import ConfigDict, Field, JsonValue
+
+from tarav.l0.kernel import TaravClass, TaravEntity, TypedState, TypeShip, entity
+from tarav.l1.actions import ActionRun
+
+from .states import ProgramExecutionAction, State
+from .workflow import PROGRAMS_WORKFLOW_SHIP
+
+
+class ProgramRun(TypedState, TaravEntity):
+    @classmethod
+    def class_entity(cls):
+        return TaravClass(target=cls, id=TypeShip("c34dc8b9-7ad8-4a12-a2d2-67f4787821fb"),
+                          name="Tarav.Programs.Run", workflow=PROGRAMS_WORKFLOW_SHIP)
+
+    class RecordInterface(TaravEntity.RecordInterface):
+        model_config = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False)
+        type: Literal["Tarav.Programs.Run"]
+        program: TypeShip
+        project: dict[str, JsonValue]
+        state: TypeShip
+        arrival: int = Field(ge=0)
+        token: str = Field(min_length=1)
+        phase: Literal["running", "completed"]
+        pending: str | None
+        data: dict[str, JsonValue]
+        actions: list[dict]
+        history: list[dict]
+        created_at: str
+        updated_at: str
+
+    class Records(TaravEntity.Records):
+        def record_example(self):
+            from . import TaravProgram
+
+            identity = "4a9af366-b093-4ba0-aedd-6d71a3f2bbd0"
+            owner = {"id": "e308d11f-d709-4f23-b8c7-f214e28b3f11", "name": "Example", "root": "/example"}
+            action = ActionRun.records.record_example()
+            action.update(action=str(entity(ProgramExecutionAction).name), project=owner)
+            return {"type": str(entity(self._owner).name), "id": identity,
+                    "program": str(entity(TaravProgram).id), "project": owner,
+                    "state": str(entity(State).id), "arrival": 0, "token": identity + ".example",
+                    "phase": "running", "pending": None, "data": {}, "actions": [action],
+                    "history": [], "created_at": "2026-10-23T00:00:00Z", "updated_at": "2026-10-23T00:00:00Z"}
