@@ -152,6 +152,7 @@ class TaravRuntime:
         from tarav.l1.bloberia.commands import register_bloberia_commands
         from tarav.l1.breadcrumbs.commands import register_breadcrumb_commands
         from tarav.l1.chatlas import register_chatlas_commands
+        from tarav.l2.chatlas_typesense.commands import register_typesense_commands
         from tarav.l3.daemon import register_daemon_commands
         from tarav.l3.daemon.client import submit_hook_invocation
         from tarav.l3.daemon.log import report_hook_delivery_failure
@@ -217,7 +218,8 @@ class TaravRuntime:
         register_status_command(subparsers)
         register_program_commands(subparsers)
         register_forum_commands(subparsers)
-        register_chatlas_commands(subparsers)
+        # tarav.breadcrumb eba8186d0f03
+        register_chatlas_commands(subparsers, command_registrars=(register_typesense_commands,))
         _register_stdlib_commands(
             subparsers,
             registrars=(

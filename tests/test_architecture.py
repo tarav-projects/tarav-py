@@ -12,6 +12,23 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+# tarav.context 0d8af26c:b796228f65ba3467
+def test_typesense_is_a_normal_model_consumer_composed_above_chatlas():
+    from tarav.l3.cli import build_parser
+
+    args = build_parser().parse_args(["chatlas", "typesense", "search", "cache"])
+    assert args.handler.__module__ == "tarav.l2.chatlas_typesense.commands"
+    for source in (PACKAGE_ROOT / "l2/chatlas_typesense").glob("*.py"):
+        modules = {node.module for node in ast.walk(ast.parse(source.read_text()))
+                   if isinstance(node, ast.ImportFrom) and node.module}
+        assert not modules & {"tarav.l1.chatlas.normal_model_cache", "tarav.l1.chatlas.index_store",
+                              "tarav.l1.chatlas.core", "tarav.l1.chatlas.sessions"}
+        assert not any(name.startswith("tarav.l3") for name in modules)
+    commands = ast.parse((PACKAGE_ROOT / "l1/chatlas/commands.py").read_text())
+    assert not any(isinstance(node, ast.ImportFrom) and node.module
+                   and node.module.startswith("tarav.l2") for node in ast.walk(commands))
+
+
 # tarav.breadcrumb 50d67e02a9e4
 def test_cli_routing_keeps_process_launch_in_the_cli_adapter():
     from tarav.l1.cli.routing import CommandRoute, CommandRouter

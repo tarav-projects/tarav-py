@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable, Sequence
 import json
 from pathlib import Path
 import sys
@@ -68,7 +69,11 @@ def _describe_render(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
-def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
+# tarav.breadcrumb 52b9b0bbb6f2
+def register_chatlas_commands(
+    subparsers: argparse._SubParsersAction,
+    *, command_registrars: Sequence[Callable[[argparse._SubParsersAction], None]] = (),
+) -> None:
     parser = subparsers.add_parser(
         "chatlas",
         help="Capture and normalize provider-native chat artifacts.",
@@ -180,6 +185,9 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Renderer-owned option; may be repeated.",
     )
     render.set_defaults(handler=_cmd_render, usage_descriptor=_describe_render)
+
+    for registrar in command_registrars:
+        registrar(commands)
 
 
 def _add_capture_options(parser: argparse.ArgumentParser) -> None:

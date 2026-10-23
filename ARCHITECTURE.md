@@ -323,6 +323,14 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   argv string for consumers such as SSH; it does not introduce an SSH workflow
   or local shell execution. See `src/tarav/l1/cli/README.md` for configuration.
   <!-- tarav.breadcrumb 1b93799797f0 -->
+  `tarav.l2.chatlas_typesense` consumes only stored Chatlas Normal Model files
+  to project text and exact source references into an external Typesense index.
+  It owns client configuration, bounded text slicing and disposable sync
+  checkpoints; Typesense owns embedding generation and retrieval. Runtime
+  composition injects its commands into the Chatlas registrar without reversing
+  Chatlas dependencies. Host selection and SSH remain in the global CLI router.
+  <!-- tarav.context 0d8af26c:b796228f65ba3467 -->
+  <!-- tarav.context 0d8af26c:b37c76d4f28cb300 -->
   `tarav.l1.usage` retains bounded, workflow-attributed
   traces in typed Archive folders with workflow-owned daily files. Callers
   choose their trace payloads and a `UsageTrace` subtype whose owner renders
