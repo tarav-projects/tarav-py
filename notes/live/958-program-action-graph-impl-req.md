@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: ready. Execute the accepted refinement of
+Knowledge.Surface: wiki. Status: complete. Execute the accepted refinement of
 request 955. Remove the explicit State concept. A Program defines a graph of
 NodeActions and EdgeActions; runs retain active Action occurrences and their
 tokens. Reuse ordinary Action registration, tapes, Project integration and
@@ -97,7 +97,7 @@ Companion: ../../../tarav-md/notes/live/880-program-action-graph-wiki-impl-req.m
   multiple active occurrences, graph/token isolation, failure/no-write behavior,
   external Action visibility, roundtrip, recovery and concurrency. Rewrite old
   behavior assertions only where the accepted design changes them.
-- [ ] Documentation and integration closure: revise operating guide and
+- [x] Documentation and integration closure: revise operating guide and
   architecture; capture supported surfaces and the Wiki; refresh installed CLI;
   run focused tests, whole-source Ruff, default discovery and Project --all;
   inspect all failures, then close evidence commits and this request.
@@ -132,3 +132,17 @@ Companion: ../../../tarav-md/notes/live/880-program-action-graph-wiki-impl-req.m
   Default discovery collects 669 tests and includes both Program test files.
   Documentation and Wiki capture/audits passed. Shared architecture/daily Notes
   retain concurrent Typesense edits; no external work was discarded.
+- Documentation slice committed as 15ab6232; Wiki capture as a936ba6f. Commit
+  Breadcrumb audits passed for these and runtime 8517607f. All own surviving
+  surfaces audited clean; deleted State surfaces remain in Git history.
+- Full root `tarav status --project ... --all --json` completed all 1,351
+  checks, with 70 completed pytest file checks and zero pytest findings,
+  incomplete checks or skipped suites. Exit 1 represents the existing 67
+  maintenance POIs (Git setup/scans, review coverage/test markers and
+  Skillware/Wiki freshness). Its remaining provisional Wiki markers are on
+  other Notes. Report: /tmp/actiongraph-full-status.json. Ruff and default
+  discovery passed; no further source changes followed this verification.
+- Both repositories were clean before this completion-log update. All active
+  Program test data lived in disposable registries; no production run or
+  migration was performed. Start external-work snapshots retain their honest
+  unknown-session evidence marker; own implementation/capture has no gap.
