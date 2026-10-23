@@ -144,3 +144,14 @@ to programs.md and daily/2026-10-23.md. Companion request:
   preservation. Ruff over src/tests/tooling passed. Surface Breadcrumb audits
   passed after separating provisional references into the required individual
   markers. A real Project program listing was checked without starting a run.
+- Evidence recovery: a temporary manifest filename was mistakenly shared by two
+  simultaneous commit helpers. Python slice commit 77ba6d9f retained the intended
+  contents and message; restored only this workflow's index entries to that
+  committed state, registered its observations and audited them successfully.
+  Markdown capture was then committed sequentially as d401ed36. No worktree
+  contents were discarded and no history was rewritten.
+- Final boundary slice: rejected nonstandard JSON NaN/Infinity before generating
+  harness literals and rejected non-ASCII forged tokens with ProgramError.
+  ProgramRun's example now uses its root Action's matching identity. All 19
+  core/CLI/Record-interface checks passed after these changes. Full root Project
+  status with --all is running; no production Program run was created.

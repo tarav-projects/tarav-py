@@ -104,7 +104,7 @@ class ProgramRunner:
             run = self.load(token.split(".", 1)[0])
         except (OSError, ValueError) as exc:
             raise ProgramError(f"Program token cannot be resolved: {exc}") from exc
-        if not secrets.compare_digest(token, run.typed.token):
+        if not token.isascii() or not secrets.compare_digest(token, run.typed.token):
             raise ProgramError("Stale or incorrect Program state token")
         return run
 

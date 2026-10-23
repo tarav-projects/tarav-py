@@ -157,5 +157,8 @@ def test_cli_rejects_arbitrary_class_paths_and_invalid_inputs(cli, tmp_path):
     data.write_text("{broken")
     assert "error:" in cli("program", "start", "--program", "Harness.Programs.Example",
                             "--data", str(data), code=2)
+    data.write_text('{"value": NaN}')
+    assert "JSON" in cli("program", "start", "--program", "Harness.Programs.Example",
+                          "--data", str(data), code=2)
     assert "token" in cli("program", "status", "--token", "invalid", code=2)
     assert cli("program", "list")["runs"] == []

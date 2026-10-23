@@ -46,6 +46,8 @@ def _run(args):
         data = json.loads(args.data.read_text()) if args.data is not None else None
         if args.data is not None and not isinstance(data, dict):
             raise ProgramError("Program input data must be a JSON object")
+        # The harness receives Python literals; reject JSON's nonstandard NaN/Infinity.
+        json.dumps(data, allow_nan=False)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

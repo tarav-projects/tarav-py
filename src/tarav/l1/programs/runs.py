@@ -40,7 +40,7 @@ class ProgramRun(TypedState, TaravEntity):
             identity = "4a9af366-b093-4ba0-aedd-6d71a3f2bbd0"
             owner = {"id": "e308d11f-d709-4f23-b8c7-f214e28b3f11", "name": "Example", "root": "/example"}
             action = ActionRun.records.record_example()
-            action.update(action=str(entity(ProgramExecutionAction).name), project=owner)
+            action.update(id=identity, action=str(entity(ProgramExecutionAction).name), project=owner)
             return {"type": str(entity(self._owner).name), "id": identity,
                     "program": str(entity(TaravProgram).id), "project": owner,
                     "state": str(entity(State).id), "arrival": 0, "token": identity + ".example",

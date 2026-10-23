@@ -240,6 +240,8 @@ def test_explicit_recovery_projects_authoritative_actions_without_new_token(runn
 
 def test_wrong_program_or_project_cannot_use_a_run(runner):
     frame = runner.start()
+    with pytest.raises(ProgramError, match="incorrect"):
+        runner.status(frame["token"] + "é")
     wrong_project = {**runner.project, "id": str(uuid4())}
     with pytest.raises(ProgramError, match="another Project"):
         ExampleProgram.runner(project=wrong_project).status(frame["token"])
