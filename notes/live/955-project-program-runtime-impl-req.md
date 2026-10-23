@@ -103,7 +103,7 @@ to programs.md and daily/2026-10-23.md. Companion request:
   Verify actual Python start/choose/step/reload, failed/incomplete checks, illegal
   edges, stale tokens, cycles, terminal closure, shared State checks, Action
   projections and explicit recovery. Preserve bootstrap Record roundtrips.
-- [ ] Feature: Project manager, trusted class resolution, installed program CLI
+- [x] Feature: Project manager, trusted class resolution, installed program CLI
   and status modifier. Verify a real Project-defined class in its harness, no
   arbitrary source loading, Project isolation, ordinary Action listing and
   later state drift detected without token rotation.
@@ -128,3 +128,19 @@ to programs.md and daily/2026-10-23.md. Companion request:
   git_result's bytes contract, compared bytes, and reran the regression. Recovery
   now restores the file without a spurious empty commit. Strict ProgramRun
   schema also explicitly declares its type discriminator. Ruff passed.
+- Slice 2: real disposable Project environment passed CLI start/list, checked
+  action completion, resume/show/recover and stale-token rejection. Source was
+  unavailable in the caller environment and loaded through the existing harness.
+  Contextual status opened a drift action and closed it only on restoration;
+  ordinary status and a different run's token preserved it. Invalid import paths
+  and non-object JSON inputs were rejected. Installed CLI was refreshed.
+- Added initial-condition/no-storage, undeclared-availability/no-storage and
+  concurrent-token regression tests. Two new fixture subclasses initially
+  omitted their required class-local identities; corrected the fixtures before
+  rerunning. Full verification and documentation closure remain below.
+- Slice 2 verification: 126 broader tests passed, with the two newly added
+  fixture-identity failures corrected and all 12 core tests then passing. The
+  final real-harness suite passed both tests, including incomplete-check
+  preservation. Ruff over src/tests/tooling passed. Surface Breadcrumb audits
+  passed after separating provisional references into the required individual
+  markers. A real Project program listing was checked without starting a run.

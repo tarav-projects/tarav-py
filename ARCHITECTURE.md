@@ -761,13 +761,28 @@ pipeline: select sessions by Session Index facts, read each stage's standing
 <!-- tarav.breadcrumb d98c94ab0799 -->
 <!-- tarav.breadcrumb ad19e746fc5d -->
 
-`tarav.l1.programs` declares `ProgramsWorkflow` and the minimal
-`TaravProgram(TaravEntity)` family. `tarav.l2.project.programs.ProjectProgram`
-provides a distinct project-oriented subtype without adding fields or behavior.
-Both are currently owned by ProgramsWorkflow and registered for ordinary Record
-loading. This bootstrap deliberately leaves Project attachment, runs, lifecycle,
-checks and derivation undefined; package placement does not imply an attachment
-schema or an additional Workflow identity.
+`tarav.l1.programs` owns `ProgramsWorkflow`, `TaravProgram(TaravEntity)`, State
+CheckProviders, StateActions, Transition declarations and the durable ProgramRun.
+A concrete Program class declares its graph in trusted Project code; the shared
+runner manages start, selection, checked arrival, fresh state tokens and explicit
+recovery. StateAction reuses its destination State's checks; contextual status
+reruns those same conditions to detect later drift. It is an Action distinct
+from StepAction and cannot be closed through the operator StepRunner.
+<!-- tarav.breadcrumb 441ef8f81951 -->
+<!-- tarav.breadcrumb 7957c85143f7 -->
+
+`tarav.l2.project.programs` retains ProjectProgram and binds ProgramsManager to
+the featured `Project.programs`. It selects registered Program Types owned by
+the Project; `tarav program` uses the existing Project harness, without a script
+loader. ProgramRun is authoritative in the external Programs Registry partition;
+its retained ActionRun snapshots project the overall execution and child actions
+into the Actions partition. Explicit recovery repairs an interrupted projection,
+without advancing or reissuing a token. `tarav status --program-token` contributes
+a per-run coherence check to normal Project status; an unrequested context cannot
+resolve another run's coherence action. Current trusted class code defines the
+checks; runs do not snapshot code or claim exclusive access to their tokens.
+<!-- tarav.breadcrumb c40f6fecb83c -->
+<!-- tarav.breadcrumb 77881a7792d4 -->
 
 `tarav.l1.operator_context` declares `OperatorContextWorkflow`: the standard
 place where an operator puts the typed objects it hands to other workflows.
@@ -813,7 +828,8 @@ names the repositories that were not clean. The instance of a POI's action
 is derived from the POI's identity; its tape holds its status history and
 every other change is in the registry's Git history. Checks do not import Actions and
 give the owner no meaning; a run that no owned suite produced is momentary
-and resolves nothing. Programs and Actions are not yet related in code.
+and resolves nothing. Program executions and their selected StateActions use
+the same Action registry while the Program runner owns their checked lifecycle.
 <!-- tarav.breadcrumb 58b3f302d6fe -->
 <!-- tarav.breadcrumb 65f4b92f79c2 -->
 <!-- tarav.breadcrumb 30efa0fe92a4 -->

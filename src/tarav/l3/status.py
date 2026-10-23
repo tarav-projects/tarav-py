@@ -147,7 +147,7 @@ def status_text(result: dict, *, limit: int = 20) -> str:
 
 # tarav.breadcrumb b77381085b45
 def report_project_status(project, *, json_output: bool = False, limit: int = 20,
-                          everything: bool = False) -> int:
+                          everything: bool = False, program_token: str | None = None) -> int:
     """Run a Project's checks, hand the results to its actions, and say how it stands.
 
     Suites that are not routine are left out unless `everything` is set; their
@@ -156,8 +156,14 @@ def report_project_status(project, *, json_output: bool = False, limit: int = 20
     """
     progress = Progress()
     try:
-        status = project.status(select=None if everything else routine, on_result=progress)
-    except NotImplementedError as exc:
+        if program_token is None:
+            status = project.status(select=None if everything else routine, on_result=progress)
+        else:
+            if not hasattr(project, "programs"):
+                raise ValueError("This Project Type does not provide a Programs manager")
+            status = project.programs.status(program_token, select=None if everything else routine,
+                                              on_result=progress)
+    except (NotImplementedError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     finally:
@@ -172,7 +178,7 @@ def _status(args: argparse.Namespace) -> int:
     return in_harness(args, command="tarav status", module="tarav.l3.status",
                       function="report_project_status", options={
                           "json_output": args.json, "limit": args.limit,
-                          "everything": args.all})
+                          "everything": args.all, "program_token": args.program_token})
 
 
 # tarav.breadcrumb 57673eca9d40
@@ -201,6 +207,7 @@ def register_status_command(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--all", action="store_true",
                         help="Run every suite. Without it, suites that are not part of the "
                              "routine run are left out, such as a Project's pytest tests.")
+    parser.add_argument("--program-token", help="Also check the State declared by this current Program token.")
     parser.set_defaults(handler=_status)
 
 

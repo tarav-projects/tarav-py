@@ -253,3 +253,55 @@ def test_program_run_record_roundtrip_keeps_action_and_arrival_history(runner):
     record = run.records.to_record()
     assert ProgramRun.records.from_record(record).records.to_record() == record
     assert [e["kind"] for e in record["history"]] == ["started", "selected", "checked", "arrived"]
+
+
+def test_failed_initial_conditions_do_not_create_a_run_or_registry(runner):
+    class NeedsWritten(ExampleProgram):
+        initial = Written
+
+        @classmethod
+        def class_entity(cls):
+            return identity(cls, 8009, "NeedsWritten")
+
+    with pytest.raises(ProgramError, match="Initial State"):
+        NeedsWritten.runner(project=runner.project).start()
+    assert not runner.store.root.exists()
+
+
+def test_availability_cannot_invent_a_transition(runner):
+    class Undeclared(ExampleProgram):
+        @classmethod
+        def class_entity(cls):
+            return identity(cls, 8010, "Undeclared")
+
+        def available(self, run):
+            return (Transition(Ready, Finish),)
+
+    with pytest.raises(ProgramError, match="declared"):
+        Undeclared.runner(project=runner.project).start()
+    assert not runner.store.root.exists()
+
+
+def test_concurrent_token_consumption_permits_exactly_one_arrival(runner):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    frame = runner.start()
+    runner.choose(frame["token"], str(entity(Write).id))
+    product(runner, "written")
+    barrier = Barrier(2)
+
+    def advance():
+        barrier.wait(timeout=5)
+        try:
+            return runner.step(frame["token"])["advanced"]
+        except ProgramError as exc:
+            assert "Stale" in str(exc)
+            return False
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: advance(), range(2)))
+    assert sorted(results) == [False, True]
+    run = runner.load(frame["run"])
+    assert run.typed.arrival == 1
+    assert sum(item["kind"] == "arrived" for item in run.typed.history) == 1

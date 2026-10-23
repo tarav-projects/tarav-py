@@ -15,6 +15,7 @@ from .skw import SkwManager
 from .product_mapping import MappingManager
 from .product_review import ReviewManager
 from .paths import PathsManager
+from .programs import ProgramsManager
 
 
 class Project(TaravProject):
@@ -26,6 +27,8 @@ class Project(TaravProject):
     Mapping = MappingManager
     Review = ReviewManager
     Paths = PathsManager
+    # tarav.breadcrumb 7ccf2ed245dd
+    Programs = ProgramsManager
     # tarav.breadcrumb 00b0d37c5fab
 
     @property
@@ -39,6 +42,10 @@ class Project(TaravProject):
     @property
     def review(self):
         return type(self).Review(self)
+
+    @property
+    def programs(self):
+        return type(self).Programs(self)
 
     @classmethod
     def class_entity(cls):
@@ -63,6 +70,7 @@ class Project(TaravProject):
                                self.obj.mapping.suite(),
                                self.obj.review.suite(),
                                self.obj.paths.suite(),
+                               self.obj.programs.suite(),
                                ProjectNotebookSuite(self.obj), OwnedRepositorySuite(self.obj),
                                CheckSuite(lambda run: TestFixturesSuite.present(self.obj.root))],
                               name=self.obj.name, repositories=self.obj.repositories())

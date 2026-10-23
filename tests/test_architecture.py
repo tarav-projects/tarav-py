@@ -12,6 +12,27 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
+# tarav.breadcrumb 2fe441973842
+# tarav.breadcrumb 4665c18f8598
+def test_program_core_reuses_actions_and_keeps_project_integration_above_it():
+    from tarav.l1.actions import Action, StepAction
+    from tarav.l1.programs import PROGRAM_RECORD_TYPES, StateAction, TaravProgram
+    from tarav.l1.project import TaravProject
+    from tarav.l2.project import Project
+    from tarav.l2.project.programs import ProjectProgram, PROJECT_PROGRAM_RECORD_TYPES
+    from tarav.l3.runtime import create_runtime
+
+    runtime = create_runtime()
+    assert issubclass(StateAction, Action) and not issubclass(StateAction, StepAction)
+    assert isinstance(Project.Programs, type) and not hasattr(TaravProject, "programs")
+    for cls in (TaravProgram, ProjectProgram, *PROGRAM_RECORD_TYPES, *PROJECT_PROGRAM_RECORD_TYPES):
+        assert runtime.records.resolve_ship(entity(cls).id) is cls
+    for path in (PACKAGE_ROOT / "l1/programs").glob("*.py"):
+        imports = [node.module for node in ast.walk(ast.parse(path.read_text()))
+                   if isinstance(node, ast.ImportFrom) and node.module]
+        assert not any(name.startswith(("tarav.l1.project", "tarav.l2", "tarav.l3")) for name in imports)
+
+
 def test_product_review_keeps_mapping_and_chat_evidence_integration_above_core_records():
     from tarav.l1.product_review import PRODUCT_REVIEW_RECORD_TYPES, ProductReviewWorkflow
     from tarav.l3.runtime import create_runtime

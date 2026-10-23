@@ -166,6 +166,7 @@ class TaravRuntime:
         from tarav.l3.run import register_run_command
         from tarav.l3.check import register_check_command
         from tarav.l3.status import register_status_command
+        from tarav.l3.programs import register_program_commands
         from tarav.l3.git.commands import (
             register_breadcrumb_git_commands,
             register_commands as register_git_commands,
@@ -214,6 +215,7 @@ class TaravRuntime:
         register_run_command(subparsers)
         register_check_command(subparsers)
         register_status_command(subparsers)
+        register_program_commands(subparsers)
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
         _register_stdlib_commands(
@@ -342,7 +344,7 @@ def create_runtime(
         POI_ACTION_RECORD_TYPES, POIResolutionAction,
     )
     from tarav.l2.tests.actions import ActionsTestsWorkflow
-    from tarav.l2.project.programs import ProjectProgram
+    from tarav.l2.project.programs import ProjectProgram, PROJECT_PROGRAM_RECORD_TYPES
     from tarav.l1.wiki import Wiki, WikiNote, WikiWorkflow
     # tarav.breadcrumb 40a71d141d26
     from tarav.l1.attic import ATTIC_ACTION_TYPES, ATTIC_RECORD_TYPES, AtticWorkflow
@@ -518,6 +520,7 @@ def create_runtime(
                 TaravProgram,
                 *PROGRAM_RECORD_TYPES,
                 ProjectProgram,
+                *PROJECT_PROGRAM_RECORD_TYPES,
                 *OPERATOR_CONTEXT_RECORD_TYPES,
                 *ACTION_RECORD_TYPES,
                 *POI_ACTION_RECORD_TYPES,

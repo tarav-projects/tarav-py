@@ -54,7 +54,10 @@ def validate_definition(program):
     for state in program.terminal:
         if not isinstance(state, type) or not issubclass(state, State):
             raise ProgramError("Program.terminal must contain State classes")
-        states[entity(state).id] = state
+        identity = entity(state).id
+        if identity in states and states[identity] is not state:
+            raise ProgramError("Two State classes declare the same identity")
+        states[identity] = state
     return states
 
 
