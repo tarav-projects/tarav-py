@@ -122,3 +122,13 @@ Companion: ../../../tarav-md/notes/live/880-program-action-graph-wiki-impl-req.m
   closure facts. This runs without consumed tokens and does not check another
   active occurrence. A terminal completion test covers the case where no token
   remains. Whole-source Ruff passed. Documentation/capture closure follows.
+- Runtime slice committed as 8517607f after all changed surviving source/test
+  surfaces passed Breadcrumb capture/audit and Python compilation/Ruff.
+  states.py was removed rather than annotated. tests/test_architecture.py also
+  retained the concurrent Typesense agent's Breadcrumb submission as found.
+- Guide and architecture now describe Action-owned graph roles, Program check
+  policy, terminal completion and active collections. Installed CLI refreshed;
+  a real Project listing returned no Programs or runs, without starting one.
+  Default discovery collects 669 tests and includes both Program test files.
+  Documentation and Wiki capture/audits passed. Shared architecture/daily Notes
+  retain concurrent Typesense edits; no external work was discarded.

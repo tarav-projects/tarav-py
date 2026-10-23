@@ -1,128 +1,137 @@
 # Programs
 
-A Program is a trusted Tarav class defined in a Project's Python code. It
-declares States, StateActions and connections. The reusable runner owns tokens,
-checked advancement, persistence and recovery. There is no Program script loader.
-<!-- tarav.breadcrumb b0df5160af0b -->
+A Program is a trusted Tarav class defined in a Project's Python code. It owns
+an Action graph and selects checks. The runner handles graph movement, tokens,
+persistence and recovery. Execution is represented by active Action occurrences.
+<!-- tarav.breadcrumb 68c8cb9e2753 -->
 
-`State` is a CheckProvider bound to a ProgramRun. Its `Checks.suite()` describes
-conditions on the product. A `StateAction` names its destination through `State`,
-supplies a prompt and optional `prerequisites(run)`, and reuses that destination's
-checks. StateAction is a distinct Action kind; the operator StepRunner cannot
-mark it done. A Program command closes it only after its checks pass.
-<!-- tarav.breadcrumb b019ad23ed0d -->
-<!-- tarav.breadcrumb 37f99848057d -->
+`NodeAction` and `EdgeAction` are ordinary Action Types with two graph roles.
+They supply prompts and class identities; the engine takes their checks from
+the Program. A connection is `Transition(source_node, edge_action, target_node)`.
+Each concrete class declares its own `class_entity()`. The operator StepRunner
+cannot complete these Actions; the Program runner controls their lifecycle.
 
-The Program's `graph` is a tuple of `Transition(source_state, action_type)`
-declarations. `initial` names the initial State; `terminal` lists terminal States.
-Python loops may build the graph. Override `available(run)` to filter the base
-method's outgoing connections from persisted `run.typed.data`. This hook cannot
-invent an undeclared edge. Availability gates selection; Action prerequisites
-and destination checks gate completion. There is no suspended Python stack.
+```python
+class DocumentProgram(TaravProgram):
+    initial = (Ready,)
+    terminal = (Reviewed,)
+    graph = (
+        Transition(Ready, Rewrite, Draft),
+        Transition(Draft, Revise, Draft),
+        Transition(Draft, Review, Reviewed),
+    )
+    # Define this Program's class_entity() as for any concrete Tarav Type.
+```
 
-## Python lifecycle
+The example assumes those NodeAction/EdgeAction classes already exist. For
+complete definitions with real checks see `tests/test_programs.py` and the
+Project-only module in `tests/test_project_programs.py`.
 
-Register a concrete Program Type in the Project's trusted runtime like its other
-Record Types. Each concrete State, Action and Program declares `class_entity()`.
-The runtime registers graph-declared Action Types. `ProgramClass.runner()` opens
-the library runner without provisioning storage. Its operations are:
+## Check policy belongs to the Program
 
-1. `start(project={"id": ..., "name": ..., "root": ABSOLUTE_PATH}, data={...})`
-   through `ProgramClass.start`, or construct the runner with that descriptor
-   and call `start(data={...})`. Initial conditions must pass before storage is
-   created and the initial arrival token is issued. The default State has no
-   additional conditions.
-2. `choose(current_token, action_type_uuid_or_name)` opens one available
-   StateAction. Its prompt and parent Program run are visible in the returned
-   frame and ordinary Action registry.
-3. Work on the product, then `step(current_token, data={...})`. Data is explicit
-   JSON program input; it cannot overwrite control fields. Failed/incomplete
-   checks retain the StateAction and token. Successful checks close it, record
-   arrival and issue a new token. A cycle receives a new token too.
-4. `status(current_token)` reruns the same current State's conditions. It reports
-   coherence without rotating tokens or writing run state. Later product drift
-   is visible. A token selects a State to maintain, not permanent proof of it.
-5. Terminal arrival closes the parent Program execution. `load(run_id)` retains
-   data, action snapshots and history. `frame(loaded_run)` exposes its current
-   token for explicit resumption; old tokens are rejected before writes.
-<!-- tarav.breadcrumb 5fd6dbc50ba1 -->
-<!-- tarav.breadcrumb e0b28acd7503 -->
+Override `checks(run, occurrence, *, operation)` to return a CheckSuite or an
+iterable of Checks. `occurrence.action` is its Action TypeShip; `occurrence.id`
+identifies this particular visit. `run.typed.data` contains explicit JSON input.
+The Program can reuse a Check class anywhere and organize its Python code as
+useful. The hook's lifecycle slots are:
 
-ProgramRun records live in the Programs workflow's standard Record Registry
-partition, outside the Project. Program-run state is authoritative; retained
-ActionRun snapshots project into the existing Actions partition, including an
-overall ProgramExecutionAction. Both parent and children carry the Project owner.
-One lock serializes token use. Independent Git repositories are not one atomic
-transaction: if projection fails after a run save, explicitly `recover(run_id)`.
-It replays Action snapshots without advancing, issuing tokens or rerunning checks.
-Read operations never repair or initialize storage. Tokens do not guarantee
-exclusive access to other agents able to read the external registry.
+| Operation | When called |
+| --- | --- |
+| `enter` | Before activating an initial or successor Action |
+| `status` | When the caller asks about an active Action under its token |
+| `complete` | Before closing a node or edge occurrence |
 
-Runs use the Project's current trusted class code. Code changes can change the
-conditions checked; a removed current State is reported rather than guessed.
-No per-run code snapshot or legacy Iterante dependency is introduced.
+The default hook selects no checks. The engine does not automatically select
+source-node status checks at departure or target-node status checks at arrival.
+A Program can explicitly reuse those checks in `complete` or `enter` if that
+is its policy. Checks for working on an edge can differ from its completion
+requirements; an unfinished document need not violate its rewrite Action.
+<!-- tarav.breadcrumb a75285fa04d0 -->
 
-## Project commands
+`available(run, occurrence)` may filter the base method's declared outgoing
+connections using Python logic. It cannot invent a connection or authorize an
+edge from a different node. `checks` receives the source run for completion
+and the candidate run for entry. The candidate replaces only the selected
+occurrence. Evidence names Action, occurrence, graph role and operation.
 
-`project.programs` selects registered Program classes whose Python source belongs
-to that Project. Import and register a concrete Program through its existing
-trusted harness, using `get_runtime().records.register(YourProgram)` during that
-module's initialization. A Program identity is a Type UUID or registered name;
-commands do not accept Python files or import paths. Each graph-declared Action
-is registered when its Program is prepared.
-<!-- tarav.breadcrumb 9dd1b48ff90a -->
+## Lifecycle and tokens
+
+1. `ProgramClass.start(project={"id": ..., "name": ..., "root": ABSOLUTE_PATH},
+   data={...})` verifies entry for each Type in `initial`, then opens the overall
+   execution and its NodeAction occurrences. Failed entry creates no registry.
+2. `runner.choose(node_token, edge_type_uuid_or_name)` checks graph permission,
+   Program availability, source completion and edge entry. Success closes the
+   NodeAction, opens the EdgeAction and issues its own token immediately.
+3. Work on the product, then `runner.step(edge_token, data={...})`. Edge
+   completion and destination entry must pass. Success closes the edge and
+   activates the destination NodeAction with a new occurrence and token.
+4. `runner.status(token)` evaluates that occurrence's Program-selected `status`
+   checks. It never advances, rotates tokens or writes the run.
+5. A node listed in `terminal` remains an active NodeAction until `step` passes
+   its completion checks. Closing the last active occurrence completes the
+   overall execution. A completed run has an empty active collection.
+
+Both nodes and edges have fresh occurrence IDs and tokens. Revisiting a Type
+does not restore a prior token. Failed/incomplete gates retain the active
+occurrence and token and record the attempt. Invalid graph/token operations
+fail before writes. Input can change only `data`, not execution control fields.
+<!-- tarav.breadcrumb 7ed1d3505df6 -->
+
+`initial` is a nonempty tuple and may open multiple occurrences, including
+repeated Types. Moving one preserves the other occurrences and their tokens.
+This supplies an active collection without a fork/join API. Node/edge prompts
+and basic typed Closings use the existing Actions registry; the root execution
+is an Action there too. There is no separate current-State object or field.
+<!-- tarav.breadcrumb 5d06c9a6e3fb -->
+
+## Project and CLI
+
+`project.programs` selects registered Program Types owned by the Project's
+source paths. Register a concrete Program through its trusted harness, using
+`get_runtime().records.register(YourProgram)` during module initialization.
+Program commands select a registered name or Type UUID, never a Python file
+or import path. The Program's graph role Types are registered automatically.
 
 ```sh
 tarav program list --project .
 tarav program start --project . --program MyProject.Program
-# Use the returned token and one of the returned available Action identities.
-tarav program choose --project . --token TOKEN --action MyProject.Write
-# Work on the product, then attempt arrival.
-tarav program step --project . --token TOKEN
-tarav program status --project . --token NEW_TOKEN
-tarav status --project . --program-token NEW_TOKEN
+# Each entry in the returned active array has its own token.
+tarav program choose --project . --token NODE_TOKEN --action MyProject.Rewrite
+tarav program status --project . --token EDGE_TOKEN
+tarav program step --project . --token EDGE_TOKEN
+tarav status --project . --program-token NEXT_NODE_TOKEN
 tarav program resume --project . --run RUN_UUID
 tarav program show --project . --run RUN_UUID
 tarav program recover --project . --run RUN_UUID
 ```
 
-Program commands return JSON. `start` and `step` optionally accept `--data FILE`,
-a JSON object merged into program data; control fields stay outside that object.
-Exit 1 means a step did not advance or Program status found incoherence; exit 2
-means invalid input or a runtime error. `resume` retrieves the current token
-without changing it. `list` omits tokens. `show` includes the retained run and
-history. These are explicit local operational reads, not token access controls.
+Output is JSON. `start` and `step` accept `--data FILE`, a JSON object.
+Exit 1 means selected checks blocked a move or status found incoherence;
+exit 2 reports invalid input or a runtime error. Frames contain `active`,
+including each occurrence's identity, Type, role, token, Action Record and
+available connections. `list` omits tokens; `resume` retrieves the current
+frame and `show` reads retained history. A completed run has no current tokens.
 
-`tarav status --program-token` runs normal Project checks plus the selected
-State's conditions and opens a POI-resolution action on completed, failing
-checks. Incomplete checks preserve earlier findings. Ordinary status without
-the token does not assert coherence or close that run's drift action. Another
-run's token cannot close it either. Restoration followed by contextual status
-closes the drift action; Program state and token stay unchanged.
-<!-- tarav.breadcrumb 7d5a7e8dac5a -->
-<!-- tarav.breadcrumb abec83b6d84c -->
+`tarav status --program-token` adds the selected occurrence's status checks to
+normal Project status. Findings open an ActionIncoherent POI-resolution Action;
+incomplete checks preserve previous findings. An unselected active occurrence
+keeps its own status, including another occurrence in the same Program run.
+Normal status can retire a closed occurrence's warning from recorded closure
+facts, even after terminal completion consumed its last token. It does not
+evaluate another active occurrence without its token.
 
-Minimal graph shape, after defining concrete State and StateAction classes with
-their own `class_entity()` identities:
+## Storage and limits
 
-```python
-class MyProgram(TaravProgram):
-    initial = Ready
-    terminal = (Done,)
-    graph = (
-        Transition(Ready, Write),   # Write.State is Written
-        Transition(Written, Reset), # Reset.State is Ready: a cycle
-        Transition(Written, Finish),# Finish.State is Done
-    )
+ProgramRun is authoritative in the external Programs Record Registry partition.
+It stores active occurrences, JSON data, history and ActionRun snapshots. Those
+snapshots project into the Actions partition. A Program lock serializes token
+consumption. Independent Git partitions are not an atomic transaction: explicit
+`recover(run_id)` replays Action projections after interruption, without issuing
+tokens, changing history or rerunning checks. Reads do not initialize or repair.
 
-    @classmethod
-    def class_entity(cls):
-        return TaravClass(target=cls,
-                          id=TypeShip("72ee47ce-673c-47c1-9ec1-a6e216ee3efa"),
-                          name="MyProject.Program", workflow=PROGRAMS_WORKFLOW_SHIP)
-```
-
-State conditions describe the product at arrival and afterward. Put requirements
-that apply only to the transition in `StateAction.prerequisites(run)`. During a
-step these see the source context; destination conditions see the proposed State
-and arrival number. The runner performs no product edits itself.
+Runs use the current trusted class code. A removed Action or connection fails
+explicitly rather than being guessed. No code snapshot, external script loader,
+legacy alias or automatic stored-run migration is provided. The previous State
+schema is rejected by the new strict ProgramRun interface. Tokens are local
+execution coordinates; reading the external registry is not an exclusive
+capability restricted to the current agent.

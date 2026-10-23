@@ -329,8 +329,8 @@ do not establish Workflow parentage. Lower layers do not import higher layers.
   checkpoints; Typesense owns embedding generation and retrieval. Runtime
   composition injects its commands into the Chatlas registrar without reversing
   Chatlas dependencies. Host selection and SSH remain in the global CLI router.
-  <!-- tarav.context 0d8af26c:b796228f65ba3467 -->
-  <!-- tarav.context 0d8af26c:b37c76d4f28cb300 -->
+  <!-- tarav.breadcrumb 8743c79945da -->
+  <!-- tarav.breadcrumb e977371fe89a -->
   `tarav.l1.usage` retains bounded, workflow-attributed
   traces in typed Archive folders with workflow-owned daily files. Callers
   choose their trace payloads and a `UsageTrace` subtype whose owner renders
@@ -776,13 +776,15 @@ pipeline: select sessions by Session Index facts, read each stage's standing
 <!-- tarav.breadcrumb d98c94ab0799 -->
 <!-- tarav.breadcrumb ad19e746fc5d -->
 
-`tarav.l1.programs` owns `ProgramsWorkflow`, `TaravProgram(TaravEntity)`, State
-CheckProviders, StateActions, Transition declarations and the durable ProgramRun.
-A concrete Program class declares its graph in trusted Project code; the shared
-runner manages start, selection, checked arrival, fresh state tokens and explicit
-recovery. StateAction reuses its destination State's checks; contextual status
-reruns those same conditions to detect later drift. It is an Action distinct
-from StepAction and cannot be closed through the operator StepRunner.
+`tarav.l1.programs` owns `ProgramsWorkflow`, `TaravProgram(TaravEntity)`,
+NodeActions, EdgeActions, Transition declarations and the durable ProgramRun.
+The Program defines a graph in trusted Project code and selects checks through
+`checks(run, occurrence, operation=...)` for enter/status/complete. Check
+ownership and meaning are Program policy; the runner does not impose reuse of
+node status checks for departure or arrival. Node/edge Types are ordinary
+Actions outside operator StepRunner. There is no explicit State Type.
+<!-- tarav.breadcrumb 3151d77692a0 -->
+<!-- tarav.breadcrumb 00848755a7fe -->
 <!-- tarav.breadcrumb 441ef8f81951 -->
 <!-- tarav.breadcrumb 7957c85143f7 -->
 
@@ -792,10 +794,17 @@ the Project; `tarav program` uses the existing Project harness, without a script
 loader. ProgramRun is authoritative in the external Programs Registry partition;
 its retained ActionRun snapshots project the overall execution and child actions
 into the Actions partition. Explicit recovery repairs an interrupted projection,
-without advancing or reissuing a token. `tarav status --program-token` contributes
-a per-run coherence check to normal Project status; an unrequested context cannot
-resolve another run's coherence action. Current trusted class code defines the
-checks; runs do not snapshot code or claim exclusive access to their tokens.
+without advancing or reissuing a token. ProgramRun retains an active collection
+of Action occurrences with their individual tokens. Node→edge and edge→node
+movement each consume one occurrence and open another; graph permission and
+current-token validation are mandatory, including on cycles. Multiple initial
+occurrences progress independently. Terminal NodeActions close explicitly;
+closing the last completes the overall execution. `tarav status --program-token`
+checks the selected active occurrence, with occurrence-scoped checkpoints. An
+unselected active context is not resolved; normal status retires warnings for
+closed occurrences using recorded closure facts. Current trusted class code
+defines checks; runs do not snapshot code or claim exclusive token access.
+<!-- tarav.breadcrumb f5179cb980d0 -->
 <!-- tarav.breadcrumb c40f6fecb83c -->
 <!-- tarav.breadcrumb 77881a7792d4 -->
 
@@ -843,7 +852,7 @@ names the repositories that were not clean. The instance of a POI's action
 is derived from the POI's identity; its tape holds its status history and
 every other change is in the registry's Git history. Checks do not import Actions and
 give the owner no meaning; a run that no owned suite produced is momentary
-and resolves nothing. Program executions and their selected StateActions use
+and resolves nothing. Program executions and their active NodeActions/EdgeActions use
 the same Action registry while the Program runner owns their checked lifecycle.
 <!-- tarav.breadcrumb 58b3f302d6fe -->
 <!-- tarav.breadcrumb 65f4b92f79c2 -->
