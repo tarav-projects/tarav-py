@@ -6,7 +6,7 @@ ec6cf584 = codex:01a1563b-2992-7c62-8a38-05c1cc75b1fe @ec6cf5849bb6c4e66f011b015
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: ready. Develop a first working Program runtime
+Knowledge.Surface: wiki. Status: complete. Develop a first working Program runtime
 from the accepted discussion. A Program is a trusted Tarav class defined in a
 Project, not an injected Python script. Its reusable base owns execution,
 persistence and tokens; concrete classes define States, Actions and allowed
@@ -107,7 +107,7 @@ to programs.md and daily/2026-10-23.md. Companion request:
   and status modifier. Verify a real Project-defined class in its harness, no
   arbitrary source loading, Project isolation, ordinary Action listing and
   later state drift detected without token rotation.
-- [ ] Documentation/capture: operating guide, architecture test, contextualized
+- [x] Documentation/capture: operating guide, architecture test, contextualized
   request and Wiki capture; reinstall CLI, focused checks, Project --all and
   evidence commits. No live business Program is started by implementation.
 
@@ -155,3 +155,20 @@ to programs.md and daily/2026-10-23.md. Companion request:
   ProgramRun's example now uses its root Action's matching identity. All 19
   core/CLI/Record-interface checks passed after these changes. Full root Project
   status with --all is running; no production Program run was created.
+- Full root status --all finished: 1,347/1,347 checks completed; all 66 configured
+  pytest file checks passed, no incomplete checks or skipped suites. Exit 1
+  reflects 67 maintenance POIs: review coverage/test markers, hooks/scans and
+  Skillware/Wiki freshness, not test failures. Changed Program/Wiki surfaces
+  audit clean; remaining Wiki markers are on other Notes.
+- Final discovery caught this repository's explicit pytest testpaths list.
+  Added both new Program test files to that list after their independent
+  19-test core/CLI/Record-interface pass (14 Program tests plus 5 Record tests).
+  Collection verification below confirms they join future default runs; focused
+  verification covered both additions. No production Program was started.
+- Evidence checkpoints: Python start 101068e7, core b4a769c3, Project integration
+  77ba6d9f, boundary verification 854e0312; Markdown start df428a25 and captured
+  design d401ed36. Surface audits and recovered commit audit passed with no
+  remaining capture gap. The completion checkpoint records this final log.
+- Default discovery now collects 632 tests across 66 files, including all 14 new
+  Program tests. Final whole-source Ruff and diff whitespace checks passed.
+  Both owning repositories contain only this workflow's completed changes.

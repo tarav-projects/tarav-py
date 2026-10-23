@@ -37,6 +37,9 @@ extend-exclude = ["_DEPRECATED"]
 [tool.pytest.ini_options]
 # tarav.breadcrumb c7c6b1f3fb5a
 testpaths = [
+    # tarav.breadcrumb 360132aca7b4
+    "tests/test_programs.py",
+    "tests/test_project_programs.py",
     "tests/test_product_mapping.py",
     # tarav.breadcrumb 60b2475dd11b
     "tests/breadcrumbs/test_external_placement.py",
