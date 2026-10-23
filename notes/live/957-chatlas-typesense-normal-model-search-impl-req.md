@@ -6,7 +6,7 @@
 
 ## Impl.Abstract
 
-Knowledge.Surface: wiki. Status: executing; deployment pending operator. Develop / Wiki / Autonomous.
+Knowledge.Surface: wiki. Status: awaiting operator deployment; live POC open. Develop / Wiki / Autonomous.
 Implement a thin Typesense consumer in Tarav, publish Tarav to its existing
 GitHub remote, and prepare deployment to the Studio. Install Typesense only on
 the Studio, never on the control Mac. The accepted initial data is conversation
@@ -127,15 +127,19 @@ pass. Product, request and Wiki Breadcrumb submission/audit are pending.
   metadata filters, row-level import failure, missing/corrupt sources, incremental
   resumption and source/index isolation. Existing routing/Chatlas/architecture
   tests remain green. No Typesense process or embedding model runs on this Mac.
-- [ ] Deployment/documentation: Studio-only reproducible Ansible installation
+- [x] Deployment preparation/documentation: Studio-only reproducible Ansible installation
   of pinned Typesense 30.2, Tarav GitHub checkout/install, private configuration,
   explicit Normal Model-only transfer and global route preparation. Verify syntax
   locally; operator owns remote check/apply. Publish Tarav source to GitHub after
   inspecting the outgoing scope. No hardcoded Studio/SSH in adapter modules.
-- [ ] Verification/capture: install the updated Tarav entrypoint, run appropriate
+- [x] Code verification/capture: install the updated Tarav entrypoint, run appropriate
   focused tests and full root Project status --all, submit/audit implemented
   Product.Surfaces and Wiki capture, evidence commits. Test live search after the
   operator applies deployment; otherwise report it as pending, not passed.
+- [x] Publish source and captured design to the existing GitHub main branches.
+- [ ] Operator apply: service check/apply, then the personal client check/apply
+  including the explicit Normal Model-only transfer. Read retained Ansible logs
+  before declaring the service installed or enabling the route.
 
 ## Impl.Log
 
@@ -207,3 +211,12 @@ pass. Product, request and Wiki Breadcrumb submission/audit are pending.
   Recorded the exact finding fingerprint in .gitleaksignore per the publishing
   runbook, without changing the example, suppressing a rule or rewriting history.
   Markdown outgoing history scan found no leaks. Source scan was rerun below.
+- Both reviewed outgoing history scans passed with no leaks. Published source
+  to tarav-projects/tarav-py main at d2ade66e345cfa053df9604552ec0b35a66e034c
+  and design to tarav-projects/tarav-md main at
+  862683d07d183e3a70ae383d7daf6d40e210ea08. Git push succeeded for each.
+- Current operator ledger contains only syntax checks, no service/client apply.
+  The operator's first concrete step is the tagged service --check command from
+  the deployment guide. The live POC checkbox intentionally remains unchecked;
+  no service install, full ingestion, route activation or live retrieval result
+  has been claimed. Typesense was not installed on the control Mac.
